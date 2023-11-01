@@ -68,6 +68,7 @@
 - struct `read_view::ReadView` for opening read views on selected spaces.
 - Expose `box_access_check_space` to be able to run access checks on spaces externally
 - ffi logger functions `log_set_format` and `log_default_logger`
+- ffi cord (tarantool thread) functions `current_cord_name`, `cord_is_main_dont_create` and `cord_is_main`
 
 ### Fixed (picodata)
 - A race condition causing undefined behaviour due to fiber_cond_delete being called outside tx sometimes

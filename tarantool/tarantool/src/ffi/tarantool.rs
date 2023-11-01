@@ -1280,7 +1280,9 @@ extern "C" {
 mod tests {
     use super::*;
     use crate::log::SayLevel;
+    use std::ffi::CStr;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread;
 
     #[crate::test(tarantool = "crate")]
     pub fn test_set_log_format() {
@@ -1308,5 +1310,21 @@ mod tests {
         crate::log::say(SayLevel::Error, "", 0, None, "test log");
 
         assert!(LOG_FORMAT_CALLED.load(Ordering::SeqCst));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    pub fn test_cord_info_functions() {
+        assert!(unsafe { cord_is_main() });
+        assert!(unsafe { cord_is_main_dont_create() });
+        let cord_name_ptr = unsafe { current_cord_name() };
+        let cord_name = unsafe { CStr::from_ptr(cord_name_ptr) }.to_string_lossy();
+        assert_eq!(cord_name, "main");
+
+        thread::spawn(|| {
+            assert!(!unsafe { cord_is_main() });
+            assert!(!unsafe { cord_is_main_dont_create() });
+            let cord_name_ptr = unsafe { current_cord_name() };
+            assert!(cord_name_ptr.is_null());
+        });
     }
 }
