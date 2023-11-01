@@ -7,7 +7,8 @@
 //! 4. Latches.
 //! 5. Log.
 //! 6. Box - errors, sessions, sequences, transactions, indexes, spaces, tuples.
-use ::va_list::VaList;
+pub use ::va_list::VaList;
+
 use bitflags::bitflags;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
@@ -611,6 +612,33 @@ extern "C" {
 
     #[link_name = "_say"]
     pub static mut SAY_FN: SayFunc;
+}
+
+// Tarantool log object.
+#[cfg(feature = "picodata")]
+#[repr(C)]
+pub struct Logger {
+    _unused: [u8; 0],
+}
+
+#[cfg(feature = "picodata")]
+pub type LogFormatFn = unsafe extern "C" fn(
+    log: *const c_void,
+    buf: *const c_char,
+    len: c_int,
+    level: c_int,
+    module: *const c_char,
+    filename: *const c_char,
+    line: c_int,
+    error: *const c_char,
+    format: *const c_char,
+    ap: VaList,
+) -> c_int;
+
+#[cfg(feature = "picodata")]
+extern "C" {
+    pub fn log_set_format(log: *mut Logger, format: LogFormatFn) -> c_void;
+    pub fn log_default_logger() -> *mut Logger;
 }
 
 // Error.
@@ -1237,4 +1265,48 @@ extern "C" {
 #[cfg(feature = "picodata")]
 extern "C" {
     pub fn box_access_check_space(space_id: u32, user_access: u16) -> c_int;
+}
+
+// Cord.
+#[cfg(feature = "picodata")]
+extern "C" {
+    pub fn current_cord_name() -> *const c_char;
+    pub fn cord_is_main() -> bool;
+    pub fn cord_is_main_dont_create() -> bool;
+}
+
+#[cfg(feature = "picodata")]
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+    use crate::log::SayLevel;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[crate::test(tarantool = "crate")]
+    pub fn test_set_log_format() {
+        static LOG_FORMAT_CALLED: AtomicBool = AtomicBool::new(false);
+
+        extern "C" fn flag_trigger_format(
+            _: *const c_void,
+            _: *const c_char,
+            _: c_int,
+            _: c_int,
+            _: *const c_char,
+            _: *const c_char,
+            _: c_int,
+            _: *const c_char,
+            _: *const c_char,
+            _: VaList,
+        ) -> c_int {
+            LOG_FORMAT_CALLED.store(true, Ordering::SeqCst);
+            0
+        }
+
+        let default_logger = unsafe { log_default_logger() };
+        unsafe { log_set_format(default_logger, flag_trigger_format) };
+
+        crate::log::say(SayLevel::Error, "", 0, None, "test log");
+
+        assert!(LOG_FORMAT_CALLED.load(Ordering::SeqCst));
+    }
 }
