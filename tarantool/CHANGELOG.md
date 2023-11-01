@@ -24,6 +24,7 @@
 - `JoinHandle::detach`, `JoinHandle::detach_checked` functions for making a
   fiber non-joinable and `fiber::DetachError` enum of errors which can happen
   when doing so.
+- `util::str_eq` function for comparing strings at compile time.
 
 ### Changed
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`

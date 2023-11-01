@@ -181,3 +181,28 @@ impl std::fmt::Display for DisplayAsHexBytes<'_> {
         Ok(())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// str_eq
+////////////////////////////////////////////////////////////////////////////////
+
+/// Compares strings for equality.
+///
+/// Works at compile time unlike [`std::cmp::Eq`].
+pub const fn str_eq(lhs: &str, rhs: &str) -> bool {
+    let lhs = lhs.as_bytes();
+    let rhs = rhs.as_bytes();
+    if lhs.len() != rhs.len() {
+        return false;
+    }
+    let mut i = 0;
+    loop {
+        if i == lhs.len() {
+            return true;
+        }
+        if lhs[i] != rhs[i] {
+            return false;
+        }
+        i += 1;
+    }
+}
