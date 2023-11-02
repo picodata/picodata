@@ -1,4 +1,5 @@
 use tarantool::define_str_enum;
+use tarantool::msgpack;
 use tarantool::tlua;
 
 /// Ensure the macro supports:
@@ -58,6 +59,20 @@ pub fn basic() {
     assert_eq!(
         de("\"#00ff00\"").unwrap_err().to_string(),
         "unknown variant `#00ff00`, expected `#000000` or `#FFFFFF`"
+    );
+
+    // encode
+    let white_mp = msgpack::encode(&"#FFFFFF").unwrap();
+    assert_eq!(msgpack::encode(&Color::White).unwrap(), white_mp);
+
+    // decode
+    assert_eq!(msgpack::decode::<Color>(&white_mp).unwrap(), Color::White);
+    let green_mp = msgpack::encode(&"#00FF00").unwrap();
+    assert_eq!(
+        msgpack::decode::<Color>(&green_mp)
+            .unwrap_err()
+            .to_string(),
+        "failed decoding tarantool_module_test_runner::define_str_enum::basic::Color: unknown enum variant `#00FF00`, expected on of [\"#000000\", \"#FFFFFF\"]"           .to_string(),
     );
 
     // Lua-related traits

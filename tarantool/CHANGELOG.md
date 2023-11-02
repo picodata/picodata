@@ -35,6 +35,7 @@
 ### Changed
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
   and `MsgpackDecode` variants correspondingly.
+- `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
 
 ### Fixed
 - `#[tarantool::test]` declares a special static variable which is usually

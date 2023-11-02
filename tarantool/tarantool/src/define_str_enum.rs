@@ -279,6 +279,39 @@ macro_rules! define_str_enum {
                 }
             }
         }
+
+        impl $crate::msgpack::Encode for $enum {
+            fn encode(
+                &self,
+                w: &mut impl std::io::Write,
+                _context: &$crate::msgpack::Context,
+            ) -> std::result::Result<(), $crate::msgpack::EncodeError> {
+                <&str as $crate::msgpack::Encode>::encode(&self.as_str(), w, &Default::default())
+            }
+        }
+
+        impl $crate::msgpack::Decode for $enum {
+            fn decode(r: &mut &[u8], _context: &$crate::msgpack::Context) -> std::result::Result<Self, $crate::msgpack::DecodeError> {
+                use $crate::msgpack::rmp;
+
+                let len = rmp::decode::read_str_len(r)
+                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
+                let decoded_variant = r.get(0..(len as usize))
+                    .ok_or_else(|| $crate::msgpack::DecodeError::new::<Self>("not enough data"))?;
+                let decoded_variant_str = std::str::from_utf8(decoded_variant)
+                    .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
+                match decoded_variant_str {
+                    $(
+                        $display => Ok(Self::$variant),
+                    )+
+                    v => Err({
+                        $crate::msgpack::DecodeError::new::<$enum>(
+                            format!("unknown enum variant `{}`, expected on of {:?}", v, Self::values())
+                        )
+                    }),
+                }
+            }
+        }
     };
 
     (@attr coerce_from_str $($then:tt)*) => {
