@@ -55,8 +55,8 @@ local function mandatory_param(value, name)
     end
 end
 
--- Get next id unoccupied by a user or a role. Picodata stores both
--- users and roles in the same table, so they share the same set of ids.
+-- Get next id unoccupied by a user or a role. Tarantool stores both
+-- users and roles in the same space, so they share the same set of ids.
 local function get_next_grantee_id()
     -- TODO: if id overflows start filling the holes
     local max_user = box.space._pico_user.index[0]:max()
