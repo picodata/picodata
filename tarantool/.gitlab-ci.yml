@@ -1,3 +1,11 @@
+default:
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: ['']
+    pull_policy: [if-not-present]
+  tags:
+    - docker-k8s
+
 stages:
   - build-base-image
   - test
@@ -11,28 +19,34 @@ workflow:
       when: never
     - if: $CI_PIPELINE_SOURCE == "push"
     - if: $CI_PIPELINE_SOURCE == "web"
-    - if: $CI_PIPELINE_SOURCE == "trigger"
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
 
 variables:
   GIT_DEPTH: 1
   GIT_STRATEGY: fetch
+  DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RW
   CACHE_PATHS: target
   CARGO_INCREMENTAL: 0
+  RUST_VERSION: 1.67.1
   CARGO_HOME: /shared-storage/tarantool-module/.cargo
-  VANILLA_DOCKER_IMAGE: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
-  PICODATA_DOCKER_IMAGE: docker-public.binary.picodata.io/tarantool-module-build-base-picodata
+  BASE_IMAGE_VANILLA: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
+  BASE_IMAGE_FORK: docker-public.binary.picodata.io/tarantool-module-build-base-fork
 
 # job:rules explained:
 #
 # - if build-base changes on master branch (compared to HEAD~1)
-#     * build-base-image (with tag latest) and push
-#     * test (on base-image:latest)
+#     * build-base-image-vanilla/fork (with tag latest) and push
+#     * test (on corresponding base-image:latest)
 # - if build-base changes on development branch (compared to master)
-#     * build-base-image (with tag sha)
-#     * test (on base-image:sha)
+#     * build-base-image-vanilla/fork (with tag <SHA>)
+#     * test (on on corresponding base-image:<SHA>)
 # - else (if build-base doesn't change)
 #     * skip build-base-image
-#     * just test (on base-image:latest)
+#     * just test (on existing base-image:latest)
+#
+# A different workflow applies on trigger (when tarantool is tagged):
+#   * build-base-image-fork from specified TARANTOOL_TAG (with tag <SHA>-triggered)
+#   * test (on base-image-fork:<SHA>-triggered)
 #
 # Anchor syntax explained here:
 # https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html
@@ -51,60 +65,64 @@ variables:
     changes:
       compare_to: master
       paths: *build-base-changes-paths
-
-  - &if-build-base-on-trigger
-    if: $CI_PIPELINE_SOURCE == "trigger"
+    # Если запущено через родительский downstream trigger
+  - &if-triggered
+    if: $CI_PIPELINE_SOURCE == "pipeline"
 
   - &else {}
 
-build-base-image:
+.docker-login: &docker-login
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "$DOCKER_AUTH_RW" > /kaniko/.docker/config.json
+
+# Билд контейнера через kaniko
+.build-base-image:
   stage: build-base-image
-  tags:
-    - tmodule-shell
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: latest
+        PUSH_DOCKER: ""
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *if-build-base-on-trigger
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        PUSH_DOCKER: ""
     - <<: *else
       when: never
+  <<: *docker-login
   script:
-    - docker pull ${VANILLA_DOCKER_IMAGE} || true
-    - docker pull ${PICODATA_DOCKER_IMAGE} || true
-    - >
-      docker build
-      --build-arg RUST_VERSION=1.67.1
-      -t ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
-      -f ./docker/vanilla.Dockerfile
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${VANILLA_DOCKER_IMAGE}
-      ./docker
-    - >
-      docker build
-      --build-arg RUST_VERSION=1.67.1
-      --build-arg TARANTOOL_TAG=latest
-      -t ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
-      -f ./docker/picodata.Dockerfile
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      --cache-from ${PICODATA_DOCKER_IMAGE}
-      ./docker
     - |
-      # Push image to registry
-      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
-        mkdir -p $CI_PROJECT_DIR/.docker
-        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-        echo "Pushing ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${VANILLA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
-        echo "Pushing ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}"
-        docker --config $CI_PROJECT_DIR/.docker/ push ${PICODATA_DOCKER_IMAGE}:${BASE_IMAGE_TAG}
-      else
-        echo "Skip pushing image on a non-master branch"
-      fi
+      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
+        --build-arg "RUST_VERSION=${RUST_VERSION}" ${EXTRA_BUILD_ARGS} ${PUSH_DOCKER} \
+        --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
+        --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
+
+build-base-image-vanilla:
+  extends: .build-base-image
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
+    DOCKERFILE: ./docker/vanilla.Dockerfile
+
+build-base-image-fork:
+  extends: .build-base-image
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    EXTRA_BUILD_ARGS: >
+      --build-arg TARANTOOL_TAG=latest
+    DOCKERFILE: ./docker/picodata.Dockerfile
+
+build-base-image-fork-on-trigger:
+  extends: .build-base-image
+  rules: # overrides whole section from .build-base-image
+    - <<: *if-triggered
+  variables:
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
+    PUSH_DOCKER: ""
+    EXTRA_BUILD_ARGS: >
+      --build-arg TARANTOOL_TAG=${TARANTOOL_TAG}
+    DOCKERFILE: ./docker/picodata.Dockerfile
 
 .test:
   stage: test
@@ -115,17 +133,12 @@ build-base-image:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *if-build-base-on-trigger
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - <<: *else
       variables:
         BASE_IMAGE_TAG: latest
-  tags:
-    - tmodule-docker
   image:
-    name: ${DOCKER_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
+    name: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
+    pull_policy: [if-not-present]
   before_script:
     - |
       # Restore cache
@@ -168,27 +181,37 @@ test-vanilla:
   extends: .test
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
-    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
     CARGO_FEATURES: default
 
 bench-vanilla:
   extends: .test
   variables:
-    DOCKER_IMAGE: ${VANILLA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
   script:
     - make bench
 
-test-picodata:
+test-fork:
   extends: .test
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
-    DOCKER_IMAGE: ${PICODATA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    CARGO_FEATURES: picodata
+
+test-fork-on-trigger:
+  extends: .test
+  rules: # overrides whole section from .test
+    - <<: *if-triggered
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    BASE_IMAGE_TAG: ${TARANTOOL_VERSION}
     CARGO_FEATURES: picodata
 
 pages:
   extends: .test
   variables:
-    DOCKER_IMAGE: ${PICODATA_DOCKER_IMAGE}
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     RUSTDOCFLAGS: "-Dwarnings"
   script:
     - cargo doc --workspace --no-deps --features "picodata"
