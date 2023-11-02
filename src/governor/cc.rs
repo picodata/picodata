@@ -4,7 +4,7 @@ use ::raft::prelude::ConfChangeType::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::has_grades;
-use crate::instance::grade::TargetGradeVariant;
+use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::traft::{Distance, RaftId};
 
@@ -119,10 +119,10 @@ pub(crate) fn raft_conf_change(
             continue;
         };
         match instance.target_grade.variant {
-            TargetGradeVariant::Online => {
+            Online => {
                 // Do nothing
             }
-            TargetGradeVariant::Offline => {
+            Offline => {
                 // A voter goes offline. Replace it with
                 // another online instance if possible.
                 let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
@@ -134,11 +134,12 @@ pub(crate) fn raft_conf_change(
                 changes.extend_from_slice(&[ccs1, ccs2]);
                 promotable.remove(&next_voter_id);
             }
-            TargetGradeVariant::Expelled => {
+            Expelled => {
                 // Expelled instance is removed unconditionally.
                 let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
+            _ => unreachable!("target grade can only be Online, Offline or Expelled"),
         }
     }
 
@@ -158,14 +159,15 @@ pub(crate) fn raft_conf_change(
             continue;
         };
         match instance.target_grade.variant {
-            TargetGradeVariant::Online | TargetGradeVariant::Offline => {
+            Online | Offline => {
                 // Do nothing
             }
-            TargetGradeVariant::Expelled => {
+            Expelled => {
                 // Expelled instance is removed unconditionally.
                 let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
+            _ => unreachable!("target grade can only be Online, Offline or Expelled"),
         }
     }
 
@@ -230,7 +232,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use crate::failure_domain::FailureDomain;
-    use crate::instance::grade::{CurrentGradeVariant, Grade};
+    use crate::instance::Grade;
     use crate::traft::RaftId;
 
     macro_rules! fd {
@@ -249,12 +251,12 @@ mod tests {
             Instance {
                 raft_id: $raft_id,
                 current_grade: Grade {
-                    variant: CurrentGradeVariant::$current_grade,
+                    variant: $current_grade,
                     // raft_conf_change doesn't care about incarnations
                     incarnation: 0,
                 },
                 target_grade: Grade {
-                    variant: TargetGradeVariant::$target_grade,
+                    variant: $target_grade,
                     // raft_conf_change doesn't care about incarnations
                     incarnation: 0,
                 },

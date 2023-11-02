@@ -4,7 +4,8 @@ use std::time::Duration;
 use crate::cas;
 use crate::failure_domain::FailureDomain;
 use crate::has_grades;
-use crate::instance::grade::{CurrentGrade, TargetGrade};
+use crate::instance::Grade;
+use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
 use crate::storage::ClusterwideSpace;
@@ -206,8 +207,8 @@ pub fn build_instance(
         Some(raft_id),
         Some(instance_id),
         Some(replicaset_id),
-        CurrentGrade::offline(0),
-        TargetGrade::offline(0),
+        Grade::new(Offline, 0),
+        Grade::new(Offline, 0),
         failure_domain.clone(),
         tier.clone(),
     );

@@ -15,7 +15,8 @@ use tarantool::tuple::{Decode, DecodeOwned, Encode};
 use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 
 use crate::failure_domain as fd;
-use crate::instance::{self, grade, Instance};
+use crate::instance::Grade;
+use crate::instance::{self, Instance};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::schema::Distribution;
 use crate::schema::{IndexDef, SpaceDef};
@@ -1566,8 +1567,8 @@ define_instance_fields! {
     RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
     ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
     ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
-    CurrentGrade   : grade::CurrentGrade  = ("current_grade",   FieldType::Array)
-    TargetGrade    : grade::TargetGrade   = ("target_grade",    FieldType::Array)
+    CurrentGrade   : Grade                = ("current_grade",   FieldType::Array)
+    TargetGrade    : Grade                = ("target_grade",    FieldType::Array)
     FailureDomain  : fd::FailureDomain    = ("failure_domain",  FieldType::Map)
     Tier           : String               = ("tier",            FieldType::String)
 }
@@ -3046,7 +3047,7 @@ mod tests {
     #[rustfmt::skip]
     #[::tarantool::test]
     fn test_storage_instances() {
-        use crate::instance::grade::{CurrentGradeVariant as CGV, TargetGradeVariant as TGV};
+        use crate::instance::GradeVariant::*;
         use crate::instance::InstanceId;
         use crate::failure_domain::FailureDomain;
 
@@ -3058,13 +3059,13 @@ mod tests {
 
         for instance in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
-            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
+            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, "storage",),
+            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, "storage",),
             // r2
-            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
-            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
+            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, "storage",),
+            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, "storage",),
             // r3
-            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (CGV::Online, 0), (TGV::Online, 0), &faildom, "storage",),
+            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, "storage",),
         ] {
             storage.space_by_name(ClusterwideSpace::Instance).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
@@ -3095,10 +3096,10 @@ mod tests {
                     " and new tuple",
                     r#" - ["i99", "", 1, "", "", ["{goff}", 0], ["{tgoff}", 0], {{}}, "storage"]"#,
                 ),
-                gon = CGV::Online,
-                goff = CGV::Offline,
-                tgon = TGV::Online,
-                tgoff = TGV::Offline,
+                gon = Online,
+                goff = Offline,
+                tgon = Online,
+                tgoff = Offline,
             )
         );
 

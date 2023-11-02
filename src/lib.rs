@@ -23,7 +23,8 @@ use protobuf::Message as _;
 
 use crate::cli::args;
 use crate::cli::args::{Address, InitCfg};
-use crate::instance::grade::{CurrentGrade, TargetGrade, TargetGradeVariant};
+use crate::instance::Grade;
+use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::plugin::*;
 use crate::sql::pgproto;
@@ -429,8 +430,8 @@ fn start_boot(args: &args::Run) {
         None,
         args.instance_id.clone(),
         args.replicaset_id.clone(),
-        CurrentGrade::offline(0),
-        TargetGrade::offline(0),
+        Grade::new(Offline, 0),
+        Grade::new(Offline, 0),
         args.failure_domain(),
         &current_instance_tier.name,
     );
@@ -828,7 +829,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
             instance.instance_id
         );
         let req = update_instance::Request::new(instance.instance_id, cluster_id)
-            .with_target_grade(TargetGradeVariant::Online)
+            .with_target_grade(Online)
             .with_failure_domain(args.failure_domain());
         let now = Instant::now();
         let fut = rpc::network_call(&leader_address, &req).timeout(activation_deadline - now);

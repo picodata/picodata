@@ -1,5 +1,5 @@
 use crate::has_grades;
-use crate::instance::grade::TargetGradeVariant;
+use crate::instance::GradeVariant::*;
 use crate::r#loop::FlowControl::{self, Break, Continue};
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
@@ -57,7 +57,7 @@ impl Loop {
             };
 
             let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
-                .with_target_grade(TargetGradeVariant::Offline);
+                .with_target_grade(Offline);
 
             tlog!(Info, "setting own target grade Offline");
             let timeout = Self::SENTINEL_SHORT_RETRY;
@@ -110,7 +110,7 @@ impl Loop {
                 // happens we should reassess the situation, because somebody
                 // else could have changed this particular instance's target grade.
                 .with_dont_retry(true)
-                .with_target_grade(TargetGradeVariant::Offline);
+                .with_target_grade(Offline);
             let res = rpc::update_instance::handle_update_instance_request_and_wait(
                 req,
                 Self::UPDATE_INSTANCE_TIMEOUT,
@@ -145,7 +145,7 @@ impl Loop {
                 // happens we should reassess the situation, because somebody
                 // else could have changed this particular instance's target grade.
                 .with_dont_retry(true)
-                .with_target_grade(TargetGradeVariant::Online);
+                .with_target_grade(Online);
             let res = async {
                 let Some(leader_id) = raft_status.get().leader_id else {
                     return Err(Error::LeaderUnknown);

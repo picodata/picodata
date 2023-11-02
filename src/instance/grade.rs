@@ -4,7 +4,7 @@ use ::tarantool::tlua;
 ::tarantool::define_str_enum! {
     /// Activity state of an instance.
     #[derive(Default)]
-    pub enum CurrentGradeVariant {
+    pub enum GradeVariant {
         /// Instance has gracefully shut down or has not been started yet.
         #[default]
         Offline = "Offline",
@@ -19,121 +19,35 @@ use ::tarantool::tlua;
     }
 }
 
-::tarantool::define_str_enum! {
-    #[derive(Default)]
-    pub enum TargetGradeVariant {
-        /// Instance should be configured up
-        Online = "Online",
-        /// Instance should be gracefully shut down
-        #[default]
-        Offline = "Offline",
-        /// Instance should be removed from cluster
-        Expelled = "Expelled",
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
-
-macro_rules! impl_constructors {
-    (
-        $(
-            #[variant = $variant:expr]
-            $(#[$meta:meta])*
-            $vis:vis fn $constructor:ident(incarnation: u64) -> Self;
-        )+
-    ) => {
-        $(
-            $(#[$meta])*
-            $vis fn $constructor(incarnation: u64) -> Self {
-                Self { variant: $variant, incarnation }
-            }
-        )+
-    };
-}
 
 /// A grade (current or target) associated with an incarnation (a monotonically
 /// increasing number).
 #[rustfmt::skip]
 #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[derive(tlua::LuaRead, tlua::Push, tlua::PushInto)]
-pub struct Grade<V> {
-    pub variant: V,
+pub struct Grade {
+    pub variant: GradeVariant,
     pub incarnation: u64,
 }
 
-pub type TargetGrade = Grade<TargetGradeVariant>;
-
-impl TargetGrade {
-    impl_constructors! {
-        #[variant = TargetGradeVariant::Offline]
-        pub fn offline(incarnation: u64) -> Self;
-
-        #[variant = TargetGradeVariant::Online]
-        pub fn online(incarnation: u64) -> Self;
-
-        #[variant = TargetGradeVariant::Expelled]
-        pub fn expelled(incarnation: u64) -> Self;
+impl Grade {
+    #[inline(always)]
+    pub fn new(variant: GradeVariant, incarnation: u64) -> Self {
+        Self {
+            variant,
+            incarnation,
+        }
     }
 }
 
-pub type CurrentGrade = Grade<CurrentGradeVariant>;
-
-impl CurrentGrade {
-    impl_constructors! {
-        #[variant = CurrentGradeVariant::Offline]
-        pub fn offline(incarnation: u64) -> Self;
-
-        #[variant = CurrentGradeVariant::Replicated]
-        pub fn replicated(incarnation: u64) -> Self;
-
-        #[variant = CurrentGradeVariant::ShardingInitialized]
-        pub fn sharding_initialized(incarnation: u64) -> Self;
-
-        #[variant = CurrentGradeVariant::Online]
-        pub fn online(incarnation: u64) -> Self;
-
-        #[variant = CurrentGradeVariant::Expelled]
-        pub fn expelled(incarnation: u64) -> Self;
-    }
-}
-
-impl<G: PartialEq> PartialEq<G> for Grade<G> {
-    fn eq(&self, other: &G) -> bool {
-        &self.variant == other
-    }
-}
-
-impl<G: std::fmt::Display> std::fmt::Display for Grade<G> {
+impl std::fmt::Display for Grade {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
             variant,
             incarnation,
         } = self;
         write!(f, "{variant}({incarnation})")
-    }
-}
-
-impl PartialEq<TargetGrade> for CurrentGrade {
-    fn eq(&self, other: &TargetGrade) -> bool {
-        self.incarnation == other.incarnation && self.variant.as_str() == other.variant.as_str()
-    }
-}
-
-impl From<TargetGrade> for CurrentGrade {
-    fn from(target_grade: TargetGrade) -> Self {
-        let TargetGrade {
-            variant,
-            incarnation,
-        } = target_grade;
-        let variant = match variant {
-            TargetGradeVariant::Online => CurrentGradeVariant::Online,
-            TargetGradeVariant::Offline => CurrentGradeVariant::Offline,
-            TargetGradeVariant::Expelled => CurrentGradeVariant::Expelled,
-        };
-        Self {
-            variant,
-            incarnation,
-        }
     }
 }
 
@@ -175,7 +89,7 @@ macro_rules! has_grades {
         has_grades!(@impl $i;
             current[
                 $($not)?
-                matches!($i.current_grade.variant, $crate::instance::grade::CurrentGradeVariant::$current)
+                matches!($i.current_grade.variant, $crate::instance::grade::GradeVariant::$current)
             ]
             target[]
             $($tail)+
@@ -194,7 +108,7 @@ macro_rules! has_grades {
             current[ $($c)* ]
             target[
                 $($not)?
-                matches!($i.target_grade.variant, $crate::instance::grade::TargetGradeVariant::$target)
+                matches!($i.target_grade.variant, $crate::instance::grade::GradeVariant::$target)
             ]
         )
     };
@@ -210,14 +124,14 @@ macro_rules! has_grades {
 #[cfg(test)]
 mod tests {
     use super::super::Instance;
-    use super::{CurrentGradeVariant, TargetGradeVariant};
+    use super::GradeVariant;
     use crate::has_grades;
 
     #[test]
     fn has_grades() {
         let mut i = Instance::default();
-        i.current_grade.variant = CurrentGradeVariant::Online;
-        i.target_grade.variant = TargetGradeVariant::Offline;
+        i.current_grade.variant = GradeVariant::Online;
+        i.target_grade.variant = GradeVariant::Offline;
 
         assert!(has_grades!(i, * -> *));
         assert!(has_grades!(i, * -> Offline));

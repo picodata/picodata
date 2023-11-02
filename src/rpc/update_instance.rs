@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use crate::cas;
 use crate::failure_domain::FailureDomain;
-use crate::instance::grade::{CurrentGrade, CurrentGradeVariant, Grade, TargetGradeVariant};
+use crate::instance::Grade;
+use crate::instance::GradeVariant;
+use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::storage::{Clusterwide, ClusterwideSpace};
 use crate::traft::op::{Dml, Op};
@@ -41,9 +43,9 @@ crate::define_rpc_request! {
         pub instance_id: InstanceId,
         pub cluster_id: String,
         /// Only allowed to be set by leader
-        pub current_grade: Option<CurrentGrade>,
+        pub current_grade: Option<Grade>,
         /// Can be set by instance
-        pub target_grade: Option<TargetGradeVariant>,
+        pub target_grade: Option<GradeVariant>,
         pub failure_domain: Option<FailureDomain>,
         /// If `true` then the resulting CaS request is not retried upon failure.
         pub dont_retry: bool,
@@ -68,12 +70,16 @@ impl Request {
         self
     }
     #[inline]
-    pub fn with_current_grade(mut self, value: CurrentGrade) -> Self {
+    pub fn with_current_grade(mut self, value: Grade) -> Self {
         self.current_grade = Some(value);
         self
     }
     #[inline]
-    pub fn with_target_grade(mut self, value: TargetGradeVariant) -> Self {
+    pub fn with_target_grade(mut self, value: GradeVariant) -> Self {
+        debug_assert!(
+            matches!(value, Online | Offline | Expelled),
+            "target grade can only be Online, Offline or Expelled"
+        );
         self.target_grade = Some(value);
         self
     }
@@ -171,7 +177,7 @@ pub fn update_instance(
     req: &Request,
     storage: &Clusterwide,
 ) -> std::result::Result<(), String> {
-    if instance.current_grade == CurrentGradeVariant::Expelled
+    if instance.current_grade.variant == Expelled
         && !matches!(
             req,
             Request {
@@ -179,7 +185,7 @@ pub fn update_instance(
                 current_grade: Some(current_grade),
                 failure_domain: None,
                 ..
-            } if *current_grade == CurrentGradeVariant::Expelled
+            } if current_grade.variant == Expelled
         )
     {
         return Err(format!(
@@ -203,8 +209,13 @@ pub fn update_instance(
 
     if let Some(variant) = req.target_grade {
         let incarnation = match variant {
-            TargetGradeVariant::Online => instance.target_grade.incarnation + 1,
-            _ => instance.current_grade.incarnation,
+            Online => instance.target_grade.incarnation + 1,
+            Offline | Expelled => instance.current_grade.incarnation,
+            other => {
+                return Err(format!(
+                    "target grade can only be Online, Offline or Expelled, not {other}"
+                ));
+            }
         };
         instance.target_grade = Grade {
             variant,
@@ -213,4 +224,22 @@ pub fn update_instance(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(non_snake_case)]
+mod test {
+    use super::*;
+
+    #[test]
+    #[should_panic]
+    fn update_instance_req_with_target_grade_Replicated() {
+        Request::new("".into(), "".into()).with_target_grade(Replicated);
+    }
+
+    #[test]
+    #[should_panic]
+    fn update_instance_req_with_target_grade_ShardingInitialized() {
+        Request::new("".into(), "".into()).with_target_grade(ShardingInitialized);
+    }
 }

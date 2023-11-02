@@ -1,5 +1,6 @@
 use crate::has_grades;
-use crate::instance::grade::CurrentGrade;
+use crate::instance::grade::Grade;
+use crate::instance::grade::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::weight;
 use crate::replicaset::{Replicaset, ReplicasetId};
@@ -109,7 +110,7 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade((*target_grade).into());
+            .with_current_grade(*target_grade);
         return Ok(ReconfigureShardingAndDowngrade { targets, rpc, req }.into());
     }
 
@@ -193,7 +194,7 @@ pub(super) fn action_plan<'i>(
             .expect("replicaset info should be available at this point");
         let master_id = &replicaset.master_id;
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(CurrentGrade::replicated(target_grade.incarnation));
+            .with_current_grade(Grade::new(Replicated, target_grade.incarnation));
 
         return Ok(Replication {
             targets,
@@ -231,7 +232,7 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(CurrentGrade::sharding_initialized(target_grade.incarnation));
+            .with_current_grade(Grade::new(ShardingInitialized, target_grade.incarnation));
         return Ok(ShardingInit { targets, rpc, req }.into());
     }
 
@@ -288,7 +289,7 @@ pub(super) fn action_plan<'i>(
         // so we can't configure sharding.
         // So we just upgrade the instances to Online.
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(CurrentGrade::online(target_grade.incarnation));
+            .with_current_grade(Grade::new(Online, target_grade.incarnation));
         return Ok(SkipSharding { req }.into());
     }
 
@@ -329,7 +330,7 @@ pub(super) fn action_plan<'i>(
     }) = to_online
     {
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(CurrentGrade::online(target_grade.incarnation));
+            .with_current_grade(Grade::new(Online, target_grade.incarnation));
         return Ok(ToOnline { req }.into());
     }
 
