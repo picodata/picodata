@@ -121,13 +121,115 @@ def test_read_from_global_tables(cluster: Cluster):
     )
     assert len(data["rows"]) == 1
 
-    data = i2.sql(
+
+def test_subqueries_on_global_tbls(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
         """
-        select * from "_pico_table"
-        where "name" = 'global_t'
+        create table g (a int not null, b int not null, primary key (a))
+        using memtx
+        distributed globally
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+    for i in range(1, 6):
+        index = i1.cas("insert", "G", [i, i])
+        i1.raft_wait_index(index, 3)
+
+    ddl = i1.sql(
+        """
+        create table s (c int not null, primary key (c))
+        using memtx
+        distributed by (c)
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+    data = i1.sql("""insert into s values (1), (2), (3), (10);""")
+    assert data["row_count"] == 4
+
+    data = i1.sql(
+        """
+        select b from g
+        where b in (select c from s where c in (2, 10))
         """,
     )
-    assert len(data["rows"]) == 1
+    assert data["rows"] == [[2]]
+
+    data = i1.sql(
+        """
+        select b from g
+        where b in (select sum(c) from s)
+        """,
+    )
+    assert len(data["rows"]) == 0
+
+    data = i1.sql(
+        """
+        select b from g
+        where b in (select c * 5 from s)
+        """,
+    )
+    assert data["rows"] == [[5]]
+
+    # first subquery selects [1], [2], [3]
+    # second subquery must add additional [4] tuple
+    data = i1.sql(
+        """
+        select b from g
+        where b in (select c from s) or a in (select count(*) from s)
+        """,
+    )
+    assert data["rows"] == [[1], [2], [3], [4]]
+
+    data = i1.sql(
+        """
+        select b from g
+        where b in (select c from s) and a in (select count(*) from s)
+        """,
+    )
+    assert len(data["rows"]) == 0
+
+    data = i1.sql(
+        """
+        select c from s inner join
+        (select c as c1 from s)
+        on c = c1 + 3 and c in (select a from g)
+        """,
+    )
+    assert data["rows"] == []
+
+    # Full join because of 'OR'
+    data = i1.sql(
+        """
+        select min(c) from s inner join
+        (select c as c1 from s)
+        on c = c1 + 3 or c in (select a from g)
+        """,
+    )
+    assert data["rows"] == [[1]]
+
+    data = i1.sql(
+        """
+        select a from g
+        where b in (select c from s where c = 1) or
+        b in (select c from s where c = 3)
+        """,
+    )
+    assert data["rows"] == [[1], [3]]
+
+    data = i1.sql(
+        """
+        select a from g
+        where b in (select c from s where c = 1) or
+        b in (select c from s where c = 3) and
+        a < (select sum(c) from s)
+        """,
+    )
+    assert data["rows"] == [[1], [3]]
 
 
 def test_hash(cluster: Cluster):
