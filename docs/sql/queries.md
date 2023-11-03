@@ -12,6 +12,7 @@ Picodata при работе с распределенной СУБД.
   добавления данных в таблицы и [`DELETE`](#delete) для удаления данных;
 - Data Query Language (`DQL`): команда [`SELECT`](#select) для получения
   данных из таблиц;
+- Access Control Lists (`ACL`): команды для [управления пользователями](#users) и ролями;
 - команда [`EXPLAIN`](#explain) для отображения планов запросов `DML` и
   `DQL`.
 
@@ -88,6 +89,37 @@ pico.sql([[select * from "characters"]], {})
 Далее приведены команды с объяснением их действия. Для большинства
 примеров используется язык консоли SQL кроме тех случаев, когда
 использование ввода на Lua предпочтительнее.
+
+## Управление пользователями {: #users }
+Ниже показаны схемы для создания и удаления пользователей и ролей.
+
+### **Access control lists** {: #ACL }
+![ACL](ebnf/ACL.svg)
+
+### **Create user** {: #CreateUser }
+![Create user](ebnf/CreateUser.svg)
+
+### **Drop user** {: #DropUser }
+![Drop user](ebnf/DropUser.svg)
+
+### **Create role** {: #CreateRole }
+![Create role](ebnf/CreateRole.svg)
+
+### **Drop role** {: #DropRole }
+![Drop role](ebnf/DropRole.svg)
+
+Пример команды для создания пользователя:
+
+```sql
+create user andy with password 'P@ssw0rd' using md5 option (timeout = 3.0)
+```
+
+Удаление пользователя:
+
+```sql
+drop user andy
+```
+См. [подробнее](../tutorial_users.md) об управлении пользователями.
 
 ## Создание таблицы {: #create_table }
 

@@ -42,7 +42,7 @@ picodata> pico.help("help")
 | [pico.drop_user()](#picodrop_user) | Удаление пользователя.
 | [pico.exit()](#picoexit) | Корректное завершение работы указанного инстанса.
 | [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#expel) инстанса из кластера.
-| [pico.grant_privilege()](#picogrant_privilege) | Назначение права пользователю или роли.
+| [pico.grant_privilege()](#picogrant_privilege) | Назначение привилегии пользователю или роли.
 | [pico.help()](#picohelp) | Доступ к встроенной справочной системе.
 | [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе (идентификаторы, уровни ([grade](glossary.md#grade)) и прочее).
 | [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
@@ -54,7 +54,7 @@ picodata> pico.help("help")
 | [pico.raft_term()](#picoraft_term) | Получение номера терма (текущего или для указанной записи).
 | [pico.raft_timeout_now()](#picoraft_timeout_now) | Немедленное объявление новых выборов в raft-группе.
 | [pico.raft_wait_index()](#picoraft_wait_index) |  Ожидание локального применения указанного raft-индекса.
-| [pico.revoke_privilege()](#picorevoke_privilege) |  Удаление права у пользователя или роли.
+| [pico.revoke_privilege()](#picorevoke_privilege) |  Удаление привилегии у пользователя или роли.
 | [pico.sql()](#picosql) |  Выполнение кластерных SQL-запросов.
 | [pico.wait_ddl_finalize()](#picowait_ddl_finalize) | Ожидание применения (финализации) DDL-операции.
 | [pico.wait_vclock()](#picowait_vclock) | Ожидание момента, когда значение [Vclock](glossary.md#vclock-vector-clock) достигнет целевого.
@@ -562,12 +562,12 @@ pico.expel("i2")
 
 ### pico.grant_privilege
 
-Назначает право пользователю или роли на всех инстансах кластера.
+Назначает привилению пользователю или роли на всех инстансах кластера.
 Функция генерирует для raft-журнала запись, которая при применении
-назначает указанное право. Для ожидания локального создания используется
+назначает указанную привилегию. Для ожидания локального создания используется
 таймаут. Результатом успешного выполнения функции является индекс
-соответствующей записи в raft-журнале. Если указанное право уже было
-ранее назначено, то запрос игнорируется.
+соответствующей записи в raft-журнале. Если указанная привилегия уже была
+ранее назначена, то запрос игнорируется.
 
 ```lua
 function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
@@ -575,7 +575,7 @@ function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
 Параметры:
 
 - `grantee` (_string_), имя пользователя или роли
-- `privilege` (_string_), название права, варианты: `'read'` | '`write'`
+- `privilege` (_string_), название привилегии, варианты: `'read'` | '`write'`
   `| `'execute'` | `'session' `| `'usage'` | `'create'` | `'drop'` |
           `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
 - `object_type` (_string_), тип целевого объекта, варианты: `'universe'`
@@ -598,22 +598,22 @@ function grant_privilege(grantee, privilege, object_type, [object_name], [opts])
 
 Примеры:<a name="grant_pr"></a>
 
-Выдать право на чтение таблицы 'Fruit' пользователю 'Dave':
+Выдать привилегию на чтение таблицы 'Fruit' пользователю 'Dave':
 ```lua
 pico.grant_privilege('Dave', 'read', 'table', 'Fruit')
 ```
 
-Выдать пользователю 'Dave' право исполнять произвольный код Lua:
+Выдать пользователю 'Dave' привилегию исполнять произвольный код Lua:
 ```lua
 pico.grant_privilege('Dave', 'execute', 'universe')
 ```
 
-Выдать пользователю 'Dave' право создавать новых пользователей:
+Выдать пользователю 'Dave' привилегию создавать новых пользователей:
 ```lua
 pico.grant_privilege('Dave', 'create', 'user')
 ```
 
-Выдать право на запись в таблицу 'Junk' для роли 'Maintainer':
+Выдать привилегию на запись в таблицу 'Junk' для роли 'Maintainer':
 ```lua
 pico.grant_privilege('Maintainer', 'write', 'table', 'Junk')
 ```
@@ -928,11 +928,11 @@ function raft_wait_index(target, timeout)
 
 ### pico.revoke_privilege
 
-Удаляет право пользователя или роли на всех инстансах кластера. Функция
+Удаляет привилегию пользователя или роли на всех инстансах кластера. Функция
 генерирует для raft-журнала запись, которая при применении удаляет
-указанное право. Для ожидания локального создания используется таймаут.
+указанную привилегию. Для ожидания локального создания используется таймаут.
 Результатом успешного выполнения функции является индекс соответствующей
-записи в raft-журнале. Если указанного права у пользователя нет, то
+записи в raft-журнале. Если указанной привилегии у пользователя нет, то
 запрос игнорируется.
 
 ```lua
@@ -941,7 +941,7 @@ function revoke_privilege(grantee, privilege, object_type, [object_name], [opts]
 Параметры:
 
 - `grantee` (_string_), имя пользователя или роли
-- `privilege` (_string_), название права, варианты: `'read'` | '`write'`
+- `privilege` (_string_), название привилегии, варианты: `'read'` | '`write'`
   `| `'execute'` | `'session' `| `'usage'` | `'create'` | `'drop'` |
           `'alter'` | `'reference'` | `'trigger'` | `'insert'` | `'update'` | `'delete'`
 - `object_type` (_string_), тип целевого объекта, варианты: `'universe'`

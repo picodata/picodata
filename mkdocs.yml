@@ -16,6 +16,7 @@ nav:
     - tutorial_first_steps.md
     - tutorial_webui.md
     - auth_ldap.md
+    - tutorial_users.md
     - tutorial_data.md
   - Справочные материалы:
     - cli.md
