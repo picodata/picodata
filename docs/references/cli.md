@@ -247,7 +247,7 @@ picodata expel [Параметры]
     — сервер можно выключать.
 
 
-Подробнее об устройстве кластера и репликасетов Picodata см. в разделе [Запуск кластера](../deploy_on_hosts).
+Подробнее об устройстве кластера и репликасетов Picodata см. в разделе [Запуск кластера](../tutorials/deploy_on_hosts.md).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/cli.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/references/cli.md)

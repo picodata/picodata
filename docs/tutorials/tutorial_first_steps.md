@@ -22,7 +22,7 @@
 ```
 picodata connect localhost:3301
 ```
-По умолчанию, [подключение](cli.md#connect-command) производится под
+По умолчанию, [подключение](../references/cli.md#connect-command) производится под
 пользователем `guest` без пароля. У такого пользователя имеется
 единственная привилегия
 [`SESSION`](tutorial_users.md#available-privileges).
@@ -58,16 +58,16 @@ picodata connect --unix /tmp/file.socket
 ```
 
 ## Рабочие файлы инстанса
-В [директории с данными инстанса](cli.md#data-dir) автоматически появляются следующие файлы:
+В [директории с данными инстанса](../references/cli.md#data-dir) автоматически появляются следующие файлы:
 
-- `*.snap` — файлы [снапшотов](glossary.md#snapshot) БД
+- `*.snap` — файлы [снапшотов](../general/glossary.md#snapshot) БД
 - `*.xlog` — файлы журнала упреждающей записи (Write-ahead log, WAL) c
   инкрементными изменениями БД
 - `*.vylog` — также файлы с инкрементными изменениями БД, но для таблиц,
-  использующих движок хранения [`vinyl`](glossary.md#db-engine).
+  использующих движок хранения [`vinyl`](../general/glossary.md#db-engine).
 
 При перезапуске инстанса эти файлы необходимы для восстановления его
-состояния, обеспечивая [персистентное](glossary.md#persistence) хранение
+состояния, обеспечивая [персистентное](../general/glossary.md#persistence) хранение
 данных.
 
 Файлы снапшотов (`*.snap`) и журнала WAL (`*.xlog`/`*.vylog`) не
@@ -77,9 +77,8 @@ picodata connect --unix /tmp/file.socket
 данных нужен будет и последний снапшот, и один или несколько файлов
 журнала.
 
-Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../cli).
+Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../references/cli.md).
 
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial_first_steps.md)
-
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/tutorial_first_steps.md)

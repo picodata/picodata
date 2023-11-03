@@ -32,7 +32,7 @@ picodata> pico.help("help")
 | [pico.PICODATA_VERSION](#picopicodata_version) | Версия Picodata.
 | [pico.abort_ddl](#picoabort_ddl) | Отмена ожидающей операции по изменению схемы данных.
 | [pico.args](#picoargs) | Вывод аргументов запуска `picodata run`.
-| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](glossary.md#as-compare-and-swap).
+| [pico.cas()](#picocas) | Запрос на изменение параметров методом [Compare and Swap](../general/glossary.md#as-compare-and-swap).
 | [pico.change_password()](#picochange_password) | Изменение пароля пользователя.
 | [pico.create_role()](#picocreate_role) | Создание роли.
 | [pico.create_table()](#picocreate_table) | Создание таблицы.
@@ -44,20 +44,20 @@ picodata> pico.help("help")
 | [pico.expel()](#picoexpel) | [Контролируемый вывод](cli.md#expel) инстанса из кластера.
 | [pico.grant_privilege()](#picogrant_privilege) | Назначение привилегии пользователю или роли.
 | [pico.help()](#picohelp) | Доступ к встроенной справочной системе.
-| [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе (идентификаторы, уровни ([grade](glossary.md#grade)) и прочее).
-| [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
+| [pico.instance_info()](#picoinstance_info) | Получение информации об инстансе (идентификаторы, уровни ([grade](../general/glossary.md#grade)) и прочее).
+| [pico.raft_compact_log()](#picoraft_compact_log) | [Компактизация](../general/glossary.md#raft-raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 | [pico.raft_get_index()](#picoraft_get_index) | Получение текущего примененного индекса raft-журнала.
 | [pico.raft_log()](#picoraft_log) | Чтение содержимого raft-журнала.
 | [pico.raft_propose_nop()](#picoraft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
 | [pico.raft_read_index()](#picoraft_read_index) | Кворумное чтение индекса raft-журнала.
-| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft ([терм](glossary.md#term), [лидер](glossary.md#leader) и т.д.).
+| [pico.raft_status()](#picoraft_status) | Получение данных о текущем состоянии raft ([терм](../general/glossary.md#term), [лидер](../general/glossary.md#leader) и т.д.).
 | [pico.raft_term()](#picoraft_term) | Получение номера терма (текущего или для указанной записи).
 | [pico.raft_timeout_now()](#picoraft_timeout_now) | Немедленное объявление новых выборов в raft-группе.
 | [pico.raft_wait_index()](#picoraft_wait_index) |  Ожидание локального применения указанного raft-индекса.
 | [pico.revoke_privilege()](#picorevoke_privilege) |  Удаление привилегии у пользователя или роли.
 | [pico.sql()](#picosql) |  Выполнение кластерных SQL-запросов.
 | [pico.wait_ddl_finalize()](#picowait_ddl_finalize) | Ожидание применения (финализации) DDL-операции.
-| [pico.wait_vclock()](#picowait_vclock) | Ожидание момента, когда значение [Vclock](glossary.md#vclock-vector-clock) достигнет целевого.
+| [pico.wait_vclock()](#picowait_vclock) | Ожидание момента, когда значение [Vclock](../general/glossary.md#vclock-vector-clock) достигнет целевого.
 | [pico.whoami()](#picowhoami) | Отображение данных о текущем инстансе.
 
 
@@ -299,7 +299,7 @@ function create_table(opts)
 
 - `opts`: (_table_):
     - `name` (_string_)
-    - `format` (_table_ {_table_ TableField,...}), см. [table TableField](#table-tablefield)
+    - `format` (_table_ {_table_ TableField,...}), см. [table TableField](#tablefield_table)
     - `primary_key `(_table_ {_string_,...}) с именами полей
     - `id` (optional _number_), по умолчанию генерируется автоматически
     - `distribution` (_string_), варианты: `'global'` | `'sharded'`
@@ -310,7 +310,7 @@ function create_table(opts)
     - `sharding_fn` (optional _string_), поддерживается пока только функция `murmur3`
     - `engine` (optional _string_), движок хранения данных в БД;
       варианты: `'memtx'` | `'vinyl'`. По умолчанию используется
-      `'memtx'`. См [подробнее](glossary.md#db-engine).
+      `'memtx'`. См [подробнее](../general/glossary.md#db-engine).
     - `timeout` (optional _number_), число в секундах. По умолчанию
       используется бесконечное значение.
 
@@ -807,7 +807,7 @@ picodata> pico.raft_read_index(1)
 ### pico.raft_status
 
 Получает данные о текущем состоянии raft-узла
-([терм](glossary.md#term), [лидер](glossary.md#leader) и т.д.). Функция
+([терм](../general/glossary.md#term), [лидер](../general/glossary.md#leader) и т.д.). Функция
 не имеет передаваемых параметров.
 
 Возвращаемые поля:
@@ -1068,7 +1068,7 @@ function wait_ddl_finalize(index, opts)
 ### pico.wait_vclock
 
 Ожидает момента, когда значение
-[Vclock](glossary.md#vclock-vector-clock) в Tarantool достигнет
+[Vclock](../general/glossary.md#vclock-vector-clock) в Tarantool достигнет
 целевого.
 
 ```lua
@@ -1182,15 +1182,15 @@ Lua-таблица, описывающая поле в составе табли
 ### table Vclock {: #vclock_table }
 
 Lua-таблица, отражающая соответствие `id` инстанса его
-[LSN-номеру](glossary.md#lsn-log-sequence-number).
+[LSN-номеру](../general/glossary.md#lsn).
 
 Пример:
 ```lua
 {[0] = 2, [1] = 101}
 {[0] = 148, [1] = 9086, [3] = 2}
 ```
-См. подробнее описание [Vclock](glossary.md#vclock-vector-clock). Нулевое значение Vclock зарезервировано
+См. подробнее описание [Vclock](../general/glossary.md#vclock). Нулевое значение Vclock зарезервировано
 для отслеживания локальных изменений, которые не реплицируются.
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/api.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/references/api.md)

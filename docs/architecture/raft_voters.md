@@ -1,10 +1,10 @@
 # Raft и отказоустойчивость
-Алгоритм [Raft](glossary.md#raft) в Picodata обеспечивает отказоустойчивость распределенной
+Алгоритм [Raft](../general/glossary.md#raft) в Picodata обеспечивает отказоустойчивость распределенной
 системы при выходе из строя части ее узлов. Это достигается с помощью:
 
 - использования [зон доступности](deploy_on_hosts.md#failure-domains) для эффективного распределения реплик
   кластера между физическими локациями;
-- динамического переключения [голосующих узлов](glossary.md#node-states) в Raft.
+- динамического переключения [голосующих узлов](../general/glossary.md#node-states) в Raft.
 
 ## Динамическое переключение голосующих узлов в Raft (Raft voter failover) {: #raft-voter-failover }
 
@@ -51,8 +51,8 @@
 станет автоматически голосующим, т.к. схема распределения не будет этого
 требовать.
 
-См. [отдельный подраздел](../deploy_on_hosts) с описанием развертывания кластера на физических узлах.
+См. [отдельный подраздел](../tutorials/deploy_on_hosts.md) с описанием развертывания кластера на физических узлах.
 
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/raft_voters.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/architecture/raft_voters.md)

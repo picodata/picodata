@@ -1,6 +1,6 @@
 # Алгоритм discovery
 В данном разделе описаны подробности работы алгоритма
-[discovery](glossary.md#discovery), который отвечает за обнаружение
+[discovery](../general/glossary.md#discovery), который отвечает за обнаружение
 инстансами друг друга при инициализации кластера.
 
 ## Входные данные {: #initial-state }
@@ -180,5 +180,4 @@ true`, в то время как уже существовал `i_am_bootstrap_l
 инициализации кластера](clustering.md).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/discovery.md)
-
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/architecture/discovery.md)

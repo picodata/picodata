@@ -11,33 +11,33 @@ Picodata — это распределенная система промышле
 
 
 ### Ознакомление с ПО Picodata {: #getting-started }
-* [Общее описание продукта](description)
-* [Преимущества использования Picodata](benefits)
-* [Глоссарий](glossary)
-* [Обратная связь и получение помощи](feedback)
+* [Общее описание продукта](general/description)
+* [Преимущества использования Picodata](general/benefits)
+* [Глоссарий](general/glossary)
+* [Обратная связь и получение помощи](general/feedback)
 
 ### Инструкции и руководства {: #manuals-and-howtos }
-* [Установка Picodata](install)
-* [Запуск кластера](deploy_on_hosts)
-* [Мониторинг кластера](monitoring)
-* [Подключение и работа в консоли](tutorial_first_steps)
-* [Работа в веб-интерфейсе](tutorial_webui)
-* [Авторизация с помощью LDAP](auth_ldap)
-* [Пользователи, привилегии и роли](tutorial_users)
-* [Работа с данными SQL](tutorial_data)
+* [Установка Picodata](tutorials/install)
+* [Запуск кластера](tutorials/deploy_on_hosts)
+* [Мониторинг кластера](tutorials/monitoring)
+* [Подключение и работа в консоли](tutorials/tutorial_first_steps)
+* [Работа в веб-интерфейсе](tutorials/tutorial_webui)
+* [Авторизация с помощью LDAP](tutorials/auth_ldap)
+* [Пользователи, привилегии и роли](tutorials/tutorial_users)
+* [Работа с данными SQL](tutorials/tutorial_data)
 
 ### Справочные материалы {: #references }
-* [Аргументы командной строки](cli)
-* [Типы данных SQL](sql/datatypes)
-* [Команды SQL](sql/queries)
-* [Публичный API](api)
-* [Совместимость с ANSI SQL](sql/reference)
+* [Аргументы командной строки](references/cli)
+* [Типы данных SQL](references/datatypes)
+* [Команды SQL](references/queries)
+* [Публичный API](references/api)
+* [Совместимость с ANSI SQL](references/reference)
 
 ### Архитектура {: #arch }
-* [Распределенный SQL](sql/broadcasted_sql.md)
-* [Алгоритм discovery](discovery)
-* [Raft и отказоустойчивость](raft_voters)
-* [Жизненный цикл кластера](clustering)
+* [Распределенный SQL](architecture/broadcasted_sql)
+* [Алгоритм discovery](architecture/discovery)
+* [Raft и отказоустойчивость](architecture/raft_voters)
+* [Жизненный цикл кластера](architecture/clustering)
 
 <!-- План на развитие структуры документации:
 ### Ознакомление с ПО Picodata

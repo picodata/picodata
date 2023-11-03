@@ -7,7 +7,7 @@ Picodata при работе с распределенной СУБД.
 
 - Data Definition Language (`DDL`): команды для
   [создания](#create_table) и [удаления](#drop_table)
-  [таблиц](../glossary.md#table);
+  [таблиц](../general/glossary.md#table);
 - Data Modification Language (`DML`): команды [`INSERT`](#insert) для
   добавления данных в таблицы и [`DELETE`](#delete) для удаления данных;
 - Data Query Language (`DQL`): команда [`SELECT`](#select) для получения
@@ -16,27 +16,27 @@ Picodata при работе с распределенной СУБД.
 - команда [`EXPLAIN`](#explain) для отображения планов запросов `DML` и
   `DQL`.
 
-Схемы этих функций на вернем уровне показаны ниже:
+Схемы этих функций на верхнем уровне показаны ниже:
 
 ### **STATEMENT**
-![Statement](ebnf/STATEMENT.svg)
+![Statement](../images/ebnf/STATEMENT.svg)
 
 #### **DML**
-![DML](ebnf/DML.svg)
+![DML](../images/ebnf/DML.svg)
 
 #### **DQL**
-![DQL](ebnf/DQL.svg)
+![DQL](../images/ebnf/DQL.svg)
 
 #### **DDL**
-![DDL](ebnf/DDL.svg)
+![DDL](../images/ebnf/DDL.svg)
 
 Ниже приведены особенности синтаксиса команд и дано описание часто используемых
 команд с примерами их выполнения.
 
 ## Начало работы {: #getting-started }
 Для ввода команд SQL требуется интерактивная консоль Picodata. Она
-доступна после [запуска](../cli.md#run-command) инстанса с ключом `-i`
-или явного [подключения](../cli.md#connect-command) к нему из отдельного
+доступна после [запуска](../references/cli.md#run-command) инстанса с ключом `-i`
+или явного [подключения](../references/cli.md#connect-command) к нему из отдельного
 терминала.
 
 ### Доступные языки консоли {: #available_langs }
@@ -94,19 +94,19 @@ pico.sql([[select * from "characters"]], {})
 Ниже показаны схемы для создания и удаления пользователей и ролей.
 
 ### **Access control lists** {: #ACL }
-![ACL](ebnf/ACL.svg)
+![ACL](../images/ebnf/ACL.svg)
 
 ### **Create user** {: #CreateUser }
-![Create user](ebnf/CreateUser.svg)
+![Create user](../images/ebnf/CreateUser.svg)
 
 ### **Drop user** {: #DropUser }
-![Drop user](ebnf/DropUser.svg)
+![Drop user](../images/ebnf/DropUser.svg)
 
 ### **Create role** {: #CreateRole }
-![Create role](ebnf/CreateRole.svg)
+![Create role](../images/ebnf/CreateRole.svg)
 
 ### **Drop role** {: #DropRole }
-![Drop role](ebnf/DropRole.svg)
+![Drop role](../images/ebnf/DropRole.svg)
 
 Пример команды для создания пользователя:
 
@@ -119,23 +119,23 @@ create user andy with password 'P@ssw0rd' using md5 option (timeout = 3.0)
 ```sql
 drop user andy
 ```
-См. [подробнее](../tutorial_users.md) об управлении пользователями.
+См. [подробнее](../tutorials/tutorial_users.md) об управлении пользователями.
 
 ## Создание таблицы {: #create_table }
 
 Схема запроса для создания шардированной таблицы показана ниже.
 
 ### **CreateTable**
-![Create table](ebnf/CreateTable.svg)
+![Create table](../images/ebnf/CreateTable.svg)
 
 #### **Column**
-![Column](ebnf/Column.svg)
+![Column](../images/ebnf/Column.svg)
 
 #### **PrimaryKey**
-![Primary Key](ebnf/PrimaryKey.svg)
+![Primary Key](../images/ebnf/PrimaryKey.svg)
 
 #### **Distribution**
-![Distribution](ebnf/Distribution.svg)
+![Distribution](../images/ebnf/Distribution.svg)
 
 Для примера в этом разделе будем использовать две тестовых таблицы для учета
 персонажей из "Истории игрушек":
@@ -155,7 +155,7 @@ drop user andy
 - _шардированными_, т.е. распределенные по шардам кластера. Для создания
   шардированной таблицы следует использовать параметр `distributed by
   ()`, указав в скобках название колонки, по которой такая таблица будет
-  распределена. См. [подробнее](../glossary.md#table).
+  распределена. См. [подробнее](../general/glossary.md#table).
 
 Для демонстрации работы распределенного SQL будем создавать шардированные таблицы.
 Создадим первую таблицу следующей командой:
@@ -175,7 +175,7 @@ option (timeout = 3.0) ;
 
 При создании таблицы также можно выбрать один из доступных движков хранения данных:
 
-  - `memtx` — [движок хранения данных](../glossary.md#db-engine) в ОЗУ (in-memory);
+  - `memtx` — [движок хранения данных](../general/glossary.md#db-engine) в ОЗУ (in-memory);
   - `vinyl` — дисковый движок хранения данных, использующий LSM-деревья
     (Log Structured Merge Tree).
 
@@ -184,7 +184,7 @@ option (timeout = 3.0) ;
 Cхема запроса для удаления таблицы показана ниже:
 
 ### **DropTable**
-![Drop table](ebnf/DropTable.svg)
+![Drop table](../images/ebnf/DropTable.svg)
 
 Пример удаления таблицы:
 
@@ -207,7 +207,7 @@ drop table "characters" ;
 Cхема возможных распределенных запросов `SELECT` показана ниже.
 
 ### **SELECT**
-![Select](ebnf/SELECT.svg)
+![Select](../images/ebnf/SELECT.svg)
 
 ### Примеры запросов {: #select-examples }
 
@@ -313,25 +313,25 @@ pico.sql([[select "name","year" from "characters" where "id" > ? and "year" > ? 
 
 
 ### **values**
-![Column](ebnf/VALUES.svg)
+![Column](../images/ebnf/VALUES.svg)
 
 ### **row**
-![Column](ebnf/row.svg)
+![Column](../images/ebnf/row.svg)
 
 ### **alias**
-![Alias](ebnf/alias.svg)
+![Alias](../images/ebnf/alias.svg)
 
 ### **expression**
-![Expression](ebnf/expression.svg)
+![Expression](../images/ebnf/expression.svg)
 
 ### **reference**
-![Reference](ebnf/reference.svg)
+![Reference](../images/ebnf/reference.svg)
 
 ### **value**
-![Value](ebnf/value.svg)
+![Value](../images/ebnf/value.svg)
 
 ### **type**
-![Type](ebnf/type.svg)
+![Type](../images/ebnf/type.svg)
 
 ## Использование агрегатных функций {: #aggregate }
 Поддерживаются следующие агрегатные функции для работы с колонками:
@@ -671,7 +671,7 @@ select cast("score" as int) from "scoring" ;
   локальных запросов.
 
 #### **Options**
-![Options](ebnf/Options.svg)
+![Options](../images/ebnf/Options.svg)
 
 
 ### Пример использования {: #tuple-limit-example }
@@ -726,7 +726,7 @@ select * from "characters" option(sql_vdbe_max_steps = 55, vtable_max_rows = 10)
 
 Схема возможных запросов `INSERT` показана ниже.
 
-![Insert](ebnf/INSERT.svg)
+![Insert](../images/ebnf/INSERT.svg)
 
 ### Примеры запросов {: #insert-examples }
 Запись строки данных в таблицу командой `INSERT` возможна как в обычном
@@ -756,7 +756,7 @@ insert into "assets" values (1, 'Woody', 2561) ;
 фиксированной запятой (например, `values(2.5)` в `decimal 2.5`). В
 параметризированном виде дробнному числу будет назначен типа с плавающей
 запятой (например, `values(?), {2.5}` в `double 2.5`). См.
-[подробнее](../datatypes) о типах данных.
+[подробнее](datatypes) о типах данных.
 
 При использовании `INSERT` вместе с подзапросом (`SELECT`) происходит
 кеширование подзапроса, поэтому его тоже имеет смысл параметризировать,
@@ -859,7 +859,7 @@ replace`, команда `UPDATE` подойдет для выборочной �
 
 Схема возможных запросов `UPDATE` показана ниже.
 
-![Update](ebnf/UPDATE.svg)
+![Update](../images/ebnf/UPDATE.svg)
 
 При использовании `UPDATE` следует учитывать следующие ограничения:
 
@@ -906,7 +906,7 @@ pico.sql([[update "characters" set "name" = "item" from (select "id" as i, "name
 Команда `DELETE` используется для удаления данных из таблицы.
 
 ### **DELETE**
-![Delete](ebnf/DELETE.svg)
+![Delete](../images/ebnf/DELETE.svg)
 
 ### Примеры запросов {: #delete-examples }
 Простой запрос удаляет все данные из указанной таблицы:
@@ -947,7 +947,7 @@ nothing`.
 Схема использования `EXPLAIN` показана ниже.
 
 ### **EXPLAIN**
-![Explain](ebnf/EXPLAIN.svg)
+![Explain](../images/ebnf/EXPLAIN.svg)
 
 
 ### Простые запросы {: #basic-explain }
@@ -1092,7 +1092,7 @@ explain insert into "assets" values (1, 'Woody', 2561) ;
 **Локальная материализация** относится к тем случаям, когда требуется
 положить в память прочитанные данные из локального запроса для их
 дальнейшей обработки. Перемещения данных нет и вычисление `bucket_id` не
-требуется (см. [подробнее](broadcasted_sql.md#data-distribution)).
+требуется (см. [подробнее](../architecture/broadcasted_sql.md#data-distribution)).
 Примером может служить удаление данных из таблицы:
 
 ```sql
@@ -1271,8 +1271,8 @@ explain select count("id") from "characters" ;
 ...
 ```
 
-Читать далее: [Типы данных SQL](../datatypes)
+Читать далее: [Типы данных SQL](datatypes.md)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/queries.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/references/queries.md)

@@ -5,30 +5,30 @@ repo_url: https://git.picodata.io/picodata/picodata/docs
 
 nav:
   - Ознакомление с ПО Picodata:
-    - description.md
-    - benefits.md
-    - glossary.md
-    - feedback.md
+    - general/description.md
+    - general/benefits.md
+    - general/glossary.md
+    - general/feedback.md
   - Инструкции и руководства:
-    - install.md
-    - deploy_on_hosts.md
-    - monitoring.md
-    - tutorial_first_steps.md
-    - tutorial_webui.md
-    - auth_ldap.md
-    - tutorial_users.md
-    - tutorial_data.md
+    - tutorials/install.md
+    - tutorials/deploy_on_hosts.md
+    - tutorials/monitoring.md
+    - tutorials/tutorial_first_steps.md
+    - tutorials/tutorial_webui.md
+    - tutorials/auth_ldap.md
+    - tutorials/tutorial_users.md
+    - tutorials/tutorial_data.md
   - Справочные материалы:
-    - cli.md
-    - sql/datatypes.md
-    - sql/queries.md
-    - api.md
-    - sql/reference.md
+    - references/cli.md
+    - references/datatypes.md
+    - references/queries.md
+    - references/api.md
+    - references/reference.md
   - Архитектура:
-    - sql/broadcasted_sql.md
-    - discovery.md
-    - raft_voters.md
-    - clustering.md
+    - architecture/broadcasted_sql.md
+    - architecture/discovery.md
+    - architecture/raft_voters.md
+    - architecture/clustering.md
 theme:
     name: material
     custom_dir: overrides

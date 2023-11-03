@@ -1,38 +1,37 @@
 # Пользователи, привилегии и роли
-В данном разделе описаны [SQL-команды](sql/queries.md) для управления
+В данном разделе описаны [SQL-команды](../references/queries.md) для управления
 доступом с помощью ролевой модели в Picodata.
 
 ## Ролевая модель {: #role-model }
 Ролевая модель Picodata позволяет гибко разграничивать возможности
 пользователей распределенной системы. Разграничение строится на базе
-трех основных понятий: [пользователей](glossary.md#user),
-[привилегий](glossary.md#privilege) и [ролей](glossary.md#role).
+трех основных понятий: [пользователей](../general/glossary.md#user),
+[привилегий](../general/glossary.md#privilege) и [ролей](../general/glossary.md#role).
 Привилегии можно назначать напрямую пользователям:
 
-![Users and privileges](images/user_priv.svg)
+![Users and privileges](../images/user_priv.svg)
 
 Также, привилегии могут быть назначены роли, которая, в свою очередь,
 может быть присвоена пользователю:
 
-![Users and roles](images/user_roles.svg)
+![Users and roles](../images/user_roles.svg)
 
 У каждого пользователя может быть одна или несколько ролей. Каждому
 пользователю или роли может быть назначена одна или несколько
-привилегий. Помимо пользователей и ролей, привилегии могут быть
-назначены и [другим объектам](#objects).
+привилегий. Список объектов, которым могут быть назначены привелении, [приведен ниже](#objects).
 
 ## Начало работы {: #getting-started }
 Для начала работы с пользователями, привилегиями и ролями иследует
 [подключиться](tutorial_first_steps.md#accessing-console) к
 интерактивной консоли инстанса Picodata. Для ввода команд можно
 использовать как формат Lua, так и язык SQL напрямую, в зависимости от
-[выбранного](sql/queries.md#available_langs) языка консоли. В примерах
+[выбранного](../references/queries.md#available_langs) языка консоли. В примерах
 ниже использован язык SQL.
 
 ## Создание пользователя {: #creating-user }
 Создание нового пользователя происходит с помощью SQL-команды `create
 user`, функциональность которой аналогична Lua-функции
-[`pico.create_user()`](api.md#picocreate_user).
+[`pico.create_user()`](../references/api.md#picocreate_user).
 
 Приведем пример создания нового пользователя:
 
@@ -67,7 +66,7 @@ pico.sql([[
 
 Создание новой роли происходит с помощью SQL-команды `create
 role`, функциональность которой аналогична Lua-функции
-[`pico.create_role()`](api.md#picocreate_role).
+[`pico.create_role()`](../references/api.md#picocreate_role).
 
 Приведем пример создания новой роли:
 
@@ -151,8 +150,7 @@ pico.sql([[
 ``` -->
 
 
-См. также [`pico.grant_privilege`](api.md#picogrant_privilege) и [`pico.revoke_privilege`](api.md#picorevoke_privilege)
+См. также [`pico.grant_privilege`](../references/api.md#picogrant_privilege) и [`pico.revoke_privilege`](../references/api.md#picorevoke_privilege)
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial_users.md)
-
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/tutorial_users.md)

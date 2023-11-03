@@ -1,6 +1,6 @@
 # Работа с данными SQL
 В данном разделе приведены примеры команд для работы с данными в
-Picodata с помощью языка [SQL-запросов](sql/queries.md).
+Picodata с помощью языка [SQL-запросов](../references/queries.md).
 
 ## Создание таблицы {: #creating-table }
 
@@ -8,12 +8,12 @@ Picodata с помощью языка [SQL-запросов](sql/queries.md).
 [подключиться](tutorial_first_steps.md#accessing-console) к
 интерактивной консоли инстанса. Для ввода команд можно использовать
 как формат Lua, так и язык SQL напрямую, в зависимости от
-[выбранного](sql/queries.md#available_langs) языка консоли. В примерах
+[выбранного](../references/queries.md#available_langs) языка консоли. В примерах
 ниже использован формат Lua.
 
 Пользователям доступны функции для работы как с глобальными, так и
 шардированными таблицами (в последнем случае реализованы возможности
-[распределенного SQL](sql/broadcasted_sql.md)).
+[распределенного SQL](../architecture/broadcasted_sql.md)).
 
 Для примера создадим шаблон списка друзей Свинки Пеппы,
 котором будет два поля: идентификатор записи и имя друга:
@@ -32,7 +32,7 @@ pico.sql([[
 Помимо двух колонок, в примере указаны:
 
 - первичный ключ таблицы (колонка `"id"`);
-- [движок хранения данных](glossary.md#db-engine) in-memory (`memtx`);
+- [движок хранения данных](../general/glossary.md#db-engine) in-memory (`memtx`);
 - тип таблицы (шардированный, `distributed by`);
 - ключ шардирования таблицы (колонка `"id"`);
 - таймаут перед возвращением управления пользователю.
@@ -51,8 +51,8 @@ pico.sql([[
 ]])
 ```
 
-Подробнее о типах таблиц см. в [глоссарии](../glossary.md#table).
-Описание команд SQL приведено в разделе [Команды SQL](sql/queries.md).
+Подробнее о типах таблиц см. в [глоссарии](../general/glossary.md#table).
+Описание команд SQL приведено в разделе [Команды SQL](../references/queries.md).
 
 ## Запись данных в таблицу {: #writing-to-table }
 Запись данных, т.е. вставка строк, в таблицу происходит с помощью
@@ -74,7 +74,7 @@ pico.sql(
 	[[insert into "friends_of_peppa" ("id", "name") values (1, "Suzy")]],{}
 )
 ```
-См. [подробнее](sql/queries.md#insert) о различиях в `INSERT`-запросах.
+См. [подробнее](../references/queries.md#insert) о различиях в `INSERT`-запросах.
 
 ## Чтение данных из таблицы {: #reading-from-table }
 Для чтения всех данных из таблицы подойдёт команда:
@@ -89,7 +89,7 @@ pico.sql([[select * from "friends_of_peppa"]], {})
 pico.sql([[select * from "friends_of_peppa" where "id" = 1]], {})
 ```
 
-См. [подробнее](sql/queries.md#select) о вариантах чтения данных в SQL.
+См. [подробнее](../references/queries.md#select) о вариантах чтения данных в SQL.
 
 ## Удаление данных {: #deleting-from-table }
 
@@ -103,10 +103,9 @@ picodata> pico.sql([[delete from "friends_of_peppa" where "id" = 1]], {})
 
 Приведенный выше пример поможет сделать первые шаги в работе с данными в Picodata.
 Подробнее о внутренней архитектуре кластера Picodata см. в разделе
-[Жизненный цикл кластера](../clustering).
+[Жизненный цикл кластера](../architecture/clustering.md).
 
-Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../cli).
+Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../references/cli.md).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial_data.md)
-
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/tutorial_data.md)
