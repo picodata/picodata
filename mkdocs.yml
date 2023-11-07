@@ -27,7 +27,7 @@ nav:
   - Архитектура:
     - architecture/broadcasted_sql.md
     - architecture/discovery.md
-    - architecture/raft_voters.md
+    - architecture/raft_failover.md
     - architecture/clustering.md
 theme:
     name: material
