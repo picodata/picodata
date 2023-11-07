@@ -62,6 +62,7 @@ pub mod tier;
 pub mod tlog;
 pub mod traft;
 pub mod util;
+pub mod vshard;
 
 // This is the user id used when we need to elevate privileges
 // because current user doesnt have access to system spaces
