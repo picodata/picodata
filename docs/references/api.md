@@ -1044,8 +1044,8 @@ pico.sql([[
 ...
 ```
 
-См. также [пример работы с SQL в Picodata](tutorial_data.md) и [описание
-команд SQL](sql/queries.md).
+См. также [пример работы с SQL в Picodata](../tutorials/tutorial_data.md) и [описание
+команд SQL](../references/queries.md).
 
 ### pico.wait_ddl_finalize
 Ожидает применения (финализации) DDL-операции для указанного

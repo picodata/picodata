@@ -96,7 +96,7 @@ Picodata SQL требованиям стандарта SQL:2016, а именно
 ### E071-03. Табличный оператор EXCEPT DISTINCT
 ### F041-03. LEFT OUTER JOIN.
 
-См. также: [Пример работы с SQL Broadcaster в Picodata](../tutorial.md).
+См. также: [Пример работы с SQL Broadcaster в Picodata](../tutorials/tutorial_data.md).
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/reference.md)
