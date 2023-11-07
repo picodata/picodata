@@ -3,13 +3,13 @@ variables:
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
 
 stages:
-  - build
-  - pack
+  - build-base-image
+  - pack-doc
   - upload
   - deploy
 
-build-doc:
-  stage: build
+build-base-image:
+  stage: build-base-image
   tags:
     - shell
   only:
@@ -29,7 +29,7 @@ pack-doc:
   image: $DOCKER_LATEST
   tags:
     - docker
-  stage: pack
+  stage: pack-doc
   only:
     - web
     - main
@@ -38,7 +38,7 @@ pack-doc:
     - VER=$(date +%Y%m%d%H%M)
     - FNAME="picodata-doc-$VER.tgz"
     - echo "FNAME=$FNAME" > .vars
-    - mkdocs build -d site
+    - mkdocs build -d site --strict
     - pushd site
     - tar -cvzf ../$FNAME ./
     - popd
@@ -61,7 +61,7 @@ upload-doc-to-binary:
     - echo "Upload picodata doc to binary..."
     - source .vars
     - echo "FNAME=$FNAME"
-    - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'    
+    - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'
     - echo "Picodata doc successfully uploaded to binary."
   artifacts:
     expire_in: 24h
@@ -81,6 +81,7 @@ deploy-doc-to-test:
     - source .vars
     - echo "FNAME=$FNAME"
     - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=TEST" -F "variables[PICODATA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    # https://git.picodata.io/picodata/web-site/infra
     - echo "Picodata doc successfully deployed on test."
 
 deploy-doc-to-prod:
@@ -93,10 +94,9 @@ deploy-doc-to-prod:
     - web
     - main
   script:
-    # triggering gitlab.com/picodata/infra pipeline to rebuild and deploy docker
-    # - curl --request POST --form "token=$CI_JOB_TOKEN" --form ref=master https://gitlab.com/api/v4/projects/18035483/trigger/pipeline
     - echo "Deploying picodata doc on prod..."
     - source .vars
     - echo "FNAME=$FNAME"
     - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=PROD" -F "variables[PICODATA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    # https://git.picodata.io/picodata/web-site/infra
     - echo "Picodata doc successfully deployed on prod."

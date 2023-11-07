@@ -11,8 +11,3 @@ COPY . ${SITE_SRC}
 EXPOSE 8080
 WORKDIR ${SITE_SRC}
 CMD ["mkdocs", "serve"]
-
-#RUN mkdir -p ${SITE_HTML} && \
-#    cd ${SITE_SRC} && \
-#    mkdocs build -d ${SITE_HTML} && \
-#    mkdocs serve
