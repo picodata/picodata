@@ -236,10 +236,4 @@ mod test {
     fn update_instance_req_with_target_grade_Replicated() {
         Request::new("".into(), "".into()).with_target_grade(Replicated);
     }
-
-    #[test]
-    #[should_panic]
-    fn update_instance_req_with_target_grade_ShardingInitialized() {
-        Request::new("".into(), "".into()).with_target_grade(ShardingInitialized);
-    }
 }

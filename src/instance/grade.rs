@@ -10,8 +10,6 @@ use ::tarantool::tlua;
         Offline = "Offline",
         /// Instance has configured replication.
         Replicated = "Replicated",
-        /// Instance has configured sharding.
-        ShardingInitialized = "ShardingInitialized",
         /// Instance is active and is handling requests.
         Online = "Online",
         /// Instance has permanently removed from cluster.

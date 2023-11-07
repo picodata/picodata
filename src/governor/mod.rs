@@ -72,6 +72,14 @@ impl Loop {
             .iter()
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
+        let current_vshard_config = storage
+            .properties
+            .current_vshard_config()
+            .expect("storage error");
+        let target_vshard_config = storage
+            .properties
+            .target_vshard_config()
+            .expect("storage error");
 
         let tiers: Vec<_> = storage
             .tiers
@@ -107,6 +115,8 @@ impl Loop {
             &replicasets,
             &tiers,
             node.raft_id,
+            &current_vshard_config,
+            &target_vshard_config,
             vshard_bootstrapped,
             has_pending_schema_change,
         );
@@ -185,33 +195,8 @@ impl Loop {
                 }
             }
 
-            Plan::ReconfigureShardingAndDowngrade(ReconfigureShardingAndDowngrade {
-                targets,
-                rpc,
-                req,
-            }) => {
+            Plan::Downgrade(Downgrade { req }) => {
                 tlog!(Info, "downgrading instance {}", req.instance_id);
-
-                governor_step! {
-                    "reconfiguring sharding"
-                    async {
-                        let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
-                            fs.push(async move {
-                                resp.await.map_err(|e| {
-                                    tlog!(Warning, "failed calling rpc::sharding: {e}";
-                                        "instance_id" => %instance_id
-                                    );
-                                    e
-                                })
-                            });
-                        }
-                        // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
-                    }
-                }
 
                 let instance_id = req.instance_id.clone();
                 let current_grade = req.current_grade.expect("must be set");
@@ -389,36 +374,7 @@ impl Loop {
                 }
             }
 
-            Plan::UpdateWeights(UpdateWeights { targets, rpc, ops }) => {
-                governor_step! {
-                    "updating sharding weights"
-                    async {
-                        let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
-                            fs.push(async move {
-                                match resp.await {
-                                    Ok(_) => {
-                                        tlog!(Info, "updated weights on instance";
-                                            "instance_id" => %instance_id,
-                                        );
-                                        Ok(())
-                                    }
-                                    Err(e) => {
-                                        tlog!(Warning, "failed calling rpc::sharding: {e}";
-                                            "instance_id" => %instance_id
-                                        );
-                                        Err(e)
-                                    }
-                                }
-                            });
-                        }
-                        // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
-                    }
-                }
-
+            Plan::UpdateWeights(UpdateWeights { ops }) => {
                 for op in ops {
                     governor_step! {
                         "proposing current replicaset weights change"
@@ -429,12 +385,23 @@ impl Loop {
                 }
             }
 
-            Plan::ToOnline(ToOnline { req }) => {
-                let instance_id = req.instance_id.clone();
+            Plan::ToOnline(ToOnline { target, rpc, req }) => {
+                if let Some(rpc) = rpc {
+                    governor_step! {
+                        "updating sharding config" [
+                            "instance_id" => %target,
+                        ]
+                        async {
+                            pool.call(target, &rpc, Self::RPC_TIMEOUT)?
+                                .timeout(Duration::from_secs(3))
+                                .await?
+                        }
+                    }
+                }
                 let current_grade = req.current_grade.expect("must be set");
                 governor_step! {
                     "handling instance grade change" [
-                        "instance_id" => %instance_id,
+                        "instance_id" => %target,
                         "current_grade" => %current_grade,
                     ]
                     async {
@@ -506,6 +473,45 @@ impl Loop {
                     async {
                         assert!(matches!(next_op, Op::DdlAbort | Op::DdlCommit));
                         node.propose_and_wait(next_op, Duration::from_secs(3))?;
+                    }
+                }
+            }
+
+            Plan::UpdateTargetVshardConfig(UpdateTargetVshardConfig { dml }) => {
+                governor_step! {
+                    "updating target vshard config"
+                    async {
+                        node.propose_and_wait(dml, Duration::from_secs(3))??;
+                    }
+                }
+            }
+
+            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig { targets, rpc, dml }) => {
+                governor_step! {
+                    "applying vshard config changes"
+                    async {
+                        let mut fs = vec![];
+                        for instance_id in targets {
+                            tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
+                            fs.push(async move {
+                                resp.await.map_err(|e| {
+                                    tlog!(Warning, "failed calling rpc::sharding: {e}";
+                                        "instance_id" => %instance_id
+                                    );
+                                    e
+                                })
+                            });
+                        }
+                        // TODO: don't hard code timeout
+                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
+                    }
+                }
+
+                governor_step! {
+                    "updating current vshard config"
+                    async {
+                        node.propose_and_wait(dml, Duration::from_secs(3))??;
                     }
                 }
             }

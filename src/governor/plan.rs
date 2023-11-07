@@ -12,6 +12,7 @@ use crate::tlog;
 use crate::traft::op::Dml;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
+use crate::vshard::VshardConfig;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
 
@@ -30,6 +31,8 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
     tiers: &HashMap<&String, &Tier>,
     my_raft_id: RaftId,
+    current_vshard_config: &VshardConfig,
+    target_vshard_config: &VshardConfig,
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
 ) -> Result<Plan<'i>> {
@@ -58,7 +61,6 @@ pub(super) fn action_plan<'i>(
     if let Some(Instance {
         raft_id,
         instance_id,
-        replicaset_id,
         target_grade,
         ..
     }) = to_downgrade
@@ -82,42 +84,10 @@ pub(super) fn action_plan<'i>(
         }
 
         ////////////////////////////////////////////////////////////////////////
-        // choose a new replicaset master if needed and promote it
-        let replicaset = replicasets.get(replicaset_id);
-        if matches!(replicaset, Some(replicaset) if replicaset.master_id == instance_id) {
-            let new_master = maybe_responding(instances).find(|p| p.replicaset_id == replicaset_id);
-            if let Some(to) = new_master {
-                let rpc = rpc::replication::promote::Request {};
-                let mut ops = UpdateOps::new();
-                ops.assign("master_id", &to.instance_id)?;
-                let op = Dml::update(ClusterwideTable::Replicaset, &[&to.replicaset_id], ops)?;
-                return Ok(TransferMastership { to, rpc, op }.into());
-            } else {
-                tlog!(Warning, "replicaset master is going offline and no substitution is found";
-                    "master_id" => %instance_id,
-                    "replicaset_id" => %replicaset_id,
-                );
-            }
-        }
-
-        ////////////////////////////////////////////////////////////////////////
-        // reconfigure vshard storages and routers
-        // and update instance's CurrentGrade afterwards
-        let targets = maybe_responding(instances)
-            .filter(|instance| {
-                has_grades!(instance, ShardingInitialized -> *)
-                    || has_grades!(instance, Online -> *)
-            })
-            .map(|instance| &instance.instance_id)
-            .collect();
-        let rpc = rpc::sharding::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
+        // update instance's current grade
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(*target_grade);
-        return Ok(ReconfigureShardingAndDowngrade { targets, rpc, req }.into());
+        return Ok(Downgrade { req }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -210,56 +180,6 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // init sharding
-    let to_shard = instances
-        .iter()
-        .filter(|i| has_grades!(i, Replicated -> Online))
-        .find(|i| {
-            vshard_bootstrapped
-                || replicasets
-                    .get(&i.replicaset_id)
-                    .map(|r| r.weight != 0.)
-                    .unwrap_or(false)
-        });
-    if let Some(Instance {
-        instance_id,
-        target_grade,
-        ..
-    }) = to_shard
-    {
-        let targets = maybe_responding(instances)
-            .map(|instance| &instance.instance_id)
-            .collect();
-        let rpc = rpc::sharding::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(Grade::new(ShardingInitialized, target_grade.incarnation));
-        return Ok(ShardingInit { targets, rpc, req }.into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // bootstrap sharding
-    let to_bootstrap = (!vshard_bootstrapped)
-        .then(|| get_first_replicaset_with_weight(instances, replicasets))
-        .flatten();
-    if let Some(Replicaset { master_id, .. }) = to_bootstrap {
-        let target = master_id;
-        let rpc = rpc::sharding::bootstrap::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
-        let op = Dml::replace(
-            ClusterwideTable::Property,
-            &(PropertyName::VshardBootstrapped, true),
-        )?;
-        return Ok(ShardingBoot { target, rpc, op }.into());
-    };
-
-    ////////////////////////////////////////////////////////////////////////////
     // proposing automatic sharding weight changes
     let to_change_weights = get_first_auto_weight_change(instances, replicasets, tiers);
     if let Some(replicaset_id) = to_change_weights {
@@ -278,40 +198,14 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // skip sharding
-    let to_online = instances
-        .iter()
-        .find(|i| has_grades!(i, Replicated -> Online));
-    if let Some(Instance {
-        instance_id,
-        target_grade,
-        ..
-    }) = to_online
-    {
-        // If we got here, there are no replicasets with non zero weights
-        // (i.e. filled up to the replication factor) yet,
-        // so we can't configure sharding.
-        // So we just upgrade the instances to Online.
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(Grade::new(Online, target_grade.incarnation));
-        return Ok(SkipSharding { req }.into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
     // applying proposed sharding weight changes
+    // TODO: UpToDate & Updating is no longer needed, just need to know if the
+    // weight is uninitialized, i.e. state = Initial, origin = Auto
     let to_update_weights: Vec<_> = replicasets
         .values()
         .filter_map(|r| (r.weight_state == WeightState::Updating).then_some(&r.replicaset_id))
         .collect();
     if !to_update_weights.is_empty() {
-        let targets = maybe_responding(instances)
-            .map(|instance| &instance.instance_id)
-            .collect();
-        let rpc = rpc::sharding::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
         let mut ops = vec![];
         for replicaset_id in to_update_weights {
             let mut uops = UpdateOps::new();
@@ -319,23 +213,89 @@ pub(super) fn action_plan<'i>(
             let op = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], uops)?;
             ops.push(op);
         }
-        return Ok(UpdateWeights { targets, rpc, ops }.into());
+        return Ok(UpdateWeights { ops }.into());
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // update target vshard config
+    let vshard_config =
+        VshardConfig::new(instances, peer_addresses, replicasets, vshard_bootstrapped);
+    if &vshard_config != target_vshard_config {
+        let dml = Dml::replace(
+            ClusterwideTable::Property,
+            // FIXME: encode as map
+            &(&PropertyName::TargetVshardConfig, vshard_config),
+        )?;
+        return Ok(UpdateTargetVshardConfig { dml }.into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // update current vshard config
+    if current_vshard_config != target_vshard_config {
+        let targets = maybe_responding(instances)
+            .filter(|instance| instance.current_grade.variant >= Replicated)
+            .map(|instance| &instance.instance_id)
+            .collect();
+        let rpc = rpc::sharding::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+            do_reconfigure: true,
+        };
+        let dml = Dml::replace(
+            ClusterwideTable::Property,
+            // FIXME: encode as map
+            &(&PropertyName::CurrentVshardConfig, target_vshard_config),
+        )?;
+        return Ok(UpdateCurrentVshardConfig { targets, rpc, dml }.into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // bootstrap sharding
+    // FIXME: Must bootstrap when the first full replicaset with non-zero weight
+    // is found. Instead currently if the instance starts with the user
+    // specified non-zero weight, it's not going to work properly.
+    let to_bootstrap = (!vshard_bootstrapped)
+        .then(|| get_first_replicaset_with_weight(instances, replicasets))
+        .flatten();
+    if let Some(Replicaset { master_id, .. }) = to_bootstrap {
+        let target = master_id;
+        let rpc = rpc::sharding::bootstrap::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+        let op = Dml::replace(
+            ClusterwideTable::Property,
+            &(PropertyName::VshardBootstrapped, true),
+        )?;
+        return Ok(ShardingBoot { target, rpc, op }.into());
+    };
 
     ////////////////////////////////////////////////////////////////////////////
     // to online
     let to_online = instances
         .iter()
-        .find(|instance| has_grades!(instance, ShardingInitialized -> Online));
+        .find(|instance| has_grades!(instance, Replicated -> Online));
     if let Some(Instance {
         instance_id,
         target_grade,
         ..
     }) = to_online
     {
+        let target = instance_id;
+        let mut rpc = None;
+        if vshard_bootstrapped {
+            rpc = Some(rpc::sharding::Request {
+                term,
+                applied,
+                timeout: Loop::SYNC_TIMEOUT,
+                do_reconfigure: false,
+            });
+        }
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(Grade::new(Online, target_grade.incarnation));
-        return Ok(ToOnline { req }.into());
+        return Ok(ToOnline { target, rpc, req }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -412,6 +372,16 @@ pub mod stage {
             pub conf_change: raft::prelude::ConfChangeV2,
         }
 
+        pub struct UpdateTargetVshardConfig {
+            pub dml: Dml,
+        }
+
+        pub struct UpdateCurrentVshardConfig<'i> {
+            pub targets: Vec<&'i InstanceId>,
+            pub rpc: rpc::sharding::Request,
+            pub dml: Dml,
+        }
+
         pub struct TransferLeadership<'i> {
             pub to: &'i Instance,
         }
@@ -422,9 +392,7 @@ pub mod stage {
             pub op: Dml,
         }
 
-        pub struct ReconfigureShardingAndDowngrade<'i> {
-            pub targets: Vec<&'i InstanceId>,
-            pub rpc: rpc::sharding::Request,
+        pub struct Downgrade {
             pub req: rpc::update_instance::Request,
         }
 
@@ -462,13 +430,13 @@ pub mod stage {
             pub op: Dml,
         }
 
-        pub struct UpdateWeights<'i> {
-            pub targets: Vec<&'i InstanceId>,
-            pub rpc: rpc::sharding::Request,
+        pub struct UpdateWeights {
             pub ops: Vec<Dml>,
         }
 
-        pub struct ToOnline {
+        pub struct ToOnline<'i> {
+            pub target: &'i InstanceId,
+            pub rpc: Option<rpc::sharding::Request>,
             pub req: rpc::update_instance::Request,
         }
 
@@ -498,7 +466,7 @@ fn get_new_replicaset_master_if_needed<'i>(
             );
             continue;
         };
-        if !has_grades!(master, * -> Offline) {
+        if master.may_respond() {
             continue;
         }
         let Some(new_master) =

@@ -257,9 +257,10 @@ def test_raft_log(instance: Instance):
 | 15  | 2  |1.1.2|Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","default",0.0,"auto","initial"])|
 | 16  | 2  |1.1.3|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"])|
 | 17  | 2  |1.1.4|Update({_pico_replicaset}, ["r1"], [["=","weight",1.0], ["=","weight_state","up-to-date"]])|
-| 18  | 2  |1.1.5|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["ShardingInitialized",1],["Online",1],{b},"default"])|
-| 19  | 2  |1.1.6|Replace({_pico_property}, ["vshard_bootstrapped",true])|
-| 20  | 2  |1.1.7|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
+| 18  | 2  |1.1.5|Replace({_pico_property}, ["target_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["guest:@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
+| 19  | 2  |1.1.6|Replace({_pico_property}, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["guest:@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
+| 20  | 2  |1.1.7|Replace({_pico_property}, ["vshard_bootstrapped",true])|
+| 21  | 2  |1.1.8|Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
 +-----+----+-----+--------+
 """.format(  # noqa: E501
         p=instance.port,

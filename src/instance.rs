@@ -409,11 +409,6 @@ mod tests {
         req.target_grade = Some(Replicated);
         let e = update_instance(&mut instance, &req, &storage).unwrap_err();
         assert_eq!(e, "target grade can only be Online, Offline or Expelled, not Replicated");
-        let mut req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into());
-        // .with_target_grade will just panic
-        req.target_grade = Some(ShardingInitialized);
-        let e = update_instance(&mut instance, &req, &storage).unwrap_err();
-        assert_eq!(e, "target grade can only be Online, Offline or Expelled, not ShardingInitialized");
 
         // Grade::Expelled takes incarnation from current grade
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())

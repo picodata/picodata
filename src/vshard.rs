@@ -1,22 +1,30 @@
+use crate::instance::GradeVariant::*;
+use crate::instance::Instance;
+use crate::replicaset::Replicaset;
+use crate::replicaset::ReplicasetId;
 use crate::replicaset::Weight;
-use crate::storage::Clusterwide;
-use crate::storage::ToEntryIter as _;
-use crate::traft::Result;
+use crate::traft::RaftId;
 use ::tarantool::tlua;
 use std::collections::HashMap;
 
+#[rustfmt::skip]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
     sharding: HashMap<String, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
 }
 
+#[rustfmt::skip]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 struct ReplicasetSpec {
     replicas: HashMap<String, ReplicaSpec>,
     weight: Option<Weight>,
 }
 
+#[rustfmt::skip]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, Eq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 struct ReplicaSpec {
     uri: String,
@@ -24,67 +32,85 @@ struct ReplicaSpec {
     master: bool,
 }
 
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
-/// Specifies the mode of operation for the bucket discovery fiber of vshard
-/// router.
-///
-/// See [`vshard.router.discovery_set`] for more details.
-///
-/// [`vshard.router.discovery_set`]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/#router-api-discovery-set
-pub enum DiscoveryMode {
-    Off,
-    #[default]
-    On,
-    Once,
+tarantool::define_str_enum! {
+    /// Specifies the mode of operation for the bucket discovery fiber of vshard
+    /// router.
+    ///
+    /// See [`vshard.router.discovery_set`] for more details.
+    ///
+    /// [`vshard.router.discovery_set`]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/#router-api-discovery-set
+    #[derive(Default)]
+    pub enum DiscoveryMode {
+        Off = "off",
+        #[default]
+        On = "on",
+        Once = "once",
+    }
 }
 
 impl VshardConfig {
-    #[inline]
-    pub fn from_storage(storage: &Clusterwide) -> Result<Self> {
-        let replicasets: HashMap<_, _> = storage
-            .replicasets
-            .iter()?
-            .map(|r| (r.replicaset_id.clone(), r))
-            .collect();
+    pub fn new(
+        instances: &[Instance],
+        peer_addresses: &HashMap<RaftId, String>,
+        replicasets: &HashMap<&ReplicasetId, &Replicaset>,
+        vshard_bootstrapped: bool,
+    ) -> Self {
+        let mut found_ready_replicaset = false;
         let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
-        for peer in storage.instances.iter()? {
-            if !peer.may_respond() {
+        for peer in instances {
+            if !peer.may_respond() || peer.current_grade.variant < Replicated {
                 continue;
             }
-            let Some(address) = storage.peer_addresses.get(peer.raft_id)? else {
-                crate::tlog!(Warning, "address not found for peer";
+            let Some(address) = peer_addresses.get(&peer.raft_id) else {
+                crate::tlog!(Warning, "skipping instance: address not found for peer";
                     "raft_id" => peer.raft_id,
                 );
                 continue;
             };
-            let Some(replicaset_info) = replicasets.get(&peer.replicaset_id) else {
+            let Some(r) = replicasets.get(&peer.replicaset_id) else {
                 crate::tlog!(Debug, "skipping instance: replicaset not initialized yet";
                     "instance_id" => %peer.instance_id,
                 );
                 continue;
             };
+            use crate::replicaset::WeightState::UpToDate;
+            if r.weight > 0.0 && r.weight_state == UpToDate {
+                found_ready_replicaset = true;
+            }
 
-            let weight = replicaset_info.weight;
-            let replicaset =
-                sharding
-                    .entry(peer.replicaset_uuid)
-                    .or_insert_with(|| ReplicasetSpec {
-                        weight: Some(weight),
-                        ..Default::default()
-                    });
+            let replicaset = sharding
+                .entry(peer.replicaset_uuid.clone())
+                .or_insert_with(|| ReplicasetSpec {
+                    weight: Some(r.weight),
+                    ..Default::default()
+                });
 
             replicaset.replicas.insert(
-                peer.instance_uuid,
+                peer.instance_uuid.clone(),
                 ReplicaSpec {
                     uri: format!("guest:@{address}"),
-                    master: replicaset_info.master_id == peer.instance_id,
-                    name: peer.instance_id.into(),
+                    master: r.master_id == peer.instance_id,
+                    name: peer.instance_id.to_string(),
                 },
             );
         }
-        Ok(Self {
+        if !vshard_bootstrapped && !found_ready_replicaset {
+            // Vshard will fail if we configure it with all replicaset weights set to 0.
+            // But we don't set a replicaset's weight until it's filled up to the replication factor.
+            // (NOTE: we don't actually check the replication factor here,
+            //  this is handled elsewhere and here we just check weigth.state).
+            // So we wait until at least one replicaset is filled (i.e. `found_ready_replicaset == true`).
+            //
+            // Also if vshard has already been bootstrapped, the user can mess
+            // this up by setting all replicasets' weights to 0, which will
+            // break vshard configuration, but this will be the user's fault
+            // probably, not sure we can do something about it
+            return Self::default();
+        }
+
+        Self {
             sharding,
             discovery_mode: DiscoveryMode::On,
-        })
+        }
     }
 }

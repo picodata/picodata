@@ -31,6 +31,7 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Result;
 use crate::util::Uppercase;
+use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 
 use std::borrow::Cow;
@@ -1110,6 +1111,18 @@ impl From<ClusterwideTable> for SpaceId {
         // read views if the corresponding instances are *deteremined* to not
         // need them anymore. Or maybe timeouts is the better way..
         SnapshotReadViewCloseTimeout = "snapshot_read_view_close_timeout",
+
+        /// Vshard configuration which has most recently been applied on all the
+        /// instances of the cluster.
+        CurrentVshardConfig = "current_vshard_config",
+
+        /// Vshard configuration which should be applied on all instances of the
+        /// cluster. If this is equal to current_vshard_config, then the
+        /// configuration is up to date.
+        // TODO: don't store the complete target vshard config, instead store
+        // the current global vshard config version and a current applied vshard
+        // config version of each instance.
+        TargetVshardConfig = "target_vshard_config",
     }
 }
 
@@ -1165,6 +1178,20 @@ impl Properties {
     pub fn delete(&self, key: PropertyName) -> tarantool::Result<()> {
         self.space.delete(&[key])?;
         Ok(())
+    }
+
+    #[inline]
+    pub fn target_vshard_config(&self) -> tarantool::Result<VshardConfig> {
+        Ok(self
+            .get(PropertyName::TargetVshardConfig)?
+            .unwrap_or_default())
+    }
+
+    #[inline]
+    pub fn current_vshard_config(&self) -> tarantool::Result<VshardConfig> {
+        Ok(self
+            .get(PropertyName::CurrentVshardConfig)?
+            .unwrap_or_default())
     }
 
     #[inline]

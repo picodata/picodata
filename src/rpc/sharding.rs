@@ -3,7 +3,6 @@ use ::tarantool::tlua;
 use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
-use crate::vshard::VshardConfig;
 
 use std::time::Duration;
 
@@ -23,11 +22,17 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let storage = &node.storage;
-        let cfg = VshardConfig::from_storage(storage)?;
+        let cfg = node.storage.properties.target_vshard_config()?;
         crate::tlog!(Debug, "vshard config: {cfg:?}");
 
         let lua = ::tarantool::lua_state();
+
+        if !req.do_reconfigure {
+            if let Some(tlua::True) = lua.eval("return pico._vshard_is_configured")? {
+                return Ok(Response {});
+            }
+        }
+
         // TODO: fix user's permissions
         lua.exec("box.session.su('admin')")?;
         // TODO: only done on instances with corresponding roles
@@ -49,6 +54,8 @@ crate::define_rpc_request! {
         // which try reconnecting every 0.5 seconds. Garbage collecting them helps
         lua.exec("collectgarbage()")?;
 
+        lua.exec("pico._vshard_is_configured = true")?;
+
         Ok(Response {})
     }
 
@@ -60,6 +67,10 @@ crate::define_rpc_request! {
         /// Current applied index of the sender.
         pub applied: RaftIndex,
         pub timeout: Duration,
+        /// If this is `false`, check if the runtime vshard router object is
+        /// already created and don't reconfigure. This is only used when an
+        /// instance silently restarts without acquiring the Offline grade.
+        pub do_reconfigure: bool,
     }
 
     /// Response to [`sharding::Request`].
