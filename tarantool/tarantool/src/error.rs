@@ -1,4 +1,4 @@
-//! Error handling utils. See ["failure" crate documentation](https://docs.rs/failure/) for details
+//! Error handling utils.
 //!
 //! The Tarantool error handling works most like libc's errno. All API calls
 //! return -1 or `NULL` in the event of error. An internal pointer to
