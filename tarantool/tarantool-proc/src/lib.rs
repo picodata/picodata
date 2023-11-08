@@ -70,7 +70,7 @@ mod msgpack {
                     if as_map {
                         #tarantool_crate::msgpack::rmp::encode::write_str(w, #field_repr)?;
                     }
-                    #tarantool_crate::msgpack::Encode::encode(#s #name, w, &Default::default())?;
+                    #tarantool_crate::msgpack::Encode::encode(#s #name, w, context)?;
                 }
             })
             .collect()
@@ -87,7 +87,7 @@ mod msgpack {
             .flat_map(|(i, f)| {
                 let index = Index::from(i);
                 quote_spanned! {f.span()=>
-                    #tarantool_crate::msgpack::Encode::encode(&self.#index, w, &Default::default())?;
+                    #tarantool_crate::msgpack::Encode::encode(&self.#index, w, context)?;
                 }
             })
             .collect()
@@ -133,7 +133,7 @@ mod msgpack {
                     }
                 }
                 Fields::Unit => {
-                    quote!(#tarantool_crate::msgpack::Encode::encode(&(), w, &Default::default())?;)
+                    quote!(#tarantool_crate::msgpack::Encode::encode(&(), w, context)?;)
                 }
             },
             Data::Enum(ref variants) => {
@@ -171,7 +171,7 @@ mod msgpack {
                                 // TODO: use encode_unnamed_fields?
                                 let fields: proc_macro2::TokenStream = field_names.clone()
                                     .flat_map(|field_name| quote! {
-                                        #tarantool_crate::msgpack::Encode::encode(#field_name, w, &Default::default())?;
+                                        #tarantool_crate::msgpack::Encode::encode(#field_name, w, context)?;
                                     })
                                     .collect();
                                 quote! {
@@ -186,7 +186,7 @@ mod msgpack {
                                 quote! {
                                     Self::#variant_name => {
                                         #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
-                                        #tarantool_crate::msgpack::Encode::encode(&(), w, &Default::default())?;
+                                        #tarantool_crate::msgpack::Encode::encode(&(), w, context)?;
                                     }
                                 }
                             },
@@ -234,7 +234,7 @@ mod msgpack {
                             ));
                         }
                     }
-                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
+                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#name))))?;
                 }, var_name)
             })
@@ -266,7 +266,7 @@ mod msgpack {
                 let index = Index::from(i);
                 let var_name = quote::format_ident!("_field_{}", index);
                 (quote_spanned! {f.span()=>
-                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
+                    let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", #i)))?;
                 }, var_name)
             })
@@ -327,7 +327,7 @@ mod msgpack {
                 }
                 Fields::Unit => {
                     quote! {
-                        let () = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())?;
+                        let () = #tarantool_crate::msgpack::Decode::decode(r, context)?;
                         Ok(Self)
                     }
                 }
@@ -377,7 +377,7 @@ mod msgpack {
                             Fields::Unit => {
                                 quote! {
                                     #variant_repr => {
-                                        let () = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
+                                        let () = #tarantool_crate::msgpack::Decode::decode(r, context)
                                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                         Ok(Self::#variant_ident)
                                     }
