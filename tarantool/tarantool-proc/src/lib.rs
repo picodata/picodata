@@ -55,7 +55,10 @@ mod msgpack {
             .named
             .iter()
             .flat_map(|f| {
-                let name = &f.ident;
+                let name = f.ident.as_ref().unwrap();
+                let t = name.to_string();
+                let field_repr = t.trim_start_matches("#r");
+
                 let s = if add_self {
                     quote! {&self.}
                 } else {
@@ -65,8 +68,7 @@ mod msgpack {
                 // to overwrite external structure encoding behavior
                 quote_spanned! {f.span()=>
                     if as_map {
-                        #tarantool_crate::msgpack::rmp::encode::write_str(w,
-                            stringify!(#name).trim_start_matches("r#"))?;
+                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #field_repr)?;
                     }
                     #tarantool_crate::msgpack::Encode::encode(#s #name, w, &Default::default())?;
                 }
@@ -144,51 +146,51 @@ mod msgpack {
                 let variants: proc_macro2::TokenStream = variants
                     .variants
                     .iter()
-                    .flat_map(|variant| match variant.fields {
-                        Fields::Named(ref fields) => {
-                            let field_count = fields.named.len() as u32;
-                            let variant_name = &variant.ident;
-                            let field_names = fields.named.iter().map(|field| field.ident.clone());
-                            let fields = encode_named_fields(fields, tarantool_crate, false);
-                            // TODO: allow `#[encode(as_map)]` for struct variants
-                            quote! {
-                                 Self::#variant_name { #(#field_names),*} => {
-                                    #tarantool_crate::msgpack::rmp::encode::write_str(w, stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
-                                    let as_map = false;
-                                    #fields
+                    .flat_map(|variant| {
+                        let variant_name = &variant.ident;
+                        let t = variant_name.to_string();
+                        let variant_repr = t.trim_start_matches("r#");
+                        match variant.fields {
+                            Fields::Named(ref fields) => {
+                                let field_count = fields.named.len() as u32;
+                                let field_names = fields.named.iter().map(|field| field.ident.clone());
+                                let fields = encode_named_fields(fields, tarantool_crate, false);
+                                // TODO: allow `#[encode(as_map)]` for struct variants
+                                quote! {
+                                     Self::#variant_name { #(#field_names),*} => {
+                                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
+                                        #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                                        let as_map = false;
+                                        #fields
+                                    }
                                 }
+                            },
+                            Fields::Unnamed(ref fields) => {
+                                let field_count = fields.unnamed.len() as u32;
+                                let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("t{}", i));
+                                // TODO: use encode_unnamed_fields?
+                                let fields: proc_macro2::TokenStream = field_names.clone()
+                                    .flat_map(|field_name| quote! {
+                                        #tarantool_crate::msgpack::Encode::encode(#field_name, w, &Default::default())?;
+                                    })
+                                    .collect();
+                                quote! {
+                                    Self::#variant_name ( #(#field_names),* ) => {
+                                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
+                                        #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                                        #fields
+                                    }
+                               }
                             }
-                        },
-                        Fields::Unnamed(ref fields) => {
-                            let field_count = fields.unnamed.len() as u32;
-                            let variant_name = &variant.ident;
-                            let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("t{}", i));
-                            // TODO: use encode_unnamed_fields?
-                            let fields: proc_macro2::TokenStream = field_names.clone()
-                                .flat_map(|field_name| quote! {
-                                    #tarantool_crate::msgpack::Encode::encode(#field_name, w, &Default::default())?;
-                                })
-                                .collect();
-                            quote! {
-                                Self::#variant_name ( #(#field_names),* ) => {
-                                    #tarantool_crate::msgpack::rmp::encode::write_str(w,
-                                        stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
-                                    #fields
+                            Fields::Unit => {
+                                quote! {
+                                    Self::#variant_name => {
+                                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
+                                        #tarantool_crate::msgpack::Encode::encode(&(), w, &Default::default())?;
+                                    }
                                 }
-                           }
+                            },
                         }
-                        Fields::Unit => {
-                            let variant_name = &variant.ident;
-                            quote! {
-                                Self::#variant_name => {
-                                    #tarantool_crate::msgpack::rmp::encode::write_str(w,
-                                        stringify!(#variant_name).trim_start_matches("r#"))?;
-                                    #tarantool_crate::msgpack::Encode::encode(&(), w, &Default::default())?;
-                                }
-                            }
-                        },
                     })
                     .collect();
                 quote! {
@@ -212,16 +214,24 @@ mod msgpack {
             .iter()
             .map(|f| {
                 let name = f.ident.as_ref().expect("only named fields here");
+                let t = name.to_string();
+                let field_repr = t.trim_start_matches("#r");
+                let field_repr = proc_macro2::Literal::byte_string(field_repr.as_bytes());
                 let var_name = format_ident!("_field_{}", name);
                 // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
                 // to overwrite external structure encoding behavior
                 (quote_spanned! {f.span()=>
                     if as_map {
-                        let field_name: String = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
+                        let len = rmp::decode::read_str_len(r)
                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("field name"))?;
-                        let expected = stringify!(#name).trim_start_matches("r#");
-                        if field_name != expected {
-                            return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(format!("expected field {}, got {}", expected, field_name)))
+                        let field_name = r.get(0..(len as usize))
+                            .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
+                        *r = &r[(len as usize)..]; // advance
+                        if field_name != #field_repr {
+                            return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(
+                                // TODO: decode from utf8 for human readability
+                                format!("expected field {:?}, got {:?}", #field_repr, field_name)
+                            ));
                         }
                     }
                     let #var_name = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
@@ -329,58 +339,68 @@ mod msgpack {
                         "`as_map` attribute can be specified only for structs"
                     );
                 }
+                let mut variant_reprs = Vec::new();
                 let variants: proc_macro2::TokenStream = variants
                     .variants
                     .iter()
                     .flat_map(|variant| {
-                        let variant_name = format_ident!("{}", variant.ident);
+                        let variant_ident = variant.ident.clone();
+                        let t = variant_ident.to_string();
+                        let t = t.trim_start_matches("r#");
+                        variant_reprs.push(t.to_string());
+                        let variant_repr = proc_macro2::Literal::byte_string(t.as_bytes());
+
                         match variant.fields {
-                        Fields::Named(ref fields) => {
-                            let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident));
-                            // TODO: allow `#[encode(as_map)]` for struct variants
-                            quote! {
-                                 stringify!(#variant_name) => {
-                                    #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
-                                    let as_map = false;
-                                    #fields
+                            Fields::Named(ref fields) => {
+                                let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident));
+                                // TODO: allow `#[encode(as_map)]` for struct variants
+                                quote! {
+                                    #variant_repr => {
+                                        #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                        let as_map = false;
+                                        #fields
+                                    }
+                                }
+                            },
+                            Fields::Unnamed(ref fields) => {
+                                let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident));
+                                quote! {
+                                    #variant_repr => {
+                                        #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                        let as_map = false;
+                                        #fields
+                                    }
                                 }
                             }
-                        },
-                        Fields::Unnamed(ref fields) => {
-                            let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident));
-                            quote! {
-                                 stringify!(#variant_name) => {
-                                    #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
-                                    let as_map = false;
-                                    #fields
+                            Fields::Unit => {
+                                quote! {
+                                    #variant_repr => {
+                                        let () = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                        Ok(Self::#variant_ident)
+                                    }
                                 }
-                            }
+                            },
                         }
-                        Fields::Unit => {
-                            let variant_name = &variant.ident;
-                            quote! {
-                                stringify!(#variant_name) => {
-                                    let () = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
-                                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
-                                    Ok(Self::#variant_name)
-                                }
-                            }
-                        },
-                    }})
+                    })
                     .collect();
                 quote! {
                     // TODO: assert map len 1
                     #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
                         .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
-                    let variant_name: String = #tarantool_crate::msgpack::Decode::decode(r, &Default::default())
-                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("variant name")))?;
-                    match variant_name.as_str() {
+                    let len = rmp::decode::read_str_len(r)
+                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("variant name"))?;
+                    let variant_name = r.get(0..(len as usize))
+                        .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("variant name"))?;
+                    *r = &r[(len as usize)..]; // advance
+                    match variant_name {
                         #variants
                         other => {
+                            // TODO: decode from utf8 for human readability
                             Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(
-                                format!("enum variant {} does not exist", other)
+                                format!("enum variant {:?} does not exist", other)
                             ))
                         }
                     }
