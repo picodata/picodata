@@ -190,7 +190,7 @@ test-linux:
     # It will be checked during integration tests.
     - cargo test --locked
 
-    - pipenv run pytest --numprocesses auto -v
+    - pipenv run pytest --numprocesses auto -v --junitxml=junit_pytest.xml
     - |
       # Save cache
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
@@ -205,6 +205,12 @@ test-linux:
       else
         echo "Skip saving cache on a non-master branch"
       fi
+  artifacts:
+    when: always
+    paths:
+      - junit_pytest.xml
+    reports:
+      junit: junit_pytest.xml
 
 test-mac-m1:
   extends: .test
