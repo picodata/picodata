@@ -51,6 +51,10 @@ fn handle_client(client: PgStream<CoIOStream>) -> UnitJoinHandle<'static> {
 fn do_handle_client(stream: PgStream<CoIOStream>) -> PgResult<()> {
     let mut client = PgClient::accept(stream)?;
     client.send_parameter("server_version", "15.0")?;
+    client.send_parameter("server_encoding", "UTF8")?;
+    client.send_parameter("client_encoding", "UTF8")?;
+    client.send_parameter("date_style", "ISO YMD")?;
+    client.send_parameter("integer_datetimes", "on")?;
     client.process_messages_loop()?;
     Ok(())
 }
