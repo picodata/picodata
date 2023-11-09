@@ -1,13 +1,15 @@
 # Управление доступом
-В данном разделе описаны [SQL-команды](../reference/sql_queries.md) для управления
-доступом с помощью ролевой модели в Picodata.
 
-## Ролевая модель {: #role-model }
+В данном разделе описана ролевая модель управления доступом в Picodata и
+приведены примеры необходимых для ее настройки SQL-команд.
+
+## Ролевая модель {: #role_model }
+
 Ролевая модель Picodata позволяет гибко разграничивать возможности
 пользователей распределенной системы. Разграничение строится на базе
-трех основных понятий: [пользователей](../overview/glossary.md#user),
-[привилегий](../overview/glossary.md#privilege) и [ролей](../overview/glossary.md#role).
-Привилегии можно назначать напрямую пользователям:
+трех основных понятий: [пользователей](#users),
+[привилегий](#privileges) и [ролей](#roles). Привилегии можно назначать
+напрямую пользователям:
 
 ![Users and privileges](../images/user_priv.svg)
 
@@ -18,136 +20,398 @@
 
 У каждого пользователя может быть одна или несколько ролей. Каждому
 пользователю или роли может быть назначена одна или несколько
-привилегий. Список объектов, которым могут быть назначены привелении, [приведен ниже](#objects).
+привилегий. При этом, сразу после создания новая роль не содержит
+привилегий: их нужно явно ей присвоить.
 
-## Начало работы {: #getting-started }
-Для начала работы с пользователями, привилегиями и ролями иследует
-[подключиться](connecting.md#accessing-console) к
-интерактивной консоли инстанса Picodata. Для ввода команд можно
-использовать как формат Lua, так и язык SQL напрямую, в зависимости от
-[выбранного](../reference/sql_queries.md#available_langs) языка консоли. В примерах
-ниже использован язык SQL.
+Пользователь, который назначает привилегию, должен сам обладать ею.
+Глобальные привилегии может назначать только [администратор СУБД](#admin).
 
-## Создание пользователя {: #creating-user }
-Создание нового пользователя происходит с помощью SQL-команды `create
-user`, функциональность которой аналогична Lua-функции
-[`pico.create_user()`](../reference/api.md#picocreate_user).
+### Объекты доступа {: #access_objects }
 
-Приведем пример создания нового пользователя:
+Picodata является распределенной СУБД, и управление доступом происходит
+централизованно на всем кластере. Для управления доступом в Picodata
+используются дискреционный и ролевой методы. Объектами доступа являются:
+
+- `table` – [таблица](../overview/glossary.md#table) БД
+- `user` – [пользователь](#users) СУБД
+- `role` – [роль](#roles)
+<!-- – `procedure` – хранимая процедура на языке SQL -->
+
+Доступ к объектам предоставляется на основе настраиваемого списка
+управления доступом (access control list, ACL), который определяет,
+какими привилегиями обладает каждый субъект (пользователь или роль).
+
+### Привилегии {: #privileges }
+
+В Picodata определены следующие виды привилегий:
+
+- привилегии для работы с пользователями (`CREATE USER`, `ALTER USER`,
+  `DROP USER`, `SESSION`)
+- привилегии для работы с ролями (`CREATE ROLE`, `DROP ROLE`)
+- привилегии для работы с таблицами (`CREATE TABLE`, `ALTER TABLE`,
+  `DROP TABLE`, `READ TABLE`, `WRITE TABLE`)
+
+_Примечание_:
+
+`SESSION` — право подключаться по сети при помощи команд `picodata
+connect` и `picodata sql`. Автоматически выдается новым пользователям
+при создании, но по умолчанию отключена для [Администратора СУБД](#admin)
+(`admin`). В отличие от других привилегий, для выдачи или отзыва
+привилегии `SESSION` [используется](#alter_user) SQL-синтаксис `ALTER <user name> {
+LOGIN / NOLOGIN }`
+
+Информация о привилегиях хранится в системной таблице [_pico_privilege](../architecture/system_tables.md#_pico_privilege).
+
+### Пользователи {: #users }
+
+При подключении к системе пользователь указывает имя учетной записи.
+Действия, которые пользователь может совершать в системе, определяются
+выданными ему привилегиями.
+
+Каждый объект в системе (таблица, роль, пользователь) имеет привязанного
+к нему владельца — пользователя СУБД. Владелец объекта автоматически
+получает все привилегии на этот объект.
+
+Picodata предоставляет два встроенных пользователя — `admin` и `guest`.
+
+#### Администратор СУБД {: #admin }
+
+Администратором СУБД является встроенный пользователь `admin`.
+
+Администратор СУБД является _суперпользователем_ и обладает следующими
+привилегиями:
+
+- создания учетных записей пользователей СУБД
+- модифицировать, блокировать и удалять учетные записи пользователей СУБД
+- назначать права доступа пользователям СУБД к объектам доступа СУБД
+- управлять конфигурацией СУБД
+- создавать, подключать БД
+
+Данный набор привилегий эквивалентен SQL-командам:
 
 ```sql
-pico.sql([[
-	create user peppa
-    with password 'P@ssw0rd'
-    using md5
-	option (timeout = 3.0)
-]])
+GRANT CREATE TABLE TO "admin"
+GRANT ALTER TABLE TO "admin"
+GRANT DROP TABLE TO "admin"
+GRANT READ TABLE TO "admin"
+GRANT WRITE TABLE TO "admin"
+
+GRANT CREATE USER TO "admin"
+GRANT ALTER USER TO "admin"
+GRANT DROP USER TO "admin"
+
+GRANT CREATE ROLE TO "admin"
+GRANT DROP ROLE TO "admin"
 ```
 
-Команда состоит из следующих элементов:
+Однако, у него по умолчанию отсутствует привилегия `SESSION`.
+Использовать учетную запись можно двумя способами:
 
-- обязательные `имя пользователя` и `пароль` (без экранирования символов, в одинарных кавычках);
-- обязательный метод аутентификации (`'chap-sha1'` | `'md5'` | `'ldap'`);
-- опциональный таймаут перед возвращением управления пользователю.
+- запустив инстанс с [интерактивной консолью](../reference/cli.md#interactive) `picodata run -i`
+- подключившись [по сокету](../reference/cli.md#console-sock) `picodata connect --unix`
 
-При использовании методов аутентификации `chap-sha1` и `md5` требуется использовать пароль не короче 8
-символов, для метода `ldap` длина пароля не проверяется.
+#### Гость {: #guest }
 
-## Удаление пользователя {: #dropping-user }
-Удаление пользователя с известным именем:
+Встроенный пользователь `guest` по умолчанию обладает минимальным
+набором привилегий: у него есть роль [`public`](#public) и право подключаться к
+системе. Это описывается следующими командами:
+
+- `GRANT ROLE "public" TO "guest"`
+- `ALTER USER "guest" LOGIN`
+
+#### Администратор БД {: #db_admin }
+
+Наделить пользователя правами Администратора БД можно набором SQL-команд:
 
 ```sql
-pico.sql([[
-	drop user peppa
-]])
+GRANT CREATE TABLE TO <grantee>
+GRANT CREATE USER TO <grantee>
+GRANT CREATE ROLE TO <grantee>
 ```
 
-## Создание роли {: #creating-role }
+Это обеспечивает наличие у администратора БД следующих прав:
 
-Создание новой роли происходит с помощью SQL-команды `create
-role`, функциональность которой аналогична Lua-функции
-[`pico.create_role()`](../reference/api.md#picocreate_role).
+- создавать учетные записи пользователей БД
+- модифицировать, блокировать и удалять учетные записи пользователей БД
+- управлять конфигурацией БД
+- назначать права доступа пользователям БД к объектам доступа БД
+- создавать резервные копии БД и восстанавливать БД из резервной копии
 
-Приведем пример создания новой роли:
+При создании объекта пользователь становится его владельцем и
+автоматически получает на него следующие права (в зависимости от типа
+объекта):
 
 ```sql
-pico.sql([[
-	create role reader
-	option (timeout = 3.0)
-]])
+-- CREATE TABLE <table name> ...
+GRANT ALTER ON TABLE <table name> TO <owner>
+GRANT DROP ON TABLE <table name> TO <owner>
+GRANT READ ON TABLE <table name> TO <owner>
+GRANT WRITE ON TABLE <table name> TO <owner>
+
+-- CREATE USER <user name>
+GRANT ALTER ON USER <user name> TO <owner>
+GRANT DROP ON USER <user name> TO <owner>
+
+-- CREATE ROLE <role name>
+GRANT DROP ON ROLE <role name> TO <owner>
 ```
 
-## Удаление роли {: #dropping-role }
+### Роли {: #roles }
 
-Удаление роли с известным именем:
+Роль представляет собой именованную группу привилегий, что позволяет
+структурировать управление доступом. Добавление привилегий в роль
+производится командой `GRANT`, которая наделяет роль
+привилегией. Кроме того, роли могут быть вложенными друг в друга.
+Пример:
 
 ```sql
-pico.sql([[
-	drop role reader
-]])
-```
-## Управление привилегиями {: #managing-privileges }
-### Назначение и снятие привилегий {: #grant-and-revoke }
-В Picodata предусмотрены две SQL-команды для управления привилегиями:
-
-- `GRANT` для назначения привилегии пользователю или роли
-- `REVOKE` для изъятия привилегии у пользователя или роли
-
-### Доступные привилегии {: #available-privileges }
-Доступные привилегии можно условно разделить на три группы:
-
-Работа с пользователями:
-
-- `CREATE` — создание пользователя
-- `ALTER` — изменение пользователя
-- `DROP` — удаление пользователя
-- `SESSION` — подключение к Picodata по сети
-
-Работа с ролями:
-
-- `CREATE` — создание роли
-- `DROP` — удаление роли
-
-Работа с таблицами:
-
-- `CREATE` — создание таблицы
-- `ALTER` — изменение таблицы
-- `DROP` — удаление таблицы
-- `READ` — чтение данных из таблицы
-- `WRITE` — запись данных в таблицу
-
-### Объекты привилегий {: #target-objects }
-Привилегии иогут быть применены к следующим целевым сущностям: <a
-name="objects"></a>
-
-- `TABLE` — таблица
-- `ROLE` — роль
-- `USER` — пользователь
-
-<!--
-### Примеры команд {: #cli-examples }
-Наделение пользователя правом записи в таблицу:
-```sql
-pico.sql([[
-	grant write on "friends_of_peppa" to "peppa"
-	]])
+GRANT [ ROLE ] <role name> TO <role name>
 ```
 
-Создание роли, наделение её правом записи в таблицу, присваивание роли пользователю:
+Информация о ролях хранится системной таблице `_pico_role`. Данная
+таблица имеет следующую структуру:
+
+- `id` – уникальный идентификатор роли
+- `name` – имя роли
+- `owner_id` – идентификатор владельца
+
+#### Встроенные роли {: #builtin_roles }
+Помимо создаваемых пользователями ролей, Picodata предоставляет
+следующие системные роли:
+
+##### public
+
+Роль `public` автоматически назначается всем создаваемым
+пользователям. Наделение роли `publiс` привилегией на какой-либо объект
+делает этот объект общедоступным.
+
+##### super
+Роль `super` имеет все привилегии, доступные пользователю [`admin`](#admin).
+
+
+## Начало работы {: #getting_started }
+
+Для начала работы с пользователями, привилегиями и ролями следует
+[подключиться](../tutorial/connecting.md) к инстансу Picodata.
+
+## Управление пользователями {: #user_management }
+
+### Создание {: #create_user }
+
+Для создания пользователя используйте SQL-команду [CREATE
+USER](../reference/sql_queries.md#CreateUser):
+
 ```sql
-pico.sql([[
-	create role "swine_admin"
-	grant write on "friends_of_peppa" to "swine_admin"
-	grant "swine_admin" to "peppa"
-	]])
+CREATE USER <user name>
+    [ [ WITH ] PASSWORD 'password' ]
+    [ USING chap-sha1 | md5 | ldap ]
 ```
 
-Изъятие привилегии у роли:
+Пример:
+
 ```sql
-pico.sql([[
-	revoke write on "friends_of_peppa" from "swine_admin"
-	]])
-``` -->
+CREATE USER "alice" WITH PASSWORD 'totallysecret' USING chap-sha1
+CREATE USER "bob" USING ldap
+```
+
+При использовании методов аутентификации `chap-sha1` и `md5` требуется
+использовать пароль не короче 8 символов, для метода `ldap` пароль не
+требуется и игнорируется.
+
+Для выполнения команды требуется привилегия `CREATE USER`:
+
+```sql
+GRANT CREATE USER TO <grantee>
+```
+
+Такое право по умолчанию есть у [Администратора СУБД](#admin) (`admin`).
+
+### Изменение {: #alter_user }
+
+Для изменения учетных данных пользователя используйте SQL-команду `ALTER
+USER`:
+<!-- (../reference/sql_queries.md#AlterUser) -->
+
+```sql
+ALTER USER <user name>
+    [ LOGIN | NOLOGIN ]
+    [ ENABLE | DISABLE ]
+    [ RENAME <new name> ]
+    [ [ WITH ] PASSWORD <password> ]
+    [ USING chap-sha1 | md5 | ldap ]
+```
+Возможные действия:
+
+- `LOGIN` / `NOLOGIN` —  включение/выключение привилегии `SESSION`
+- `ENABLE` / `DISABLE` —  включение/выключение привилегии `USAGE`
+- `RENAME` —  переименование пользователя
+- `USING` —  выбора метода аутентификации
+
+Пример переименования пользователя:
+
+```sql
+ALTER USER "alice" RENAME "bob"
+```
+
+Пример блокировки пользователя (отзыва привилегий `SESSION` и `USAGE`):
+
+```sql
+ALTER USER "alice" NOLOGIN DISABLE
+```
+
+Обратное действие (разблокировка) с возвращением этих привилегий:
+
+```sql
+ALTER USER "alice" LOGIN ENABLE
+```
+
+Для использования `ALTER USER` требуется иметь эту привилегию. Ее можно выдать на конкретного
+пользователя:
+
+```sql
+GRANT ALTER ON USER <user name> TO <grantee>
+```
+
+Или на всех пользователей сразу:
+
+```sql
+GRANT ALTER USER TO <grantee>
+```
+
+Привилегия `ALTER USER` по умолчанию есть у владельца пользователя и у
+[Администратора СУБД](#admin).
+
+### Удаление {: #drop_user }
+
+Для удаление пользователя используйте SQL-команду `DROP USER`:
+
+```sql
+DROP USER <user name>
+```
+
+Удаление пользователя приведет к ошибке если в системе есть объекты,
+владельцем которых он является (что соответствует опции `RESTRICT` из
+ANSI SQL).
+
+Для удаления пользователя требуется привилегия `DROP USER` на
+конкретного пользователя или на всех пользователей сразу:
+
+```sql
+GRANT DROP ON USER <user name> TO <grantee>
+GRANT DROP USER TO <grantee>
+```
+
+Такие есть по умолчанию у [Администратора СУБД](#admin) и у владельца
+пользователя.
+
+### Использование ролей {: #role_management }
+
+Для создания и удаления ролей используйте следующие команды:
+
+```sql
+CREATE ROLE <role name>
+DROP ROLE <role name>
+```
+
+Выполнение данных действий требует наличия привилегий `CREATE ROLE` /
+`DROP ROLE` соответственно.
+
+Для назначения роли используйте следующую команду:
+
+```sql
+GRANT [ ROLE ] <role name> TO <grantee>
+```
+
+Назначение привилегий роли происходит при помощи команды `GRANT`:
+
+```sql
+GRANT <action> ON <object name> TO <grantee>
+```
+
+В качестве `grantee` может выступать идентификатор как роли, так и
+пользователя. Стоит отметить, что не все привилегии можно выдать ролям,
+например, привилегия `SESSION` не может быть выдана другой роли при
+помощи `GRANT`, а только командой [`ALTER USER`](#alter_user).
+
+Выдать или отозвать роль может только ее создатель.
+Исключением является [администратор СУБД](#admin),
+который может выдать или отозвать любую роль.
+
+Отозвать роль можно следующим образом:
+
+```sql
+REVOKE [ ROLE ] <role name> FROM <grantee>
+```
+
+## Управление доступом к таблицам {: #tables_access }
+
+В Picodata доступно создание и удаление таблиц. Над таблицами можно
+совершать операции чтения и записи. Для ограничения доступа к операциям
+с таблицами в Picodata доступны привилегии `CREATE`, `DROP`, `READ`,
+`WRITE` и `ALTER`. Все привилегии (кроме `CREATE`) могут быть выданы на
+конкретную таблицу или на все таблицы сразу. Привилегия `CREATE` может быть
+выдана только глобально.
+
+Выдача привилегий осуществляется командой `GRANT`. На все таблицы:
+
+```sql
+GRANT <priv> TABLE TO <grantee>
+```
+
+На конкретную таблицу:
+
+```sql
+GRANT <priv> ON TABLE <table name> TO <grantee>
+```
+
+Отозвать выданные привилегии можно при помощи команды `REVOKE`:
+
+```sql
+REVOKE <priv> ON TABLE <table name> FROM <grantee>
+```
+
+## Дополнительные примеры SQL-запросов {: #sql_examples }
+
+```sql
+CREATE USER <user name>
+    [ [ WITH ] PASSWORD 'password' ]
+    [ USING chap-sha1 | md5 | ldap ]
+ALTER USER <user name>
+    [ [ WITH ] PASSWORD 'password' ]
+    [ USING chap-sha1 | md5 | ldap ]
+DROP USER <user name>
+
+CREATE ROLE <role name>
+DROP ROLE <role name>
 
 
-См. также [`pico.grant_privilege`](../reference/api.md#picogrant_privilege) и [`pico.revoke_privilege`](../reference/api.md#picorevoke_privilege)
+GRANT READ ON TABLE <table name> TO <grantee>
+GRANT READ TABLE TO <grantee>
+
+GRANT WRITE TABLE TO <grantee>
+GRANT WRITE ON TABLE <table name> TO <grantee>
+
+GRANT CREATE TABLE TO <grantee>
+GRANT CREATE ROLE TO <grantee>
+GRANT CREATE USER TO <grantee>
+
+GRANT ALTER TABLE TO <grantee> // alter any table
+GRANT ALTER ON TABLE <table name> TO <grantee>
+GRANT ALTER USER to <grantee>
+GRANT ALTER ON USER <user name> to <grantee>
+
+GRANT DROP TABLE TO <grantee>
+GRANT DROP USER TO <grantee>
+GRANT DROP ROLE TO <grantee>
+GRANT DROP ON TABLE <table name> TO <grantee>
+GRANT DROP ON USER <user name> TO <grantee>
+GRANT DROP ON ROLE <role name> TO <grantee>
+
+GRANT [ ROLE ] <role name> TO <grantee>
+```
+
+См. также:
+
+- [Википедия — Управление доступом на основе ролей](https://ru.wikipedia.org/wiki/Управление_доступом_на_основе_ролей){:target="_blank"}
+- [Википедия — Избирательное управление доступом](https://ru.wikipedia.org/wiki/Избирательное_управление_доступом){:target="_blank"}
+- [Описание системных таблиц](../architecture/system_tables.md)
