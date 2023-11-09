@@ -1,5 +1,6 @@
 use crate::error::PgResult;
 use bytes::{BufMut, BytesMut};
+use pgwire::messages::startup::SslRequest;
 use std::io::{self, ErrorKind::UnexpectedEof};
 
 // Public re-exports.
@@ -54,6 +55,11 @@ impl<S: io::Read> PgStream<S> {
 
         if self.startup_processed {
             return FeMessage::decode(&mut self.ibuf).map_err(|e| e.into());
+        }
+
+        // Try to decode SslRequest first, as it fits the Startup format with an invalid version.
+        if let Some(ssl_request) = SslRequest::decode(&mut self.ibuf)? {
+            return Ok(Some(FeMessage::SslRequest(ssl_request)));
         }
 
         // This is done once at connection startup.

@@ -1,6 +1,7 @@
 use crate::stream::BeMessage;
 use pgwire::error::ErrorInfo;
 use pgwire::messages::data::{DataRow, RowDescription};
+use pgwire::messages::response::SslResponse;
 use pgwire::messages::{response, startup::*};
 
 /// MD5AuthRequest requests md5 password from the frontend.
@@ -41,4 +42,8 @@ pub fn row_description(row_description: RowDescription) -> BeMessage {
 /// DataRow contains one row from response.
 pub fn data_row(data_row: DataRow) -> BeMessage {
     BeMessage::DataRow(data_row)
+}
+
+pub fn ssl_refuse() -> BeMessage {
+    BeMessage::SslResponse(SslResponse::Refuse)
 }
