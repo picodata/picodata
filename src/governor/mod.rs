@@ -351,9 +351,9 @@ impl Loop {
                 }
             }
 
-            Plan::ProposeWeightChanges(ProposeWeightChanges { op }) => {
+            Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges { op }) => {
                 governor_step! {
-                    "proposing replicaset weight change"
+                    "proposing replicaset state change"
                     async {
                         node.propose_and_wait(op, Duration::from_secs(3))??;
                     }
@@ -370,17 +370,6 @@ impl Loop {
                     ]
                     async {
                         handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
-                    }
-                }
-            }
-
-            Plan::UpdateWeights(UpdateWeights { ops }) => {
-                for op in ops {
-                    governor_step! {
-                        "proposing current replicaset weights change"
-                        async {
-                            node.propose_and_wait(op, Duration::from_secs(3))??;
-                        }
                     }
                 }
             }

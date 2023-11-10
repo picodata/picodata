@@ -73,8 +73,8 @@ impl VshardConfig {
                 );
                 continue;
             };
-            use crate::replicaset::WeightState::UpToDate;
-            if r.weight > 0.0 && r.weight_state == UpToDate {
+            use crate::replicaset::ReplicasetState::Ready;
+            if r.weight > 0.0 && r.state == Ready {
                 found_ready_replicaset = true;
             }
 

@@ -2,8 +2,8 @@ use crate::has_grades;
 use crate::instance::grade::Grade;
 use crate::instance::grade::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
+use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
-use crate::replicaset::WeightState;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -113,7 +113,7 @@ pub(super) fn action_plan<'i>(
                 master_id: master_id.clone(),
                 weight: 0.,
                 weight_origin: WeightOrigin::Auto,
-                weight_state: WeightState::Initial,
+                state: ReplicasetState::NotReady,
                 tier: tier.clone(),
             },
         )?;
@@ -180,40 +180,16 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // proposing automatic sharding weight changes
-    let to_change_weights = get_first_auto_weight_change(instances, replicasets, tiers);
-    if let Some(replicaset_id) = to_change_weights {
+    // proposing automatic replicaset state & weight change
+    let to_change_weights = get_replicaset_state_change(instances, replicasets, tiers);
+    if let Some((replicaset_id, need_to_update_weight)) = to_change_weights {
         let mut uops = UpdateOps::new();
-        uops.assign("weight", 1.)?;
-        let state = if vshard_bootstrapped {
-            // need to reconfigure sharding on all instances
-            WeightState::Updating
-        } else {
-            // ok to just change the weights
-            WeightState::UpToDate
-        };
-        uops.assign("weight_state", state)?;
-        let op = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], uops)?;
-        return Ok(ProposeWeightChanges { op }.into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // applying proposed sharding weight changes
-    // TODO: UpToDate & Updating is no longer needed, just need to know if the
-    // weight is uninitialized, i.e. state = Initial, origin = Auto
-    let to_update_weights: Vec<_> = replicasets
-        .values()
-        .filter_map(|r| (r.weight_state == WeightState::Updating).then_some(&r.replicaset_id))
-        .collect();
-    if !to_update_weights.is_empty() {
-        let mut ops = vec![];
-        for replicaset_id in to_update_weights {
-            let mut uops = UpdateOps::new();
-            uops.assign("weight_state", WeightState::UpToDate)?;
-            let op = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], uops)?;
-            ops.push(op);
+        if need_to_update_weight {
+            uops.assign("weight", 1.)?;
         }
-        return Ok(UpdateWeights { ops }.into());
+        uops.assign("state", ReplicasetState::Ready)?;
+        let op = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], uops)?;
+        return Ok(ProposeReplicasetStateChanges { op }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -252,11 +228,8 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // bootstrap sharding
-    // FIXME: Must bootstrap when the first full replicaset with non-zero weight
-    // is found. Instead currently if the instance starts with the user
-    // specified non-zero weight, it's not going to work properly.
     let to_bootstrap = (!vshard_bootstrapped)
-        .then(|| get_first_replicaset_with_weight(instances, replicasets))
+        .then(|| get_first_ready_replicaset(instances, replicasets))
         .flatten();
     if let Some(Replicaset { master_id, .. }) = to_bootstrap {
         let target = master_id;
@@ -426,12 +399,8 @@ pub mod stage {
             pub op: Dml,
         }
 
-        pub struct ProposeWeightChanges {
+        pub struct ProposeReplicasetStateChanges {
             pub op: Dml,
-        }
-
-        pub struct UpdateWeights {
-            pub ops: Vec<Dml>,
         }
 
         pub struct ToOnline<'i> {
@@ -482,11 +451,11 @@ fn get_new_replicaset_master_if_needed<'i>(
 }
 
 #[inline(always)]
-fn get_first_auto_weight_change<'i>(
+fn get_replicaset_state_change<'i>(
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetId, &Replicaset>,
     tiers: &HashMap<&String, &Tier>,
-) -> Option<&'i ReplicasetId> {
+) -> Option<(&'i ReplicasetId, bool)> {
     let mut replicaset_sizes = HashMap::new();
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
@@ -494,21 +463,25 @@ fn get_first_auto_weight_change<'i>(
         let Some(r) = replicasets.get(replicaset_id) else {
             continue;
         };
-        if r.weight_origin == WeightOrigin::User || r.weight_state == WeightState::Updating {
+        if r.state != ReplicasetState::NotReady {
             continue;
         }
         let Some(tier_info) = tiers.get(&r.tier) else {
             continue;
         };
-        if *replicaset_size >= tier_info.replication_factor && r.weight == 0. {
-            return Some(replicaset_id);
+        // TODO: set replicaset.state = NotReady if it was Ready but is no
+        // longer full
+        if *replicaset_size < tier_info.replication_factor {
+            continue;
         }
+        let need_to_update_weight = r.weight_origin != WeightOrigin::User;
+        return Some((replicaset_id, need_to_update_weight));
     }
     None
 }
 
 #[inline(always)]
-fn get_first_replicaset_with_weight<'r>(
+fn get_first_ready_replicaset<'r>(
     instances: &[Instance],
     replicasets: &HashMap<&ReplicasetId, &'r Replicaset>,
 ) -> Option<&'r Replicaset> {
@@ -516,7 +489,7 @@ fn get_first_replicaset_with_weight<'r>(
         let Some(replicaset) = replicasets.get(replicaset_id) else {
             continue;
         };
-        if replicaset.weight_state == WeightState::UpToDate && replicaset.weight > 0. {
+        if replicaset.state == ReplicasetState::Ready && replicaset.weight > 0. {
             return Some(replicaset);
         }
     }

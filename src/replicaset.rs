@@ -38,8 +38,9 @@ pub struct Replicaset {
     /// or manually by the user.
     pub weight_origin: WeightOrigin,
 
-    // TODO: remove this
-    pub weight_state: WeightState,
+    /// Current state of the replicaset. This is set to `NotReady` when the
+    /// replicaset is not filled up to the tier's replication factor.
+    pub state: ReplicasetState,
 }
 impl Encode for Replicaset {}
 
@@ -55,7 +56,7 @@ impl Replicaset {
             Field::from(("tier", FieldType::String)),
             Field::from(("weight", FieldType::Number)),
             Field::from(("weight_origin", FieldType::String)),
-            Field::from(("weight_state", FieldType::String)),
+            Field::from(("state", FieldType::String)),
         ]
     }
 
@@ -69,7 +70,7 @@ impl Replicaset {
             tier: "storage".into(),
             weight: 13.37,
             weight_origin: WeightOrigin::Auto,
-            weight_state: WeightState::UpToDate,
+            state: ReplicasetState::Ready,
         }
     }
 }
@@ -78,13 +79,13 @@ impl std::fmt::Display for Replicaset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "({}, master: {}, tier: {}, weight: {}, weight_origin: {}, weight_state: {})",
+            "({}, master: {}, tier: {}, weight: {}, weight_origin: {}, state: {})",
             self.replicaset_id,
             self.master_id,
             self.tier,
             self.weight,
             self.weight_origin,
-            self.weight_state,
+            self.state,
         )
     }
 }
@@ -105,16 +106,13 @@ impl std::fmt::Display for Replicaset {
 ::tarantool::define_str_enum! {
     /// Replicaset weight state
     #[derive(Default)]
-    pub enum WeightState {
-        /// Weight is set to the inital value, which will be changed.
+    pub enum ReplicasetState {
+        /// Replicaset is not filled up to the replication factor yet.
         #[default]
-        Initial = "initial",
+        NotReady = "not-ready",
 
-        /// Weight is in progress of being updated.
-        Updating = "updating",
-
-        /// Weight doesn't need updating.
-        UpToDate = "up-to-date",
+        /// Replicaset is fully operable.
+        Ready = "ready",
     }
 }
 
