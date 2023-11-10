@@ -242,7 +242,7 @@ def test_raft_log(instance: Instance):
 +-----+----+-----+--------+
 |  1  | 1  |1.0.1|Insert({_pico_peer_address}, [1,"127.0.0.1:{p}"])|
 |  2  | 1  |1.0.2|Insert({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"])|
-|  3  | 1  |1.0.3|Insert(523, ["default",1])|
+|  3  | 1  |1.0.3|Insert({_pico_tier}, ["default",1])|
 |  4  | 1  |1.0.4|Insert({_pico_property}, ["global_schema_version",0])|
 |  5  | 1  |1.0.5|Insert({_pico_property}, ["next_schema_version",1])|
 |  6  | 1  |1.0.6|Insert({_pico_property}, ["password_min_length",8])|
@@ -268,6 +268,7 @@ def test_raft_log(instance: Instance):
         _pico_property=space_id("_pico_property"),
         _pico_replicaset=space_id("_pico_replicaset"),
         _pico_instance=space_id("_pico_instance"),
+        _pico_tier=space_id("_pico_tier"),
     )
     assert strip_spaces(expected) == strip_spaces(raft_log)
 
