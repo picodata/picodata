@@ -1,9 +1,11 @@
 import pytest
 from conftest import Cluster, Instance, TarantoolError, ReturnError
 from tarantool.error import NetworkError  # type: ignore
+from tarantool.connection import Connection  # type: ignore
 
 VALID_PASSWORD = "long enough"
 PASSWORD_MIN_LENGTH_KEY = "password_min_length"
+MAX_LOGIN_ATTEMPTS = 5
 
 
 def expected_min_password_violation_error(min_length: int):
@@ -24,6 +26,64 @@ def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
     cluster.raft_wait_index(ret)
     check = i1.call("box.space._pico_property:get", PASSWORD_MIN_LENGTH_KEY)
     assert check[1] == min_password_len
+
+
+def test_max_login_attempts(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    def connect(
+        i: Instance, user: str | None = None, password: str | None = None
+    ) -> Connection:
+        return Connection(
+            i.host,
+            i.port,
+            user=user,
+            password=password,
+            connect_now=True,
+            reconnect_max_attempts=0,
+        )
+
+    c = connect(i1)
+    c.eval(
+        """
+        box.session.su(1)
+        box.schema.user.create('foo', {password='bar'})
+        box.schema.user.grant('foo', 'read,write,execute', 'universe')
+        """
+    )
+    c.close()
+
+    # First login is successful
+    c = connect(i1, user="foo", password="bar")
+    assert c
+
+    # Several failed login attempts but one less than maximum
+    for _ in range(MAX_LOGIN_ATTEMPTS - 1):
+        with pytest.raises(
+            NetworkError, match="User not found or supplied credentials are invalid"
+        ):
+            # incorrect password
+            connect(i1, user="foo", password="baz")
+
+    # Still possible to login. Resets the attempts counter
+    c = connect(
+        i1,
+        user="foo",
+        password="bar",
+    )
+    assert c
+
+    # Maximum failed login attempts
+    for _ in range(MAX_LOGIN_ATTEMPTS):
+        with pytest.raises(
+            NetworkError, match="User not found or supplied credentials are invalid"
+        ):
+            # incorrect password
+            connect(i1, user="foo", password="baz")
+
+    # Next login even with correct password fails as the limit is reached
+    with pytest.raises(NetworkError, match="maximum number of login attempts exceeded"):
+        connect(i1, user="foo", password="bar")
 
 
 def test_acl_lua_api(cluster: Cluster):

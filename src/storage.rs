@@ -1075,6 +1075,15 @@ impl From<ClusterwideSpace> for SpaceId {
 
         PasswordMinLength = "password_min_length",
 
+        /// Maximum number of login attempts through `picodata connect`.
+        /// Each failed login attempt increases a local per user counter of failed attempts.
+        /// When the counter reaches the value of this property any subsequent logins
+        /// of this user will be denied.
+        /// Local counter for a user is reset on successful login.
+        ///
+        /// Default value is [`DEFAULT_MAX_LOGIN_ATTEMPTS`].
+        MaxLoginAttempts = "max_login_attempts",
+
         /// Number of seconds to wait before automatically changing an
         /// unresponsive instance's grade to Offline.
         AutoOfflineTimeout = "auto_offline_timeout",
@@ -1114,6 +1123,7 @@ pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
 pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
 pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
 pub const DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT: f64 = (24 * 3600) as _;
+pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 5;
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
@@ -1170,6 +1180,15 @@ impl Properties {
         let res = self
             .get(PropertyName::PasswordMinLength)?
             .unwrap_or_default();
+        Ok(res)
+    }
+
+    /// See [`PropertyName::MaxLoginAttempts`]
+    #[inline]
+    pub fn max_login_attempts(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(PropertyName::MaxLoginAttempts)?
+            .unwrap_or(DEFAULT_MAX_LOGIN_ATTEMPTS);
         Ok(res)
     }
 

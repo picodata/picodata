@@ -12,6 +12,8 @@ use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
+use std::cell::OnceCell;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::io;
 use std::time::Duration;
@@ -281,6 +283,65 @@ fn redirect_interactive_sql() {
     .expect("overriding sql executor shouldn't fail")
 }
 
+/// Sets a check for user exceeding maximum number of login attempts through `picodata connect`.
+/// Also see [`PropertyName::MaxLoginAttempts`].
+fn set_login_attempts_check(storage: Clusterwide) {
+    use std::collections::hash_map::Entry;
+
+    // It's ok to loose this information during restart, so we keep it as a static.
+    static mut LOGIN_ATTEMPTS: OnceCell<HashMap<String, usize>> = OnceCell::new();
+    const ERROR: &str = "maximum number of login attempts exceeded";
+
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(
+        "box.session.on_auth(...)",
+        tlua::function3(
+            move |user: String, status: bool, lua: tlua::LuaState| unsafe {
+                // SAFETY: Accessing `USER_ATTEMPTS` is safe as it is only done from a single thread
+                LOGIN_ATTEMPTS.get_or_init(HashMap::new);
+                let attempts = LOGIN_ATTEMPTS.get_mut().expect("is initialized");
+
+                match attempts.entry(user) {
+                    Entry::Occupied(mut count) => {
+                        if *count.get()
+                            >= storage
+                                .properties
+                                .max_login_attempts()
+                                .expect("accessing storage should not fail")
+                        {
+                            // Currently `picodata connect` displays a generic error for all purposes
+                            // of connection failure. So this log is left to help during development/debugging.
+                            // Obviously this should not end up in production, so it is enabled only for debug
+                            // builds.
+                            // TODO: Remove once we fix `picodata connect` error display.
+                            if cfg!(debug_assertions) {
+                                tlog!(Warning, "{} (user=\"{}\")", ERROR, count.key());
+                            }
+                            // Raises an error instead of returning it as a function result.
+                            // This is the behavior required by `on_auth` trigger to drop the connection.
+                            // All the drop implementations are called, no need to clean anything up.
+                            tlua::ffi::lua_pushlstring(lua, ERROR.as_ptr() as _, ERROR.len());
+                            tlua::ffi::lua_error(lua);
+                            unreachable!();
+                        } else if status {
+                            // reset count on successful login
+                            count.remove();
+                        } else {
+                            *count.get_mut() += 1
+                        }
+                    }
+                    Entry::Vacant(count) => {
+                        if !status {
+                            count.insert(1);
+                        }
+                    }
+                }
+            },
+        ),
+    )
+    .expect("setting on auth trigger should not fail")
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Entrypoint {
@@ -328,6 +389,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     traft::event::init();
 
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
+    set_login_attempts_check(storage.clone());
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
     (storage.clone(), raft_storage)
