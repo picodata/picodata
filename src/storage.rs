@@ -1572,7 +1572,7 @@ macro_rules! define_instance_fields {
             )+
         }
 
-        fn instance_format() -> Vec<::tarantool::space::Field> {
+        pub fn instance_format() -> Vec<::tarantool::space::Field> {
             vec![
                 $( ::tarantool::space::Field::from(($name, $tt_ty)), )+
             ]

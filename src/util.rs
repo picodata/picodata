@@ -598,6 +598,48 @@ pub(crate) fn effective_user_id() -> UserId {
     session::euid().expect("infallible in picodata")
 }
 
+#[cfg(test)]
+use tarantool::space::Field;
+#[cfg(test)]
+#[track_caller]
+pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &str) {
+    use tarantool::space::FieldType;
+    use tarantool::tuple::Decode;
+
+    let value = rmpv::Value::decode(tuple).unwrap();
+    let fields = value.as_array().unwrap();
+    assert_eq!(
+        fields.len(),
+        format.len(),
+        "don't forget to update {what_to_fix}!"
+    );
+
+    for i in 0..fields.len() {
+        let field = &fields[i];
+        let field_type = format[i].field_type;
+        let field_name = &format[i].name;
+        let ok = match field_type {
+            FieldType::Any => true,
+            FieldType::Unsigned => field.is_u64(),
+            FieldType::String => field.is_str(),
+            FieldType::Number => field.is_number(),
+            FieldType::Double => field.is_f32() || field.is_f64(),
+            FieldType::Integer => field.is_i64(),
+            FieldType::Boolean => field.is_bool(),
+            FieldType::Varbinary => todo!(),
+            FieldType::Scalar => todo!(),
+            FieldType::Decimal | FieldType::Uuid | FieldType::Datetime | FieldType::Interval => {
+                field.is_ext()
+            }
+            FieldType::Array => field.is_array(),
+            FieldType::Map => field.is_map(),
+        };
+        if !ok {
+            panic!("expected field '{field_name}' to be {field_type:?}, but got {field:?}");
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// tests
 #[cfg(test)]

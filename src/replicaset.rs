@@ -114,3 +114,17 @@ impl std::fmt::Display for Replicaset {
         UpToDate = "up-to-date",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tarantool::tuple::ToTupleBuffer;
+
+    #[test]
+    fn matches_format() {
+        let r = Replicaset::replicaset_for_tests();
+        let tuple_data = r.to_tuple_buffer().unwrap();
+        let format = Replicaset::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "Replicaset::format");
+    }
+}

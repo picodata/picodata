@@ -603,5 +603,22 @@ mod tests {
             "tier \"noexistent_tier\" for current instance should exists",
         );
     }
+}
 
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tarantool::tuple::ToTupleBuffer;
+
+    #[test]
+    fn matches_format() {
+        let i = Instance::default();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = crate::storage::instance_format();
+        crate::util::check_tuple_matches_format(
+            tuple_data.as_ref(),
+            &format,
+            "define_instance_fields",
+        );
+    }
 }
