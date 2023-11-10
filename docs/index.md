@@ -39,6 +39,7 @@ Picodata — это распределенная система промышле
 * [Распределенный SQL](architecture/distributed_sql)
 * [Алгоритм discovery](architecture/discovery)
 * [Жизненный цикл инстанса](architecture/instance_lifecycle)
+* [Управление топологией](architecture/topology_management)
 * [Raft и отказоустойчивость](architecture/raft_failover)
 * [Описание системных таблиц](architecture/system_tables.md)
 

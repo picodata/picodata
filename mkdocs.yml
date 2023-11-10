@@ -33,6 +33,7 @@ nav:
     - architecture/distributed_sql.md
     - architecture/discovery.md
     - architecture/instance_lifecycle.md
+    - architecture/topology_management.md
     - architecture/raft_failover.md
     - architecture/system_tables.md
 
