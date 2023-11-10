@@ -25,10 +25,21 @@ pub struct Replicaset {
     /// Instance id of the current replication leader.
     pub master_id: InstanceId,
 
-    /// Sharding weight of the replicaset.
-    pub weight: weight::Info,
-
+    /// Name of the tier the replicaset belongs to.
     pub tier: String,
+
+    /// Sharding weight of the replicaset.
+    ///
+    /// Determines the portion of the tier's buckets which will be stored in
+    /// this replicaset.
+    pub weight: Weight,
+
+    /// Describes how the `weight` is chosen: either automatically by governor,
+    /// or manually by the user.
+    pub weight_origin: WeightOrigin,
+
+    // TODO: remove this
+    pub weight_state: WeightState,
 }
 impl Encode for Replicaset {}
 
@@ -39,9 +50,24 @@ impl Replicaset {
             Field::from(("replicaset_id", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
             Field::from(("master_id", FieldType::String)),
-            Field::from(("weight", FieldType::Array)),
             Field::from(("tier", FieldType::String)),
+            Field::from(("weight", FieldType::Number)),
+            Field::from(("weight_origin", FieldType::String)),
+            Field::from(("weight_state", FieldType::String)),
         ]
+    }
+
+    #[inline(always)]
+    pub fn replicaset_for_tests() -> Self {
+        Self {
+            replicaset_id: "r1".into(),
+            replicaset_uuid: "r1-uuid".into(),
+            master_id: "i".into(),
+            tier: "storage".into(),
+            weight: 13.37,
+            weight_origin: WeightOrigin::Auto,
+            weight_state: WeightState::UpToDate,
+        }
     }
 }
 
@@ -49,74 +75,42 @@ impl std::fmt::Display for Replicaset {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "({}, master: {}, weight: {}, tier: {})",
-            self.replicaset_id, self.master_id, self.weight, self.tier
+            "({}, master: {}, tier: {}, weight: {}, weight_origin: {}, weight_state: {})",
+            self.replicaset_id,
+            self.master_id,
+            self.tier,
+            self.weight,
+            self.weight_origin,
+            self.weight_state,
         )
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/// Replicaset weight
-pub mod weight {
-    /// Replicaset weight info
-    #[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
-    pub struct Info {
-        pub value: super::Weight,
-        pub origin: Origin,
-        pub state: State,
+::tarantool::define_str_enum! {
+    /// Replicaset weight origin
+    #[derive(Default)]
+    pub enum WeightOrigin {
+        /// Weight is determined by governor.
+        #[default]
+        Auto = "auto",
+
+        /// Weight is specified by user.
+        User = "user",
     }
+}
 
-    pub struct Value;
-    impl Value {
-        // FIXME: there's got to be a better way
-        pub const PATH: &str = "weight[1]";
-    }
+::tarantool::define_str_enum! {
+    /// Replicaset weight state
+    #[derive(Default)]
+    pub enum WeightState {
+        /// Weight is set to the inital value, which will be changed.
+        #[default]
+        Initial = "initial",
 
-    ::tarantool::define_str_enum! {
-        /// Replicaset weight origin
-        #[derive(Default)]
-        pub enum Origin {
-            /// Weight is determined by governor.
-            #[default]
-            Auto = "Auto",
+        /// Weight is in progress of being updated.
+        Updating = "updating",
 
-            /// Weight is specified by user.
-            User = "User",
-        }
-    }
-    impl Origin {
-        // FIXME: there's got to be a better way
-        pub const PATH: &str = "weight[2]";
-    }
-
-    ::tarantool::define_str_enum! {
-        /// Replicaset weight state
-        #[derive(Default)]
-        pub enum State {
-            /// Weight is set to the inital value, which will be changed.
-            #[default]
-            Initial = "Initial",
-
-            /// Weight is in progress of being updated.
-            Updating = "Updating",
-
-            /// Weight doesn't need updating.
-            UpToDate = "UpToDate",
-        }
-    }
-    impl State {
-        // FIXME: there's got to be a better way
-        pub const PATH: &str = "weight[3]";
-    }
-
-    impl std::fmt::Display for Info {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            let Self {
-                value,
-                origin,
-                state,
-            } = self;
-            write!(f, "({origin}, {state}, {value})")
-        }
+        /// Weight doesn't need updating.
+        UpToDate = "up-to-date",
     }
 }

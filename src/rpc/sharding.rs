@@ -199,7 +199,7 @@ pub mod cfg {
                     continue;
                 };
 
-                let weight = replicaset_info.weight.value;
+                let weight = replicaset_info.weight;
                 let replicaset = sharding.entry(peer.replicaset_uuid)
                     .or_insert_with(|| Replicaset::with_weight(weight));
 

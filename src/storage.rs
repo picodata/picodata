@@ -3340,13 +3340,7 @@ mod tests {
 
         storage.properties.space.insert(&("foo", "bar")).unwrap();
 
-        let r = Replicaset {
-            replicaset_id: "r1".into(),
-            replicaset_uuid: "r1-uuid".into(),
-            master_id: "i".into(),
-            weight: crate::replicaset::weight::Info::default(),
-            tier: Default::default(),
-        };
+        let r = Replicaset::replicaset_for_tests();
         storage.replicasets.space.insert(&r).unwrap();
 
         let (snapshot_data, _) = storage
@@ -3430,13 +3424,7 @@ mod tests {
             tuples,
         });
 
-        let r = Replicaset {
-            replicaset_id: "r1".into(),
-            replicaset_uuid: "r1-uuid".into(),
-            master_id: "i".into(),
-            weight: crate::replicaset::weight::Info::default(),
-            tier: Default::default(),
-        };
+        let r = Replicaset::replicaset_for_tests();
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
             space_id: ClusterwideSpace::Replicaset.into(),

@@ -2,7 +2,8 @@ use crate::has_grades;
 use crate::instance::grade::Grade;
 use crate::instance::grade::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
-use crate::replicaset::weight;
+use crate::replicaset::WeightOrigin;
+use crate::replicaset::WeightState;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
 use crate::storage::{ClusterwideSpace, PropertyName};
@@ -140,11 +141,9 @@ pub(super) fn action_plan<'i>(
                 replicaset_id: replicaset_id.clone(),
                 replicaset_uuid: replicaset_uuid.clone(),
                 master_id: master_id.clone(),
-                weight: weight::Info {
-                    value: 0.,
-                    origin: weight::Origin::Auto,
-                    state: weight::State::Initial,
-                },
+                weight: 0.,
+                weight_origin: WeightOrigin::Auto,
+                weight_state: WeightState::Initial,
                 tier: tier.clone(),
             },
         )?;
@@ -219,7 +218,7 @@ pub(super) fn action_plan<'i>(
             vshard_bootstrapped
                 || replicasets
                     .get(&i.replicaset_id)
-                    .map(|r| r.weight.value != 0.)
+                    .map(|r| r.weight != 0.)
                     .unwrap_or(false)
         });
     if let Some(Instance {
@@ -265,15 +264,15 @@ pub(super) fn action_plan<'i>(
     let to_change_weights = get_first_auto_weight_change(instances, replicasets, tiers);
     if let Some(replicaset_id) = to_change_weights {
         let mut uops = UpdateOps::new();
-        uops.assign(weight::Value::PATH, 1.)?;
+        uops.assign("weight", 1.)?;
         let state = if vshard_bootstrapped {
             // need to reconfigure sharding on all instances
-            weight::State::Updating
+            WeightState::Updating
         } else {
             // ok to just change the weights
-            weight::State::UpToDate
+            WeightState::UpToDate
         };
-        uops.assign(weight::State::PATH, state)?;
+        uops.assign("weight_state", state)?;
         let op = Dml::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
         return Ok(ProposeWeightChanges { op }.into());
     }
@@ -302,7 +301,7 @@ pub(super) fn action_plan<'i>(
     // applying proposed sharding weight changes
     let to_update_weights: Vec<_> = replicasets
         .values()
-        .filter_map(|r| (r.weight.state == weight::State::Updating).then_some(&r.replicaset_id))
+        .filter_map(|r| (r.weight_state == WeightState::Updating).then_some(&r.replicaset_id))
         .collect();
     if !to_update_weights.is_empty() {
         let targets = maybe_responding(instances)
@@ -316,7 +315,7 @@ pub(super) fn action_plan<'i>(
         let mut ops = vec![];
         for replicaset_id in to_update_weights {
             let mut uops = UpdateOps::new();
-            uops.assign(weight::State::PATH, weight::State::UpToDate)?;
+            uops.assign("weight_state", WeightState::UpToDate)?;
             let op = Dml::update(ClusterwideSpace::Replicaset, &[replicaset_id], uops)?;
             ops.push(op);
         }
@@ -524,16 +523,16 @@ fn get_first_auto_weight_change<'i>(
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
         *replicaset_size += 1;
-        let Some(Replicaset { weight, tier, .. }) = replicasets.get(replicaset_id) else {
+        let Some(r) = replicasets.get(replicaset_id) else {
             continue;
         };
-        if weight.origin == weight::Origin::User || weight.state == weight::State::Updating {
+        if r.weight_origin == WeightOrigin::User || r.weight_state == WeightState::Updating {
             continue;
         }
-        let Some(tier_info) = tiers.get(tier) else {
+        let Some(tier_info) = tiers.get(&r.tier) else {
             continue;
         };
-        if *replicaset_size >= tier_info.replication_factor && weight.value == 0. {
+        if *replicaset_size >= tier_info.replication_factor && r.weight == 0. {
             return Some(replicaset_id);
         }
     }
@@ -549,7 +548,7 @@ fn get_first_replicaset_with_weight<'r>(
         let Some(replicaset) = replicasets.get(replicaset_id) else {
             continue;
         };
-        if replicaset.weight.state == weight::State::UpToDate && replicaset.weight.value > 0. {
+        if replicaset.weight_state == WeightState::UpToDate && replicaset.weight > 0. {
             return Some(replicaset);
         }
     }
