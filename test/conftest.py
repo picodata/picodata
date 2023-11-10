@@ -832,7 +832,9 @@ class Instance:
             "leader_id": status.leader_id,
         } == {"raft_state": state, "leader_id": leader_id}
 
-    def wait_online(self, timeout: int | float = 6, rps: int | float = 5):
+    def wait_online(
+        self, timeout: int | float = 6, rps: int | float = 5, expected_incarnation=None
+    ):
         """Wait until instance attains Online grade
 
         Args:
@@ -869,6 +871,8 @@ class Instance:
             assert isinstance(myself, dict)
             assert isinstance(myself["current_grade"], dict)
             assert myself["current_grade"]["variant"] == "Online"
+            if expected_incarnation is not None:
+                assert myself["current_grade"]["incarnation"] == expected_incarnation
 
         Retriable(timeout, rps, fatal=ProcessDead).call(fetch_info)
         eprint(f"{self} is online")
