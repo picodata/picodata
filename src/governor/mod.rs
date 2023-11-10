@@ -113,6 +113,7 @@ impl Loop {
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
                 tlog!(Warning, "failed constructing an action plan: {e}");
+                waker.mark_seen();
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
                 return Continue;
             }
@@ -129,11 +130,7 @@ impl Loop {
                 .await;
                 if let Err(e) = res {
                     tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
-                    // TODO: better api needed in library
-                    if waker.has_changed() {
-                        // This resolves immediately
-                        _ = waker.changed().await;
-                    }
+                    waker.mark_seen();
                     _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
                     return Continue;
                 }
@@ -515,6 +512,7 @@ impl Loop {
 
             Plan::None => {
                 tlog!(Info, "nothing to do, waiting for events to handle");
+                waker.mark_seen();
                 _ = waker.changed().await;
             }
         }

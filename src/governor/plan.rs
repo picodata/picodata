@@ -32,6 +32,11 @@ pub(super) fn action_plan<'i>(
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
 ) -> Result<Plan<'i>> {
+    // This function is specifically extracted, to separate the task
+    // construction from any IO and/or other yielding operations.
+    #[cfg(debug_assertions)]
+    let _guard = crate::util::NoYieldsGuard::new();
+
     ////////////////////////////////////////////////////////////////////////////
     // conf change
     if let Some(conf_change) = raft_conf_change(instances, voters, learners) {
