@@ -27,7 +27,7 @@ use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
 use sbroad::frontend::Ast;
-use sbroad::ir::acl::{Acl, GrantRevokeType};
+use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::ddl::Ddl;
 use sbroad::ir::operator::Relational;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
@@ -574,16 +574,22 @@ fn reenterable_schema_change_request(
         }
         IrNode::Acl(Acl::AlterUser {
             name,
-            password,
-            auth_method,
+            alter_option,
             ..
         }) => {
-            let method = AuthMethod::from_str(&auth_method)
-                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
-            check_password_min_length(&password, &method, node)?;
-            let data = AuthData::new(&method, &name, &password);
-            let auth = AuthDef::new(method, data.into_string());
-            Params::AlterUser(name, auth)
+            let alter_option_param = match alter_option {
+                AlterOption::Password { password, auth_method } => {
+                    let method = AuthMethod::from_str(&auth_method)
+                        .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+                    check_password_min_length(&password, &method, node)?;
+                    let data = AuthData::new(&method, &name, &password);
+                    let auth = AuthDef::new(method, data.into_string());
+                    AlterOptionParam::ChangePassword(auth)
+                }
+                AlterOption::Login => AlterOptionParam::Login,
+                AlterOption::NoLogin => AlterOptionParam::NoLogin,
+            };
+            Params::AlterUser(name, alter_option_param)
         }
         IrNode::Acl(Acl::GrantPrivilege {
             grant_type,
@@ -676,7 +682,7 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::CreateUser { user_def })
             }
-            Params::AlterUser(name, auth) => {
+            Params::AlterUser(name, alter_option_param) => {
                 if storage.roles.by_name(name)?.is_some() {
                     return Err(Error::Other(
                         format!("Role {name} exists. Unable to alter role.").into(),
@@ -686,12 +692,39 @@ fn reenterable_schema_change_request(
                     // User doesn't exists, no op needed.
                     return Ok(ConsumerResult { row_count: 0 });
                 };
-                Op::Acl(OpAcl::ChangeAuth {
-                    user_id: user_def.id,
-                    auth: auth.clone(),
+
+                // Variables for alter LOGIN/NOLOGIN.
+                let grantor_id = session::uid()?;
+                let grantee_id = get_role_or_user_id(storage, name)?;
+                let object_type = String::from("universe");
+                let object_name = String::new();
+                let privilege = SqlPrivilege::Session.to_string();
+                let priv_def = PrivilegeDef {
+                    grantor_id,
+                    grantee_id,
+                    object_type,
+                    object_name,
+                    privilege,
                     // This will be set right after the match statement.
                     schema_version: 0,
-                })
+                };
+
+                match alter_option_param {
+                    AlterOptionParam::ChangePassword(auth) => {
+                        Op::Acl(OpAcl::ChangeAuth {
+                            user_id: user_def.id,
+                            auth: auth.clone(),
+                            // This will be set right after the match statement.
+                            schema_version: 0,
+                        })
+                    }
+                    AlterOptionParam::Login => {
+                        Op::Acl(OpAcl::GrantPrivilege { priv_def })
+                    }
+                    AlterOptionParam::NoLogin => {
+                        Op::Acl(OpAcl::RevokePrivilege { priv_def })
+                    }
+                }
             }
             Params::DropUser(name) => {
                 let Some(user_def) = storage.users.by_name(name)? else {
@@ -840,11 +873,17 @@ fn reenterable_schema_change_request(
         return Ok(ConsumerResult { row_count: 1 });
     }
 
+    enum AlterOptionParam {
+        ChangePassword(AuthDef),
+        Login,
+        NoLogin
+    }
+
     enum Params {
         CreateTable(CreateTableParams),
         DropTable(String),
         CreateUser(String, AuthDef),
-        AlterUser(String, AuthDef),
+        AlterUser(String, AlterOptionParam),
         DropUser(String),
         CreateRole(String),
         DropRole(String),

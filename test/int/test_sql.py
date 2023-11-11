@@ -1006,6 +1006,19 @@ def test_sql_acl_privileges(cluster: Cluster):
     # TODO: Attempt to revoke FROM a user that doesn't visible for user.
     # TODO: Attempt to revoke FROM a role that doesn't visible for user.
 
+    # ===============ALTER Login/NoLogin=====================
+    # # Alter user with NOLOGIN option do nothing.
+    # sql_no(i1.sql(f""" alter user {username} with nologin """))
+    # # * Alter user with LOGIN option.
+    # sql_ok(i1.sql(f""" alter user {username} with login """))
+    # # * Alter user with LOGIN again do nothing.
+    # sql_no(i1.sql(f""" alter user {username} with login """))
+    # # * Check SESSION privilege given.
+    # privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"][1]
+    # assert privs_rows[2] == "user"
+    # assert privs_rows[3] == username
+    # assert privs_rows[4] == "session"
+
     # TODO: ================USERs interaction================
     # * TODO: User creation is prohibited.
     # * Grant CREATE to user.
