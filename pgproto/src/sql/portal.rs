@@ -1,8 +1,9 @@
 use super::describe::{CommandTag, QueryType};
 use super::handle::Handle;
 use super::statement::Statement;
-use super::types::ValueRows;
+use super::value::PgValue;
 use crate::error::PgResult;
+use bytes::BytesMut;
 use pgwire::messages::data::{DataRow, RowDescription};
 use serde_json::Value;
 use std::vec::IntoIter;
@@ -22,7 +23,7 @@ pub struct Portal {
     // TODO: consider using statement name or reference
     state: PortalState,
     statement: Statement,
-    rows: IntoIter<DataRow>,
+    values_stream: IntoIter<Vec<PgValue>>,
     row_count: usize,
 }
 
@@ -31,7 +32,7 @@ impl Portal {
         Portal {
             statement,
             state: PortalState::New,
-            rows: IntoIter::default(),
+            values_stream: IntoIter::default(),
             row_count: 0,
         }
     }
@@ -47,8 +48,11 @@ impl Portal {
             return Ok(None);
         }
 
-        if let Some(row) = self.rows.next() {
+        let mut buf = BytesMut::new();
+        if let Some(values) = self.values_stream.next() {
+            let row = encode_row(values, &mut buf);
             self.row_count += 1;
+            buf.clear();
             Ok(Some(row))
         } else {
             self.state = PortalState::Finished;
@@ -86,9 +90,7 @@ impl Portal {
         let handle = self.statement.handle();
         match query_type {
             QueryType::Dql => {
-                let row_description = self.row_description()?;
-                let rows = execute_dql(handle)?;
-                self.rows = rows.encode(&row_description)?.into_iter();
+                self.values_stream = execute_dql(handle)?.into_iter();
                 self.state = PortalState::Running;
             }
             QueryType::Acl | QueryType::Ddl | QueryType::Dml => {
@@ -96,9 +98,7 @@ impl Portal {
                 self.state = PortalState::Finished;
             }
             QueryType::Explain => {
-                let row_description = self.row_description()?;
-                let rows = execute_explain(handle)?;
-                self.rows = rows.encode(&row_description)?.into_iter();
+                self.values_stream = execute_explain(handle)?.into_iter();
                 self.state = PortalState::Running;
             }
         }
@@ -106,9 +106,17 @@ impl Portal {
     }
 }
 
-fn execute_dql(handle: &Handle) -> PgResult<ValueRows> {
-    let rows = ValueRows::new(handle.execute_and_get("rows")?);
-    Ok(rows)
+fn encode_row(values: Vec<PgValue>, buf: &mut BytesMut) -> DataRow {
+    let row = values.into_iter().map(|v| v.encode(buf).unwrap()).collect();
+    DataRow::new(row)
+}
+
+fn execute_dql(handle: &Handle) -> PgResult<Vec<Vec<PgValue>>> {
+    let raw: Vec<Vec<Value>> = handle.execute_and_get("rows")?;
+    Ok(raw
+        .into_iter()
+        .map(|row| row.into_iter().map(PgValue::from).collect())
+        .collect())
 }
 
 fn execute_acl_ddl_or_dml(handle: &Handle) -> PgResult<usize> {
@@ -116,9 +124,11 @@ fn execute_acl_ddl_or_dml(handle: &Handle) -> PgResult<usize> {
     Ok(row_count)
 }
 
-fn execute_explain(handle: &Handle) -> PgResult<ValueRows> {
+fn execute_explain(handle: &Handle) -> PgResult<Vec<Vec<PgValue>>> {
     let explain: Vec<Value> = handle.execute()?;
-    let explain_as_rows = explain.into_iter().map(|s| vec![s]).collect();
-    let rows = ValueRows::new(explain_as_rows);
-    Ok(rows)
+    Ok(explain
+        .into_iter()
+        // every row must be a vector
+        .map(|val| vec![PgValue::from(val)])
+        .collect())
 }

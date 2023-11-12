@@ -690,6 +690,7 @@ dependencies = [
  "log",
  "once_cell",
  "pgwire",
+ "postgres-types",
  "rand",
  "rmp",
  "rmp-serde",
@@ -759,9 +760,9 @@ dependencies = [
 
 [[package]]
 name = "postgres-types"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f028f05971fe20f512bcc679e2c10227e57809a3af86a7606304435bc8896cd6"
+checksum = "8d2234cdee9408b523530a9b6d2d6b373d1db34f6a8e51dc03ded1828d7fb67c"
 dependencies = [
  "bytes",
  "chrono",

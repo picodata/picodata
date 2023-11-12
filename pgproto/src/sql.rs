@@ -1,6 +1,6 @@
 pub mod describe;
 pub mod portal;
 pub mod statement;
-pub mod types;
+pub mod value;
 
 mod handle;

@@ -1,8 +1,6 @@
-use crate::{
-    error::{PgError, PgResult},
-    sql::types::TYPE_NAME_INTO_TYPE_INFO,
-};
-use pgwire::messages::data::RowDescription;
+use crate::{error::PgResult, sql::value};
+use pgwire::messages::data::{FieldDescription, RowDescription};
+use postgres_types::Type;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 
@@ -81,6 +79,29 @@ impl CommandTag {
     }
 }
 
+fn field_description(name: String, ty: Type) -> FieldDescription {
+    // ** From postgres sources **
+    // resorigtbl/resorigcol identify the source of the column, if it is a
+    // simple reference to a column of a base table (or view).  If it is not
+    // a simple reference, these fields are zeroes.
+    let resorigtbl = 0;
+    let resorigcol = 0;
+
+    // typmod records type-specific data supplied at table creation time
+    // (for example, the max length of a varchar field).  The
+    // value will generally be -1 for types that do not need typmod.
+    let typemod = -1;
+
+    // encoding format, 0 - text, 1 - binary
+    let format = 0;
+
+    let id = ty.oid();
+    // TODO: add Type::len()
+    let len = 0;
+
+    FieldDescription::new(name, resorigtbl, resorigcol, id, len, typemod, format)
+}
+
 impl Describe {
     pub fn query_type(&self) -> &QueryType {
         &self.query_type
@@ -95,13 +116,8 @@ impl Describe {
             .metadata
             .iter()
             .map(|col| {
-                let coltype = col.r#type.as_str();
-                TYPE_NAME_INTO_TYPE_INFO
-                    .get(coltype)
-                    .ok_or(PgError::FeatureNotSupported(format!(
-                        "unknown column type \'{coltype}\'"
-                    )))
-                    .map(|info| info.make_field_description(col.name.clone()))
+                let type_str = col.r#type.as_str();
+                value::type_from_name(type_str).map(|ty| field_description(col.name.clone(), ty))
             })
             .collect::<PgResult<_>>()?;
         Ok(RowDescription::new(row_description))
