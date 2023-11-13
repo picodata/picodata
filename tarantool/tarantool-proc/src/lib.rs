@@ -220,14 +220,17 @@ mod msgpack {
                     if as_map {
                         let len = rmp::decode::read_str_len(r)
                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("field name"))?;
-                        let field_name = r.get(0..(len as usize))
+                        let decoded_field_name = r.get(0..(len as usize))
                             .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
                         *r = &r[(len as usize)..]; // advance
-                        if field_name != #field_repr {
-                            return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(
-                                // TODO: decode from utf8 for human readability
-                                format!("expected field {:?}, got {:?}", #field_repr, field_name)
-                            ));
+                        if decoded_field_name != #field_repr {
+                            let field_repr = String::from_utf8(#field_repr.to_vec()).expect("is valid utf8");
+                            let err = if let Ok(decoded_field_name) = String::from_utf8(decoded_field_name.to_vec()) {
+                                format!("expected field {}, got {}", field_repr, decoded_field_name)
+                            } else {
+                                format!("expected field {}, got invalid utf8 {:?}", field_repr, decoded_field_name)
+                            };
+                            return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err));
                         }
                     }
                     let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
@@ -393,10 +396,12 @@ mod msgpack {
                     match variant_name {
                         #variants
                         other => {
-                            // TODO: decode from utf8 for human readability
-                            Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(
-                                format!("enum variant {:?} does not exist", other)
-                            ))
+                            let err = if let Ok(other) = String::from_utf8(other.to_vec()) {
+                                format!("enum variant {} does not exist", other)
+                            } else {
+                                format!("enum variant {:?} is invalid utf8", other)
+                            };
+                            return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err));
                         }
                     }
                 }

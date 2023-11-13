@@ -704,6 +704,18 @@ mod tests {
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
+        let original = rmpv::Value::Map(vec![(
+            rmpv::Value::String("BarNotHere".into()),
+            rmpv::Value::Nil,
+        )]);
+        let mut bytes = vec![];
+        rmpv::encode::write_value(&mut bytes, &original).unwrap();
+        let res: Result<Foo, _> = decode(bytes.as_slice());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_enum::Foo: enum variant BarNotHere does not exist",
+        );
+
         let original = Foo::BarTuple1(true);
         let bytes = encode(&original).unwrap();
         assert_value(
