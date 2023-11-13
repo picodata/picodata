@@ -18,6 +18,8 @@ with the `YY.0M.MICRO` scheme.
 
 - New option `--init-cfg` for `picodata run` allows supplying bootstrap configuration in a yaml format file.
 
+- New option `--tier` for `picodata run` allows to specify whether an instance belongs to a tier.
+
 - New option `--password-file` for `picodata connect' allows supplying password in a plain-text file.
 
 - Allow connecting interactive console over a unix socket `picodata run --console-sock`.

@@ -40,7 +40,7 @@ def raft_join(
         replicaset_id,
         address,
         failure_domain,
-        instance.tier if instance.tier is not None else "storage",
+        instance.tier if instance.tier is not None else "default",
         timeout=timeout_seconds,
     )
 
@@ -143,7 +143,7 @@ def test_replication(cluster: Cluster):
             "current_grade": ["Online", 1],
             "target_grade": ["Online", 1],
             "failure_domain": dict(),
-            "tier": "storage",
+            "tier": "default",
         }
         assert {k: v for k, v in raft_instance.items() if k in expected} == expected
 

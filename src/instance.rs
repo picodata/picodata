@@ -555,13 +555,14 @@ mod tests {
 
     #[::tarantool::test]
     fn replicaset_id_with_several_tiers() {
-        let first_tier = "storage";
+        let first_tier = "default";
         let second_tier = "compute";
         let third_tier = "trash";
 
         let storage = Clusterwide::new().unwrap();
-        setup_storage(&storage, vec![], 3);
+        setup_storage(&storage, vec![], 1);
 
+        add_tier(&storage, first_tier, 3).unwrap();
         add_tier(&storage, second_tier, 2).unwrap();
         add_tier(&storage, third_tier, 2).unwrap();
 

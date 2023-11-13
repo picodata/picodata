@@ -1,7 +1,7 @@
 use ::tarantool::tlua;
 use tarantool::tuple::Encode;
 
-pub const DEFAULT_TIER: &str = "storage";
+pub const DEFAULT_TIER: &str = "default";
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq, tlua::Push, Clone)]
 ////////////////////////////////////////////////////////////////////////////////
