@@ -38,6 +38,7 @@ Picodata — это распределенная система промышле
 * [Алгоритм discovery](architecture/discovery)
 * [Raft и отказоустойчивость](architecture/raft_failover)
 * [Жизненный цикл кластера](architecture/clustering)
+* [Описание системных таблиц](architecture/system_tables.md)
 
 <!-- План на развитие структуры документации:
 ### Ознакомление с ПО Picodata

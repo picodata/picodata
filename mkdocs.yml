@@ -30,6 +30,7 @@ nav:
     - architecture/discovery.md
     - architecture/raft_failover.md
     - architecture/clustering.md
+    - architecture/system_tables.md
 theme:
     name: material
     custom_dir: overrides
