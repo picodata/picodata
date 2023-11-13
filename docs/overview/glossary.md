@@ -335,4 +335,4 @@ sharding_key:
 **Материализация данных**. Один из этапов исполнения распределенного SQL-запроса, при котором на отдельном узле промежуточные данные сохраняются в его памяти.
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/general/glossary.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/overview/glossary.md)

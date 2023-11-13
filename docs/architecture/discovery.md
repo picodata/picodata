@@ -1,6 +1,6 @@
 # Алгоритм discovery
 В данном разделе описаны подробности работы алгоритма
-[discovery](../general/glossary.md#discovery), который отвечает за обнаружение
+[discovery](../overview/glossary.md#discovery), который отвечает за обнаружение
 инстансами друг друга при инициализации кластера.
 
 ## Входные данные {: #initial-state }

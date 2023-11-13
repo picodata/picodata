@@ -213,8 +213,8 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 Значение параметра `--advertise` анонсируется кластеру при запуске инстанса. Его можно поменять при перезапуске инстанса или в процессе его работы командой `picodata set-advertise`.
 -->
 Подробнее о запуске Picodata и работе с кластером см. в разделе
-[Запуск кластера](../deploy_on_hosts). Параметры запуска из командной
-строки описаны в разделе [Аргументы командной строки Picodata](../../references/cli).
+[Запуск кластера](../deploy). Параметры запуска из командной
+строки описаны в разделе [Аргументы командной строки Picodata](../../reference/cli).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/install.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/install.md)

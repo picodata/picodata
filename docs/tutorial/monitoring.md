@@ -64,7 +64,7 @@ box.space._pico_replicaset:fselect()
 ...
 
 ```
-Таблицы выше позволяют узнать текущий и целевой уровень ([grade](../general/glossary.md#грейд-grade))
+Таблицы выше позволяют узнать текущий и целевой уровень ([grade](../overview/glossary.md#грейд-grade))
 каждого инстанса, а также вес (`weight`) репликасета. Уровни отражают
 конфигурацию остальных инстансов относительно текущего, а вес
 репликасета — его наполненность репликами согласно фактору репликации
@@ -84,7 +84,7 @@ box.space._pico_property:get("current_schema_version")
 увеличению этого номера.
 
 Подробнее о работе с данными в Picodata см. в разделе
-[Работа с данными SQL](../tutorial_data).
+[Работа с данными SQL](../sql_examples).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/monitoring.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/monitoring.md)

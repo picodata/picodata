@@ -13,8 +13,7 @@
 администратора СУБД (`admin`) и разрешает все действия в рамках
 локальной консоли. При этом, привилегия `SESSION`, позволяющая
 подключаться к удаленным инстансам по сети, у локального администратора
-отсутствует. Подробнее см. в разделе [Пользователи, привилегии и
-роли](tutorial_users.md).
+отсутствует. Подробнее см. в разделе [Управление доступом](tutorial_users.md).
 
 ## Подключение к ранее запущенному экземпляру {: #accessing-running-instace }
 ### Подключение с помощью адреса экземпляра {: #picodata-connect }
@@ -22,7 +21,7 @@
 ```
 picodata connect localhost:3301
 ```
-По умолчанию, [подключение](../references/cli.md#connect-command) производится под
+По умолчанию, [подключение](../reference/cli.md#connect-command) производится под
 пользователем `guest` без пароля. У такого пользователя имеется
 единственная привилегия
 [`SESSION`](tutorial_users.md#available-privileges).
@@ -58,16 +57,16 @@ picodata connect --unix /tmp/file.socket
 ```
 
 ## Рабочие файлы инстанса
-В [директории с данными инстанса](../references/cli.md#data-dir) автоматически появляются следующие файлы:
+В [директории с данными инстанса](../reference/cli.md#data-dir) автоматически появляются следующие файлы:
 
-- `*.snap` — файлы [снапшотов](../general/glossary.md#snapshot) БД
+- `*.snap` — файлы [снапшотов](../overview/glossary.md#snapshot) БД
 - `*.xlog` — файлы журнала упреждающей записи (Write-ahead log, WAL) c
   инкрементными изменениями БД
 - `*.vylog` — также файлы с инкрементными изменениями БД, но для таблиц,
-  использующих движок хранения [`vinyl`](../general/glossary.md#db-engine).
+  использующих движок хранения [`vinyl`](../overview/glossary.md#db-engine).
 
 При перезапуске инстанса эти файлы необходимы для восстановления его
-состояния, обеспечивая [персистентное](../general/glossary.md#persistence) хранение
+состояния, обеспечивая [персистентное](../overview/glossary.md#persistence) хранение
 данных.
 
 Файлы снапшотов (`*.snap`) и журнала WAL (`*.xlog`/`*.vylog`) не
@@ -77,8 +76,8 @@ picodata connect --unix /tmp/file.socket
 данных нужен будет и последний снапшот, и один или несколько файлов
 журнала.
 
-Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../references/cli.md).
+Параметры запуска из командной строки описаны в разделе [Аргументы командной строки](../reference/cli.md).
 
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/tutorial_first_steps.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/connecting.md)

@@ -61,7 +61,7 @@ Raft предполагает, что в кластере всегда суще�
 
 См. также:
 
-- [Репликация и зоны доступности](../tutorials/deploy_on_hosts.md#failure-domains)
+- [Репликация и зоны доступности](../tutorial/deploy.md#failure-domains)
 
 ---
 [Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/architecture/raft_failover.md)

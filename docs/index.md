@@ -10,31 +10,31 @@ Picodata — это распределенная система промышле
 На этом портале представлена документация по Picodata:
 
 
-### Ознакомление с ПО Picodata {: #getting-started }
-* [Общее описание продукта](general/description)
-* [Преимущества использования Picodata](general/benefits)
-* [Глоссарий](general/glossary)
-* [Обратная связь и получение помощи](general/feedback)
+### Ознакомление с ПО Picodata {: #overview }
+* [Общее описание продукта](overview/description)
+* [Преимущества использования Picodata](overview/benefits)
+* [Глоссарий](overview/glossary)
+* [Обратная связь и получение помощи](overview/feedback)
 
-### Инструкции и руководства {: #manuals-and-howtos }
-* [Установка Picodata](tutorials/install)
-* [Запуск кластера](tutorials/deploy_on_hosts)
-* [Мониторинг кластера](tutorials/monitoring)
-* [Подключение и работа в консоли](tutorials/tutorial_first_steps)
-* [Работа в веб-интерфейсе](tutorials/tutorial_webui)
-* [Авторизация с помощью LDAP](tutorials/auth_ldap)
-* [Пользователи, привилегии и роли](tutorials/tutorial_users)
-* [Работа с данными SQL](tutorials/tutorial_data)
+### Инструкции и руководства {: #tutorial }
+* [Установка Picodata](tutorial/install)
+* [Запуск кластера](tutorial/deploy)
+* [Мониторинг кластера](tutorial/monitoring)
+* [Подключение и работа в консоли](tutorial/connecting)
+* [Работа в веб-интерфейсе](tutorial/webui)
+* [Авторизация с помощью LDAP](tutorial/ldap)
+* [Управление доступом](tutorial/tutorial_users)
+* [Работа с данными SQL](tutorial/sql_examples)
 
-### Справочные материалы {: #references }
-* [Аргументы командной строки](references/cli)
-* [Типы данных SQL](references/datatypes)
-* [Команды SQL](references/queries)
-* [Публичный API](references/api)
-* [Совместимость с ANSI SQL](references/reference)
+### Справочные материалы {: #reference }
+* [Аргументы командной строки](reference/cli)
+* [Типы данных SQL](reference/sql_types)
+* [Команды SQL](reference/sql_queries)
+* [Публичный API](reference/api)
+* [Совместимость с ANSI SQL](reference/ansi_sql)
 
-### Архитектура {: #arch }
-* [Распределенный SQL](architecture/broadcasted_sql)
+### Архитектура {: #architecture }
+* [Распределенный SQL](architecture/distributed_sql)
 * [Алгоритм discovery](architecture/discovery)
 * [Raft и отказоустойчивость](architecture/raft_failover)
 * [Жизненный цикл кластера](architecture/clustering)

@@ -10,8 +10,8 @@
 Запуск кластера сводится к выполнению команды `picodata run` с нужным
 набором параметров для каждого инстанса (узла). Полный перечень
 возможных параметров запуска и их описание содержатся в разделе
-[Аргументы командной строки Picodata](../../references/cli), а также в выводе команды
-`picodata run --help`. С точки зрения внутренней архитектуры, [_кластер_](../general/glossary.md#cluster)
+[Аргументы командной строки Picodata](../../reference/cli), а также в выводе команды
+`picodata run --help`. С точки зрения внутренней архитектуры, [_кластер_](../overview/glossary.md#cluster)
   корректно называть _raft-группой_ — в дальнейшем при мониторинге и
 управлении конфигурацией будет уместнее использовать именно этот термин.
 
@@ -45,7 +45,7 @@ picodata run --data-dir i3 --listen :3303
 предоставляет доступ к управлению им в консоли. Для подключения к
 интерактивной консоли следует либо запускать инстанс с ключом `-i`
 (`picodata run -i`), либо отдельно подключаться к инстансу командой
-`picodata connect` (см. [подробнее](../references/cli.md#connect-command)).
+`picodata connect` (см. [подробнее](../reference/cli.md#connect-command)).
 
 ## Кластер на нескольких серверах {: #distributed-cluster }
 
@@ -243,4 +243,4 @@ pico.expel("i3")
 См. [отдельный подраздел](../../architecture/raft_failover) с описанием работы алгоритма Raft для обеспечения отказоустойчивости кластера.
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/deploy_on_hosts.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/deploy.md)

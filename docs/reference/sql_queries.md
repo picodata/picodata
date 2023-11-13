@@ -7,7 +7,7 @@ Picodata при работе с распределенной СУБД.
 
 - Data Definition Language (`DDL`): команды для
   [создания](#create_table) и [удаления](#drop_table)
-  [таблиц](../general/glossary.md#table);
+  [таблиц](../overview/glossary.md#table);
 - Data Modification Language (`DML`): команды [`INSERT`](#insert) для
   добавления данных в таблицы и [`DELETE`](#delete) для удаления данных;
 - Data Query Language (`DQL`): команда [`SELECT`](#select) для получения
@@ -35,8 +35,8 @@ Picodata при работе с распределенной СУБД.
 
 ## Начало работы {: #getting-started }
 Для ввода команд SQL требуется интерактивная консоль Picodata. Она
-доступна после [запуска](../references/cli.md#run-command) инстанса с ключом `-i`
-или явного [подключения](../references/cli.md#connect-command) к нему из отдельного
+доступна после [запуска](../reference/cli.md#run-command) инстанса с ключом `-i`
+или явного [подключения](../reference/cli.md#connect-command) к нему из отдельного
 терминала.
 
 ### Доступные языки консоли {: #available_langs }
@@ -119,7 +119,7 @@ create user andy with password 'P@ssw0rd' using md5 option (timeout = 3.0)
 ```sql
 drop user andy
 ```
-См. [подробнее](../tutorials/tutorial_users.md) об управлении пользователями.
+См. [подробнее](../tutorial/tutorial_users.md) об управлении пользователями.
 
 ## Создание таблицы {: #create_table }
 
@@ -155,7 +155,7 @@ drop user andy
 - _шардированными_, т.е. распределенные по шардам кластера. Для создания
   шардированной таблицы следует использовать параметр `distributed by
   ()`, указав в скобках название колонки, по которой такая таблица будет
-  распределена. См. [подробнее](../general/glossary.md#table).
+  распределена. См. [подробнее](../overview/glossary.md#table).
 
 Для демонстрации работы распределенного SQL будем создавать шардированные таблицы.
 Создадим первую таблицу следующей командой:
@@ -175,7 +175,7 @@ option (timeout = 3.0) ;
 
 При создании таблицы также можно выбрать один из доступных движков хранения данных:
 
-  - `memtx` — [движок хранения данных](../general/glossary.md#db-engine) в ОЗУ (in-memory);
+  - `memtx` — [движок хранения данных](../overview/glossary.md#db-engine) в ОЗУ (in-memory);
   - `vinyl` — дисковый движок хранения данных, использующий LSM-деревья
     (Log Structured Merge Tree).
 
@@ -610,7 +610,7 @@ on "characters"."id" = stock."number" ;
 SELECT-запросах. С ее помощью можно преобразовать числа в текст, дробные
 числа в целые и так далее согласно приведенной [выше](#type) схеме.
 Поддерживаемые в Picodata типы данных приведены в [отдельном
-документе](../datatypes).
+документе](../sql_types).
 
 ### Пример запроса {: #cast-example }
 В качестве примера покажем преобразование дробных чисел в целые с
@@ -756,7 +756,7 @@ insert into "assets" values (1, 'Woody', 2561) ;
 фиксированной запятой (например, `values(2.5)` в `decimal 2.5`). В
 параметризированном виде дробнному числу будет назначен типа с плавающей
 запятой (например, `values(?), {2.5}` в `double 2.5`). См.
-[подробнее](datatypes) о типах данных.
+[подробнее](sql_types) о типах данных.
 
 При использовании `INSERT` вместе с подзапросом (`SELECT`) происходит
 кеширование подзапроса, поэтому его тоже имеет смысл параметризировать,
@@ -1092,7 +1092,7 @@ explain insert into "assets" values (1, 'Woody', 2561) ;
 **Локальная материализация** относится к тем случаям, когда требуется
 положить в память прочитанные данные из локального запроса для их
 дальнейшей обработки. Перемещения данных нет и вычисление `bucket_id` не
-требуется (см. [подробнее](../architecture/broadcasted_sql.md#data-distribution)).
+требуется (см. [подробнее](../architecture/distributed_sql.md#data-distribution)).
 Примером может служить удаление данных из таблицы:
 
 ```sql
@@ -1271,8 +1271,8 @@ explain select count("id") from "characters" ;
 ...
 ```
 
-Читать далее: [Типы данных SQL](datatypes.md)
+Читать далее: [Типы данных SQL](sql_types.md)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/references/queries.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/reference/sql_queries.md)

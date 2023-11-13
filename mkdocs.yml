@@ -5,27 +5,27 @@ repo_url: https://git.picodata.io/picodata/picodata/docs
 
 nav:
   - Ознакомление с ПО Picodata:
-    - general/description.md
-    - general/benefits.md
-    - general/glossary.md
-    - general/feedback.md
+    - overview/description.md
+    - overview/benefits.md
+    - overview/glossary.md
+    - overview/feedback.md
   - Инструкции и руководства:
-    - tutorials/install.md
-    - tutorials/deploy_on_hosts.md
-    - tutorials/monitoring.md
-    - tutorials/tutorial_first_steps.md
-    - tutorials/tutorial_webui.md
-    - tutorials/auth_ldap.md
-    - tutorials/tutorial_users.md
-    - tutorials/tutorial_data.md
+    - tutorial/install.md
+    - tutorial/deploy.md
+    - tutorial/monitoring.md
+    - tutorial/connecting.md
+    - tutorial/webui.md
+    - tutorial/ldap.md
+    - tutorial/tutorial_users.md
+    - tutorial/sql_examples.md
   - Справочные материалы:
-    - references/cli.md
-    - references/datatypes.md
-    - references/queries.md
-    - references/api.md
-    - references/reference.md
+    - reference/cli.md
+    - reference/sql_types.md
+    - reference/sql_queries.md
+    - reference/api.md
+    - reference/ansi_sql.md
   - Архитектура:
-    - architecture/broadcasted_sql.md
+    - architecture/distributed_sql.md
     - architecture/discovery.md
     - architecture/raft_failover.md
     - architecture/clustering.md

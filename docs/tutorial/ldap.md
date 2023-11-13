@@ -70,7 +70,7 @@ pico.change_password('username', '', {auth_type = 'ldap'})
 полученный пароль при взаимодействии с сервером LDAP.
 
 Подробнее о работе с пользователями и привилегиями и см. разделе
-[Публичный API Picodata](../references/api.md).
+[Публичный API Picodata](../reference/api.md).
 
 ### Настройка кластера Picodata {: #cluster-setup }
 
@@ -108,4 +108,4 @@ pico.change_password('username', 'new_password', { auth_type = 'chap-sha1' })
 ```
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorials/auth_ldap.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/ldap.md)

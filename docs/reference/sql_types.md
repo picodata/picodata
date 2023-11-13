@@ -28,7 +28,7 @@
 - `VARCHAR`. Текстовый тип данных с явно заданной длиной строки.
 
 
-См. также: [Совместимость с ANSI SQL](reference.md)
+См. также: [Совместимость с ANSI SQL](ansi_sql.md)
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/references/datatypes.md)
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/reference/sql_types.md)
