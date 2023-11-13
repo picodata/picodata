@@ -55,9 +55,8 @@ mod msgpack {
             .named
             .iter()
             .flat_map(|f| {
-                let name = f.ident.as_ref().unwrap();
-                let t = name.to_string();
-                let field_repr = t.trim_start_matches("#r");
+                let field_name = f.ident.as_ref().expect("only named fields here");
+                let field_repr = format_ident!("{}", field_name).to_string();
 
                 let s = if add_self {
                     quote! {&self.}
@@ -70,7 +69,7 @@ mod msgpack {
                     if as_map {
                         #tarantool_crate::msgpack::rmp::encode::write_str(w, #field_repr)?;
                     }
-                    #tarantool_crate::msgpack::Encode::encode(#s #name, w, context)?;
+                    #tarantool_crate::msgpack::Encode::encode(#s #field_name, w, context)?;
                 }
             })
             .collect()
@@ -148,8 +147,7 @@ mod msgpack {
                     .iter()
                     .flat_map(|variant| {
                         let variant_name = &variant.ident;
-                        let t = variant_name.to_string();
-                        let variant_repr = t.trim_start_matches("r#");
+                        let variant_repr = format_ident!("{}", variant_name).to_string();
                         match variant.fields {
                             Fields::Named(ref fields) => {
                                 let field_count = fields.named.len() as u32;
@@ -167,8 +165,7 @@ mod msgpack {
                             },
                             Fields::Unnamed(ref fields) => {
                                 let field_count = fields.unnamed.len() as u32;
-                                let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("t{}", i));
-                                // TODO: use encode_unnamed_fields?
+                                let field_names = fields.unnamed.iter().enumerate().map(|(i, _)| format_ident!("_field_{}", i));
                                 let fields: proc_macro2::TokenStream = field_names.clone()
                                     .flat_map(|field_name| quote! {
                                         #tarantool_crate::msgpack::Encode::encode(#field_name, w, context)?;
@@ -214,8 +211,7 @@ mod msgpack {
             .iter()
             .map(|f| {
                 let name = f.ident.as_ref().expect("only named fields here");
-                let t = name.to_string();
-                let field_repr = t.trim_start_matches("#r");
+                let field_repr = format_ident!("{}", name).to_string();
                 let field_repr = proc_macro2::Literal::byte_string(field_repr.as_bytes());
                 let var_name = format_ident!("_field_{}", name);
                 // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
@@ -344,11 +340,10 @@ mod msgpack {
                     .variants
                     .iter()
                     .flat_map(|variant| {
-                        let variant_ident = variant.ident.clone();
-                        let t = variant_ident.to_string();
-                        let t = t.trim_start_matches("r#");
-                        variant_reprs.push(t.to_string());
-                        let variant_repr = proc_macro2::Literal::byte_string(t.as_bytes());
+                        let variant_ident = &variant.ident;
+                        let variant_repr = format_ident!("{}", variant_ident).to_string();
+                        variant_reprs.push(variant_repr.clone());
+                        let variant_repr = proc_macro2::Literal::byte_string(variant_repr.as_bytes());
 
                         match variant.fields {
                             Fields::Named(ref fields) => {
