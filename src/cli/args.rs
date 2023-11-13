@@ -115,9 +115,8 @@ pub struct Run {
         env = "PICODATA_INIT_REPLICATION_FACTOR",
         group = "init_cfg"
     )]
-    /// Total number of replicas (copies of data) for each replicaset in
-    /// the cluster. It's only accounted upon the cluster initialization
-    /// (when the first instance bootstraps), and ignored aftwerwards.
+    /// Total number of replicas (copies of data) for each replicaset.
+    /// It makes sense only when starting cluster without --init-cfg option.
     pub init_replication_factor: u8,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_SCRIPT")]
@@ -154,13 +153,11 @@ pub struct Run {
     /// Path to `some_plugin_name.so`
     pub plugins: Vec<String>,
 
-    /// Name of the tier for this instance.
+    /// Name of the tier to which the instance will belong.
     #[clap(long = "tier", value_name = "TIER", default_value = DEFAULT_TIER, env = "PICODATA_INSTANCE_TIER")]
     pub tier: String,
 
     /// Filepath to configuration file in yaml format.
-    ///
-    /// For all available configuration parameters see [`InitCfg`].
     #[clap(long = "init-cfg", value_name = "PATH", parse(try_from_str = try_parse_yaml_to_init_cfg), env = "PICODATA_INIT_CFG", group = "init_cfg")]
     pub init_cfg: Option<InitCfg>,
 }
