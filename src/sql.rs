@@ -467,17 +467,25 @@ fn get_grantor_grantee_ids_with_checks(
 ) -> traft::Result<(UserId, UserId)> {
     let storage = &node.storage;
     match grant_type {
-        GrantRevokeType::SpecificUser { user_name: user_role_name, .. }
-        | GrantRevokeType::SpecificRole { role_name: user_role_name, .. }
-        | GrantRevokeType::RolePass { role_name: user_role_name } => {
-            node.check_user_role_available_for_user(&user_role_name)?;
+        GrantRevokeType::SpecificUser {
+            user_name: user_role_name,
+            ..
+        }
+        | GrantRevokeType::SpecificRole {
+            role_name: user_role_name,
+            ..
+        }
+        | GrantRevokeType::RolePass {
+            role_name: user_role_name,
+        } => {
+            node.check_user_role_available_for_user(user_role_name)?;
         }
         GrantRevokeType::SpecificTable { table_name, .. } => {
-            if storage.spaces.by_name(&table_name)?.is_none() {
+            if storage.spaces.by_name(table_name)?.is_none() {
                 return Err(Error::Sbroad(SbroadError::Invalid(
                     Entity::Acl,
                     Some(format!("There is no table with name {table_name}")),
-                )))
+                )));
             }
         }
         _ => {}
@@ -487,6 +495,22 @@ fn get_grantor_grantee_ids_with_checks(
     let grantee_id = get_role_or_user_id(storage, grantee_name)?;
 
     Ok((grantor_id, grantee_id))
+}
+
+/// Find whether given privilege was already granted.
+fn check_privilege_already_granted(
+    node: &TraftNode,
+    grantee_id: UserId,
+    object_type: &str,
+    object_name: &str,
+    privilege: &str,
+) -> traft::Result<bool> {
+    let storage = &node.storage;
+    Ok(storage
+        .privileges
+        .get(grantee_id, object_type, object_name)?
+        .map(|priv_def| priv_def.privilege)
+        .any(|existed_privilege| existed_privilege == privilege))
 }
 
 fn reenterable_schema_change_request(
@@ -573,14 +597,16 @@ fn reenterable_schema_change_request(
             Params::CreateUser(name, auth)
         }
         IrNode::Acl(Acl::AlterUser {
-            name,
-            alter_option,
-            ..
+            name, alter_option, ..
         }) => {
             let alter_option_param = match alter_option {
-                AlterOption::Password { password, auth_method } => {
-                    let method = AuthMethod::from_str(&auth_method)
-                        .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+                AlterOption::Password {
+                    password,
+                    auth_method,
+                } => {
+                    let method = AuthMethod::from_str(&auth_method).map_err(|_| {
+                        Error::Other(format!("Unknown auth method: {auth_method}").into())
+                    })?;
                     check_password_min_length(&password, &method, node)?;
                     let data = AuthData::new(&method, &name, &password);
                     let auth = AuthDef::new(method, data.into_string());
@@ -693,7 +719,7 @@ fn reenterable_schema_change_request(
                     return Ok(ConsumerResult { row_count: 0 });
                 };
 
-                // Variables for alter LOGIN/NOLOGIN.
+                // For ALTER Login/NoLogin.
                 let grantor_id = session::uid()?;
                 let grantee_id = get_role_or_user_id(storage, name)?;
                 let object_type = String::from("universe");
@@ -702,15 +728,19 @@ fn reenterable_schema_change_request(
                 let priv_def = PrivilegeDef {
                     grantor_id,
                     grantee_id,
-                    object_type,
-                    object_name,
-                    privilege,
+                    object_type: object_type.clone(),
+                    object_name: object_name.clone(),
+                    privilege: privilege.clone(),
                     // This will be set right after the match statement.
                     schema_version: 0,
                 };
 
                 match alter_option_param {
                     AlterOptionParam::ChangePassword(auth) => {
+                        if &user_def.auth == auth {
+                            // Password is already the one given, no op needed.
+                            return Ok(ConsumerResult { row_count: 0 });
+                        }
                         Op::Acl(OpAcl::ChangeAuth {
                             user_id: user_def.id,
                             auth: auth.clone(),
@@ -718,10 +748,31 @@ fn reenterable_schema_change_request(
                             schema_version: 0,
                         })
                     }
+
                     AlterOptionParam::Login => {
+                        if check_privilege_already_granted(
+                            node,
+                            grantee_id,
+                            &object_type,
+                            &object_name,
+                            &privilege,
+                        )? {
+                            // Login is already granted, no op needed.
+                            return Ok(ConsumerResult { row_count: 0 });
+                        }
                         Op::Acl(OpAcl::GrantPrivilege { priv_def })
                     }
                     AlterOptionParam::NoLogin => {
+                        if !check_privilege_already_granted(
+                            node,
+                            grantee_id,
+                            &object_type,
+                            &object_name,
+                            &privilege,
+                        )? {
+                            // Login is not granted yet, no op needed.
+                            return Ok(ConsumerResult { row_count: 0 });
+                        }
                         Op::Acl(OpAcl::RevokePrivilege { priv_def })
                     }
                 }
@@ -773,22 +824,20 @@ fn reenterable_schema_change_request(
                     schema_version: 0,
                 })
             }
-            Params::GrantPrivilege(
-                grant_type,
-                grantee_name
-            ) => {
-                let (grantor_id, grantee_id) = get_grantor_grantee_ids_with_checks(node, grant_type, grantee_name)?;
+            Params::GrantPrivilege(grant_type, grantee_name) => {
+                let (grantor_id, grantee_id) =
+                    get_grantor_grantee_ids_with_checks(node, grant_type, grantee_name)?;
                 let (object_type, object_name, privilege) = grant_type.get_privelege_def_fields();
 
-                for priv_def in storage.privileges.get(
+                if check_privilege_already_granted(
+                    node,
                     grantee_id,
-                    object_type.as_str(),
-                    object_name.as_str(),
+                    &object_type,
+                    &object_name,
+                    &privilege,
                 )? {
-                    if priv_def.privilege == privilege {
-                        // Privilege is already granted, no op needed.
-                        return Ok(ConsumerResult { row_count: 0 });
-                    }
+                    // Privilege is already granted, no op needed.
+                    return Ok(ConsumerResult { row_count: 0 });
                 }
                 Op::Acl(OpAcl::GrantPrivilege {
                     priv_def: PrivilegeDef {
@@ -799,25 +848,23 @@ fn reenterable_schema_change_request(
                         privilege,
                         // This will be set right after the match statement.
                         schema_version: 0,
-                    }
+                    },
                 })
             }
             Params::RevokePrivilege(revoke_type, grantee_name) => {
-                let (grantor_id, grantee_id) = get_grantor_grantee_ids_with_checks(node, revoke_type, grantee_name)?;
+                let (grantor_id, grantee_id) =
+                    get_grantor_grantee_ids_with_checks(node, revoke_type, grantee_name)?;
                 let (object_type, object_name, privilege) = revoke_type.get_privelege_def_fields();
 
-                let priv_exists = storage
-                    .privileges
-                    .get(grantee_id, object_type.as_str(), object_name.as_str())?
-                    .map(|priv_def| priv_def.privilege)
-                    .any(|existed_privilege| existed_privilege == privilege);
-                if !priv_exists {
-                    return Err(Error::Sbroad(SbroadError::Invalid(
-                        Entity::Acl,
-                        Some(format!(
-                            "Can't revoke {privilege}, because it hasn't been granted yet."
-                        )),
-                    )));
+                if !check_privilege_already_granted(
+                    node,
+                    grantee_id,
+                    &object_type,
+                    &object_name,
+                    &privilege,
+                )? {
+                    // Privilege is not granted yet, no op needed.
+                    return Ok(ConsumerResult { row_count: 0 });
                 }
 
                 Op::Acl(OpAcl::RevokePrivilege {
@@ -876,7 +923,7 @@ fn reenterable_schema_change_request(
     enum AlterOptionParam {
         ChangePassword(AuthDef),
         Login,
-        NoLogin
+        NoLogin,
     }
 
     enum Params {
