@@ -619,6 +619,11 @@ class Instance:
         assert self.process
         try:
             rc = self.process.wait(timeout)
+
+            # Wait for all the output to be handled in the separate threads
+            while not self.process.stdout.closed or not self.process.stderr.closed:  # type: ignore
+                time.sleep(0.1)
+
             self.process = None
             assert rc != 0
         except Exception as e:
