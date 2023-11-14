@@ -68,4 +68,4 @@ Picodata SQL включает внутреннюю функцию по вычи�
 [Команды SQL](../reference/sql_queries.md)
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/architecture/distributed_sql.md)
+[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})

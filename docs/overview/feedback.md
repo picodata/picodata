@@ -10,4 +10,4 @@ Telegram-канале
 [@picodataru](https://t.me/picodataru){:target="_blank"}.
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/overview/feedback.md)
+[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})

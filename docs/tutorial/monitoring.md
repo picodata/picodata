@@ -87,4 +87,4 @@ box.space._pico_property:get("current_schema_version")
 [Работа с данными SQL](../sql_examples).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/monitoring.md)
+[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})

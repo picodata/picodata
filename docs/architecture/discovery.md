@@ -180,4 +180,4 @@ true`, в то время как уже существовал `i_am_bootstrap_l
 инициализации кластера](clustering.md).
 
 ---
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/architecture/discovery.md)
+[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})

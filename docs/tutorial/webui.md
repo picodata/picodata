@@ -79,5 +79,4 @@ style="color:red;font-size:150%">❸</span>), то можно сразу уви�
 кластера](deploy.md).
 
 ---
-[Исходный код
-страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/webui.md)
+[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
