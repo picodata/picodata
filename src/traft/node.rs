@@ -1421,6 +1421,7 @@ impl NodeImpl {
                     return Some(snapshot_data);
                 }
 
+                tlog!(Debug, "v_local: {v_local}, v_snapshot: {v_snapshot}");
                 self.main_loop_status("awaiting replication");
                 // Replicaset follower needs to sync with leader via tarantool
                 // replication.

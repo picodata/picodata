@@ -402,9 +402,12 @@ impl Clusterwide {
             space_indexes.push((space_def.id, 0));
         }
 
+        let schema_version = self.properties.global_schema_version()?;
+
         let read_view = ReadView::for_space_indexes(space_indexes)?;
         Ok(SnapshotReadView {
             entry_id,
+            schema_version,
             time_opened: fiber::clock(),
             unfinished_iterators: Default::default(),
             read_view,
@@ -520,9 +523,7 @@ impl Clusterwide {
         );
 
         let snapshot_data = SnapshotData {
-            // Only the first chunk contains the schema_version, after that
-            // there's no need for it.
-            schema_version: u64::MAX,
+            schema_version: rv.schema_version,
             space_dumps,
             next_chunk_position: hit_threashold.then_some(position),
         };
@@ -583,8 +584,7 @@ impl Clusterwide {
         let mut rv = self.open_read_view(entry_id)?;
         tlog!(Info, "opened snapshot read view for {entry_id}");
         let position = SnapshotPosition::default();
-        let mut snapshot_data = self.next_snapshot_data_chunk_impl(&mut rv, position)?;
-        snapshot_data.schema_version = self.properties.global_schema_version()?;
+        let snapshot_data = self.next_snapshot_data_chunk_impl(&mut rv, position)?;
 
         if snapshot_data.next_chunk_position.is_none() {
             // Don't increase the reference count, so that it's cleaned up next
@@ -1776,6 +1776,9 @@ impl SnapshotCache {
 pub struct SnapshotReadView {
     /// Applied entry id at the time the read view was opened.
     entry_id: RaftEntryId,
+
+    /// Global schema version at the moment of read view openning.
+    schema_version: u64,
 
     /// [`fiber::clock()`] value at the moment snapshot read view was opened.
     /// Can be used to close stale read views with dangling references, which
