@@ -76,6 +76,9 @@ pub enum Error {
     #[error("transaction: {0}")]
     Transaction(String),
 
+    #[error("storage corrupted: failed to decode field '{field}' from table '{table}'")]
+    StorageCorrupted { table: String, field: String },
+
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),
 }

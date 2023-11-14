@@ -34,7 +34,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Default, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
 pub struct FailureDomain {
     #[serde(flatten)]
-    data: HashMap<Uppercase, Uppercase>,
+    pub data: HashMap<Uppercase, Uppercase>,
 }
 
 impl FailureDomain {

@@ -1,8 +1,9 @@
+use crate::instance::Instance;
 use crate::instance::InstanceId;
 use crate::mailbox::Mailbox;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
-use crate::storage::{instance_field, Clusterwide, Instances, PeerAddresses};
+use crate::storage::{Clusterwide, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -430,11 +431,10 @@ impl ConnectionPool {
         if let Some(worker) = workers.get(&raft_id) {
             Ok(worker)
         } else {
-            let instance_id = self
-                .instances
-                .field::<instance_field::InstanceId>(&raft_id)
-                .map_err(|_| Error::NoInstanceWithRaftId(raft_id))
-                .ok();
+            let mut instance_id: Option<InstanceId> = None;
+            if let Ok(tuple) = self.instances.get_raw(&raft_id) {
+                instance_id = tuple.field(Instance::FIELD_INSTANCE_ID)?;
+            }
             // Check if address of this peer is known.
             // No need to store the result,
             // because it will be updated in the loop
@@ -468,10 +468,10 @@ impl ConnectionPool {
             Ok(worker)
         } else {
             let instance_id = InstanceId::from(instance_id);
-            let raft_id = self
-                .instances
-                .field::<instance_field::RaftId>(&instance_id)
-                .map_err(|_| Error::NoInstanceWithInstanceId(instance_id.clone()))?;
+            let tuple = self.instances.get_raw(&instance_id)?;
+            let Some(raft_id) = tuple.field(Instance::FIELD_RAFT_ID)? else {
+                return Err(Error::other("storage corrupted: couldn't decode instance's raft id"));
+            };
             self.get_or_create_by_raft_id(raft_id)
         }
     }

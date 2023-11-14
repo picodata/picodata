@@ -14,10 +14,9 @@ use tarantool::tuple::KeyDef;
 use tarantool::tuple::{Decode, DecodeOwned, Encode};
 use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 
-use crate::failure_domain as fd;
-use crate::instance::Grade;
+use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
-use crate::replicaset::{Replicaset, ReplicasetId};
+use crate::replicaset::Replicaset;
 use crate::schema::Distribution;
 use crate::schema::{IndexDef, SpaceDef};
 use crate::schema::{PrivilegeDef, RoleDef, UserDef};
@@ -1366,28 +1365,28 @@ impl Instances {
         let space_instances = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(instance_format())
+            .format(Instance::format())
             .if_not_exists(true)
             .create()?;
 
         let index_instance_id = space_instances
             .index_builder("instance_id")
             .unique(true)
-            .part(instance_field::InstanceId)
+            .part("instance_id")
             .if_not_exists(true)
             .create()?;
 
         let index_raft_id = space_instances
             .index_builder("raft_id")
             .unique(true)
-            .part(instance_field::RaftId)
+            .part("raft_id")
             .if_not_exists(true)
             .create()?;
 
         let index_replicaset_id = space_instances
             .index_builder("replicaset_id")
             .unique(false)
-            .part(instance_field::ReplicasetId)
+            .part("replicaset_id")
             .if_not_exists(true)
             .create()?;
 
@@ -1422,6 +1421,14 @@ impl Instances {
         Ok(res)
     }
 
+    /// Finds an instance by `id` (see trait [`InstanceId`]).
+    /// Returns the tuple without deserializing.
+    #[inline(always)]
+    pub fn get_raw(&self, id: &impl InstanceId) -> Result<Tuple> {
+        let res = id.find_in(self)?;
+        Ok(res)
+    }
+
     /// Checks if an instance with `id` (see trait [`InstanceId`]) is present.
     #[inline]
     pub fn contains(&self, id: &impl InstanceId) -> Result<bool> {
@@ -1430,29 +1437,6 @@ impl Instances {
             Err(Error::NoInstanceWithInstanceId(_)) => Ok(false),
             Err(err) => Err(err),
         }
-    }
-
-    /// Finds an instance by `id` (see `InstanceId`) and return a single field
-    /// specified by `F` (see `InstanceFieldDef` & `instance_field` module).
-    #[inline(always)]
-    pub fn field<F>(&self, id: &impl InstanceId) -> Result<F::Type>
-    where
-        F: InstanceFieldDef,
-    {
-        let tuple = id.find_in(self)?;
-        let res = F::get_in(&tuple)?;
-        Ok(res)
-    }
-
-    /// Returns an iterator over all instances. Items of the iterator are
-    /// specified by `F` (see `InstanceFieldDef` & `instance_field` module).
-    #[inline(always)]
-    pub fn instances_fields<F>(&self) -> Result<InstancesFields<F>>
-    where
-        F: InstanceFieldDef,
-    {
-        let iter = self.space.select(IteratorType::All, &())?;
-        Ok(InstancesFields::new(iter))
     }
 
     #[inline]
@@ -1473,31 +1457,34 @@ impl Instances {
         Ok(EntryIter::new(iter))
     }
 
-    pub fn replicaset_fields<T>(
-        &self,
-        replicaset_id: &ReplicasetId,
-    ) -> tarantool::Result<Vec<T::Type>>
-    where
-        T: InstanceFieldDef,
-    {
-        self.index_replicaset_id
-            .select(IteratorType::Eq, &[replicaset_id])?
-            .map(|tuple| T::get_in(&tuple))
-            .collect()
-    }
-
-    pub fn max_raft_id(&self) -> tarantool::Result<RaftId> {
-        match self.index_raft_id.max(&())? {
-            None => Ok(0),
-            Some(tuple) => instance_field::RaftId::get_in(&tuple),
-        }
+    pub fn max_raft_id(&self) -> Result<RaftId> {
+        let Some(tuple) = self.index_raft_id.max(&())? else {
+            return Ok(0);
+        };
+        let Some(raft_id) = tuple.field(Instance::FIELD_RAFT_ID)? else {
+            return Err(Error::StorageCorrupted {
+                field: "raft_id".into(),
+                table: "_pico_instance".into(),
+            });
+        };
+        Ok(raft_id)
     }
 
     pub fn failure_domain_names(&self) -> Result<HashSet<Uppercase>> {
-        Ok(self
-            .instances_fields::<instance_field::FailureDomain>()?
-            .flat_map(|fd| fd.names().cloned().collect::<Vec<_>>())
-            .collect())
+        let mut res = HashSet::with_capacity(16);
+        for tuple in self.space.select(IteratorType::All, &())? {
+            let Some(failure_domain) = tuple.field(Instance::FIELD_FAILURE_DOMAIN)? else {
+                return Err(Error::StorageCorrupted {
+                    field: "failure_domain".into(),
+                    table: "_pico_instance".into(),
+                });
+            };
+            let failure_domain: FailureDomain = failure_domain;
+            for name in failure_domain.data.into_keys() {
+                res.insert(name);
+            }
+        }
+        Ok(res)
     }
 }
 
@@ -1508,138 +1495,6 @@ impl ToEntryIter for Instances {
     fn index_iter(&self) -> Result<IndexIterator> {
         Ok(self.space.select(IteratorType::All, &())?)
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// InstanceField
-////////////////////////////////////////////////////////////////////////////////
-
-macro_rules! define_instance_fields {
-    ($($field:ident: $ty:ty = ($name:literal, $tt_ty:path))+) => {
-        ::tarantool::define_str_enum! {
-            /// An enumeration of raft_space field names
-            pub enum InstanceField {
-                $($field = $name,)+
-            }
-        }
-
-        pub mod instance_field {
-            use super::*;
-            $(
-                /// Helper struct that represents
-                #[doc = stringify!($name)]
-                /// field of [`Instance`].
-                ///
-                /// It's rust type is
-                #[doc = concat!("`", stringify!($ty), "`")]
-                /// and it's tarantool type is
-                #[doc = concat!("`", stringify!($tt_ty), "`")]
-                ///
-                /// [`Instance`]: crate::instance::Instance
-                pub struct $field;
-
-                impl InstanceFieldDef for $field {
-                    type Type = $ty;
-
-                    fn get_in(tuple: &Tuple) -> tarantool::Result<Self::Type> {
-                        Ok(tuple.try_get($name)?.expect("instance fields aren't nullable"))
-                    }
-                }
-
-                impl From<$field> for ::tarantool::index::Part {
-                    #[inline(always)]
-                    fn from(_: $field) -> ::tarantool::index::Part {
-                        $name.into()
-                    }
-                }
-
-                impl From<$field> for ::tarantool::space::Field {
-                    #[inline(always)]
-                    fn from(_: $field) -> ::tarantool::space::Field {
-                        ($name, $tt_ty).into()
-                    }
-                }
-
-                impl ::tarantool::tuple::TupleIndex for $field {
-                    #[inline(always)]
-                    fn get_field<'a, T>(self, tuple: &'a Tuple) -> ::tarantool::Result<Option<T>>
-                    where
-                        T: ::tarantool::tuple::Decode<'a>,
-                    {
-                        $name.get_field(tuple)
-                    }
-                }
-            )+
-        }
-
-        pub fn instance_format() -> Vec<::tarantool::space::Field> {
-            vec![
-                $( ::tarantool::space::Field::from(($name, $tt_ty)), )+
-            ]
-        }
-    };
-}
-
-define_instance_fields! {
-    InstanceId     : instance::InstanceId = ("instance_id",     FieldType::String)
-    InstanceUuid   : String               = ("instance_uuid",   FieldType::String)
-    RaftId         : traft::RaftId        = ("raft_id",         FieldType::Unsigned)
-    ReplicasetId   : String               = ("replicaset_id",   FieldType::String)
-    ReplicasetUuid : String               = ("replicaset_uuid", FieldType::String)
-    CurrentGrade   : Grade                = ("current_grade",   FieldType::Array)
-    TargetGrade    : Grade                = ("target_grade",    FieldType::Array)
-    FailureDomain  : fd::FailureDomain    = ("failure_domain",  FieldType::Map)
-    Tier           : String               = ("tier",            FieldType::String)
-}
-
-impl tarantool::tuple::TupleIndex for InstanceField {
-    fn get_field<'a, T>(self, tuple: &'a Tuple) -> tarantool::Result<Option<T>>
-    where
-        T: tarantool::tuple::Decode<'a>,
-    {
-        self.as_str().get_field(tuple)
-    }
-}
-
-/// A helper trait for type-safe and efficient access to a Instance's fields
-/// without deserializing the whole tuple.
-///
-/// This trait contains information needed to define and use a given tuple field.
-pub trait InstanceFieldDef {
-    /// Rust type of the field.
-    ///
-    /// Used when decoding the field.
-    type Type: tarantool::tuple::DecodeOwned;
-
-    /// Get the field in `tuple`.
-    fn get_in(tuple: &Tuple) -> tarantool::Result<Self::Type>;
-}
-
-macro_rules! define_instance_field_def_for_tuples {
-    () => {};
-    ($h:ident $($t:ident)*) => {
-        impl<$h, $($t),*> InstanceFieldDef for ($h, $($t),*)
-        where
-            $h: InstanceFieldDef,
-            $h::Type: serde::de::DeserializeOwned,
-            $(
-                $t: InstanceFieldDef,
-                $t::Type: serde::de::DeserializeOwned,
-            )*
-        {
-            type Type = ($h::Type, $($t::Type),*);
-
-            fn get_in(tuple: &Tuple) -> tarantool::Result<Self::Type> {
-                Ok(($h::get_in(&tuple)?, $($t::get_in(&tuple)?,)*))
-            }
-        }
-
-        define_instance_field_def_for_tuples!{ $($t)* }
-    };
-}
-
-define_instance_field_def_for_tuples! {
-    T0 T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12 T13 T14 T15
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1669,36 +1524,6 @@ impl InstanceId for instance::InstanceId {
             .index_instance_id
             .get(&[self])?
             .ok_or_else(|| Error::NoInstanceWithInstanceId(self.clone()))
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// InstancesFields
-////////////////////////////////////////////////////////////////////////////////
-
-pub struct InstancesFields<F> {
-    iter: IndexIterator,
-    marker: PhantomData<F>,
-}
-
-impl<F> InstancesFields<F> {
-    fn new(iter: IndexIterator) -> Self {
-        Self {
-            iter,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<F> Iterator for InstancesFields<F>
-where
-    F: InstanceFieldDef,
-{
-    type Item = F::Type;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let res = self.iter.next().as_ref().map(F::get_in);
-        res.map(|res| res.expect("instance should decode correctly"))
     }
 }
 

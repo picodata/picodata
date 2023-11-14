@@ -54,6 +54,36 @@ pub struct Instance {
 impl Encode for Instance {}
 
 impl Instance {
+    /// Index of field "instance_id" in the space _pico_instance format.
+    ///
+    /// Index of first field is 0.
+    pub const FIELD_INSTANCE_ID: u32 = 0;
+
+    /// Index of field "raft_id" in the space _pico_instance format.
+    ///
+    /// Index of first field is 0.
+    pub const FIELD_RAFT_ID: u32 = 2;
+
+    /// Index of field "failure_domain" in the space _pico_instance format.
+    ///
+    /// Index of first field is 0.
+    pub const FIELD_FAILURE_DOMAIN: u32 = 7;
+
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::{Field, FieldType};
+        vec![
+            Field::from(("instance_id", FieldType::String)),
+            Field::from(("instance_uuid", FieldType::String)),
+            Field::from(("raft_id", FieldType::Unsigned)),
+            Field::from(("replicaset_id", FieldType::String)),
+            Field::from(("replicaset_uuid", FieldType::String)),
+            Field::from(("current_grade", FieldType::Array)),
+            Field::from(("target_grade", FieldType::Array)),
+            Field::from(("failure_domain", FieldType::Map)),
+            Field::from(("tier", FieldType::String)),
+        ]
+    }
+
     /// Construct an instance.
     pub fn new(
         raft_id: Option<RaftId>,
@@ -611,14 +641,15 @@ mod test {
     use tarantool::tuple::ToTupleBuffer;
 
     #[test]
+    #[rustfmt::skip]
     fn matches_format() {
         let i = Instance::default();
         let tuple_data = i.to_tuple_buffer().unwrap();
-        let format = crate::storage::instance_format();
-        crate::util::check_tuple_matches_format(
-            tuple_data.as_ref(),
-            &format,
-            "define_instance_fields",
-        );
+        let format = Instance::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "Instance::format");
+
+        assert_eq!(format[Instance::FIELD_INSTANCE_ID as usize].name, "instance_id");
+        assert_eq!(format[Instance::FIELD_RAFT_ID as usize].name, "raft_id");
+        assert_eq!(format[Instance::FIELD_FAILURE_DOMAIN as usize].name, "failure_domain");
     }
 }
