@@ -232,6 +232,49 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
     assert data["rows"] == [[1], [3]]
 
 
+def test_aggregates_on_global_tbl(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table g (a int not null, b int not null, primary key (a))
+        using memtx
+        distributed globally
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    for i, j in [(1, 1), (2, 2), (3, 1), (4, 1), (5, 2)]:
+        index = i1.cas("insert", "G", [i, j])
+        i1.raft_wait_index(index, 3)
+
+    data = i1.sql(
+        """
+        select count(*), min(b), max(b), min(b) + max(b) from g
+        """
+    )
+    assert data["rows"] == [[5, 1, 2, 3]]
+
+    data = i1.sql(
+        """
+        select b*b, sum(a + 1) from g
+        group by b*b
+        """
+    )
+    assert data["rows"] == [[1, 11], [4, 9]]
+
+    data = i1.sql(
+        """
+        select b*b, sum(a + 1) from g
+        group by b*b
+        having count(a) > 2
+        """
+    )
+    assert data["rows"] == [[1, 11]]
+
+
 def test_hash(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
