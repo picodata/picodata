@@ -1187,9 +1187,12 @@ class Cluster:
 
     def cas(
         self,
-        dml_kind: Literal["insert", "replace", "delete"],
+        dml_kind: Literal["insert", "replace", "delete", "update"],
         table: str,
-        tuple: Tuple | List,
+        tuple: Tuple | List | None = None,
+        *,
+        key: Tuple | List | None = None,
+        ops: Tuple | List | None = None,
         index: int | None = None,
         term: int | None = None,
         ranges: List[CasRange] | None = None,
@@ -1225,11 +1228,13 @@ class Cluster:
             term=term,
             ranges=predicate_ranges,
         )
-        if dml_kind in ["insert", "replace", "delete"]:
+        if dml_kind in ["insert", "replace", "delete", "update"]:
             dml = dict(
                 table=table,
                 kind=dml_kind,
                 tuple=tuple,
+                key=key,
+                ops=ops,
             )
         else:
             raise Exception(f"unsupported {dml_kind=}")

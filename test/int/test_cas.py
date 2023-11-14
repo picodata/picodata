@@ -168,7 +168,7 @@ def test_cas_lua_api(cluster: Cluster):
     read_index = cluster.instances[0].raft_read_index(_3_SEC)
 
     # Successful insert
-    ret = cluster.cas("insert", "some_space", ["fruit", "apple"], read_index)
+    ret = cluster.cas("insert", "some_space", ["fruit", "apple"], index=read_index)
     assert ret == read_index + 1
     cluster.raft_wait_index(ret, _3_SEC)
     assert cluster.instances[0].raft_read_index(_3_SEC) == ret

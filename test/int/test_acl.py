@@ -20,7 +20,7 @@ def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
         "replace",
         "_pico_property",
         [PASSWORD_MIN_LENGTH_KEY, min_password_len],
-        read_index,
+        index=read_index,
     )
     assert ret == read_index + 1
     cluster.raft_wait_index(ret)

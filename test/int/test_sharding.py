@@ -84,15 +84,40 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     wait_has_buckets(cluster, i3, 3000)
 
 
-def test_bucket_rebalancing(cluster: Cluster):
-    i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
+def test_automatic_bucket_rebalancing(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_id="r1")
     wait_has_buckets(cluster, i1, 3000)
 
-    i2 = cluster.add_instance()
+    i2 = cluster.add_instance(replicaset_id="r2")
     wait_has_buckets(cluster, i2, 1500)
 
-    i3 = cluster.add_instance()
+    i3 = cluster.add_instance(replicaset_id="r3")
     wait_has_buckets(cluster, i3, 1000)
+
+    # Set one of the replicaset's weight to 0, to trigger rebalancing from it.
+    index = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r1"],
+        ops=[("=", "weight", 0.0), ("=", "weight_origin", "user")],
+    )
+    cluster.raft_wait_index(index)
+
+    # This instnace now has no buckets
+    wait_has_buckets(cluster, i1, 0)
+
+    # Set another replicaset's weight to 0.5, to showcase weights are respected.
+    index = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r2"],
+        ops=[("=", "weight", 0.5), ("=", "weight_origin", "user")],
+    )
+    cluster.raft_wait_index(index)
+
+    # Now i3 has twice as many buckets, because r3.weight == r2.weight * 2
+    wait_has_buckets(cluster, i2, 1000)
+    wait_has_buckets(cluster, i3, 2000)
 
 
 def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
