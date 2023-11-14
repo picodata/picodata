@@ -69,6 +69,8 @@ impl Instance {
     /// Index of first field is 0.
     pub const FIELD_FAILURE_DOMAIN: u32 = 7;
 
+    /// Format of the _pico_instance global table.
+    #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::{Field, FieldType};
         vec![

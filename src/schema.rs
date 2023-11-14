@@ -52,8 +52,39 @@ pub struct SpaceDef {
 impl Encode for SpaceDef {}
 
 impl SpaceDef {
-    // Don't forget to update this, if fields of `SpaceDef` change.
+    /// Index of field "operable" in the space _pico_space format.
+    ///
+    /// Index of first field is 0.
     pub const FIELD_OPERABLE: usize = 5;
+
+    /// Format of the _pico_space global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("id", FieldType::Unsigned)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("distribution", FieldType::Array)),
+            Field::from(("format", FieldType::Array)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("operable", FieldType::Boolean)),
+            Field::from(("engine", FieldType::String)),
+        ]
+    }
+
+    /// A dummy instance of the type for use in tests.
+    #[inline(always)]
+    pub fn for_tests() -> Self {
+        Self {
+            id: 10569,
+            name: "stuff".into(),
+            distribution: Distribution::Global,
+            format: vec![],
+            schema_version: 420,
+            operable: true,
+            engine: SpaceEngineType::Blackhole,
+        }
+    }
 
     pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata> {
         use tarantool::session::uid;
@@ -158,8 +189,41 @@ pub struct IndexDef {
 impl Encode for IndexDef {}
 
 impl IndexDef {
-    // Don't forget to update this, if fields of `IndexDef` change.
+    /// Index of field "operable" in the space _pico_index format.
+    ///
+    /// Index of first field is 0.
     pub const FIELD_OPERABLE: usize = 6;
+
+    /// Format of the _pico_index global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("space_id", FieldType::Unsigned)),
+            Field::from(("id", FieldType::Unsigned)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("local", FieldType::Boolean)),
+            Field::from(("parts", FieldType::Array)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("operable", FieldType::Boolean)),
+            Field::from(("unique", FieldType::Boolean)),
+        ]
+    }
+
+    /// A dummy instance of the type for use in tests.
+    #[inline(always)]
+    pub fn for_tests() -> Self {
+        Self {
+            space_id: 10569,
+            id: 1,
+            name: "secondary".into(),
+            local: true,
+            parts: vec![],
+            schema_version: 420,
+            operable: true,
+            unique: false,
+        }
+    }
 
     pub fn to_index_metadata(&self) -> IndexMetadata {
         use tarantool::index::IndexType;
@@ -195,7 +259,33 @@ pub struct UserDef {
 impl Encode for UserDef {}
 
 impl UserDef {
+    /// Index of field "auth" in the space _pico_user format.
+    ///
+    /// Index of first field is 0.
     pub const FIELD_AUTH: usize = 3;
+
+    /// Format of the _pico_user global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("id", FieldType::Unsigned)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("auth", FieldType::Array)),
+        ]
+    }
+
+    /// A dummy instance of the type for use in tests.
+    #[inline(always)]
+    pub fn for_tests() -> Self {
+        Self {
+            id: 69,
+            name: "david".into(),
+            schema_version: 421,
+            auth: AuthDef::new(tarantool::auth::AuthMethod::ChapSha1, "".into()),
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -211,6 +301,29 @@ pub struct RoleDef {
 }
 
 impl Encode for RoleDef {}
+
+impl RoleDef {
+    /// Format of the _pico_role global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("id", FieldType::Unsigned)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+        ]
+    }
+
+    /// A dummy instance of the type for use in tests.
+    #[inline(always)]
+    pub fn for_tests() -> Self {
+        Self {
+            id: 13,
+            name: "devops".into(),
+            schema_version: 419,
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // PrivilegeDef
@@ -232,6 +345,35 @@ pub struct PrivilegeDef {
 }
 
 impl Encode for PrivilegeDef {}
+
+impl PrivilegeDef {
+    /// Format of the _pico_privilege global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("grantor_id", FieldType::Unsigned)),
+            Field::from(("grantee_id", FieldType::Unsigned)),
+            Field::from(("object_type", FieldType::String)),
+            Field::from(("object_name", FieldType::String)),
+            Field::from(("privilege", FieldType::String)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+        ]
+    }
+
+    /// A dummy instance of the type for use in tests.
+    #[inline(always)]
+    pub fn for_tests() -> Self {
+        Self {
+            grantor_id: 13,
+            grantee_id: 37,
+            object_type: "fruit".into(),
+            object_name: "banana".into(),
+            privilege: "bite".into(),
+            schema_version: 337,
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // ...
@@ -907,5 +1049,62 @@ mod tests {
             .eval("return box.schema.SPACE_ID_TEMPORARY_MIN")
             .unwrap();
         assert_eq!(id, SPACE_ID_TEMPORARY_MIN);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tarantool::tuple::ToTupleBuffer;
+
+    #[test]
+    #[rustfmt::skip]
+    fn space_def_matches_format() {
+        let i = SpaceDef::for_tests();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = SpaceDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "SpaceDef::format");
+
+        assert_eq!(format[SpaceDef::FIELD_OPERABLE as usize].name, "operable");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn index_def_matches_format() {
+        let i = IndexDef::for_tests();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = IndexDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "IndexDef::format");
+
+        assert_eq!(format[IndexDef::FIELD_OPERABLE as usize].name, "operable");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn user_def_matches_format() {
+        let i = UserDef::for_tests();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = UserDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "UserDef::format");
+
+        assert_eq!(format[UserDef::FIELD_AUTH as usize].name, "auth");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn role_def_matches_format() {
+        let i = RoleDef::for_tests();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = RoleDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "RoleDef::format");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn privilege_def_matches_format() {
+        let i = PrivilegeDef::for_tests();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = PrivilegeDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PrivilegeDef::format");
     }
 }

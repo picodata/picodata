@@ -44,6 +44,8 @@ pub struct Replicaset {
 impl Encode for Replicaset {}
 
 impl Replicaset {
+    /// Format of the _pico_replicaset global table.
+    #[inline(always)]
     pub fn format() -> Vec<::tarantool::space::Field> {
         use ::tarantool::space::{Field, FieldType};
         vec![
@@ -57,8 +59,9 @@ impl Replicaset {
         ]
     }
 
+    /// A dummy instance of the type for use in tests.
     #[inline(always)]
-    pub fn replicaset_for_tests() -> Self {
+    pub fn for_tests() -> Self {
         Self {
             replicaset_id: "r1".into(),
             replicaset_uuid: "r1-uuid".into(),
@@ -122,7 +125,7 @@ mod tests {
 
     #[test]
     fn matches_format() {
-        let r = Replicaset::replicaset_for_tests();
+        let r = Replicaset::for_tests();
         let tuple_data = r.to_tuple_buffer().unwrap();
         let format = Replicaset::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "Replicaset::format");

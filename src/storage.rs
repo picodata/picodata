@@ -1697,13 +1697,7 @@ impl Spaces {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("id", FieldType::Unsigned))
-            .field(("name", FieldType::String))
-            .field(("distribution", FieldType::Array))
-            .field(("format", FieldType::Array))
-            .field(("schema_version", FieldType::Unsigned))
-            .field(("operable", FieldType::Boolean))
-            .field(("engine", FieldType::String))
+            .format(SpaceDef::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1784,14 +1778,7 @@ impl Indexes {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("space_id", FieldType::Unsigned))
-            .field(("id", FieldType::Unsigned))
-            .field(("name", FieldType::String))
-            .field(("local", FieldType::Boolean))
-            .field(("parts", FieldType::Array))
-            .field(("schema_version", FieldType::Unsigned))
-            .field(("operable", FieldType::Boolean))
-            .field(("unique", FieldType::Boolean))
+            .format(IndexDef::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2082,10 +2069,7 @@ impl Users {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("id", FieldType::Unsigned))
-            .field(("name", FieldType::String))
-            .field(("schema_version", FieldType::Unsigned))
-            .field(("auth", FieldType::Array))
+            .format(UserDef::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2175,9 +2159,7 @@ impl Roles {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("id", FieldType::Unsigned))
-            .field(("name", FieldType::String))
-            .field(("schema_version", FieldType::Unsigned))
+            .format(RoleDef::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2259,12 +2241,7 @@ impl Privileges {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("grantor_id", FieldType::Unsigned))
-            .field(("grantee_id", FieldType::Unsigned))
-            .field(("object_type", FieldType::String))
-            .field(("object_name", FieldType::String))
-            .field(("privilege", FieldType::String))
-            .field(("schema_version", FieldType::Unsigned))
+            .format(PrivilegeDef::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2413,8 +2390,7 @@ impl Tiers {
         let space = Space::builder(Self::SPACE_NAME)
             .id(Self::SPACE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("name", FieldType::String))
-            .field(("replication_factor", FieldType::Unsigned))
+            .format(Tier::format())
             .if_not_exists(true)
             .create()?;
 
@@ -3165,7 +3141,7 @@ mod tests {
 
         storage.properties.space.insert(&("foo", "bar")).unwrap();
 
-        let r = Replicaset::replicaset_for_tests();
+        let r = Replicaset::for_tests();
         storage.replicasets.space.insert(&r).unwrap();
 
         let (snapshot_data, _) = storage
@@ -3249,7 +3225,7 @@ mod tests {
             tuples,
         });
 
-        let r = Replicaset::replicaset_for_tests();
+        let r = Replicaset::for_tests();
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
             space_id: ClusterwideSpace::Replicaset.into(),
