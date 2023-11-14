@@ -1327,11 +1327,12 @@ mod tests {
         let cord_name = unsafe { CStr::from_ptr(cord_name_ptr) }.to_string_lossy();
         assert_eq!(cord_name, "main");
 
-        thread::spawn(|| {
-            assert!(!unsafe { cord_is_main() });
-            assert!(!unsafe { cord_is_main_dont_create() });
+        let thread = thread::spawn(|| {
             let cord_name_ptr = unsafe { current_cord_name() };
             assert!(cord_name_ptr.is_null());
+            assert!(!unsafe { cord_is_main_dont_create() });
+            assert!(!unsafe { cord_is_main() });
         });
+        thread.join().unwrap();
     }
 }
