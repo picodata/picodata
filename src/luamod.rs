@@ -1114,7 +1114,7 @@ pub(crate) fn setup(args: &args::Run) {
                 kind = 'update',
                 table = 'friends_of_peppa',
                 key = {2},
-                ops = {'=', 2, 'Emily'},
+                ops = {{'=', 2, 'Emily'}},
             }, {
                 ranges = {{
                     table = 'friends_of_peppa',
