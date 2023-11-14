@@ -1,4 +1,5 @@
 use crate::tarantool::set_cfg_field;
+use crate::tlog;
 use crate::traft::Result;
 
 crate::define_rpc_request! {
@@ -19,6 +20,7 @@ crate::define_rpc_request! {
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
         set_cfg_field("replication", &req.replicaset_peers)?;
+        tlog!(Debug, "replication: {:?}", &req.replicaset_peers);
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
 
         // We do this everytime because firstly it helps when waking up.

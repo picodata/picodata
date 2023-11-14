@@ -275,14 +275,23 @@ impl Node {
     /// **This function yields**
     #[inline]
     pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
+        tlog!(Debug, "waiting for applied index {target}");
         let deadline = fiber::clock().saturating_add(timeout);
         loop {
             let current = self.get_index();
             if current >= target {
+                tlog!(
+                    Debug,
+                    "done waiting for applied index {target}, current: {current}"
+                );
                 return Ok(current);
             }
 
             if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
+                tlog!(
+                    Debug,
+                    "failed waiting for applied index {target}: timeout, current: {current}"
+                );
                 return Err(Error::Timeout);
             }
         }
