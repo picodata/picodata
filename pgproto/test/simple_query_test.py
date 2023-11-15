@@ -25,7 +25,7 @@ def test_simple_query_flow_errors(postgres: Postgres):
     cur = conn.cursor()
 
     with pytest.raises(
-        pg.DatabaseError, match="expected CreateUser, DropUser, CreateRole,"
+        pg.DatabaseError, match="expected CreateUser, AlterUser, DropUser"
     ):
         cur.execute(
             """
@@ -75,9 +75,9 @@ def test_simple_flow_session(postgres: Postgres):
     cur.execute(
         """
         INSERT INTO "tall" VALUES
-            (1, 'one', true, CAST(0.1 AS DOUBLE)),
-            (2, 'to', false, CAST(0.2 AS DOUBLE)),
-            (4, 'for', true, CAST(0.4 AS DOUBLE));
+            (1, 'one', true, 0.1),
+            (2, 'to', false, 0.2),
+            (4, 'for', true, 0.4);
     """
     )
 
