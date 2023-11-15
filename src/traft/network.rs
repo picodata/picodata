@@ -10,6 +10,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
+use crate::util::NoYieldsGuard;
 use ::raft::prelude as raft;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::oneshot;
@@ -281,7 +282,7 @@ impl PoolWorker {
                 if ver >= client_ver {
                     client.reconnect();
                     client_ver = client_ver.wrapping_add(1);
-                    tlog!(Warning, "reconnecting to {address}:{port}"; "client_version" => client_ver);
+                    tlog!(Debug, "reconnecting to {address}:{port}"; "client_version" => client_ver);
                 }
             }
         }
@@ -425,27 +426,42 @@ impl ConnectionPool {
     }
 
     fn get_or_create_by_raft_id(&self, raft_id: RaftId) -> Result<&PoolWorker> {
-        // SAFETY: everything here is safe, because we only use ConnectionPool
-        // from tx thread
-        let workers = unsafe { &*self.workers.get() };
-        if let Some(worker) = workers.get(&raft_id) {
-            Ok(worker)
-        } else {
-            let mut instance_id: Option<InstanceId> = None;
-            if let Ok(tuple) = self.instances.get_raw(&raft_id) {
-                instance_id = tuple.field(Instance::FIELD_INSTANCE_ID)?;
+        // SAFETY: shared state mutations in this function are guarded by no yield guards
+        // which makes them safe in context of tx thread.
+        {
+            // We're mutating shared state here which may lead to errors
+            // if we yield in an inapropriate moment.
+            #[cfg(debug_assertions)]
+            let _guard = NoYieldsGuard::new();
+
+            let workers = unsafe { &*self.workers.get() };
+            if let Some(worker) = workers.get(&raft_id) {
+                return Ok(worker);
             }
-            // Check if address of this peer is known.
-            // No need to store the result,
-            // because it will be updated in the loop
-            let _ = self.peer_addresses.try_get(raft_id)?;
-            let worker = PoolWorker::run(
-                raft_id,
-                instance_id.clone(),
-                self.peer_addresses.clone(),
-                self.worker_options.clone(),
-                self.instance_reachability.clone(),
-            )?;
+        }
+
+        let mut instance_id: Option<InstanceId> = None;
+        if let Ok(tuple) = self.instances.get_raw(&raft_id) {
+            instance_id = tuple.field(Instance::FIELD_INSTANCE_ID)?;
+        }
+        // Check if address of this peer is known.
+        // No need to store the result,
+        // because it will be updated in the loop
+        let _ = self.peer_addresses.try_get(raft_id)?;
+        let worker = PoolWorker::run(
+            raft_id,
+            instance_id.clone(),
+            self.peer_addresses.clone(),
+            self.worker_options.clone(),
+            self.instance_reachability.clone(),
+        )?;
+
+        {
+            // We're mutating shared state here which may lead to errors
+            // if we yield in an inapropriate moment.
+            #[cfg(debug_assertions)]
+            let _guard = NoYieldsGuard::new();
+
             if let Some(instance_id) = instance_id {
                 let raft_ids = unsafe { &mut *self.raft_ids.get() };
                 raft_ids.insert(instance_id, raft_id);
@@ -457,25 +473,31 @@ impl ConnectionPool {
     }
 
     fn get_or_create_by_instance_id(&self, instance_id: &str) -> Result<&PoolWorker> {
-        // SAFETY: everything here is safe, because we only use ConnectionPool
-        // from tx thread
-        let raft_ids = unsafe { &*self.raft_ids.get() };
-        if let Some(raft_id) = raft_ids.get(instance_id) {
-            let workers = unsafe { &*self.workers.get() };
-            let worker = workers
-                .get(raft_id)
-                .expect("instance_id is present, but the worker isn't");
-            Ok(worker)
-        } else {
-            let instance_id = InstanceId::from(instance_id);
-            let tuple = self.instances.get_raw(&instance_id)?;
-            let Some(raft_id) = tuple.field(Instance::FIELD_RAFT_ID)? else {
-                return Err(Error::other(
-                    "storage corrupted: couldn't decode instance's raft id",
-                ));
-            };
-            self.get_or_create_by_raft_id(raft_id)
+        // SAFETY: shared state mutations in this function are guarded by no yield guards
+        // which makes them safe in context of tx thread.
+        {
+            // We're mutating shared state here which may lead to errors
+            // if we yield in an inapropriate moment.
+            #[cfg(debug_assertions)]
+            let _guard = NoYieldsGuard::new();
+
+            let raft_ids = unsafe { &*self.raft_ids.get() };
+            if let Some(raft_id) = raft_ids.get(instance_id) {
+                let workers = unsafe { &*self.workers.get() };
+                let worker = workers
+                    .get(raft_id)
+                    .expect("instance_id is present, but the worker isn't");
+                return Ok(worker);
+            }
         }
+
+        let instance_id = InstanceId::from(instance_id);
+        let tuple = self.instances.get_raw(&instance_id)?;
+        let Some(raft_id) = tuple.field(Instance::FIELD_RAFT_ID)? else {
+            #[rustfmt::skip]
+            return Err(Error::other("storage corrupted: couldn't decode instance's raft id"));
+        };
+        self.get_or_create_by_raft_id(raft_id)
     }
 
     /// Send a message to `msg.to` asynchronously. If the massage can't

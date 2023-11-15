@@ -25,7 +25,6 @@ use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
 use crate::stringify_cfunc;
-use crate::sync;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -64,11 +63,9 @@ use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::{Decode, Tuple};
-use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
 
 use std::cell::Cell;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
@@ -147,6 +144,8 @@ pub struct Node {
     pub(crate) main_loop: MainLoop,
     pub(crate) governor_loop: governor::Loop,
     pub(crate) sentinel_loop: sentinel::Loop,
+    #[allow(unused)]
+    pub(crate) pool: Rc<ConnectionPool>,
     status: watch::Receiver<Status>,
     applied: watch::Receiver<RaftIndex>,
 
@@ -211,12 +210,13 @@ impl Node {
                 raft_storage.clone(),
             ),
             sentinel_loop: sentinel::Loop::start(
-                pool,
+                pool.clone(),
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
                 instance_reachability,
             ),
+            pool,
             node_impl,
             storage,
             raft_storage,
@@ -1833,39 +1833,6 @@ impl NodeImpl {
 
         if expelled {
             return Err(Error::Expelled);
-        }
-
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    fn check_vclock_and_sleep(&mut self) -> traft::Result<()> {
-        assert!(self.raw_node.raft.state != RaftStateRole::Leader);
-        let my_id = self.raw_node.raft.id;
-
-        let my_instance_info = self.storage.instances.get(&my_id)?;
-        let replicaset_id = my_instance_info.replicaset_id;
-        let replicaset = self.storage.replicasets.get(&replicaset_id)?;
-        let replicaset = replicaset.ok_or_else(|| {
-            Error::other(format!("replicaset info for id {replicaset_id} not found"))
-        })?;
-        if replicaset.master_id == my_instance_info.instance_id {
-            return Err(Error::other(
-                "check_vclock_and_sleep called on replicaset master",
-            ));
-        }
-        let master = self.storage.instances.get(&replicaset.master_id)?;
-        let master_vclock = fiber::block_on(sync::call_get_vclock(&self.pool, &master.raft_id))?;
-        let local_vclock = Vclock::current();
-        if matches!(
-            local_vclock.partial_cmp(&master_vclock),
-            None | Some(Ordering::Less)
-        ) {
-            tlog!(Info, "blocking raft loop until replication progresses";
-                "master_vclock" => ?master_vclock,
-                "local_vclock" => ?local_vclock,
-            );
-            fiber::sleep(MainLoop::TICK * 4);
         }
 
         Ok(())

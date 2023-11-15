@@ -23,7 +23,10 @@ pub struct Replicaset {
     pub replicaset_uuid: String,
 
     /// Instance id of the current replication leader.
-    pub master_id: InstanceId,
+    pub current_master_id: InstanceId,
+
+    /// Id of instance which should become the replication leader.
+    pub target_master_id: InstanceId,
 
     /// Name of the tier the replicaset belongs to.
     pub tier: String,
@@ -52,7 +55,8 @@ impl Replicaset {
         vec![
             Field::from(("replicaset_id", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
-            Field::from(("master_id", FieldType::String)),
+            Field::from(("current_master_id", FieldType::String)),
+            Field::from(("target_master_id", FieldType::String)),
             Field::from(("tier", FieldType::String)),
             Field::from(("weight", FieldType::Number)),
             Field::from(("weight_origin", FieldType::String)),
@@ -66,7 +70,8 @@ impl Replicaset {
         Self {
             replicaset_id: "r1".into(),
             replicaset_uuid: "r1-uuid".into(),
-            master_id: "i".into(),
+            current_master_id: "i".into(),
+            target_master_id: "j".into(),
             tier: "storage".into(),
             weight: 13.37,
             weight_origin: WeightOrigin::Auto,
@@ -81,7 +86,10 @@ impl std::fmt::Display for Replicaset {
             f,
             "({}, master: {}, tier: {}, weight: {}, weight_origin: {}, state: {})",
             self.replicaset_id,
-            self.master_id,
+            crate::util::Transition {
+                from: &self.current_master_id,
+                to: &self.target_master_id,
+            },
             self.tier,
             self.weight,
             self.weight_origin,

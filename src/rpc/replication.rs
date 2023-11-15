@@ -1,6 +1,10 @@
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
+use crate::traft::error::Error;
 use crate::traft::Result;
+use std::time::Duration;
+use tarantool::tlua;
+use tarantool::vclock::Vclock;
 
 crate::define_rpc_request! {
     /// Configures replication on the target replica.
@@ -52,29 +56,68 @@ crate::define_rpc_request! {
     }
 }
 
-pub mod promote {
-    use crate::traft::Result;
-
-    crate::define_rpc_request! {
-        /// Promotes the target instance from read-only replica to master.
-        /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
-        /// for more.
-        ///
-        /// Returns errors in the following cases:
-        /// 1. Lua error during call to `box.cfg`
-        fn proc_replication_promote(req: Request) -> Result<Response> {
-            let _ = req;
-            // TODO: find a way to guard against stale governor requests.
-            crate::tarantool::exec("box.cfg { read_only = false }")?;
-            Ok(Response {})
+crate::define_rpc_request! {
+    /// Promotes the target instance from read-only replica to master.
+    /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
+    /// for more.
+    ///
+    /// Returns errors in the following cases: See implementation.
+    fn proc_replication_promote(req: SyncAndPromoteRequest) -> Result<SyncAndPromoteResponse> {
+        // TODO: find a way to guard against stale governor requests.
+        if let Some(vclock) = req.vclock {
+            crate::sync::wait_vclock(vclock, req.timeout)?;
         }
 
-        /// Request to promote instance to tarantool replication leader.
-        pub struct Request {}
+        // XXX: Currently we just change the box.cfg.read_only option of the
+        // instance but at some point we will implement support for
+        // tarantool synchronous transactions then this operation will probably
+        // become more involved.
+        let lua = tarantool::lua_state();
+        let ro_reason: Option<tlua::StringInLua<_>> = lua.eval(
+            "box.cfg { read_only = false }
+            return box.info.ro_reason"
+        )?;
 
-        /// Response to [`replication::promote::Request`].
-        ///
-        /// [`replication::promote::Request`]: Request
-        pub struct Response {}
+        if let Some(ro_reason) = ro_reason.as_deref() {
+            tlog!(Warning, "failed to promote self to replication leader, reason = {ro_reason}");
+            return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
+        }
+
+        Ok(SyncAndPromoteResponse {})
+    }
+
+    /// Request to promote instance to tarantool replication leader.
+    pub struct SyncAndPromoteRequest {
+        pub vclock: Option<Vclock>,
+        pub timeout: Duration,
+    }
+
+    /// Response to [`replication::promote::Request`].
+    ///
+    /// [`replication::promote::Request`]: Request
+    pub struct SyncAndPromoteResponse {}
+}
+
+crate::define_rpc_request! {
+    /// Demotes the target instance from master to read-only replica.
+    ///
+    /// Returns errors in the following cases:
+    /// 1. Lua error during call to `box.cfg`
+    fn proc_replication_demote(req: DemoteRequest) -> Result<DemoteResponse> {
+        let _ = req;
+        // TODO: find a way to guard against stale governor requests.
+        crate::tarantool::exec("box.cfg { read_only = true }")?;
+        let vclock = Vclock::current();
+        Ok(DemoteResponse { vclock })
+    }
+
+    /// Request to promote instance to tarantool replication leader.
+    pub struct DemoteRequest {}
+
+    /// Response to [`replication::promote::Request`].
+    ///
+    /// [`replication::promote::Request`]: Request
+    pub struct DemoteResponse {
+        pub vclock: Vclock,
     }
 }

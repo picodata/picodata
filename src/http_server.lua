@@ -106,7 +106,7 @@ local function get_memory_info()
 end
 
 local function is_leader(instance, replicasets)
-    return instance.instance_id == replicasets[instance.replicaset_uuid].master_id
+    return instance.instance_id == replicasets[instance.replicaset_uuid].current_master_id
 end
 
 local function get_address(instance, peer_addresses)

@@ -569,11 +569,9 @@ pub(crate) fn setup(args: &args::Run) {
             or
             (nil, string) in case of an error
         "},
-        tlua::function2(
-            |target: Vclock, timeout: f64| -> Result<Vclock, sync::TimeoutError> {
-                sync::wait_vclock(target, duration_from_secs_f64_clamped(timeout))
-            },
-        ),
+        tlua::function2(|target: Vclock, timeout: f64| -> traft::Result<Vclock> {
+            sync::wait_vclock(target, duration_from_secs_f64_clamped(timeout))
+        }),
     );
 
     // propose

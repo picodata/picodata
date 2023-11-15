@@ -7,14 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
 
+use crate::tlog;
+use crate::traft::error::Error;
 use crate::traft::network::IdOfInstance;
 use crate::traft::{ConnectionPool, RaftIndex};
 use crate::util::duration_from_secs_f64_clamped;
 use crate::{rpc, traft};
-
-#[derive(thiserror::Error, Debug)]
-#[error("timeout")]
-pub struct TimeoutError;
 
 /////////////////////////////////////////////////////////////////
 // Vclock
@@ -59,15 +57,15 @@ impl Encode for WaitVclockRpc {}
 
 impl rpc::RequestArgs for WaitVclockRpc {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_vclock);
-    type Response = (Vclock,);
+    type Response = Vclock;
 }
 
 /// A stored procedure to wait for `target` [`Vclock`].
 ///
 /// See [`wait_vclock`]
 #[proc]
-fn proc_wait_vclock(target: Vclock, timeout: f64) -> Result<(Vclock,), TimeoutError> {
-    wait_vclock(target, duration_from_secs_f64_clamped(timeout)).map(|vclock| (vclock,))
+fn proc_wait_vclock(target: Vclock, timeout: f64) -> traft::Result<Vclock> {
+    wait_vclock(target, duration_from_secs_f64_clamped(timeout))
 }
 
 /// Block current fiber until Tarantool [`Vclock`] reaches the `target`.
@@ -78,19 +76,29 @@ fn proc_wait_vclock(target: Vclock, timeout: f64) -> Result<(Vclock,), TimeoutEr
 ///
 /// **This function yields**
 ///
-pub fn wait_vclock(target: Vclock, timeout: Duration) -> Result<Vclock, TimeoutError> {
+pub fn wait_vclock(target: Vclock, timeout: Duration) -> traft::Result<Vclock> {
     // TODO: this all should be a part of tarantool C API
+    let target = target.ignore_zero();
     let deadline = fiber::clock().saturating_add(timeout);
+    tlog!(Debug, "waiting for vclock {target:?}");
     loop {
-        let current = Vclock::current();
+        let current = Vclock::current().ignore_zero();
         if current >= target {
+            tlog!(
+                Debug,
+                "done waiting for vclock {target:?}, current: {current:?}"
+            );
             return Ok(current);
         }
 
         if fiber::clock() < deadline {
             fiber::sleep(traft::node::MainLoop::TICK);
         } else {
-            return Err(TimeoutError);
+            tlog!(
+                Debug,
+                "failed waiting for vclock {target:?}: timeout, current: {current:?}"
+            );
+            return Err(Error::Timeout);
         }
     }
 }

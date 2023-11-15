@@ -89,7 +89,7 @@ impl VshardConfig {
                 peer.instance_uuid.clone(),
                 ReplicaSpec {
                     uri: format!("guest:@{address}"),
-                    master: r.master_id == peer.instance_id,
+                    master: r.current_master_id == peer.instance_id,
                     name: peer.instance_id.to_string(),
                 },
             );

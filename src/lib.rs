@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::let_and_return)]
 #![allow(clippy::needless_return)]
+#![allow(clippy::unwrap_or_default)]
 use serde::{Deserialize, Serialize};
 
 use ::raft::prelude as raft;

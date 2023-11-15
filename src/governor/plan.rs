@@ -84,6 +84,18 @@ pub(super) fn action_plan<'i>(
             }
         }
 
+        // TODO: if this is replication leader, we should demote it and wait
+        // until someone is promoted in it's place (which implies synchronizing
+        // vclocks). Except that we can't do this reliably, as tarantool will
+        // stop accepting incoming connections once the on_shutdown even happens.
+        // This means that we can't reliably send rpc requests to instances with
+        // target grade Offline and basically there's nothing we can do about
+        // such instances.
+        //
+        // Therefore basically the user should never expect that turning off a
+        // replication leader is safe. Instead it should always first transfer
+        // the replication leadership to another instance.
+
         ////////////////////////////////////////////////////////////////////////
         // update instance's current grade
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -105,13 +117,17 @@ pub(super) fn action_plan<'i>(
         ..
     }) = to_create_replicaset
     {
-        let rpc = rpc::replication::promote::Request {};
+        let rpc = rpc::replication::SyncAndPromoteRequest {
+            vclock: None,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
         let op = Dml::insert(
             ClusterwideTable::Replicaset,
             &Replicaset {
                 replicaset_id: replicaset_id.clone(),
                 replicaset_uuid: replicaset_uuid.clone(),
-                master_id: master_id.clone(),
+                current_master_id: master_id.clone(),
+                target_master_id: master_id.clone(),
                 weight: 0.,
                 weight_origin: WeightOrigin::Auto,
                 state: ReplicasetState::NotReady,
@@ -124,19 +140,18 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replicaset master switchover
-    let to_promote = get_new_replicaset_master_if_needed(instances, replicasets);
-    if let Some(to) = to_promote {
-        let rpc = rpc::replication::promote::Request {};
+    // update target replicaset master
+    let new_target_master = get_new_replicaset_master_if_needed(instances, replicasets);
+    if let Some(to) = new_target_master {
         let mut ops = UpdateOps::new();
-        ops.assign("master_id", &to.instance_id)?;
+        ops.assign("target_master_id", &to.instance_id)?;
         let op = Dml::update(
             ClusterwideTable::Replicaset,
             &[&to.replicaset_id],
             ops,
             ADMIN_ID,
         )?;
-        return Ok(TransferMastership { to, rpc, op }.into());
+        return Ok(UpdateTargetReplicasetMaster { op }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -173,7 +188,7 @@ pub(super) fn action_plan<'i>(
         let replicaset = replicasets
             .get(replicaset_id)
             .expect("replicaset info should be available at this point");
-        let master_id = &replicaset.master_id;
+        let master_id = &replicaset.current_master_id;
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(Grade::new(Replicated, target_grade.incarnation));
 
@@ -182,6 +197,54 @@ pub(super) fn action_plan<'i>(
             master_id,
             replicaset_peers,
             req,
+        }
+        .into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // replicaset master switchover
+    //
+    // This must be done after instances have (re)configured replication
+    // because master switchover requires synchronizing via tarantool replication.
+    let new_current_master = replicasets
+        .values()
+        .find(|r| r.current_master_id != r.target_master_id);
+    if let Some(r) = new_current_master {
+        let old_master_id = &r.current_master_id;
+        let new_master_id = &r.target_master_id;
+
+        let mut ops = UpdateOps::new();
+        ops.assign("current_master_id", new_master_id)?;
+        let op = Dml::update(
+            ClusterwideTable::Replicaset,
+            &[&r.replicaset_id],
+            ops,
+            ADMIN_ID,
+        )?;
+
+        let mut demote = None;
+        let old_master_may_respond = instances
+            .iter()
+            .find(|i| i.instance_id == old_master_id)
+            .map(|i| i.may_respond());
+        if let Some(true) = old_master_may_respond {
+            demote = Some(rpc::replication::DemoteRequest {});
+        }
+
+        let sync_and_promote = rpc::replication::SyncAndPromoteRequest {
+            // This will be set to the value returned by old master.
+            vclock: None,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+
+        let replicaset_id = &r.replicaset_id;
+        return Ok(UpdateCurrentReplicasetMaster {
+            old_master_id,
+            demote,
+            new_master_id,
+            sync_and_promote,
+            replicaset_id,
+            op,
         }
         .into());
     }
@@ -245,8 +308,8 @@ pub(super) fn action_plan<'i>(
     let to_bootstrap = (!vshard_bootstrapped)
         .then(|| get_first_ready_replicaset(instances, replicasets))
         .flatten();
-    if let Some(Replicaset { master_id, .. }) = to_bootstrap {
-        let target = master_id;
+    if let Some(r) = to_bootstrap {
+        let target = &r.current_master_id;
         let rpc = rpc::sharding::bootstrap::Request {
             term,
             applied,
@@ -293,15 +356,16 @@ pub(super) fn action_plan<'i>(
         // TODO: invert this loop to improve performance
         // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
         for r in replicasets.values() {
-            let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
+            #[rustfmt::skip]
+            let Some(master) = instances.iter().find(|i| i.instance_id == r.current_master_id) else {
                 tlog!(
                     Warning,
                     "couldn't find instance with id {}, which is chosen as master of replicaset {}",
-                    r.master_id,
+                    r.current_master_id,
                     r.replicaset_id,
                 );
                 // Send them a request anyway just to be safe
-                targets.push(&r.master_id);
+                targets.push(&r.current_master_id);
                 continue;
             };
             if has_grades!(master, Expelled -> *) {
@@ -374,9 +438,16 @@ pub mod stage {
             pub to: &'i Instance,
         }
 
-        pub struct TransferMastership<'i> {
-            pub to: &'i Instance,
-            pub rpc: rpc::replication::promote::Request,
+        pub struct UpdateTargetReplicasetMaster {
+            pub op: Dml,
+        }
+
+        pub struct UpdateCurrentReplicasetMaster<'i> {
+            pub replicaset_id: &'i ReplicasetId,
+            pub old_master_id: &'i InstanceId,
+            pub demote: Option<rpc::replication::DemoteRequest>,
+            pub new_master_id: &'i InstanceId,
+            pub sync_and_promote: rpc::replication::SyncAndPromoteRequest,
             pub op: Dml,
         }
 
@@ -387,7 +458,7 @@ pub mod stage {
         pub struct CreateReplicaset<'i> {
             pub master_id: &'i InstanceId,
             pub replicaset_id: &'i ReplicasetId,
-            pub rpc: rpc::replication::promote::Request,
+            pub rpc: rpc::replication::SyncAndPromoteRequest,
             pub op: Dml,
         }
 
@@ -442,20 +513,44 @@ fn get_new_replicaset_master_if_needed<'i>(
 ) -> Option<&'i Instance> {
     // TODO: construct a map from replicaset id to instance to improve performance
     for r in replicasets.values() {
-        let Some(master) = instances.iter().find(|i| i.instance_id == r.master_id) else {
+        // XXX:                                        is this correct? vvvvvv
+        #[rustfmt::skip]
+        let Some(master) = instances.iter().find(|i| i.instance_id == r.target_master_id) else {
             crate::warn_or_panic!(
-                "couldn't find instance with id {}, which is chosen as master of replicaset {}",
-                r.master_id,
+                "couldn't find instance with id {}, which is chosen as next master of replicaset {}",
+                r.target_master_id,
                 r.replicaset_id,
             );
             continue;
         };
-        if master.may_respond() {
+
+        if master.replicaset_id != r.replicaset_id {
+            tlog!(
+                Warning,
+                "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
+                master.instance_id,
+                master.replicaset_id,
+                r.replicaset_id,
+            );
+        } else if !master.may_respond() {
+            tlog!(
+                Info,
+                "target master {} of replicaset {} is not online: trying to choose a new one",
+                master.instance_id,
+                master.replicaset_id,
+            );
+        } else {
             continue;
         }
+
         let Some(new_master) =
             maybe_responding(instances).find(|i| i.replicaset_id == r.replicaset_id)
         else {
+            tlog!(
+                Warning,
+                "there are no instances suitable as master of replicaset {}",
+                r.replicaset_id,
+            );
             continue;
         };
 

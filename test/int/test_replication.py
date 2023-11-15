@@ -19,7 +19,7 @@ def wait_repl_master(i: Instance, other_than=None):
     repl_master = i.eval(
         """
         local rid = pico.instance_info(...).replicaset_id
-        return box.space._pico_replicaset:get(rid).master_id
+        return box.space._pico_replicaset:get(rid).current_master_id
     """,
         i.instance_id,
     )
@@ -147,7 +147,7 @@ def test_master_auto_switchover(cluster: Cluster):
     # FIXME: wait until governor handles all pending events
     time.sleep(0.5)
     assert (
-        i1.eval("return box.space._pico_replicaset:get(...).master_id", "r99")
+        i1.eval("return box.space._pico_replicaset:get(...).current_master_id", "r99")
         == i5.instance_id
     )
 
@@ -171,3 +171,20 @@ def test_master_auto_switchover(cluster: Cluster):
     # i5 is still read only.
     assert wait_repl_master(i5) == i4.instance_id
     assert i5.eval("return box.info.ro")
+
+    # Manually change master back to i5
+    index = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r99"],
+        ops=[("=", "target_master_id", i5.instance_id)],
+    )
+    cluster.raft_wait_index(index)
+
+    assert wait_repl_master(i4) == i5.instance_id
+    assert i4.eval("return box.info.ro")
+    assert wait_repl_master(i5) == i5.instance_id
+    assert not i5.eval("return box.info.ro")
+
+
+# TODO: check instance synchronizes with old master before becoming the new one

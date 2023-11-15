@@ -28,7 +28,7 @@ pub trait RequestArgs: Encode + DecodeOwned {
     const PROC_NAME: &'static str;
 
     /// Describes data returned from a successful RPC request.
-    type Response: Encode + DeserializeOwned + Debug + 'static;
+    type Response: serde::Serialize + DeserializeOwned + Debug + 'static;
 }
 
 /// Invoke remote procedure call on an instance specified by `address`.

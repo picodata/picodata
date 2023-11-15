@@ -7,7 +7,6 @@ use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
-use crate::instance::Instance;
 use crate::op::Op;
 use crate::r#loop::FlowControl::{self, Continue};
 use crate::rpc;
@@ -166,27 +165,59 @@ impl Loop {
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
             }
 
-            Plan::TransferMastership(TransferMastership { to, rpc, op }) => {
-                #[rustfmt::skip]
-                let Instance { instance_id, replicaset_id, .. } = to;
-                tlog!(Info, "transferring replicaset mastership to {instance_id}");
+            Plan::UpdateTargetReplicasetMaster(UpdateTargetReplicasetMaster { op }) => {
+                governor_step! {
+                    "proposing replicaset target master change"
+                    async {
+                        node.propose_and_wait(op, Duration::from_secs(3))??;
+                    }
+                }
+            }
+
+            Plan::UpdateCurrentReplicasetMaster(UpdateCurrentReplicasetMaster {
+                old_master_id,
+                demote,
+                new_master_id,
+                mut sync_and_promote,
+                replicaset_id,
+                op,
+            }) => {
+                tlog!(
+                    Info,
+                    "transferring replicaset mastership from {old_master_id} to {new_master_id}"
+                );
+
+                if let Some(rpc) = demote {
+                    governor_step! {
+                        "demoting old master" [
+                            "old_master_id" => %old_master_id,
+                            "replicaset_id" => %replicaset_id,
+                        ]
+                        async {
+                            let resp = pool.call(old_master_id, &rpc, Self::RPC_TIMEOUT)?
+                                .timeout(Self::RPC_TIMEOUT)
+                                .await?;
+                            sync_and_promote.vclock = Some(resp.vclock);
+                        }
+                    }
+                }
 
                 governor_step! {
                     "promoting new master" [
-                        "master_id" => %instance_id,
+                        "new_master_id" => %new_master_id,
                         "replicaset_id" => %replicaset_id,
+                        "vclock" => ?sync_and_promote.vclock,
                     ]
                     async {
-                        pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?
-                            // TODO: don't hard code timeout
-                            .timeout(Duration::from_secs(3))
+                        pool.call(new_master_id, &sync_and_promote, Self::SYNC_TIMEOUT)?
+                            .timeout(Self::SYNC_TIMEOUT)
                             .await?
                     }
                 }
 
                 governor_step! {
-                    "proposing replicaset master change" [
-                        "master_id" => %instance_id,
+                    "proposing replicaset current master change" [
+                        "current_master_id" => %new_master_id,
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
@@ -343,8 +374,8 @@ impl Loop {
                     ]
                     async {
                         pool
-                            .call(target, &rpc, Self::RPC_TIMEOUT)?
-                            .timeout(Loop::SYNC_TIMEOUT)
+                            .call(target, &rpc, Self::SYNC_TIMEOUT)?
+                            .timeout(Self::SYNC_TIMEOUT)
                             .await?;
                         node.propose_and_wait(op, Duration::from_secs(3))??
                     }

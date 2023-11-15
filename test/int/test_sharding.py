@@ -156,3 +156,51 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
         info = i1.call("vshard.router.callro", bucket_id, "pico.instance_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 3
+
+
+def get_vshards_opinion_about_replicaset_masters(i: Instance):
+    return i.eval(
+        """
+            local res = {}
+            for _, r in pairs(vshard.router.static.replicasets) do
+                res[r.uuid] = r.master.name
+            end
+            return res
+        """
+    )
+
+
+def test_vshard_updates_on_master_change(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i3 = cluster.add_instance(replicaset_id="r2", wait_online=True)
+    i4 = cluster.add_instance(replicaset_id="r2", wait_online=True)
+
+    r1_uuid = i1.eval("return box.space._pico_replicaset:get('r1').replicaset_uuid")
+    r2_uuid = i1.eval("return box.space._pico_replicaset:get('r2').replicaset_uuid")
+
+    for i in cluster.instances:
+        replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)
+        # The first instance in the replicaset becomes it's master
+        assert replicaset_masters[r1_uuid] == i1.instance_id
+        assert replicaset_masters[r2_uuid] == i3.instance_id
+
+    cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r1"],
+        ops=[("=", "target_master_id", i2.instance_id)],
+    )
+    index = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r2"],
+        ops=[("=", "target_master_id", i4.instance_id)],
+    )
+    cluster.raft_wait_index(index)
+
+    for i in cluster.instances:
+        replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)
+        # Now the chosen instances are replicaset masters
+        assert replicaset_masters[r1_uuid] == i2.instance_id
+        assert replicaset_masters[r2_uuid] == i4.instance_id
