@@ -36,6 +36,14 @@ mod ffi {
         /// NOTE: this does not reclaim the underlying memory.
         pub fn log_destroy(log: *mut Log);
 
+        /// Set log format by name specified as cstring.
+        /// Known good names: "plain", "json".
+        /// Returns 0 in case of success, -1 otherwise.
+        pub fn log_set_format_by_name(
+            log: *mut Log,
+            format: *const core::ffi::c_char,
+        ) -> core::ffi::c_int;
+
         /// Emit a new log entry.
         /// This function uses `printf`-ish calling convention.
         pub fn log_say(
@@ -46,7 +54,7 @@ mod ffi {
             error: *const core::ffi::c_char,
             format: *const core::ffi::c_char,
             ...
-        ) -> ::core::ffi::c_int;
+        ) -> core::ffi::c_int;
     }
 }
 
@@ -70,6 +78,11 @@ impl Log {
         if res != 0 {
             return Err(TarantoolError::last());
         }
+
+        // SAFETY: this call is safe as long as the log object is initialized
+        // (per above) and the format name is a proper nul-terminated cstring.
+        let res = unsafe { ffi::log_set_format_by_name(log, tarantool::c_ptr!("json")) };
+        assert_eq!(res, 0, "failed to set log's format to json");
 
         Ok(Self(log))
     }
@@ -99,7 +112,7 @@ impl slog::Drain for Log {
         let line = record.line() as core::ffi::c_int;
 
         // Format the message using tlog's capabilities.
-        let msg = tlog::StrSerializer::format_message(record, values);
+        let msg = tlog::JsonSerializer::format_message(record, values);
         let msg = CString::new(msg).unwrap();
 
         // SAFETY: All arguments' invariants have already been checked.
@@ -110,6 +123,10 @@ impl slog::Drain for Log {
                 file.as_ptr(),
                 line,
                 std::ptr::null(),
+                // The special "json" format string causes `say_format_json`
+                // to think that the message is already json-formatted.
+                // This is exactly how tarantool's lua `log` implements json fmt.
+                tarantool::c_ptr!("json"),
                 msg.as_ptr(),
             );
         }

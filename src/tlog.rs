@@ -2,7 +2,7 @@ use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
-/// For mapping one loggging level to another.
+/// For mapping one logging level to another.
 /// This helps circumvent rust's coherence & orphan rules.
 pub struct MapLevel<T>(pub T);
 
@@ -61,6 +61,8 @@ pub fn highlight_key(key: impl Into<String> + AsRef<str>, color: Option<Color>) 
     }
 }
 
+/// A helper for serializing slog's record to plain string.
+/// We use this for picodata's regular log (tlog).
 pub struct StrSerializer {
     str: String,
 }
@@ -82,6 +84,7 @@ impl slog::Serializer for StrSerializer {
 pub static mut DONT_LOG_KV_FOR_NEXT_SENDING_FROM: bool = false;
 
 impl StrSerializer {
+    /// Format slog's record as plain string. Most suitable for implementing [`slog::Drain`].
     pub fn format_message(record: &slog::Record, values: &slog::OwnedKVList) -> String {
         let mut s = StrSerializer {
             str: format!("{}", record.msg()),
@@ -108,6 +111,40 @@ impl StrSerializer {
         }
 
         s.str
+    }
+}
+
+/// A helper for serializing slog's record to json.
+/// We use this for picodata's audit log.
+pub struct JsonSerializer {
+    map: serde_json::Map<String, serde_json::Value>,
+}
+
+impl slog::Serializer for JsonSerializer {
+    fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
+        // TODO: optimize excessive string allocations here and below.
+        self.map.insert(key.to_string(), val.to_string().into());
+        Ok(())
+    }
+}
+
+impl JsonSerializer {
+    /// Format slog's record as json. Most suitable for implementing [`slog::Drain`].
+    pub fn format_message(record: &slog::Record, values: &slog::OwnedKVList) -> String {
+        let mut s = JsonSerializer {
+            map: serde_json::Map::new(),
+        };
+
+        let message = record.msg().to_string();
+        s.map.insert("message".into(), message.into());
+
+        use slog::KV;
+        // It's safe to use .unwrap() here since
+        // JsonSerializer doesn't return anything but Ok()
+        record.kv().serialize(record, &mut s).unwrap();
+        values.serialize(record, &mut s).unwrap();
+
+        serde_json::Value::from(s.map).to_string()
     }
 }
 
