@@ -100,6 +100,7 @@ macro_rules! define_clusterwide_spaces {
             }
 
             /// A slice of all possible variants of `Self`.
+            /// Guaranteed to return spaces in ascending order of their id
             pub const fn all_spaces() -> &'static [Self] {
                 &[ $( Self::$cw_space_var, )+ ]
             }
@@ -239,48 +240,6 @@ define_clusterwide_spaces! {
     /// Use [`Self::id`] to get [`SpaceId`].
     /// Use [`Self::name`] to get space name.
     pub enum ClusterwideSpace {
-        Instance = 515, "_pico_instance" => {
-            Clusterwide::instances;
-
-            /// A struct for accessing storage of all the cluster instances.
-            pub struct Instances {
-                space: Space,
-                #[primary]
-                index_instance_id:   Index => "instance_id",
-                index_raft_id:       Index => "raft_id",
-                index_replicaset_id: Index => "replicaset_id",
-            }
-        }
-        Address = 514, "_pico_peer_address" => {
-            Clusterwide::peer_addresses;
-
-            /// A struct for accessing storage of peer addresses.
-            pub struct PeerAddresses {
-                space: Space,
-                #[primary]
-                index: Index => "raft_id",
-            }
-        }
-        Property = 516, "_pico_property" => {
-            Clusterwide::properties;
-
-            /// A struct for accessing storage of the cluster-wide key-value properties
-            pub struct Properties {
-                space: Space,
-                #[primary]
-                index: Index => "key",
-            }
-        }
-        Replicaset = 517, "_pico_replicaset" => {
-            Clusterwide::replicasets;
-
-            /// A struct for accessing replicaset info from storage
-            pub struct Replicasets {
-                space: Space,
-                #[primary]
-                index: Index => "replicaset_id",
-            }
-        }
         Space = 512, "_pico_space" => {
             Clusterwide::spaces;
 
@@ -303,22 +262,54 @@ define_clusterwide_spaces! {
                 index_name: Index => "name",
             }
         }
+        Address = 514, "_pico_peer_address" => {
+            Clusterwide::peer_addresses;
+
+            /// A struct for accessing storage of peer addresses.
+            pub struct PeerAddresses {
+                space: Space,
+                #[primary]
+                index: Index => "raft_id",
+            }
+        }
+        Instance = 515, "_pico_instance" => {
+            Clusterwide::instances;
+
+            /// A struct for accessing storage of all the cluster instances.
+            pub struct Instances {
+                space: Space,
+                #[primary]
+                index_instance_id:   Index => "instance_id",
+                index_raft_id:       Index => "raft_id",
+                index_replicaset_id: Index => "replicaset_id",
+            }
+        }
+        Property = 516, "_pico_property" => {
+            Clusterwide::properties;
+
+            /// A struct for accessing storage of the cluster-wide key-value properties
+            pub struct Properties {
+                space: Space,
+                #[primary]
+                index: Index => "key",
+            }
+        }
+        Replicaset = 517, "_pico_replicaset" => {
+            Clusterwide::replicasets;
+
+            /// A struct for accessing replicaset info from storage
+            pub struct Replicasets {
+                space: Space,
+                #[primary]
+                index: Index => "replicaset_id",
+            }
+        }
+
         User = 520, "_pico_user" => {
             Clusterwide::users;
 
             /// A struct for accessing info of all the user-defined users.
             pub struct Users {
-                space: Space,
-                #[primary]
-                index_id: Index => "id",
-                index_name: Index => "name",
-            }
-        }
-        Role = 522, "_pico_role" => {
-            Clusterwide::roles;
-
-            /// A struct for accessing info of all the user-defined roles.
-            pub struct Roles {
                 space: Space,
                 #[primary]
                 index_id: Index => "id",
@@ -335,6 +326,17 @@ define_clusterwide_spaces! {
                 #[primary]
                 primary_key: Index => "primary",
                 object_idx: Index => "object",
+            }
+        }
+        Role = 522, "_pico_role" => {
+            Clusterwide::roles;
+
+            /// A struct for accessing info of all the user-defined roles.
+            pub struct Roles {
+                space: Space,
+                #[primary]
+                index_id: Index => "id",
+                index_name: Index => "name",
             }
         }
         Tier = 523, "_pico_tier" => {
@@ -386,13 +388,11 @@ impl Clusterwide {
 
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
         let mut space_indexes = Vec::with_capacity(32);
+        // ClusterwideSpace::all_spaces is guaranteed to iterate in order
+        // of ascending space ids
         for space in ClusterwideSpace::all_spaces() {
             space_indexes.push((space.id(), 0));
         }
-        // ClusterwideSpace::all_spaces is not guaranteed to iterate in order
-        // of ascending space ids, so we sort it explicitly.
-        // TODO: we should probably fix the enum so that we don't have to sort.
-        space_indexes.sort_unstable();
 
         for space_def in self.spaces.iter()? {
             if !matches!(space_def.distribution, Distribution::Global) {
@@ -3253,5 +3253,17 @@ mod tests {
         assert_eq!(storage.replicasets.space.len().unwrap(), 1);
         let replicaset = storage.replicasets.get("r1").unwrap().unwrap();
         assert_eq!(replicaset, r);
+    }
+
+    #[::tarantool::test]
+    fn system_clusterwide_spaces_are_ordered_by_id() {
+        let all_spaces: Vec<SpaceId> = ClusterwideSpace::all_spaces()
+            .iter()
+            .map(|s| s.id())
+            .collect();
+
+        let mut sorted = all_spaces.clone();
+        sorted.sort_unstable();
+        assert_eq!(all_spaces, sorted);
     }
 }

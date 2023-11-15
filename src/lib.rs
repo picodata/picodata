@@ -187,7 +187,6 @@ fn start_http_server(Address { host, port, .. }: &Address) {
 #[cfg(feature = "webui")]
 fn start_webui() {
     use ::tarantool::tlua::PushInto;
-    use std::collections::HashMap;
 
     /// This structure is used to check that `json` contains valid data
     /// at deserialization.
