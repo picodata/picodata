@@ -104,6 +104,6 @@ picodata> pico.sql([[delete from "friends_of_peppa" where "id" = 1]])
 
 Приведенный выше пример поможет сделать первые шаги в работе с данными в Picodata.
 Подробнее о внутренней архитектуре кластера Picodata см. в разделе
-[Жизненный цикл кластера](../architecture/clustering.md).
+[Жизненный цикл инстанса](../architecture/instance_lifecycle.md).
 
 Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../reference/cli.md).

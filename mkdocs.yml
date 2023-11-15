@@ -30,8 +30,8 @@ nav:
   - Архитектура:
     - architecture/distributed_sql.md
     - architecture/discovery.md
+    - architecture/instance_lifecycle.md
     - architecture/raft_failover.md
-    - architecture/clustering.md
     - architecture/system_tables.md
 
 theme:
