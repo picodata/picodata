@@ -1,5 +1,5 @@
 use crate::tlog;
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use tarantool::{error::TarantoolError, log::SayLevel};
 
@@ -118,34 +118,36 @@ impl slog::Drain for Log {
     }
 }
 
-pub fn root() -> &'static slog::Logger {
-    static ROOT: Lazy<slog::Logger> = Lazy::new(|| {
-        // TODO: those settings shouldn't be hardcoded.
-        let path = CStr::from_bytes_with_nul(b"/tmp/audit.log\0").unwrap();
-        let log = Log::new(path).expect("failed to create audit log");
-        let logger = slog::Logger::root(log, slog::o!());
-        slog::info!(logger, "audit log is ready"; "title" => "init_audit");
+// Note: we don't want to expose this implementation detail.
+static ROOT: OnceCell<slog::Logger> = OnceCell::new();
 
-        logger
-    });
-
-    &ROOT
+/// A public log drain for the [`crate::audit!`] macro.
+pub fn root() -> Option<&'static slog::Logger> {
+    ROOT.get()
 }
 
 #[macro_export]
 macro_rules! audit(
     ($lvl:ident, $($args:tt)+) => {
-        let root = $crate::audit::root();
-        // TODO: include the record id (comprised of `count,gen,raft_id`).
-        // TODO: include the name of a subject (who performed the operation).
-        slog::slog_log!(root, slog::Level::$lvl, "", $($args)*);
+        if let Some(root) = $crate::audit::root() {
+            // TODO: include the record id (comprised of `count,gen,raft_id`).
+            // TODO: include the name of a subject (who performed the operation).
+            slog::slog_log!(root, slog::Level::$lvl, "", $($args)*);
+        }
     };
 );
 
 /// Initialize audit log.
-pub fn init() {
-    // TODO: decide how to store and reconfigure audit log object.
-    let _ = root();
+/// Note: `config` will be parsed by tarantool's core (say.c).
+pub fn init(config: &str) {
+    let config = CString::new(config).expect("audit log config contains nul");
+    let log = Log::new(config).expect("failed to create audit log");
+
+    // Note: this'll only fail if the cell's already set (shouldn't be possible).
+    ROOT.set(slog::Logger::root(log, slog::o!()))
+        .expect("failed to initialize global audit drain");
+
+    audit!(Info, "audit log is ready"; "title" => "init_audit");
 
     // Report a local startup event & register a trigger for a local shutdown event.
     // Those will only be seen in this exact node's audit log (hence "local").

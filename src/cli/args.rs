@@ -160,6 +160,15 @@ pub struct Run {
     /// Filepath to configuration file in yaml format.
     #[clap(long = "init-cfg", value_name = "PATH", parse(try_from_str = try_parse_yaml_to_init_cfg), env = "PICODATA_INIT_CFG", group = "init_cfg")]
     pub init_cfg: Option<InitCfg>,
+
+    /// Configuration for the audit log (currently just a string).
+    /// Tarantool's log machinery (say) will parse and validate it independently.
+    /// Valid options:
+    /// 1. Write to file (e.g. `--audit=/tmp/audit.log`);
+    /// 2. Send to subprocess via stdin (e.g. `--audit='|/bin/capture-from-stdin'`);
+    /// 3. Write to syslog (e.g. `--audit=syslog:`).
+    #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
+    pub audit: Option<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.

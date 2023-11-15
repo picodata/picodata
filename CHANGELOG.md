@@ -22,6 +22,8 @@ with the `YY.0M.MICRO` scheme.
 
 - New option `--password-file` for `picodata connect' allows supplying password in a plain-text file.
 
+- Enable the audit log with `picodata run --audit`.
+
 - Allow connecting interactive console over a unix socket `picodata run --console-sock`.
   Use `picodata connect --unix` to connect. Unlike connecting to a `--listen` address,
   console communication occurs in plain text and always operates under the admin account.

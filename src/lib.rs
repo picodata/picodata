@@ -377,10 +377,12 @@ pub struct IpcMessage {
 /// - `start_join`
 ///
 fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
-    audit::init();
-
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
+
+    if let Some(config) = &args.audit {
+        audit::init(config);
+    }
 
     // Load Lua libraries
     preload_vshard();
