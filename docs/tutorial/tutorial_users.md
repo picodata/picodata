@@ -153,4 +153,4 @@ pico.sql([[
 См. также [`pico.grant_privilege`](../reference/api.md#picogrant_privilege) и [`pico.revoke_privilege`](../reference/api.md#picorevoke_privilege)
 
 ---
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/tutorial_users.md)

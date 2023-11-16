@@ -1275,4 +1275,4 @@ explain select count("id") from "characters" ;
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
 
 ---
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/reference/sql_queries.md)

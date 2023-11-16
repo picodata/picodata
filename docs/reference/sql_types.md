@@ -31,4 +31,4 @@
 См. также: [Совместимость с ANSI SQL](ansi_sql.md)
 
 ---
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/reference/sql_types.md)

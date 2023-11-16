@@ -217,4 +217,4 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 строки описаны в разделе [Аргументы командной строки Picodata](../../reference/cli).
 
 ---
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/install.md)

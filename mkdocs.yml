@@ -1,7 +1,6 @@
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
 repo_url: https://git.picodata.io/picodata/picodata/docs
-edit_uri: https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/
 
 
 nav:
@@ -71,14 +70,10 @@ extra_css:
     - extra/style.css
 
 plugins:
-    - inline-svg # рендерит svg-файлы как часть html-кода
-    - macros: # нужен для использования хуков для ссылок вида "Исходный код страницы".
-    # См. https://mkdocs-macros-plugin.readthedocs.io/en/latest и https://github.com/mkdocs/mkdocs/blob/master/docs/hooks.py
-        on_error_fail: true # не стартовать, если найдены ошибки
-        on_undefined: strict # по умолчанию использовать строгий режим
-    - git-revision-date-localized: # печатает дату изменения страницы внизу
-        enable_creation_date: false
-    - search: # поиск по сайту
+    - inline-svg
+    - git-revision-date-localized:
+        enable_creation_date: true
+    - search:
         lang:
           - en
           - ru

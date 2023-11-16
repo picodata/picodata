@@ -80,4 +80,4 @@ picodata connect --unix /tmp/file.socket
 
 
 ---
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/connecting.md)

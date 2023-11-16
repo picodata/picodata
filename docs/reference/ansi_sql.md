@@ -99,4 +99,4 @@ Picodata SQL требованиям стандарта SQL:2016, а именно
 См. также: [Работа с данными SQL](../tutorial/sql_examples.md).
 
 ---
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})
+[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/ansi_sql.md)
