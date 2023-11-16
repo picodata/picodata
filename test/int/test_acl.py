@@ -82,7 +82,7 @@ def test_max_login_attempts(cluster: Cluster):
             connect(i1, user="foo", password="baz")
 
     # Next login even with correct password fails as the limit is reached
-    with pytest.raises(NetworkError, match="maximum number of login attempts exceeded"):
+    with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
         connect(i1, user="foo", password="bar")
 
 

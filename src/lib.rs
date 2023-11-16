@@ -291,7 +291,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
 
     // It's ok to loose this information during restart, so we keep it as a static.
     static mut LOGIN_ATTEMPTS: OnceCell<HashMap<String, usize>> = OnceCell::new();
-    const ERROR: &str = "maximum number of login attempts exceeded";
+    const ERROR: &str = "Maximum number of login attempts exceeded";
 
     let lua = ::tarantool::lua_state();
     lua.exec_with(
@@ -310,14 +310,6 @@ fn set_login_attempts_check(storage: Clusterwide) {
                                 .max_login_attempts()
                                 .expect("accessing storage should not fail")
                         {
-                            // Currently `picodata connect` displays a generic error for all purposes
-                            // of connection failure. So this log is left to help during development/debugging.
-                            // Obviously this should not end up in production, so it is enabled only for debug
-                            // builds.
-                            // TODO: Remove once we fix `picodata connect` error display.
-                            if cfg!(debug_assertions) {
-                                tlog!(Warning, "{} (user=\"{}\")", ERROR, count.key());
-                            }
                             // Raises an error instead of returning it as a function result.
                             // This is the behavior required by `on_auth` trigger to drop the connection.
                             // All the drop implementations are called, no need to clean anything up.

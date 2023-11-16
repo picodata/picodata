@@ -122,6 +122,7 @@ def test_wrong_pass(i1: Instance):
     cli.sendline("badpass")
 
     cli.expect_exact("Connection is not established")
+    cli.expect_exact("User not found or supplied credentials are invalid")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -139,6 +140,7 @@ def test_connection_refused(binary_path: str):
     cli.sendline("")
 
     cli.expect_exact("Connection is not established")
+    cli.expect_exact("Connection refused")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -181,6 +183,7 @@ def test_connect_auth_type_different(i1: Instance):
     cli.sendline("")
 
     cli.expect_exact("Connection is not established")
+    cli.expect_exact("User not found or supplied credentials are invalid")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -208,7 +211,8 @@ def test_connect_unix_enoent(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Connection is not established: No such file or directory")
+    cli.expect_exact("Connection is not established")
+    cli.expect_exact("No such file or directory")
     cli.expect_exact("uri: unix/:./wrong/path/t.sock")
     cli.expect_exact(pexpect.EOF)
 
@@ -223,7 +227,8 @@ def test_connect_unix_econnrefused(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Connection is not established: Connection refused")
+    cli.expect_exact("Connection is not established")
+    cli.expect_exact("Connection refused")
     cli.expect_exact("uri: unix/:/dev/null")
     cli.expect_exact(pexpect.EOF)
 
