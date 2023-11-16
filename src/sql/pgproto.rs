@@ -22,17 +22,17 @@ use tarantool::proc::{Return, ReturnMsgpack};
 use tarantool::session::UserId;
 use tarantool::tuple::FunctionCtx;
 
-pub const DEFAULT_MAX_PG_PORTALS: usize = 50;
+pub const DEFAULT_MAX_PG_STATEMENTS: usize = 50;
 
 pub type Descriptor = usize;
 
-pub struct PortalStorage {
-    map: BTreeMap<(UserId, Descriptor), BoxedPortal>,
+pub struct StatementStorage {
+    map: BTreeMap<(UserId, Descriptor), BoxedStatement>,
     len: usize,
     capacity: usize,
 }
 
-impl PortalStorage {
+impl StatementStorage {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: BTreeMap::new(),
@@ -44,36 +44,36 @@ impl PortalStorage {
     pub fn new() -> Self {
         let storage = match node::global() {
             Ok(node) => &node.storage,
-            Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_PORTALS),
+            Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
         };
-        match storage.properties.max_pg_portals() {
+        match storage.properties.max_pg_statements() {
             Ok(size) => Self::with_capacity(size),
-            Err(_) => Self::with_capacity(DEFAULT_MAX_PG_PORTALS),
+            Err(_) => Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
         }
     }
 
-    pub fn put(&mut self, key: Descriptor, boxed: BoxedPortal) -> traft::Result<()> {
+    pub fn put(&mut self, key: Descriptor, boxed: BoxedStatement) -> traft::Result<()> {
         if self.len() >= self.capacity() {
-            return Err(Error::Other("Portal storage is full".into()));
+            return Err(Error::Other("Statement storage is full".into()));
         }
-        let user_id = boxed.portal().user_id();
+        let user_id = boxed.statement().user_id();
         self.map.insert((user_id, key), boxed);
         self.len += 1;
         Ok(())
     }
 
-    pub fn remove(&mut self, key: Descriptor) -> traft::Result<BoxedPortal> {
+    pub fn remove(&mut self, key: Descriptor) -> traft::Result<BoxedStatement> {
         let user_id = effective_user_id();
-        let portal = self.map.remove(&(user_id, key)).map_or_else(
+        let statement = self.map.remove(&(user_id, key)).map_or_else(
             || {
                 Err(Error::Other(
-                    format!("No such descriptor {key} for user {user_id}").into(),
+                    format!("No such statement descriptor {key} for user {user_id}").into(),
                 ))
             },
             Ok,
         )?;
         self.len -= 1;
-        Ok(portal)
+        Ok(statement)
     }
 
     pub fn keys(&self) -> Vec<Descriptor> {
@@ -100,38 +100,39 @@ impl PortalStorage {
     }
 }
 
-impl Default for PortalStorage {
+impl Default for StatementStorage {
     fn default() -> Self {
         Self::new()
     }
 }
 
 thread_local! {
-    pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
+    pub static PG_STATEMENTS: Rc<RefCell<StatementStorage>> = Rc::new(RefCell::new(StatementStorage::new()));
 }
 
-pub fn with_portals<T, F>(key: Descriptor, f: F) -> traft::Result<T>
+pub fn with_statements<T, F>(key: Descriptor, f: F) -> traft::Result<T>
 where
-    F: FnOnce(&mut BoxedPortal) -> traft::Result<T>,
+    F: FnOnce(&mut BoxedStatement) -> traft::Result<T>,
 {
-    // The f() closure may yield and requires a mutable access to the portal from the portal storage.
-    // So we have to remove the portal from the storage, pass it to the closure and put it back
-    // after the closure is done. Otherwise, the portal may be borrowed twice and produce a panic.
-    let mut portal: BoxedPortal = PG_PORTALS.with(|storage| storage.borrow_mut().remove(key))?;
-    let result = f(&mut portal);
-    PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
+    // The f() closure may yield and requires a mutable access to the statement from the statement storage.
+    // So we have to remove the statement from the storage, pass it to the closure and put it back
+    // after the closure is done. Otherwise, the statement may be borrowed twice and produce a panic.
+    let mut statement: BoxedStatement =
+        PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(key))?;
+    let result = f(&mut statement);
+    PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement))?;
     result
 }
 
 #[derive(Debug, Default)]
-struct Portal {
+struct Statement {
     id: String,
     user_id: UserId,
     sql: String,
     plan: Plan,
 }
 
-impl Portal {
+impl Statement {
     fn id(&self) -> &str {
         &self.id
     }
@@ -164,38 +165,38 @@ impl Portal {
 }
 
 #[derive(Debug, Default)]
-pub struct BoxedPortal(Box<Portal>);
+pub struct BoxedStatement(Box<Statement>);
 
-impl BoxedPortal {
+impl BoxedStatement {
     pub fn new(id: String, sql: String, plan: Plan) -> Self {
-        Self(Box::new(Portal::new(id, sql, plan)))
+        Self(Box::new(Statement::new(id, sql, plan)))
     }
 
     pub fn id(&self) -> &str {
-        self.portal().id()
+        self.statement().id()
     }
 
     pub fn plan(&self) -> &Plan {
-        self.portal().plan()
+        self.statement().plan()
     }
 
     pub fn plan_mut(&mut self) -> &mut Plan {
-        self.portal_mut().plan_mut()
+        self.statement_mut().plan_mut()
     }
 
     pub fn sql(&self) -> &str {
-        self.portal().sql()
+        self.statement().sql()
     }
 
     pub fn descriptor(&self) -> Descriptor {
-        &*(self.0) as *const Portal as Descriptor
+        &*(self.0) as *const Statement as Descriptor
     }
 
-    fn portal(&self) -> &Portal {
+    fn statement(&self) -> &Statement {
         &self.0
     }
 
-    fn portal_mut(&mut self) -> &mut Portal {
+    fn statement_mut(&mut self) -> &mut Statement {
         &mut self.0
     }
 }
@@ -402,7 +403,7 @@ pub struct UserDescriptors {
 
 impl UserDescriptors {
     pub fn new() -> Self {
-        PG_PORTALS.with(|storage| {
+        PG_STATEMENTS.with(|storage| {
             let storage = storage.borrow();
             UserDescriptors {
                 available: storage.keys(),

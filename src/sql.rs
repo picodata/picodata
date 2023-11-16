@@ -7,7 +7,7 @@ use crate::schema::{
     ADMIN_ID,
 };
 use crate::sql::pgproto::{
-    with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
+    with_statements, BoxedStatement, Describe, Descriptor, UserDescriptors, PG_STATEMENTS,
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
@@ -374,15 +374,15 @@ fn get_tracer_param(traceable: bool) -> &'static Tracer {
 #[proc(packed_args)]
 pub fn proc_pg_bind(args: BindArgs) -> traft::Result<()> {
     let (key, params, traceable) = args.take();
-    with_portals(key, |portal| {
-        let mut plan = std::mem::take(portal.plan_mut());
+    with_statements(key, |statement| {
+        let mut plan = std::mem::take(statement.plan_mut());
         let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
         query_span::<traft::Result<()>, _>(
             "\"api.router.bind\"",
-            portal.id(),
+            statement.id(),
             get_tracer_param(traceable),
             &ctx,
-            portal.sql(),
+            statement.sql(),
             || {
                 if !plan.is_ddl()? && !plan.is_acl()? {
                     plan.bind_params(params)?;
@@ -392,34 +392,35 @@ pub fn proc_pg_bind(args: BindArgs) -> traft::Result<()> {
                 Ok(())
             },
         )?;
-        *portal.plan_mut() = plan;
+        *statement.plan_mut() = plan;
         Ok(())
     })
 }
 
 #[proc]
-pub fn proc_pg_portals() -> UserDescriptors {
+pub fn proc_pg_statements() -> UserDescriptors {
     UserDescriptors::new()
 }
 
 #[proc]
 pub fn proc_pg_close(key: Descriptor) -> traft::Result<()> {
-    let portal: BoxedPortal = PG_PORTALS.with(|storage| storage.borrow_mut().remove(key))?;
-    drop(portal);
+    let statement: BoxedStatement =
+        PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(key))?;
+    drop(statement);
     Ok(())
 }
 
 #[proc]
 pub fn proc_pg_describe(key: Descriptor, traceable: bool) -> traft::Result<Describe> {
-    with_portals(key, |portal| {
+    with_statements(key, |statement| {
         let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
         let description = query_span::<traft::Result<Describe>, _>(
             "\"api.router.describe\"",
-            portal.id(),
+            statement.id(),
             get_tracer_param(traceable),
             &ctx,
-            portal.sql(),
-            || Describe::new(portal.plan()).map_err(Error::from),
+            statement.sql(),
+            || Describe::new(statement.plan()).map_err(Error::from),
         )?;
         Ok(description)
     })
@@ -427,24 +428,24 @@ pub fn proc_pg_describe(key: Descriptor, traceable: bool) -> traft::Result<Descr
 
 #[proc]
 pub fn proc_pg_execute(key: Descriptor, traceable: bool) -> traft::Result<Tuple> {
-    with_portals(key, |portal| {
+    with_statements(key, |statement| {
         let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
         let res = query_span::<traft::Result<Tuple>, _>(
             "\"api.router.execute\"",
-            portal.id(),
+            statement.id(),
             get_tracer_param(traceable),
             &ctx,
-            portal.sql(),
+            statement.sql(),
             || {
                 let runtime = RouterRuntime::new().map_err(Error::from)?;
                 let query = Query::from_parts(
-                    portal.plan().is_explain(),
+                    statement.plan().is_explain(),
                     // XXX: the router runtime cache contains only unbinded IR plans to
                     // speed up SQL parsing and metadata resolution. We need to clone the
                     // plan here as its IR would be mutate during query execution (bind,
                     // optimization, dispatch steps). Otherwise we'll polute the parsing
                     // cache entry.
-                    ExecutionPlan::from(portal.plan().clone()),
+                    ExecutionPlan::from(statement.plan().clone()),
                     &runtime,
                     HashMap::new(),
                 );
@@ -477,9 +478,9 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
                 .try_borrow_mut()
                 .map_err(|e| Error::Other(format!("runtime query cache: {e:?}").into()))?;
             if let Some(plan) = cache.get(&query)? {
-                let portal = BoxedPortal::new(id, sql.clone(), plan.clone());
-                let descriptor = portal.descriptor();
-                PG_PORTALS.with(|cache| cache.borrow_mut().put(descriptor, portal))?;
+                let statement = BoxedStatement::new(id, sql.clone(), plan.clone());
+                let descriptor = statement.descriptor();
+                PG_STATEMENTS.with(|cache| cache.borrow_mut().put(descriptor, statement))?;
                 return Ok(descriptor);
             }
             let ast = <RouterRuntime as Router>::ParseTree::new(&query).map_err(Error::from)?;
@@ -503,9 +504,9 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
             if !plan.is_ddl()? && !plan.is_acl()? {
                 cache.put(query, plan.clone())?;
             }
-            let portal = BoxedPortal::new(id, sql, plan);
-            let descriptor = portal.descriptor();
-            PG_PORTALS.with(|storage| storage.borrow_mut().put(descriptor, portal))?;
+            let statement = BoxedStatement::new(id, sql, plan);
+            let descriptor = statement.descriptor();
+            PG_STATEMENTS.with(|storage| storage.borrow_mut().put(descriptor, statement))?;
             Ok(descriptor)
         },
     )

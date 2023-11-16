@@ -43,6 +43,7 @@ local function pg_bind(...)
     return true
 end
 
+
 local function pg_close(descriptor)
     if not check_descriptor(descriptor) then
 	return nil, "descriptor must be a number"
@@ -147,10 +148,10 @@ local function pg_parse(...)
     return tonumber(res)
 end
 
-local function pg_portals()
+local function pg_statements()
     local ok, res = pcall(
 	function()
-	    return box.func[".proc_pg_portals"]:call({})
+	    return box.func[".proc_pg_statements"]:call({})
 	end
     )
 
@@ -167,5 +168,5 @@ return {
     pg_describe = pg_describe,
     pg_execute = pg_execute,
     pg_parse = pg_parse,
-    pg_portals = pg_portals,
+    pg_statements = pg_statements,
 }

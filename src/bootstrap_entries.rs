@@ -141,7 +141,7 @@ pub(super) fn prepare(
     init_entries_push_op(
         op::Dml::insert(
             ClusterwideTable::Property,
-            &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
+            &(PropertyName::MaxPgStatements, pgproto::DEFAULT_MAX_PG_STATEMENTS),
             ADMIN_ID,
         )
     );

@@ -23,7 +23,7 @@ use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
 use crate::schema::{PrivilegeDef, RoleDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
-use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
+use crate::sql::pgproto::DEFAULT_MAX_PG_STATEMENTS;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
@@ -1130,8 +1130,8 @@ impl From<ClusterwideTable> for SpaceId {
         /// to an unresponsive instance.
         MaxHeartbeatPeriod = "max_heartbeat_period",
 
-        /// PG portal storage size.
-        MaxPgPortals = "max_pg_portals",
+        /// PG statement storage size.
+        MaxPgStatements = "max_pg_statements",
 
         /// Raft snapshot will be sent out in chunks not bigger than this threshold.
         /// Note: actual snapshot size may exceed this threshold. In most cases
@@ -1209,7 +1209,7 @@ impl PropertyName {
             | Self::GlobalSchemaVersion
             | Self::PasswordMinLength
             | Self::MaxLoginAttempts
-            | Self::MaxPgPortals
+            | Self::MaxPgStatements
             | Self::SnapshotChunkMaxSize => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
@@ -1242,7 +1242,7 @@ impl PropertyName {
             Self::PasswordMinLength
             | Self::MaxLoginAttempts
             | Self::SnapshotChunkMaxSize
-            | Self::MaxPgPortals => {
+            | Self::MaxPgStatements => {
                 let v = tuple.field::<usize>(1)?.ok_or_else(bad_value)?;
                 Some(format!("{v}"))
             }
@@ -1467,10 +1467,10 @@ impl Properties {
     }
 
     #[inline]
-    pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
+    pub fn max_pg_statements(&self) -> tarantool::Result<usize> {
         let res = self
-            .get(PropertyName::MaxPgPortals)?
-            .unwrap_or(DEFAULT_MAX_PG_PORTALS);
+            .get(PropertyName::MaxPgStatements)?
+            .unwrap_or(DEFAULT_MAX_PG_STATEMENTS);
         Ok(res)
     }
 

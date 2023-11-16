@@ -1506,12 +1506,12 @@ class Cluster:
 
 
 @dataclass
-class PortalStorage:
+class StatementStorage:
     instance: Instance
 
     @property
     def descriptors(self):
-        return self.instance.call("pico.pg_portals")
+        return self.instance.call("pico.pg_statements")
 
     def bind(self, *params):
         return self.instance.call("pico.pg_bind", *params, False)
@@ -1602,11 +1602,11 @@ def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
 
 
 @pytest.fixture
-def pg_portals(instance: Instance) -> Generator[PortalStorage, None, None]:
-    """Returns a PG portal storage on a single instance."""
-    portals = PortalStorage(instance)
-    yield portals
-    portals.flush()
+def pg_statements(instance: Instance) -> Generator[StatementStorage, None, None]:
+    """Returns a PG statements storage on a single instance."""
+    statements = StatementStorage(instance)
+    yield statements
+    statements.flush()
 
 
 def retrying(fn, timeout=3):

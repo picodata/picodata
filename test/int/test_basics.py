@@ -343,7 +343,7 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_property}, ["password_enforce_specialchars",false])|
 |  0  | 1  |Insert({_pico_property}, ["auto_offline_timeout",5.0])|
 |  0  | 1  |Insert({_pico_property}, ["max_heartbeat_period",5.0])|
-|  0  | 1  |Insert({_pico_property}, ["max_pg_portals",50])|
+|  0  | 1  |Insert({_pico_property}, ["max_pg_statements",50])|
 |  0  | 1  |Insert({_pico_property}, ["snapshot_chunk_max_size",16777216])|
 |  0  | 1  |Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0])|
 |  0  | 1  |Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|

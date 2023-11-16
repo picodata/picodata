@@ -140,7 +140,7 @@ fn init_sbroad() {
         ("pgproto", "pg_describe"),
         ("pgproto", "pg_execute"),
         ("pgproto", "pg_parse"),
-        ("pgproto", "pg_portals"),
+        ("pgproto", "pg_statements"),
     ] {
         let program = format!(
             r#"
