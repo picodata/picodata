@@ -241,6 +241,3 @@ pico.expel("i3")
 
 
 См. [отдельный подраздел](../../architecture/raft_failover) с описанием работы алгоритма Raft для обеспечения отказоустойчивости кластера.
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/deploy.md)

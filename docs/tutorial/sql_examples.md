@@ -106,6 +106,3 @@ picodata> pico.sql([[delete from "friends_of_peppa" where "id" = 1]], {})
 [Жизненный цикл кластера](../architecture/clustering.md).
 
 Параметры запуска из командной строки описаны в разделе [Аргументы командной строки Picodata](../reference/cli.md).
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/sql_examples.md)

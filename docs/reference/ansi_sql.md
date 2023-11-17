@@ -97,6 +97,3 @@ Picodata SQL требованиям стандарта SQL:2016, а именно
 ### F041-03. LEFT OUTER JOIN.
 
 См. также: [Работа с данными SQL](../tutorial/sql_examples.md).
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/sql/ansi_sql.md)

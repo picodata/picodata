@@ -77,7 +77,3 @@ picodata connect --unix /tmp/file.socket
 журнала.
 
 Параметры запуска из командной строки описаны в разделе [Аргументы командной строки](../reference/cli.md).
-
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/connecting.md)

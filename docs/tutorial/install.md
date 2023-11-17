@@ -215,6 +215,3 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 Подробнее о запуске Picodata и работе с кластером см. в разделе
 [Запуск кластера](../deploy). Параметры запуска из командной
 строки описаны в разделе [Аргументы командной строки Picodata](../../reference/cli).
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/install.md)

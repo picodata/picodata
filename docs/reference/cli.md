@@ -248,6 +248,3 @@ picodata expel [Параметры]
 
 
 Подробнее об устройстве кластера и репликасетов Picodata см. в разделе [Запуск кластера](../tutorial/deploy.md).
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/reference/cli.md)

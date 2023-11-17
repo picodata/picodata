@@ -48,6 +48,3 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `id` (unique), parts: `[space_id, id]`
 * `name` (unique), parts: `[space_id, name]`
-
----
-[Исходный код страницы]({{ config.edit_uri }}{{ page.file.src_uri }})

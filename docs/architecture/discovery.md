@@ -178,6 +178,3 @@ true`, в то время как уже существовал `i_am_bootstrap_l
 
 Подробности о процессе инициализации кластера см. в разделе [Схема
 инициализации кластера](clustering.md).
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/architecture/discovery.md)

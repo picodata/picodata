@@ -106,6 +106,3 @@ LDAP-сервером немедленно отразятся на возмож�
 ```lua
 pico.change_password('username', 'new_password', { auth_type = 'chap-sha1' })
 ```
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/ldap.md)

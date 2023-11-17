@@ -85,6 +85,3 @@ box.space._pico_property:get("current_schema_version")
 
 Подробнее о работе с данными в Picodata см. в разделе
 [Работа с данными SQL](../sql_examples).
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/tutorial/monitoring.md)

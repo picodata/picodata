@@ -1273,6 +1273,3 @@ explain select count("id") from "characters" ;
 
 Читать далее: [Типы данных SQL](sql_types.md)
 <!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
-
----
-[Исходный код страницы](https://git.picodata.io/picodata/picodata/docs/-/blob/main/docs/reference/sql_queries.md)
