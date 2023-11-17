@@ -196,7 +196,7 @@ test-fork:
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
-    CARGO_FEATURES: picodata
+    CARGO_FEATURES: picodata,tokio_components
 
 test-fork-on-trigger:
   extends: .test
@@ -206,7 +206,7 @@ test-fork-on-trigger:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     BASE_IMAGE_TAG: ${TARANTOOL_VERSION}
-    CARGO_FEATURES: picodata
+    CARGO_FEATURES: picodata,tokio_components
 
 pages:
   extends: .test
@@ -214,7 +214,7 @@ pages:
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     RUSTDOCFLAGS: "-Dwarnings"
   script:
-    - cargo doc --workspace --no-deps --features "picodata"
+    - cargo doc --workspace --no-deps --features "picodata,tokio_components"
     - rm -rf public
     - mv target/doc public
   artifacts:

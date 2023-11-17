@@ -6,7 +6,7 @@ test:
 	cargo test
 
 test-pd:
-	cargo build -p tarantool-module-test-runner --features=picodata
+	cargo build -p tarantool-module-test-runner --features=picodata,tokio_components
 	TARANTOOL_EXECUTABLE=tarantool-pd cargo test
 
 bench:

@@ -50,6 +50,7 @@
 //! For implementing a consumer lock and unlock a [`crate::fiber::Cond`] is used.
 
 pub mod oneshot;
+pub mod sync;
 pub mod unbounded;
 
 use crate::ffi;
@@ -66,6 +67,8 @@ pub enum RecvError {
     #[error("sending half of a channel is disconnected")]
     Disconnected,
 }
+
+pub struct SendError<T>(pub T);
 
 #[derive(Debug, thiserror::Error)]
 pub enum CbusError {
@@ -175,6 +178,9 @@ impl Drop for Endpoint {
 pub struct LCPipe {
     pipe: *mut ffi::tarantool::LCPipe,
 }
+
+// It is safe to send lcpipe to not-owning thread.
+unsafe impl Send for LCPipe {}
 
 impl LCPipe {
     /// Create and initialize a pipe and connect it to the consumer.

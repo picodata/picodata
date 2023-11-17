@@ -1,4 +1,4 @@
-use super::{LCPipe, Message, UnsafeCond};
+use super::{LCPipe, Message, SendError, UnsafeCond};
 use crate::cbus::RecvError;
 use crate::fiber::Cond;
 use std::cell::RefCell;
@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
 /// A synchronization component between producers and a consumer.
-struct Waker {
+pub(super) struct Waker {
     /// synchronize a waker, signal when waker is up to date
     condition: Option<Arc<UnsafeCond>>,
     /// indicate that waker already up to date
@@ -15,7 +15,7 @@ struct Waker {
 }
 
 impl Waker {
-    fn new(cond: Cond) -> Self {
+    pub(super) fn new(cond: Cond) -> Self {
         Self {
             condition: Some(Arc::new(UnsafeCond(cond))),
             woken: AtomicBool::new(false),
@@ -23,7 +23,7 @@ impl Waker {
     }
 
     /// Send wakeup signal to a [`Waker::wait`] caller.
-    fn force_wakeup(&self, cond: Arc<UnsafeCond>, pipe: &mut LCPipe) {
+    pub(super) fn force_wakeup(&self, cond: Arc<UnsafeCond>, pipe: &mut LCPipe) {
         let msg = Message::new(move || {
             // SAFETY: it is ok to call as_ref() here because this callback will be invoked
             // on the thread that created the channel with this cond
@@ -33,7 +33,7 @@ impl Waker {
     }
 
     /// Release waker if it lock in [`Waker::wait`].
-    fn wakeup(&self, pipe: &mut LCPipe) {
+    pub(super) fn wakeup(&self, pipe: &mut LCPipe) {
         let do_wake = self
             .woken
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -49,7 +49,7 @@ impl Waker {
     }
 
     /// Lock until waker is woken up, or return instantly if waker already woken.
-    fn wait(&self) {
+    pub(super) fn wait(&self) {
         if self
             .woken
             .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
@@ -185,8 +185,6 @@ impl<T> Clone for Sender<T> {
         }
     }
 }
-
-pub struct SendError<T>(pub T);
 
 impl<T> Sender<T> {
     /// Attempts to send a value on this channel, returning it back if it could

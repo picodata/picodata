@@ -46,3 +46,4 @@ harness = false
 
 [features]
 picodata = ["tarantool/picodata"]
+tokio_components = ["tarantool/tokio_components"]

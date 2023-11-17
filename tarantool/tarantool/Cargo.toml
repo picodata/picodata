@@ -46,11 +46,13 @@ crossbeam-queue = { version = "0.3.8", optional = true }
 async-std = { version = "1.12.0", optional = true, default_features = false, features = ["std"] }
 pretty_assertions = { version = "1.4", optional = true }
 va_list = ">=0.1.4"
+tokio = {version = "=1.29.1", features = ["sync", "rt", "time"], optional = true}
 
 [features]
 default = ["net_box", "network_client"]
 net_box = ["refpool"]
 picodata = ["crossbeam-queue"]
+tokio_components = ["picodata", "tokio"]
 network_client = []
 test = ["tester"]
 all = ["default", "test"]
