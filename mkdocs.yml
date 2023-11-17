@@ -4,6 +4,7 @@
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
 repo_url: https://git.picodata.io/picodata/picodata/docs
+edit_uri: -/blob/main/docs/
 
 nav:
   - Ознакомление с ПО Picodata:
@@ -47,6 +48,7 @@ theme:
     - navigation.path
     - toc.follow
     - content.code.copy
+    - content.action.edit
 
 extra:
   homepage: https://docs.picodata.io/
