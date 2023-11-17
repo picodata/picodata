@@ -5,5 +5,7 @@ fn main() {
         .status()
         .unwrap();
 
-    assert!(status.success());
+    if !status.success() {
+        std::process::exit(1);
+    }
 }
