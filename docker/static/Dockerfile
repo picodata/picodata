@@ -4,8 +4,8 @@ ENV SITE_SRC '/site/src'
 ENV SITE_HTML '/site/html'
 
 RUN pip install \
-    mkdocs==1.4.2 \
-    mkdocs-material==8.5.11 \
+    mkdocs==1.5.3 \
+    mkdocs-material==9.4.8 \
     mkdocs-plugin-inline-svg==0.1.0
 
 # Generate static content
