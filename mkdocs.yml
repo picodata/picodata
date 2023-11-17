@@ -1,7 +1,9 @@
+# MkDocs configuration reference:
+# https://www.mkdocs.org/user-guide/configuration/
+
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
 repo_url: https://git.picodata.io/picodata/picodata/docs
-
 
 nav:
   - Ознакомление с ПО Picodata:
@@ -30,29 +32,28 @@ nav:
     - architecture/raft_failover.md
     - architecture/clustering.md
     - architecture/system_tables.md
+
 theme:
-    name: material
-    custom_dir: overrides
-    font:
-        text: Inter
-    logo: assets/logo-full.svg
-    logo_mobile: assets/logo.svg
-    favicon: assets/favicon.png
-    language: ru
-    features:
-        - navigation.indexes
-        - navigation.path
-        - toc.follow
-        - content.code.copy
-
-
+  name: material
+  custom_dir: overrides
+  font:
+    text: Inter
+  logo: assets/logo-full.svg
+  logo_mobile: assets/logo.svg
+  favicon: assets/favicon.png
+  language: ru
+  features:
+    - navigation.indexes
+    - navigation.path
+    - toc.follow
+    - content.code.copy
 
 extra:
-    homepage: https://docs.picodata.io/
-    analytics:
-     provider: google
-     property: G-6X8Z5N2CGR
-     feedback:
+  homepage: https://docs.picodata.io/
+  analytics:
+    provider: google
+    property: G-6X8Z5N2CGR
+    feedback:
       title: Была ли эта информация полезной для вас?
       ratings:
         - icon: material/emoticon-happy-outline
@@ -64,20 +65,26 @@ extra:
           name: Страница требует улучшения
           data: 0
           note: >-
-            Благодарим за отзыв! <a href="https://t.me/picodataru" target="_blank" rel="noopener">Напишите</a>, что бы вы хотели улучшить на этой странице или в целом на сайте документации.
+            Благодарим за отзыв! <a href="https://t.me/picodataru"
+            target="_blank" rel="noopener">Напишите</a>, что бы вы хотели
+            улучшить на этой странице или в целом на сайте документации.
 
 extra_css:
-    - extra/style.css
+  - extra/style.css
 
 plugins:
-    - inline-svg
-    - search:
-        lang:
-          - en
-          - ru
+  # https://pypi.org/project/mkdocs-plugin-inline-svg/
+  - inline-svg
+
+  # https://squidfunk.github.io/mkdocs-material/plugins/search/
+  - search:
+      lang:
+        - en
+        - ru
+
 markdown_extensions:
   - attr_list
   - md_in_html
   - meta
   - toc:
-        permalink: False
+      permalink: False
