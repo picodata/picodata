@@ -67,7 +67,7 @@ pub mod vshard;
 
 // This is the user id used when we need to elevate privileges
 // because current user doesnt have access to system spaces
-const ADMIN_USER_ID: UserId = 1;
+pub(crate) const ADMIN_USER_ID: UserId = 1;
 
 macro_rules! lua_preload {
     ($lua:ident, $module:literal, $path_prefix:literal, $path:literal) => {

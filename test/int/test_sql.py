@@ -805,3 +805,102 @@ def test_distributed_sql_via_set_language(cluster: Cluster):
 ...
 """
     )
+
+
+def test_sql_privileges(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    # Create a test table
+    ddl = i1.sql(
+        """
+        create table "t" ("a" int not null, "b" int, primary key ("a"))
+        using memtx
+        distributed by ("a")
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    # Create user with execute on universe privilege
+    alice_pwd = "1234567890"
+    acl = i1.sql(
+        f"""
+        create user "alice" with password '{alice_pwd}'
+        using chap-sha1 option (timeout = 3)
+        """
+    )
+    assert acl["row_count"] == 1
+    i1.eval(""" pico.grant_privilege("alice", "execute", "universe") """)
+
+    # ------------------------
+    # Check SQL read privilege
+    # ------------------------
+    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
+        i1.sql(""" select * from "t" """, user="alice", password=alice_pwd)
+
+    # Grant read privilege
+    i1.eval(""" pico.grant_privilege("alice", "read", "space", "t") """)
+    dql = i1.sql(""" select * from "t" """, user="alice", password=alice_pwd)
+    assert dql["rows"] == []
+
+    # Revoke read privilege
+    i1.eval(""" pico.revoke_privilege("alice", "read", "space", "t") """)
+
+    # -------------------------
+    # Check SQL write privilege
+    # -------------------------
+    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
+        i1.sql(""" insert into "t" values (1, 2) """, user="alice", password=alice_pwd)
+
+    # Grant write privilege
+    i1.eval(""" pico.grant_privilege("alice", "write", "space", "t") """)
+    dml = i1.sql(
+        """ insert into "t" values (1, 2) """, user="alice", password=alice_pwd
+    )
+    assert dml["row_count"] == 1
+
+    # Revoke write privilege
+    i1.eval(""" pico.revoke_privilege("alice", "write", "space", "t") """)
+
+    # -----------------------------------
+    # Check SQL write and read privileges
+    # -----------------------------------
+    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
+        i1.sql(
+            """ insert into "t" select "a" + 1, "b" from "t"  """,
+            user="alice",
+            password=alice_pwd,
+        )
+    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
+        i1.sql(""" update "t" set "b" = 42 """, user="alice", password=alice_pwd)
+    with pytest.raises(ReturnError, match="AccessDenied: Read access to space 't'"):
+        i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
+
+    # Grant read privilege
+    i1.eval(""" pico.grant_privilege("alice", "read", "space", "t") """)
+
+    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
+        i1.sql(
+            """ insert into "t" select "a" + 1, "b" from "t"  """,
+            user="alice",
+            password=alice_pwd,
+        )
+    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
+        i1.sql(""" update "t" set "b" = 42 """, user="alice", password=alice_pwd)
+    with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
+        i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
+
+    # Grant write privilege
+    i1.eval(""" pico.grant_privilege("alice", "write", "space", "t") """)
+
+    dml = i1.sql(
+        """ insert into "t" select "a" + 1, "b" from "t"  """,
+        user="alice",
+        password=alice_pwd,
+    )
+    assert dml["row_count"] == 1
+    dml = i1.sql(""" update "t" set "b" = 42 """, user="alice", password=alice_pwd)
+    assert dml["row_count"] == 2
+    dml = i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
+    assert dml["row_count"] == 2

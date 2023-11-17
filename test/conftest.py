@@ -519,9 +519,18 @@ class Instance:
         )
         return self.eval(lua)
 
-    def sql(self, sql: str, *params, timeout: int | float = 1) -> dict:
+    def sql(
+        self,
+        sql: str,
+        *params,
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ) -> dict:
         """Run SQL query and return result"""
-        return self.call("pico.sql", sql, params, timeout=timeout)
+        return self.call(
+            "pico.sql", sql, params, user=user, password=password, timeout=timeout
+        )
 
     def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""

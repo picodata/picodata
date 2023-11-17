@@ -8,12 +8,13 @@ use crate::sql::pgproto::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
+use crate::storage::space_by_name;
 use crate::traft::error::Error;
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{cas, unwrap_ok_or};
+use crate::{cas, unwrap_ok_or, ADMIN_USER_ID};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
@@ -28,15 +29,18 @@ use sbroad::executor::Query;
 use sbroad::frontend::Ast;
 use sbroad::ir::acl::Acl;
 use sbroad::ir::ddl::Ddl;
+use sbroad::ir::operator::Relational;
+use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
-use sbroad::ir::Node as IrNode;
+use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span, stat_query_span, OTM_CHAR_LIMIT};
 use serde::Deserialize;
 
+use ::tarantool::access_control::{box_access_check_space, PrivType};
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
 use ::tarantool::proc;
-use ::tarantool::session::UserId;
-use ::tarantool::space::{FieldType, Space, SystemSpace};
+use ::tarantool::session::{with_su, UserId};
+use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
 use std::collections::HashMap;
@@ -47,6 +51,86 @@ pub mod router;
 pub mod storage;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
+
+enum Privileges {
+    Read,
+    Write,
+    ReadWrite,
+}
+
+fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
+    let filter = |node_id: usize| -> bool {
+        if let Ok(IrNode::Relational(
+            Relational::ScanRelation { .. }
+            | Relational::Delete { .. }
+            | Relational::Insert { .. }
+            | Relational::Update { .. },
+        )) = plan.get_node(node_id)
+        {
+            return true;
+        }
+        false
+    };
+    let mut plan_traversal = PostOrderWithFilter::with_capacity(
+        |node| plan.subtree_iter(node),
+        REL_CAPACITY,
+        Box::new(filter),
+    );
+    let top_id = plan.get_top().map_err(Error::from)?;
+    plan_traversal.populate_nodes(top_id);
+    let nodes = plan_traversal.take_nodes();
+
+    // We don't want to switch the user back and forth for each node, so we
+    // collect all space ids and privileges and then check them all at once.
+    let mut space_privs: Vec<(SpaceId, Privileges)> = Vec::with_capacity(nodes.len());
+
+    // Switch to admin to get space ids. At the moment we don't use space cache in tarantool
+    // module and can't get space metadata without _space table read permissions.
+    with_su(ADMIN_USER_ID, || -> traft::Result<()> {
+        for (_, node_id) in nodes {
+            let rel_node = plan.get_relation_node(node_id).map_err(Error::from)?;
+            let (relation, privileges) = match rel_node {
+                Relational::ScanRelation { relation, .. } => (relation, Privileges::Read),
+                Relational::Insert { relation, .. } => (relation, Privileges::Write),
+                Relational::Delete { relation, .. } | Relational::Update { relation, .. } => {
+                    // We check write and read privileges for deletes and updates.
+                    //
+                    // Write: Picodata doesn't support delete and update privileges,
+                    // so we grant write access instead.
+                    //
+                    // Read: SQL standard says that update and delete statements
+                    // should check for read access when they contain a where
+                    // clause (to protect from information leaks). But we don't
+                    // expect that updates and deletes would be used without a
+                    // where clause (long operations are not good for Picodata).
+                    // So, let's make it simple and avoid special cases.
+                    (relation, Privileges::ReadWrite)
+                }
+                // This should never happen as we have filtered out all other plan nodes.
+                _ => unreachable!("internal bug on the table privilege check"),
+            };
+            let space_name = normalize_name_for_space_api(relation);
+            let space = space_by_name(&space_name).map_err(Error::from)?;
+            space_privs.push((space.id(), privileges));
+        }
+        Ok(())
+    })??;
+    for (space_id, priviledges) in space_privs {
+        match priviledges {
+            Privileges::Read => {
+                box_access_check_space(space_id, PrivType::Read).map_err(Error::from)?;
+            }
+            Privileges::Write => {
+                box_access_check_space(space_id, PrivType::Write).map_err(Error::from)?;
+            }
+            Privileges::ReadWrite => {
+                box_access_check_space(space_id, PrivType::Read).map_err(Error::from)?;
+                box_access_check_space(space_id, PrivType::Write).map_err(Error::from)?;
+            }
+        }
+    }
+    Ok(())
+}
 
 fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
@@ -62,6 +146,8 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         let result = reenterable_schema_change_request(node, ir_node)?;
         Tuple::new(&(result,)).map_err(Error::from)
     } else {
+        let plan = query.get_exec_plan().get_ir_plan();
+        check_table_privileges(plan)?;
         match query.dispatch() {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
@@ -100,8 +186,9 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
         &params.pattern,
         || {
             let runtime = RouterRuntime::new().map_err(Error::from)?;
-            let query =
-                Query::new(&runtime, &params.pattern, params.params).map_err(Error::from)?;
+            let query = with_su(ADMIN_USER_ID, || -> traft::Result<Query<RouterRuntime>> {
+                Query::new(&runtime, &params.pattern, params.params).map_err(Error::from)
+            })??;
             dispatch(query)
         },
     )
@@ -249,19 +336,22 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
             }
             let ast = <RouterRuntime as Router>::ParseTree::new(&query).map_err(Error::from)?;
             let metadata = &*runtime.metadata().map_err(Error::from)?;
-            let mut plan = ast.resolve_metadata(metadata).map_err(Error::from)?;
-            if runtime.provides_versions() {
-                let mut table_version_map =
-                    TableVersionMap::with_capacity(plan.relations.tables.len());
-                for table in plan.relations.tables.keys() {
-                    let normalized = normalize_name_for_space_api(table);
-                    let version = runtime
-                        .get_table_version(normalized.as_str())
-                        .map_err(Error::from)?;
-                    table_version_map.insert(normalized, version);
+            let plan = with_su(ADMIN_USER_ID, || -> traft::Result<IrPlan> {
+                let mut plan = ast.resolve_metadata(metadata).map_err(Error::from)?;
+                if runtime.provides_versions() {
+                    let mut table_version_map =
+                        TableVersionMap::with_capacity(plan.relations.tables.len());
+                    for table in plan.relations.tables.keys() {
+                        let normalized = normalize_name_for_space_api(table);
+                        let version = runtime
+                            .get_table_version(normalized.as_str())
+                            .map_err(Error::from)?;
+                        table_version_map.insert(normalized, version);
+                    }
+                    plan.version_map = table_version_map;
                 }
-                plan.version_map = table_version_map;
-            }
+                Ok(plan)
+            })??;
             if !plan.is_ddl()? && !plan.is_acl()? {
                 cache.put(query, plan.clone())?;
             }

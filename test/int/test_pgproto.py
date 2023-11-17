@@ -137,16 +137,21 @@ def test_portal_visibility(instance: Instance):
 
     sql = """ select * from "t" """
     id = instance.eval(
-        f""" return box.session.su("admin", pico.pg_parse, [[{sql}]]) """
+        f"""
+        box.session.su("admin")
+        local res = pico.pg_parse([[{sql}]])
+        box.session.su("guest")
+        return res
+        """
     )
     admin_portals = instance.eval(
         """ return box.session.su("admin", pico.pg_portals) """
     )
     assert admin_portals == {"available": [id], "total": 1}
     guest_portals = instance.eval(
-        """ return box.session.su('guest', pico.pg_portals) """
+        """ return box.session.su("guest", pico.pg_portals) """
     )
     assert guest_portals == {"available": [], "total": 1}
     with pytest.raises(ReturnError, match="No such descriptor"):
-        instance.eval(f""" return box.session.su('guest', pico.pg_close, {id}) """)
-    assert instance.eval(f""" return box.session.su('admin', pico.pg_close, {id}) """)
+        instance.eval(f""" return box.session.su("guest", pico.pg_close, {id}) """)
+    assert instance.eval(f""" return box.session.su("admin", pico.pg_close, {id}) """)
