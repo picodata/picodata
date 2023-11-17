@@ -13,14 +13,14 @@ use crate::loop_start;
 use crate::r#loop::FlowControl;
 use crate::reachability::InstanceReachabilityManager;
 use crate::rpc;
-use crate::schema::{Distribution, IndexDef, SpaceDef};
+use crate::schema::{Distribution, IndexDef, TableDef};
 use crate::sentinel;
 use crate::storage::acl;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::SnapshotData;
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
-use crate::storage::{Clusterwide, ClusterwideSpace, PropertyName};
+use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
 use crate::stringify_cfunc;
 use crate::sync;
 use crate::tlog;
@@ -659,11 +659,11 @@ impl NodeImpl {
         match &op {
             Op::Dml(op) => {
                 let space = op.space();
-                if space == ClusterwideSpace::Property.id()
-                    || space == ClusterwideSpace::Replicaset.id()
+                if space == ClusterwideTable::Property.id()
+                    || space == ClusterwideTable::Replicaset.id()
                 {
                     *wake_governor = true;
-                } else if space == ClusterwideSpace::Instance.id() {
+                } else if space == ClusterwideTable::Instance.id() {
                     *wake_governor = true;
                     let instance = match op {
                         Dml::Insert { tuple, .. } => Some(tuple),
@@ -751,7 +751,7 @@ impl NodeImpl {
 
                 // Update pico metadata.
                 match ddl {
-                    Ddl::CreateSpace { id, name, .. } => {
+                    Ddl::CreateTable { id, name, .. } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
 
@@ -762,8 +762,8 @@ impl NodeImpl {
                         );
                     }
 
-                    Ddl::DropSpace { id } => {
-                        let space_raw = self.storage.spaces.get(id);
+                    Ddl::DropTable { id } => {
+                        let space_raw = self.storage.tables.get(id);
                         let space = space_raw.ok().flatten().expect("failed to get space");
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
 
@@ -815,11 +815,11 @@ impl NodeImpl {
 
                 // Update pico metadata.
                 match ddl {
-                    Ddl::CreateSpace { id, .. } => {
+                    Ddl::CreateTable { id, .. } => {
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
                     }
 
-                    Ddl::DropSpace { id } => {
+                    Ddl::DropTable { id } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
                     }
@@ -942,7 +942,7 @@ impl NodeImpl {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
         match ddl.clone() {
-            Ddl::CreateSpace {
+            Ddl::CreateTable {
                 id,
                 name,
                 mut format,
@@ -1068,7 +1068,7 @@ impl NodeImpl {
                     }
                 }
 
-                let space_def = SpaceDef {
+                let space_def = TableDef {
                     id,
                     name,
                     distribution,
@@ -1077,7 +1077,7 @@ impl NodeImpl {
                     operable: false,
                     engine,
                 };
-                let res = self.storage.spaces.insert(&space_def);
+                let res = self.storage.tables.insert(&space_def);
                 if let Err(e) = res {
                     // Ignore the error for now, let governor deal with it.
                     tlog!(Warning, "failed creating space '{}': {e}", space_def.name);
@@ -1093,7 +1093,7 @@ impl NodeImpl {
                 todo!();
             }
 
-            Ddl::DropSpace { id } => {
+            Ddl::DropTable { id } => {
                 ddl_meta_space_update_operable(&self.storage, id, false)
                     .expect("storage shouldn't fail");
             }

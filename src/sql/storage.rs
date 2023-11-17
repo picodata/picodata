@@ -73,11 +73,11 @@ impl StorageCache for PicoStorageCache {
             HashMap::with_capacity(schema_info.router_version_map.len());
         let node = node::global()
             .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
-        let storage_spaces = &node.storage.spaces;
+        let storage_tables = &node.storage.tables;
         for table_name in schema_info.router_version_map.keys() {
             let space_name = normalize_name_for_space_api(table_name);
             let current_version = if let Some(space_def) =
-                storage_spaces.by_name(space_name.as_str()).map_err(|e| {
+                storage_tables.by_name(space_name.as_str()).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
                 })? {
                 space_def.schema_version
@@ -100,10 +100,10 @@ impl StorageCache for PicoStorageCache {
         // check Plan's tables have up to date schema
         let node = node::global()
             .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
-        let storage_spaces = &node.storage.spaces;
+        let storage_tables = &node.storage.tables;
         for (table_name, cached_version) in version_map {
             let space_name = normalize_name_for_space_api(table_name);
-            let Some(space_def) = storage_spaces.by_name(space_name.as_str()).map_err(|e| {
+            let Some(space_def) = storage_tables.by_name(space_name.as_str()).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
             })?
             else {

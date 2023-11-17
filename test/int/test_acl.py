@@ -723,7 +723,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         "Captain",
         "read",
         "table",
-        "_pico_space",
+        "_pico_table",
     )
     cluster.raft_wait_index(index)
 
@@ -742,7 +742,7 @@ def test_acl_from_snapshot(cluster: Cluster):
             i.call("box.schema.user.info", "Blam")
 
         assert to_set_of_tuples(i.call("box.schema.role.info", "Captain")) == {
-            ("read", "space", "_pico_space"),
+            ("read", "space", "_pico_table"),
         }
 
         with pytest.raises(TarantoolError, match="Role 'Executor' is not found"):
@@ -768,7 +768,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         "Captain",
         "read",
         "table",
-        "_pico_space",
+        "_pico_table",
     )
     cluster.raft_wait_index(index)
 

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::rpc;
 use crate::storage::Clusterwide;
-use crate::storage::ClusterwideSpace;
+use crate::storage::ClusterwideTable;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
@@ -32,12 +32,12 @@ use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 /// This spaces cannot be changed directly dy a [`Dml`] operation. They have
 /// dedicated operation types (e.g. Ddl, Acl) because updating these spaces
 /// requires automatically updating corresponding local spaces.
-const PROHIBITED_SPACES: &[ClusterwideSpace] = &[
-    ClusterwideSpace::Space,
-    ClusterwideSpace::Index,
-    ClusterwideSpace::User,
-    ClusterwideSpace::Role,
-    ClusterwideSpace::Privilege,
+const PROHIBITED_SPACES: &[ClusterwideTable] = &[
+    ClusterwideTable::Table,
+    ClusterwideTable::Index,
+    ClusterwideTable::User,
+    ClusterwideTable::Role,
+    ClusterwideTable::Privilege,
 ];
 
 // FIXME: cas::Error will be returned as a string when rpc is called
@@ -204,7 +204,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     // Check if ranges in predicate contain prohibited spaces.
     for range in &req.predicate.ranges {
-        let Ok(table) = ClusterwideSpace::try_from(range.table) else {
+        let Ok(table) = ClusterwideTable::try_from(range.table) else {
             continue;
         };
         if PROHIBITED_SPACES.contains(&table) {
@@ -516,7 +516,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
         if DATA.is_none() {
             let mut data = Vec::with_capacity(SCHEMA_RELATED_PROPERTIES.len());
             for key in SCHEMA_RELATED_PROPERTIES {
-                let r = Range::new(ClusterwideSpace::Property).eq((key,));
+                let r = Range::new(ClusterwideTable::Property).eq((key,));
                 data.push(r);
             }
             DATA = Some(data);
@@ -549,7 +549,7 @@ pub struct Range {
 impl Range {
     pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
-        let table_id = if let Some(table) = node.storage.spaces.by_name(&range.table)? {
+        let table_id = if let Some(table) = node.storage.tables.by_name(&range.table)? {
             table.id
         } else if let Some(table) = Space::find(&range.table) {
             table.id()
@@ -696,7 +696,7 @@ fn space(op: &Op) -> Option<SpaceId> {
     match op {
         Op::Dml(dml) => Some(dml.space()),
         Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
-            Some(ClusterwideSpace::Property.id())
+            Some(ClusterwideTable::Property.id())
         }
         Op::Nop => None,
     }
@@ -705,8 +705,8 @@ fn space(op: &Op) -> Option<SpaceId> {
 /// Checks if the operation would by its semantics modify `operable` flag of the provided `space`.
 fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
     let ddl_modifies = |ddl: &Ddl| match ddl {
-        Ddl::CreateSpace { id, .. } => *id == space,
-        Ddl::DropSpace { id } => *id == space,
+        Ddl::CreateTable { id, .. } => *id == space,
+        Ddl::DropTable { id } => *id == space,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
     };
@@ -732,8 +732,8 @@ mod tests {
     use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
 
-    use crate::schema::{Distribution, SpaceDef};
-    use crate::storage::TClusterwideSpace as _;
+    use crate::schema::{Distribution, TableDef};
+    use crate::storage::TClusterwideTable as _;
     use crate::storage::{Clusterwide, Properties, PropertyName};
     use crate::traft::op::DdlBuilder;
 
@@ -758,7 +758,7 @@ mod tests {
         let space_id = 1;
         let index_id = 1;
 
-        let create_space = builder.with_op(Ddl::CreateSpace {
+        let create_space = builder.with_op(Ddl::CreateTable {
             id: space_id,
             name: space_name.into(),
             format: vec![],
@@ -766,7 +766,7 @@ mod tests {
             distribution: Distribution::Global,
             engine: SpaceEngineType::Memtx,
         });
-        let drop_space = builder.with_op(Ddl::DropSpace { id: space_id });
+        let drop_space = builder.with_op(Ddl::DropTable { id: space_id });
         let create_index = builder.with_op(Ddl::CreateIndex {
             space_id,
             index_id,
@@ -776,7 +776,7 @@ mod tests {
 
         let commit = Op::DdlCommit;
         let abort = Op::DdlAbort;
-        let props = Properties::SPACE_ID;
+        let props = Properties::TABLE_ID;
         let pending_schema_change = (PropertyName::PendingSchemaChange.to_string(),);
         let pending_schema_version = (PropertyName::PendingSchemaChange.to_string(),);
         let global_schema_version = (PropertyName::GlobalSchemaVersion.to_string(),);
@@ -791,10 +791,10 @@ mod tests {
         assert!(t(&create_space, Range::new(space_id).eq(("any_key",))).is_err());
 
         // drop_space
-        // `DropSpace` needs `SpaceDef` to get space name
+        // `DropTable` needs `TableDef` to get space name
         storage
-            .spaces
-            .insert(&SpaceDef {
+            .tables
+            .insert(&TableDef {
                 id: space_id,
                 name: space_name.into(),
                 operable: true,
@@ -874,7 +874,7 @@ mod tests {
             predicate.check_entry(2, &Op::Dml(op.clone()), &storage)
         };
 
-        let table = ClusterwideSpace::Space;
+        let table = ClusterwideTable::Table;
         let ops = &[
             Dml::Insert {
                 table: table.into(),
@@ -895,7 +895,7 @@ mod tests {
             },
         ];
 
-        let space = ClusterwideSpace::Space.id();
+        let space = ClusterwideTable::Table.id();
         for op in ops {
             assert!(test(op, Range::new(space)).is_err());
             assert!(test(op, Range::new(space).le((12,))).is_err());

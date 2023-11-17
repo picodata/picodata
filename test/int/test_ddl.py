@@ -89,8 +89,8 @@ def test_ddl_lua_api(cluster: Cluster):
         True,
         "memtx",
     ]
-    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
 
     # Another one
     cluster.create_table(
@@ -111,8 +111,8 @@ def test_ddl_lua_api(cluster: Cluster):
         True,
         "memtx",
     ]
-    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
 
     # test vinyl space can be created
     space_id = 1029
@@ -145,7 +145,7 @@ def test_ddl_lua_api(cluster: Cluster):
             engine="vinyl",
         ),
     )
-    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i1.eval("return box.space.stuffy.engine") == "vinyl"
     assert i2.eval("return box.space.stuffy.engine") == "vinyl"
 
@@ -154,20 +154,20 @@ def test_ddl_lua_api(cluster: Cluster):
     #
 
     # No such space name -> ok.
-    cluster.drop_space("Space does not exist")
+    cluster.drop_table("Space does not exist")
 
     # No such space id -> ok.
-    cluster.drop_space(69105)
+    cluster.drop_table(69105)
 
     # Ok by name.
-    cluster.drop_space("some_name")
+    cluster.drop_table("some_name")
     for i in cluster.instances:
-        assert i.call("box.space._pico_space.index.name:get", "some_name") is None
+        assert i.call("box.space._pico_table.index.name:get", "some_name") is None
 
     # Ok by id.
-    cluster.drop_space(space_id)
+    cluster.drop_table(space_id)
     for i in cluster.instances:
-        assert i.call("box.space._pico_space:get", space_id) is None
+        assert i.call("box.space._pico_table:get", space_id) is None
 
     #
     # Options validation
@@ -225,10 +225,10 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     i4.raft_wait_index(abort_index, 3)
 
     # No space was created
-    assert i1.call("box.space._pico_space:get", space_id) is None
-    assert i2.call("box.space._pico_space:get", space_id) is None
-    assert i3.call("box.space._pico_space:get", space_id) is None
-    assert i4.call("box.space._pico_space:get", space_id) is None
+    assert i1.call("box.space._pico_table:get", space_id) is None
+    assert i2.call("box.space._pico_table:get", space_id) is None
+    assert i3.call("box.space._pico_table:get", space_id) is None
+    assert i4.call("box.space._pico_table:get", space_id) is None
     assert i1.call("box.space._space:get", space_id) is None
     assert i2.call("box.space._space:get", space_id) is None
     assert i3.call("box.space._space:get", space_id) is None
@@ -281,10 +281,10 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         True,
         "memtx",
     ]
-    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i3.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i4.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
+    assert i3.call("box.space._pico_table:get", space_id) == pico_space_def
+    assert i4.call("box.space._pico_table:get", space_id) == pico_space_def
 
     tt_space_def = [
         space_id,
@@ -338,7 +338,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
 
     assert i5.call("box.space._pico_property:get", "global_schema_version")[1] == 2
     assert i5.next_schema_version() == 3
-    assert i5.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i5.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i5.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i5.call("box.space._space:get", space_id) == tt_space_def
     assert i5.call("box.space._index:get", [space_id, 0]) == tt_pk_def
@@ -348,7 +348,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     # It's schema was updated automatically as well
     assert i6.call("box.space._pico_property:get", "global_schema_version")[1] == 2
     assert i6.next_schema_version() == 3
-    assert i6.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i6.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i6.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i6.call("box.space._space:get", space_id) == tt_space_def
     assert i6.call("box.space._index:get", [space_id, 0]) == tt_pk_def
@@ -396,8 +396,8 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         True,
         "memtx",
     ]
-    assert i1.call("box.space._pico_space:get", space_id) == pico_space_def
-    assert i2.call("box.space._pico_space:get", space_id) == pico_space_def
+    assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
+    assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
 
     tt_space_def = [
         space_id,
@@ -498,9 +498,9 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
 
     # Space is created but is not operable.
     assert i1.call("box.space._space:get", space_id) is not None
-    assert not i1.eval("return box.space._pico_space:get(...).operable", space_id)
+    assert not i1.eval("return box.space._pico_table:get(...).operable", space_id)
     assert i2.call("box.space._space:get", space_id) is not None
-    assert not i2.eval("return box.space._pico_space:get(...).operable", space_id)
+    assert not i2.eval("return box.space._pico_table:get(...).operable", space_id)
 
     # Compact raft log to trigger snapshot with an unfinished schema change.
     i1.raft_compact_log()
@@ -512,7 +512,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     # TODO: test readonly replica doing the same
 
     # It has received an unfinished schema change.
-    assert not i4.eval("return box.space._pico_space:get(...).operable", space_id)
+    assert not i4.eval("return box.space._pico_table:get(...).operable", space_id)
 
     # Wake the instance, who was blocking the schema change.
     i3.start()
@@ -521,7 +521,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     # The schema change finalized.
     for i in cluster.instances:
         assert i.call("box.space._space:get", space_id) is not None
-        assert i.eval("return box.space._pico_space:get(...).operable", space_id)
+        assert i.eval("return box.space._pico_table:get(...).operable", space_id)
 
 
 ################################################################################
@@ -883,7 +883,7 @@ def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_drop_space_normal(cluster: Cluster):
+def test_ddl_drop_table_normal(cluster: Cluster):
     # 2 replicasets with 2 replicas each
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
@@ -902,7 +902,7 @@ def test_ddl_drop_space_normal(cluster: Cluster):
         assert i.call("box.space._space.index.name:get", space_name) is not None
 
     # Actual behaviour we're testing
-    cluster.drop_space(space_name)
+    cluster.drop_table(space_name)
 
     for i in cluster.instances:
         assert i.call("box.space._space.index.name:get", space_name) is None
@@ -925,7 +925,7 @@ def test_ddl_drop_space_normal(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_drop_space_partial_failure(cluster: Cluster):
+def test_ddl_drop_table_partial_failure(cluster: Cluster):
     # First 3 are fore quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
     # Test subjects.
@@ -952,7 +952,7 @@ def test_ddl_drop_space_partial_failure(cluster: Cluster):
 
     # Ddl fails because all masters must be present.
     with pytest.raises(ReturnError, match="timeout"):
-        i1.drop_space(space_name)
+        i1.drop_table(space_name)
 
     entry, *_ = i1.call(
         "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
@@ -972,13 +972,13 @@ def test_ddl_drop_space_partial_failure(cluster: Cluster):
 
     # But the space is marked not operable.
     assert not i1.eval(
-        "return box.space._pico_space.index.name:get(...).operable", space_name
+        "return box.space._pico_table.index.name:get(...).operable", space_name
     )
     assert not i2.eval(
-        "return box.space._pico_space.index.name:get(...).operable", space_name
+        "return box.space._pico_table.index.name:get(...).operable", space_name
     )
     assert not i3.eval(
-        "return box.space._pico_space.index.name:get(...).operable", space_name
+        "return box.space._pico_table.index.name:get(...).operable", space_name
     )
 
     # TODO: test manual ddl abort
@@ -1003,7 +1003,7 @@ def test_ddl_drop_space_partial_failure(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
+def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
     # i1 is for quorum
     i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
     i2 = cluster.add_instance(wait_online=True, replicaset_id="r99")
@@ -1040,7 +1040,7 @@ def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
 
     # Drop the spaces
     for space_name in ["replace_me", "drop_me"]:
-        cluster.drop_space(space_name)
+        cluster.drop_table(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
@@ -1074,7 +1074,7 @@ def test_ddl_drop_space_by_raft_log_at_catchup(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
+def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
     # These guys are for quorum.
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
 
@@ -1109,7 +1109,7 @@ def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
     # Drop spaces.
     #
     for space_name in ["replace_me", "drop_me"]:
-        cluster.drop_space(space_name)
+        cluster.drop_table(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
@@ -1153,7 +1153,7 @@ def test_ddl_drop_space_by_raft_log_at_boot(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
+def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     # i1 is for quorum
     i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
     i2 = cluster.add_instance(wait_online=True, replicaset_id="r99")
@@ -1191,7 +1191,7 @@ def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
     i3.terminate()
 
     for space_name in ["replace_me", "drop_me"]:
-        cluster.drop_space(space_name)
+        cluster.drop_table(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
 
@@ -1228,7 +1228,7 @@ def test_ddl_drop_space_by_snapshot_on_replica(cluster: Cluster):
 
 
 ################################################################################
-def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
+def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     # These ones are for quorum.
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
     # This is a replicaset master, who will be following along with the ddl.
@@ -1267,7 +1267,7 @@ def test_ddl_drop_space_by_snapshot_on_master(cluster: Cluster):
     # Drop spaces.
     #
     for space_name in ["space_to_drop", "space_to_replace"]:
-        cluster.drop_space(space_name)
+        cluster.drop_table(space_name)
         assert i1.call("box.space._space.index.name:get", space_name) is None
         assert i2.call("box.space._space.index.name:get", space_name) is None
         assert i3.call("box.space._space.index.name:get", space_name) is None
@@ -1408,7 +1408,7 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     #
     # Change the space format.
     #
-    cluster.drop_space(space_name)
+    cluster.drop_table(space_name)
     assert i1.call("box.space._space.index.name:get", space_name) is None
     assert i2.call("box.space._space.index.name:get", space_name) is None
     assert i3.call("box.space._space.index.name:get", space_name) is None

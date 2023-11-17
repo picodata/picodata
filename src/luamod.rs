@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::cas::{self, compare_and_swap};
 use crate::instance::InstanceId;
-use crate::schema::{self, CreateSpaceParams};
+use crate::schema::{self, CreateTableParams};
 use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
@@ -1238,7 +1238,7 @@ pub(crate) fn setup(args: &args::Run) {
             or
             (nil, string) in case of an error
         "},
-        tlua::function1(|params: CreateSpaceParams| -> traft::Result<bool> {
+        tlua::function1(|params: CreateTableParams| -> traft::Result<bool> {
             params.validate()?;
             Ok(true)
         }),
@@ -1265,7 +1265,7 @@ pub(crate) fn setup(args: &args::Run) {
             (nil, string) in case of conflict
         "},
         tlua::function1(
-            |mut params: CreateSpaceParams| -> traft::Result<Option<tlua::AnyLuaString>> {
+            |mut params: CreateTableParams| -> traft::Result<Option<tlua::AnyLuaString>> {
                 let storage = &node::global()?.storage;
                 if params.space_exists()? {
                     return Ok(None);

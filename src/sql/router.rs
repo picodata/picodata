@@ -24,8 +24,8 @@ use std::rc::Rc;
 
 use crate::sql::DEFAULT_BUCKET_COUNT;
 
-use crate::schema::{Distribution, ShardingFn, SpaceDef};
-use crate::storage::{space_by_name, ClusterwideSpace};
+use crate::schema::{Distribution, ShardingFn, TableDef};
+use crate::storage::{space_by_name, ClusterwideTable};
 
 use sbroad::executor::engine::helpers::storage::meta::{
     DEFAULT_JAEGER_AGENT_HOST, DEFAULT_JAEGER_AGENT_PORT,
@@ -67,8 +67,8 @@ pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
 pub fn get_table_version(space_name: &str) -> Result<u64, SbroadError> {
     let node = node::global()
         .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
-    let storage_spaces = &node.storage.spaces;
-    if let Some(space_def) = storage_spaces
+    let storage_tables = &node.storage.tables;
+    if let Some(space_def) = storage_tables
         .by_name(space_name)
         .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e)))?
     {
@@ -142,7 +142,7 @@ impl Cache<String, Plan> for PicoRouterCache {
         // check Plan's tables have up to date schema
         let node = node::global()
             .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
-        let storage_spaces = &node.storage.spaces;
+        let storage_tables = &node.storage.tables;
         for (tbl_name, tbl) in &ir.relations.tables {
             if tbl.is_system() {
                 continue;
@@ -154,7 +154,7 @@ impl Cache<String, Plan> for PicoRouterCache {
                     format!("in version map with name: {}", space_name),
                 )
             })?;
-            let Some(space_def) = storage_spaces.by_name(space_name.as_str()).map_err(|e| {
+            let Some(space_def) = storage_tables.by_name(space_name.as_str()).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
             })?
             else {
@@ -423,7 +423,7 @@ impl RouterMetadata {
         name: &str,
         meta: &tarantool::space::Metadata,
     ) -> Result<Vec<String>, SbroadError> {
-        let pico_space = space_by_name(&ClusterwideSpace::Space)
+        let pico_space = space_by_name(&ClusterwideTable::Table)
             .map_err(|e| SbroadError::NotFound(Entity::Space, format!("{e:?}")))?;
         let tuple = pico_space.get(&[meta.id]).map_err(|e| {
             SbroadError::FailedTo(
@@ -434,7 +434,7 @@ impl RouterMetadata {
         })?;
         let tuple =
             tuple.ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_string()))?;
-        let space_def: SpaceDef = tuple.decode().map_err(|e| {
+        let space_def: TableDef = tuple.decode().map_err(|e| {
             SbroadError::FailedTo(
                 Action::Deserialize,
                 Some(Entity::SpaceMetadata),
@@ -551,10 +551,10 @@ impl Metadata for RouterMetadata {
             columns.push(column);
         }
 
-        // Try to find the sharding columns of the space in "_pico_space".
+        // Try to find the sharding columns of the space in "_pico_table".
         // If nothing found then the space is local and we can't query it with
         // distributed SQL.
-        let is_system_table = ClusterwideSpace::values()
+        let is_system_table = ClusterwideTable::values()
             .iter()
             .any(|sys_name| *sys_name == name.as_str());
         let shard_key_cols: Vec<String> = if is_system_table {

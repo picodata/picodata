@@ -72,7 +72,7 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
-                ddl: Ddl::CreateSpace {
+                ddl: Ddl::CreateTable {
                     id, distribution, ..
                 },
             } => {
@@ -83,14 +83,14 @@ impl std::fmt::Display for Op {
                 };
                 write!(
                     f,
-                    "DdlPrepare({schema_version}, CreateSpace({id}, {distr}))"
+                    "DdlPrepare({schema_version}, CreateTable({id}, {distr}))"
                 )
             }
             Self::DdlPrepare {
                 schema_version,
-                ddl: Ddl::DropSpace { id },
+                ddl: Ddl::DropTable { id },
             } => {
-                write!(f, "DdlPrepare({schema_version}, DropSpace({id}))")
+                write!(f, "DdlPrepare({schema_version}, DropTable({id}))")
             }
             Self::DdlPrepare {
                 schema_version,
@@ -470,7 +470,7 @@ pub struct DmlInLua {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
 pub enum Ddl {
-    CreateSpace {
+    CreateTable {
         id: SpaceId,
         name: String,
         format: Vec<Field>,
@@ -478,7 +478,7 @@ pub enum Ddl {
         distribution: Distribution,
         engine: SpaceEngineType,
     },
-    DropSpace {
+    DropTable {
         id: SpaceId,
     },
     CreateIndex {
@@ -500,7 +500,7 @@ pub enum Ddl {
 ///
 /// // Assuming that space `1` was created.
 /// let op = DdlBuilder::with_schema_version(1)
-///     .with_op(Ddl::DropSpace { id: 1 });
+///     .with_op(Ddl::DropTable { id: 1 });
 /// ```
 pub struct DdlBuilder {
     schema_version: u64,

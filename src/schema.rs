@@ -25,21 +25,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
 use crate::storage::SPACE_ID_INTERNAL_MAX;
-use crate::storage::{ClusterwideSpace, PropertyName};
+use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, event, node, RaftIndex};
 use crate::util::effective_user_id;
 
 ////////////////////////////////////////////////////////////////////////////////
-// SpaceDef
+// TableDef
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Space definition.
 ///
 /// Describes a user-defined space.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SpaceDef {
+pub struct TableDef {
     pub id: SpaceId,
     pub name: String,
     pub distribution: Distribution,
@@ -49,15 +49,15 @@ pub struct SpaceDef {
     pub engine: SpaceEngineType,
 }
 
-impl Encode for SpaceDef {}
+impl Encode for TableDef {}
 
-impl SpaceDef {
-    /// Index of field "operable" in the space _pico_space format.
+impl TableDef {
+    /// Index of field "operable" in the space _pico_table format.
     ///
     /// Index of first field is 0.
     pub const FIELD_OPERABLE: usize = 5;
 
-    /// Format of the _pico_space global table.
+    /// Format of the _pico_table global table.
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
@@ -408,7 +408,7 @@ pub fn try_space_field_type_to_index_field_type(
 #[derive(Debug, thiserror::Error)]
 pub enum DdlError {
     #[error("{0}")]
-    CreateSpace(#[from] CreateSpaceError),
+    CreateTable(#[from] CreateTableError),
     #[error("ddl operation was aborted")]
     Aborted,
     #[error("there is no pending ddl operation")]
@@ -416,7 +416,7 @@ pub enum DdlError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum CreateSpaceError {
+pub enum CreateTableError {
     #[error("space with id {id} exists with a different name '{actual_name}', but expected '{expected_name}'")]
     ExistsWithDifferentName {
         id: SpaceId,
@@ -435,9 +435,9 @@ pub enum CreateSpaceError {
     IncompatibleGlobalSpaceEngine,
 }
 
-impl From<CreateSpaceError> for Error {
-    fn from(err: CreateSpaceError) -> Self {
-        DdlError::CreateSpace(err).into()
+impl From<CreateTableError> for Error {
+    fn from(err: CreateTableError) -> Self {
+        DdlError::CreateTable(err).into()
     }
 }
 
@@ -469,7 +469,7 @@ impl From<Field> for tarantool::space::Field {
 }
 
 #[derive(Clone, Debug, LuaRead)]
-pub struct CreateSpaceParams {
+pub struct CreateTableParams {
     pub(crate) id: Option<SpaceId>,
     pub(crate) name: String,
     pub(crate) format: Vec<Field>,
@@ -486,7 +486,7 @@ pub struct CreateSpaceParams {
     pub timeout: Option<f64>,
 }
 
-impl CreateSpaceParams {
+impl CreateTableParams {
     /// Checks if space described by options already exists. Returns an error if
     /// the space with given id exists, but has a different name.
     pub fn space_exists(&self) -> traft::Result<bool> {
@@ -516,7 +516,7 @@ impl CreateSpaceParams {
         } else {
             // TODO: check everything else is the same
             // https://git.picodata.io/picodata/picodata/picodata/-/issues/331
-            return Err(CreateSpaceError::ExistsWithDifferentName {
+            return Err(CreateTableError::ExistsWithDifferentName {
                 id,
                 expected_name: self.name.clone(),
                 actual_name: existing_name.into(),
@@ -536,27 +536,27 @@ impl CreateSpaceParams {
         let mut field_names = HashSet::new();
         for field in &self.format {
             if !field_names.insert(field.name.as_str()) {
-                return Err(CreateSpaceError::DuplicateFieldName(field.name.clone()).into());
+                return Err(CreateTableError::DuplicateFieldName(field.name.clone()).into());
             }
         }
         // All primary key components exist in fields
         for part in &self.primary_key {
             if !field_names.contains(part.as_str()) {
-                return Err(CreateSpaceError::FieldUndefined(part.clone()).into());
+                return Err(CreateTableError::FieldUndefined(part.clone()).into());
             }
         }
         // Global spaces must have memtx engine
         if self.distribution == DistributionParam::Global
             && self.engine.is_some_and(|e| e != SpaceEngineType::Memtx)
         {
-            return Err(CreateSpaceError::IncompatibleGlobalSpaceEngine.into());
+            return Err(CreateTableError::IncompatibleGlobalSpaceEngine.into());
         }
         // All sharding key components exist in fields
         if self.distribution == DistributionParam::Sharded {
             match (&self.by_field, &self.sharding_key) {
                 (Some(by_field), None) => {
                     if !field_names.contains(by_field.as_str()) {
-                        return Err(CreateSpaceError::FieldUndefined(by_field.clone()).into());
+                        return Err(CreateTableError::FieldUndefined(by_field.clone()).into());
                     }
                     if self.sharding_fn.is_some() {
                         crate::tlog!(
@@ -569,17 +569,17 @@ impl CreateSpaceParams {
                     let mut parts = HashSet::new();
                     for part in sharding_key {
                         if !field_names.contains(part.as_str()) {
-                            return Err(CreateSpaceError::FieldUndefined(part.clone()).into());
+                            return Err(CreateTableError::FieldUndefined(part.clone()).into());
                         }
                         // And all parts are unique
                         if !parts.insert(part.as_str()) {
-                            return Err(CreateSpaceError::DuplicateFieldName(part.clone()).into());
+                            return Err(CreateTableError::DuplicateFieldName(part.clone()).into());
                         }
                     }
                 }
-                (None, None) => return Err(CreateSpaceError::ShardingPolicyUndefined.into()),
+                (None, None) => return Err(CreateTableError::ShardingPolicyUndefined.into()),
                 (Some(_), Some(_)) => {
-                    return Err(CreateSpaceError::ConflictingShardingPolicy.into())
+                    return Err(CreateTableError::ConflictingShardingPolicy.into())
                 }
             }
         } else {
@@ -719,7 +719,7 @@ impl CreateSpaceParams {
                 }
             }
         };
-        let res = Ddl::CreateSpace {
+        let res = Ddl::CreateTable {
             id,
             name: self.name,
             format,
@@ -790,9 +790,9 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
             index,
             term,
             ranges: vec![
-                cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::PendingSchemaChange]),
-                cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::GlobalSchemaVersion]),
-                cas::Range::new(ClusterwideSpace::Property).eq([PropertyName::NextSchemaVersion]),
+                cas::Range::new(ClusterwideTable::Property).eq([PropertyName::PendingSchemaChange]),
+                cas::Range::new(ClusterwideTable::Property).eq([PropertyName::GlobalSchemaVersion]),
+                cas::Range::new(ClusterwideTable::Property).eq([PropertyName::NextSchemaVersion]),
             ],
         };
 
@@ -814,7 +814,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_create_space() {
-        CreateSpaceParams {
+        CreateTableParams {
             id: Some(1337),
             name: "friends_of_peppa".into(),
             format: vec![
@@ -841,7 +841,7 @@ mod tests {
         .unwrap();
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
-        CreateSpaceParams {
+        CreateTableParams {
             id: Some(1337),
             name: "friends_of_peppa".into(),
             format: vec![],
@@ -857,7 +857,7 @@ mod tests {
         .unwrap();
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(0),
             name: "friends_of_peppa".into(),
             format: vec![],
@@ -892,7 +892,7 @@ mod tests {
             is_nullable: false,
         };
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone(), field1.clone()],
@@ -908,7 +908,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.to_string(), "several fields have the same name: field1");
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone()],
@@ -924,7 +924,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.to_string(), "no field with name: field2");
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone()],
@@ -940,7 +940,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.to_string(), "no field with name: field2");
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone()],
@@ -956,7 +956,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.to_string(), "several fields have the same name: field1");
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone()],
@@ -972,7 +972,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.to_string(), "no field with name: field2");
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone()],
@@ -991,7 +991,7 @@ mod tests {
             "distribution is `sharded`, but neither `by_field` nor `sharding_key` is set"
         );
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone()],
@@ -1010,7 +1010,7 @@ mod tests {
             "only one of sharding policy fields (`by_field`, `sharding_key`) should be set"
         );
 
-        CreateSpaceParams {
+        CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1.clone(), field2.clone()],
@@ -1025,7 +1025,7 @@ mod tests {
         .validate()
         .unwrap();
 
-        let err = CreateSpaceParams {
+        let err = CreateTableParams {
             id: Some(new_id),
             name: new_space.into(),
             format: vec![field1, field2.clone()],
@@ -1060,12 +1060,12 @@ mod test {
     #[test]
     #[rustfmt::skip]
     fn space_def_matches_format() {
-        let i = SpaceDef::for_tests();
+        let i = TableDef::for_tests();
         let tuple_data = i.to_tuple_buffer().unwrap();
-        let format = SpaceDef::format();
-        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "SpaceDef::format");
+        let format = TableDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "TableDef::format");
 
-        assert_eq!(format[SpaceDef::FIELD_OPERABLE as usize].name, "operable");
+        assert_eq!(format[TableDef::FIELD_OPERABLE as usize].name, "operable");
     }
 
     #[test]

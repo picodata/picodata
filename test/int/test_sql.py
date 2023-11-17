@@ -116,14 +116,14 @@ def test_read_from_global_tables(cluster: Cluster):
 
     data = i1.sql(
         """
-        select * from "_pico_space"
+        select * from "_pico_table"
         """,
     )
     assert len(data["rows"]) == 1
 
     data = i2.sql(
         """
-        select * from "_pico_space"
+        select * from "_pico_table"
         where "name" = 'global_t'
         """,
     )

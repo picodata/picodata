@@ -82,7 +82,7 @@ def test_cas_errors(instance: Instance):
     )
 
     # Prohibited spaces
-    for space in ["_pico_space", "_pico_index"]:
+    for space in ["_pico_table", "_pico_index"]:
         with pytest.raises(TarantoolError) as e5:
             instance.cas(
                 "insert",

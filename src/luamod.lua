@@ -1188,9 +1188,9 @@ function pico.drop_table(table, opts)
     local function make_op_if_needed()
         local space_def = nil
         if type(table) == 'string' then
-            space_def = box.space._pico_space.index.name:get(table)
+            space_def = box.space._pico_table.index.name:get(table)
         elseif type(table) == 'number' then
-            space_def = box.space._pico_space:get(table)
+            space_def = box.space._pico_table:get(table)
         end
         if space_def == nil then
             -- Table doesn't exist yet, no op needed
@@ -1202,7 +1202,7 @@ function pico.drop_table(table, opts)
             kind = 'ddl_prepare',
             schema_version = next_schema_version(),
             ddl = {
-                kind = 'drop_space',
+                kind = 'drop_table',
                 id = space_def.id,
             }
         }

@@ -776,7 +776,7 @@ class Instance:
         index = self.call("pico.create_table", params, timeout, timeout=timeout + 0.5)
         return index
 
-    def drop_space(self, space: int | str, timeout: float = 3.0):
+    def drop_table(self, space: int | str, timeout: float = 3.0):
         """
         Drops the space. Returns a raft index at which the space has to be
         dropped on all peers.
@@ -810,7 +810,7 @@ class Instance:
         op = dict(
             kind="ddl_prepare",
             schema_version=self.next_schema_version(),
-            ddl=dict(kind="create_space", **space_def),
+            ddl=dict(kind="create_table", **space_def),
         )
         # TODO: rewrite the test using pico.cas
         index = self.call("pico.raft_propose", op, timeout=timeout)
@@ -1171,11 +1171,11 @@ class Cluster:
         index = self.instances[0].create_table(params, timeout)
         self.raft_wait_index(index, timeout)
 
-    def drop_space(self, space: int | str, timeout: float = 3.0):
+    def drop_table(self, space: int | str, timeout: float = 3.0):
         """
         Drops the space. Waits for all online peers to be aware of it.
         """
-        index = self.instances[0].drop_space(space, timeout)
+        index = self.instances[0].drop_table(space, timeout)
         self.raft_wait_index(index, timeout)
 
     def abort_ddl(self, timeout: float = 3.0):

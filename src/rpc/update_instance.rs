@@ -6,7 +6,7 @@ use crate::instance::Grade;
 use crate::instance::GradeVariant;
 use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
-use crate::storage::{Clusterwide, ClusterwideSpace};
+use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -125,13 +125,13 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             return Ok(());
         }
 
-        let dml = Dml::replace(ClusterwideSpace::Instance, &new_instance)
+        let dml = Dml::replace(ClusterwideTable::Instance, &new_instance)
             .expect("encoding should not fail");
 
         let ranges = vec![
-            cas::Range::new(ClusterwideSpace::Instance),
-            cas::Range::new(ClusterwideSpace::Address),
-            cas::Range::new(ClusterwideSpace::Tier),
+            cas::Range::new(ClusterwideTable::Instance),
+            cas::Range::new(ClusterwideTable::Address),
+            cas::Range::new(ClusterwideTable::Tier),
         ];
         let res = cas::compare_and_swap(
             Op::Dml(dml),

@@ -18,7 +18,7 @@ use std::convert::TryFrom;
 use std::io;
 use std::time::Duration;
 use storage::Clusterwide;
-use storage::{ClusterwideSpace, PropertyName};
+use storage::{ClusterwideTable, PropertyName};
 use traft::RaftSpaceAccess;
 
 use protobuf::Message as _;
@@ -541,7 +541,7 @@ fn start_boot(args: &args::Run) {
 
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Address,
+                ClusterwideTable::Address,
                 &traft::PeerAddress {
                     raft_id,
                     address: args.advertise_address(),
@@ -551,20 +551,20 @@ fn start_boot(args: &args::Run) {
             .into(),
         );
         init_entries_push_op(
-            op::Dml::insert(ClusterwideSpace::Instance, &instance)
+            op::Dml::insert(ClusterwideTable::Instance, &instance)
                 .expect("cannot fail")
                 .into(),
         );
         for tier in tiers {
             init_entries_push_op(
-                op::Dml::insert(ClusterwideSpace::Tier, &tier)
+                op::Dml::insert(ClusterwideTable::Tier, &tier)
                     .expect("cannot fail")
                     .into(),
             );
         }
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::GlobalSchemaVersion, 0),
             )
             .expect("cannot fail")
@@ -572,7 +572,7 @@ fn start_boot(args: &args::Run) {
         );
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::NextSchemaVersion, 1),
             )
             .expect("cannot fail")
@@ -582,7 +582,7 @@ fn start_boot(args: &args::Run) {
         #[rustfmt::skip]
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::PasswordMinLength, storage::DEFAULT_PASSWORD_MIN_LENGTH),
             )
             .expect("cannot fail")
@@ -592,7 +592,7 @@ fn start_boot(args: &args::Run) {
         #[rustfmt::skip]
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::AutoOfflineTimeout, storage::DEFAULT_AUTO_OFFLINE_TIMEOUT),
             )
             .expect("cannot fail")
@@ -602,7 +602,7 @@ fn start_boot(args: &args::Run) {
         #[rustfmt::skip]
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::MaxHeartbeatPeriod, storage::DEFAULT_MAX_HEARTBEAT_PERIOD),
             )
             .expect("cannot fail")
@@ -612,7 +612,7 @@ fn start_boot(args: &args::Run) {
         #[rustfmt::skip]
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
             )
             .expect("cannot fail")
@@ -622,7 +622,7 @@ fn start_boot(args: &args::Run) {
         #[rustfmt::skip]
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::SnapshotChunkMaxSize, storage::DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE),
             )
             .expect("cannot fail")
@@ -632,7 +632,7 @@ fn start_boot(args: &args::Run) {
         #[rustfmt::skip]
         init_entries_push_op(
             op::Dml::insert(
-                ClusterwideSpace::Property,
+                ClusterwideTable::Property,
                 &(PropertyName::SnapshotReadViewCloseTimeout, storage::DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT),
             )
             .expect("cannot fail")

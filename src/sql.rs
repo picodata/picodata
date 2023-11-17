@@ -1,7 +1,7 @@
 //! Clusterwide SQL query execution.
 
 use crate::schema::{
-    wait_for_ddl_commit, CreateSpaceParams, DistributionParam, Field, RoleDef, ShardingFn, UserDef,
+    wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, RoleDef, ShardingFn, UserDef,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -366,7 +366,7 @@ fn reenterable_schema_change_request(
             } else {
                 DistributionParam::Global
             };
-            let params = CreateSpaceParams {
+            let params = CreateTableParams {
                 id: None,
                 name,
                 format,
@@ -379,11 +379,11 @@ fn reenterable_schema_change_request(
                 timeout: None,
             };
             params.validate()?;
-            Params::CreateSpace(params)
+            Params::CreateTable(params)
         }
         IrNode::Ddl(Ddl::DropTable { name, .. }) => {
             // Nothing to check
-            Params::DropSpace(name)
+            Params::DropTable(name)
         }
         IrNode::Acl(Acl::DropUser { name, .. }) => {
             // Nothing to check
@@ -442,7 +442,7 @@ fn reenterable_schema_change_request(
 
         // Check for conflicts and make the op
         let mut op = match &params {
-            Params::CreateSpace(params) => {
+            Params::CreateTable(params) => {
                 if params.space_exists()? {
                     // Space already exists, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
@@ -463,12 +463,12 @@ fn reenterable_schema_change_request(
                     ddl,
                 }
             }
-            Params::DropSpace(name) => {
-                let Some(space_def) = storage.spaces.by_name(name)? else {
+            Params::DropTable(name) => {
+                let Some(space_def) = storage.tables.by_name(name)? else {
                     // Space doesn't exist yet, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 };
-                let ddl = OpDdl::DropSpace { id: space_def.id };
+                let ddl = OpDdl::DropTable { id: space_def.id };
                 Op::DdlPrepare {
                     // This will be set right after the match statement.
                     schema_version: 0,
@@ -604,8 +604,8 @@ fn reenterable_schema_change_request(
     }
 
     enum Params {
-        CreateSpace(CreateSpaceParams),
-        DropSpace(String),
+        CreateTable(CreateTableParams),
+        DropTable(String),
         CreateUser(String, AuthDef),
         AlterUser(String, AuthDef),
         DropUser(String),

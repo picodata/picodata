@@ -8,7 +8,7 @@ use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
-use crate::storage::ClusterwideSpace;
+use crate::storage::ClusterwideTable;
 use crate::storage::{Clusterwide, ToEntryIter as _};
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
@@ -92,14 +92,14 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
         };
-        let op_addr = Dml::replace(ClusterwideSpace::Address, &peer_address)
+        let op_addr = Dml::replace(ClusterwideTable::Address, &peer_address)
             .expect("encoding should not fail");
         let op_instance =
-            Dml::replace(ClusterwideSpace::Instance, &instance).expect("encoding should not fail");
+            Dml::replace(ClusterwideTable::Instance, &instance).expect("encoding should not fail");
         let ranges = vec![
-            cas::Range::new(ClusterwideSpace::Instance),
-            cas::Range::new(ClusterwideSpace::Address),
-            cas::Range::new(ClusterwideSpace::Tier),
+            cas::Range::new(ClusterwideTable::Instance),
+            cas::Range::new(ClusterwideTable::Address),
+            cas::Range::new(ClusterwideTable::Tier),
         ];
         macro_rules! handle_result {
             ($res:expr) => {

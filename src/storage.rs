@@ -18,7 +18,7 @@ use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
 use crate::schema::Distribution;
-use crate::schema::{IndexDef, SpaceDef};
+use crate::schema::{IndexDef, TableDef};
 use crate::schema::{PrivilegeDef, RoleDef, UserDef};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
 use crate::tier::Tier;
@@ -43,7 +43,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Duration;
 
-macro_rules! define_clusterwide_spaces {
+macro_rules! define_clusterwide_tables {
     (
         $(#[$Clusterwide_meta:meta])*
         pub struct $Clusterwide:ident {
@@ -54,8 +54,8 @@ macro_rules! define_clusterwide_spaces {
             )*
         }
 
-        $(#[$ClusterwideSpace_meta:meta])*
-        pub enum $ClusterwideSpace:ident {
+        $(#[$ClusterwideTable_meta:meta])*
+        pub enum $ClusterwideTable:ident {
             $(
                 $(#[$cw_field_meta:meta])*
                 $cw_space_var:ident = $cw_space_id:expr, $cw_space_name:expr => {
@@ -73,10 +73,10 @@ macro_rules! define_clusterwide_spaces {
         }
     ) => {
         ////////////////////////////////////////////////////////////////////////
-        // ClusterwideSpace
+        // ClusterwideTable
         ::tarantool::define_str_enum! {
-            $(#[$ClusterwideSpace_meta])*
-            pub enum $ClusterwideSpace {
+            $(#[$ClusterwideTable_meta])*
+            pub enum $ClusterwideTable {
                 $(
                     $(#[$cw_field_meta])*
                     $cw_space_var = $cw_space_name,
@@ -84,7 +84,7 @@ macro_rules! define_clusterwide_spaces {
             }
         }
 
-        impl $ClusterwideSpace {
+        impl $ClusterwideTable {
             /// Id of the corrseponding system global space.
             pub const fn id(&self) -> SpaceId {
                 match self {
@@ -101,16 +101,16 @@ macro_rules! define_clusterwide_spaces {
 
             /// A slice of all possible variants of `Self`.
             /// Guaranteed to return spaces in ascending order of their id
-            pub const fn all_spaces() -> &'static [Self] {
+            pub const fn all_tables() -> &'static [Self] {
                 &[ $( Self::$cw_space_var, )+ ]
             }
         }
 
-        impl TryFrom<SpaceId> for $ClusterwideSpace {
+        impl TryFrom<SpaceId> for $ClusterwideTable {
             type Error = SpaceId;
 
             #[inline(always)]
-            fn try_from(id: SpaceId) -> ::std::result::Result<$ClusterwideSpace, Self::Error> {
+            fn try_from(id: SpaceId) -> ::std::result::Result<$ClusterwideTable, Self::Error> {
                 match id {
                     $( $cw_space_id => Ok(Self::$cw_space_var), )+
                     _ => Err(id),
@@ -182,9 +182,9 @@ macro_rules! define_clusterwide_spaces {
                 $( $index_field: $index_ty, )*
             }
 
-            impl TClusterwideSpace for $space_struct {
-                const SPACE_NAME: &'static str = $cw_space_name;
-                const SPACE_ID: SpaceId = $cw_space_id;
+            impl TClusterwideTable for $space_struct {
+                const TABLE_NAME: &'static str = $cw_space_name;
+                const TABLE_ID: SpaceId = $cw_space_id;
                 const INDEX_NAMES: &'static [&'static str] = &[
                     $index_name_pk,
                     $( $index_name, )*
@@ -229,22 +229,22 @@ pub fn space_by_name(space_name: &str) -> tarantool::Result<Space> {
 // Clusterwide
 ////////////////////////////////////////////////////////////////////////////////
 
-define_clusterwide_spaces! {
+define_clusterwide_tables! {
     pub struct Clusterwide {
         pub #space_name_lower: #space_name_upper,
         pub snapshot_cache: Rc<SnapshotCache>,
     }
 
-    /// An enumeration of builtin cluster-wide spaces.
+    /// An enumeration of builtin cluster-wide tables.
     ///
     /// Use [`Self::id`] to get [`SpaceId`].
     /// Use [`Self::name`] to get space name.
-    pub enum ClusterwideSpace {
-        Space = 512, "_pico_space" => {
-            Clusterwide::spaces;
+    pub enum ClusterwideTable {
+        Table = 512, "_pico_table" => {
+            Clusterwide::tables;
 
-            /// A struct for accessing definitions of all the user-defined spaces.
-            pub struct Spaces {
+            /// A struct for accessing definitions of all the user-defined tables.
+            pub struct Tables {
                 space: Space,
                 #[primary]
                 index_id: Index => "id",
@@ -388,13 +388,13 @@ impl Clusterwide {
 
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
         let mut space_indexes = Vec::with_capacity(32);
-        // ClusterwideSpace::all_spaces is guaranteed to iterate in order
+        // ClusterwideTable::all_tables is guaranteed to iterate in order
         // of ascending space ids
-        for space in ClusterwideSpace::all_spaces() {
+        for space in ClusterwideTable::all_tables() {
             space_indexes.push((space.id(), 0));
         }
 
-        for space_def in self.spaces.iter()? {
+        for space_def in self.tables.iter()? {
             if !matches!(space_def.distribution, Distribution::Global) {
                 continue;
             }
@@ -492,11 +492,11 @@ impl Clusterwide {
             let tuples = unsafe { TupleBuffer::from_vec_unchecked(tuples) };
 
             let space_name = self
-                .global_space_name(space_id)
-                .expect("this id is from _pico_space");
+                .global_table_name(space_id)
+                .expect("this id is from _pico_table");
             tlog!(
                 Info,
-                "generated snapshot chunk for clusterwide space '{space_name}': {} tuples [{} bytes]",
+                "generated snapshot chunk for clusterwide table '{space_name}': {} tuples [{} bytes]",
                 count,
                 tuples.len(),
             );
@@ -617,11 +617,11 @@ impl Clusterwide {
         Ok((snapshot_data, entry_id))
     }
 
-    fn global_space_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
-        if let Ok(space) = ClusterwideSpace::try_from(id) {
+    fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
+        if let Ok(space) = ClusterwideTable::try_from(id) {
             Ok(space.name().into())
         } else {
-            let Some(space_def) = self.spaces.get(id)? else {
+            let Some(space_def) = self.tables.get(id)? else {
                 return Err(Error::other(format!("global space #{id} not found")));
             };
             Ok(space_def.name.into())
@@ -645,13 +645,13 @@ impl Clusterwide {
         debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });
 
         // These need to be saved before we truncate the corresponding spaces.
-        let mut old_space_versions = HashMap::new();
+        let mut old_table_versions = HashMap::new();
         let mut old_user_versions = HashMap::new();
         let mut old_role_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
 
-        for def in self.spaces.iter()? {
-            old_space_versions.insert(def.id, def.schema_version);
+        for def in self.tables.iter()? {
+            old_table_versions.insert(def.id, def.schema_version);
         }
         for def in self.users.iter()? {
             old_user_versions.insert(def.id, def.schema_version);
@@ -677,7 +677,7 @@ impl Clusterwide {
             let space_id = space_dump.space_id;
             if !SCHEMA_DEFINITION_SPACES.contains(&space_id) {
                 // First we restore contents of global schema spaces
-                // (_pico_space, _pico_user, etc.), so that we can apply the
+                // (_pico_table, _pico_user, etc.), so that we can apply the
                 // schema changes to them.
                 continue;
             }
@@ -717,7 +717,7 @@ impl Clusterwide {
         if is_master && v_local < v_snapshot {
             let t0 = std::time::Instant::now();
 
-            self.apply_schema_changes_on_master(self.spaces.iter()?, &old_space_versions)?;
+            self.apply_schema_changes_on_master(self.tables.iter()?, &old_table_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.roles.iter()?, &old_role_versions)?;
@@ -796,11 +796,11 @@ impl Clusterwide {
         return Ok(());
 
         const SCHEMA_DEFINITION_SPACES: &[SpaceId] = &[
-            ClusterwideSpace::Space.id(),
-            ClusterwideSpace::Index.id(),
-            ClusterwideSpace::User.id(),
-            ClusterwideSpace::Role.id(),
-            ClusterwideSpace::Privilege.id(),
+            ClusterwideTable::Table.id(),
+            ClusterwideTable::Index.id(),
+            ClusterwideTable::User.id(),
+            ClusterwideTable::Role.id(),
+            ClusterwideTable::Privilege.id(),
         ];
     }
 
@@ -812,7 +812,7 @@ impl Clusterwide {
     /// is received.
     ///
     /// `iter` is an iterator of records representing given schema entities
-    /// ([`SpaceDef`], [`UserDef`]).
+    /// ([`TableDef`], [`UserDef`]).
     ///
     /// `old_versions` provides information of entity versions for determining
     /// which entities should be dropped and/or recreated.
@@ -903,9 +903,9 @@ impl Clusterwide {
         space_id: SpaceId,
         index_id: IndexId,
     ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
+        static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space_id) = ClusterwideSpace::try_from(space_id) {
+        if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
             let key_def = match key_defs.entry((sys_space_id, index_id)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
@@ -931,9 +931,9 @@ impl Clusterwide {
         space_id: SpaceId,
         index_id: IndexId,
     ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideSpace, IndexId), Rc<KeyDef>>> = None;
+        static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
         let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space_id) = ClusterwideSpace::try_from(space_id) {
+        if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
             let key_def = match key_defs.entry((sys_space_id, index_id)) {
                 Entry::Occupied(o) => o.into_mut(),
                 Entry::Vacant(v) => {
@@ -995,10 +995,10 @@ impl Clusterwide {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ClusterwideSpace
+// ClusterwideTable
 ////////////////////////////////////////////////////////////////////////////////
 
-impl ClusterwideSpace {
+impl ClusterwideTable {
     #[inline]
     pub(crate) fn get(&self) -> tarantool::Result<Space> {
         Space::find_cached(self.as_str()).ok_or_else(|| {
@@ -1023,15 +1023,15 @@ impl ClusterwideSpace {
 }
 
 /// Types implementing this trait represent clusterwide spaces.
-pub trait TClusterwideSpace {
-    const SPACE_NAME: &'static str;
-    const SPACE_ID: SpaceId;
+pub trait TClusterwideTable {
+    const TABLE_NAME: &'static str;
+    const TABLE_ID: SpaceId;
     const INDEX_NAMES: &'static [&'static str];
 }
 
-impl From<ClusterwideSpace> for SpaceId {
+impl From<ClusterwideTable> for SpaceId {
     #[inline(always)]
-    fn from(space: ClusterwideSpace) -> SpaceId {
+    fn from(space: ClusterwideTable) -> SpaceId {
         space.id()
     }
 }
@@ -1041,7 +1041,7 @@ impl From<ClusterwideSpace> for SpaceId {
 ////////////////////////////////////////////////////////////////////////////////
 
 ::tarantool::define_str_enum! {
-    /// An enumeration of [`ClusterwideSpace::Property`] key names.
+    /// An enumeration of [`ClusterwideTable::Property`] key names.
     pub enum PropertyName {
         VshardBootstrapped = "vshard_bootstrapped",
 
@@ -1126,8 +1126,8 @@ pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 5;
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .field(("key", FieldType::String))
             .field(("value", FieldType::Any))
@@ -1253,8 +1253,8 @@ impl Properties {
 
 impl Replicasets {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(Replicaset::format())
             .if_not_exists(true)
@@ -1293,8 +1293,8 @@ impl ToEntryIter for Replicasets {
 
 impl PeerAddresses {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .field(("raft_id", FieldType::Unsigned))
             .field(("address", FieldType::String))
@@ -1362,8 +1362,8 @@ impl ToEntryIter for PeerAddresses {
 
 impl Instances {
     pub fn new() -> tarantool::Result<Self> {
-        let space_instances = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space_instances = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(Instance::format())
             .if_not_exists(true)
@@ -1689,15 +1689,15 @@ impl std::fmt::Display for SnapshotPosition {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Spaces
+// Tables
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Spaces {
+impl Tables {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(SpaceDef::format())
+            .format(TableDef::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1723,19 +1723,19 @@ impl Spaces {
     }
 
     #[inline]
-    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<SpaceDef>> {
+    pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
         let tuple = self.space.get(&[id])?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
-    pub fn put(&self, space_def: &SpaceDef) -> tarantool::Result<()> {
+    pub fn put(&self, space_def: &TableDef) -> tarantool::Result<()> {
         self.space.replace(space_def)?;
         Ok(())
     }
 
     #[inline]
-    pub fn insert(&self, space_def: &SpaceDef) -> tarantool::Result<()> {
+    pub fn insert(&self, space_def: &TableDef) -> tarantool::Result<()> {
         self.space.insert(space_def)?;
         Ok(())
     }
@@ -1743,7 +1743,7 @@ impl Spaces {
     #[inline]
     pub fn update_operable(&self, id: SpaceId, operable: bool) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(SpaceDef::FIELD_OPERABLE, operable)?;
+        ops.assign(TableDef::FIELD_OPERABLE, operable)?;
         self.space.update(&[id], ops)?;
         Ok(())
     }
@@ -1754,14 +1754,14 @@ impl Spaces {
     }
 
     #[inline]
-    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<SpaceDef>> {
+    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<TableDef>> {
         let tuple = self.index_name.get(&[name])?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
 }
 
-impl ToEntryIter for Spaces {
-    type Entry = SpaceDef;
+impl ToEntryIter for Tables {
+    type Entry = TableDef;
 
     #[inline(always)]
     fn index_iter(&self) -> Result<IndexIterator> {
@@ -1775,8 +1775,8 @@ impl ToEntryIter for Spaces {
 
 impl Indexes {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(IndexDef::format())
             .if_not_exists(true)
@@ -1876,7 +1876,7 @@ pub fn ddl_meta_space_update_operable(
     space_id: SpaceId,
     operable: bool,
 ) -> traft::Result<()> {
-    storage.spaces.update_operable(space_id, operable)?;
+    storage.tables.update_operable(space_id, operable)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         storage
@@ -1890,7 +1890,7 @@ pub fn ddl_meta_space_update_operable(
 ///
 /// This function is called when applying the different ddl operations.
 pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
-    if let Some(space_name) = storage.spaces.get(space_id)?.map(|s| s.name) {
+    if let Some(space_name) = storage.tables.get(space_id)?.map(|s| s.name) {
         storage
             .privileges
             .delete_all_by_object("space", &space_name)?;
@@ -1899,7 +1899,7 @@ pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::R
     for index in iter {
         storage.indexes.delete(index.space_id, index.id)?;
     }
-    storage.spaces.delete(space_id)?;
+    storage.tables.delete(space_id)?;
     Ok(())
 }
 
@@ -1913,14 +1913,14 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
     let sys_index = Space::from(SystemSpace::Index);
 
     match *ddl {
-        Ddl::CreateSpace { id, .. } => {
+        Ddl::CreateTable { id, .. } => {
             sys_index.delete(&[id, 1])?;
             sys_index.delete(&[id, 0])?;
             sys_space.delete(&[id])?;
             set_local_schema_version(version)?;
         }
 
-        Ddl::DropSpace { .. } => {
+        Ddl::DropTable { .. } => {
             // Actual drop happens only on commit, so there's nothing to abort.
         }
 
@@ -1955,7 +1955,7 @@ pub fn ddl_create_space_on_master(
     let sys_index = Space::from(SystemSpace::Index);
 
     let pico_space_def = storage
-        .spaces
+        .tables
         .get(space_id)?
         .ok_or_else(|| Error::other(format!("space with id {space_id} not found")))?;
     // TODO: set defaults
@@ -2066,8 +2066,8 @@ pub fn ddl_drop_space_on_master(space_id: SpaceId) -> traft::Result<Option<TntEr
 
 impl Users {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(UserDef::format())
             .if_not_exists(true)
@@ -2156,8 +2156,8 @@ impl ToEntryIter for Users {
 
 impl Roles {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(RoleDef::format())
             .if_not_exists(true)
@@ -2238,8 +2238,8 @@ impl ToEntryIter for Roles {
 
 impl Privileges {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(PrivilegeDef::format())
             .if_not_exists(true)
@@ -2387,8 +2387,8 @@ impl ToEntryIter for Privileges {
 ////////////////////////////////////////////////////////////////////////////////
 impl Tiers {
     pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::SPACE_NAME)
-            .id(Self::SPACE_ID)
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
             .format(Tier::format())
             .if_not_exists(true)
@@ -2468,7 +2468,7 @@ trait SchemaDef {
     fn on_delete(key: &Self::Key, storage: &Clusterwide) -> traft::Result<()>;
 }
 
-impl SchemaDef for SpaceDef {
+impl SchemaDef for TableDef {
     type Key = SpaceId;
 
     #[inline(always)]
@@ -2998,7 +2998,7 @@ mod tests {
             // r3
             ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER,),
         ] {
-            storage.space_by_name(ClusterwideSpace::Instance).unwrap().put(&instance).unwrap();
+            storage.space_by_name(ClusterwideTable::Instance).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;
             space_peer_addresses.put(&(raft_id, format!("addr:{raft_id}"))).unwrap();
         }
@@ -3077,7 +3077,7 @@ mod tests {
             assert_eq!(box_replication("r3"), ["addr:5"]);
         }
 
-        let space = storage.space_by_name(ClusterwideSpace::Instance).unwrap();
+        let space = storage.space_by_name(ClusterwideTable::Instance).unwrap();
         space.drop().unwrap();
 
         assert_err!(
@@ -3094,12 +3094,12 @@ mod tests {
         let storage = Clusterwide::new().unwrap();
 
         storage
-            .space_by_name(ClusterwideSpace::Address)
+            .space_by_name(ClusterwideTable::Address)
             .unwrap()
             .insert(&(1, "foo"))
             .unwrap();
         storage
-            .space_by_name(ClusterwideSpace::Address)
+            .space_by_name(ClusterwideTable::Address)
             .unwrap()
             .insert(&(2, "bar"))
             .unwrap();
@@ -3150,18 +3150,18 @@ mod tests {
         assert!(snapshot_data.next_chunk_position.is_none());
 
         let space_dumps = snapshot_data.space_dumps;
-        let n_internal_spaces = ClusterwideSpace::values().len();
+        let n_internal_spaces = ClusterwideTable::values().len();
         assert_eq!(space_dumps.len(), n_internal_spaces);
 
         for space_dump in &space_dumps {
             match space_dump.space_id {
-                s if s == ClusterwideSpace::Instance.id() => {
+                s if s == ClusterwideTable::Instance.id() => {
                     let [instance]: [Instance; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(instance, i);
                 }
 
-                s if s == ClusterwideSpace::Address.id() => {
+                s if s == ClusterwideTable::Address.id() => {
                     let addrs: [(i32, String); 2] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(
@@ -3170,13 +3170,13 @@ mod tests {
                     );
                 }
 
-                s if s == ClusterwideSpace::Property.id() => {
+                s if s == ClusterwideTable::Property.id() => {
                     let [property]: [(String, String); 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(property, ("foo".to_owned(), "bar".to_owned()));
                 }
 
-                s if s == ClusterwideSpace::Replicaset.id() => {
+                s if s == ClusterwideTable::Replicaset.id() => {
                     let [replicaset]: [Replicaset; 1] =
                         Decode::decode(space_dump.tuples.as_ref()).unwrap();
                     assert_eq!(replicaset, r);
@@ -3185,7 +3185,7 @@ mod tests {
                 s_id => {
                     dbg!(s_id);
                     #[rustfmt::skip]
-                    assert!(ClusterwideSpace::all_spaces().iter().any(|s| s.id() == s_id));
+                    assert!(ClusterwideTable::all_tables().iter().any(|s| s.id() == s_id));
                     let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }
             }
@@ -3209,26 +3209,26 @@ mod tests {
         };
         let tuples = [&i].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideSpace::Instance.into(),
+            space_id: ClusterwideTable::Instance.into(),
             tuples,
         });
 
         let tuples = [(1, "google.com"), (2, "ya.ru")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideSpace::Address.into(),
+            space_id: ClusterwideTable::Address.into(),
             tuples,
         });
 
         let tuples = [("foo", "bar")].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideSpace::Property.into(),
+            space_id: ClusterwideTable::Property.into(),
             tuples,
         });
 
         let r = Replicaset::for_tests();
         let tuples = [&r].to_tuple_buffer().unwrap();
         data.space_dumps.push(SpaceDump {
-            space_id: ClusterwideSpace::Replicaset.into(),
+            space_id: ClusterwideTable::Replicaset.into(),
             tuples,
         });
 
@@ -3257,13 +3257,13 @@ mod tests {
 
     #[::tarantool::test]
     fn system_clusterwide_spaces_are_ordered_by_id() {
-        let all_spaces: Vec<SpaceId> = ClusterwideSpace::all_spaces()
+        let all_tables: Vec<SpaceId> = ClusterwideTable::all_tables()
             .iter()
             .map(|s| s.id())
             .collect();
 
-        let mut sorted = all_spaces.clone();
+        let mut sorted = all_tables.clone();
         sorted.sort_unstable();
-        assert_eq!(all_spaces, sorted);
+        assert_eq!(all_tables, sorted);
     }
 }

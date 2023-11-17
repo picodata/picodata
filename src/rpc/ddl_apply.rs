@@ -97,7 +97,7 @@ pub enum Error {
 /// changes via tarantool replication.
 ///
 /// In case of successful schema change the local schema version will be set to
-/// `version`. In case of [`Ddl::DropSpace`] and [`Ddl::DropIndex`] schema is
+/// `version`. In case of [`Ddl::DropTable`] and [`Ddl::DropIndex`] schema is
 /// only changed if `is_commit` is `true`.
 ///
 /// The space and index definitions are extracted from picodata storage via
@@ -116,14 +116,14 @@ pub fn apply_schema_change(
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
     match *ddl {
-        Ddl::CreateSpace { id, .. } => {
+        Ddl::CreateTable { id, .. } => {
             let abort_reason = ddl_create_space_on_master(storage, id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
                 return Err(Error::Aborted(e.to_string()));
             }
         }
 
-        Ddl::DropSpace { id } => {
+        Ddl::DropTable { id } => {
             if !is_commit {
                 // Space is only dropped on commit.
                 return Ok(());
