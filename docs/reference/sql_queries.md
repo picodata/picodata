@@ -9,7 +9,8 @@ Picodata при работе с распределенной СУБД.
   [создания](#create_table) и [удаления](#drop_table)
   [таблиц](../overview/glossary.md#table);
 - Data Modification Language (`DML`): команды [`INSERT`](#insert) для
-  добавления данных в таблицы и [`DELETE`](#delete) для удаления данных;
+  добавления данных в таблицы, [`UPDATE`](#update) для обновления данных
+  и [`DELETE`](#delete) для их удаления;
 - Data Query Language (`DQL`): команда [`SELECT`](#select) для получения
   данных из таблиц;
 - Access Control Lists (`ACL`): команды для [управления пользователями](#users) и ролями;
