@@ -1,6 +1,6 @@
 variables:
   BASE_IMAGE_NAME: $CI_REGISTRY_IMAGE
-  BASE_IMAGE_TAG: latest
+  BASE_IMAGE_TAG: $CI_COMMIT_SHA
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
 
 workflow:
@@ -23,6 +23,7 @@ default:
 
 stages:
   - build-base-image
+  - lint
   - pack-doc
   - upload
   - deploy
@@ -39,10 +40,17 @@ build-base-image:
     - cd docker/static
     - >
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
-      --build-arg COMMIT_HASH=$CI_COMMIT_SHA ${PUSH_DOCKER}
+      --build-arg COMMIT_HASH=${CI_COMMIT_SHA} ${PUSH_DOCKER}
       --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
       --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
-    - echo "Picodata doc successfully built"
+
+lint:
+  image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
+  stage: lint
+  script:
+    - echo "Checking picodata doc..."
+    - make lint
+    - echo "Picodata doc successfully checked"
 
 pack-doc:
   image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}

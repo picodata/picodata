@@ -4,19 +4,22 @@
 
 ## Установка зависимостей
 ```
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+make init
 ```
 
 ## Cборка проекта
 ```
-mkdocs build -d site
+make build
 ```
 
 ## Локальный запуск
 ```
-mkdocs serve
+make run
+```
+
+## Проверка корректности
+```
+make lint
 ```
 
 По умолчанию сайт будет доступен по адресу [http://127.0.0.1:8000](http://127.0.0.1:8000/).
@@ -51,4 +54,3 @@ git remote add origin https://git.heroku.com/peaceful-brook-74799.git
 git push -u origin master
 ```
 [^1]:Примечание: имя приложения будет отличаться (см. `heroku apps`) -->
-
