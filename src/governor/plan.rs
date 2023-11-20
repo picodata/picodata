@@ -475,10 +475,6 @@ pub mod stage {
             pub req: rpc::update_instance::Request,
         }
 
-        pub struct SkipSharding {
-            pub req: rpc::update_instance::Request,
-        }
-
         pub struct ShardingBoot<'i> {
             pub target: &'i InstanceId,
             pub rpc: rpc::sharding::bootstrap::Request,
