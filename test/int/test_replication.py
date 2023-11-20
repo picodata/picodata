@@ -5,6 +5,7 @@ import time
 from conftest import (
     Cluster,
     Instance,
+    Retriable,
 )
 
 
@@ -187,4 +188,105 @@ def test_master_auto_switchover(cluster: Cluster):
     assert not i5.eval("return box.info.ro")
 
 
-# TODO: check instance synchronizes with old master before becoming the new one
+def wait_governor_status(i: Instance, expected_status, timeout=5):
+    assert expected_status != "not a leader", "use another function"
+
+    class NotALeader(Exception):
+        pass
+
+    def impl():
+        actual_status = i.call("pico._governor_loop_status")
+        if actual_status == "not a leader":
+            raise NotALeader("not a leader")
+
+        assert actual_status == expected_status
+
+    Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
+
+
+def get_vclock_without_local(i: Instance):
+    vclock = i.eval("return box.info.vclock")
+    del vclock[0]
+
+    vclock_array = [0] * (max(vclock.keys()) + 1)
+    for k, v in vclock.items():
+        vclock_array[k] = v
+
+    return vclock_array
+
+
+def test_replication_sync_before_master_switchover(cluster: Cluster):
+    # These guys are for quorum.
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+    # These are being tested.
+    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+
+    # Temporarilly break i5's replication config, so that it's vclock is outdated.
+    print("\x1b[31mbreaking i5's replication config\x1b[0m")
+    i5.eval(
+        """
+        replication_before = box.cfg.replication
+        box.cfg { replication = {} }
+        """
+    )
+
+    # Do some storage modifications, which will need to be replicated.
+    i4.eval(
+        """
+        box.schema.space.create('mytable')
+        box.space.mytable:create_index('pk')
+        box.space.mytable:insert{1, 'hello'}
+        box.space.mytable:insert{2, 'there'}
+        box.space.mytable:insert{3, 'partner'}
+        """
+    )
+
+    # Make sure i1 is leader.
+    i1.promote_or_fail()
+
+    # Initiate master switchover.
+    index = cluster.cas(
+        "update",
+        "_pico_replicaset",
+        key=["r99"],
+        ops=[("=", "target_master_id", i5.instance_id)],
+    )
+    cluster.raft_wait_index(index)
+
+    master_vclock = get_vclock_without_local(i4)
+
+    # Wait until governor starts switching the replication leader from i4 to i5.
+    # This will block until i5 synchronizes with old master, which it won't
+    # until we fix it's replication config.
+    time.sleep(1)  # Just in case, nothing really relies on this sleep
+    wait_governor_status(i1, "transfer replication leader")
+
+    assert i5.eval("return box.space.mytable") is None
+    vclock = get_vclock_without_local(i5)
+    assert vclock != master_vclock
+    assert (
+        i5.eval(
+            "return box.space._pico_replicaset:get(...).current_master_id",
+            i5.replicaset_id,
+        )
+        == i4.instance_id
+    )
+
+    # Fix i5's replication config, so it's able to continue synching.
+    print("\x1b[32mfixing i5's replication config\x1b[0m")
+    i5.eval("box.cfg { replication = replication_before }")
+
+    # Wait until governor finishes with all the needed changes.
+    wait_governor_status(i1, "idle")
+
+    assert i5.eval("return box.space.mytable.id") is not None
+    vclock = get_vclock_without_local(i5)
+    assert vclock >= master_vclock
+    assert (
+        i5.eval(
+            "return box.space._pico_replicaset:get(...).current_master_id",
+            i5.replicaset_id,
+        )
+        == i5.instance_id
+    )
