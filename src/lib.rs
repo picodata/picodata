@@ -14,14 +14,11 @@ use ::tarantool::transaction::transaction;
 use rpc::{join, update_instance};
 use std::cell::OnceCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::io;
 use std::time::Duration;
 use storage::Clusterwide;
-use storage::{ClusterwideTable, PropertyName};
+use storage::PropertyName;
 use traft::RaftSpaceAccess;
-
-use protobuf::Message as _;
 
 use crate::cli::args;
 use crate::cli::args::Address;
@@ -30,13 +27,12 @@ use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::plugin::*;
-use crate::sql::pgproto;
 use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
-use crate::traft::LogicalClock;
 use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
 
 mod audit;
+mod bootstrap_entries;
 pub mod cas;
 pub mod cli;
 pub mod discovery;
@@ -520,148 +516,11 @@ fn start_boot(args: &args::Run) {
         ..Default::default()
     };
 
-    let init_entries: Vec<raft::Entry> = {
-        let mut lc = LogicalClock::new(raft_id, 0);
-        let mut init_entries = Vec::new();
-
-        let mut init_entries_push_op = |op| {
-            lc.inc();
-
-            let ctx = traft::EntryContextNormal { op, lc };
-            let e = traft::Entry {
-                entry_type: raft::EntryType::EntryNormal,
-                index: (init_entries.len() + 1) as _,
-                term: traft::INIT_RAFT_TERM,
-                data: vec![],
-                context: Some(traft::EntryContext::Normal(ctx)),
-            };
-
-            init_entries.push(raft::Entry::try_from(e).unwrap());
-        };
-
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Address,
-                &traft::PeerAddress {
-                    raft_id,
-                    address: args.advertise_address(),
-                },
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-        init_entries_push_op(
-            op::Dml::insert(ClusterwideTable::Instance, &instance)
-                .expect("cannot fail")
-                .into(),
-        );
-        for tier in tiers {
-            init_entries_push_op(
-                op::Dml::insert(ClusterwideTable::Tier, &tier)
-                    .expect("cannot fail")
-                    .into(),
-            );
-        }
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::GlobalSchemaVersion, 0),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::NextSchemaVersion, 1),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        #[rustfmt::skip]
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::PasswordMinLength, storage::DEFAULT_PASSWORD_MIN_LENGTH),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        #[rustfmt::skip]
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::AutoOfflineTimeout, storage::DEFAULT_AUTO_OFFLINE_TIMEOUT),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        #[rustfmt::skip]
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::MaxHeartbeatPeriod, storage::DEFAULT_MAX_HEARTBEAT_PERIOD),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        #[rustfmt::skip]
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        #[rustfmt::skip]
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::SnapshotChunkMaxSize, storage::DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        #[rustfmt::skip]
-        init_entries_push_op(
-            op::Dml::insert(
-                ClusterwideTable::Property,
-                &(PropertyName::SnapshotReadViewCloseTimeout, storage::DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT),
-            )
-            .expect("cannot fail")
-            .into(),
-        );
-
-        init_entries.push({
-            let conf_change = raft::ConfChange {
-                change_type: raft::ConfChangeType::AddNode,
-                node_id: raft_id,
-                ..Default::default()
-            };
-            let e = traft::Entry {
-                entry_type: raft::EntryType::EntryConfChange,
-                index: (init_entries.len() + 1) as _,
-                term: traft::INIT_RAFT_TERM,
-                data: conf_change.write_to_bytes().unwrap(),
-                context: None,
-            };
-
-            raft::Entry::try_from(e).unwrap()
-        });
-
-        init_entries
-    };
+    let bootstrap_entries = bootstrap_entries::prepare(args, &instance, &tiers);
 
     let hs = raft::HardState {
         term: traft::INIT_RAFT_TERM,
-        commit: init_entries.len() as _,
+        commit: bootstrap_entries.len() as _,
         ..Default::default()
     };
 
@@ -672,7 +531,7 @@ fn start_boot(args: &args::Run) {
             .persist_tier(&current_instance_tier.name)
             .unwrap();
         raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
-        raft_storage.persist_entries(&init_entries).unwrap();
+        raft_storage.persist_entries(&bootstrap_entries).unwrap();
         raft_storage.persist_conf_state(&cs).unwrap();
         raft_storage.persist_hard_state(&hs).unwrap();
         Ok(())
