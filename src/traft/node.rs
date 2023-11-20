@@ -1009,7 +1009,7 @@ impl NodeImpl {
                 let primary_key_def = IndexDef {
                     id: 0,
                     name: "primary_key".into(),
-                    space_id: id,
+                    table_id: id,
                     schema_version,
                     parts: primary_key,
                     operable: false,
@@ -1046,7 +1046,7 @@ impl NodeImpl {
                         let bucket_id_def = IndexDef {
                             id: 1,
                             name: "bucket_id".into(),
-                            space_id: id,
+                            table_id: id,
                             schema_version,
                             parts: vec![Part::field(bucket_id_index)
                                 .field_type(IFT::Unsigned)

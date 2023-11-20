@@ -1785,7 +1785,7 @@ impl Indexes {
         let index_id = space
             .index_builder("id")
             .unique(true)
-            .part("space_id")
+            .part("table_id")
             .part("id")
             .if_not_exists(true)
             .create()?;
@@ -1793,7 +1793,7 @@ impl Indexes {
         let index_name = space
             .index_builder("name")
             .unique(true)
-            .part("space_id")
+            .part("table_id")
             .part("name")
             .if_not_exists(true)
             .create()?;
@@ -1881,7 +1881,7 @@ pub fn ddl_meta_space_update_operable(
     for index in iter {
         storage
             .indexes
-            .update_operable(index.space_id, index.id, operable)?;
+            .update_operable(index.table_id, index.id, operable)?;
     }
     Ok(())
 }
@@ -1897,7 +1897,7 @@ pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::R
     }
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
-        storage.indexes.delete(index.space_id, index.id)?;
+        storage.indexes.delete(index.table_id, index.id)?;
     }
     storage.tables.delete(space_id)?;
     Ok(())

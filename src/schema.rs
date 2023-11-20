@@ -35,9 +35,9 @@ use crate::util::effective_user_id;
 // TableDef
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Space definition.
+/// Database table definition.
 ///
-/// Describes a user-defined space.
+/// Describes a user-defined table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TableDef {
     pub id: SpaceId,
@@ -52,9 +52,7 @@ pub struct TableDef {
 impl Encode for TableDef {}
 
 impl TableDef {
-    /// Index of field "operable" in the space _pico_table format.
-    ///
-    /// Index of first field is 0.
+    /// Index (0-based) of field "operable" in the _pico_table table format.
     pub const FIELD_OPERABLE: usize = 5;
 
     /// Format of the _pico_table global table.
@@ -127,7 +125,7 @@ impl TableDef {
 // Distribution
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Defines how to distribute tuples in a space across replicasets.
+/// Defines how to distribute tuples in a table across replicasets.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, LuaRead)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
@@ -171,12 +169,12 @@ fn default_bucket_id_field() -> String {
 // IndexDef
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Index definition.
+/// Database index definition.
 ///
 /// Describes a user-defined index.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IndexDef {
-    pub space_id: SpaceId,
+    pub table_id: SpaceId,
     pub id: IndexId,
     pub name: String,
     pub local: bool,
@@ -189,9 +187,7 @@ pub struct IndexDef {
 impl Encode for IndexDef {}
 
 impl IndexDef {
-    /// Index of field "operable" in the space _pico_index format.
-    ///
-    /// Index of first field is 0.
+    /// Index (0-based) of field "operable" in _pico_index table format.
     pub const FIELD_OPERABLE: usize = 6;
 
     /// Format of the _pico_index global table.
@@ -199,7 +195,7 @@ impl IndexDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("space_id", FieldType::Unsigned)),
+            Field::from(("table_id", FieldType::Unsigned)),
             Field::from(("id", FieldType::Unsigned)),
             Field::from(("name", FieldType::String)),
             Field::from(("local", FieldType::Boolean)),
@@ -214,7 +210,7 @@ impl IndexDef {
     #[inline(always)]
     pub fn for_tests() -> Self {
         Self {
-            space_id: 10569,
+            table_id: 10569,
             id: 1,
             name: "secondary".into(),
             local: true,
@@ -231,7 +227,7 @@ impl IndexDef {
         let mut opts = BTreeMap::new();
         opts.insert(Cow::from("unique"), Value::Bool(self.unique));
         let index_meta = IndexMetadata {
-            space_id: self.space_id,
+            space_id: self.table_id,
             index_id: self.id,
             name: self.name.as_str().into(),
             r#type: IndexType::Tree,
