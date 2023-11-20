@@ -62,8 +62,7 @@ pico.sql([[
 
 ```sql
 pico.sql(
-	[[insert into "friends_of_peppa" ("id", "name") values (?, ?)]],
-	{1, "Suzy"}
+	[[insert into "friends_of_peppa" ("id", "name") values (1, "Suzy")]]
 )
 ```
 
@@ -71,22 +70,24 @@ pico.sql(
 
 ```sql
 pico.sql(
-	[[insert into "friends_of_peppa" ("id", "name") values (1, "Suzy")]],{}
+	[[insert into "friends_of_peppa" ("id", "name") values (?, ?)]],
+	{1, "Suzy"}
 )
 ```
+
 См. [подробнее](../reference/sql_queries.md#insert) о различиях в `INSERT`-запросах.
 
 ## Чтение данных из таблицы {: #reading-from-table }
 Для чтения всех данных из таблицы подойдёт команда:
 
 ```
-pico.sql([[select * from "friends_of_peppa"]], {})
+pico.sql([[select * from "friends_of_peppa"]])
 ```
 
 Можно вывести отдельно строку по известному полю:
 
 ```
-pico.sql([[select * from "friends_of_peppa" where "id" = 1]], {})
+pico.sql([[select * from "friends_of_peppa" where "id" = 1]])
 ```
 
 См. [подробнее](../reference/sql_queries.md#select) о вариантах чтения данных в SQL.
@@ -96,7 +97,7 @@ pico.sql([[select * from "friends_of_peppa" where "id" = 1]], {})
 Удаление строки с известным `id`:
 
 ```sql
-picodata> pico.sql([[delete from "friends_of_peppa" where "id" = 1]], {})
+picodata> pico.sql([[delete from "friends_of_peppa" where "id" = 1]])
 ```
 
 В консоли будет выведено количество удаленных строк (в данном случае, это `1`).
