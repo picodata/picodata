@@ -242,8 +242,7 @@ def test_acl_lua_api(cluster: Cluster):
     #
 
     # Grant privilege to user -> Ok.
-    i1.call(
-        "pico.grant_privilege",
+    i1.grant_privilege(
         "Dave",
         "read",
         "table",
@@ -259,11 +258,11 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # grantor_id is the field at index 4 in schema::PrivilegeDef
-    assert priv[4] == 0  # The above grant was executed from guest. 0 is guest user id.
+    # The above grant was executed from admin. 1 is admin user id.
+    assert priv[4] == 1
 
     # Grant privilege to user without object_name -> Ok.
-    i1.call(
-        "pico.grant_privilege",
+    i1.grant_privilege(
         "Dave",
         "create",
         "user",
@@ -275,11 +274,11 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # grantor_id is the field at index 4 in schema::PrivilegeDef
-    assert priv[4] == 0  # The above grant was executed from guest. 0 is guest user id.
+    # The above grant was executed from admin. 1 is admin user id.
+    assert priv[4] == 1
 
     # Already granted -> ok.
-    i1.call(
-        "pico.grant_privilege",
+    i1.grant_privilege(
         "Dave",
         "read",
         "table",
@@ -287,8 +286,7 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Grant privilege to role -> Ok.
-    i1.call(
-        "pico.grant_privilege",
+    i1.grant_privilege(
         "Parent",
         "write",
         "table",
@@ -296,8 +294,7 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Already granted -> ok.
-    i1.call(
-        "pico.grant_privilege",
+    i1.grant_privilege(
         "Parent",
         "write",
         "table",
@@ -305,18 +302,17 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Assign role to user -> Ok.
-    i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent")
+    i1.grant_privilege("Dave", "execute", "role", "Parent")
 
     # Already assigned role to user -> error.
-    i1.call("pico.grant_privilege", "Dave", "execute", "role", "Parent")
+    i1.grant_privilege("Dave", "execute", "role", "Parent")
 
     #
     # pico.revoke_privilege semantics verification
     #
 
     # Revoke privilege from user -> Ok.
-    i1.call(
-        "pico.revoke_privilege",
+    i1.revoke_privilege(
         "Dave",
         "read",
         "table",
@@ -324,16 +320,14 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Revoke privilege from user without object_name -> Ok.
-    i1.call(
-        "pico.revoke_privilege",
+    i1.revoke_privilege(
         "Dave",
         "create",
         "user",
     )
 
     # Already revoked -> ok.
-    i1.call(
-        "pico.revoke_privilege",
+    i1.revoke_privilege(
         "Dave",
         "read",
         "table",
@@ -341,8 +335,7 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Revoke privilege from role -> Ok.
-    i1.call(
-        "pico.revoke_privilege",
+    i1.revoke_privilege(
         "Parent",
         "write",
         "table",
@@ -350,8 +343,7 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Already revoked -> ok.
-    i1.call(
-        "pico.revoke_privilege",
+    i1.revoke_privilege(
         "Parent",
         "write",
         "table",
@@ -359,11 +351,10 @@ def test_acl_lua_api(cluster: Cluster):
     )
 
     # Revoke role from user -> Ok.
-    i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent")
+    i1.revoke_privilege("Dave", "execute", "role", "Parent")
 
     # Already revoked role to user -> ok.
-    i1.call(
-        "pico.revoke_privilege",
+    i1.revoke_privilege(
         "Dave",
         "execute",
         "role",
@@ -469,16 +460,14 @@ def test_acl_basic(cluster: Cluster):
     # TODO: remove this
     user_id = i1.eval("return box.space._user.index.name:get(...).id", user)
 
-    #
-    #
     # Grant some privileges.
     # Doing anything via remote function execution requires execute access
     # to the "universe"
-    index = i1.call("pico.grant_privilege", user, "execute", "universe", None)
+    index = i1.grant_privilege(user, "execute", "universe")
     cluster.raft_wait_index(index)
     v += 1
 
-    index = i1.call("pico.grant_privilege", user, "read", "table", "money")
+    index = i1.grant_privilege(user, "read", "table", "money")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -526,7 +515,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Revoke the privilege.
-    index = i1.call("pico.revoke_privilege", user, "read", "table", "money")
+    index = i1.revoke_privilege(user, "read", "table", "money")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -603,7 +592,7 @@ def test_acl_roles_basic(cluster: Cluster):
 
     # Doing anything via remote function execution requires execute access
     # to the "universe"
-    index = i1.call("pico.grant_privilege", user, "execute", "universe", None)
+    index = i1.grant_privilege(user, "execute", "universe", None)
     cluster.raft_wait_index(index)
 
     # Try reading from table on behalf of the user.
@@ -624,11 +613,11 @@ def test_acl_roles_basic(cluster: Cluster):
     cluster.raft_wait_index(index)
 
     # Grant the role read access.
-    index = i1.call("pico.grant_privilege", role, "read", "table", "_pico_property")
+    index = i1.grant_privilege(role, "read", "table", "_pico_property")
     cluster.raft_wait_index(index)
 
     # Assign role to user.
-    index = i1.call("pico.grant_privilege", user, "execute", "role", role)
+    index = i1.grant_privilege(user, "execute", "role", role)
     cluster.raft_wait_index(index)
 
     # Try reading from table on behalf of the user again. Now succeed.
@@ -639,8 +628,7 @@ def test_acl_roles_basic(cluster: Cluster):
         assert len(rows) > 0
 
     # Revoke read access from the role.
-    index = i1.call(
-        "pico.revoke_privilege",
+    index = i1.revoke_privilege(
         role,
         "read",
         "table",
@@ -694,8 +682,7 @@ def test_cas_permissions(cluster: Cluster):
             password=VALID_PASSWORD,
         )
 
-    index = i1.call(
-        "pico.grant_privilege",
+    index = i1.grant_privilege(
         user,
         "write",
         "table",
@@ -736,8 +723,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call("pico.create_role", "Captain")
     cluster.raft_wait_index(index)
 
-    index = i1.call(
-        "pico.grant_privilege",
+    index = i1.grant_privilege(
         "Sam",
         "read",
         "table",
@@ -745,8 +731,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    index = i1.call(
-        "pico.grant_privilege",
+    index = i1.grant_privilege(
         "Captain",
         "read",
         "table",
@@ -790,8 +775,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call("pico.create_user", "Blam", VALID_PASSWORD)
     cluster.raft_wait_index(index)
 
-    index = i1.call(
-        "pico.revoke_privilege",
+    index = i1.revoke_privilege(
         "Captain",
         "read",
         "table",
@@ -799,8 +783,7 @@ def test_acl_from_snapshot(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    index = i1.call(
-        "pico.grant_privilege",
+    index = i1.grant_privilege(
         "Captain",
         "read",
         "table",
@@ -811,10 +794,10 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call("pico.create_role", "Executor")
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.grant_privilege", "Executor", "execute", "universe", None)
+    index = i1.grant_privilege("Executor", "execute", "universe", None)
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.grant_privilege", "Blam", "execute", "role", "Executor")
+    index = i1.grant_privilege("Blam", "execute", "role", "Executor")
     cluster.raft_wait_index(index)
 
     # Compact log to trigger snapshot generation.
@@ -863,10 +846,10 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
     ddl = i1.sql(
         """
         create table t (a int not null, primary key (a)) distributed by (a)
-    """
+        """
     )
     assert ddl["row_count"] == 1
-    index = i1.call("pico.grant_privilege", "Dave", "read", "table", "T")
+    index = i1.grant_privilege("Dave", "read", "table", "T")
     cluster.raft_wait_index(index)
     ddl = i1.sql(""" drop table t """)
     assert ddl["row_count"] == 1
@@ -881,8 +864,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
 
     # validate that builtin users and roles can be referenced in pico.{grant,revoke}_privilege
     for user in ["admin", "guest", "public", "super"]:
-        i1.call(
-            "pico.grant_privilege",
+        i1.grant_privilege(
             user,
             "read",
             "table",
@@ -891,8 +873,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
 
     # granting already granted privilege does not raise an error
     index = i1.call("pico.raft_get_index")
-    new_index = i1.call(
-        "pico.grant_privilege",
+    new_index = i1.grant_privilege(
         "admin",
         "write",
         "universe",
@@ -900,13 +881,41 @@ def test_builtin_users_and_roles(cluster: Cluster):
     assert index == new_index
 
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
-    new_index = i1.call(
-        "pico.grant_privilege",
+    new_index = i1.grant_privilege(
         "Dave",
         "execute",
         "role",
         "super",
     )
+
+
+def test_create_space_smoke(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    cluster.raft_wait_index(index)
+    with pytest.raises(
+        Exception,
+        match="Create access to space 'T' is denied for user 'Dave'",
+    ):
+        i1.sql(
+            """
+            create table t (a int not null, primary key (a)) distributed by (a)
+            """,
+            user="Dave",
+            password=VALID_PASSWORD,
+        )
+
+    i1.grant_privilege("Dave", "create", "table")
+
+    ddl = i1.sql(
+        """
+        create table t (a int not null, primary key (a)) distributed by (a)
+        """,
+        user="Dave",
+        password=VALID_PASSWORD,
+    )
+    assert ddl["row_count"] == 1
 
 
 # TODO: test acl get denied when there's an unfinished ddl

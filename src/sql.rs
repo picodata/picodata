@@ -14,7 +14,7 @@ use crate::traft::error::Error;
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
-use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
+use crate::util::duration_from_secs_f64_clamped;
 use crate::{cas, unwrap_ok_or, ADMIN_USER_ID};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
@@ -701,6 +701,8 @@ fn reenterable_schema_change_request(
         }
     };
 
+    let su = session::su(ADMIN_USER_ID).expect("cant fail because session is available");
+
     'retry: loop {
         if Instant::now() > deadline {
             return Err(Error::Timeout);
@@ -957,7 +959,7 @@ fn reenterable_schema_change_request(
         let res = cas::compare_and_swap(
             op,
             predicate,
-            effective_user_id(),
+            su.original_user_id,
             deadline.duration_since(Instant::now()),
         );
         let (index, term) = unwrap_ok_or!(res,

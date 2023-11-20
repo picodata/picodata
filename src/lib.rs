@@ -30,6 +30,7 @@ use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
 use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
 
+mod access_control;
 pub mod audit;
 mod bootstrap_entries;
 pub mod cas;
@@ -245,6 +246,11 @@ fn init_handlers() {
         )
         .expect("box.schema.func.create should never fail");
     }
+
+    lua.exec(
+        r#"
+        box.schema.role.grant('public', 'execute', 'function', '.dispatch_query', {if_not_exists = true})
+        "#).expect("grant execute on .dispatch_query to public should never fail");
 
     lua.exec(
         r#"

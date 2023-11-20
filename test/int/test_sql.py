@@ -975,7 +975,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     # Grant remote functions call.
-    i1.call("pico.grant_privilege", username, "execute", "universe", None)
+    i1.grant_privilege(username, "execute", "universe", None)
 
     # Remember number of default privileges.
     default_privileges_number = len(
@@ -1028,14 +1028,15 @@ def test_sql_acl_privileges(cluster: Cluster):
     # TODO: ================USERs interaction================
     # * TODO: User creation is prohibited.
     # * Grant CREATE to user.
-    acl = i1.sql(f""" grant create user to {username} """)
+    # Need to grant as admin because only admin is allowed to make wildcard grants
+    acl = i1.sudo_sql(f""" grant create user to {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: User creation is available.
     # * Revoke CREATE from user.
-    acl = i1.sql(f""" revoke create user from {username} """)
+    acl = i1.sudo_sql(f""" revoke create user from {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
@@ -1045,14 +1046,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     # * TODO: Revoke automatically granted privileges.
     # * TODO: Check ALTER and DROP are prohibited.
     # * Grant global ALTER on users.
-    acl = i1.sql(f""" grant alter user to {username} """)
+    acl = i1.sudo_sql(f""" grant alter user to {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Check ALTER is available.
     # * Revoke global ALTER.
-    acl = i1.sql(f""" revoke alter user from {username} """)
+    acl = i1.sudo_sql(f""" revoke alter user from {username} """)
     assert acl["row_count"] == 1
 
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
@@ -1066,14 +1067,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     # TODO: ================ROLEs interaction================
     # * TODO: Role creation is prohibited.
     # * Grant CREATE to user.
-    acl = i1.sql(f""" grant create role to {username} """)
+    acl = i1.sudo_sql(f""" grant create role to {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Role creation is available.
     # * Revoke CREATE from user.
-    acl = i1.sql(f""" revoke create role from {username} """)
+    acl = i1.sudo_sql(f""" revoke create role from {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
@@ -1082,14 +1083,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     # * TODO: Revoke automatically granted privileges.
     # * TODO: Check DROP are prohibited.
     # * Grant global drop on role.
-    acl = i1.sql(f""" grant drop role to {username} """)
+    acl = i1.sudo_sql(f""" grant drop role to {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Check DROP is available.
     # * Revoke global DROP.
-    acl = i1.sql(f""" revoke drop role from {username} """)
+    acl = i1.sudo_sql(f""" revoke drop role from {username} """)
     assert acl["row_count"] == 1
 
     # * TODO: Check another user can't initially interact with previously created new role.
@@ -1105,7 +1106,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     ):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
     # * Grant READ to user.
-    acl = i1.sql(f""" grant read on table {table_name} to {username} """)
+    acl = i1.sudo_sql(f""" grant read on table {table_name} to {username} """)
     assert acl["row_count"] == 1
     # * Granting already granted privilege do nothing.
     acl = i1.sql(f""" grant read on table {table_name} to {username} """)
@@ -1113,7 +1114,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     # * After grant READ succeeds.
     i1.sql(f""" select * from {table_name} """, user=username, password=password)
     # * Revoke READ.
-    acl = i1.sql(f""" revoke read on table {table_name} from {username} """)
+    acl = i1.sudo_sql(f""" revoke read on table {table_name} from {username} """)
     assert acl["row_count"] == 1
     # * After revoke READ fails again.
     with pytest.raises(
@@ -1123,7 +1124,7 @@ def test_sql_acl_privileges(cluster: Cluster):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
     # ------------------WRITE---------------------------------
     # TODO: remove
-    acl = i1.sql(f""" grant read on table {table_name} to {username} """)
+    acl = i1.sudo_sql(f""" grant read on table {table_name} to {username} """)
     assert acl["row_count"] == 1
     # * WRITE is not available.
     with pytest.raises(
@@ -1136,7 +1137,7 @@ def test_sql_acl_privileges(cluster: Cluster):
             password=password,
         )
     # * Grant WRITE to user.
-    acl = i1.sql(f""" grant write on table {table_name} to {username} """)
+    acl = i1.sudo_sql(f""" grant write on table {table_name} to {username} """)
     assert acl["row_count"] == 1
     # * WRITE succeeds.
     i1.sql(
@@ -1144,7 +1145,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     )
     i1.sql(f""" delete from {table_name} where "a" = 1 """)
     # * Revoke WRITE from role.
-    acl = i1.sql(f""" revoke write on table {table_name} from {username} """)
+    acl = i1.sudo_sql(f""" revoke write on table {table_name} from {username} """)
     assert acl["row_count"] == 1
     # * WRITE fails again.
     with pytest.raises(
@@ -1157,12 +1158,12 @@ def test_sql_acl_privileges(cluster: Cluster):
             password=password,
         )
     # TODO: remove
-    acl = i1.sql(f""" revoke read on table {table_name} from {username} """)
+    acl = i1.sudo_sql(f""" revoke read on table {table_name} from {username} """)
     assert acl["row_count"] == 1
     # ------------------CREATE---------------------------------
     # * TODO: Unable to create table.
     # * Grant CREATE to user.
-    acl = i1.sql(f""" grant create table to {username} """)
+    acl = i1.sudo_sql(f""" grant create table to {username} """)
     assert acl["row_count"] == 1
     # * TODO: Creation is available.
     # * TODO: Check user can do everything he wants on a table he created:
@@ -1172,37 +1173,37 @@ def test_sql_acl_privileges(cluster: Cluster):
     # ** ALTER index.
     # ** DROP.
     # * Revoke CREATE from user.
-    acl = i1.sql(f""" revoke create table from {username} """)
+    acl = i1.sudo_sql(f""" revoke create table from {username} """)
     assert acl["row_count"] == 1
     # * TODO: Creation is not available again.
     # ------------------ALTER--------------------------------
     # * TODO: Unable to create new table index.
     # * Grant ALTER to user.
-    acl = i1.sql(f""" grant alter on table {table_name} to {username} """)
+    acl = i1.sudo_sql(f""" grant alter on table {table_name} to {username} """)
     assert acl["row_count"] == 1
     # * TODO: Index creation succeeds.
     # * Revoke ALTER from user.
-    acl = i1.sql(f""" revoke alter on table {table_name} from {username} """)
+    acl = i1.sudo_sql(f""" revoke alter on table {table_name} from {username} """)
     assert acl["row_count"] == 1
     # * TODO: Attempt to remove index fails.
     # ------------------DROP---------------------------------
     # * TODO: Unable to drop table previously created by admin.
     # * Grant DROP to user.
-    acl = i1.sql(f""" grant drop on table {table_name} to {username} """)
+    acl = i1.sudo_sql(f""" grant drop on table {table_name} to {username} """)
     assert acl["row_count"] == 1
     # * TODO: Able to drop admin table.
     # * Revoke DROP from user.
-    acl = i1.sql(f""" revoke drop on table {table_name} from {username} """)
+    acl = i1.sudo_sql(f""" revoke drop on table {table_name} from {username} """)
     assert acl["row_count"] == 1
 
     # Grant global tables READ, WRITE, ALTER, DROP.
-    acl = i1.sql(f""" grant read table to {username} """)
+    acl = i1.sudo_sql(f""" grant read table to {username} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" grant write table to {username} """)
+    acl = i1.sudo_sql(f""" grant write table to {username} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" grant alter table to {username} """)
+    acl = i1.sudo_sql(f""" grant alter table to {username} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" grant drop table to {username} """)
+    acl = i1.sudo_sql(f""" grant drop table to {username} """)
     assert acl["row_count"] == 1
     # Check all operations available on another_table created by admin.
     i1.sql(
@@ -1225,13 +1226,13 @@ def test_sql_acl_privileges(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
     # Revoke global privileges
-    acl = i1.sql(f""" revoke read table from {username} """)
+    acl = i1.sudo_sql(f""" revoke read table from {username} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" revoke write table from {username} """)
+    acl = i1.sudo_sql(f""" revoke write table from {username} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" revoke alter table from {username} """)
+    acl = i1.sudo_sql(f""" revoke alter table from {username} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" revoke drop table from {username} """)
+    acl = i1.sudo_sql(f""" revoke drop table from {username} """)
     assert acl["row_count"] == 1
 
     # ================ROLE passing================
@@ -1245,12 +1246,12 @@ def test_sql_acl_privileges(cluster: Cluster):
     ):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
     # * Grant table READ and WRITE to role.
-    acl = i1.sql(f""" grant read on table {table_name} to {rolename} """)
+    acl = i1.sudo_sql(f""" grant read on table {table_name} to {rolename} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" grant write on table {table_name} to {rolename} """)
+    acl = i1.sudo_sql(f""" grant write on table {table_name} to {rolename} """)
     assert acl["row_count"] == 1
     # * Grant ROLE to user.
-    acl = i1.sql(f""" grant {rolename} to {username} """)
+    acl = i1.sudo_sql(f""" grant {rolename} to {username} """)
     assert acl["row_count"] == 1
     # * Check read and write is available for user.
     i1.sql(f""" select * from {table_name} """, user=username, password=password)
@@ -1259,9 +1260,9 @@ def test_sql_acl_privileges(cluster: Cluster):
     )
     i1.sql(f""" delete from {table_name} where "a" = 1 """)
     # * Revoke privileges from role.
-    acl = i1.sql(f""" revoke write on table {table_name} from {rolename} """)
+    acl = i1.sudo_sql(f""" revoke write on table {table_name} from {rolename} """)
     assert acl["row_count"] == 1
-    acl = i1.sql(f""" revoke read on table {table_name} from {rolename} """)
+    acl = i1.sudo_sql(f""" revoke read on table {table_name} from {rolename} """)
     assert acl["row_count"] == 1
     # * Check privilege revoked from role and user.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
@@ -1357,14 +1358,14 @@ def test_sql_privileges(cluster: Cluster):
     ):
         i1.sql(f""" select * from "{table_name}" """, user=username, password=alice_pwd)
     # Grant read privilege
-    i1.sql(f""" grant read on table "{table_name}" to "{username}" """)
+    i1.sudo_sql(f""" grant read on table "{table_name}" to "{username}" """)
     dql = i1.sql(
         f""" select * from "{table_name}" """, user=username, password=alice_pwd
     )
     assert dql["rows"] == []
 
     # Revoke read privilege
-    i1.sql(f""" revoke read on table "{table_name}" from "{username}" """)
+    i1.sudo_sql(f""" revoke read on table "{table_name}" from "{username}" """)
 
     # -------------------------
     # Check SQL write privilege
@@ -1379,7 +1380,7 @@ def test_sql_privileges(cluster: Cluster):
         )
 
     # Grant write privilege
-    i1.sql(f""" grant write on table "{table_name}" to "{username}" """)
+    i1.sudo_sql(f""" grant write on table "{table_name}" to "{username}" """)
     dml = i1.sql(
         f""" insert into "{table_name}" values (1, 2) """,
         user=username,
@@ -1388,7 +1389,7 @@ def test_sql_privileges(cluster: Cluster):
     assert dml["row_count"] == 1
 
     # Revoke write privilege
-    i1.sql(f""" revoke write on table "{table_name}" from "{username}" """)
+    i1.sudo_sql(f""" revoke write on table "{table_name}" from "{username}" """)
 
     # -----------------------------------
     # Check SQL write and read privileges
@@ -1415,7 +1416,7 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant read privilege
-    i1.sql(f""" grant read on table "{table_name}" to "{username}" """)
+    i1.sudo_sql(f""" grant read on table "{table_name}" to "{username}" """)
 
     with pytest.raises(
         ReturnError, match=f"AccessDenied: Write access to space '{table_name}'"
@@ -1439,7 +1440,7 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant write privilege
-    i1.sql(f""" grant write on table "{table_name}" to "{username}" """)
+    i1.sudo_sql(f""" grant write on table "{table_name}" to "{username}" """)
 
     dml = i1.sql(
         f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,

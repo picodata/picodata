@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::access_control;
 use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
@@ -17,13 +18,10 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 
-use tarantool::access_control::box_access_check_space;
-use tarantool::access_control::PrivType;
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
 use tarantool::fiber::r#async::sleep;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
-use tarantool::session;
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
 use tarantool::tlua;
@@ -268,14 +266,11 @@ fn proc_cas_local(req: Request) -> Result<Response> {
         req.predicate.check_entry(entry.index, &op, storage)?;
     }
 
-    // TODO DDL/ACL are expected to be implemented next in second part of this ticket:
-    // https://git.picodata.io/picodata/picodata/picodata/-/issues/339
-    if let Op::Dml(dml) = &req.op {
-        let _su = session::su(req.as_user)?;
-        // Note: audit log record is automatically emmitted,
-        // because it is hooked into AccessDenied error creation
-        box_access_check_space(dml.space(), PrivType::Write)?;
+    // Note: audit log record is automatically emmitted in case there is an error,
+    // because it is hooked into AccessDenied error creation (on_access_denied) trigger
+    access_control::access_check_op(&req.op, req.as_user)?;
 
+    if let Op::Dml(dml) = &req.op {
         // Check if the requested dml is applicable to the local storage.
         // This will run the required on_replace triggers which will check among
         // other things conformity to space format, user defined constraints etc.

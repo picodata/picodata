@@ -17,11 +17,22 @@ from rand.params import generate_seed
 from functools import reduce
 from datetime import datetime
 from shutil import rmtree
-from typing import Any, Callable, Literal, Generator, Iterator, Dict, List, Tuple, Type
+from typing import (
+    Any,
+    Callable,
+    Literal,
+    Generator,
+    Iterator,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from tarantool.connection import Connection  # type: ignore
+import tarantool
 from tarantool.error import (  # type: ignore
     tnt_strerror,
     DatabaseError,
@@ -393,6 +404,17 @@ OUT_LOCK = threading.Lock()
 POSITION_IN_SPACE_INSTANCE_ID = 3
 
 
+class Connection(tarantool.Connection):  # type: ignore
+    def sql(
+        self,
+        sql: str,
+        *params,
+    ) -> dict:
+        """Run SQL query and return result"""
+
+        return normalize_net_box_result(self.call)("pico.sql", sql, params)
+
+
 @dataclass
 class Instance:
     binary_path: str
@@ -532,6 +554,19 @@ class Instance:
             "pico.sql", sql, params, user=user, password=password, timeout=timeout
         )
 
+    def sudo_sql(
+        self,
+        sql: str,
+        *params,
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ) -> dict:
+        """Run SQL query as admin and return result"""
+        with self.connect(timeout, user=user, password=password) as conn:
+            conn.eval("box.session.su('admin')")
+            return conn.sql(sql, params)
+
     def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""
         if self.process is None:
@@ -586,12 +621,17 @@ class Instance:
         if os.environ.get("RUST_BACKTRACE") is not None:
             env.update(RUST_BACKTRACE=str(os.environ.get("RUST_BACKTRACE")))
 
+        if os.getenv("NOLOG"):
+            out = subprocess.DEVNULL
+        else:
+            out = subprocess.PIPE
+
         self.process = subprocess.Popen(
             self.command,
             env=env or None,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=out,
+            stderr=out,
             # Picodata instance consists of two processes: a supervisor
             # and a child. Pytest manages it at the level of linux
             # process groups that is a collection of related processes
@@ -973,6 +1013,31 @@ class Instance:
         Retriable(timeout=3, rps=1).call(make_attempt, timeout=1, rps=10)
         eprint(f"{self} is a leader now")
 
+    def grant_privilege(
+        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
+    ):
+        # do it as admin because some privileges can be granted only by admin
+        return self.eval(
+            """
+            box.session.su("admin")
+            user, privilege, object_type, object_name = ...
+            return pico.grant_privilege(user, privilege, object_type, object_name)
+            """,
+            [user, privilege, object_type, object_name],
+        )
+
+    def revoke_privilege(
+        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
+    ):
+        return self.eval(
+            """
+            box.session.su("admin")
+            user, privilege, object_type, object_name = ...
+            return pico.revoke_privilege(user, privilege, object_type, object_name)
+            """,
+            [user, privilege, object_type, object_name],
+        )
+
 
 CLUSTER_COLORS = (
     color.cyan,
@@ -1163,8 +1228,7 @@ class Cluster:
         """
         Waits for all peers to commit an entry with index `index`.
         """
-        import time
-
+        assert type(index) is int
         deadline = time.time() + timeout
         for instance in self.instances:
             if instance.process is not None:
