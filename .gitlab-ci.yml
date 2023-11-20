@@ -1,6 +1,25 @@
 variables:
-  DOCKER_LATEST: docker-picodata.binary.picodata.io/picodata-doc:latest
+  BASE_IMAGE_NAME: docker-picodata.binary.picodata.io/picodata-doc
+  BASE_IMAGE_TAG: latest
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+
+workflow:
+  # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
+  rules:
+    # To avoid duplicate pipelines we disable merge request events,
+    # leaving only pushes and manual triggering.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+default:
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: ['']
+    pull_policy: [if-not-present]
+  tags:
+    - docker
 
 stages:
   - build-base-image
@@ -10,29 +29,25 @@ stages:
 
 build-base-image:
   stage: build-base-image
-  tags:
-    - shell
-  only:
-    - web
-    - main
+  variables:
+    DOCKERFILE: "Dockerfile"
+    PUSH_DOCKER: ""
   before_script:
-    - mkdir -p $HOME/.docker
-    - echo $DOCKER_AUTH_RW > $HOME/.docker/config.json
+    - mkdir -p /kaniko/.docker
+    - echo "$DOCKER_AUTH_RW" > /kaniko/.docker/config.json
   script:
     - echo "Build picodata doc..."
     - cd docker/static
-    - docker build --no-cache --build-arg COMMIT_HASH=$CI_COMMIT_SHA -t $DOCKER_LATEST .
-    - docker push $DOCKER_LATEST
+    - >
+      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
+      --build-arg COMMIT_HASH=$CI_COMMIT_SHA ${PUSH_DOCKER}
+      --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
+      --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
     - echo "Picodata doc successfully built"
 
 pack-doc:
-  image: $DOCKER_LATEST
-  tags:
-    - docker
+  image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
   stage: pack-doc
-  only:
-    - web
-    - main
   script:
     - echo "Pack picodata doc..."
     - VER=$(date +%Y%m%d%H%M)
@@ -50,13 +65,10 @@ pack-doc:
       - picodata-doc-*.tgz
 
 upload-doc-to-binary:
+  rules:
+    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
   image: curlimages/curl
-  tags:
-    - docker
   stage: upload
-  only:
-    - web
-    - main
   script:
     - echo "Upload picodata doc to binary..."
     - source .vars
@@ -69,13 +81,10 @@ upload-doc-to-binary:
       - .vars
 
 deploy-doc-to-test:
+  rules:
+    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
   image: curlimages/curl
-  tags:
-    - docker
   stage: deploy
-  only:
-    - web
-    - main
   script:
     - echo "Deploying picodata doc on test..."
     - source .vars
@@ -85,14 +94,11 @@ deploy-doc-to-test:
     - echo "Picodata doc successfully deployed on test."
 
 deploy-doc-to-prod:
+  rules:
+    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
   image: curlimages/curl
-  tags:
-    - docker
   stage: deploy
   when: manual
-  only:
-    - web
-    - main
   script:
     - echo "Deploying picodata doc on prod..."
     - source .vars
