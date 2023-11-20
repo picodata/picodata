@@ -1,5 +1,5 @@
 variables:
-  BASE_IMAGE_NAME: docker-picodata.binary.picodata.io/picodata-doc
+  BASE_IMAGE_NAME: $CI_REGISTRY_IMAGE
   BASE_IMAGE_TAG: latest
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
 
@@ -32,9 +32,8 @@ build-base-image:
   variables:
     DOCKERFILE: "Dockerfile"
     PUSH_DOCKER: ""
-  before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "$DOCKER_AUTH_RW" > /kaniko/.docker/config.json
+    GIT_USERNAME: $CI_REGISTRY_USER
+    GIT_PASSWORD: $CI_REGISTRY_PASSWORD
   script:
     - echo "Build picodata doc..."
     - cd docker/static
