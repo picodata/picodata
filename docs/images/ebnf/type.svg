@@ -144,7 +144,7 @@
           rx="10"/>
    <text class="terminal" x="185" y="581">(</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#length"
+       xlink:href="../sql_types/#unsigned"
        xlink:title="length">
       <rect x="223" y="563" width="60" height="32"/>
       <rect x="221" y="561" width="60" height="32" class="nonterminal"/>

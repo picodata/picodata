@@ -104,7 +104,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="=" />
   <a
-     xlink:href="#UNSIGNED"
+     xlink:href="../sql_types/#unsigned"
      xlink:title="UNSIGNED"
      id="a11">
     <path
@@ -169,7 +169,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="=" />
   <a
-     xlink:href="#UNSIGNED"
+     xlink:href="../sql_types/#unsigned"
      xlink:title="UNSIGNED"
      id="a19">
     <path

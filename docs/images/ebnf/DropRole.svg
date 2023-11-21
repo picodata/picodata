@@ -59,7 +59,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="drop role" />
   <a
-     xlink:href="#role"
+     xlink:href="#name"
      xlink:title="role"
      id="a5">
     <path
@@ -139,7 +139,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="=" />
   <a
-     xlink:href="#DOUBLE"
+     xlink:href="../sql_types/#double"
      xlink:title="DOUBLE"
      id="a15">
     <path

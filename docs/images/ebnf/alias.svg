@@ -44,7 +44,7 @@
      style="fill:#330000;stroke:#330000"
      d="M 17,17 9,13 v 8 z" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a3">
     <path
@@ -94,7 +94,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="*" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a9">
     <path

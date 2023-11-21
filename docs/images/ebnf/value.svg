@@ -64,35 +64,35 @@
           rx="10"/>
    <text class="terminal" x="59" y="153">?</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#INTEGER"
+       xlink:href="../sql_types/#integer"
        xlink:title="INTEGER">
       <rect x="51" y="179" width="74" height="32"/>
       <rect x="49" y="177" width="74" height="32" class="nonterminal"/>
       <text class="nonterminal" x="59" y="197">INTEGER</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#UNSIGNED"
+       xlink:href="../sql_types/#unsigned"
        xlink:title="UNSIGNED">
       <rect x="51" y="223" width="86" height="32"/>
       <rect x="49" y="221" width="86" height="32" class="nonterminal"/>
       <text class="nonterminal" x="59" y="241">UNSIGNED</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#DOUBLE"
+       xlink:href="../sql_types/#double"
        xlink:title="DOUBLE">
       <rect x="51" y="267" width="70" height="32"/>
       <rect x="49" y="265" width="70" height="32" class="nonterminal"/>
       <text class="nonterminal" x="59" y="285">DOUBLE</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#DECIMAL"
+       xlink:href="../sql_types/#decimal"
        xlink:title="DECIMAL">
       <rect x="51" y="311" width="76" height="32"/>
       <rect x="49" y="309" width="76" height="32" class="nonterminal"/>
       <text class="nonterminal" x="59" y="329">DECIMAL</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#STRING"
+       xlink:href="../sql_types/#string"
        xlink:title="STRING">
       <rect x="51" y="355" width="66" height="32"/>
       <rect x="49" y="353" width="66" height="32" class="nonterminal"/>

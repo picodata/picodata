@@ -59,7 +59,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="UPDATE" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a5">
     <path
@@ -129,7 +129,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="=" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a13">
     <path

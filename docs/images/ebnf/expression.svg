@@ -55,7 +55,7 @@ polygon.regexp { fill: #FF5E5E; stroke: #320000; stroke-width: 1; }
      points="17 17 9 13 9 21"
      id="polygon8" />
   <a
-     xlink:href="#column_name"
+     xlink:href="#name"
      xlink:title="column_name"
      id="a16">
     <rect

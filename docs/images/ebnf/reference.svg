@@ -32,7 +32,7 @@
    <polygon points="9 17 1 13 1 21"/>
    <polygon points="17 17 9 13 9 21"/>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
-       xlink:href="#table"
+       xlink:href="#name"
        xlink:title="table">
       <rect x="51" y="35" width="52" height="32"/>
       <rect x="49" y="33" width="52" height="32" class="nonterminal"/>

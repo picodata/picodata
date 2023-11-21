@@ -117,7 +117,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000;stroke-width:0.870601"
      aria-label="FROM" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a11"
      transform="matrix(0.8706015,0,0,0.8706015,-0.435301,-0.435301)">
@@ -276,7 +276,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000;stroke-width:0.870601"
      aria-label="JOIN" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a29"
      transform="matrix(0.8706015,0,0,0.8706015,-0.435301,-0.435301)">

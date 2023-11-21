@@ -59,7 +59,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="create table" />
   <a
-     xlink:href="#table"
+     xlink:href="#name"
      xlink:title="table"
      id="a5">
     <path
@@ -289,7 +289,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="=" />
   <a
-     xlink:href="#double"
+     xlink:href="../sql_types/#double"
      xlink:title="DOUBLE"
      id="a33">
     <path

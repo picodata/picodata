@@ -44,7 +44,7 @@
      style="fill:#330000;stroke:#330000"
      d="M 17,17 9,13 v 8 z" />
   <a
-     xlink:href="#EXPLAIN"
+     xlink:href="#explain"
      xlink:title="EXPLAIN"
      id="a3">
     <path
@@ -64,7 +64,7 @@
        aria-label="EXPLAIN" />
   </a>
   <a
-     xlink:href="#DDL"
+     xlink:href="#ddl"
      xlink:title="DDL"
      id="a5">
     <path
@@ -84,7 +84,7 @@
        aria-label="DDL" />
   </a>
   <a
-     xlink:href="#DML"
+     xlink:href="#dml"
      xlink:title="DML"
      id="a7">
     <path
@@ -104,7 +104,7 @@
        aria-label="DML" />
   </a>
   <a
-     xlink:href="#DQL"
+     xlink:href="#dql"
      xlink:title="DQL"
      id="a9">
     <path
@@ -124,7 +124,7 @@
        aria-label="DQL" />
   </a>
   <a
-     xlink:href="#ACL"
+     xlink:href="#acl"
      xlink:title="ACL"
      id="a11">
     <path

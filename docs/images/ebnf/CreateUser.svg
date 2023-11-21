@@ -59,7 +59,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="create user" />
   <a
-     xlink:href="#user"
+     xlink:href="#name"
      xlink:title="user"
      id="a5">
     <path
@@ -279,7 +279,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="=" />
   <a
-     xlink:href="#DOUBLE"
+     xlink:href="../sql_types/#double"
      xlink:title="DOUBLE"
      id="a33">
     <path
