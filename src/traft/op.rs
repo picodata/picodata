@@ -152,28 +152,28 @@ impl std::fmt::Display for Op {
                 write!(f, "DropRole({schema_version}, {role_id})")
             }
             Self::Acl(Acl::GrantPrivilege { priv_def }) => {
+                let object_id = priv_def.object_id();
                 let PrivilegeDef {
                     grantee_id,
                     grantor_id,
                     object_type,
-                    object_name,
                     privilege,
                     schema_version,
                     ..
                 } = priv_def;
-                write!(f, "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_name}, {privilege})")
+                write!(f, "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})")
             }
             Self::Acl(Acl::RevokePrivilege { priv_def }) => {
+                let object_id = priv_def.object_id();
                 let PrivilegeDef {
                     grantee_id,
                     grantor_id,
                     object_type,
-                    object_name,
                     privilege,
                     schema_version,
                     ..
                 } = priv_def;
-                write!(f, "RevokePrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_name}, {privilege})")
+                write!(f, "RevokePrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})")
             }
         };
 

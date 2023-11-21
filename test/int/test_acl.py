@@ -252,11 +252,30 @@ def test_acl_lua_api(cluster: Cluster):
 
     dave_id = i1.call("box.space._pico_user.index.name:get", "Dave")[0]
 
+    pico_property_id = i1.eval("return box.space._pico_property.id")
     priv = i1.call(
-        "box.space._pico_privilege:get", (dave_id, "space", "_pico_property", "read")
+        "box.space._pico_privilege:get",
+        (dave_id, "space", pico_property_id, "read"),
     )
 
-    assert priv[0] == 0  # The above grant was executed from guest. 0 is guest user id.
+    # grantor_id is the field at index 4 in schema::PrivilegeDef
+    assert priv[4] == 0  # The above grant was executed from guest. 0 is guest user id.
+
+    # Grant privilege to user without object_name -> Ok.
+    i1.call(
+        "pico.grant_privilege",
+        "Dave",
+        "create",
+        "user",
+    )
+
+    priv = i1.call(
+        "box.space._pico_privilege:get",
+        (dave_id, "user", -1, "create"),
+    )
+
+    # grantor_id is the field at index 4 in schema::PrivilegeDef
+    assert priv[4] == 0  # The above grant was executed from guest. 0 is guest user id.
 
     # Already granted -> ok.
     i1.call(
@@ -295,13 +314,21 @@ def test_acl_lua_api(cluster: Cluster):
     # pico.revoke_privilege semantics verification
     #
 
-    # Revoke privilege to user -> Ok.
+    # Revoke privilege from user -> Ok.
     i1.call(
         "pico.revoke_privilege",
         "Dave",
         "read",
         "table",
         "_pico_property",
+    )
+
+    # Revoke privilege from user without object_name -> Ok.
+    i1.call(
+        "pico.revoke_privilege",
+        "Dave",
+        "create",
+        "user",
     )
 
     # Already revoked -> ok.
@@ -313,7 +340,7 @@ def test_acl_lua_api(cluster: Cluster):
         "_pico_property",
     )
 
-    # Revoke privilege to role -> Ok.
+    # Revoke privilege from role -> Ok.
     i1.call(
         "pico.revoke_privilege",
         "Parent",
@@ -331,7 +358,7 @@ def test_acl_lua_api(cluster: Cluster):
         "_pico_property",
     )
 
-    # Revoke role to user -> Ok.
+    # Revoke role from user -> Ok.
     i1.call("pico.revoke_privilege", "Dave", "execute", "role", "Parent")
 
     # Already revoked role to user -> ok.
@@ -862,6 +889,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
             "_pico_property",
         )
 
+    # granting already granted privilege does not raise an error
     index = i1.call("pico.raft_get_index")
     new_index = i1.call(
         "pico.grant_privilege",
@@ -869,7 +897,6 @@ def test_builtin_users_and_roles(cluster: Cluster):
         "write",
         "universe",
     )
-
     assert index == new_index
 
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)

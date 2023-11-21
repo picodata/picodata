@@ -24,7 +24,7 @@ use tarantool::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::bootstrap_entries::{ADMIN_ID, GUEST_ID, SUPER_ID};
+use crate::bootstrap_entries::{ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID};
 use crate::cas::{self, compare_and_swap};
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -330,15 +330,22 @@ impl RoleDef {
 /// Privilege definition.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
+    pub privilege: String,
+    pub object_type: String,
+    /// `-1` denotes an absense of a target object.
+    /// Other values should be >= 0 and denote an existing target object.
+    /// When working with `object_type` `universe` it might seem that it does
+    /// not have a target object and `object_id` should be `-1`, this is incorrect
+    /// universe has a target object with `object_id == 0`.
+    ///
+    /// To get the value of this field as `Option<u32>` see [`Self::object_id`]
+    pub object_id: i64,
     /// Id of the user or role to whom the privilege is granted.
     ///
     /// In tarantool users and roles are stored in the same space, which means a
     /// role and a user cannot have the same id or name.
-    pub grantor_id: UserId,
     pub grantee_id: UserId,
-    pub object_type: String,
-    pub object_name: String,
-    pub privilege: String,
+    pub grantor_id: UserId,
     pub schema_version: u64,
 }
 
@@ -350,11 +357,11 @@ impl PrivilegeDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("grantor_id", FieldType::Unsigned)),
-            Field::from(("grantee_id", FieldType::Unsigned)),
-            Field::from(("object_type", FieldType::String)),
-            Field::from(("object_name", FieldType::String)),
             Field::from(("privilege", FieldType::String)),
+            Field::from(("object_type", FieldType::String)),
+            Field::from(("object_id", FieldType::Integer)),
+            Field::from(("grantee_id", FieldType::Unsigned)),
+            Field::from(("grantor_id", FieldType::Unsigned)),
             Field::from(("schema_version", FieldType::Unsigned)),
         ]
     }
@@ -366,9 +373,20 @@ impl PrivilegeDef {
             grantor_id: 13,
             grantee_id: 37,
             object_type: "fruit".into(),
-            object_name: "banana".into(),
+            object_id: -1,
             privilege: "bite".into(),
             schema_version: 337,
+        }
+    }
+
+    /// Get `object_id` field interpreting `-1` as `None`.
+    #[inline(always)]
+    pub fn object_id(&self) -> Option<u32> {
+        if self.object_id >= 0 {
+            Some(self.object_id as _)
+        } else {
+            debug_assert_eq!(self.object_id, -1, "object_id should be >= -1");
+            None
         }
     }
 
@@ -383,7 +401,8 @@ impl PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: GUEST_ID,
                     object_type: String::from("universe"),
-                    object_name: String::from(""),
+                    // `universe` has object_id 0
+                    object_id: 0,
                     privilege: String::from(privilege),
                     schema_version: 0,
                 });
@@ -392,12 +411,12 @@ impl PrivilegeDef {
             // execute public
             // execute on super (temporary until we switch to service account)
             // SQL: GRANT 'execute' ON <'public', 'user'> TO 'guest'
-            for role in ["public", "super"] {
+            for role in [PUBLIC_ID, SUPER_ID] {
                 v.push(PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: GUEST_ID,
                     object_type: String::from("role"),
-                    object_name: String::from(role),
+                    object_id: role as _,
                     privilege: String::from("execute"),
                     schema_version: 0,
                 });
@@ -425,7 +444,7 @@ impl PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: ADMIN_ID,
                     object_type: String::from("universe"),
-                    object_name: String::from(""),
+                    object_id: 0,
                     privilege: String::from(privilege),
                     schema_version: 0,
                 });
@@ -438,7 +457,7 @@ impl PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: SUPER_ID,
                     object_type: String::from("universe"),
-                    object_name: String::from(""),
+                    object_id: 0,
                     privilege: String::from(privilege),
                     schema_version: 0,
                 });

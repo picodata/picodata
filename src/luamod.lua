@@ -844,9 +844,12 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         end
 
         -- Throws error if object doesn't exist
-        object_resolve(object_type, object_name)
+        local object_id = object_resolve(object_type, object_name)
+        if object_id == "" then
+            object_id = -1
+        end
 
-        if box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege} ~= nil then
+        if box.space._pico_privilege:get{grantee_def.id, object_type, object_id, privilege} ~= nil then
             -- Privilege is already granted, no op needed
             return nil
         end
@@ -855,11 +858,11 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
             kind = 'acl',
             op_kind = 'grant_privilege',
             priv_def = {
-                grantor_id = box.session.uid(),
-                grantee_id = grantee_def.id,
-                object_type = object_type,
-                object_name = object_name,
                 privilege = privilege,
+                object_type = object_type,
+                object_id = object_id,
+                grantee_id = grantee_def.id,
+                grantor_id = box.session.uid(),
                 schema_version = next_schema_version(),
             },
         }
@@ -945,9 +948,12 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         end
 
         -- Throws error if object doesn't exist
-        object_resolve(object_type, object_name)
+        local object_id = object_resolve(object_type, object_name)
+        if object_id == "" then
+            object_id = -1
+        end
 
-        local priv = box.space._pico_privilege:get{grantee_def.id, object_type, object_name, privilege}
+        local priv = box.space._pico_privilege:get{grantee_def.id, object_type, object_id, privilege}
         if priv == nil then
             -- Privilege is not yet granted, no op needed
             return nil
@@ -957,11 +963,11 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
             kind = 'acl',
             op_kind = 'revoke_privilege',
             priv_def = {
+                privilege = privilege,
+                object_type = object_type,
+                object_id = object_id,
                 grantee_id = grantee_def.id,
                 grantor_id = priv.grantor_id,
-                object_type = object_type,
-                object_name = object_name,
-                privilege = privilege,
                 schema_version = next_schema_version(),
             },
         }

@@ -1905,11 +1905,9 @@ pub fn ddl_meta_space_update_operable(
 ///
 /// This function is called when applying the different ddl operations.
 pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
-    if let Some(space_name) = storage.tables.get(space_id)?.map(|s| s.name) {
-        storage
-            .privileges
-            .delete_all_by_object("space", &space_name)?;
-    }
+    storage
+        .privileges
+        .delete_all_by_object("space", space_id as i64)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         storage.indexes.delete(index.table_id, index.id)?;
@@ -2263,7 +2261,7 @@ impl Privileges {
         let primary_key = space
             .index_builder("primary")
             .unique(true)
-            .parts(["grantee_id", "object_type", "object_name", "privilege"])
+            .parts(["grantee_id", "object_type", "object_id", "privilege"])
             .if_not_exists(true)
             .create()?;
 
@@ -2271,7 +2269,7 @@ impl Privileges {
             .index_builder("object")
             .unique(false)
             .part("object_type")
-            .part("object_name")
+            .part("object_id")
             .if_not_exists(true)
             .create()?;
 
@@ -2287,9 +2285,9 @@ impl Privileges {
         &self,
         grantee_id: UserId,
         object_type: &str,
-        object_name: &str,
+        object_id: i64,
     ) -> tarantool::Result<Option<PrivilegeDef>> {
-        let tuple = self.space.get(&(grantee_id, object_type, object_name))?;
+        let tuple = self.space.get(&(grantee_id, object_type, object_id))?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
 
@@ -2303,11 +2301,11 @@ impl Privileges {
     pub fn by_object(
         &self,
         object_type: &str,
-        object_name: &str,
+        object_id: i64,
     ) -> tarantool::Result<EntryIter<PrivilegeDef>> {
         let iter = self
             .object_idx
-            .select(IteratorType::Eq, &(object_type, object_name))?;
+            .select(IteratorType::Eq, &(object_type, object_id))?;
         Ok(EntryIter::new(iter))
     }
 
@@ -2328,11 +2326,11 @@ impl Privileges {
         &self,
         grantee_id: UserId,
         object_type: &str,
-        object_name: &str,
+        object_id: i64,
         privilege: &str,
     ) -> tarantool::Result<()> {
         self.space
-            .delete(&(grantee_id, object_type, object_name, privilege))?;
+            .delete(&(grantee_id, object_type, object_id, privilege))?;
         Ok(())
     }
 
@@ -2343,7 +2341,7 @@ impl Privileges {
             self.delete(
                 priv_def.grantee_id,
                 &priv_def.object_type,
-                &priv_def.object_name,
+                priv_def.object_id,
                 &priv_def.privilege,
             )?;
         }
@@ -2352,16 +2350,16 @@ impl Privileges {
 
     /// Remove any privilege definitions assigning the given role.
     #[inline]
-    pub fn delete_all_by_granted_role(&self, role_name: &str) -> Result<()> {
+    pub fn delete_all_by_granted_role(&self, role_id: u32) -> Result<()> {
         for priv_def in self.iter()? {
             if priv_def.privilege == "execute"
                 && priv_def.object_type == "role"
-                && priv_def.object_name == role_name
+                && priv_def.object_id == role_id as i64
             {
                 self.delete(
                     priv_def.grantee_id,
                     &priv_def.object_type,
-                    &priv_def.object_name,
+                    priv_def.object_id,
                     &priv_def.privilege,
                 )?;
             }
@@ -2371,16 +2369,12 @@ impl Privileges {
 
     /// Remove any privilege definitions granted to the given object.
     #[inline]
-    pub fn delete_all_by_object(
-        &self,
-        object_type: &str,
-        object_name: &str,
-    ) -> tarantool::Result<()> {
-        for priv_def in self.by_object(object_type, object_name)? {
+    pub fn delete_all_by_object(&self, object_type: &str, object_id: i64) -> tarantool::Result<()> {
+        for priv_def in self.by_object(object_type, object_id)? {
             self.delete(
                 priv_def.grantee_id,
                 &priv_def.object_type,
-                &priv_def.object_name,
+                priv_def.object_id,
                 &priv_def.privilege,
             )?;
         }
@@ -2732,24 +2726,18 @@ pub mod acl {
     /// Remove a role definition and any entities owned by it from the internal
     /// clusterwide storage.
     pub fn global_drop_role(storage: &Clusterwide, role_id: UserId) -> Result<()> {
+        let role_def = storage.roles.by_id(role_id)?.expect("role should exist");
         storage.privileges.delete_all_by_grantee_id(role_id)?;
+        storage.privileges.delete_all_by_granted_role(role_id)?;
+        storage.roles.delete(role_id)?;
 
-        if let Some(role_def) = storage.roles.by_id(role_id)? {
-            // Revoke the role from any grantees.
-            storage
-                .privileges
-                .delete_all_by_granted_role(&role_def.name)?;
-            storage.roles.delete(role_id)?;
-
-            let role = &role_def.name;
-            crate::audit!(
-                message: "dropped role `{role}`",
-                title: "drop_role",
-                severity: Medium,
-                role: role,
-            );
-        }
-
+        let role = &role_def.name;
+        crate::audit!(
+            message: "dropped role `{role}`",
+            title: "drop_role",
+            severity: Medium,
+            role: role,
+        );
         Ok(())
     }
 
@@ -2761,11 +2749,12 @@ pub mod acl {
         storage.privileges.insert(priv_def)?;
 
         let privilege = &priv_def.privilege;
-        let (object, object_type) = (&priv_def.object_name, &priv_def.object_type);
+        let (object, object_type) = (priv_def.object_id(), &priv_def.object_type);
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
+                let object = object.expect("should be set");
                 crate::audit!(
                     message: "granted role `{object}` to {grantee_type} `{grantee}`",
                     title: "grant_role",
@@ -2776,13 +2765,17 @@ pub mod acl {
                 );
             }
             _ => {
+                let object = match object {
+                    Some(object) => format!("`{object}` "),
+                    None => "".into(),
+                };
                 crate::audit!(
-                    message: "granted privilege {privilege} on {object_type} `{object}` \
+                    message: "granted privilege {privilege} on {object_type} {object}\
                               to {grantee_type} `{grantee}`",
                     title: "grant_privilege",
                     severity: High,
                     privilege: privilege,
-                    object: object,
+                    object: priv_def.object_id(),
                     object_type: object_type,
                     grantee: &grantee,
                     grantee_type: grantee_type,
@@ -2802,16 +2795,17 @@ pub mod acl {
         storage.privileges.delete(
             priv_def.grantee_id,
             &priv_def.object_type,
-            &priv_def.object_name,
+            priv_def.object_id,
             &priv_def.privilege,
         )?;
 
         let privilege = &priv_def.privilege;
-        let (object, object_type) = (&priv_def.object_name, &priv_def.object_type);
+        let (object, object_type) = (priv_def.object_id(), &priv_def.object_type);
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
+                let object = object.expect("should be set");
                 crate::audit!(
                     message: "revoke role `{object}` from {grantee_type} `{grantee}`",
                     title: "revoke_role",
@@ -2822,13 +2816,17 @@ pub mod acl {
                 );
             }
             _ => {
+                let object = match object {
+                    Some(object) => format!("`{object}` "),
+                    None => "".into(),
+                };
                 crate::audit!(
-                    message: "revoked privilege {privilege} on {object_type} `{object}` \
+                    message: "revoked privilege {privilege} on {object_type} {object}\
                               from {grantee_type} `{grantee}`",
                     title: "revoke_privilege",
                     severity: High,
                     privilege: privilege,
-                    object: object,
+                    object: priv_def.object_id(),
                     object_type: object_type,
                     grantee: &grantee,
                     grantee_type: grantee_type,
@@ -2939,18 +2937,18 @@ pub mod acl {
     pub fn on_master_grant_privilege(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
         let lua = ::tarantool::lua_state();
         lua.exec_with(
-            "local grantee_id, privilege, object_type, object_name = ...
+            "local grantee_id, privilege, object_type, object_id = ...
             local grantee_def = box.space._user:get(grantee_id)
             if grantee_def.type == 'user' then
-                box.schema.user.grant(grantee_id, privilege, object_type, object_name)
+                box.schema.user.grant(grantee_id, privilege, object_type, object_id)
             else
-                box.schema.role.grant(grantee_id, privilege, object_type, object_name)
+                box.schema.role.grant(grantee_id, privilege, object_type, object_id)
             end",
             (
                 priv_def.grantee_id,
                 &priv_def.privilege,
                 &priv_def.object_type,
-                &priv_def.object_name,
+                priv_def.object_id(),
             ),
         )
         .map_err(LuaError::from)?;
@@ -2962,22 +2960,22 @@ pub mod acl {
     pub fn on_master_revoke_privilege(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
         let lua = ::tarantool::lua_state();
         lua.exec_with(
-            "local grantee_id, privilege, object_type, object_name = ...
+            "local grantee_id, privilege, object_type, object_id = ...
             local grantee_def = box.space._user:get(grantee_id)
             if not grantee_def then
                 -- Grantee already dropped -> privileges already revoked
                 return
             end
             if grantee_def.type == 'user' then
-                box.schema.user.revoke(grantee_id, privilege, object_type, object_name)
+                box.schema.user.revoke(grantee_id, privilege, object_type, object_id)
             else
-                box.schema.role.revoke(grantee_id, privilege, object_type, object_name)
+                box.schema.role.revoke(grantee_id, privilege, object_type, object_id)
             end",
             (
                 priv_def.grantee_id,
                 &priv_def.privilege,
                 &priv_def.object_type,
-                &priv_def.object_name,
+                priv_def.object_id(),
             ),
         )
         .map_err(LuaError::from)?;
