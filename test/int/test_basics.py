@@ -179,10 +179,10 @@ def test_whoami(instance: Instance):
 
 def test_whoami_in_different_tiers(cluster: Cluster):
     cfg = {
-        "tiers": [
-            {"name": "storage", "replication_factor": 1},
-            {"name": "router", "replication_factor": 2},
-        ]
+        "tier": {
+            "storage": {"replication_factor": 1},
+            "router": {"replication_factor": 2},
+        }
     }
 
     cluster.set_init_cfg(cfg)

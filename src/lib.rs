@@ -24,13 +24,14 @@ use traft::RaftSpaceAccess;
 use protobuf::Message as _;
 
 use crate::cli::args;
-use crate::cli::args::{Address, InitCfg};
+use crate::cli::args::Address;
+use crate::cli::init_cfg::InitCfg;
 use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::plugin::*;
 use crate::sql::pgproto;
-use crate::tier::Tier;
+use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
 use crate::traft::LogicalClock;
 use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
@@ -456,23 +457,22 @@ fn start_boot(args: &args::Run) {
     tlog!(Info, ">>>>> start_boot()");
 
     let init_cfg = match &args.init_cfg {
-        Some(cfg) if cfg.tiers.is_empty() => {
-            unwrap_or_terminate(Err("empty 'tiers' field in 'init-cfg'"))
-        }
-        Some(cfg) => cfg.clone(),
-        _ => {
+        Some(path) => unwrap_or_terminate(InitCfg::try_from_yaml_file(path)),
+        None => {
             tlog!(Info, "init-cfg wasn't set");
             tlog!(
-                Warning,
-                "filling init-cfg wigh default tier `storage` using replication-factor={}",
+                Info,
+                "filling init-cfg with default tier `{}` using replication-factor={}",
+                DEFAULT_TIER,
                 args.init_replication_factor
             );
-            let tiers = vec![Tier::with_replication_factor(args.init_replication_factor)];
-            InitCfg { tiers }
+
+            let tier = vec![Tier::with_replication_factor(args.init_replication_factor)];
+            InitCfg { tier }
         }
     };
 
-    let tiers = init_cfg.tiers;
+    let tiers = init_cfg.tier;
 
     let current_instance_tier = unwrap_or_terminate(
         tiers
@@ -480,7 +480,7 @@ fn start_boot(args: &args::Run) {
             .find(|tier| tier.name == args.tier)
             .cloned()
             .ok_or(format!(
-                "tier '{}' for current instance is not found in 'init-cfg'",
+                "tier '{}' for current instance is not found in init-cfg",
                 args.tier
             )),
     );

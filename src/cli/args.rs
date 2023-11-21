@@ -1,11 +1,10 @@
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
-use crate::tier::{Tier, DEFAULT_TIER};
+use crate::tier::DEFAULT_TIER;
 use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::ffi::{CStr, CString};
 use std::str::FromStr;
 use tarantool::auth::AuthMethod;
@@ -158,8 +157,13 @@ pub struct Run {
     pub tier: String,
 
     /// Filepath to configuration file in yaml format.
-    #[clap(long = "init-cfg", value_name = "PATH", parse(try_from_str = try_parse_yaml_to_init_cfg), env = "PICODATA_INIT_CFG", group = "init_cfg")]
-    pub init_cfg: Option<InitCfg>,
+    #[clap(
+        long = "init-cfg",
+        value_name = "PATH",
+        env = "PICODATA_INIT_CFG",
+        group = "init_cfg"
+    )]
+    pub init_cfg: Option<String>,
 
     /// Configuration for the audit log (currently just a string).
     /// Tarantool's log machinery (say) will parse and validate it independently.
@@ -480,40 +484,6 @@ impl FromStr for Address {
             host: host.unwrap_or(DEFAULT_HOST).into(),
             port: port.unwrap_or(DEFAULT_PORT).into(),
         })
-    }
-}
-
-#[derive(Debug, serde::Deserialize, PartialEq, tlua::Push, Clone)]
-pub struct InitCfg {
-    pub tiers: Vec<Tier>,
-}
-
-fn try_parse_yaml_to_init_cfg(path: &str) -> Result<InitCfg, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("can't read from {path}, error: {e}"))?;
-
-    let cfg: InitCfg = serde_yaml::from_str(&content)
-        .map_err(|e| format!("error while parsing {path}, error: {e}"))?;
-    let mut tiers_names = HashSet::new();
-    for tier in &cfg.tiers {
-        if tiers_names.contains(&tier.name) {
-            return Err(format!(
-                "found tiers with the same name - \"{}\" in config by path \"{path}\"",
-                &tier.name
-            ));
-        }
-
-        tiers_names.insert(tier.name.clone());
-    }
-
-    Ok(cfg)
-}
-
-impl Default for InitCfg {
-    fn default() -> Self {
-        InitCfg {
-            tiers: vec![Tier::default()],
-        }
     }
 }
 
