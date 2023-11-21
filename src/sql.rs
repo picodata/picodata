@@ -491,7 +491,7 @@ fn get_grantor_grantee_ids_with_checks(
         _ => {}
     }
 
-    let grantor_id = session::uid()?;
+    let grantor_id = session::euid()?;
     let grantee_id = get_role_or_user_id(storage, grantee_name)?;
 
     Ok((grantor_id, grantee_id))
@@ -668,7 +668,7 @@ fn reenterable_schema_change_request(
                 params.test_create_space()?;
                 let ddl = params.into_ddl()?;
                 Op::DdlPrepare {
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                     ddl,
                 }
@@ -680,7 +680,7 @@ fn reenterable_schema_change_request(
                 };
                 let ddl = OpDdl::DropTable { id: space_def.id };
                 Op::DdlPrepare {
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                     ddl,
                 }
@@ -702,7 +702,7 @@ fn reenterable_schema_change_request(
                 let user_def = UserDef {
                     id,
                     name: name.clone(),
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                     auth: auth.clone(),
                 };
@@ -720,7 +720,7 @@ fn reenterable_schema_change_request(
                 };
 
                 // For ALTER Login/NoLogin.
-                let grantor_id = session::uid()?;
+                let grantor_id = session::euid()?;
                 let grantee_id = get_role_or_user_id(storage, name)?;
                 let object_type = String::from("universe");
                 let object_name = String::new();
@@ -731,7 +731,7 @@ fn reenterable_schema_change_request(
                     object_type: object_type.clone(),
                     object_name: object_name.clone(),
                     privilege: privilege.clone(),
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                 };
 
@@ -744,7 +744,7 @@ fn reenterable_schema_change_request(
                         Op::Acl(OpAcl::ChangeAuth {
                             user_id: user_def.id,
                             auth: auth.clone(),
-                            // This will be set right after the match statement.
+                            // This field will be updated later.
                             schema_version: 0,
                         })
                     }
@@ -784,7 +784,7 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::DropUser {
                     user_id: user_def.id,
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                 })
             }
@@ -808,7 +808,7 @@ fn reenterable_schema_change_request(
                 let role_def = RoleDef {
                     id,
                     name: name.clone(),
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                 };
                 Op::Acl(OpAcl::CreateRole { role_def })
@@ -820,7 +820,7 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::DropRole {
                     role_id: role_def.id,
-                    // This will be set right after the match statement.
+                    // This field will be updated later.
                     schema_version: 0,
                 })
             }
@@ -846,7 +846,7 @@ fn reenterable_schema_change_request(
                         object_type,
                         object_name,
                         privilege,
-                        // This will be set right after the match statement.
+                        // This field will be updated later.
                         schema_version: 0,
                     },
                 })
@@ -874,7 +874,7 @@ fn reenterable_schema_change_request(
                         object_type,
                         object_name,
                         privilege,
-                        // This will be set right after the match statement.
+                        // This field will be updated later.
                         schema_version: 0,
                     },
                 })
