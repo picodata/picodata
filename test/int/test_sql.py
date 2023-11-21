@@ -743,14 +743,13 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # * Username as is in double parentheses.
     acl = i1.sql(f'drop user "{upper_username}"')
     assert acl["row_count"] == 1
-    i1.sql(
+    acl = i1.sql(
         f"""
         create user "{upper_username}" password '' using ldap
     """
     )
     assert acl["row_count"] == 1
-    # * Username without parentheses should be upcasted.
-    i1.sql(f"drop user {username}")
+    acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
     # * Username without parentheses should be upcasted.
     acl = i1.sql(
@@ -778,7 +777,6 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # We can safely retry creating the same user.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
-
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 0
     acl = i1.sql(f"drop user {username}")
@@ -866,7 +864,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Attempt to create role with the name of already existed user
     # should lead to an error.
-    acl = i1.sql(f"create user \"{username}\" with password '123456789' using md5")
+    acl = i1.sql(f""" create user "{username}" with password '123456789' using md5 """)
     assert acl["row_count"] == 1
     with pytest.raises(ReturnError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
