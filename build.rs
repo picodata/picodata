@@ -339,7 +339,10 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
         rustc::link_lib_dynamic("resolv");
     } else {
         // not supported on macos
-        rustc::link_arg("-export-dynamic");
+        // We use -rdynamic instead of -export-dynamic
+        // because on fedora this likely triggers this bug
+        // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47390
+        rustc::link_arg("-rdynamic");
         rustc::link_lib_dynamic("stdc++");
     }
 }
