@@ -569,6 +569,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let inner_fn_name = syn::Ident::new("__tp_inner", ident.span());
     let desc_name = ident.to_string();
     let desc_ident = syn::Ident::new(&desc_name.to_uppercase(), ident.span());
+    let public = ctx.public;
 
     quote! {
         #[#linkme::distributed_slice(#section)]
@@ -577,6 +578,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         static #desc_ident: #tarantool::proc::Proc = #tarantool::proc::Proc::new(
             #desc_name,
             #ident,
+            #public
         );
 
         #(#attrs)*
@@ -621,6 +623,7 @@ struct Context {
     linkme: syn::Path,
     debug_tuple: TokenStream2,
     is_packed: bool,
+    public: bool,
     wrap_ret: TokenStream2,
 }
 
@@ -631,6 +634,7 @@ impl Context {
         let mut section = None;
         let mut debug_tuple_needed = false;
         let mut is_packed = false;
+        let mut public = false;
         let mut wrap_ret = quote! {};
 
         for arg in args {
@@ -660,6 +664,10 @@ impl Context {
                 debug_tuple_needed = true;
                 continue;
             }
+            if imp::is_path_eq_to(&arg, "public") {
+                public = true;
+                continue;
+            }
             panic!("unsuported attribute argument: {:?}", arg)
         }
 
@@ -682,6 +690,7 @@ impl Context {
             debug_tuple,
             is_packed,
             wrap_ret,
+            public,
         }
     }
 }

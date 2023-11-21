@@ -33,6 +33,7 @@ macro_rules! unwrap_or_report_err {
 pub struct Proc {
     name: &'static str,
     proc: ffi::Proc,
+    public: bool,
 }
 
 impl Proc {
@@ -45,8 +46,8 @@ impl Proc {
     ///
     /// [`tarantool::proc`]: macro@crate::proc
     /// [`module_path`]: module_path()
-    pub const fn new(name: &'static str, proc: ffi::Proc) -> Self {
-        Self { name, proc }
+    pub const fn new(name: &'static str, proc: ffi::Proc, public: bool) -> Self {
+        Self { name, proc, public }
     }
 
     /// Get the name of the stored procedure NOT including the module name.
