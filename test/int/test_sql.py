@@ -910,6 +910,31 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
 
+@pytest.mark.skip(
+    reason="session privilege is not automatically given during user creation"
+)
+def test_sql_alter_login(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    username = "USER"
+    password = "PASSWORD"
+    # Create user.
+    acl = i1.sql(f"create user {username} with password '{password}'")
+    assert acl["row_count"] == 1
+
+    # Alter user with LOGIN option do nothing.
+    acl = i1.sql(f""" alter user {username} with login """)
+    assert acl["row_count"] == 0
+    # * Alter user with NOLOGIN option.
+    acl = i1.sql(f""" alter user {username} with nologin """)
+    assert acl["row_count"] == 1
+    # * Alter user with NOLOGIN again do nothing.
+    acl = i1.sql(f""" alter user {username} with nologin """)
+    assert acl["row_count"] == 0
+    # * TODO: Check SESSION privilege is removed.
+
+
 # TODO: replace all Lua `i1.call`s to SQL `iq.sql`.
 # See https://git.picodata.io/picodata/picodata/sbroad/-/issues/492.
 def test_sql_acl_privileges(cluster: Cluster):
@@ -995,17 +1020,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     # TODO: Attempt to revoke FROM a role that doesn't visible for user.
 
     # ===============ALTER Login/NoLogin=====================
-    # # Alter user with NOLOGIN option do nothing.
-    # sql_no(i1.sql(f""" alter user {username} with nologin """))
-    # # * Alter user with LOGIN option.
-    # sql_ok(i1.sql(f""" alter user {username} with login """))
-    # # * Alter user with LOGIN again do nothing.
-    # sql_no(i1.sql(f""" alter user {username} with login """))
-    # # * Check SESSION privilege given.
-    # privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"][1]
-    # assert privs_rows[2] == "user"
-    # assert privs_rows[3] == username
-    # assert privs_rows[4] == "session"
+    # TODO: replace with logic from `test_sql_alter_login`.
 
     # TODO: ================USERs interaction================
     # * TODO: User creation is prohibited.
