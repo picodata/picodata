@@ -16,18 +16,44 @@ Picodata 23.06.0-232-ge436159d5
 Содержит информацию о пользовательских
 [таблицах](../overview/glossary.md#table) Picodata.
 
+Глобальные таблицы реплицируются на каждый инстанс в кластере.
+
+В шардированных таблицах весь набор данных разбивается на сегменты —
+виртуальные [бакеты](../overview/glossary.md#bucket) (bucket),
+пронумерованные `bucket_id`. Каждый репликасет хранит свой набор
+бакетов. Данные реплицируются между инстансами, принадлежащими одному
+репликасету.
+
 Поля:
 
 * `id`: (_unsigned_)
-* `name`: (_string_)
-* `distribution`: (_array_)
-* `format`: (_array_)
+* `name`: (_string_) название таблицы
+* `distribution`: (_array_) определяет распределение данных в кластере.
+  Возможны следующие варианты:
+    - `["global"]` — глобальная таблица
+    - `["sharded_implicitly", sharding_key, sharding_fn]` —
+      шардированная таблица, `bucket_id` вычисляется автоматически
+      как `sharding_fn(sharding_key)`
+        - `sharding_fn`: (_string_) функция шардирования, на сегодняшний
+          день поддерживается только `"crc32"`
+        - `sharding_key`: (_array_) ключ шардирования — массив полей
+          `[field,...]`, по которым вычисляется `bucket_id`
+    - `["sharded_by_field", field]` — шардированная таблица, в качестве
+      `bucket_id` используется значение поля `field`
+* `format`: (_array_, `[[field_name, field_type, is_nullable]]`) массив с описанием
+  формата полей таблицы:
+    - `field_name`: (_string_) название поля
+    - `field_type`: (_string_, `"any" | "unsigned" | "string" | "number" |
+      "double" | "integer" | "boolean" | "varbinary" | "scalar" |
+      "decimal" | "uuid" | "datetime" | "interval" | "array" |
+      "map"`) тип хранимого значения
+    - `is_nullable`: (_boolean_) возможность хранить значение `NULL`
 * `schema_version`: (_unsigned_) версия схемы, в которой таблица была
   создана. Используется при восстановлении из снапшота для корректной
   обработки шардированных таблиц
 * `operable`: (_boolean_) признак доступности таблицы на запись.
   Используется в процессе создания и удаления таблиц
-* `engine` (_string_)
+* `engine`: (_string_, `"memtx" | "vinyl"`) [движок хранения](../overview/glossary.md#db-engine)
 
 Индексы:
 
