@@ -4,6 +4,7 @@ import time
 from conftest import (
     Cluster,
     Instance,
+    Retriable,
 )
 
 
@@ -170,6 +171,18 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance):
     )
 
 
+def wait_current_vshard_config_changed(
+    peer: Instance, old_current_vshard_config, timeout=5
+):
+    def impl():
+        new_current_vshard_config = peer.eval(
+            "return box.space._pico_property:get('current_vshard_config').value",
+        )
+        assert new_current_vshard_config != old_current_vshard_config
+
+    Retriable(timeout=timeout, rps=10).call(impl)
+
+
 def test_vshard_updates_on_master_change(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
     i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
@@ -185,6 +198,10 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         assert replicaset_masters[r1_uuid] == i1.instance_id
         assert replicaset_masters[r2_uuid] == i3.instance_id
 
+    old_vshard_config = i1.eval(
+        "return box.space._pico_property:get('current_vshard_config').value"
+    )
+
     cluster.cas(
         "update",
         "_pico_replicaset",
@@ -198,6 +215,9 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         ops=[("=", "target_master_id", i4.instance_id)],
     )
     cluster.raft_wait_index(index)
+
+    # Wait for governor to change current master and update the vshard config.
+    wait_current_vshard_config_changed(i1, old_vshard_config)
 
     for i in cluster.instances:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)
