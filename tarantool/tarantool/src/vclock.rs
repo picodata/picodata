@@ -97,6 +97,7 @@ impl Vclock {
     ///
     /// If `box.cfg{ .. }` was not called yet.
     ///
+    #[inline(always)]
     pub fn current() -> Self {
         lua_state()
             .eval("return box.info.vclock")
@@ -107,6 +108,7 @@ impl Vclock {
     ///
     /// Returns an error if `box.cfg{ .. }` was not called yet.
     ///
+    #[inline(always)]
     pub fn try_current() -> Result<Self, tlua::LuaError> {
         lua_state().eval("return box.info.vclock")
     }
@@ -123,8 +125,8 @@ impl Vclock {
     /// assert_eq!(vc.ignore_zero(), Vclock::from([0, 1]));
     /// ```
     ///
+    #[inline(always)]
     pub fn ignore_zero(mut self) -> Self {
-        println!("{self:?}");
         self.0.remove(&0);
         self
     }
@@ -139,6 +141,7 @@ impl Vclock {
     /// let vc = Vclock::from([0, 0, 200]);
     /// assert_eq!(vc.into_inner(), HashMap::from([(2, 200)]))
     /// ```
+    #[inline(always)]
     pub fn into_inner(self) -> HashMap<usize, Lsn> {
         self.0
     }
@@ -155,39 +158,32 @@ impl Vclock {
     /// assert_eq!(vc.get(1), 10);
     /// assert_eq!(vc.get(2), 0);
     /// ```
+    #[inline(always)]
     pub fn get(&self, index: usize) -> Lsn {
         self.0.get(&index).copied().unwrap_or(0)
     }
-}
 
-impl<const N: usize> From<[Lsn; N]> for Vclock {
-    /// Converts an array `[Lsn; N]` into a `Vclock`, skipping
-    /// components with LSN equal to `0`.
+    /// Does a component-wise comparison of `self` against `other`.
     ///
-    /// Primarily used for testing. It has no meaningful application in
-    /// the real world.
-    ///
-    fn from(from: [Lsn; N]) -> Self {
-        Self(
-            from.iter()
-                .copied()
-                .enumerate()
-                .filter(|(_, lsn)| *lsn != 0)
-                .collect(),
-        )
-    }
-}
-
-impl PartialOrd for Vclock {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    /// If `ignore_zero` is `true`, the component at index `0` is ignored. This
+    /// is useful for comparing vclocks from different replicas, because the
+    /// zeroth component only tracks local updates.
+    #[inline]
+    pub fn cmp(&self, other: &Self, ignore_zero: bool) -> Option<Ordering> {
         let mut le = true;
         let mut ge = true;
 
         for i in self.0.keys().chain(other.0.keys()) {
+            if ignore_zero && *i == 0 {
+                continue;
+            }
             let a: Lsn = self.0.get(i).copied().unwrap_or(0);
             let b: Lsn = other.0.get(i).copied().unwrap_or(0);
             le = le && a <= b;
             ge = ge && a >= b;
+            if !ge && !le {
+                return None;
+            }
         }
 
         if le && ge {
@@ -200,12 +196,54 @@ impl PartialOrd for Vclock {
             None
         }
     }
+
+    /// Does a component-wise comparison of `self` against `other`.
+    ///
+    /// Ignores the components at index `0`.
+    ///
+    /// See also [`Self::cmp`].
+    #[inline(always)]
+    pub fn cmp_ignore_zero(&self, other: &Self) -> Option<Ordering> {
+        self.cmp(other, true)
+    }
+}
+
+impl<const N: usize> From<[Lsn; N]> for Vclock {
+    /// Converts an array `[Lsn; N]` into a `Vclock`, skipping
+    /// components with LSN equal to `0`.
+    ///
+    /// Primarily used for testing. It has no meaningful application in
+    /// the real world.
+    #[inline]
+    fn from(from: [Lsn; N]) -> Self {
+        Self(
+            from.iter()
+                .copied()
+                .enumerate()
+                .filter(|(_, lsn)| *lsn != 0)
+                .collect(),
+        )
+    }
+}
+
+impl PartialOrd for Vclock {
+    /// Does a component-wise comparison of `self` against `other`.
+    ///
+    /// Includes the components at index `0` in the comparison, so it's probably
+    /// not suitable for comparing vclocks from different replicas.
+    ///
+    /// See also [`Self::cmp_ignore_zero`].
+    #[inline(always)]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.cmp(other, false)
+    }
 }
 
 impl<L> LuaRead<L> for Vclock
 where
     L: AsLua,
 {
+    #[inline(always)]
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         match HashMap::lua_read_at_position(lua, index) {
             Ok(v) => Ok(Self(v)),
@@ -222,6 +260,7 @@ where
 impl<L: AsLua> Push<L> for Vclock {
     type Err = Void;
 
+    #[inline(always)]
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         HashMap::push_to_lua(&self.0, lua).map_err(|_| unreachable!())
     }
@@ -230,6 +269,7 @@ impl<L: AsLua> Push<L> for Vclock {
 impl<L: AsLua> PushInto<L> for Vclock {
     type Err = Void;
 
+    #[inline(always)]
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
         self.push_to_lua(lua)
     }
@@ -263,6 +303,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     #[allow(clippy::eq_op)]
     fn test_vclock_cmp() {
+        // Vclock from hash map.
         assert_eq!(
             Vclock::from([0, 0, 12, 0]).into_inner(),
             HashMap::from([(2, 12)])
@@ -273,20 +314,46 @@ mod tests {
             HashMap::from([(1, 101)])
         );
 
-        let vc_11 = Vclock::from([0, 1, 1]);
-        let vc_12 = Vclock::from([0, 1, 2]);
-        let vc_21 = Vclock::from([0, 2, 1]);
+        let vc_011 = Vclock::from([0, 1, 1]);
+        let vc_012 = Vclock::from([0, 1, 2]);
+        let vc_021 = Vclock::from([0, 2, 1]);
+        let vc_211 = Vclock::from([2, 1, 1]);
+        let vc_112 = Vclock::from([1, 1, 2]);
+        let vc_121 = Vclock::from([1, 2, 1]);
 
-        assert_eq!(vc_11, vc_11);
+        //
+        // Compare including zeroth component.
+        //
 
-        assert_ne!(vc_11, vc_12);
-        assert_ne!(vc_12, vc_21);
-        assert_ne!(vc_21, vc_11);
+        assert_eq!(vc_011, vc_011);
 
-        assert!(vc_21 > vc_11);
-        assert!(vc_12 > vc_11);
-        assert_eq!(vc_12.partial_cmp(&vc_21), None);
+        assert_ne!(vc_011, vc_012);
+        assert_ne!(vc_012, vc_021);
+        assert_ne!(vc_021, vc_011);
 
+        assert!(vc_021 > vc_011);
+        assert!(vc_012 > vc_011);
+        assert_eq!(vc_012.partial_cmp(&vc_021), None);
+
+        assert!(vc_011 < vc_211);
+        assert!(vc_012 < vc_112);
+        assert!(vc_021 < vc_121);
+
+        //
+        // Compare ignoring zeroth component.
+        //
+
+        assert_eq!(vc_211.cmp(&vc_112, false), None);
+        assert_eq!(vc_112.cmp(&vc_121, false), None);
+        assert_eq!(vc_121.cmp(&vc_211, false), None);
+
+        assert_eq!(vc_211.cmp_ignore_zero(&vc_211), Some(Ordering::Equal));
+
+        assert_eq!(vc_211.cmp_ignore_zero(&vc_112), Some(Ordering::Less));
+        assert_eq!(vc_112.cmp_ignore_zero(&vc_121), None);
+        assert_eq!(vc_121.cmp_ignore_zero(&vc_211), Some(Ordering::Greater));
+
+        // Vclock from array.
         assert!(Vclock::from([100, 200]) > Vclock::from([100]));
         assert!(Vclock::from([1, 10, 100]) > Vclock::from([1, 9, 88]));
     }

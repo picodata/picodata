@@ -31,6 +31,7 @@
   implementation.
 - `define_str_enum` now also uses `define_enum_with_introspection` internally
   so that these enums also have the introspection facilities.
+- `Vclock::cmp_ignore_zero` method for comparing vclocks from different replicas.
 
 ### Changed
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
@@ -53,6 +54,7 @@
   separate fibers. Under heavy load this could result in attempts to create
   spaces with repeating ids. This is now fixed.
 - Some tests were broken on tarantool builds from master branch.
+- Removed an erroneously added print statement from Vclock::ignore_zero.
 
 ### Deprecated
 
