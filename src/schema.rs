@@ -1,3 +1,4 @@
+use once_cell::sync::OnceCell;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
@@ -23,6 +24,7 @@ use tarantool::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::bootstrap_entries::{ADMIN_ID, GUEST_ID, SUPER_ID};
 use crate::cas::{self, compare_and_swap};
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -368,6 +370,82 @@ impl PrivilegeDef {
             privilege: "bite".into(),
             schema_version: 337,
         }
+    }
+
+    pub fn get_default_privileges() -> &'static Vec<PrivilegeDef> {
+        static DEFAULT_PRIVILEGES: OnceCell<Vec<PrivilegeDef>> = OnceCell::new();
+        DEFAULT_PRIVILEGES.get_or_init(|| {
+            let mut v = Vec::new();
+
+            // SQL: GRANT <'usage', 'session'> ON 'universe' TO 'guest'
+            for privilege in ["usage", "session"] {
+                v.push(PrivilegeDef {
+                    grantor_id: ADMIN_ID,
+                    grantee_id: GUEST_ID,
+                    object_type: String::from("universe"),
+                    object_name: String::from(""),
+                    privilege: String::from(privilege),
+                    schema_version: 0,
+                });
+            }
+
+            // execute public
+            // execute on super (temporary until we switch to service account)
+            // SQL: GRANT 'execute' ON <'public', 'user'> TO 'guest'
+            for role in ["public", "super"] {
+                v.push(PrivilegeDef {
+                    grantor_id: ADMIN_ID,
+                    grantee_id: GUEST_ID,
+                    object_type: String::from("role"),
+                    object_name: String::from(role),
+                    privilege: String::from("execute"),
+                    schema_version: 0,
+                });
+            }
+
+            #[rustfmt::skip]
+            // TODO enum for privs implemented in picodata
+            let all_privileges = [
+                "read",
+                "write",
+                "execute",
+                "session",
+                "usage",
+                "create",
+                "drop",
+                "alter",
+                "grant",
+                "revoke",
+            ];
+
+            // admin - all on universe
+            // SQL: GRANT 'all privileges' ON 'universe' TO 'admin'
+            for privilege in all_privileges {
+                v.push(PrivilegeDef {
+                    grantor_id: ADMIN_ID,
+                    grantee_id: ADMIN_ID,
+                    object_type: String::from("universe"),
+                    object_name: String::from(""),
+                    privilege: String::from(privilege),
+                    schema_version: 0,
+                });
+            }
+
+            // super - all on universe
+            // GRANT 'all privileges' ON 'universe' TO 'super'
+            for privilege in all_privileges {
+                v.push(PrivilegeDef {
+                    grantor_id: ADMIN_ID,
+                    grantee_id: SUPER_ID,
+                    object_type: String::from("universe"),
+                    object_name: String::from(""),
+                    privilege: String::from(privilege),
+                    schema_version: 0,
+                });
+            }
+
+            v
+        })
     }
 }
 

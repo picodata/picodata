@@ -2483,6 +2483,21 @@ trait SchemaDef {
     fn on_delete(key: &Self::Key, storage: &Clusterwide) -> traft::Result<()>;
 }
 
+/// used in `on_insert` of SchemaDef for `RoleDef` and `UserDef` to ignore errors when
+/// inserting builtin tarantool users and roles
+fn ignore_tuple_found_error(res: tarantool::Result<()>) -> traft::Result<()> {
+    if let Err(err) = res {
+        if let TntError::Tarantool(tnt_err) = &err {
+            if tnt_err.error_code() == tarantool::error::TarantoolErrorCode::TupleFound as u32 {
+                return Ok(());
+            }
+        }
+        return Err(traft::error::Error::from(err));
+    }
+
+    Ok(())
+}
+
 impl SchemaDef for TableDef {
     type Key = SpaceId;
 
@@ -2540,8 +2555,8 @@ impl SchemaDef for UserDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl::on_master_create_user(self)?;
-        Ok(())
+        let res = acl::on_master_create_user(self);
+        ignore_tuple_found_error(res)
     }
 
     #[inline(always)]
@@ -2568,8 +2583,8 @@ impl SchemaDef for RoleDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl::on_master_create_role(self)?;
-        Ok(())
+        let res = acl::on_master_create_role(self);
+        ignore_tuple_found_error(res)
     }
 
     #[inline(always)]
@@ -2596,6 +2611,10 @@ impl SchemaDef for PrivilegeDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
+        if Self::get_default_privileges().contains(self) {
+            return Ok(());
+        }
+
         acl::on_master_grant_privilege(self)?;
         Ok(())
     }

@@ -828,6 +828,7 @@ def test_acl_from_snapshot(cluster: Cluster):
 
 def test_acl_drop_space_with_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
+    number_of_privileges_since_bootstrap = 24
 
     # Check that we can drop a table with privileges granted on it.
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
@@ -845,7 +846,40 @@ def test_acl_drop_space_with_privileges(cluster: Cluster):
 
     # Check that the picodata privileges are gone.
     privs = i1.call("box.execute", """ select count(*) from "_pico_privilege" """)
-    assert privs["rows"][0][0] == 0
+    assert privs["rows"][0][0] == number_of_privileges_since_bootstrap
+
+
+def test_builtin_users_and_roles(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    # validate that builtin users and roles can be referenced in pico.{grant,revoke}_privilege
+    for user in ["admin", "guest", "public", "super"]:
+        i1.call(
+            "pico.grant_privilege",
+            user,
+            "read",
+            "table",
+            "_pico_property",
+        )
+
+    index = i1.call("pico.raft_get_index")
+    new_index = i1.call(
+        "pico.grant_privilege",
+        "admin",
+        "write",
+        "universe",
+    )
+
+    assert index == new_index
+
+    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    new_index = i1.call(
+        "pico.grant_privilege",
+        "Dave",
+        "execute",
+        "role",
+        "super",
+    )
 
 
 # TODO: test acl get denied when there's an unfinished ddl
