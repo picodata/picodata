@@ -7,6 +7,7 @@
 
 use crate::governor;
 use crate::has_grades;
+use crate::instance::GradeVariant;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
@@ -657,13 +658,11 @@ impl NodeImpl {
         tlog!(Debug, "applying entry: {op}"; "index" => index);
 
         match &op {
-            Op::Dml(op) => {
-                let space = op.space();
-                if space == ClusterwideTable::Property.id()
-                    || space == ClusterwideTable::Replicaset.id()
-                {
+            Op::Dml(op) => match op.space().try_into() {
+                Ok(ClusterwideTable::Property | ClusterwideTable::Replicaset) => {
                     *wake_governor = true;
-                } else if space == ClusterwideTable::Instance.id() {
+                }
+                Ok(ClusterwideTable::Instance) => {
                     *wake_governor = true;
                     let instance = match op {
                         Dml::Insert { tuple, .. } => Some(tuple),
@@ -671,18 +670,32 @@ impl NodeImpl {
                         Dml::Update { .. } => None,
                         Dml::Delete { .. } => None,
                     };
-                    if let Some(instance) = instance {
-                        let instance: Instance = rmp_serde::from_slice(instance.as_ref())
+                    if let Some(new) = instance {
+                        let new: Instance = rmp_serde::from_slice(new.as_ref())
                             .expect("should be a valid instance tuple");
-                        if has_grades!(instance, Expelled -> *)
-                            && instance.raft_id == self.raft_id()
-                        {
+
+                        // Check if we're handling a "new node joined" event:
+                        // * Either there's no tuple for this node in the storage;
+                        // * Or its raft id has changed, meaning it's no longer the same node.
+                        let prev = self.storage.instances.get(&new.instance_id).ok();
+                        if prev.map(|x| x.raft_id) != Some(new.raft_id) {
+                            let instance_id = new.instance_id;
+                            crate::audit!(
+                                Warning,
+                                "added a new instance {instance_id} to the cluster";
+                                "title" => "create_database",
+                                "raft_id" => new.raft_id,
+                            );
+                        }
+
+                        if has_grades!(new, Expelled -> *) && new.raft_id == self.raft_id() {
                             // cannot exit during a transaction
                             *expelled = true;
                         }
                     }
                 }
-            }
+                _ => {}
+            },
             Op::DdlPrepare { .. } => {
                 *wake_governor = true;
             }

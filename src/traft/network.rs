@@ -470,7 +470,9 @@ impl ConnectionPool {
             let instance_id = InstanceId::from(instance_id);
             let tuple = self.instances.get_raw(&instance_id)?;
             let Some(raft_id) = tuple.field(Instance::FIELD_RAFT_ID)? else {
-                return Err(Error::other("storage corrupted: couldn't decode instance's raft id"));
+                return Err(Error::other(
+                    "storage corrupted: couldn't decode instance's raft id",
+                ));
             };
             self.get_or_create_by_raft_id(raft_id)
         }
