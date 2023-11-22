@@ -7,7 +7,6 @@
 
 use crate::governor;
 use crate::has_grades;
-use crate::instance::GradeVariant;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
@@ -678,13 +677,32 @@ impl NodeImpl {
                         // * Either there's no tuple for this node in the storage;
                         // * Or its raft id has changed, meaning it's no longer the same node.
                         let prev = self.storage.instances.get(&new.instance_id).ok();
-                        if prev.map(|x| x.raft_id) != Some(new.raft_id) {
-                            let instance_id = new.instance_id;
+                        if prev.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
+                            let instance_id = &new.instance_id;
                             crate::audit!(
-                                Warning,
-                                "added a new instance {instance_id} to the cluster";
+                                "added a new instance `{instance_id}` to the cluster";
                                 "title" => "create_database",
-                                "raft_id" => new.raft_id,
+                                "severity" => "low",
+                            );
+                        }
+
+                        if prev.as_ref().map(|x| x.current_grade) != Some(new.current_grade) {
+                            let instance_id = &new.instance_id;
+                            let grade = &new.current_grade;
+                            crate::audit!(
+                                "current grade of instance `{instance_id}` changed to {grade}";
+                                "title" => "change_current_grade",
+                                "severity" => "medium",
+                            );
+                        }
+
+                        if prev.as_ref().map(|x| x.target_grade) != Some(new.target_grade) {
+                            let instance_id = &new.instance_id;
+                            let grade = &new.target_grade;
+                            crate::audit!(
+                                "target grade of instance `{instance_id}` changed to {grade}";
+                                "title" => "change_target_grade",
+                                "severity" => "low",
                             );
                         }
 
@@ -769,9 +787,9 @@ impl NodeImpl {
                             .expect("storage shouldn't fail");
 
                         crate::audit!(
-                            Warning,
                             "created table `{name}`";
                             "title" => "create_table",
+                            "severity" => "medium",
                         );
                     }
 
@@ -782,9 +800,9 @@ impl NodeImpl {
 
                         let name = &space.name;
                         crate::audit!(
-                            Warning,
                             "dropped table `{name}`";
                             "title" => "drop_table",
+                            "severity" => "medium",
                         );
                     }
 

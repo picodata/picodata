@@ -2665,9 +2665,9 @@ pub mod acl {
 
         let user = &user_def.name;
         crate::audit!(
-            Warning,
             "created user `{user}`";
             "title" => "create_user",
+            "severity" => "high",
             "auth_type" => user_def.auth.method.as_str(),
         );
 
@@ -2685,9 +2685,9 @@ pub mod acl {
         let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
         let user = &user_def.name;
         crate::audit!(
-            Warning,
             "password of user `{user}` was changed";
             "title" => "change_password",
+            "severity" => "high",
             "auth_type" => auth.method.as_str(),
         );
 
@@ -2703,8 +2703,8 @@ pub mod acl {
 
         let user = &user_def.name;
         crate::audit!(
-            Warning,
             "dropped user `{user}`";
+            "severity" => "medium",
             "title" => "drop_user",
         );
 
@@ -2717,9 +2717,9 @@ pub mod acl {
 
         let role = &role_def.name;
         crate::audit!(
-            Warning,
             "created role `{role}`";
             "title" => "create_role",
+            "severity" => "high",
         );
 
         Ok(())
@@ -2739,9 +2739,9 @@ pub mod acl {
 
             let role = &role_def.name;
             crate::audit!(
-                Warning,
                 "dropped role `{role}`";
                 "title" => "drop_role",
+                "severity" => "medium",
             );
         }
 
@@ -2762,17 +2762,17 @@ pub mod acl {
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 crate::audit!(
-                    Warning,
                     "granted role `{object}` to {grantee_type} `{grantee}`";
                     "title" => "grant_role",
+                    "severity" => "high",
                 );
             }
             _ => {
                 crate::audit!(
-                    Warning,
                     "granted privilege {privilege} on {object_type} `{object}` \
                      to {grantee_type} `{grantee}`";
                     "title" => "grant_privilege",
+                    "severity" => "high",
                 );
             }
         }
@@ -2800,17 +2800,17 @@ pub mod acl {
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 crate::audit!(
-                    Warning,
                     "revoke role `{object}` from {grantee_type} `{grantee}`";
                     "title" => "revoke_role",
+                    "severity" => "high",
                 );
             }
             _ => {
                 crate::audit!(
-                    Warning,
                     "revoked privilege {privilege} on {object_type} `{object}` \
                      from {grantee_type} `{grantee}`";
                     "title" => "revoke_privilege",
+                    "severity" => "high",
                 );
             }
         }

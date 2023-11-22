@@ -210,7 +210,7 @@ pub fn build_instance(
         Grade::new(Offline, 0),
         Grade::new(Offline, 0),
         failure_domain.clone(),
-        tier.clone(),
+        tier,
     );
     Ok(instance)
 }

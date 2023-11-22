@@ -30,6 +30,8 @@ blake3 = "=1.3.3"
 rustyline = "12.0.0"
 rmpv = "1.0.0"
 comfy-table = "7.0.1"
+va_list = ">=0.1.4"
+chrono = "0.4.31"
 
 linkme = "0.3.14"
 libloading = "0.8"
