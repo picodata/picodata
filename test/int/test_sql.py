@@ -1353,18 +1353,14 @@ def test_sql_privileges(cluster: Cluster):
     ):
         i1.sql(f""" select * from "{table_name}" """, user=username, password=alice_pwd)
     # Grant read privilege
-    i1.eval(
-        f""" pico.grant_privilege("{username}", "read", "space", "{table_name}") """
-    )
+    i1.sql(f""" grant read on table "{table_name}" to "{username}" """)
     dql = i1.sql(
         f""" select * from "{table_name}" """, user=username, password=alice_pwd
     )
     assert dql["rows"] == []
 
     # Revoke read privilege
-    i1.eval(
-        f""" pico.revoke_privilege("{username}", "read", "space", "{table_name}") """
-    )
+    i1.sql(f""" revoke read on table "{table_name}" from "{username}" """)
 
     # -------------------------
     # Check SQL write privilege
@@ -1379,9 +1375,7 @@ def test_sql_privileges(cluster: Cluster):
         )
 
     # Grant write privilege
-    i1.eval(
-        f""" pico.grant_privilege("{username}", "write", "space", "{table_name}") """
-    )
+    i1.sql(f""" grant write on table "{table_name}" to "{username}" """)
     dml = i1.sql(
         f""" insert into "{table_name}" values (1, 2) """,
         user=username,
@@ -1390,9 +1384,7 @@ def test_sql_privileges(cluster: Cluster):
     assert dml["row_count"] == 1
 
     # Revoke write privilege
-    i1.eval(
-        f""" pico.revoke_privilege("{username}", "write", "space", "{table_name}") """
-    )
+    i1.sql(f""" revoke write on table "{table_name}" from "{username}" """)
 
     # -----------------------------------
     # Check SQL write and read privileges
@@ -1419,9 +1411,7 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant read privilege
-    i1.eval(
-        f""" pico.grant_privilege("{username}", "read", "space", "{table_name}") """
-    )
+    i1.sql(f""" grant read on table "{table_name}" to "{username}" """)
 
     with pytest.raises(
         ReturnError, match=f"AccessDenied: Write access to space '{table_name}'"
@@ -1445,9 +1435,7 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant write privilege
-    i1.eval(
-        f""" pico.grant_privilege("{username}", "write", "space", "{table_name}") """
-    )
+    i1.sql(f""" grant write on table "{table_name}" to "{username}" """)
 
     dml = i1.sql(
         f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
