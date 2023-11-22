@@ -19,7 +19,7 @@ nav:
     - tutorial/connecting.md
     - tutorial/webui.md
     - tutorial/ldap.md
-    - tutorial/tutorial_users.md
+    - tutorial/access_control.md
     - tutorial/sql_examples.md
     - tutorial/audit_log.md
   - Справочные материалы:

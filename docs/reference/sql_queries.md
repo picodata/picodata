@@ -119,7 +119,9 @@ create user andy with password 'P@ssw0rd' using md5 option (timeout = 3.0)
 ```sql
 drop user andy
 ```
-См. [подробнее](../tutorial/tutorial_users.md) об управлении пользователями.
+См. также:
+
+ - [Управление доступом](../tutorial/access_control.md)
 
 ## Создание таблицы {: #create_table }
 
