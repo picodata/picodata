@@ -30,7 +30,7 @@ use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
 use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
 
-mod audit;
+pub mod audit;
 mod bootstrap_entries;
 pub mod cas;
 pub mod cli;

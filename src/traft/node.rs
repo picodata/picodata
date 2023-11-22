@@ -680,9 +680,9 @@ impl NodeImpl {
                         if prev.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
                             let instance_id = &new.instance_id;
                             crate::audit!(
-                                "added a new instance `{instance_id}` to the cluster";
-                                "title" => "create_database",
-                                "severity" => "low",
+                                message: "added a new instance `{instance_id}` to the cluster",
+                                title: "create_database",
+                                severity: Low,
                             );
                         }
 
@@ -690,9 +690,9 @@ impl NodeImpl {
                             let instance_id = &new.instance_id;
                             let grade = &new.current_grade;
                             crate::audit!(
-                                "current grade of instance `{instance_id}` changed to {grade}";
-                                "title" => "change_current_grade",
-                                "severity" => "medium",
+                                message: "current grade of instance `{instance_id}` changed to {grade}",
+                                title: "change_current_grade",
+                                severity: Medium,
                             );
                         }
 
@@ -700,9 +700,9 @@ impl NodeImpl {
                             let instance_id = &new.instance_id;
                             let grade = &new.target_grade;
                             crate::audit!(
-                                "target grade of instance `{instance_id}` changed to {grade}";
-                                "title" => "change_target_grade",
-                                "severity" => "low",
+                                message: "target grade of instance `{instance_id}` changed to {grade}",
+                                title: "change_target_grade",
+                                severity: Low,
                             );
                         }
 
@@ -787,9 +787,9 @@ impl NodeImpl {
                             .expect("storage shouldn't fail");
 
                         crate::audit!(
-                            "created table `{name}`";
-                            "title" => "create_table",
-                            "severity" => "medium",
+                            message: "created table `{name}`",
+                            title: "create_table",
+                            severity: Medium,
                         );
                     }
 
@@ -800,9 +800,9 @@ impl NodeImpl {
 
                         let name = &space.name;
                         crate::audit!(
-                            "dropped table `{name}`";
-                            "title" => "drop_table",
-                            "severity" => "medium",
+                            message: "dropped table `{name}`",
+                            title: "drop_table",
+                            severity: Medium,
                         );
                     }
 

@@ -2665,10 +2665,10 @@ pub mod acl {
 
         let user = &user_def.name;
         crate::audit!(
-            "created user `{user}`";
-            "title" => "create_user",
-            "severity" => "high",
-            "auth_type" => user_def.auth.method.as_str(),
+            message: "created user `{user}`",
+            title: "create_user",
+            severity: High,
+            auth_type: user_def.auth.method.as_str(),
         );
 
         Ok(())
@@ -2685,10 +2685,10 @@ pub mod acl {
         let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
         let user = &user_def.name;
         crate::audit!(
-            "password of user `{user}` was changed";
-            "title" => "change_password",
-            "severity" => "high",
-            "auth_type" => auth.method.as_str(),
+            message: "password of user `{user}` was changed",
+            title: "change_password",
+            severity: High,
+            auth_type: auth.method.as_str(),
         );
 
         Ok(())
@@ -2703,9 +2703,9 @@ pub mod acl {
 
         let user = &user_def.name;
         crate::audit!(
-            "dropped user `{user}`";
-            "severity" => "medium",
-            "title" => "drop_user",
+            message: "dropped user `{user}`",
+            title: "drop_user",
+            severity: Medium,
         );
 
         Ok(())
@@ -2717,9 +2717,9 @@ pub mod acl {
 
         let role = &role_def.name;
         crate::audit!(
-            "created role `{role}`";
-            "title" => "create_role",
-            "severity" => "high",
+            message: "created role `{role}`",
+            title: "create_role",
+            severity: High,
         );
 
         Ok(())
@@ -2739,9 +2739,9 @@ pub mod acl {
 
             let role = &role_def.name;
             crate::audit!(
-                "dropped role `{role}`";
-                "title" => "drop_role",
-                "severity" => "medium",
+                message: "dropped role `{role}`",
+                title: "drop_role",
+                severity: Medium,
             );
         }
 
@@ -2762,17 +2762,17 @@ pub mod acl {
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 crate::audit!(
-                    "granted role `{object}` to {grantee_type} `{grantee}`";
-                    "title" => "grant_role",
-                    "severity" => "high",
+                    message: "granted role `{object}` to {grantee_type} `{grantee}`",
+                    title: "grant_role",
+                    severity: High,
                 );
             }
             _ => {
                 crate::audit!(
-                    "granted privilege {privilege} on {object_type} `{object}` \
-                     to {grantee_type} `{grantee}`";
-                    "title" => "grant_privilege",
-                    "severity" => "high",
+                    message: "granted privilege {privilege} on {object_type} `{object}` \
+                              to {grantee_type} `{grantee}`",
+                    title: "grant_privilege",
+                    severity: High,
                 );
             }
         }
@@ -2800,17 +2800,17 @@ pub mod acl {
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 crate::audit!(
-                    "revoke role `{object}` from {grantee_type} `{grantee}`";
-                    "title" => "revoke_role",
-                    "severity" => "high",
+                    message: "revoke role `{object}` from {grantee_type} `{grantee}`",
+                    title: "revoke_role",
+                    severity: High,
                 );
             }
             _ => {
                 crate::audit!(
-                    "revoked privilege {privilege} on {object_type} `{object}` \
-                     from {grantee_type} `{grantee}`";
-                    "title" => "revoke_privilege",
-                    "severity" => "high",
+                    message: "revoked privilege {privilege} on {object_type} `{object}` \
+                              from {grantee_type} `{grantee}`",
+                    title: "revoke_privilege",
+                    severity: High,
                 );
             }
         }

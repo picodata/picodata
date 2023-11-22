@@ -270,12 +270,49 @@ pub fn root() -> Option<&'static slog::Logger> {
     ROOT.get()
 }
 
-// TODO: enforce entry format by introducing new macro arguments (e.g. `severity:`).
+::tarantool::define_str_enum! {
+    /// Type-safe entry severity for use in [`crate::audit!`].
+    /// Severity levels and their usage are defined in the RFC.
+    pub enum Severity {
+        Low = "low",
+        Medium = "medium",
+        High = "high",
+    }
+}
+
+/// This is the main API for adding new entries to the audit log.
+/// The required fields are `message`, `title` and `severity`,
+/// the rest is up to the caller.
+///
+/// Example:
+/// ```
+/// # use picodata::audit;
+/// audit!(
+///     message: "hello, world!",
+///     title: "greeting",
+///     severity: Low,
+/// );
+/// ```
 #[macro_export]
 macro_rules! audit(
-    ($($args:tt)+) => {
+    (
+        message: $message:expr,
+        title: $title:expr,
+        severity: $severity:ident,
+        $($key:ident: $value:expr),* $(,)?
+    ) => {
         if let Some(root) = $crate::audit::root() {
-            slog::slog_log!(root, slog::Level::Info, "", $($args)*);
+            slog::slog_log!(
+                // Boilerplate required by slog.
+                root, slog::Level::Info, "",
+                // The message itself.
+                $message;
+                // Mandatory fields.
+                "title" => $title,
+                "severity" => $crate::audit::Severity::$severity.as_str(),
+                // Arbitrary fields.
+                $(stringify!($key) => $value,)*
+            );
         }
     };
 );
@@ -291,23 +328,23 @@ pub fn init(config: &str) {
         .expect("failed to initialize global audit drain");
 
     crate::audit!(
-        "audit log is ready";
-        "title" => "init_audit",
-        "severity" => "low",
+        message: "audit log is ready",
+        title: "init_audit",
+        severity: Low,
     );
 
     // Report a local startup event & register a trigger for a local shutdown event.
     // Those will only be seen in this exact instance's audit log (hence "local").
     crate::audit!(
-        "instance is starting";
-        "title" => "local_startup",
-        "severity" => "low",
+        message: "instance is starting",
+        title: "local_startup",
+        severity: Low,
     );
     ::tarantool::trigger::on_shutdown(|| {
         crate::audit!(
-            "instance is shutting down";
-            "title" => "local_shutdown",
-            "severity" => "high",
+            message: "instance is shutting down",
+            title: "local_shutdown",
+            severity: High,
         );
     })
     .expect("failed to install audit trigger for instance shutdown");
