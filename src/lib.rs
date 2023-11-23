@@ -17,7 +17,6 @@ use std::collections::HashMap;
 use std::io;
 use std::time::Duration;
 use storage::Clusterwide;
-use storage::PropertyName;
 use traft::RaftSpaceAccess;
 
 use crate::cli::args;
@@ -282,7 +281,7 @@ fn redirect_interactive_sql() {
 }
 
 /// Sets a check for user exceeding maximum number of login attempts through `picodata connect`.
-/// Also see [`PropertyName::MaxLoginAttempts`].
+/// Also see [`storage::PropertyName::MaxLoginAttempts`].
 fn set_login_attempts_check(storage: Clusterwide) {
     use std::collections::hash_map::Entry;
 

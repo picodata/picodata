@@ -566,7 +566,7 @@ pub type CheckIsSameType<L, R> = <L as IsSameType<L, R>>::Void;
 /// A helper struct to enforce that a function must not yield. Will cause a
 /// panic if fiber yields are detected when drop is called for it.
 pub struct NoYieldsGuard {
-    csw: i32,
+    csw: u64,
 }
 
 #[allow(clippy::new_without_default)]

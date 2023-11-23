@@ -80,7 +80,7 @@ macro_rules! define_clusterwide_tables {
             pub enum $ClusterwideTable {
                 $(
                     $(#[$cw_field_meta])*
-                    $cw_space_var = $cw_space_name,
+                    $cw_space_var = $cw_space_name = $cw_space_id,
                 )+
             }
         }
@@ -104,18 +104,6 @@ macro_rules! define_clusterwide_tables {
             /// Guaranteed to return spaces in ascending order of their id
             pub const fn all_tables() -> &'static [Self] {
                 &[ $( Self::$cw_space_var, )+ ]
-            }
-        }
-
-        impl TryFrom<SpaceId> for $ClusterwideTable {
-            type Error = SpaceId;
-
-            #[inline(always)]
-            fn try_from(id: SpaceId) -> ::std::result::Result<$ClusterwideTable, Self::Error> {
-                match id {
-                    $( $cw_space_id => Ok(Self::$cw_space_var), )+
-                    _ => Err(id),
-                }
             }
         }
 
