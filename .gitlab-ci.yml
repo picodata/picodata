@@ -65,15 +65,17 @@ pack-doc:
     - tar -cvzf ../$FNAME ./
     - popd
     - echo "Picodata doc successfully packed."
-  artifacts:
-    expire_in: 1h
-    paths:
-      - .vars
-      - picodata-doc-*.tgz
+  cache:
+    - key: $CI_COMMIT_REF_SLUG-vars
+      paths:
+        - .vars
+      policy: push
+    - key: $CI_COMMIT_REF_SLUG-tgz
+      paths:
+        - picodata-doc-*.tgz
+      policy: push
 
 upload-doc-to-binary:
-  rules:
-    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
   image: curlimages/curl
   stage: upload
   script:
@@ -82,34 +84,55 @@ upload-doc-to-binary:
     - echo "FNAME=$FNAME"
     - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'
     - echo "Picodata doc successfully uploaded to binary."
-  artifacts:
-    expire_in: 24h
-    paths:
-      - .vars
+  cache:
+    - key: $CI_COMMIT_REF_SLUG-vars
+      paths:
+        - .vars
+      policy: pull
+    - key: $CI_COMMIT_REF_SLUG-tgz
+      paths:
+        - picodata-doc-*.tgz
+      policy: pull
 
-deploy-doc-to-test:
-  rules:
-    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
+.deploy:
+  variables:
+    STAGE: TEST
   image: curlimages/curl
   stage: deploy
   script:
-    - echo "Deploying picodata doc on test..."
+    - echo "Deploying picodata doc with branch $CI_COMMIT_BRANCH on $STAGE..."
     - source .vars
     - echo "FNAME=$FNAME"
-    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=TEST" -F "variables[PICODATA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
+    - echo "EXTRA_ARGS=$EXTRA_ARGS"
+    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=$STAGE" -F "variables[PICODATA_DOC]=$FNAME" $EXTRA_ARGS https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
     # https://git.picodata.io/picodata/web-site/infra
-    - echo "Picodata doc successfully deployed on test."
+    - echo "Picodata doc successfully deployed"
+  cache:
+    - key: $CI_COMMIT_REF_SLUG-vars
+      paths:
+        - .vars
+      policy: pull
+
+deploy-doc-to-test-main:
+  extends:
+    - .deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
+
+deploy-doc-to-test-devbranch:
+  extends:
+    - .deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH !=  $CI_DEFAULT_BRANCH
+      when: manual
+  allow_failure: true
+  variables:
+    EXTRA_ARGS: '-F variables[PICODATA_DOC_SUBDIR]=branch-${CI_COMMIT_BRANCH}'
 
 deploy-doc-to-prod:
+  extends:
+    - .deploy
   rules:
     - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
-  image: curlimages/curl
-  stage: deploy
-  when: manual
-  script:
-    - echo "Deploying picodata doc on prod..."
-    - source .vars
-    - echo "FNAME=$FNAME"
-    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=PROD" -F "variables[PICODATA_DOC]=$FNAME" https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
-    # https://git.picodata.io/picodata/web-site/infra
-    - echo "Picodata doc successfully deployed on prod."
+  variables:
+    STAGE: PROD
