@@ -1,0 +1,12 @@
+diff --git a/docker/Dockerfile b/docker/Dockerfile
+index ec10af6f1..4f57d0087 100644
+--- a/docker/Dockerfile
++++ b/docker/Dockerfile
+@@ -142,6 +142,7 @@ COPY files/tarantool.default /usr/local/etc/default/tarantool
+ 
+ ENTRYPOINT ["docker-entrypoint.sh"]
+ 
++USER tarantool
+ HEALTHCHECK CMD tarantool_is_up
+ 
+ EXPOSE 3301

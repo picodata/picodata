@@ -1,0 +1,14 @@
+diff --git a/vendor/icu4c-71_1/source/python/icutools/databuilder/utils.py b/vendor/icu4c-71_1/source/python/icutools/databuilder/utils.py
+index 3d53d18fa..4dca5848b 100644
+--- a/vendor/icu4c-71_1/source/python/icutools/databuilder/utils.py
++++ b/vendor/icu4c-71_1/source/python/icutools/databuilder/utils.py
+@@ -23,7 +23,8 @@ def dir_for(file):
+         return "{OUT_DIR}"
+     if isinstance(file, PkgFile):
+         return "{PKG_DIR}"
+-    assert False
++    if not (False):
++        raise RuntimeError("assert failed")
+ 
+ 
+ LOCAL_DIRNAME_SUBSTITUTIONS = {

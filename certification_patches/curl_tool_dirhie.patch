@@ -1,0 +1,19 @@
+diff --git a/src/tool_dirhie.c b/src/tool_dirhie.c
+index d80623e25..9e32c2f96 100644
+--- a/src/tool_dirhie.c
++++ b/src/tool_dirhie.c
+@@ -118,11 +118,12 @@ CURLcode create_dir_hierarchy(const char *outfile, FILE *errors)
+ 
+   /* Allow strtok() here since this isn't used threaded */
+   /* !checksrc! disable BANNEDFUNC 2 */
+-  tempdir = strtok(outdup, PATH_DELIMITERS);
++  char *saveptr = NULL;
++  tempdir = strtok_r(outdup, PATH_DELIMITERS, &saveptr);
+ 
+   while(tempdir) {
+     bool skip = false;
+-    tempdir2 = strtok(NULL, PATH_DELIMITERS);
++    tempdir2 = strtok_r(NULL, PATH_DELIMITERS, saveptr);
+     /* since strtok returns a token for the last word even
+        if not ending with DIR_CHAR, we need to prune it */
+     if(tempdir2) {

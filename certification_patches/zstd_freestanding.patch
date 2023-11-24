@@ -1,0 +1,143 @@
+diff --git a/contrib/freestanding_lib/freestanding.py b/contrib/freestanding_lib/freestanding.py
+index df698324..4d9be79d 100755
+--- a/contrib/freestanding_lib/freestanding.py
++++ b/contrib/freestanding_lib/freestanding.py
+@@ -161,7 +161,8 @@ class PartialPreprocessor(object):
+ 
+         line = self._inlines[idx]
+         is_if = self._if.match(line) is not None
+-        assert is_if or self._elif.match(line) is not None
++        if not (is_if or self._elif.match(line) is not None):
++            raise RuntimeError("assert failed")
+         depth = 0
+ 
+         start_idx = idx
+@@ -219,7 +220,8 @@ class PartialPreprocessor(object):
+                         idx += 1
+                         b = m.start('elif')
+                         e = m.end('elif')
+-                        assert e - b == 2
++                        if not (e - b == 2):
++                            raise RuntimeError("assert failed")
+                         replace.append(line[:b] + line[e:])
+                     finished = True
+                     break
+@@ -316,7 +318,8 @@ class PartialPreprocessor(object):
+                     if op == '&&':
+                         resolved = not is_true
+                     else:
+-                        assert op == '||'
++                        if not (op == '||'):
++                            raise RuntimeError("assert failed")
+                         resolved = is_true
+ 
+             else:
+@@ -335,11 +338,13 @@ class PartialPreprocessor(object):
+                     if op == '&&':
+                         resolved = not is_true
+                     else:
+-                        assert op == '||'
++                        if not (op == '||'):
++                            raise RuntimeError("assert failed")
+                         resolved = is_true
+ 
+                 if macro2 is not None and not resolved:
+-                    assert ifdef and defined and op == '&&' and cmp is not None
++                    if not (ifdef and defined and op == '&&' and cmp is not None):
++                        raise RuntimeError("assert failed")
+                     # If the statement is true, but we have a single value check, then
+                     # check the value.
+                     defined_value = self._defs[macro]
+@@ -377,11 +382,13 @@ class PartialPreprocessor(object):
+                     if op == '&&':
+                         opre = op
+                     else:
+-                        assert op == '||'
++                        if not (op == '||'):
++                            raise RuntimeError("assert failed")
+                         opre = r'\|\|'
+                     needle = re.compile(fr"(?P<if>\s*#\s*(el)?if\s+).*?(?P<op>{opre}\s*)")
+                     match = needle.match(line)
+-                    assert match is not None
++                    if not (match is not None):
++                        raise RuntimeError("assert failed")
+                     newline = line[:match.end('if')] + line[match.end('op'):]
+ 
+                     self._log(f"\tHardwiring partially resolved {macro}")
+@@ -400,8 +407,10 @@ class PartialPreprocessor(object):
+ 
+             prepend = []
+             if macro in self._replaces:
+-                assert not ifdef
+-                assert op is None
++                if not (not ifdef):
++                    raise RuntimeError("assert failed")
++                if not (op is None):
++                    raise RuntimeError("assert failed")
+                 value = self._replaces.pop(macro)
+                 prepend = [f"#define {macro} {value}\n"]
+ 
+@@ -479,7 +488,8 @@ class Freestanding(object):
+     def _copy_source_lib(self):
+         self._log("Copying source library into output library")
+ 
+-        assert os.path.exists(self._src_lib)
++        if not (os.path.exists(self._src_lib)):
++            raise RuntimeError("assert failed")
+         os.makedirs(self._dst_lib, exist_ok=True)
+         self._copy_file("zstd.h")
+         self._copy_file("zstd_errors.h")
+@@ -487,7 +497,8 @@ class Freestanding(object):
+             src_dir = os.path.join(self._src_lib, subdir)
+             dst_dir = os.path.join(self._dst_lib, subdir)
+ 
+-            assert os.path.exists(src_dir)
++            if not (os.path.exists(src_dir)):
++                raise RuntimeError("assert failed")
+             os.makedirs(dst_dir, exist_ok=True)
+ 
+             for filename in os.listdir(src_dir):
+@@ -510,7 +521,8 @@ class Freestanding(object):
+         If undef=True then value must be None.
+         If value='' then the macro is defined to '' exactly.
+         """
+-        assert not (undef and value is not None)
++        if undef and value is not None:
++            raise RuntimeError("assert failed")
+         for filepath in self._dst_lib_file_paths():
+             file = FileLines(filepath)
+ 
+@@ -533,14 +545,16 @@ class Freestanding(object):
+                 emit = True
+                 for line in file.lines:
+                     if emit and begin_re.search(line) is not None:
+-                        assert end_re.search(line) is None
++                        if not (end_re.search(line) is None):
++                            raise RuntimeError("assert failed")
+                         emit = False
+                     if emit:
+                         outlines.append(line)
+                     else:
+                         skipped.append(line)
+                         if end_re.search(line) is not None:
+-                            assert begin_re.search(line) is None
++                            if not (begin_re.search(line) is None):
++                                raise RuntimeError("assert failed")
+                             self._log(f"\t\tRemoving excluded section: {exclude}")
+                             for s in skipped:
+                                 self._log(f"\t\t\t- {s}")
+@@ -602,10 +616,12 @@ class Freestanding(object):
+             file.write()
+ 
+     def _parse_sed(self, sed):
+-        assert sed[0] == 's'
++        if not (sed[0] == 's'):
++            raise RuntimeError("assert failed")
+         delim = sed[1]
+         match = re.fullmatch(f's{delim}(.+){delim}(.*){delim}(.*)', sed)
+-        assert match is not None
++        if not (match is not None):
++            raise RuntimeError("assert failed")
+         regex = re.compile(match.group(1))
+         format_str = match.group(2)
+         is_global = match.group(3) == 'g'

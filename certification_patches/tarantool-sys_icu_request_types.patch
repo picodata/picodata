@@ -1,0 +1,43 @@
+diff --git a/vendor/icu4c-71_1/source/python/icutools/databuilder/request_types.py b/vendor/icu4c-71_1/source/python/icutools/databuilder/request_types.py
+index aa70f8d91..d0b1760a9 100644
+--- a/vendor/icu4c-71_1/source/python/icutools/databuilder/request_types.py
++++ b/vendor/icu4c-71_1/source/python/icutools/databuilder/request_types.py
+@@ -108,11 +108,13 @@ class AbstractExecutionRequest(AbstractRequest):
+         del self.input_files[i]
+         for _, v in self.format_with.items():
+             if isinstance(v, list):
+-                assert len(v) == len(self.input_files) + 1
++                if not (len(v) == len(self.input_files) + 1):
++                    raise RuntimeError("assert failed")
+                 del v[i]
+         for v in self.dep_targets:
+             if isinstance(v, list):
+-                assert len(v) == len(self.input_files) + 1
++                if not (len(v) == len(self.input_files) + 1):
++                    raise RuntimeError("assert failed")
+                 del v[i]
+ 
+     def flatten(self, config, all_requests, common_vars):
+@@ -125,16 +127,19 @@ class AbstractExecutionRequest(AbstractRequest):
+         for dep_target in self.dep_targets:
+             if isinstance(dep_target, list):
+                 if hasattr(self, "specific_dep_files"):
+-                    assert len(dep_target) == len(self.specific_dep_files)
++                    if not (len(dep_target) == len(self.specific_dep_files)):
++                        raise RuntimeError("assert failed")
+                     for file, out_list in zip(dep_target, self.specific_dep_files):
+-                        assert hasattr(file, "filename")
++                        if not (hasattr(file, "filename")):
++                            raise RuntimeError("assert failed")
+                         out_list.append(file)
+                 else:
+                     self.common_dep_files += dep_target
+                 continue
+             if not isinstance(dep_target, DepTarget):
+                 # Copy file entries directly to dep_files.
+-                assert hasattr(dep_target, "filename")
++                if not (hasattr(dep_target, "filename")):
++                    raise RuntimeError("assert failed")
+                 self.common_dep_files.append(dep_target)
+                 continue
+             # For DepTarget entries, search for the target.

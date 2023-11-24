@@ -322,7 +322,7 @@ gamayun-run:
       else
         echo "No cache found"
       fi
-    # create an ssh tunned to gamayun server to allow the report uploading
+    # create an ssh tunnel to gamayun server to allow the report uploading
     - TUNNEL="ssh -4 -L 9000:localhost:9000 sonar-reports -N -f"
     - eval $TUNNEL
     - ls -la
@@ -336,6 +336,16 @@ gamayun-run:
       find . -type d -name 'docsrc' | xargs -n 1 rm -rvf
       find . -name '*.md' | xargs -n 1 rm -rvf
       find http tarantool-sys vshard -type d -name .github | xargs -n 1 rm -rfv
+    - PATCH_DIR=$(pwd)/certification_patches
+    - |
+      (cd tarantool-sys; find ${PATCH_DIR} -name "tarantool-sys_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/curl; find ${PATCH_DIR} -name "curl_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/zstd; find ${PATCH_DIR} -name "zstd_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/luajit; find ${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/nghttp2; find ${PATCH_DIR} -name "nghttp2_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/checks; find ${PATCH_DIR} -name "checks_*" | xargs -n 1 git apply)
+      (cd http; find ${PATCH_DIR} -name "http_*" | xargs -n 1 git apply)
+      (cd vshard; find ${PATCH_DIR} -name "vshard_*" | xargs -n 1 git apply)
     - |
       docker run --rm -t \
         -v $PWD:/tmp/src:rw \

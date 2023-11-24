@@ -1,0 +1,22 @@
+diff --git a/script/fetch-ocsp-response b/script/fetch-ocsp-response
+index 0ff7461e..2fb75c40 100755
+--- a/script/fetch-ocsp-response
++++ b/script/fetch-ocsp-response
+@@ -83,7 +83,7 @@ def tempfail(msg):
+ def run_openssl(args, allow_tempfail=False):
+     buf = io.BytesIO()
+     try:
+-        p = subprocess.Popen(args, stdout=subprocess.PIPE)
++        p = subprocess.Popen(args, stdout=subprocess.PIPE)  # nosec
+     except Exception as e:
+         die('failed to invoke {}:{}'.format(args, e))
+     try:
+@@ -172,7 +172,7 @@ def verify_response(cmd, tempdir, issuer_fn, respder_fn):
+         with open(verify_fn, 'w+b') as f:
+             args = [cmd, 'ocsp', '-respin', respder_fn]
+             args.extend(extra)
+-            p = subprocess.Popen(args, stdout=f, stderr=f)
++            p = subprocess.Popen(args, stdout=f, stderr=f)  # nosec
+             if p.wait() == 0:
+                 # OpenSSL <= 1.0.1, openssl ocsp still returns exit
+                 # code 0 even if verification was failed.  So check

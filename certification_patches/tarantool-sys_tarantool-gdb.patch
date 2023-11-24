@@ -1,0 +1,89 @@
+diff --git a/tools/tarantool-gdb.py b/tools/tarantool-gdb.py
+index 2dba94459..6f413299a 100644
+--- a/tools/tarantool-gdb.py
++++ b/tools/tarantool-gdb.py
+@@ -1357,7 +1357,8 @@ class TuplePrinter(object):
+         # Pull configuration from class variables into the instance for
+         # convenience
+         config = self.__class__.__config
+-        assert config is not None
++        if not(config is not None):
++            raise RuntimeError("assert failed")
+         self.mp_max_depth = config['mp_max_depth']
+         self.mp_max_length = config['mp_max_length']
+ 
+@@ -1393,7 +1394,8 @@ class TuplePrinter(object):
+             if field_offs > 0:
+                 key = key_by_offset(field_offs)
+             elif field_offs < 0:
+-                assert self.slot_extent_t is not None
++                if not (self.slot_extent_t is not None):
++                    raise RuntimeError("assert failed")
+                 ext = (self.data() + field_offs).cast(self.slot_extent_t.pointer()).dereference()
+                 num_ext_keys = ext['size']
+                 offsets = ext['offset']
+@@ -1490,7 +1492,8 @@ class TtListEntryInfo(object):
+         return self.__entry_type
+ 
+     def entry_from_item(self, item):
+-        assert equal_types(item.type.target(), TtList.rlist_type)
++        if  not (equal_types(item.type.target(), TtList.rlist_type)):
++            raise RuntimeError("assert failed")
+         return cast_ptr(self.__entry_type, item, self.__offset)
+ 
+ 
+@@ -1666,7 +1669,8 @@ class TtListsLut(object):
+     @classmethod
+     def lookup_list_info(cls, item):
+         """Try to identify list head and type of list entries from its item."""
+-        assert equal_types(item.type.target(), TtList.rlist_type)
++        if not (equal_types(item.type.target(), TtList.rlist_type)):
++            raise RuntimeError("assert failed")
+         item_index = -1
+         item_sentinel = item['next']
+         while True:
+@@ -1684,10 +1688,12 @@ class TtList(object):
+ 
+     @classmethod
+     def resolve_item(cls, item, head=None, entry_info=None):
+-        assert equal_types(item.type.target(), cls.rlist_type)
++        if not (equal_types(item.type.target(), cls.rlist_type)):
++            raise RuntimeError("assert failed")
+ 
+         list_info, index_or_len = TtListsLut.lookup_list_info(item)
+-        assert index_or_len is not None, 'index_or_len is not None'
++        if not (index_or_len is not None, 'index_or_len is not None'):
++            raise RuntimeError("assert failed")
+         if list_info is None:
+             missing_parts = []
+             if head is None:
+@@ -1843,7 +1849,8 @@ head
+         return super(TtListPrinter, cls).__new__(cls)
+ 
+     def __init__(self, val):
+-        assert self.__class__.__instance_exists
++        if not (self.__class__.__instance_exists):
++            raise RuntimeError("assert failed")
+         if not equal_types(val.type, TtList.rlist_type):
+             raise gdb.GdbError("expression doesn't evaluate to rlist")
+ 
+@@ -1856,7 +1863,8 @@ head
+         # Pull configuration from class variables into the instance for
+         # convenience
+         config = self.__class__.__config
+-        assert config is not None
++        if not (config is not None):
++            raise RuntimeError("assert failed")
+         self.entry_info = config['entry_info']
+         self.head = config['head']
+         self.predicate = config['predicate']
+@@ -1879,7 +1887,8 @@ head
+             TtList.resolve_item(val.address, self.head, self.entry_info)
+ 
+     def __del__(self):
+-        assert self.__class__.__instance_exists
++        if not (self.__class__.__instance_exists):
++            raise RuntimeError("assert failed")
+         self.__class__.__instance_exists = False
+ 
+     def to_string(self):

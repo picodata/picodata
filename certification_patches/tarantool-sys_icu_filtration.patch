@@ -1,0 +1,64 @@
+diff --git a/vendor/icu4c-71_1/source/python/icutools/databuilder/filtration.py b/vendor/icu4c-71_1/source/python/icutools/databuilder/filtration.py
+index 27d08b0a7..64bda1e08 100644
+--- a/vendor/icu4c-71_1/source/python/icutools/databuilder/filtration.py
++++ b/vendor/icu4c-71_1/source/python/icutools/databuilder/filtration.py
+@@ -21,7 +21,8 @@ from .request_types import *
+ class Filter(object):
+     @staticmethod
+     def create_from_json(json_data, io):
+-        assert io != None
++        if not (io != None):
++            raise RuntimeError("assert failed")
+         if "filterType" in json_data:
+             filter_type = json_data["filterType"]
+         else:
+@@ -47,7 +48,8 @@ class Filter(object):
+         if not request.apply_file_filter(self):
+             return []
+         for file in request.all_input_files():
+-            assert self.match(file)
++            if not (self.match(file)):
++                raise RuntimeError("assert failed")
+         return [request]
+ 
+     @staticmethod
+@@ -183,7 +185,8 @@ class LocaleFilter(Filter):
+ 
+     def match(self, file):
+         tree = self._file_to_subdir(file)
+-        assert tree is not None
++        if not (tree is not None):
++            raise RuntimeError("assert failed")
+         locale = self._file_to_file_stem(file)
+ 
+         # A locale is *required* if it is *requested* or an ancestor of a
+@@ -229,7 +232,8 @@ class LocaleFilter(Filter):
+             return "root"
+         i = locale.rfind("_")
+         if i < 0:
+-            assert locale == "root", "Invalid locale: %s/%s" % (tree, locale)
++            if not (locale == "root", "Invalid locale: %s/%s" % (tree, locale)):
++                raise RuntimeError("assert failed")
+             return None
+         return locale[:i]
+ 
+@@ -306,7 +310,8 @@ class ResourceFilterInfo(object):
+ 
+     def apply_to_requests(self, all_requests):
+         # Call this method only once per list of requests.
+-        assert self.input_files is None
++        if not (self.input_files is None):
++            raise RuntimeError("assert failed")
+         for request in all_requests:
+             if request.category != self.category:
+                 continue
+@@ -334,7 +339,8 @@ class ResourceFilterInfo(object):
+         # --writePoolBundle, and the other for --usePoolBundle. They are both
+         # expected to have the same list of input files.
+         if self.input_files is not None:
+-            assert self.input_files == files
++            if not (self.input_files == files):
++                raise RuntimeError("assert failed")
+             return
+         self.input_files = list(files)
+         self.filter_files = [

@@ -1,0 +1,8 @@
+diff --git a/debian/prebuild.sh b/debian/prebuild.sh
+index 479bf20..edd8236 100755
+--- a/debian/prebuild.sh
++++ b/debian/prebuild.sh
+@@ -1 +1,2 @@
+-curl -s https://packagecloud.io/install/repositories/tarantool/1_10/script.deb.sh | sudo bash
++# echo 'now the following command returns nothing: curl -s https://packagecloud.io/install/repositories/tarantool/1_10/script.deb.sh
++# and nothing to do here

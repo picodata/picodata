@@ -1,0 +1,24 @@
+diff --git a/mkhufftbl.py b/mkhufftbl.py
+index a9f10d75..dd3a5ea6 100755
+--- a/mkhufftbl.py
++++ b/mkhufftbl.py
+@@ -336,7 +336,8 @@ def _traverse(node, sym, start_node, root, left):
+ 
+     def go(node):
+         if node.term is not None:
+-            assert sym is None
++            if not (sym is None):
++                raise RuntimeError("assert failed")
+             nsym = node.term
+         else:
+             nsym = sym
+@@ -422,7 +423,8 @@ if __name__ == '__main__':
+             nbits = int(m.group(4))
+             if len(code) > 8:
+                 raise Error('Code is more than 4 bytes long')
+-            assert(len(bits) == nbits)
++            if not ((len(bits) == nbits)):
++                raise RuntimeError("assert failed")
+             symbol_tbl[sym] = (nbits, code)
+             huffman_tree_add(ctx, sym, bits)
+ 

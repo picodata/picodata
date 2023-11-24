@@ -1,0 +1,24 @@
+diff --git a/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py b/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py
+index 91c12fdcf..173bd0216 100644
+--- a/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py
++++ b/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py
+@@ -68,7 +68,8 @@ def run_helper(request, common_vars, platform, tool_dir, verbose, tool_cfg=None,
+         # No-op
+         return 0
+ 
+-    assert isinstance(request.tool, IcuTool)
++    if not (isinstance(request.tool, IcuTool)):
++        raise RuntimeError("assert failed")
+     if platform == "windows":
+         cmd_template = "{TOOL_DIR}/{TOOL}/{TOOL_CFG}/{TOOL}.exe {{ARGS}}".format(
+             TOOL_DIR = tool_dir,
+@@ -117,7 +118,8 @@ def run_helper(request, common_vars, platform, tool_dir, verbose, tool_cfg=None,
+             command_line = command_line.replace("/", "\\")
+         returncode = run_shell_command(command_line, platform, verbose)
+         return returncode
+-    assert False
++    if not (False):
++        raise RuntimeError("assert failed")
+ 
+ def run_shell_command(command_line, platform, verbose):
+     changed_windows_comspec = False

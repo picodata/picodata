@@ -1,0 +1,31 @@
+diff --git a/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/makefile.py b/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/makefile.py
+index 9b2005b07..fcc4b11a0 100644
+--- a/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/makefile.py
++++ b/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/makefile.py
+@@ -53,7 +53,8 @@ def get_gnumake_rules(build_dirs, requests, makefile_vars, **kwargs):
+             )
+             continue
+ 
+-        assert isinstance(rule, MakeRule)
++        if not (isinstance(rule, MakeRule)):
++            raise RuntimeError("assert failed")
+         header_line = "{OUT_FILE}: {DEP_FILES} {DEP_LITERALS} | $(DIRS)".format(
+             OUT_FILE = files_to_makefile([rule.output_file], **kwargs),
+             DEP_FILES = files_to_makefile(rule.dep_files, wrap = True, **kwargs),
+@@ -135,7 +136,8 @@ def get_gnumake_rules_helper(request, common_vars, **kwargs):
+     elif request.tool.name == "gentest":
+         cmd_template = "$(INVOKE) $(GENTEST) {ARGS}"
+     else:
+-        assert isinstance(request.tool, IcuTool)
++        if not (isinstance(request.tool, IcuTool)):
++            raise RuntimeError("assert failed")
+         cmd_template = "$(INVOKE) $(TOOLBINDIR)/{TOOL} {{ARGS}}".format(
+             TOOL = request.tool.name
+         )
+@@ -242,4 +244,5 @@ def get_gnumake_rules_helper(request, common_vars, **kwargs):
+             ]
+         return rules
+ 
+-    assert False
++    if not (False):
++        raise RuntimeError("assert failed")

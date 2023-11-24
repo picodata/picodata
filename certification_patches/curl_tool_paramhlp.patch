@@ -1,0 +1,17 @@
+diff --git a/src/tool_paramhlp.c b/src/tool_paramhlp.c
+index c4fd0a192..50b6204a7 100644
+--- a/src/tool_paramhlp.c
++++ b/src/tool_paramhlp.c
+@@ -362,9 +362,10 @@ ParameterError proto2num(struct OperationConfig *config,
+ 
+   /* Allow strtok() here since this isn't used threaded */
+   /* !checksrc! disable BANNEDFUNC 2 */
+-  for(token = strtok(buffer, sep);
++  char *saveptr = NULL;
++  for(token = strtok_r(buffer, sep, &saveptr);
+       token;
+-      token = strtok(NULL, sep)) {
++      token = strtok_r(NULL, sep, &saveptr)) {
+     enum e_action { allow, deny, set } action = allow;
+ 
+     /* Process token modifiers */
