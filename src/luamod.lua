@@ -624,7 +624,7 @@ local function privilege_check(privilege, object_type, entrypoint)
         return
     end
 
-    if object_type == 'space' then
+    if object_type == 'table' then
         local black_list = {
             session = true,
             revoke = true,
@@ -685,7 +685,7 @@ local function object_resolve(object_type, object_name)
     if object_type == 'universe' then
         return 0
     end
-    if object_type == 'space' then
+    if object_type == 'table' then
         if object_name == '' then
             return ''
         end
@@ -804,7 +804,6 @@ Examples:
     pico.grant_privilege('Dave', 'execute', 'role', 'Maintainer')
 ]]
 function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
-    object_type = object_type == "table" and "space" or object_type
     local ok, err = pcall(function()
         box.internal.check_param(grantee, 'grantee', 'string')
         box.internal.check_param(privilege, 'privilege', 'string')
@@ -913,7 +912,6 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.revoke_privilege(grantee, privilege, object_type, object_name, opts)
-    object_type = object_type == "table" and "space" or object_type
     local ok, err = pcall(function()
         box.internal.check_param(grantee, 'grantee', 'string')
         box.internal.check_param(privilege, 'privilege', 'string')

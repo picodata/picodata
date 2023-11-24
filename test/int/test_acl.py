@@ -230,7 +230,7 @@ def test_acl_lua_api(cluster: Cluster):
             i1.call(f"pico.{f}", "Dave", "read", "bible", None)
 
         # Wrong combo -> error.
-        with pytest.raises(ReturnError, match="Unsupported space privilege 'grant'"):
+        with pytest.raises(ReturnError, match="Unsupported table privilege 'grant'"):
             i1.call(f"pico.{f}", "Dave", "grant", "table", None)
 
         # No such role -> error.
@@ -255,7 +255,7 @@ def test_acl_lua_api(cluster: Cluster):
     pico_property_id = i1.eval("return box.space._pico_property.id")
     priv = i1.call(
         "box.space._pico_privilege:get",
-        (dave_id, "space", pico_property_id, "read"),
+        (dave_id, "table", pico_property_id, "read"),
     )
 
     # grantor_id is the field at index 4 in schema::PrivilegeDef
@@ -853,7 +853,7 @@ def test_acl_from_snapshot(cluster: Cluster):
         }
 
 
-def test_acl_drop_space_with_privileges(cluster: Cluster):
+def test_acl_drop_table_with_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
     number_of_privileges_since_bootstrap = 24
 

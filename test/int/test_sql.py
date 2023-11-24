@@ -845,12 +845,12 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(""" select * from "t" """, user="alice", password=alice_pwd)
 
     # Grant read privilege
-    i1.eval(""" pico.grant_privilege("alice", "read", "space", "t") """)
+    i1.eval(""" pico.grant_privilege("alice", "read", "table", "t") """)
     dql = i1.sql(""" select * from "t" """, user="alice", password=alice_pwd)
     assert dql["rows"] == []
 
     # Revoke read privilege
-    i1.eval(""" pico.revoke_privilege("alice", "read", "space", "t") """)
+    i1.eval(""" pico.revoke_privilege("alice", "read", "table", "t") """)
 
     # -------------------------
     # Check SQL write privilege
@@ -859,14 +859,14 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(""" insert into "t" values (1, 2) """, user="alice", password=alice_pwd)
 
     # Grant write privilege
-    i1.eval(""" pico.grant_privilege("alice", "write", "space", "t") """)
+    i1.eval(""" pico.grant_privilege("alice", "write", "table", "t") """)
     dml = i1.sql(
         """ insert into "t" values (1, 2) """, user="alice", password=alice_pwd
     )
     assert dml["row_count"] == 1
 
     # Revoke write privilege
-    i1.eval(""" pico.revoke_privilege("alice", "write", "space", "t") """)
+    i1.eval(""" pico.revoke_privilege("alice", "write", "table", "t") """)
 
     # -----------------------------------
     # Check SQL write and read privileges
@@ -883,7 +883,7 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
 
     # Grant read privilege
-    i1.eval(""" pico.grant_privilege("alice", "read", "space", "t") """)
+    i1.eval(""" pico.grant_privilege("alice", "read", "table", "t") """)
 
     with pytest.raises(ReturnError, match="AccessDenied: Write access to space 't'"):
         i1.sql(
@@ -897,7 +897,7 @@ def test_sql_privileges(cluster: Cluster):
         i1.sql(""" delete from "t" """, user="alice", password=alice_pwd)
 
     # Grant write privilege
-    i1.eval(""" pico.grant_privilege("alice", "write", "space", "t") """)
+    i1.eval(""" pico.grant_privilege("alice", "write", "table", "t") """)
 
     dml = i1.sql(
         """ insert into "t" select "a" + 1, "b" from "t"  """,

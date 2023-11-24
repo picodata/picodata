@@ -17,7 +17,7 @@ use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
-use crate::schema::Distribution;
+use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
 use crate::schema::{PrivilegeDef, RoleDef, UserDef};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
@@ -1907,7 +1907,7 @@ pub fn ddl_meta_space_update_operable(
 pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
     storage
         .privileges
-        .delete_all_by_object("space", space_id as i64)?;
+        .delete_all_by_object(SchemaObjectType::Table, space_id as i64)?;
     let iter = storage.indexes.by_space_id(space_id)?;
     for index in iter {
         storage.indexes.delete(index.table_id, index.id)?;
@@ -2300,7 +2300,7 @@ impl Privileges {
     #[inline(always)]
     pub fn by_object(
         &self,
-        object_type: &str,
+        object_type: SchemaObjectType,
         object_id: i64,
     ) -> tarantool::Result<EntryIter<PrivilegeDef>> {
         let iter = self
@@ -2352,8 +2352,8 @@ impl Privileges {
     #[inline]
     pub fn delete_all_by_granted_role(&self, role_id: u32) -> Result<()> {
         for priv_def in self.iter()? {
-            if priv_def.privilege == "execute"
-                && priv_def.object_type == "role"
+            if priv_def.privilege == PrivilegeType::Execute
+                && priv_def.object_type == SchemaObjectType::Role
                 && priv_def.object_id == role_id as i64
             {
                 self.delete(
@@ -2369,7 +2369,11 @@ impl Privileges {
 
     /// Remove any privilege definitions granted to the given object.
     #[inline]
-    pub fn delete_all_by_object(&self, object_type: &str, object_id: i64) -> tarantool::Result<()> {
+    pub fn delete_all_by_object(
+        &self,
+        object_type: SchemaObjectType,
+        object_id: i64,
+    ) -> tarantool::Result<()> {
         for priv_def in self.by_object(object_type, object_id)? {
             self.delete(
                 priv_def.grantee_id,
@@ -2774,9 +2778,9 @@ pub mod acl {
                               to {grantee_type} `{grantee}`",
                     title: "grant_privilege",
                     severity: High,
-                    privilege: privilege,
+                    privilege: privilege.as_str(),
                     object: priv_def.object_id(),
-                    object_type: object_type,
+                    object_type: object_type.as_str(),
                     grantee: &grantee,
                     grantee_type: grantee_type,
                 );
@@ -2825,9 +2829,9 @@ pub mod acl {
                               from {grantee_type} `{grantee}`",
                     title: "revoke_privilege",
                     severity: High,
-                    privilege: privilege,
+                    privilege: privilege.as_str(),
                     object: priv_def.object_id(),
-                    object_type: object_type,
+                    object_type: object_type.as_str(),
                     grantee: &grantee,
                     grantee_type: grantee_type,
                 );
@@ -2947,7 +2951,7 @@ pub mod acl {
             (
                 priv_def.grantee_id,
                 &priv_def.privilege,
-                &priv_def.object_type,
+                &priv_def.object_type.into_tarantool(),
                 priv_def.object_id(),
             ),
         )
@@ -2974,7 +2978,7 @@ pub mod acl {
             (
                 priv_def.grantee_id,
                 &priv_def.privilege,
-                &priv_def.object_type,
+                &priv_def.object_type.into_tarantool(),
                 priv_def.object_id(),
             ),
         )

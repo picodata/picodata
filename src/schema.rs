@@ -327,11 +327,54 @@ impl RoleDef {
 // PrivilegeDef
 ////////////////////////////////////////////////////////////////////////////////
 
+tarantool::define_str_enum! {
+    pub enum SchemaObjectType {
+        Table = "table",
+        Role = "role",
+        User = "user",
+        Universe = "universe",
+    }
+}
+
+impl SchemaObjectType {
+    pub fn into_tarantool(&self) -> &str {
+        match self {
+            SchemaObjectType::Table => "space",
+            t => t.as_str(),
+        }
+    }
+}
+
+tarantool::define_str_enum! {
+    pub enum PrivilegeType {
+        /// SELECT
+        Read = "read",
+        /// INSERT, UPDATE, UPSERT, DELETE, REPLACE
+        Write = "write",
+        /// CALL
+        Execute = "execute",
+        /// SESSION
+        Session = "session",
+        /// USAGE
+        Usage = "usage",
+        /// CREATE
+        Create = "create",
+        /// DROP
+        Drop = "drop",
+        /// ALTER
+        Alter = "alter",
+        /// This is never granted, but used internally.
+        Grant = "grant",
+        /// Never granted, but used internally.
+        Revoke = "revoke",
+    }
+}
+
 /// Privilege definition.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
-    pub privilege: String,
-    pub object_type: String,
+    pub privilege: PrivilegeType,
+    pub object_type: SchemaObjectType,
     /// `-1` denotes an absense of a target object.
     /// Other values should be >= 0 and denote an existing target object.
     /// When working with `object_type` `universe` it might seem that it does
@@ -372,9 +415,9 @@ impl PrivilegeDef {
         Self {
             grantor_id: 13,
             grantee_id: 37,
-            object_type: "fruit".into(),
+            object_type: SchemaObjectType::User,
             object_id: -1,
-            privilege: "bite".into(),
+            privilege: PrivilegeType::Create,
             schema_version: 337,
         }
     }
@@ -396,14 +439,14 @@ impl PrivilegeDef {
             let mut v = Vec::new();
 
             // SQL: GRANT <'usage', 'session'> ON 'universe' TO 'guest'
-            for privilege in ["usage", "session"] {
+            for privilege in [PrivilegeType::Usage, PrivilegeType::Session] {
                 v.push(PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: GUEST_ID,
-                    object_type: String::from("universe"),
+                    object_type: SchemaObjectType::Universe,
                     // `universe` has object_id 0
                     object_id: 0,
-                    privilege: String::from(privilege),
+                    privilege,
                     schema_version: 0,
                 });
             }
@@ -415,50 +458,35 @@ impl PrivilegeDef {
                 v.push(PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: GUEST_ID,
-                    object_type: String::from("role"),
+                    object_type: SchemaObjectType::Role,
                     object_id: role as _,
-                    privilege: String::from("execute"),
+                    privilege: PrivilegeType::Execute,
                     schema_version: 0,
                 });
             }
 
-            #[rustfmt::skip]
-            // TODO enum for privs implemented in picodata
-            let all_privileges = [
-                "read",
-                "write",
-                "execute",
-                "session",
-                "usage",
-                "create",
-                "drop",
-                "alter",
-                "grant",
-                "revoke",
-            ];
-
             // admin - all on universe
             // SQL: GRANT 'all privileges' ON 'universe' TO 'admin'
-            for privilege in all_privileges {
+            for privilege in PrivilegeType::VARIANTS {
                 v.push(PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: ADMIN_ID,
-                    object_type: String::from("universe"),
+                    object_type: SchemaObjectType::Universe,
                     object_id: 0,
-                    privilege: String::from(privilege),
+                    privilege: *privilege,
                     schema_version: 0,
                 });
             }
 
             // super - all on universe
             // GRANT 'all privileges' ON 'universe' TO 'super'
-            for privilege in all_privileges {
+            for privilege in PrivilegeType::VARIANTS {
                 v.push(PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: SUPER_ID,
-                    object_type: String::from("universe"),
+                    object_type: SchemaObjectType::Universe,
                     object_id: 0,
-                    privilege: String::from(privilege),
+                    privilege: *privilege,
                     schema_version: 0,
                 });
             }
