@@ -88,32 +88,20 @@ macro_rules! define_clusterwide_tables {
         }
 
         impl $ClusterwideTable {
-            /// Id of the corrseponding system global space.
-            pub const fn id(&self) -> SpaceId {
-                match self {
-                    $( Self::$cw_space_var => $cw_space_id, )+
-                }
-            }
-
-            /// Name of the corrseponding system global space.
-            pub const fn name(&self) -> &'static str {
-                match self {
-                    $( Self::$cw_space_var => $cw_space_name, )+
-                }
-            }
-
             pub fn format(&self) -> Vec<tarantool::space::Field> {
                 match self {
                     $( Self::$cw_space_var => $space_struct::format(), )+
                 }
             }
-
-            /// A slice of all possible variants of `Self`.
-            /// Guaranteed to return spaces in ascending order of their id
-            pub const fn all_tables() -> &'static [Self] {
-                &[ $( Self::$cw_space_var, )+ ]
-            }
         }
+
+        const _TEST_ID_AND_NAME_ARE_CORRECT: () = {
+            use $crate::util::str_eq;
+            $(
+                assert!($ClusterwideTable::$cw_space_var.id() == $cw_space_id);
+                assert!(str_eq($ClusterwideTable::$cw_space_var.name(), $cw_space_name));
+            )+
+        };
 
         $( const _: $crate::util::CheckIsSameType<$_Clusterwide, $Clusterwide> = (); )+
 
@@ -988,6 +976,25 @@ impl Clusterwide {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl ClusterwideTable {
+    /// Id of the corrseponding system global space.
+    #[inline(always)]
+    pub const fn id(&self) -> SpaceId {
+        *self as _
+    }
+
+    /// Name of the corrseponding system global space.
+    #[inline(always)]
+    pub const fn name(&self) -> &'static str {
+        self.as_str()
+    }
+
+    /// A slice of all possible variants of `Self`.
+    /// Guaranteed to return spaces in ascending order of their id
+    #[inline(always)]
+    pub const fn all_tables() -> &'static [Self] {
+        Self::VARIANTS
+    }
+
     #[inline]
     pub(crate) fn get(&self) -> tarantool::Result<Space> {
         Space::find_cached(self.as_str()).ok_or_else(|| {
