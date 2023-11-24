@@ -733,12 +733,10 @@ impl NodeImpl {
         match op {
             Op::Nop => {}
             Op::Dml(op) => {
-                let res = match &op {
-                    Dml::Insert { table, tuple } => self.storage.insert(*table, tuple).map(Some),
-                    Dml::Replace { table, tuple } => self.storage.replace(*table, tuple).map(Some),
-                    Dml::Update { table, key, ops } => self.storage.update(*table, key, ops),
-                    Dml::Delete { table, key } => self.storage.delete(*table, key),
-                };
+                let res = self.storage.do_dml(&op);
+                if let Err(e) = &res {
+                    tlog!(Error, "clusterwide dml failed: {e}");
+                }
                 result = Box::new(res) as _;
             }
             Op::DdlPrepare {

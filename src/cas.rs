@@ -27,6 +27,7 @@ use tarantool::session;
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
 use tarantool::tlua;
+use tarantool::transaction;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
 /// This spaces cannot be changed directly dy a [`Dml`] operation. They have
@@ -274,9 +275,24 @@ fn proc_cas_local(req: Request) -> Result<Response> {
         // Note: audit log record is automatically emmitted,
         // because it is hooked into AccessDenied error creation
         box_access_check_space(dml.space(), PrivType::Write)?;
-    }
 
-    // TODO: apply to limbo first
+        // Check if the requested dml is applicable to the local storage.
+        // This will run the required on_replace triggers which will check among
+        // other things conformity to space format, user defined constraints etc.
+        //
+        // FIXME: this works for explicit constraints which would be directly
+        // violated by the operation, but there are still some cases where an
+        // invalid dml operation would be proposed to the raft log, which would
+        // fail to apply, e.g. if there's a number of dml operations in flight
+        // which conflict via the secondary key.
+        // To fix these cases we would need to implement the so-called "limbo".
+        // See https://git.picodata.io/picodata/picodata/picodata/-/issues/368
+        transaction::begin()?;
+        let res = storage.do_dml(dml);
+        transaction::rollback().expect("can't fail");
+        // Return the error if it happened. Ignore the tuple if there was one.
+        _ = res?;
+    }
 
     // Don't wait for the proposal to be accepted, instead return the index
     // to the requestor, so that they can wait for it.

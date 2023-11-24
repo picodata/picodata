@@ -108,6 +108,7 @@ with the `YY.0M.MICRO` scheme.
 - Add `pico.change_password()`
 - Add `pico.wait_ddl_finalize()`
 - Make `pico.cas` follow access control rules
+- `pico.cas` now verifies dml operations before applying them
 - Change `pico.raft_log()` arguments
 - Make `opts.timeout` optional in most functions
 

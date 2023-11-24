@@ -96,6 +96,66 @@ def test_cas_errors(instance: Instance):
             + "in a predicate",
         )
 
+    # Field type error
+    with pytest.raises(TarantoolError) as error:
+        instance.cas(
+            "insert",
+            "_pico_property",
+            [1, 2, 3],
+        )
+    assert error.value.args == (
+        "ER_PROC_C",
+        "tarantool error: FieldType: Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
+    )
+
+    # Delete of undeletable property
+    with pytest.raises(TarantoolError) as error:
+        instance.cas(
+            "delete",
+            "_pico_property",
+            ["next_schema_version"],
+        )
+    assert error.value.args == (
+        "ER_PROC_C",
+        "tarantool error: ProcLua: property next_schema_version cannot be deleted",  # noqa: E501
+    )
+
+    # Incorrect type of builtin property
+    with pytest.raises(TarantoolError) as error:
+        instance.cas(
+            "replace",
+            "_pico_property",
+            ["global_schema_version", "this is not a version number"],
+        )
+    assert error.value.args == (
+        "ER_PROC_C",
+        """tarantool error: ProcLua: incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
+    )
+
+    # Too many values for builtin property
+    with pytest.raises(TarantoolError) as error:
+        instance.cas(
+            "replace",
+            "_pico_property",
+            ["password_min_length", 13, 37],
+        )
+    assert error.value.args == (
+        "ER_PROC_C",
+        "tarantool error: ProcLua: too many fields: got 3, expected 2",
+    )
+
+    # Not enough values for builtin property
+    with pytest.raises(TarantoolError) as error:
+        instance.cas(
+            "replace",
+            "_pico_property",
+            ["auto_offline_timeout"],
+        )
+    assert error.value.args == (
+        "ER_PROC_C",
+        "tarantool error: FieldMissing: Tuple field 2 (value) required by space format is missing",  # noqa: E501
+    )
+
 
 def test_cas_predicate(instance: Instance):
     instance.raft_compact_log()

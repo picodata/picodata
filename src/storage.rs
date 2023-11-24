@@ -26,6 +26,7 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
+use crate::traft::op::Dml;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
@@ -941,45 +942,16 @@ impl Clusterwide {
         Ok(Rc::new(key_def))
     }
 
-    pub(crate) fn insert(
-        &self,
-        space_id: SpaceId,
-        tuple: &TupleBuffer,
-    ) -> tarantool::Result<Tuple> {
-        let space = space_by_id_unchecked(space_id);
-        let res = space.insert(tuple)?;
-        Ok(res)
-    }
-
-    pub(crate) fn replace(
-        &self,
-        space_id: SpaceId,
-        tuple: &TupleBuffer,
-    ) -> tarantool::Result<Tuple> {
-        let space = space_by_id_unchecked(space_id);
-        let res = space.replace(tuple)?;
-        Ok(res)
-    }
-
-    pub(crate) fn update(
-        &self,
-        space_id: SpaceId,
-        key: &TupleBuffer,
-        ops: &[TupleBuffer],
-    ) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id_unchecked(space_id);
-        let res = space.update(key, ops)?;
-        Ok(res)
-    }
-
-    pub(crate) fn delete(
-        &self,
-        space_id: SpaceId,
-        key: &TupleBuffer,
-    ) -> tarantool::Result<Option<Tuple>> {
-        let space = space_by_id_unchecked(space_id);
-        let res = space.delete(key)?;
-        Ok(res)
+    /// Perform the `dml` operation on the local storage.
+    #[inline]
+    pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
+        let space = space_by_id_unchecked(dml.space());
+        match dml {
+            Dml::Insert { tuple, .. } => space.insert(tuple).map(Some),
+            Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
+            Dml::Update { key, ops, .. } => space.update(key, ops),
+            Dml::Delete { key, .. } => space.delete(key),
+        }
     }
 }
 
@@ -1114,6 +1086,73 @@ impl From<ClusterwideTable> for SpaceId {
     }
 }
 
+impl PropertyName {
+    /// Returns `true` if this property cannot be deleted. These are usually the
+    /// values only updated by picodata and some subsystems rely on them always
+    /// being set (or not being unset).
+    #[inline(always)]
+    fn must_not_delete(&self) -> bool {
+        matches!(
+            self,
+            Self::VshardBootstrapped | Self::GlobalSchemaVersion | Self::NextSchemaVersion
+        )
+    }
+
+    /// Verify type of the property value being inserted (or replaced) in the
+    /// _pico_property table. `self` is the first field of the `new` tuple.
+    #[inline]
+    fn verify_new_tuple(&self, new: &Tuple) -> Result<()> {
+        // TODO: some of these properties are only supposed to be updated by
+        // picodata. Maybe for these properties we should check the effective
+        // user id and if it's not admin we deny the change. We'll have to set
+        // effective user id to the one who requested the dml in proc_cas.
+
+        let map_err = |e: TntError| -> Error {
+            // Make the msgpack decoding error message a little bit more human readable.
+            match e {
+                TntError::Decode { error, .. } => {
+                    Error::other(format!("incorrect type of property {self}: {error}"))
+                }
+                e => e.into(),
+            }
+        };
+
+        match self {
+            Self::VshardBootstrapped => {
+                // Check it's a bool.
+                _ = new.field::<bool>(1)?;
+            }
+            Self::NextSchemaVersion
+            | Self::PendingSchemaVersion
+            | Self::GlobalSchemaVersion
+            | Self::PasswordMinLength
+            | Self::MaxLoginAttempts
+            | Self::MaxPgPortals
+            | Self::SnapshotChunkMaxSize => {
+                // Check it's an unsigned integer.
+                _ = new.field::<u64>(1).map_err(map_err)?;
+            }
+            Self::AutoOfflineTimeout
+            | Self::MaxHeartbeatPeriod
+            | Self::SnapshotReadViewCloseTimeout => {
+                // Check it's a floating point number.
+                // NOTE: serde implicitly converts integers to floats for us here.
+                _ = new.field::<f64>(1).map_err(map_err)?;
+            }
+            Self::CurrentVshardConfig | Self::TargetVshardConfig => {
+                // Check it decodes into VshardConfig.
+                _ = new.field::<VshardConfig>(1).map_err(map_err)?;
+            }
+            Self::PendingSchemaChange => {
+                // Check it decodes into Ddl.
+                _ = new.field::<Ddl>(1).map_err(map_err)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
@@ -1142,7 +1181,51 @@ impl Properties {
             .if_not_exists(true)
             .create()?;
 
+        on_replace(space.id(), Self::on_replace)?;
+
         Ok(Self { space, index })
+    }
+
+    /// Callback which is called when data in _pico_property is updated.
+    pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
+        match (old, new) {
+            (Some(old), None) => {
+                // Delete
+                let Ok(Some(key)) = old.field::<PropertyName>(0) else {
+                    // Not a builtin property.
+                    return Ok(());
+                };
+
+                if key.must_not_delete() {
+                    return Err(Error::other(format!("property {key} cannot be deleted")));
+                }
+            }
+            (old, Some(new)) => {
+                // Insert or Update
+                let Ok(Some(key)) = new.field::<PropertyName>(0) else {
+                    // Not a builtin property.
+                    // Cannot be a wrong type error, because tarantool checks
+                    // the format for us.
+                    if old.is_none() { // Insert
+                        // FIXME: this is currently printed twice
+                        tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
+                    }
+                    return Ok(());
+                };
+
+                key.verify_new_tuple(&new)?;
+
+                let field_count = new.len();
+                if field_count != 2 {
+                    return Err(Error::other(format!(
+                        "too many fields: got {field_count}, expected 2"
+                    )));
+                }
+            }
+            (None, None) => unreachable!(),
+        }
+
+        Ok(())
     }
 
     #[inline]
@@ -3015,6 +3098,36 @@ pub fn set_local_schema_version(v: u64) -> tarantool::Result<()> {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub const SPACE_ID_INTERNAL_MAX: u32 = 1024;
+
+////////////////////////////////////////////////////////////////////////////////
+// misc
+////////////////////////////////////////////////////////////////////////////////
+
+/// Add a on_replace trigger for space with `space_id` so that `cb` is called
+/// each time the space is updated.
+#[inline]
+pub fn on_replace<F>(space_id: SpaceId, mut cb: F) -> tarantool::Result<()>
+where
+    F: FnMut(Option<Tuple>, Option<Tuple>) -> Result<()> + 'static,
+{
+    // FIXME: rewrite using ffi-api when it's available
+    // See: https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/130
+    let lua = ::tarantool::lua_state();
+    let on_replace = tlua::Function::new(
+        move |old: Option<Tuple>, new: Option<Tuple>, lua: tlua::LuaState| {
+            if let Err(e) = cb(old, new) {
+                tlua::error!(lua, "{}", e);
+            }
+        },
+    );
+    lua.exec_with(
+        "local space_id, callback = ...
+        box.space[space_id]:on_replace(callback)",
+        (space_id, on_replace),
+    )
+    .map_err(tlua::LuaError::from)?;
+    Ok(())
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // tests
