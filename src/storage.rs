@@ -23,7 +23,7 @@ use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
 use crate::schema::{PrivilegeDef, RoleDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
-use crate::sql::pgproto::DEFAULT_MAX_PG_STATEMENTS;
+use crate::sql::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
@@ -1133,6 +1133,9 @@ impl From<ClusterwideTable> for SpaceId {
         /// PG statement storage size.
         MaxPgStatements = "max_pg_statements",
 
+        /// PG portal storage size.
+        MaxPgPortals = "max_pg_portals",
+
         /// Raft snapshot will be sent out in chunks not bigger than this threshold.
         /// Note: actual snapshot size may exceed this threshold. In most cases
         /// it will just add a couple of dozen metadata bytes. But in extreme
@@ -1209,6 +1212,7 @@ impl PropertyName {
             | Self::GlobalSchemaVersion
             | Self::PasswordMinLength
             | Self::MaxLoginAttempts
+            | Self::MaxPgPortals
             | Self::MaxPgStatements
             | Self::SnapshotChunkMaxSize => {
                 // Check it's an unsigned integer.
@@ -1242,7 +1246,8 @@ impl PropertyName {
             Self::PasswordMinLength
             | Self::MaxLoginAttempts
             | Self::SnapshotChunkMaxSize
-            | Self::MaxPgStatements => {
+            | Self::MaxPgStatements
+            | Self::MaxPgPortals => {
                 let v = tuple.field::<usize>(1)?.ok_or_else(bad_value)?;
                 Some(format!("{v}"))
             }
@@ -1471,6 +1476,14 @@ impl Properties {
         let res = self
             .get(PropertyName::MaxPgStatements)?
             .unwrap_or(DEFAULT_MAX_PG_STATEMENTS);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
+        let res = self
+            .get(PropertyName::MaxPgPortals)?
+            .unwrap_or(DEFAULT_MAX_PG_PORTALS);
         Ok(res)
     }
 

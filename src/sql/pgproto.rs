@@ -2,43 +2,119 @@
 
 use crate::traft::error::Error;
 use crate::traft::{self, node};
-use crate::util::effective_user_id;
+use ::tarantool::tuple::Tuple;
+use rmpv::Value;
 use sbroad::errors::{Entity, SbroadError};
+use sbroad::executor::ir::ExecutionPlan;
 use sbroad::executor::result::MetadataColumn;
+use sbroad::executor::Query;
 use sbroad::ir::acl::{Acl, GrantRevokeType};
 use sbroad::ir::block::Block;
 use sbroad::ir::ddl::Ddl;
 use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
 use sbroad::ir::{Node, Plan};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::ops::Bound::Included;
+use std::cell::{Cell, RefCell};
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Bound::{Excluded, Included};
 use std::os::raw::c_int;
 use std::rc::Rc;
+use std::vec::IntoIter;
 use tarantool::proc::{Return, ReturnMsgpack};
-use tarantool::session::UserId;
 use tarantool::tuple::FunctionCtx;
 
+use super::dispatch;
+use super::router::RouterRuntime;
+
 pub const DEFAULT_MAX_PG_STATEMENTS: usize = 50;
+pub const DEFAULT_MAX_PG_PORTALS: usize = 50;
 
-pub type Descriptor = usize;
+pub type ClientId = u32;
 
-pub struct StatementStorage {
-    map: BTreeMap<(UserId, Descriptor), BoxedStatement>,
-    len: usize,
+/// Storage for Statements and Portals.
+/// Essentially a map with custom logic for updates and unnamed elements.
+struct PgStorage<S> {
+    map: BTreeMap<(ClientId, Rc<str>), S>,
     capacity: usize,
+    // We reuse this empty name in range scans in order to avoid Rc allocations.
+    // Note: see names_by_client_id.
+    empty_name: Rc<str>,
 }
 
-impl StatementStorage {
+impl<S> PgStorage<S> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: BTreeMap::new(),
-            len: 0,
             capacity,
+            empty_name: Rc::from(String::new()),
         }
+    }
+
+    pub fn put(&mut self, key: (ClientId, Rc<str>), value: S) -> traft::Result<()> {
+        if self.len() >= self.capacity() {
+            return Err(Error::Other("Statement storage is full".into()));
+        }
+
+        if key.1.is_empty() {
+            // Updates are only allowed for unnamed statements and portals.
+            self.map.insert(key, value);
+            return Ok(());
+        }
+
+        match self.map.entry(key) {
+            Entry::Occupied(entry) => {
+                let (id, name) = entry.key();
+                Err(Error::Other(
+                    format!("Duplicated name \'{name}\' for client {id}").into(),
+                ))
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(value);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn remove(&mut self, key: &(ClientId, Rc<str>)) -> Option<S> {
+        self.map.remove(key)
+    }
+
+    pub fn remove_by_client_id(&mut self, id: ClientId) {
+        self.map.retain(|k, _| k.0 != id)
+    }
+
+    pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
+        let range = (
+            Included((id, Rc::clone(&self.empty_name))),
+            Excluded((id + 1, Rc::clone(&self.empty_name))),
+        );
+        self.map
+            .range(range)
+            .map(|((_, name), _)| Rc::clone(name))
+            .collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+}
+
+pub struct StatementStorage(PgStorage<StatementHolder>);
+
+impl StatementStorage {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(PgStorage::with_capacity(capacity))
     }
 
     pub fn new() -> Self {
@@ -46,57 +122,42 @@ impl StatementStorage {
             Ok(node) => &node.storage,
             Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
         };
-        match storage.properties.max_pg_statements() {
+        match storage.properties.max_pg_portals() {
             Ok(size) => Self::with_capacity(size),
             Err(_) => Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
         }
     }
 
-    pub fn put(&mut self, key: Descriptor, boxed: BoxedStatement) -> traft::Result<()> {
-        if self.len() >= self.capacity() {
-            return Err(Error::Other("Statement storage is full".into()));
-        }
-        let user_id = boxed.statement().user_id();
-        self.map.insert((user_id, key), boxed);
-        self.len += 1;
-        Ok(())
+    pub fn put(&mut self, key: (ClientId, Rc<str>), statement: Statement) -> traft::Result<()> {
+        self.0.put(key, StatementHolder(statement))
     }
 
-    pub fn remove(&mut self, key: Descriptor) -> traft::Result<BoxedStatement> {
-        let user_id = effective_user_id();
-        let statement = self.map.remove(&(user_id, key)).map_or_else(
-            || {
-                Err(Error::Other(
-                    format!("No such statement descriptor {key} for user {user_id}").into(),
-                ))
-            },
-            Ok,
-        )?;
-        self.len -= 1;
-        Ok(statement)
+    pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<Statement> {
+        self.0.map.get(key).map(|s| s.0.clone())
     }
 
-    pub fn keys(&self) -> Vec<Descriptor> {
-        let user_id = effective_user_id();
-        self.map
-            .range((
-                Included((user_id, Descriptor::MIN)),
-                Included((user_id, Descriptor::MAX)),
-            ))
-            .map(|((_, key), _)| *key)
-            .collect()
+    pub fn remove(&mut self, key: &(ClientId, Rc<str>)) {
+        self.0.remove(key);
+    }
+
+    pub fn remove_by_client_id(&mut self, id: ClientId) {
+        self.0.remove_by_client_id(id);
+    }
+
+    pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
+        self.0.names_by_client_id(id)
     }
 
     pub fn len(&self) -> usize {
-        self.len
+        self.0.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.0.is_empty()
     }
 
     pub fn capacity(&self) -> usize {
-        self.capacity
+        self.0.capacity()
     }
 }
 
@@ -106,98 +167,375 @@ impl Default for StatementStorage {
     }
 }
 
-thread_local! {
-    pub static PG_STATEMENTS: Rc<RefCell<StatementStorage>> = Rc::new(RefCell::new(StatementStorage::new()));
+pub struct PortalStorage(PgStorage<Portal>);
+
+impl PortalStorage {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(PgStorage::with_capacity(capacity))
+    }
+
+    pub fn new() -> Self {
+        let storage = match node::global() {
+            Ok(node) => &node.storage,
+            Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_PORTALS),
+        };
+        match storage.properties.max_pg_portals() {
+            Ok(size) => Self::with_capacity(size),
+            Err(_) => Self::with_capacity(DEFAULT_MAX_PG_PORTALS),
+        }
+    }
+
+    pub fn put(&mut self, key: (ClientId, Rc<str>), portal: Portal) -> traft::Result<()> {
+        self.0.put(key, portal)?;
+        Ok(())
+    }
+
+    pub fn remove(&mut self, key: &(ClientId, Rc<str>)) -> Option<Portal> {
+        self.0.remove(key)
+    }
+
+    pub fn remove_by_client_id(&mut self, id: ClientId) {
+        self.0.remove_by_client_id(id);
+    }
+
+    pub fn remove_portals_by_statement(&mut self, statement: &Statement) {
+        self.0
+            .map
+            .retain(|_, p| !Statement::ptr_eq(p.statement(), statement));
+    }
+
+    pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
+        self.0.names_by_client_id(id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
 }
 
-pub fn with_statements<T, F>(key: Descriptor, f: F) -> traft::Result<T>
+impl Default for PortalStorage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+thread_local! {
+    pub static PG_STATEMENTS: Rc<RefCell<StatementStorage>> = Rc::new(RefCell::new(StatementStorage::new()));
+    pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
+}
+
+pub fn with_portals_mut<T, F>(key: (ClientId, Rc<str>), f: F) -> traft::Result<T>
 where
-    F: FnOnce(&mut BoxedStatement) -> traft::Result<T>,
+    F: FnOnce(&mut Portal) -> traft::Result<T>,
 {
-    // The f() closure may yield and requires a mutable access to the statement from the statement storage.
-    // So we have to remove the statement from the storage, pass it to the closure and put it back
-    // after the closure is done. Otherwise, the statement may be borrowed twice and produce a panic.
-    let mut statement: BoxedStatement =
-        PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(key))?;
-    let result = f(&mut statement);
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().put(key, statement))?;
+    let mut portal: Portal = PG_PORTALS.with(|storage| {
+        storage.borrow_mut().remove(&key).ok_or(Error::Other(
+            format!("Couldn't find portal \'{}\'.", key.1).into(),
+        ))
+    })?;
+    let result = f(&mut portal);
+    // Statement could be closed while the processing portal was running,
+    // so the portal wasn't in the storage and wasn't removed.
+    // In that case there is no need to put it back.
+    if !portal.statement().is_closed() {
+        PG_PORTALS.with(|storage| storage.borrow_mut().put(key, portal))?;
+    }
     result
 }
 
+pub type Oid = u32;
+
 #[derive(Debug, Default)]
-struct Statement {
+pub struct StatementInner {
     id: String,
-    user_id: UserId,
-    sql: String,
+    // Query pattern used for opentelemetry.
+    query_pattern: String,
     plan: Plan,
+    describe: StatementDescribe,
+    // true when the statement is deleted from the storage
+    is_closed: Cell<bool>,
 }
 
-impl Statement {
+impl StatementInner {
     fn id(&self) -> &str {
         &self.id
     }
 
-    fn new(id: String, sql: String, plan: Plan) -> Self {
-        let user_id = effective_user_id();
-        Self {
+    fn new(
+        id: String,
+        query_pattern: String,
+        plan: Plan,
+        specified_param_oids: Vec<u32>,
+    ) -> Result<Self, Error> {
+        let param_oids = derive_param_oids(&plan, specified_param_oids)?;
+        let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
+        Ok(Self {
             id,
-            sql,
+            query_pattern,
             plan,
-            user_id,
-        }
+            describe,
+            is_closed: Cell::new(false),
+        })
     }
 
     fn plan(&self) -> &Plan {
         &self.plan
     }
 
-    fn plan_mut(&mut self) -> &mut Plan {
-        &mut self.plan
+    fn query_pattern(&self) -> &str {
+        &self.query_pattern
     }
 
-    fn sql(&self) -> &str {
-        &self.sql
+    fn describe(&self) -> &StatementDescribe {
+        &self.describe
     }
 
-    fn user_id(&self) -> UserId {
-        self.user_id
+    fn is_closed(&self) -> bool {
+        self.is_closed.get()
     }
 }
 
-#[derive(Debug, Default)]
-pub struct BoxedStatement(Box<Statement>);
+#[derive(Debug, Clone, Default)]
+pub struct Statement(Rc<StatementInner>);
 
-impl BoxedStatement {
-    pub fn new(id: String, sql: String, plan: Plan) -> Self {
-        Self(Box::new(Statement::new(id, sql, plan)))
+impl Statement {
+    pub fn id(&self) -> &str {
+        self.0.id()
     }
 
-    pub fn id(&self) -> &str {
-        self.statement().id()
+    pub fn new(
+        id: String,
+        sql: String,
+        plan: Plan,
+        specified_param_oids: Vec<u32>,
+    ) -> Result<Self, Error> {
+        Ok(Self(Rc::new(StatementInner::new(
+            id,
+            sql,
+            plan,
+            specified_param_oids,
+        )?)))
     }
 
     pub fn plan(&self) -> &Plan {
-        self.statement().plan()
+        self.0.plan()
     }
 
-    pub fn plan_mut(&mut self) -> &mut Plan {
-        self.statement_mut().plan_mut()
+    pub fn query_pattern(&self) -> &str {
+        self.0.query_pattern()
     }
 
-    pub fn sql(&self) -> &str {
-        self.statement().sql()
+    pub fn describe(&self) -> &StatementDescribe {
+        self.0.describe()
     }
 
-    pub fn descriptor(&self) -> Descriptor {
-        &*(self.0) as *const Statement as Descriptor
+    pub fn is_closed(&self) -> bool {
+        self.0.is_closed()
     }
 
-    fn statement(&self) -> &Statement {
-        &self.0
+    pub fn set_is_closed(&self, is_closed: bool) {
+        self.0.is_closed.replace(is_closed);
     }
 
-    fn statement_mut(&mut self) -> &mut Statement {
-        &mut self.0
+    fn ptr_eq(&self, other: &Statement) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+// A wrapper over Statement that closes portals created from it on `Drop`.
+pub struct StatementHolder(Statement);
+
+impl Drop for StatementHolder {
+    fn drop(&mut self) {
+        self.0.set_is_closed(true);
+        PG_PORTALS.with(|storage| storage.borrow_mut().remove_portals_by_statement(&self.0));
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct StatementDescribe {
+    #[serde(flatten)]
+    describe: Describe,
+    param_oids: Vec<Oid>,
+}
+
+impl StatementDescribe {
+    fn new(describe: Describe, param_oids: Vec<Oid>) -> Self {
+        Self {
+            describe,
+            param_oids,
+        }
+    }
+}
+
+// TODO: use const from pgwire once pgproto is merged to picodata
+const TEXT_OID: u32 = 25;
+
+fn derive_param_oids(plan: &Plan, mut param_oids: Vec<Oid>) -> Result<Vec<Oid>, Error> {
+    let params_count = plan.get_param_set().len();
+    if params_count < param_oids.len() {
+        return Err(Error::Other(
+            format!(
+                "query has {} parameters, but {} were given",
+                params_count,
+                param_oids.len()
+            )
+            .into(),
+        ));
+    }
+
+    // Postgres derives oids of unspecified parameters depending on the context.
+    // If oid cannot be derived, it is treated as text.
+    let text_oid = TEXT_OID;
+    param_oids.iter_mut().for_each(|oid| {
+        // 0 means unspecified type
+        if *oid == 0 {
+            *oid = text_oid;
+        }
+    });
+    param_oids.resize(params_count, text_oid);
+    Ok(param_oids)
+}
+
+#[derive(Debug, Default)]
+pub struct Portal {
+    plan: Plan,
+    statement: Statement,
+    describe: PortalDescribe,
+    state: PortalState,
+}
+
+#[derive(Debug, Default)]
+enum PortalState {
+    #[default]
+    NotStarted,
+    Running(IntoIter<Value>),
+    Finished(Option<Tuple>),
+}
+
+/// Try to get rows from the query execution result.
+/// Some is returned for dql-like queires (dql or explain), otherwise None is returned.
+fn tuple_as_rows(tuple: &Tuple) -> Option<Vec<Value>> {
+    #[derive(Deserialize, Default, Debug)]
+    struct DqlResult {
+        rows: Vec<Value>,
+    }
+    if let Ok(Some(res)) = tuple.field::<DqlResult>(0) {
+        return Some(res.rows);
+    }
+
+    // Try to parse explain result.
+    if let Ok(Some(res)) = tuple.field::<Vec<Value>>(0) {
+        return Some(res);
+    }
+
+    None
+}
+
+fn take_rows(rows: &mut IntoIter<Value>, max_rows: usize) -> traft::Result<Tuple> {
+    let is_finished = rows.len() <= max_rows;
+    let rows = rows.take(max_rows).collect();
+    #[derive(Serialize)]
+    struct RunningResult {
+        rows: Vec<Value>,
+        is_finished: bool,
+    }
+    let result = RunningResult { rows, is_finished };
+    let mp = rmp_serde::to_vec_named(&vec![result]).map_err(|e| Error::Other(e.into()))?;
+    let ret = Tuple::try_from_slice(&mp).map_err(|e| Error::Other(e.into()))?;
+    Ok(ret)
+}
+
+impl Portal {
+    pub fn new(plan: Plan, statement: Statement, output_format: Vec<u8>) -> Result<Self, Error> {
+        let stmt_describe = statement.describe();
+        let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
+        Ok(Self {
+            plan,
+            statement,
+            describe,
+            state: PortalState::NotStarted,
+        })
+    }
+
+    pub fn execute(&mut self, max_rows: usize) -> traft::Result<Tuple> {
+        loop {
+            match &mut self.state {
+                PortalState::NotStarted => self.start()?,
+                PortalState::Finished(Some(res)) => {
+                    // clone only increments tuple's refcounter
+                    let res = res.clone();
+                    self.state = PortalState::Finished(None);
+                    return Ok(res);
+                }
+                PortalState::Running(ref mut rows) => {
+                    let res = take_rows(rows, max_rows)?;
+                    if rows.len() == 0 {
+                        self.state = PortalState::Finished(None);
+                    }
+                    return Ok(res);
+                }
+                _ => {
+                    return Err(Error::Other(
+                        format!("Can't execute portal in state {:?}", self.state).into(),
+                    ))
+                }
+            }
+        }
+    }
+
+    fn start(&mut self) -> traft::Result<()> {
+        let runtime = RouterRuntime::new().map_err(Error::from)?;
+        let query = Query::from_parts(
+            self.plan.is_explain(),
+            // XXX: the router runtime cache contains only unbinded IR plans to
+            // speed up SQL parsing and metadata resolution. We need to clone the
+            // plan here as its IR would be mutated during query execution (bind,
+            // optimization, dispatch steps). Otherwise we'll polute the parsing
+            // cache entry.
+            ExecutionPlan::from(self.plan.clone()),
+            &runtime,
+            HashMap::new(),
+        );
+        let res = dispatch(query)?;
+        if let Some(rows) = tuple_as_rows(&res) {
+            self.state = PortalState::Running(rows.into_iter());
+        } else {
+            self.state = PortalState::Finished(Some(res));
+        }
+        Ok(())
+    }
+
+    pub fn describe(&self) -> &PortalDescribe {
+        &self.describe
+    }
+
+    pub fn statement(&self) -> &Statement {
+        &self.statement
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PortalDescribe {
+    #[serde(flatten)]
+    describe: Describe,
+    output_format: Vec<u8>,
+}
+
+impl PortalDescribe {
+    fn new(describe: Describe, output_format: Vec<u8>) -> Self {
+        Self {
+            describe,
+            output_format,
+        }
     }
 }
 
@@ -229,7 +567,7 @@ fn explain_output_format() -> Vec<MetadataColumn> {
     vec![MetadataColumn::new("QUERY PLAN".into(), "string".into())]
 }
 
-#[derive(Debug, Default, Serialize_repr)]
+#[derive(Debug, Clone, Default, Serialize_repr)]
 #[repr(u8)]
 pub enum QueryType {
     Acl = 0,
@@ -344,7 +682,7 @@ impl TryFrom<&Node> for CommandTag {
 }
 
 /// Contains a query description used by pgproto.
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Describe {
     pub command_tag: CommandTag,
     pub query_type: QueryType,
@@ -396,30 +734,52 @@ impl Return for Describe {
 }
 
 #[derive(Debug, Serialize)]
-pub struct UserDescriptors {
-    available: Vec<Descriptor>,
+pub struct UserStatementNames {
+    // Available statements for the client with the given client id.
+    available: Vec<Rc<str>>,
+    // Total number of statements in the storage (including other clients).
     total: usize,
 }
 
-impl UserDescriptors {
-    pub fn new() -> Self {
+impl UserStatementNames {
+    pub fn new(id: ClientId) -> Self {
         PG_STATEMENTS.with(|storage| {
             let storage = storage.borrow();
-            UserDescriptors {
-                available: storage.keys(),
+            Self {
+                available: storage.names_by_client_id(id),
                 total: storage.len(),
             }
         })
     }
 }
 
-impl Default for UserDescriptors {
-    fn default() -> Self {
-        Self::new()
+impl Return for UserStatementNames {
+    fn ret(self, ctx: FunctionCtx) -> c_int {
+        ReturnMsgpack(self).ret(ctx)
     }
 }
 
-impl Return for UserDescriptors {
+#[derive(Debug, Serialize)]
+pub struct UserPortalNames {
+    // Available portals for the client with the given client id.
+    available: Vec<Rc<str>>,
+    // Total number of portals in the storage (including other clients).
+    total: usize,
+}
+
+impl UserPortalNames {
+    pub fn new(id: ClientId) -> Self {
+        PG_PORTALS.with(|storage| {
+            let storage = storage.borrow();
+            Self {
+                available: storage.names_by_client_id(id),
+                total: storage.len(),
+            }
+        })
+    }
+}
+
+impl Return for UserPortalNames {
     fn ret(self, ctx: FunctionCtx) -> c_int {
         ReturnMsgpack(self).ret(ctx)
     }

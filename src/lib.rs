@@ -136,11 +136,16 @@ fn init_sbroad() {
     for (module, func) in &[
         ("sbroad", "sql"),
         ("pgproto", "pg_bind"),
-        ("pgproto", "pg_close"),
-        ("pgproto", "pg_describe"),
+        ("pgproto", "pg_close_stmt"),
+        ("pgproto", "pg_close_portal"),
+        ("pgproto", "pg_describe_stmt"),
+        ("pgproto", "pg_describe_portal"),
         ("pgproto", "pg_execute"),
         ("pgproto", "pg_parse"),
         ("pgproto", "pg_statements"),
+        ("pgproto", "pg_portals"),
+        ("pgproto", "pg_close_client_stmts"),
+        ("pgproto", "pg_close_client_portals"),
     ] {
         let program = format!(
             r#"

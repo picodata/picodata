@@ -1,8 +1,13 @@
 dispatch_query
 execute
 proc_pg_bind
-proc_pg_close
-proc_pg_describe
+proc_pg_close_stmt
+proc_pg_close_portal
+proc_pg_describe_stmt
+proc_pg_describe_portal
 proc_pg_execute
 proc_pg_parse
+proc_pg_portals
 proc_pg_statements
+proc_pg_close_client_stmts
+proc_pg_close_client_portals

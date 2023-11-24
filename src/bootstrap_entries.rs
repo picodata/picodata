@@ -150,6 +150,15 @@ pub(super) fn prepare(
     init_entries_push_op(
         op::Dml::insert(
             ClusterwideTable::Property,
+            &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
+            ADMIN_ID,
+        )
+    );
+
+    #[rustfmt::skip]
+    init_entries_push_op(
+        op::Dml::insert(
+            ClusterwideTable::Property,
             &(PropertyName::SnapshotChunkMaxSize, storage::DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE),
             ADMIN_ID,
         )
