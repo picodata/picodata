@@ -21,12 +21,14 @@ nav:
     - tutorial/ldap.md
     - tutorial/tutorial_users.md
     - tutorial/sql_examples.md
+    - tutorial/audit_log.md
   - Справочные материалы:
     - reference/cli.md
     - reference/sql_types.md
     - reference/sql_queries.md
     - reference/api.md
     - reference/ansi_sql.md
+    - reference/audit_events.md
   - Архитектура:
     - architecture/distributed_sql.md
     - architecture/discovery.md
