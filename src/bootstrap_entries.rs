@@ -3,13 +3,13 @@ use protobuf::Message;
 use tarantool::auth::AuthData;
 use tarantool::auth::AuthDef;
 use tarantool::auth::AuthMethod;
-use tarantool::session::UserId;
 
 use crate::cli::args;
 use crate::instance::Instance;
 use crate::schema::PrivilegeDef;
 use crate::schema::RoleDef;
 use crate::schema::UserDef;
+use crate::schema::{ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID};
 use crate::sql::pgproto;
 use crate::storage;
 use crate::storage::ClusterwideTable;
@@ -18,11 +18,6 @@ use crate::tier::Tier;
 use crate::traft;
 use crate::traft::op;
 use crate::traft::LogicalClock;
-
-pub const GUEST_ID: UserId = 0;
-pub const ADMIN_ID: UserId = 1;
-pub const PUBLIC_ID: UserId = 2;
-pub const SUPER_ID: UserId = 31;
 
 pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> Vec<raft::Entry> {
     let mut lc = LogicalClock::new(instance.raft_id, 0);
@@ -175,7 +170,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
 
     // equivalent SQL expressions under 'admin' user:
     // GRANT <'usage', 'session'> ON 'universe' TO 'guest'
-    // GRANT 'execute' ON <'public', 'super'> TO 'guest'
+    // GRANT <'public', 'super'> TO 'guest'
     // GRANT 'all privileges' ON 'universe' TO 'admin'
     // GRANT 'all privileges' ON 'universe' TO 'super'
     for priv_def in PrivilegeDef::get_default_privileges() {

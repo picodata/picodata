@@ -20,6 +20,7 @@ use crate::replicaset::Replicaset;
 use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
 use crate::schema::{PrivilegeDef, RoleDef, UserDef};
+use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
 use crate::tier::Tier;
 use crate::tlog;
@@ -2713,7 +2714,7 @@ impl SchemaDef for PrivilegeDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        if Self::get_default_privileges().contains(self) {
+        if self.is_default_privilege() {
             return Ok(());
         }
 
@@ -2757,11 +2758,55 @@ pub mod acl {
         }
     }
 
+    fn get_default_privileges_for_user(
+        user_def: &UserDef,
+        grantor_id: UserId,
+    ) -> [PrivilegeDef; 4] {
+        [
+            // SQL: GRANT 'public' TO <user_name>
+            PrivilegeDef {
+                privilege: PrivilegeType::Execute,
+                object_type: SchemaObjectType::Role,
+                object_id: PUBLIC_ID as _,
+                grantee_id: user_def.id,
+                grantor_id,
+                schema_version: user_def.schema_version,
+            },
+            // ALTER USER <user_name> LOGIN
+            PrivilegeDef {
+                privilege: PrivilegeType::Session,
+                object_type: SchemaObjectType::Universe,
+                object_id: UNIVERSE_ID,
+                grantee_id: user_def.id,
+                grantor_id: ADMIN_ID,
+                schema_version: user_def.schema_version,
+            },
+            // ALTER USER <user_name> ENABLE
+            PrivilegeDef {
+                privilege: PrivilegeType::Usage,
+                object_type: SchemaObjectType::Universe,
+                object_id: UNIVERSE_ID,
+                grantee_id: user_def.id,
+                grantor_id: ADMIN_ID,
+                schema_version: user_def.schema_version,
+            },
+            // SQL: GRANT ALTER ON <user_name> TO <user_name>
+            PrivilegeDef {
+                privilege: PrivilegeType::Alter,
+                object_type: SchemaObjectType::User,
+                object_id: user_def.id as _,
+                grantee_id: user_def.id,
+                grantor_id,
+                schema_version: user_def.schema_version,
+            },
+        ]
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     // acl in global storage
     ////////////////////////////////////////////////////////////////////////////
 
-    /// Persist a user definition in the internal clusterwide storage.
+    /// Persist a user definition with it's default privileges in the internal clusterwide storage.
     pub fn global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
         storage.users.insert(user_def)?;
 
@@ -2773,6 +2818,11 @@ pub mod acl {
             auth_type: user_def.auth.method.as_str(),
             user: user,
         );
+
+        let grantor_id = ::tarantool::session::euid()?; // TODO: should be replaced by owner of user
+        for user_priv in get_default_privileges_for_user(user_def, grantor_id) {
+            global_grant_privilege(storage, &user_priv)?;
+        }
 
         Ok(())
     }

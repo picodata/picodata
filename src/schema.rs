@@ -24,7 +24,6 @@ use tarantool::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::bootstrap_entries::{ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID};
 use crate::cas::{self, compare_and_swap};
 use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -327,6 +326,17 @@ impl RoleDef {
 // PrivilegeDef
 ////////////////////////////////////////////////////////////////////////////////
 
+// default users
+pub const GUEST_ID: UserId = 0;
+pub const ADMIN_ID: UserId = 1;
+
+// default roles
+pub const PUBLIC_ID: UserId = 2;
+pub const SUPER_ID: UserId = 31;
+
+// `universe` has object_id 0
+pub const UNIVERSE_ID: i64 = 0;
+
 tarantool::define_str_enum! {
     pub enum SchemaObjectType {
         Table = "table",
@@ -444,8 +454,7 @@ impl PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: GUEST_ID,
                     object_type: SchemaObjectType::Universe,
-                    // `universe` has object_id 0
-                    object_id: 0,
+                    object_id: UNIVERSE_ID,
                     privilege,
                     schema_version: 0,
                 });
@@ -472,7 +481,7 @@ impl PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: ADMIN_ID,
                     object_type: SchemaObjectType::Universe,
-                    object_id: 0,
+                    object_id: UNIVERSE_ID,
                     privilege: *privilege,
                     schema_version: 0,
                 });
@@ -485,7 +494,7 @@ impl PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: SUPER_ID,
                     object_type: SchemaObjectType::Universe,
-                    object_id: 0,
+                    object_id: UNIVERSE_ID,
                     privilege: *privilege,
                     schema_version: 0,
                 });
@@ -493,6 +502,16 @@ impl PrivilegeDef {
 
             v
         })
+    }
+
+    pub fn is_default_privilege(&self) -> bool {
+        Self::get_default_privileges().contains(self)
+            // default user permissions
+            || (self.object_id == PUBLIC_ID as i64 && self.privilege == PrivilegeType::Execute)
+            || (self.object_type == SchemaObjectType::Universe && self.privilege == PrivilegeType::Session)
+            || (self.object_type == SchemaObjectType::Universe && self.privilege == PrivilegeType::Usage)
+            // alter on himself
+            || (self.object_type == SchemaObjectType::User && self.privilege == PrivilegeType::Alter && self.grantee_id as i64 == self.object_id)
     }
 }
 

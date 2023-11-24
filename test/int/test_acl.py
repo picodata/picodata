@@ -838,7 +838,7 @@ def test_acl_from_snapshot(cluster: Cluster):
 
 def test_acl_drop_table_with_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
-    number_of_privileges_since_bootstrap = 24
+    number_of_privileges_since_bootstrap = 28
 
     # Check that we can drop a table with privileges granted on it.
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
@@ -916,6 +916,55 @@ def test_create_space_smoke(cluster: Cluster):
         password=VALID_PASSWORD,
     )
     assert ddl["row_count"] == 1
+
+
+def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+
+    # granting default privilege does not raise an error
+    new_index = i1.grant_privilege(
+        "Dave",
+        "execute",
+        "role",
+        "public",
+    )
+    assert index == new_index
+
+    # granting default privilege does not raise an error
+    new_index = i1.grant_privilege(
+        "Dave",
+        "session",
+        "universe",
+    )
+    assert index == new_index
+
+    # granting default privilege does not raise an error
+    new_index = i1.grant_privilege(
+        "Dave",
+        "usage",
+        "universe",
+    )
+    assert index == new_index
+
+    # granting default privilege does not raise an error
+    new_index = i1.grant_privilege(
+        "Dave",
+        "alter",
+        "user",
+        "Dave",
+    )
+    assert index == new_index
+
+    # revoke default privilege, so raft_index should change
+    new_index = i1.revoke_privilege("Dave", "usage", "universe")
+    assert new_index != index
+
+    index = new_index
+    # already revoked, so it should be idempotent
+    new_index = i1.revoke_privilege("Dave", "usage", "universe")
+    assert new_index == index
 
 
 # TODO: test acl get denied when there's an unfinished ddl
