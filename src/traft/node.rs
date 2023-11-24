@@ -680,9 +680,11 @@ impl NodeImpl {
                         if prev.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
                             let instance_id = &new.instance_id;
                             crate::audit!(
-                                message: "added a new instance `{instance_id}` to the cluster",
-                                title: "create_database",
+                                message: "a new instance `{instance_id}` joined the cluster",
+                                title: "join_instance",
                                 severity: Low,
+                                instance_id: %instance_id,
+                                raft_id: %new.raft_id,
                             );
                         }
 
@@ -693,6 +695,8 @@ impl NodeImpl {
                                 message: "current grade of instance `{instance_id}` changed to {grade}",
                                 title: "change_current_grade",
                                 severity: Medium,
+                                instance_id: %instance_id,
+                                new_grade: %grade,
                             );
                         }
 
@@ -703,6 +707,8 @@ impl NodeImpl {
                                 message: "target grade of instance `{instance_id}` changed to {grade}",
                                 title: "change_target_grade",
                                 severity: Low,
+                                instance_id: %instance_id,
+                                raft_id: %new.raft_id,
                             );
                         }
 
@@ -790,6 +796,7 @@ impl NodeImpl {
                             message: "created table `{name}`",
                             title: "create_table",
                             severity: Medium,
+                            name: &name,
                         );
                     }
 
@@ -803,6 +810,7 @@ impl NodeImpl {
                             message: "dropped table `{name}`",
                             title: "drop_table",
                             severity: Medium,
+                            name: &name,
                         );
                     }
 

@@ -280,9 +280,29 @@ pub fn root() -> Option<&'static slog::Logger> {
     }
 }
 
+// A helper macro which rewrites audit field syntax to the one used by slog.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! audit_kv(
+    // Format using Display. Example: `key: %value`.
+    ($key:ident : %$value:expr, $($rest:tt)*) => {
+        (slog::slog_kv!(stringify!($key) => %$value), $crate::audit_kv!($($rest)*))
+    };
+    // Format using Debug. Example: `key: ?value`.
+    ($key:ident : ?$value:expr, $($rest:tt)*) => {
+        (slog::slog_kv!(stringify!($key) => ?$value), $crate::audit_kv!($($rest)*))
+    };
+    // Substitute as is. Example: `key: value`.
+    ($key:ident : $value:expr, $($rest:tt)*) => {
+        (slog::slog_kv!(stringify!($key) => $value), $crate::audit_kv!($($rest)*))
+    };
+    () => { () };
+);
+
 /// This is the main API for adding new entries to the audit log.
 /// The required fields are `message`, `title` and `severity`,
-/// the rest is up to the caller.
+/// the rest is up to the caller. Auxiliary values may be prefixed
+/// with `%` or `?` to format them using `Display` or `Debug`.
 ///
 /// Example:
 /// ```
@@ -293,13 +313,13 @@ pub fn root() -> Option<&'static slog::Logger> {
 ///     severity: Low,
 /// );
 /// ```
-#[macro_export]
+#[macro_export(local_inner_macros)]
 macro_rules! audit(
     (
         message: $message:expr,
         title: $title:expr,
         severity: $severity:ident,
-        $($key:ident: $value:expr),* $(,)?
+        $($aux_fields:tt)*
     ) => {
         if let Some(root) = $crate::audit::root() {
             slog::slog_log!(
@@ -307,11 +327,12 @@ macro_rules! audit(
                 root, slog::Level::Info, "",
                 // The message itself.
                 $message;
-                // Mandatory fields.
-                "title" => $title,
-                "severity" => $crate::audit::Severity::$severity.as_str(),
-                // Arbitrary fields.
-                $(stringify!($key) => $value,)*
+                // Additional fields.
+                audit_kv!(
+                    title: $title,
+                    severity: $crate::audit::Severity::$severity.as_str(),
+                    $($aux_fields)*
+                )
             );
         }
     };

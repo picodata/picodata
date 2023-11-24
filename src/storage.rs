@@ -2669,6 +2669,7 @@ pub mod acl {
             title: "create_user",
             severity: High,
             auth_type: user_def.auth.method.as_str(),
+            user: user,
         );
 
         Ok(())
@@ -2689,6 +2690,7 @@ pub mod acl {
             title: "change_password",
             severity: High,
             auth_type: auth.method.as_str(),
+            user: user,
         );
 
         Ok(())
@@ -2706,6 +2708,7 @@ pub mod acl {
             message: "dropped user `{user}`",
             title: "drop_user",
             severity: Medium,
+            user: user,
         );
 
         Ok(())
@@ -2720,6 +2723,7 @@ pub mod acl {
             message: "created role `{role}`",
             title: "create_role",
             severity: High,
+            role: role,
         );
 
         Ok(())
@@ -2742,6 +2746,7 @@ pub mod acl {
                 message: "dropped role `{role}`",
                 title: "drop_role",
                 severity: Medium,
+                role: role,
             );
         }
 
@@ -2765,6 +2770,9 @@ pub mod acl {
                     message: "granted role `{object}` to {grantee_type} `{grantee}`",
                     title: "grant_role",
                     severity: High,
+                    role: object,
+                    grantee: &grantee,
+                    grantee_type: grantee_type,
                 );
             }
             _ => {
@@ -2773,6 +2781,11 @@ pub mod acl {
                               to {grantee_type} `{grantee}`",
                     title: "grant_privilege",
                     severity: High,
+                    privilege: privilege,
+                    object: object,
+                    object_type: object_type,
+                    grantee: &grantee,
+                    grantee_type: grantee_type,
                 );
             }
         }
@@ -2803,6 +2816,9 @@ pub mod acl {
                     message: "revoke role `{object}` from {grantee_type} `{grantee}`",
                     title: "revoke_role",
                     severity: High,
+                    role: object,
+                    grantee: &grantee,
+                    grantee_type: grantee_type,
                 );
             }
             _ => {
@@ -2811,6 +2827,11 @@ pub mod acl {
                               from {grantee_type} `{grantee}`",
                     title: "revoke_privilege",
                     severity: High,
+                    privilege: privilege,
+                    object: object,
+                    object_type: object_type,
+                    grantee: &grantee,
+                    grantee_type: grantee_type,
                 );
             }
         }
