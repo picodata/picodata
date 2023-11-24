@@ -38,6 +38,9 @@
 - `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
 
 ### Fixed
+- `define_str_enum` will no longer produce warning "`&` without an explicit
+  lifetime name cannot be used here". For more information, see
+  https://github.com/rust-lang/rust/issues/115010.
 - `#[tarantool::test]` declares a special static variable which is usually
   invisible to the users, but previously it would have a not so unique name
   which would sometimes lead to name conflicts with user-defined items.

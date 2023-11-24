@@ -414,7 +414,7 @@ macro_rules! define_enum_with_introspection {
             /// A slice of all possible enum variants.
             ///
             /// These are ordered in the order of definition in the source code.
-            pub const VARIANTS: &[Self] = &[ $( Self::$variant, )+ ];
+            pub const VARIANTS: &'static [Self] = &[ $( Self::$variant, )+ ];
 
             /// The enum variant with the smallest discriminant.
             pub const MIN: Self = {
