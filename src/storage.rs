@@ -2386,12 +2386,13 @@ impl Privileges {
         &self,
         grantee_id: UserId,
         object_type: &str,
-        object_name: &str,
-    ) -> tarantool::Result<EntryIter<PrivilegeDef>> {
-        let iter = self
+        object_id: i64,
+        privilege: &str,
+    ) -> tarantool::Result<Option<PrivilegeDef>> {
+        let tuple = self
             .space
-            .select(IteratorType::Eq, &(grantee_id, object_type, object_name))?;
-        Ok(EntryIter::new(iter))
+            .get(&(grantee_id, object_type, object_id, privilege))?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline(always)]

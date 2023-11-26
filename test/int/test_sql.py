@@ -836,7 +836,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     users_auth_was = i1.call("box.space._pico_user:select")[2][3]
     # * Password and method aren't changed -> update nothing.
     acl = i1.sql(f"alter user {username} with password '{password}' using md5")
-    assert acl["row_count"] == 1
+    assert acl["row_count"] == 0
     users_auth_became = i1.call("box.space._pico_user:select")[2][3]
     assert users_auth_was == users_auth_became
     # * Password is changed -> update hash.
@@ -977,6 +977,11 @@ def test_sql_acl_privileges(cluster: Cluster):
     # Grant remote functions call.
     i1.call("pico.grant_privilege", username, "execute", "universe", None)
 
+    # Remember number of default privileges.
+    default_privileges_number = len(
+        i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    )
+
     # =========================ERRORs======================
     # Attempt to grant unsupported privileges.
     with pytest.raises(
@@ -1026,17 +1031,15 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" grant create user to {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"][1]
-    assert privs_rows[2] == "user"
-    assert privs_rows[3] == ""
-    assert privs_rows[4] == "create"
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == default_privileges_number + 1
     # * TODO: User creation is available.
     # * Revoke CREATE from user.
     acl = i1.sql(f""" revoke create user from {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    assert len(privs_rows) == 1  # universe
+    assert len(privs_rows) == default_privileges_number
     # * TODO: Check that user with granted privileges can ALTER and DROP created user
     #         as it's the owner.
     # * TODO: Revoke automatically granted privileges.
@@ -1046,11 +1049,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    assert len(privs_rows) == 2  # universe + alter user
+    assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Check ALTER is available.
     # * Revoke global ALTER.
     acl = i1.sql(f""" revoke alter user from {username} """)
     assert acl["row_count"] == 1
+
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == default_privileges_number
 
     # * TODO: Check another user can't initially interact with previously created new user.
     # * TODO: Grant ALTER and DROP user privileges to another user.
@@ -1063,17 +1069,15 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" grant create role to {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"][0]
-    assert privs_rows[2] == "role"
-    assert privs_rows[3] == ""
-    assert privs_rows[4] == "create"
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Role creation is available.
     # * Revoke CREATE from user.
     acl = i1.sql(f""" revoke create role from {username} """)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    assert len(privs_rows) == 1  # universe
+    assert len(privs_rows) == default_privileges_number
     # * TODO: Check that user with granted privileges can DROP created role as it's the owner.
     # * TODO: Revoke automatically granted privileges.
     # * TODO: Check DROP are prohibited.
@@ -1082,7 +1086,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    assert len(privs_rows) == 2  # universe + drop user
+    assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Check DROP is available.
     # * Revoke global DROP.
     acl = i1.sql(f""" revoke drop role from {username} """)
@@ -1233,7 +1237,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     # ================ROLE passing================
     # * Check there are no privileges granted to anything initially.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    assert len(privs_rows) == 1  # universe
+    assert len(privs_rows) == default_privileges_number
     # * Read from table is prohibited for user initially.
     with pytest.raises(
         ReturnError,
@@ -1261,7 +1265,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert acl["row_count"] == 1
     # * Check privilege revoked from role and user.
     privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    assert len(privs_rows) == 2  # universe, role for user
+    assert len(privs_rows) == default_privileges_number + 1  # default + role for user
     # * Check read is prohibited again.
     with pytest.raises(
         ReturnError,

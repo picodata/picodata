@@ -1,7 +1,8 @@
 //! Clusterwide SQL query execution.
 
 use crate::schema::{
-    wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, RoleDef, ShardingFn, UserDef, PrivilegeDef
+    wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, PrivilegeDef, RoleDef,
+    ShardingFn, UserDef,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -393,26 +394,119 @@ impl TraftNode {
         Ok(max_tarantool_user_id + 1)
     }
 
-    /// Check whether passes user/role name is visible for current user .
-    fn check_user_role_available_for_user(&self, user_role_name: &String) -> traft::Result<()> {
-        let user_role = Space::from(SystemSpace::VUser)
+    /// Get table id by its name.
+    /// Returns:
+    /// * `Some(table_id)`` in case such table exists
+    /// * `None` in case such table doesn't exist
+    fn get_table_id(&self, table_name: &String) -> Option<u32> {
+        let table = Space::from(SystemSpace::Space)
+            .index("name")
+            .expect("_space should have a name index")
+            .get(&(table_name,))
+            .expect("name index selection from _space should succeed");
+        if let Some(table) = table {
+            let table_id = table.get(0).expect("_space rows must contain id column");
+            Some(table_id)
+        } else {
+            None
+        }
+    }
+
+    /// Get user or role id by its name.
+    /// Returns:
+    /// * `Some(user_or_role_id)`` in case such user or role exists
+    /// * `None` in case such user or role doesn't exist
+    fn get_user_or_role_id(&self, user_or_role_name: &String) -> Option<UserId> {
+        let user_or_role = Space::from(SystemSpace::VUser)
             .index("name")
             .expect("_vuser should have a name index")
-            .get(&(user_role_name,))
+            .get(&(user_or_role_name,))
             .expect("name index selection from _vuser should succeed");
-        if user_role.is_some() {
-            let storage = &self.storage;
-            if storage.roles.by_name(user_role_name)?.is_some() {
-                return Ok(());
+        if let Some(user_or_role) = user_or_role {
+            let user_or_role_id = user_or_role
+                .get(0)
+                .expect("_vuser rows must contain id column");
+            Some(user_or_role_id)
+        } else {
+            None
+        }
+    }
+
+    /// Get (object_type, object_id, privilege) data from `GrantRevokeType`.
+    fn object_resolve(
+        &self,
+        grant_revoke_type: &GrantRevokeType,
+    ) -> traft::Result<(String, String, i64)> {
+        let storage = &self.storage;
+
+        match grant_revoke_type {
+            GrantRevokeType::User { privilege } => {
+                Ok((String::from("user"), privilege.to_string(), -1))
             }
-            if storage.users.by_name(user_role_name)?.is_some() {
-                return Ok(());
+            GrantRevokeType::SpecificUser {
+                privilege,
+                user_name,
+            } => {
+                if let Some(user_id) = self.get_user_or_role_id(user_name) {
+                    Ok((String::from("user"), privilege.to_string(), user_id as i64))
+                } else {
+                    Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("There is no user with name {user_name}")),
+                    )))
+                }
+            }
+            GrantRevokeType::Role { privilege } => {
+                Ok((String::from("role"), privilege.to_string(), -1))
+            }
+            GrantRevokeType::SpecificRole {
+                privilege,
+                role_name,
+            } => {
+                if let Some(role_id) = self.get_user_or_role_id(role_name) {
+                    Ok((String::from("role"), privilege.to_string(), role_id as i64))
+                } else {
+                    Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("There is no role with name {role_name}")),
+                    )))
+                }
+            }
+            GrantRevokeType::Table { privilege } => {
+                Ok((String::from("space"), privilege.to_string(), -1))
+            }
+            GrantRevokeType::SpecificTable {
+                privilege,
+                table_name,
+            } => {
+                if let Some(table_id) = self.get_table_id(table_name) {
+                    Ok((
+                        String::from("space"),
+                        privilege.to_string(),
+                        table_id as i64,
+                    ))
+                } else {
+                    Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("There is no table with name {table_name}")),
+                    )))
+                }
+            }
+            GrantRevokeType::RolePass { role_name } => {
+                if let Some(role_id) = self.get_user_or_role_id(role_name) {
+                    Ok((
+                        String::from("role"),
+                        String::from("execute"),
+                        role_id as i64,
+                    ))
+                } else {
+                    Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("There is no role with name {role_name}")),
+                    )))
+                }
             }
         }
-        Err(Error::Sbroad(SbroadError::Invalid(
-            Entity::Acl,
-            Some(format!("There is no role with name {user_role_name}")),
-        )))
     }
 }
 
@@ -441,8 +535,8 @@ fn check_password_min_length(
     Ok(())
 }
 
-/// Get role or user UserId by its name.
-fn get_role_or_user_id(storage: &Clusterwide, grantee_name: &String) -> traft::Result<UserId> {
+/// Get grantee (user or role) UserId by its name.
+fn get_grantee_id(storage: &Clusterwide, grantee_name: &String) -> traft::Result<UserId> {
     if let Some(grantee_user_def) = storage.users.by_name(grantee_name)? {
         Ok(grantee_user_def.id)
     } else if let Some(grantee_role_def) = storage.roles.by_name(grantee_name)? {
@@ -458,59 +552,19 @@ fn get_role_or_user_id(storage: &Clusterwide, grantee_name: &String) -> traft::R
     }
 }
 
-/// Get ids of grantor and grantee.
-/// Apply common check on user/role/table names for passed `grant_type`.
-fn get_grantor_grantee_ids_with_checks(
-    node: &TraftNode,
-    grant_type: &GrantRevokeType,
-    grantee_name: &String,
-) -> traft::Result<(UserId, UserId)> {
-    let storage = &node.storage;
-    match grant_type {
-        GrantRevokeType::SpecificUser {
-            user_name: user_role_name,
-            ..
-        }
-        | GrantRevokeType::SpecificRole {
-            role_name: user_role_name,
-            ..
-        }
-        | GrantRevokeType::RolePass {
-            role_name: user_role_name,
-        } => {
-            node.check_user_role_available_for_user(user_role_name)?;
-        }
-        GrantRevokeType::SpecificTable { table_name, .. } => {
-            if storage.spaces.by_name(table_name)?.is_none() {
-                return Err(Error::Sbroad(SbroadError::Invalid(
-                    Entity::Acl,
-                    Some(format!("There is no table with name {table_name}")),
-                )));
-            }
-        }
-        _ => {}
-    }
-
-    let grantor_id = session::euid()?;
-    let grantee_id = get_role_or_user_id(storage, grantee_name)?;
-
-    Ok((grantor_id, grantee_id))
-}
-
 /// Find whether given privilege was already granted.
 fn check_privilege_already_granted(
     node: &TraftNode,
     grantee_id: UserId,
     object_type: &str,
-    object_name: &str,
+    object_id: i64,
     privilege: &str,
 ) -> traft::Result<bool> {
     let storage = &node.storage;
     Ok(storage
         .privileges
-        .get(grantee_id, object_type, object_name)?
-        .map(|priv_def| priv_def.privilege)
-        .any(|existed_privilege| existed_privilege == privilege))
+        .get(grantee_id, object_type, object_id, privilege)?
+        .is_some())
 }
 
 fn reenterable_schema_change_request(
@@ -721,15 +775,15 @@ fn reenterable_schema_change_request(
 
                 // For ALTER Login/NoLogin.
                 let grantor_id = session::euid()?;
-                let grantee_id = get_role_or_user_id(storage, name)?;
+                let grantee_id = get_grantee_id(storage, name)?;
                 let object_type = String::from("universe");
-                let object_name = String::new();
+                let object_id = 0;
                 let privilege = SqlPrivilege::Session.to_string();
                 let priv_def = PrivilegeDef {
                     grantor_id,
                     grantee_id,
                     object_type: object_type.clone(),
-                    object_name: object_name.clone(),
+                    object_id,
                     privilege: privilege.clone(),
                     // This field will be updated later.
                     schema_version: 0,
@@ -754,7 +808,7 @@ fn reenterable_schema_change_request(
                             node,
                             grantee_id,
                             &object_type,
-                            &object_name,
+                            object_id,
                             &privilege,
                         )? {
                             // Login is already granted, no op needed.
@@ -767,7 +821,7 @@ fn reenterable_schema_change_request(
                             node,
                             grantee_id,
                             &object_type,
-                            &object_name,
+                            object_id,
                             &privilege,
                         )? {
                             // Login is not granted yet, no op needed.
@@ -825,15 +879,15 @@ fn reenterable_schema_change_request(
                 })
             }
             Params::GrantPrivilege(grant_type, grantee_name) => {
-                let (grantor_id, grantee_id) =
-                    get_grantor_grantee_ids_with_checks(node, grant_type, grantee_name)?;
-                let (object_type, object_name, privilege) = grant_type.get_privelege_def_fields();
+                let grantor_id = session::euid()?;
+                let grantee_id = get_grantee_id(storage, grantee_name)?;
+                let (object_type, privilege, object_id) = node.object_resolve(grant_type)?;
 
                 if check_privilege_already_granted(
                     node,
                     grantee_id,
                     &object_type,
-                    &object_name,
+                    object_id,
                     &privilege,
                 )? {
                     // Privilege is already granted, no op needed.
@@ -844,7 +898,7 @@ fn reenterable_schema_change_request(
                         grantor_id,
                         grantee_id,
                         object_type,
-                        object_name,
+                        object_id,
                         privilege,
                         // This field will be updated later.
                         schema_version: 0,
@@ -852,15 +906,15 @@ fn reenterable_schema_change_request(
                 })
             }
             Params::RevokePrivilege(revoke_type, grantee_name) => {
-                let (grantor_id, grantee_id) =
-                    get_grantor_grantee_ids_with_checks(node, revoke_type, grantee_name)?;
-                let (object_type, object_name, privilege) = revoke_type.get_privelege_def_fields();
+                let grantor_id = session::euid()?;
+                let grantee_id = get_grantee_id(storage, grantee_name)?;
+                let (object_type, privilege, object_id) = node.object_resolve(revoke_type)?;
 
                 if !check_privilege_already_granted(
                     node,
                     grantee_id,
                     &object_type,
-                    &object_name,
+                    object_id,
                     &privilege,
                 )? {
                     // Privilege is not granted yet, no op needed.
@@ -872,7 +926,7 @@ fn reenterable_schema_change_request(
                         grantor_id,
                         grantee_id,
                         object_type,
-                        object_name,
+                        object_id,
                         privilege,
                         // This field will be updated later.
                         schema_version: 0,
