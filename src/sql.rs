@@ -447,7 +447,7 @@ impl TraftNode {
         }
     }
 
-    /// Get (object_type, object_id, privilege) data from `GrantRevokeType`.
+    /// Get (object_type, privilege_type, object_id) data from `GrantRevokeType`.
     fn object_resolve(
         &self,
         grant_revoke_type: &GrantRevokeType,
