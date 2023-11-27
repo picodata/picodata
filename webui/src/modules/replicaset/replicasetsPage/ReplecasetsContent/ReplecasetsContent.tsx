@@ -16,7 +16,7 @@ import { useFilterBy } from "./TopBar/FilterBy/hooks";
 
 import styles from "./ReplecasetsContent.module.scss";
 
-export const ReplecasetsContent = ({}) => {
+export const ReplicasetsContent = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { replicasets, instances } = useSelector((state: RootState) => {
     return {

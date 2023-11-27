@@ -40,7 +40,7 @@
 .titleText {
   font-size: 24px;
   font-weight: 600;
-  font-family: Montserrat;
+  font-family: Montserrat, sans-serif;
   align-items: center;
   gap: 8px;
   justify-content: center;
@@ -75,7 +75,7 @@
 .titleLabel {
   margin: 0;
   color: #9d99ac;
-  font-family: Montserrat;
+  font-family: Montserrat, sans-serif;
   font-size: 12px;
   font-weight: 400;
 }
