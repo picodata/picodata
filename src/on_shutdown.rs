@@ -4,7 +4,6 @@ use ::tarantool::fiber;
 
 use crate::has_grades;
 use crate::tlog;
-use crate::traft::event;
 use crate::traft::node;
 use crate::unwrap_ok_or;
 
@@ -54,7 +53,8 @@ pub async fn callback(plugin_list: &'static [Plugin]) {
             break;
         }
 
-        if let Err(e) = event::wait_timeout(event::Event::EntryApplied, Duration::MAX) {
+        let applied = node.get_index();
+        if let Err(e) = node.wait_index(applied + 1, Duration::MAX) {
             tlog!(Warning, "failed to shutdown gracefully: {e}");
         }
     }

@@ -52,6 +52,7 @@ use ::raft::INVALID_ID;
 use ::tarantool::error::TarantoolError;
 use ::tarantool::fiber;
 use ::tarantool::fiber::mutex::MutexGuard;
+use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
@@ -148,6 +149,7 @@ pub struct Node {
     pub(crate) governor_loop: governor::Loop,
     pub(crate) sentinel_loop: sentinel::Loop,
     status: watch::Receiver<Status>,
+    applied: watch::Receiver<RaftIndex>,
 
     /// Should be locked during join and update instance request
     /// to avoid costly cas conflicts during concurrent requests.
@@ -183,6 +185,7 @@ impl Node {
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
+        let applied = node_impl.applied.subscribe();
 
         let node_impl = Rc::new(Mutex::new(node_impl));
 
@@ -206,6 +209,7 @@ impl Node {
             storage,
             raft_storage,
             status,
+            applied,
             instances_update: Mutex::new(()),
         };
 
@@ -214,29 +218,32 @@ impl Node {
         Ok(node)
     }
 
+    #[inline(always)]
     pub fn raft_id(&self) -> RaftId {
         self.raft_id
     }
 
+    #[inline(always)]
     pub fn status(&self) -> Status {
         self.status.get()
     }
 
+    #[inline(always)]
     pub(crate) fn node_impl(&self) -> MutexGuard<NodeImpl> {
         self.node_impl.lock()
     }
 
     /// Wait for the status to be changed.
     /// **This function yields**
+    #[inline(always)]
     pub fn wait_status(&self) {
         fiber::block_on(self.status.clone().changed()).unwrap();
     }
 
     /// Returns current applied [`RaftIndex`].
+    #[inline(always)]
     pub fn get_index(&self) -> RaftIndex {
-        self.raft_storage
-            .applied()
-            .expect("reading from memtx should never fail")
+        self.applied.get()
     }
 
     /// Performs the quorum read operation.
@@ -276,25 +283,30 @@ impl Node {
     #[inline]
     pub fn wait_index(&self, target: RaftIndex, timeout: Duration) -> traft::Result<RaftIndex> {
         tlog!(Debug, "waiting for applied index {target}");
+        let mut applied = self.applied.clone();
         let deadline = fiber::clock().saturating_add(timeout);
-        loop {
-            let current = self.get_index();
-            if current >= target {
-                tlog!(
-                    Debug,
-                    "done waiting for applied index {target}, current: {current}"
-                );
-                return Ok(current);
-            }
+        fiber::block_on(async {
+            loop {
+                let current = self.get_index();
+                if current >= target {
+                    tlog!(
+                        Debug,
+                        "done waiting for applied index {target}, current: {current}"
+                    );
+                    return Ok(current);
+                }
 
-            if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
-                tlog!(
-                    Debug,
-                    "failed waiting for applied index {target}: timeout, current: {current}"
-                );
-                return Err(Error::Timeout);
+                let timeout = deadline.duration_since(fiber::clock());
+                let res = applied.changed().timeout(timeout).await;
+                if let Err(TimeoutError::Expired) = res {
+                    tlog!(
+                        Debug,
+                        "failed waiting for applied index {target}: timeout, current: {current}"
+                    );
+                    return Err(Error::Timeout);
+                }
             }
-        }
+        })
     }
 
     /// Propose an operation and wait for it's result.
@@ -398,6 +410,7 @@ pub(crate) struct NodeImpl {
     pool: Rc<ConnectionPool>,
     lc: LogicalClock,
     status: watch::Sender<Status>,
+    applied: watch::Sender<RaftIndex>,
     instance_reachability: Rc<RefCell<InstanceReachabilityManager>>,
 }
 
@@ -436,6 +449,7 @@ impl NodeImpl {
             raft_state: RaftState::Follower,
             main_loop_status: "idle",
         });
+        let (applied, _) = watch::channel(applied);
 
         Ok(Self {
             raw_node,
@@ -447,6 +461,7 @@ impl NodeImpl {
             pool,
             lc,
             status,
+            applied,
         })
     }
 
@@ -614,7 +629,6 @@ impl NodeImpl {
                 }
 
                 let res = self.raft_storage.persist_applied(entry_index);
-                event::broadcast(Event::EntryApplied);
                 if let Err(e) = res {
                     tlog!(
                         Error,
@@ -622,6 +636,8 @@ impl NodeImpl {
                         "index" => entry_index
                     );
                 }
+                #[rustfmt::skip]
+                self.applied.send(entry_index).expect("applied shouldn't ever be borrowed across yields");
 
                 Ok(())
             })?;
@@ -1496,6 +1512,10 @@ impl NodeImpl {
             if let Err(e) = transaction(|| -> traft::Result<()> {
                 let meta = snapshot.get_metadata();
                 self.raft_storage.handle_snapshot_metadata(meta)?;
+                // handle_snapshot_metadata persists applied index, so we update the watch channel
+                #[rustfmt::skip]
+                self.applied.send(meta.index).expect("applied shouldn't ever be borrowed across yields");
+
                 let is_master = !self.is_readonly();
                 self.storage
                     .apply_snapshot_data(&snapshot_data, is_master)?;

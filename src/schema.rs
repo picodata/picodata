@@ -29,7 +29,7 @@ use crate::storage::SPACE_ID_INTERNAL_MAX;
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
-use crate::traft::{self, event, node, RaftIndex};
+use crate::traft::{self, node, RaftIndex};
 use crate::util::effective_user_id;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -887,11 +887,12 @@ pub fn wait_for_ddl_commit(
     prepare_commit: RaftIndex,
     timeout: Duration,
 ) -> traft::Result<RaftIndex> {
-    let raft_storage = &node::global()?.raft_storage;
+    let node = node::global()?;
+    let raft_storage = &node.raft_storage;
     let deadline = fiber::clock().saturating_add(timeout);
     let last_seen = prepare_commit;
     loop {
-        let cur_applied = raft_storage.applied()?;
+        let cur_applied = node.get_index();
         let new_entries = raft_storage.entries(last_seen + 1, cur_applied + 1)?;
         for entry in new_entries {
             if entry.entry_type != raft::prelude::EntryType::EntryNormal {
@@ -906,9 +907,7 @@ pub fn wait_for_ddl_commit(
             }
         }
 
-        if event::wait_deadline(event::Event::EntryApplied, deadline)?.is_timeout() {
-            return Err(Error::Timeout);
-        }
+        node.wait_index(cur_applied + 1, deadline.duration_since(fiber::clock()))?;
     }
 }
 
