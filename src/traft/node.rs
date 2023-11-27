@@ -1496,23 +1496,9 @@ impl NodeImpl {
             if let Err(e) = transaction(|| -> traft::Result<()> {
                 let meta = snapshot.get_metadata();
                 self.raft_storage.handle_snapshot_metadata(meta)?;
-                // FIXME: apply_snapshot_data calls truncate on clusterwide
-                // spaces and even though they're all local spaces doing
-                // truncate on them is not allowed on read_only instances.
-                // Related issue in tarantool:
-                // https://github.com/tarantool/tarantool/issues/5616
-                let is_readonly = self.is_readonly();
-                if is_readonly {
-                    crate::tarantool::eval("box.cfg { read_only = false }")?;
-                }
-                let res = self
-                    .storage
-                    .apply_snapshot_data(&snapshot_data, !is_readonly);
-                if is_readonly {
-                    crate::tarantool::exec("box.cfg { read_only = true }")?;
-                }
-                #[allow(clippy::let_unit_value)]
-                let _ = res?;
+                let is_master = !self.is_readonly();
+                self.storage
+                    .apply_snapshot_data(&snapshot_data, is_master)?;
 
                 // TODO: As long as the snapshot was sent to us in response to
                 // a rejected MsgAppend (which is the only possible case
