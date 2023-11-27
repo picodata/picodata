@@ -452,8 +452,6 @@ impl TraftNode {
         &self,
         grant_revoke_type: &GrantRevokeType,
     ) -> traft::Result<(SchemaObjectType, PrivilegeType, i64)> {
-        let storage = &self.storage;
-
         match grant_revoke_type {
             GrantRevokeType::User { privilege } => {
                 Ok((SchemaObjectType::User, privilege.into(), -1))
