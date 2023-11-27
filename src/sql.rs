@@ -1,8 +1,8 @@
 //! Clusterwide SQL query execution.
 
 use crate::schema::{
-    wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, PrivilegeDef, RoleDef,
-    ShardingFn, UserDef,
+    wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, PrivilegeDef, PrivilegeType,
+    RoleDef, SchemaObjectType, ShardingFn, UserDef,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -366,6 +366,21 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
     )
 }
 
+impl From<&SqlPrivilege> for PrivilegeType {
+    fn from(item: &SqlPrivilege) -> Self {
+        match item {
+            SqlPrivilege::Read => PrivilegeType::Read,
+            SqlPrivilege::Write => PrivilegeType::Write,
+            SqlPrivilege::Execute => PrivilegeType::Execute,
+            SqlPrivilege::Create => PrivilegeType::Create,
+            SqlPrivilege::Alter => PrivilegeType::Alter,
+            SqlPrivilege::Drop => PrivilegeType::Drop,
+            SqlPrivilege::Session => PrivilegeType::Session,
+            SqlPrivilege::Usage => PrivilegeType::Usage,
+        }
+    }
+}
+
 impl TraftNode {
     /// Helper method to retrieve next id for newly created user/role.
     fn get_next_grantee_id(&self) -> traft::Result<UserId> {
@@ -436,19 +451,19 @@ impl TraftNode {
     fn object_resolve(
         &self,
         grant_revoke_type: &GrantRevokeType,
-    ) -> traft::Result<(String, String, i64)> {
+    ) -> traft::Result<(SchemaObjectType, PrivilegeType, i64)> {
         let storage = &self.storage;
 
         match grant_revoke_type {
             GrantRevokeType::User { privilege } => {
-                Ok((String::from("user"), privilege.to_string(), -1))
+                Ok((SchemaObjectType::User, privilege.into(), -1))
             }
             GrantRevokeType::SpecificUser {
                 privilege,
                 user_name,
             } => {
                 if let Some(user_id) = self.get_user_or_role_id(user_name) {
-                    Ok((String::from("user"), privilege.to_string(), user_id as i64))
+                    Ok((SchemaObjectType::User, privilege.into(), user_id as i64))
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
@@ -457,14 +472,14 @@ impl TraftNode {
                 }
             }
             GrantRevokeType::Role { privilege } => {
-                Ok((String::from("role"), privilege.to_string(), -1))
+                Ok((SchemaObjectType::Role, privilege.into(), -1))
             }
             GrantRevokeType::SpecificRole {
                 privilege,
                 role_name,
             } => {
                 if let Some(role_id) = self.get_user_or_role_id(role_name) {
-                    Ok((String::from("role"), privilege.to_string(), role_id as i64))
+                    Ok((SchemaObjectType::Role, privilege.into(), role_id as i64))
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
@@ -473,18 +488,14 @@ impl TraftNode {
                 }
             }
             GrantRevokeType::Table { privilege } => {
-                Ok((String::from("space"), privilege.to_string(), -1))
+                Ok((SchemaObjectType::Table, privilege.into(), -1))
             }
             GrantRevokeType::SpecificTable {
                 privilege,
                 table_name,
             } => {
                 if let Some(table_id) = self.get_table_id(table_name) {
-                    Ok((
-                        String::from("space"),
-                        privilege.to_string(),
-                        table_id as i64,
-                    ))
+                    Ok((SchemaObjectType::Table, privilege.into(), table_id as i64))
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
@@ -495,8 +506,8 @@ impl TraftNode {
             GrantRevokeType::RolePass { role_name } => {
                 if let Some(role_id) = self.get_user_or_role_id(role_name) {
                     Ok((
-                        String::from("role"),
-                        String::from("execute"),
+                        SchemaObjectType::Role,
+                        PrivilegeType::Execute,
                         role_id as i64,
                     ))
                 } else {
@@ -776,15 +787,15 @@ fn reenterable_schema_change_request(
                 // For ALTER Login/NoLogin.
                 let grantor_id = session::euid()?;
                 let grantee_id = get_grantee_id(storage, name)?;
-                let object_type = String::from("universe");
+                let object_type = SchemaObjectType::Universe;
                 let object_id = 0;
-                let privilege = SqlPrivilege::Session.to_string();
+                let privilege = PrivilegeType::Session;
                 let priv_def = PrivilegeDef {
                     grantor_id,
                     grantee_id,
-                    object_type: object_type.clone(),
+                    object_type,
                     object_id,
-                    privilege: privilege.clone(),
+                    privilege,
                     // This field will be updated later.
                     schema_version: 0,
                 };
