@@ -368,7 +368,7 @@ mod tests {
             for _ in 0..10 {
                 recv_results.push(rx.receive().unwrap());
             }
-            fiber::sleep(Duration::from_millis(10));
+            fiber::sleep(Duration::from_millis(100));
         }
 
         assert_eq!((0..100).collect::<Vec<_>>(), recv_results);
@@ -449,7 +449,7 @@ mod tests {
                 .unwrap()
                 .block_on(async move {
                     assert!(tx.send(1).await.is_ok());
-                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     // at this point receiver must be dropped and send return an error
                     assert!(tx.send(2).await.is_err());
                 });

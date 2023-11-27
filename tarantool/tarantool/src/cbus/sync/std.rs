@@ -362,7 +362,7 @@ mod tests {
             for _ in 0..10 {
                 recv_results.push(rx.receive().unwrap());
             }
-            fiber::sleep(Duration::from_millis(10));
+            fiber::sleep(Duration::from_millis(100));
         }
 
         assert_eq!((0..100).collect::<Vec<_>>(), recv_results);
@@ -426,7 +426,7 @@ mod tests {
 
         let thread = thread::spawn(move || {
             assert!(tx.send(1).is_ok());
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(100));
             // at this point receiver must be dropped and send return an error
             assert!(tx.send(2).is_err());
         });
@@ -492,14 +492,14 @@ mod tests {
         let jh2 = create_producer(tx.clone());
         let jh3 = create_producer(tx);
 
-        fiber::sleep(Duration::from_millis(10));
+        fiber::sleep(Duration::from_millis(100));
         for i in 0..10 * 3 {
             // assert that all threads produce 10 messages and sleep after
             assert_eq!(SEND_COUNTER.load(Ordering::SeqCst), (i + 1) * 10);
             for _ in 0..10 {
                 assert!(matches!(rx.receive(), Ok(_)));
             }
-            fiber::sleep(Duration::from_millis(10));
+            fiber::sleep(Duration::from_millis(100));
         }
         assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
