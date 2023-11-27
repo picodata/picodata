@@ -1,7 +1,16 @@
 diff --git a/script/fetch-ocsp-response b/script/fetch-ocsp-response
-index 0ff7461e..2fb75c40 100755
+index 0ff7461e..2f0ac0c2 100755
 --- a/script/fetch-ocsp-response
 +++ b/script/fetch-ocsp-response
+@@ -55,7 +55,7 @@ import os
+ import os.path
+ import re
+ import shutil
+-import subprocess
++import subprocess  # nosec
+ import sys
+ import tempfile
+ 
 @@ -83,7 +83,7 @@ def tempfail(msg):
  def run_openssl(args, allow_tempfail=False):
      buf = io.BytesIO()

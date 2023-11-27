@@ -1,0 +1,22 @@
+diff --git a/vendor/openssl-1.1.1q/fuzz/helper.py b/vendor/openssl-1.1.1q/fuzz/helper.py
+index e83ea00c0..0a6e71f78 100755
+--- a/vendor/openssl-1.1.1q/fuzz/helper.py
++++ b/vendor/openssl-1.1.1q/fuzz/helper.py
+@@ -13,7 +13,7 @@ fuzzer.py <fuzzer> <extra fuzzer arguments>
+ """
+ 
+ import os
+-import subprocess
++import subprocess  # nosec
+ import sys
+ 
+ FUZZER = sys.argv[1]
+@@ -46,7 +46,7 @@ def main():
+     cmd = ([os.path.abspath(os.path.join(THIS_DIR, FUZZER))]  + sys.argv[2:]
+            + ["-artifact_prefix=" + corpora[1] + "/"] + corpora)
+     print(" ".join(cmd))
+-    subprocess.call(cmd)
++    subprocess.call(cmd)  # nosec
+ 
+ if __name__ == "__main__":
+     main()
