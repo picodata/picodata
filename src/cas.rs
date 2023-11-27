@@ -757,7 +757,7 @@ mod tests {
 
     #[::tarantool::test]
     fn ddl() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
 
         let t = |op: &Op, range: Range| -> std::result::Result<(), Error> {
             let predicate = Predicate {
@@ -879,7 +879,7 @@ mod tests {
     fn dml() {
         let key = (12,).to_tuple_buffer().unwrap();
         let tuple = (12, "twelve").to_tuple_buffer().unwrap();
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
 
         let test = |op: &Dml, range: Range| {
             let predicate = Predicate {

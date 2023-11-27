@@ -205,7 +205,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_simple() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![], 1);
 
         let instance = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
@@ -239,7 +239,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_override() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
             Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
             Instance::new(Some(2), Some("i2"), Some("r2-original"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
@@ -291,7 +291,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_instance_id_collision() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
             Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
             Instance::new(Some(2), Some("i3"), Some("r3"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
@@ -306,7 +306,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_replication_factor() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
             Instance::new(Some(9), Some("i9"), Some("r9"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
             Instance::new(Some(10), Some("i10"), Some("r9"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
@@ -348,7 +348,7 @@ mod tests {
 
     #[::tarantool::test]
     fn test_update_grade() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         let mut instance = Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER);
         setup_storage(&storage, vec![instance.clone()], 1);
 
@@ -441,7 +441,7 @@ mod tests {
 
     #[::tarantool::test]
     fn failure_domain() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![], 3);
 
         let instance =
@@ -507,7 +507,7 @@ mod tests {
 
     #[::tarantool::test]
     fn reconfigure_failure_domain() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![], 3);
 
         // first instance
@@ -586,7 +586,7 @@ mod tests {
         let second_tier = "compute";
         let third_tier = "trash";
 
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![], 1);
 
         add_tier(&storage, first_tier, 3).unwrap();

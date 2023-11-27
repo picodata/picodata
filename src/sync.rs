@@ -186,7 +186,7 @@ mod tests {
 
     #[::tarantool::test]
     async fn vclock_proc() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(storage.clone(), Default::default());
         let l = ::tarantool::lua_state();

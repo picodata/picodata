@@ -628,7 +628,7 @@ mod tests {
         )
         .unwrap();
 
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         // Connect to the current Tarantool instance
         let pool = ConnectionPool::new(storage.clone(), Default::default());
         let listen: String = l.eval("return box.info.listen").unwrap();
@@ -673,7 +673,7 @@ mod tests {
             }),
         );
 
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
@@ -759,7 +759,7 @@ mod tests {
             }),
         );
 
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",
@@ -837,7 +837,7 @@ mod tests {
             }),
         );
 
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         // Connect to the current Tarantool instance
         let opts = WorkerOptions {
             raft_msg_handler: "test_interact",

@@ -123,8 +123,19 @@ macro_rules! define_clusterwide_tables {
         }
 
         impl $Clusterwide {
+            /// Initialize the clusterwide storage.
+            ///
+            /// This function is private because it should only be called once
+            /// per picodata instance on boot.
             #[inline(always)]
-            pub fn new() -> tarantool::Result<Self> {
+            fn initialize() -> tarantool::Result<Self> {
+                // SAFETY: safe as long as only called from tx thread.
+                static mut WAS_CALLED: bool = false;
+                unsafe {
+                    assert!(!WAS_CALLED, "Clusterwide storage must only be initialized once");
+                    WAS_CALLED = true;
+                }
+
                 Ok(Self {
                     $( $Clusterwide_field: $space_struct::new()?, )+
                     $( $Clusterwide_extra_field: Default::default(), )*
@@ -360,7 +371,7 @@ impl Clusterwide {
                 if !init {
                     return Err(Error::Uninitialized);
                 }
-                STORAGE = Some(Self::new()?);
+                STORAGE = Some(Self::initialize()?);
             }
             Ok(STORAGE.as_ref().unwrap())
         }
@@ -374,6 +385,13 @@ impl Clusterwide {
     #[inline(always)]
     pub fn get() -> &'static Self {
         Self::try_get(false).expect("shouldn't be calling this until it's initialized")
+    }
+
+    /// Get an instance of clusterwide storage for use in unit tests.
+    ///
+    /// Should only be used in tests.
+    pub(crate) fn for_tests() -> Self {
+        Self::initialize().unwrap()
     }
 
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
@@ -3152,7 +3170,7 @@ mod tests {
         use crate::instance::InstanceId;
         use crate::failure_domain::FailureDomain;
 
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         let storage_peer_addresses = PeerAddresses::new().unwrap();
         let space_peer_addresses = storage_peer_addresses.space.clone();
 
@@ -3261,7 +3279,7 @@ mod tests {
 
     #[::tarantool::test]
     fn clusterwide_space_index() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
 
         storage
             .space_by_name(ClusterwideTable::Address)
@@ -3292,7 +3310,7 @@ mod tests {
 
     #[::tarantool::test]
     fn snapshot_data() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
         storage.for_each_space(|s| s.truncate()).unwrap();
 
         let i = Instance {
@@ -3364,7 +3382,7 @@ mod tests {
 
     #[::tarantool::test]
     fn apply_snapshot_data() {
-        let storage = Clusterwide::new().unwrap();
+        let storage = Clusterwide::for_tests();
 
         let mut data = SnapshotData {
             schema_version: 0,
