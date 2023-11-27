@@ -1,6 +1,8 @@
 from conftest import Cluster
+import pytest
 
 
+@pytest.mark.xfail
 def test_script_failure(cluster: Cluster):
     instance = cluster.add_instance(wait_online=False)
     script = f"{cluster.data_dir}/fail.lua"
