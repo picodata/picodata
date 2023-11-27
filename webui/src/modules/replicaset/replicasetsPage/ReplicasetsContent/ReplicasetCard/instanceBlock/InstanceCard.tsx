@@ -3,7 +3,7 @@ import React, { FC, useCallback, useState } from "react";
 
 import { LeaderIcon } from "shared/icons/LeaderIcon";
 import { ClientInstanceType } from "store/slices/types";
-import { formatFailDomains } from "modules/replicaset/replicasetsPage/ReplecasetsContent/utils";
+import { formatFailDomains } from "modules/replicaset/replicasetsPage/ReplicasetsContent/utils";
 
 import { InstanceModal } from "./instanceModal/InstanceModal";
 

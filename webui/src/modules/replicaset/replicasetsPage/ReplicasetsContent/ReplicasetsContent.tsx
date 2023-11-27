@@ -14,7 +14,7 @@ import { useSortBy } from "./TopBar/SortBy/hooks";
 import { useFilteredInstances, useSortedInstances } from "./hooks";
 import { useFilterBy } from "./TopBar/FilterBy/hooks";
 
-import styles from "./ReplecasetsContent.module.scss";
+import styles from "./ReplicasetsContent.module.scss";
 
 export const ReplicasetsContent = () => {
   const dispatch = useDispatch<AppDispatch>();
