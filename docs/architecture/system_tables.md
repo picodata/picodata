@@ -140,11 +140,12 @@ Picodata 23.06.0-232-ge436159d5
 
 * `replicaset_id` (*string*)
 * `replicaset_uuid` (*string*)
-* `master_id` (*string*)
+* `current_master_id` (*string*)
+* `target_master_id` (*string*)
 * `tier` (*string*)
 * `weight` (*number*)
 * `weight_origin` (*string*)
-* `weight_state` (*string*)
+* `state` (*string*, `"ready" | "not-ready"`)
 
 Индексы:
 
