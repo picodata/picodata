@@ -593,8 +593,6 @@ local supported_priveleges = {
     create = true,
     drop = true,
     alter = true,
-    reference = true,
-    trigger = true,
     insert = true,
     update = true,
     delete = true,
@@ -769,7 +767,7 @@ Params:
 
     2. privilege (string), one of
         'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
-        'alter' | 'reference' | 'trigger' | 'insert' | 'update' | 'delete'
+        'alter' | 'insert' | 'update' | 'delete'
 
     3. object_type (string), one of
         'universe' | 'table' | 'sequence' | 'function' | 'role' | 'user'
@@ -894,7 +892,7 @@ Params:
 
     2. privilege (string), one of
         'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
-        'alter' | 'reference' | 'trigger' | 'insert' | 'update' | 'delete'
+        'alter' | 'insert' | 'update' | 'delete'
 
     3. object_type (string), one of
         'universe' | 'table' | 'sequence' | 'function' | 'role' | 'user'
