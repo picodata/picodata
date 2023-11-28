@@ -26,8 +26,6 @@ use crate::sync;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
-use crate::traft::event;
-use crate::traft::event::Event;
 use crate::traft::network::WorkerOptions;
 use crate::traft::notify::{notification, Notifier, Notify};
 use crate::traft::op::{Acl, Ddl, Dml, Op, OpResult};
@@ -586,7 +584,6 @@ impl NodeImpl {
 
         let (tx, rx) = oneshot::channel();
         self.joint_state_latch.insert(last_index, tx);
-        event::broadcast(Event::JointStateEnter);
 
         Ok(rx)
     }
@@ -989,7 +986,6 @@ impl NodeImpl {
             let e = RaftError::ConfChangeError("rolled back".into());
 
             let _ = notify.send(Err(e));
-            event::broadcast(Event::JointStateDrop);
         }
 
         EntryApplied
@@ -1179,7 +1175,6 @@ impl NodeImpl {
         let mut latch_unlock = || {
             if let Some(notify) = self.joint_state_latch.take() {
                 let _ = notify.send(Ok(()));
-                event::broadcast(Event::JointStateLeave);
             }
         };
 

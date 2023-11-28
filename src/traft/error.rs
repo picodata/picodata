@@ -12,8 +12,6 @@ use thiserror::Error;
 pub enum Error {
     #[error("uninitialized yet")]
     Uninitialized,
-    #[error("events system is uninitialized yet")]
-    EventsUninitialized,
     #[error("timeout")]
     Timeout,
     #[error("{0}")]

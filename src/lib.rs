@@ -452,7 +452,6 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     set_console_prompt();
     redirect_interactive_sql();
     init_handlers();
-    traft::event::init();
 
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
     set_login_attempts_check(storage.clone());

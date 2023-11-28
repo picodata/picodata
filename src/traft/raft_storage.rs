@@ -867,8 +867,8 @@ mod tests {
         for i in first..=last {
             storage.persist_entries(&[dummy_entry(i, i)]).unwrap();
         }
-        let commit = 8;
-        storage.persist_commit(commit).unwrap();
+        let applied = 8;
+        storage.persist_applied(applied).unwrap();
         let entries = |lo, hi| S::entries(&storage, lo, hi, u64::MAX);
         let compact_log = |up_to| transaction(|| storage.compact_log(up_to));
 
@@ -900,10 +900,10 @@ mod tests {
         assert_eq!(compact_log(0).unwrap(), first);
         assert_eq!(compact_log(first).unwrap(), first);
 
-        // cannot compact past commit
-        assert_eq!(compact_log(commit + 2).unwrap(), commit + 1);
+        // cannot compact past applied
+        assert_eq!(compact_log(applied + 2).unwrap(), applied + 1);
 
-        storage.persist_commit(last).unwrap();
+        storage.persist_applied(last).unwrap();
 
         // trim to the end
         assert_eq!(compact_log(u64::MAX).unwrap(), last + 1);
