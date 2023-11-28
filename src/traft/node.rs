@@ -1645,6 +1645,8 @@ impl NodeImpl {
                 tlog!(Warning, "dropping raft light ready: {light_rd:#?}");
                 panic!("transaction failed: {e}");
             }
+
+            crate::error_injection!(block "BLOCK_AFTER_RAFT_PERSISTS_COMMIT_INDEX");
         }
 
         // Apply committed entries.

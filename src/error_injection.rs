@@ -43,4 +43,21 @@ macro_rules! error_injection {
             $crate::tarantool::exit(69);
         };
     };
+    (block $error:expr) => {{
+        let error = $error;
+        #[rustfmt::skip]
+        if $crate::error_injection::is_enabled(error) {
+            $crate::tlog!(Info, "################################################################");
+            $crate::tlog!(Info, "ERROR INJECTED '{}': BLOCKING", error);
+            $crate::tlog!(Info, "################################################################");
+
+            while $crate::error_injection::is_enabled(error) {
+                ::tarantool::fiber::sleep(::std::time::Duration::from_millis(100));
+            }
+
+            $crate::tlog!(Info, "################################################################");
+            $crate::tlog!(Info, "ERROR UNINJECTED '{}': UNBLOCKING", error);
+            $crate::tlog!(Info, "################################################################");
+        };
+    }};
 }

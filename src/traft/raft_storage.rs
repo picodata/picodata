@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::convert::TryFrom as _;
 
 use crate::instance::InstanceId;
+use crate::tlog;
 use crate::traft;
 use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
@@ -455,9 +456,9 @@ impl RaftSpaceAccess {
     pub fn compact_log(&self, up_to: RaftIndex) -> tarantool::Result<u64> {
         debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
-        // We cannot drop entries, which weren't commited yet
-        let commit = self.commit()?;
-        let up_to = up_to.min(commit + 1);
+        // We cannot drop entries, which weren't applied yet
+        let applied = self.applied()?;
+        let up_to = up_to.min(applied + 1);
 
         // IteratorType::LT means tuples are returned in descending order
         let mut iter = self.space_raft_log.select(IteratorType::LT, &(up_to,))?;
@@ -477,14 +478,19 @@ impl RaftSpaceAccess {
         self.persist_compacted_index(compacted_index)?;
         self.persist_compacted_term(compacted_term)?;
 
+        let mut num_deleted = 1;
         for tuple in iter {
             let index = tuple
                 .field::<RaftIndex>(Self::FIELD_ENTRY_INDEX)?
                 .expect("index is non-nullable");
             self.space_raft_log.delete(&(index,))?;
+            num_deleted += 1;
         }
 
-        Ok(1 + compacted_index)
+        let new_first_index = 1 + compacted_index;
+        tlog!(Info, "compacted raft log: deleted {num_deleted} entries, new first entry index is {new_first_index}");
+
+        Ok(new_first_index)
     }
 }
 
