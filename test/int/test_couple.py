@@ -119,3 +119,63 @@ def test_restart_both(cluster2: Cluster):
     i2.raft_wait_index(index)
     assert i1.eval("return box.space._pico_property:get('check')")[1] is True
     assert i2.eval("return box.space._pico_property:get('check')")[1] is True
+
+
+def test_exit_after_persist_before_commit(cluster2: Cluster):
+    [i1, i2] = cluster2.instances
+
+    # Make sure i1 is raft leader
+    i1.promote_or_fail()
+
+    i2.call("pico._inject_error", "EXIT_AFTER_RAFT_PERSISTS_ENTRIES", True)
+
+    index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
+
+    # The injected error forces the instance to exit right after persisting the
+    # raft log entries, but before committing them to raft.
+    i2.wait_process_stopped()
+
+    # Instance restarts successfully and the entry is eventually applied.
+    i2.start()
+    i2.raft_wait_index(index)
+    assert i2.eval("return box.space._pico_property:get('foo').value") == "bar"
+
+
+def test_exit_after_commit_before_apply(cluster2: Cluster):
+    [i1, i2] = cluster2.instances
+
+    # Make sure i1 is raft leader
+    i1.promote_or_fail()
+
+    i2.call("pico._inject_error", "EXIT_AFTER_RAFT_PERSISTS_HARD_STATE", True)
+
+    index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
+
+    # The injected error forces the instance to exit right after persisting the
+    # hard state, but before applying the entries to the local storage.
+    i2.wait_process_stopped()
+
+    # Instance restarts successfully and the entry is eventually applied.
+    i2.start()
+    i2.raft_wait_index(index)
+    assert i2.eval("return box.space._pico_property:get('foo').value") == "bar"
+
+
+def test_exit_after_apply(cluster2: Cluster):
+    [i1, i2] = cluster2.instances
+
+    # Make sure i1 is raft leader
+    i1.promote_or_fail()
+
+    i2.call("pico._inject_error", "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES", True)
+
+    index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
+
+    # The injected error forces the instance to exit right after applying the
+    # committed entry, but before letting raft-rs know about it.
+    i2.wait_process_stopped()
+
+    # Instance restarts successfully and the entry is eventually applied.
+    i2.start()
+    i2.raft_wait_index(index)
+    assert i2.eval("return box.space._pico_property:get('foo').value") == "bar"

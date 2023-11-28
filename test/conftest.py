@@ -679,6 +679,19 @@ class Instance:
             self.kill()
             raise e from e
 
+    def wait_process_stopped(self, timeout: int = 5):
+        if self.process is None:
+            return
+
+        # FIXME: copy-pasted from above
+        self.process.wait(timeout)
+
+        # Wait for all the output to be handled in the separate threads
+        while not self.process.stdout.closed or not self.process.stderr.closed:  # type: ignore
+            time.sleep(0.1)
+
+        self.process = None
+
     def restart(self, kill: bool = False, remove_data: bool = False):
         if kill:
             self.kill()
@@ -733,6 +746,7 @@ class Instance:
             case _:
                 raise TypeError("space must be str or int")
 
+    # FIXME: this method's parameters are out of sync with Cluster.cas
     def cas(
         self,
         op_kind: Literal["insert", "replace", "delete"],
@@ -968,12 +982,18 @@ class Instance:
         See `crate::traft::node::Node::wait_index`.
         """
 
-        return self.call(
-            "pico.raft_wait_index",
-            target,
-            timeout,  # this timeout is passed as an argument
-            timeout=timeout + 1,  # this timeout is for network call
-        )
+        def make_attempt():
+            return self.call(
+                "pico.raft_wait_index",
+                target,
+                timeout,  # this timeout is passed as an argument
+                timeout=timeout + 1,  # this timeout is for network call
+            )
+
+        index = Retriable(timeout=timeout + 1, rps=10).call(make_attempt)
+
+        assert index is not None
+        return index
 
     def get_vclock(self) -> int:
         """Get current vclock"""
@@ -1347,7 +1367,9 @@ class PortalStorage:
 @pytest.fixture(scope="session")
 def binary_path() -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
-    assert subprocess.call(["cargo", "build"]) == 0, "cargo build failed"
+    assert (
+        subprocess.call(["cargo", "build", "--features", "error_injection"]) == 0
+    ), "cargo build failed"
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
     return os.path.realpath(os.path.join(target, "debug/picodata"))

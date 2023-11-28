@@ -36,6 +36,7 @@ mod bootstrap_entries;
 pub mod cas;
 pub mod cli;
 pub mod discovery;
+pub mod error_injection;
 pub mod failure_domain;
 pub mod governor;
 pub mod instance;

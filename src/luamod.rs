@@ -1446,4 +1446,23 @@ pub(crate) fn setup(args: &args::Run) {
             crate::traft::error::is_retriable_error_message(&msg)
         }),
     );
+
+    #[cfg(feature = "error_injection")]
+    luamod_set(
+        &l,
+        "_inject_error",
+        indoc! {"
+        pico._inject_error(error, enable)
+
+        Internal API, see src/luamod.rs for the details.
+
+        Params:
+
+            1. error (string)
+            2. enable (bool)
+        "},
+        tlua::Function::new(|error: String, enable: bool| {
+            crate::error_injection::enable(&error, enable);
+        }),
+    );
 }

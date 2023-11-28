@@ -227,7 +227,7 @@ test-mac-m1:
 
     - cargo fmt -- -v --check
     - cargo clippy --version
-    - cargo clippy --features webui -- --deny clippy::all --no-deps
+    - cargo clippy --all-features -- --deny clippy::all --no-deps
     # - |
     #   # Pipenv install
     #   ci-log-section start "pipenv-install" Installing pip dependencies ...

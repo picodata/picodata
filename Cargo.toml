@@ -73,6 +73,7 @@ nix = { git = "https://git.picodata.io/picodata/picodata/nix.git", branch = "fix
 [features]
 load_test = []
 webui = []
+error_injection = []
 
 [lib]
 doctest = true

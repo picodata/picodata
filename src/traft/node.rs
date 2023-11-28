@@ -1592,6 +1592,13 @@ impl NodeImpl {
                     .send(new_applied)
                     .expect("applied shouldn't ever be borrowed across yields");
             }
+
+            if hard_state.is_some() {
+                crate::error_injection!(exit "EXIT_AFTER_RAFT_PERSISTS_HARD_STATE");
+            }
+            if !entries_to_persist.is_empty() {
+                crate::error_injection!(exit "EXIT_AFTER_RAFT_PERSISTS_ENTRIES");
+            }
         }
 
         // Apply committed entries.
@@ -1602,6 +1609,8 @@ impl NodeImpl {
                 tlog!(Warning, "dropping raft ready: {ready:#?}");
                 panic!("transaction failed: {e}");
             }
+
+            crate::error_injection!(exit "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES");
         }
 
         // These messages are only available on followers. They must be sent only
@@ -1646,6 +1655,8 @@ impl NodeImpl {
             if let Err(e) = res {
                 panic!("transaction failed: {e}");
             }
+
+            crate::error_injection!(exit "EXIT_AFTER_RAFT_HANDLES_COMMITTED_ENTRIES");
         }
 
         // Advance the apply index.
