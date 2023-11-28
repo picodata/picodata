@@ -591,7 +591,6 @@ impl NodeImpl {
         Ok(rx)
     }
 
-    /// Is called during a transaction
     fn handle_committed_entries(
         &mut self,
         entries: &[raft::Entry],
@@ -1217,7 +1216,6 @@ impl NodeImpl {
         self.raft_storage.persist_conf_state(&conf_state).unwrap();
     }
 
-    /// Is called during a transaction
     fn handle_read_states(&mut self, read_states: &[raft::ReadState]) {
         for rs in read_states {
             if rs.request_ctx.is_empty() {
@@ -1237,7 +1235,6 @@ impl NodeImpl {
         }
     }
 
-    /// Is called during a transaction
     fn handle_messages(&mut self, messages: Vec<raft::Message>) {
         if messages.is_empty() {
             return;
@@ -1441,6 +1438,10 @@ impl NodeImpl {
 
     #[inline(always)]
     fn main_loop_status(&self, status: &'static str) {
+        if self.status.get().main_loop_status == status {
+            return;
+        }
+
         tlog!(Debug, "main_loop_status = '{status}'");
         self.status
             .send_modify(|s| s.main_loop_status = status)
@@ -1495,7 +1496,7 @@ impl NodeImpl {
         let mut ready: raft::Ready = self.raw_node.ready();
 
         // Apply soft state changes before anything else, so that this info is
-        // awailable for other fibers as soon as main loop yields.
+        // available for other fibers as soon as main loop yields.
         if let Some(ss) = ready.ss() {
             self.status
                 .send_modify(|s| {
