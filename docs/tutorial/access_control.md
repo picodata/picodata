@@ -38,7 +38,7 @@ Picodata является распределенной СУБД, и управл
 <!-- – `procedure` – хранимая процедура на языке SQL -->
 
 Доступ к объектам предоставляется на основе настраиваемого списка
-управления доступом (access control list, ACL), который определяет,
+управления доступом (access control list, [ACL](../reference/sql_queries.md#acl)), который определяет,
 какими привилегиями обладает каждый субъект (пользователь или роль).
 
 ### Привилегии {: #privileges }
@@ -228,41 +228,31 @@ GRANT CREATE USER TO <grantee>
 
 ### Изменение {: #alter_user }
 
-Для изменения учетных данных пользователя используйте SQL-команду `ALTER
-USER`:
-<!-- (../reference/sql_queries.md#AlterUser) -->
+Для изменения учетных данных пользователя используйте SQL-команду [ALTER
+USER](../reference/sql_queries.md#AlterUser):
+
 
 ```sql
 ALTER USER <user name>
-    [ LOGIN | NOLOGIN ]
-    [ ENABLE | DISABLE ]
-    [ RENAME <new name> ]
-    [ [ WITH ] PASSWORD <password> ]
-    [ USING chap-sha1 | md5 | ldap ]
+    [ WITH ] [ LOGIN ] | [ NOLOGIN ] |
+    [ PASSWORD <password> [ USING chap-sha1 | md5 | ldap ] ]
 ```
 Возможные действия:
 
 - `LOGIN` / `NOLOGIN` —  включение/выключение привилегии `SESSION`
-- `ENABLE` / `DISABLE` —  включение/выключение привилегии `USAGE`
-- `RENAME` —  переименование пользователя
+- `WITH PASSWORD` — установка пароля пользователя
 - `USING` —  выбора метода аутентификации
 
-Пример переименования пользователя:
+Пример блокировки пользователя (отзыва привилегий `SESSION`):
 
 ```sql
-ALTER USER "alice" RENAME "bob"
+ALTER USER "alice" WITH NOLOGIN
 ```
 
-Пример блокировки пользователя (отзыва привилегий `SESSION` и `USAGE`):
+Обратное действие (разблокировка) с возвращением этой привилегии:
 
 ```sql
-ALTER USER "alice" NOLOGIN DISABLE
-```
-
-Обратное действие (разблокировка) с возвращением этих привилегий:
-
-```sql
-ALTER USER "alice" LOGIN ENABLE
+ALTER USER "alice" WITH LOGIN
 ```
 
 Для использования `ALTER USER` требуется иметь эту привилегию. Ее можно выдать на конкретного
@@ -283,7 +273,8 @@ GRANT ALTER USER TO <grantee>
 
 ### Удаление {: #drop_user }
 
-Для удаление пользователя используйте SQL-команду `DROP USER`:
+Для удаление пользователя используйте SQL-команду [DROP
+USER](../reference/sql_queries.md#DropUser):
 
 ```sql
 DROP USER <user name>
@@ -306,7 +297,9 @@ GRANT DROP USER TO <grantee>
 
 ### Использование ролей {: #role_management }
 
-Для создания и удаления ролей используйте следующие команды:
+Для [создания](../reference/sql_queries.md#CreateRole) и
+[удаления](../reference/sql_queries.md#DropRole) ролей используйте
+следующие команды:
 
 ```sql
 CREATE ROLE <role name>

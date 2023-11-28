@@ -123,6 +123,86 @@ drop user andy
 
  - [Управление доступом](../tutorial/access_control.md)
 
+### **Alter user** {: #AlterUser }
+
+Команда `alter user` предназначена для изменения данных/параметров уже
+существующих в системе пользователей:
+
+![Alter user](../images/ebnf/AlterUser.svg)
+
+Изменение может состоять в:
+
+- разрешении/запрете подключаться к системе (`login`/`nologin`)
+- изменении пароля пользователя и метода аутентификации
+
+Пароль и метод аутентификации меняются только вместе. Соответственно,
+если нужно поменять только один из этих параметров, потребуется указать
+и текущее значение второго.
+
+Примеры изменения пароля и метода аутентификации:
+
+```sql
+alter user "andy" with password 'Str0ng_P@ssw0rd' using chap-sha1 option (timeout = 3.0)
+```
+
+Блокировка пользователя:
+
+```sql
+alter user "andy" with nologin
+```
+
+Разблокировка пользователя:
+
+```sql
+alter user "andy" with login
+```
+
+## Управление привилегиями {: #Privileges }
+
+В Picodata применяется ролевая модель, в которой можно назначать
+привилегии как напрямую пользователям, так через роли (группы
+привилегий). Более подробно это описано в руководстве [Управление
+доступом](../tutorial/access_control.md/).
+
+Ниже показаны схемы запросов для назначения (`grant`) и изъятия
+(`revoke`) привилегий.
+
+### **Grant privilege** {: #GrantPrivilege }
+
+![Grant privilege](../images/ebnf/GrantPrivilege.svg)
+
+### **Revoke privilege** {: #RevokePrivilege }
+
+![Revoke privilege](../images/ebnf/RevokePrivilege.svg)
+
+### **Privilege** {: #Privilege }
+
+Привилегия может представлять собой роль, либо возможность какого-либо
+действия по отношению к конкретному объекту или ко всем объектам указанного
+типа.
+
+Для того, чтобы выдать кому-либо привилегию, нужно самому ею обладать.
+
+![Privilege](../images/ebnf/Privilege.svg)
+
+Пример выдачи права изменять данные пользователя `woody` пользователю `andy`:
+
+```sql
+grant alter on user "woody" to "andy"
+```
+
+Пример выдачи права записи в таблицу `characters` для пользователя `woody`:
+
+```sql
+grant write on table "characters" to "woody"
+```
+
+Пример изъятия права чтения таблиц у пользователя `woody`:
+
+```sql
+revoke read table from "woody"
+```
+
 ## Создание таблицы {: #create_table }
 
 Схема запроса для создания шардированной таблицы показана ниже.
@@ -1303,4 +1383,4 @@ explain select count("id") from "characters" ;
 ```
 
 Читать далее: [Типы данных SQL](sql_types.md)
-<!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/main/doc/sql/query.ebnf -->
+<!-- ebnf source: https://git.picodata.io/picodata/picodata/sbroad/-/blob/e2b6207d15aa8ec6eacbdeb25b5c53dde000a1e1/doc/sql/query.ebnf -->
