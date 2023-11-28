@@ -1,3 +1,4 @@
+use crate::traft::{LogicalClock, RaftSpaceAccess};
 use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use tarantool::{error::TarantoolError, log::SayLevel};
@@ -75,6 +76,7 @@ mod ffi {
 }
 
 /// A safe wrapper for tarantool's log object.
+#[derive(Debug)]
 pub struct Log(*mut ffi::Log);
 
 // SAFETY: tarantool's logger should be thread-safe.
@@ -116,46 +118,52 @@ impl Drop for Log {
 /// A helper for serializing slog's record to json.
 struct AuditSerializer {
     map: serde_json::Map<String, serde_json::Value>,
+    clock: LogicalClock,
 }
 
 impl slog::Serializer for AuditSerializer {
     fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
         // TODO: optimize excessive string allocations here and below.
+        // TODO: make sure we're not trying to overwrite a value here (via assert).
         self.map.insert(key.to_string(), val.to_string().into());
         Ok(())
     }
 }
 
 impl AuditSerializer {
+    fn new(clock: LogicalClock) -> Self {
+        Self {
+            map: serde_json::Map::new(),
+            clock,
+        }
+    }
+
     fn into_string(self) -> String {
         serde_json::Value::from(self.map).to_string()
     }
 
-    fn from_any(msg: impl std::fmt::Display) -> Self {
-        let mut this = AuditSerializer {
-            map: serde_json::Map::new(),
-        };
-
-        // TODO: include the record id (comprised of `count,gen,raft_id`).
+    fn serialize_any(mut self, msg: impl std::fmt::Display) -> Self {
         // TODO: include the name of a subject (who performed the operation).
+        let id = self.clock.to_string();
+        self.map.insert("id".into(), id.into());
         let time = chrono::Local::now().format("%FT%H:%M:%S%.3f%z").to_string();
-        this.map.insert("time".into(), time.into());
+        self.map.insert("time".into(), time.into());
         let message = msg.to_string();
-        this.map.insert("message".into(), message.into());
+        self.map.insert("message".into(), message.into());
 
-        this
+        self
     }
 
-    fn from_slog(record: &slog::Record, values: &slog::OwnedKVList) -> Self {
-        let mut this = Self::from_any(record.msg());
+    fn serialize_slog(mut self, record: &slog::Record, values: &slog::OwnedKVList) -> Self {
+        self = self.serialize_any(record.msg());
 
         use slog::KV;
         // It's safe to use .unwrap() here since
         // AuditSerializer doesn't return anything but Ok()
-        record.kv().serialize(record, &mut this).unwrap();
-        values.serialize(record, &mut this).unwrap();
+        record.kv().serialize(record, &mut self).unwrap();
+        values.serialize(record, &mut self).unwrap();
 
-        this
+        self
     }
 }
 
@@ -165,7 +173,13 @@ const AUDIT_FMT_MAGIC: &std::ffi::CStr = unsafe { tarantool::c_str!("json") };
 
 // We don't need certain fields (e.g. fiber name) in audit log entries,
 // so we have to implement the format logic ourselves.
-// NOTE: this function is not allowed to panic!
+//
+// NOTE: We can't assume this function will only be called as a
+// result of some action in our rust codebase; in fact, core
+// tarantool may call it based on its own considerations
+// (e.g. for a SIGHUP rotation event).
+//
+// NOTE: Panics in this function are highly undesirable.
 extern "C" fn say_format_audit(
     _log: *const core::ffi::c_void,
     buf: *mut core::ffi::c_char,
@@ -209,7 +223,8 @@ extern "C" fn say_format_audit(
 
         // SAFETY: I'm 95% positive it will be valid utf8...
         let str = unsafe { std::str::from_utf8_unchecked(&scratch[..count]) };
-        let data = AuditSerializer::from_any(str).into_string();
+        let clock = next_unique_id().expect("failed to generate audit entry id");
+        let data = AuditSerializer::new(clock).serialize_any(str).into_string();
 
         Cow::Owned(data.into_bytes())
     };
@@ -236,7 +251,10 @@ impl slog::Drain for Log {
         record: &slog::Record,
         values: &slog::OwnedKVList,
     ) -> Result<Self::Ok, Self::Err> {
-        let msg = AuditSerializer::from_slog(record, values).into_string();
+        let clock = next_unique_id().expect("failed to generate audit entry id");
+        let msg = AuditSerializer::new(clock)
+            .serialize_slog(record, values)
+            .into_string();
 
         // SAFETY: All arguments' invariants have already been checked.
         // Only the last two arguments will be used by the fmt callback.
@@ -262,15 +280,24 @@ impl slog::Drain for Log {
     }
 }
 
-// Note: we don't want to expose this implementation detail.
+// Note: we don't want to expose these implementation details.
 static ROOT: OnceCell<slog::Logger> = OnceCell::new();
+static mut CLOCK: OnceCell<LogicalClock> = OnceCell::new();
+
+/// Generate next unique record id.
+fn next_unique_id() -> Option<LogicalClock> {
+    // SAFETY: we'll call this only from TX thread.
+    let clock = unsafe { CLOCK.get_mut()? };
+    clock.inc();
+    Some(*clock)
+}
 
 /// A public log drain for the [`crate::audit!`] macro.
 pub fn root() -> Option<&'static slog::Logger> {
     ROOT.get()
 }
 
-::tarantool::define_str_enum! {
+tarantool::define_str_enum! {
     /// Type-safe entry severity for use in [`crate::audit!`].
     /// Severity levels and their usage are defined in the RFC.
     pub enum Severity {
@@ -339,8 +366,25 @@ macro_rules! audit(
 );
 
 /// Initialize audit log.
-/// Note: `config` will be parsed by tarantool's core (say.c).
-pub fn init(config: &str) {
+/// Unique id generation depends on the raft machine's state.
+/// Note: `config` will be parsed by tarantool's core (see `say.c`).
+pub fn init(config: &str, raft_storage: &RaftSpaceAccess) {
+    // Raft-related stuff should be ready at this point.
+    let raft_id = raft_storage
+        .raft_id()
+        .expect("failed to get raft_id for audit log")
+        .expect("found zero raft_id during audit log init");
+    let gen = raft_storage.gen().expect("failed to get gen for audit log");
+
+    // Note: this'll only fail if the cell's already set (shouldn't be possible).
+    // SAFETY: this is the first time we access this variable, and it's
+    // always done from the main (TX) thread.
+    unsafe {
+        CLOCK
+            .set(LogicalClock::new(raft_id, gen))
+            .expect("failed to initialize global audit event id generator");
+    }
+
     let config = CString::new(config).expect("audit log config contains nul");
     let log = Log::new(config).expect("failed to create audit log");
 
@@ -361,7 +405,7 @@ pub fn init(config: &str) {
         title: "local_startup",
         severity: Low,
     );
-    ::tarantool::trigger::on_shutdown(|| {
+    tarantool::trigger::on_shutdown(|| {
         crate::audit!(
             message: "instance is shutting down",
             title: "local_shutdown",

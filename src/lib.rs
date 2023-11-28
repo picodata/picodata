@@ -373,10 +373,6 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
-    if let Some(config) = &args.audit {
-        audit::init(config);
-    }
-
     // Load Lua libraries
     preload_vshard();
     preload_http();
@@ -629,6 +625,10 @@ fn start_join(args: &args::Run, instance_address: String) {
 
 fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAccess) {
     tlog!(Info, ">>>>> postjoin()");
+
+    if let Some(config) = &args.audit {
+        audit::init(config, &raft_storage);
+    }
 
     PluginList::global_init(&args.plugins);
 
