@@ -170,6 +170,17 @@ impl<'a, T> Fiber<'a, T> {
     }
 
     /// Interrupt a synchronous wait of a fiber.
+    ///
+    /// WARNING: **This function is unsafe actually!**
+    /// If the fiber was non-joinable and has already finished execution
+    /// tarantool may have recycled it and now the pointer may refer to a
+    /// completely unrelated fiber, which we will now wake up.
+    ///
+    /// Consider using [`fiber::start`](start) or [`fiber::Builder`](Builder)
+    /// instead, because they do not share the same limitations. But if you must
+    /// use this api, the best course of action is to save the fiber's id
+    /// ([`Self::id_checked`]) before making the fiber non-joinable and use
+    /// [`fiber::wakeup`](wakeup) with it, don't use this function!.
     pub fn wakeup(&self) {
         unsafe { ffi::fiber_wakeup(self.inner) }
     }
@@ -193,12 +204,30 @@ impl<'a, T> Fiber<'a, T> {
 
     /// Set fiber to be joinable (false by default).
     ///
+    /// WARNING: This api is unsafe, because non-joinalbe fibers get recycled
+    /// as soon as they finish execution. After this the pointer to the fiber
+    /// may or may not point to a newly constructed unrelated fiber. For this
+    /// reason it's not safe to operate with non-joinalbe fibers using this api.
+    /// Use [`fiber::start`], [`fiber::defer`] and/or [`fiber::Builder`]
+    /// instead, as they don't share the same limitations.
+    ///
     /// - `is_joinable` - status to set
     pub fn set_joinable(&mut self, is_joinable: bool) {
         unsafe { ffi::fiber_set_joinable(self.inner, is_joinable) }
     }
 
     /// Cancel a fiber. (set `FIBER_IS_CANCELLED` flag)
+    ///
+    /// WARNING: **This function is unsafe actually!**
+    /// If the fiber was non-joinable and has already finished execution
+    /// tarantool may have recycled it and now the pointer may refer to a
+    /// completely unrelated fiber, which we will now cancel.
+    ///
+    /// Consider using [`fiber::start`](start) or [`fiber::Builder`](Builder)
+    /// instead, because they do not share the same limitations. But if you must
+    /// use this api, the best course of action is to save the fiber's id
+    /// ([`Self::id_checked`]) before making the fiber non-joinable and use
+    /// [`fiber::cancel`](cancel) with it, don't use this function!.
     ///
     /// Running and suspended fibers can be cancelled. After a fiber has been cancelled, attempts to operate on it will
     /// cause error: the fiber is dead. But a dead fiber can still report its id and status.
@@ -507,6 +536,10 @@ where
         let f = Box::from_raw(args.get::<*const ()>() as *mut F);
         let result_ptr = args.get::<*const ()>() as *mut Option<T>;
 
+        // On newer tarantool versions all fibers are cancellable.
+        // Let's do the same on older versions.
+        ffi::fiber_set_cancellable(true);
+
         // Call `f` and drop the closure.
         let t = f();
 
@@ -573,6 +606,10 @@ where
 
         // Overwrite the context so that the callback doesn't mess it up somehow.
         ffi::fiber_set_ctx(fiber_self, std::ptr::null_mut());
+
+        // On newer tarantool versions all fibers are cancellable.
+        // Let's do the same on older versions.
+        ffi::fiber_set_cancellable(true);
 
         // Call `f` and drop the closure.
         let t = (ctx.f)();
@@ -1031,6 +1068,73 @@ impl<'f, T> JoinHandle<'f, T> {
             Some(JoinHandleImpl::Lua { fiber_id, .. }) => Some(fiber_id),
         }
     }
+
+    /// Cancel the underlying fiber.
+    ///
+    /// **Does NOT yield**.
+    ///
+    /// NOTE: tarantool does not guarantee that the cancelled fiber stops executing.
+    /// It's the responsibility of the fiber's author to check if it was cancelled
+    /// by checking [`is_cancelled`] or similar after any yielding calls and
+    /// explicitly returning.
+    pub fn cancel(&self) {
+        match self.inner {
+            None => {
+                unreachable!("it has either been moved into JoinHandle::join, or been dropped")
+            }
+            Some(JoinHandleImpl::Ffi { fiber, .. }) => {
+                // SAFETY: safe as long as we only call this from the tx thread.
+                //
+                // NOTE: if the fiber was non-joinable and has already finished
+                // execution tarantool may have recycled it and now the pointer
+                // may refer to a completely unrelated fiber, which we will now
+                // cancel. However we aren't worried about it, because `JoinHandle`
+                // only exists while the underlying fiber is joinable, so this
+                // function may never be called on a non-joinable fiber.
+                unsafe {
+                    ffi::fiber_cancel(fiber.as_ptr());
+                }
+            }
+            Some(JoinHandleImpl::Lua { fiber_id, .. }) => {
+                let found = cancel(fiber_id);
+                debug_assert!(
+                    found,
+                    "non-joinable fiber has been recycled before being joined"
+                );
+            }
+        }
+    }
+
+    /// Wakeup the underlying fiber.
+    ///
+    /// **Does NOT yield**.
+    pub fn wakeup(&self) {
+        match self.inner {
+            None => {
+                unreachable!("it has either been moved into JoinHandle::join, or been dropped")
+            }
+            Some(JoinHandleImpl::Ffi { fiber, .. }) => {
+                // SAFETY: safe as long as we only call this from the tx thread.
+                //
+                // NOTE: if the fiber was non-joinable and has already finished
+                // execution tarantool may have recycled it and now the pointer
+                // may refer to a completely unrelated fiber, which we will now
+                // wakeup. However we aren't worried about it, because `JoinHandle`
+                // only exists while the underlying fiber is joinable, so this
+                // function may never be called on a non-joinable fiber.
+                unsafe {
+                    ffi::fiber_wakeup(fiber.as_ptr());
+                }
+            }
+            Some(JoinHandleImpl::Lua { fiber_id, .. }) => {
+                let found = wakeup(fiber_id);
+                debug_assert!(
+                    found,
+                    "non-joinable fiber has been recycled before being joined"
+                );
+            }
+        }
+    }
 }
 
 /// Represents a possible error which can returned by
@@ -1266,7 +1370,6 @@ pub fn is_cancelled() -> bool {
 /// by checking [`is_cancelled`] or similar after any yielding calls and
 /// explicitly returning.
 #[inline(always)]
-#[must_use]
 pub fn cancel(id: FiberId) -> bool {
     // SAFETY: safe as long as we only call this from the tx thread.
     if unsafe { has_fiber_id() } {
@@ -1301,7 +1404,6 @@ pub fn cancel(id: FiberId) -> bool {
 /// (i.e. [`has_fiber_id`] returns `false`) this will use an inefficient
 /// implementation base on the lua api.
 #[inline(always)]
-#[must_use]
 pub fn wakeup(id: FiberId) -> bool {
     // SAFETY: safe as long as we only call this from the tx thread.
     if unsafe { has_fiber_id() } {
@@ -1805,6 +1907,10 @@ where
     where
         F: FnMut(Box<T>) -> i32,
     {
+        // On newer tarantool versions all fibers are cancellable.
+        // Let's do the same on older versions.
+        ffi::fiber_set_cancellable(true);
+
         let closure: &mut F = &mut *(args.get::<*const c_void>() as *mut F);
         let boxed_arg = Box::from_raw(args.get::<*const c_void>() as *mut T);
         (*closure)(boxed_arg)

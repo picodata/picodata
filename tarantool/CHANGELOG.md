@@ -19,6 +19,8 @@
   functions for getting and setting the corresponding properties of fibers and
   `ffi::has_fiber_id` function for checking if the corresponding api is
   supported in the current tarantool version.
+- `fiber::JoinHandle::cancel` for cancelling the fiber by it's join handle.
+- `fiber::JoinHandle::wakeup` for waking up the fiber by it's join handle.
 - `fiber::cancel` function for cancelling the fiber by id.
 - `fiber::wakeup` function for waking up the fiber by id.
 - `JoinHandle::detach`, `JoinHandle::detach_checked` functions for making a
@@ -40,6 +42,9 @@
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
   and `MsgpackDecode` variants correspondingly.
 - `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
+- Fibers created with `fiber::start`, `fiber::defer` and/or `fiber::Builder` are
+  now always marked as cancellable. On newer versions of tarantool fibers cannot
+  be made non-cancellable, so we explicitly do the same for older versions.
 
 ### Fixed
 - `define_str_enum` will no longer produce warning "`&` without an explicit
