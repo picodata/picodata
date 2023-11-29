@@ -28,6 +28,8 @@
   when doing so.
 - `fiber::Cond::wait_deadline` for waiting until `tarantool::time::Instant`
   rather than a `Duration`. Uses `fiber::clock` internally.
+- `fiber::r#async::timeout::{deadline, IntoTimeout::deadline}` for constraining
+  futures with an explicit deadline.
 - `util::str_eq` function for comparing strings at compile time.
 - `define_enum_with_introspection` enum for defining enums with some
   introspection facilities including type-safe conversion from integers and

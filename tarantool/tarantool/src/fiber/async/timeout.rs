@@ -53,11 +53,20 @@ pub struct Timeout<F> {
 ///     println!("did not receive value within 10 ms");
 /// }
 /// ```
-#[inline]
+#[inline(always)]
 pub fn timeout<F: Future>(timeout: Duration, f: F) -> Timeout<F> {
     Timeout {
         future: f,
         deadline: fiber::clock().checked_add(timeout),
+    }
+}
+
+/// Like [`timeout`], but with an explicit deadline.
+#[inline(always)]
+pub fn deadline<F: Future>(deadline: Instant, f: F) -> Timeout<F> {
+    Timeout {
+        future: f,
+        deadline: Some(deadline),
     }
 }
 
@@ -111,9 +120,15 @@ where
 /// [`crate::fiber::async`] otherwise the behaviour is undefined.
 pub trait IntoTimeout: Future + Sized {
     /// Adds timeout to a future. See [`Timeout`].
-    #[inline]
+    #[inline(always)]
     fn timeout(self, timeout: Duration) -> Timeout<Self> {
         self::timeout(timeout, self)
+    }
+
+    /// Adds a deadline to the future. See [`Timeout`].
+    #[inline(always)]
+    fn deadline(self, deadline: Instant) -> Timeout<Self> {
+        self::deadline(deadline, self)
     }
 }
 
@@ -215,10 +230,34 @@ mod tests {
             DidntYield(Err(Error::Expired))
         );
 
+        // pending future, deadline is now -> no yield
+        let (_tx, rx) = oneshot::channel::<i32>();
+        let now = fiber::clock();
+        assert_eq!(
+            check_yield(|| fiber::block_on(deadline(now, rx))),
+            DidntYield(Err(Error::Expired))
+        );
+
+        // pending future, deadline is past -> no yield
+        let (_tx, rx) = oneshot::channel::<i32>();
+        let one_second_ago = now.saturating_sub(Duration::from_secs(1));
+        assert_eq!(
+            check_yield(|| fiber::block_on(deadline(one_second_ago, rx))),
+            DidntYield(Err(Error::Expired))
+        );
+
         // pending future, positive timeout -> yield
         let (_tx, rx) = oneshot::channel::<i32>();
         assert_eq!(
             check_yield(|| fiber::block_on(timeout(Duration::from_millis(10), rx))),
+            Yielded(Err(Error::Expired))
+        );
+
+        // pending future, deadline in future -> yield
+        let (_tx, rx) = oneshot::channel::<i32>();
+        let in_10_millis = fiber::clock().saturating_add(Duration::from_millis(10));
+        assert_eq!(
+            check_yield(|| fiber::block_on(deadline(in_10_millis, rx))),
             Yielded(Err(Error::Expired))
         );
     }
