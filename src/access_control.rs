@@ -226,7 +226,7 @@ fn access_check_grant_revoke(
             if grantor_id != ADMIN_USER_ID {
                 return Err(make_access_denied(
                     access_name,
-                    priv_def.object_type,
+                    priv_def.object_type(),
                     "",
                     grantor.name,
                 ));
@@ -236,7 +236,7 @@ fn access_check_grant_revoke(
         Some(object_id) => object_id,
     };
 
-    match priv_def.object_type {
+    match priv_def.object_type() {
         PicoSchemaObjectType::Universe => {
             // Only admin can grant on universe
             if grantor_id != ADMIN_USER_ID {
@@ -284,7 +284,8 @@ fn access_check_grant_revoke(
             // Note that having a role means having execute privilege on it.
             if sys_role_meta.owner_id != grantor_id
                 && grantor_id != ADMIN_USER_ID
-                && !(sys_role_meta.name == "public" && priv_def.privilege == PrivilegeType::Execute)
+                && !(sys_role_meta.name == "public"
+                    && priv_def.privilege() == PrivilegeType::Execute)
             {
                 return Err(make_access_denied(
                     access_name,
@@ -524,20 +525,20 @@ mod tests {
         grantee_id: UserId,
         grantor_id: Option<UserId>,
     ) {
-        let priv_def = PrivilegeDef {
-            grantor_id: grantor_id.unwrap_or(session::uid().unwrap()),
-            grantee_id,
+        let priv_def = PrivilegeDef::new(
+            privilege,
             object_type,
             object_id,
-            privilege,
-            schema_version: 0,
-        };
+            grantee_id,
+            grantor_id.unwrap_or(session::uid().unwrap()),
+            0,
+        );
 
         access_check_op(
             &Op::Acl(Acl::GrantPrivilege {
                 priv_def: priv_def.clone(),
             }),
-            priv_def.grantor_id,
+            priv_def.grantor_id(),
         )
         .unwrap();
 
@@ -551,20 +552,20 @@ mod tests {
         object_type: SchemaObjectType,
         object_id: i64,
     ) {
-        let priv_def = PrivilegeDef {
-            grantor_id: session::uid().unwrap(),
-            grantee_id,
+        let priv_def = PrivilegeDef::new(
+            privilege,
             object_type,
             object_id,
-            privilege,
-            schema_version: 0,
-        };
+            grantee_id,
+            session::uid().unwrap(),
+            0,
+        );
 
         access_check_op(
             &Op::Acl(Acl::RevokePrivilege {
                 priv_def: priv_def.clone(),
             }),
-            priv_def.grantor_id,
+            priv_def.grantor_id(),
         )
         .unwrap();
         on_master_revoke_privilege(&priv_def).unwrap()

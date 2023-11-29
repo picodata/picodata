@@ -718,8 +718,10 @@ fn reenterable_schema_change_request(
             continue 'retry;
         }
 
+        let schema_version = storage.properties.next_schema_version()?;
+
         // Check for conflicts and make the op
-        let mut op = match &params {
+        let op = match &params {
             Params::CreateTable(params) => {
                 if params.space_exists()? {
                     // Space already exists, no op needed
@@ -736,8 +738,7 @@ fn reenterable_schema_change_request(
                 params.test_create_space(storage)?;
                 let ddl = params.into_ddl()?;
                 Op::DdlPrepare {
-                    // This field will be updated later.
-                    schema_version: 0,
+                    schema_version,
                     ddl,
                 }
             }
@@ -748,8 +749,7 @@ fn reenterable_schema_change_request(
                 };
                 let ddl = OpDdl::DropTable { id: space_def.id };
                 Op::DdlPrepare {
-                    // This field will be updated later.
-                    schema_version: 0,
+                    schema_version,
                     ddl,
                 }
             }
@@ -770,8 +770,7 @@ fn reenterable_schema_change_request(
                 let user_def = UserDef {
                     id,
                     name: name.clone(),
-                    // This field will be updated later.
-                    schema_version: 0,
+                    schema_version,
                     auth: auth.clone(),
                     owner: current_user,
                 };
@@ -794,15 +793,14 @@ fn reenterable_schema_change_request(
                 let object_type = SchemaObjectType::Universe;
                 let object_id = 0;
                 let privilege = PrivilegeType::Session;
-                let priv_def = PrivilegeDef {
-                    grantor_id,
-                    grantee_id,
+                let priv_def = PrivilegeDef::new(
+                    privilege,
                     object_type,
                     object_id,
-                    privilege,
-                    // This field will be updated later.
-                    schema_version: 0,
-                };
+                    grantee_id,
+                    grantor_id,
+                    schema_version,
+                );
 
                 match alter_option_param {
                     AlterOptionParam::ChangePassword(auth) => {
@@ -813,8 +811,7 @@ fn reenterable_schema_change_request(
                         Op::Acl(OpAcl::ChangeAuth {
                             user_id: user_def.id,
                             auth: auth.clone(),
-                            // This field will be updated later.
-                            schema_version: 0,
+                            schema_version,
                         })
                     }
 
@@ -853,8 +850,7 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::DropUser {
                     user_id: user_def.id,
-                    // This field will be updated later.
-                    schema_version: 0,
+                    schema_version,
                 })
             }
             Params::CreateRole(name) => {
@@ -878,7 +874,7 @@ fn reenterable_schema_change_request(
                     id,
                     name: name.clone(),
                     // This field will be updated later.
-                    schema_version: 0,
+                    schema_version,
                     owner: current_user,
                 };
                 Op::Acl(OpAcl::CreateRole { role_def })
@@ -890,8 +886,7 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::DropRole {
                     role_id: role_def.id,
-                    // This field will be updated later.
-                    schema_version: 0,
+                    schema_version,
                 })
             }
             Params::GrantPrivilege(grant_type, grantee_name) => {
@@ -910,15 +905,14 @@ fn reenterable_schema_change_request(
                     return Ok(ConsumerResult { row_count: 0 });
                 }
                 Op::Acl(OpAcl::GrantPrivilege {
-                    priv_def: PrivilegeDef {
-                        grantor_id,
-                        grantee_id,
+                    priv_def: PrivilegeDef::new(
+                        privilege,
                         object_type,
                         object_id,
-                        privilege,
-                        // This field will be updated later.
-                        schema_version: 0,
-                    },
+                        grantee_id,
+                        grantor_id,
+                        schema_version,
+                    ),
                 })
             }
             Params::RevokePrivilege(revoke_type, grantee_name) => {
@@ -938,19 +932,17 @@ fn reenterable_schema_change_request(
                 }
 
                 Op::Acl(OpAcl::RevokePrivilege {
-                    priv_def: PrivilegeDef {
-                        grantor_id,
-                        grantee_id,
+                    priv_def: PrivilegeDef::new(
+                        privilege,
                         object_type,
                         object_id,
-                        privilege,
-                        // This field will be updated later.
-                        schema_version: 0,
-                    },
+                        grantee_id,
+                        grantor_id,
+                        schema_version,
+                    ),
                 })
             }
         };
-        op.set_schema_version(storage.properties.next_schema_version()?);
         let is_ddl_prepare = matches!(op, Op::DdlPrepare { .. });
 
         let term = raft::Storage::term(&node.raft_storage, index)?;

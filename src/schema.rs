@@ -389,8 +389,8 @@ tarantool::define_str_enum! {
 /// Privilege definition.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
-    pub privilege: PrivilegeType,
-    pub object_type: SchemaObjectType,
+    privilege: PrivilegeType,
+    object_type: SchemaObjectType,
     /// `-1` denotes an absense of a target object.
     /// Other values should be >= 0 and denote an existing target object.
     /// When working with `object_type` `universe` it might seem that it does
@@ -398,19 +398,78 @@ pub struct PrivilegeDef {
     /// universe has a target object with `object_id == 0`.
     ///
     /// To get the value of this field as `Option<u32>` see [`Self::object_id`]
-    pub object_id: i64,
+    object_id: i64,
     /// Id of the user or role to whom the privilege is granted.
     ///
     /// In tarantool users and roles are stored in the same space, which means a
     /// role and a user cannot have the same id or name.
-    pub grantee_id: UserId,
-    pub grantor_id: UserId,
-    pub schema_version: u64,
+    grantee_id: UserId,
+    grantor_id: UserId,
+    schema_version: u64,
 }
 
 impl Encode for PrivilegeDef {}
 
 impl PrivilegeDef {
+    pub fn new(
+        privilege: PrivilegeType,
+        object_type: SchemaObjectType,
+        object_id: i64,
+        grantee_id: UserId,
+        grantor_id: UserId,
+        schema_version: u64,
+    ) -> PrivilegeDef {
+        PrivilegeDef {
+            privilege,
+            object_type,
+            object_id,
+            grantee_id,
+            grantor_id,
+            schema_version,
+        }
+    }
+
+    #[inline(always)]
+    pub fn privilege(&self) -> PrivilegeType {
+        self.privilege
+    }
+
+    #[inline(always)]
+    pub fn object_type(&self) -> SchemaObjectType {
+        self.object_type
+    }
+
+    /// Get `object_id` field interpreting `-1` as `None`.
+    #[inline(always)]
+    pub fn object_id(&self) -> Option<u32> {
+        if self.object_id >= 0 {
+            Some(self.object_id as _)
+        } else {
+            debug_assert_eq!(self.object_id, -1, "object_id should be >= -1");
+            None
+        }
+    }
+
+    #[inline(always)]
+    pub fn object_id_raw(&self) -> i64 {
+        self.object_id
+    }
+
+    #[inline(always)]
+    pub fn grantee_id(&self) -> UserId {
+        self.grantee_id
+    }
+
+    #[inline(always)]
+    pub fn grantor_id(&self) -> UserId {
+        self.grantor_id
+    }
+
+    #[inline(always)]
+    pub fn schema_version(&self) -> u64 {
+        self.schema_version
+    }
+
     /// Format of the _pico_privilege global table.
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
@@ -435,17 +494,6 @@ impl PrivilegeDef {
             object_id: -1,
             privilege: PrivilegeType::Create,
             schema_version: 337,
-        }
-    }
-
-    /// Get `object_id` field interpreting `-1` as `None`.
-    #[inline(always)]
-    pub fn object_id(&self) -> Option<u32> {
-        if self.object_id >= 0 {
-            Some(self.object_id as _)
-        } else {
-            debug_assert_eq!(self.object_id, -1, "object_id should be >= -1");
-            None
         }
     }
 
