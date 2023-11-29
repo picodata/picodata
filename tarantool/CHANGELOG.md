@@ -26,6 +26,8 @@
 - `JoinHandle::detach`, `JoinHandle::detach_checked` functions for making a
   fiber non-joinable and `fiber::DetachError` enum of errors which can happen
   when doing so.
+- `fiber::Cond::wait_deadline` for waiting until `tarantool::time::Instant`
+  rather than a `Duration`. Uses `fiber::clock` internally.
 - `util::str_eq` function for comparing strings at compile time.
 - `define_enum_with_introspection` enum for defining enums with some
   introspection facilities including type-safe conversion from integers and

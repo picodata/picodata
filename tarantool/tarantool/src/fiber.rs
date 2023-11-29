@@ -1784,20 +1784,43 @@ impl Cond {
         unsafe { ffi::fiber_cond_broadcast(self.inner) }
     }
 
-    /// Suspend the execution of the current fiber (i.e. yield) until [signal()](#method.signal) is called.
+    /// Suspend the execution of the current fiber (i.e. yield) until
+    /// [`Self::signal`] or [`Self::broadcast`] is called or a `timeout` is
+    /// exceeded.
     ///
-    /// Like pthread_cond, FiberCond can issue spurious wake ups caused by explicit
-    /// [Fiber::wakeup()](struct.Fiber.html#method.wakeup) or [Fiber::cancel()](struct.Fiber.html#method.cancel)
-    /// calls. It is highly recommended to wrap calls to this function into a loop
-    /// and check an actual predicate and `fiber_testcancel()` on every iteration.
-    ///
-    /// - `timeout` - timeout in seconds
+    /// Like pthread_cond, Cond can issue spurious wake ups caused by explicit
+    /// [fiber::wakeup](wakeup) or [fiber::cancel](cancel) calls.
+    /// Keep this in mind when designing your algorithms.
     ///
     /// Returns:
-    /// - `true` on [signal()](#method.signal) call or a spurious wake up.
-    /// - `false` on timeout, diag is set to `TimedOut`
+    /// - `true` if cond was signalled or fiber was awoken by other means.
+    /// - `false` on timeout, last [`TarantoolError::last`] is set to `TimedOut`
+    ///
+    /// [`TarantoolError::last`]: crate::error::TarantoolError::last
     #[inline(always)]
     pub fn wait_timeout(&self, timeout: Duration) -> bool {
+        unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0 }
+    }
+
+    /// Suspend the execution of the current fiber (i.e. yield) until
+    /// [`Self::signal`] or [`Self::broadcast`] is called or a `deadline` is
+    /// reached.
+    ///
+    /// Like pthread_cond, Cond can issue spurious wake ups caused by explicit
+    /// [fiber::wakeup](wakeup) or [fiber::cancel](cancel) calls.
+    /// Keep this in mind when designing your algorithms.
+    ///
+    /// This will call [`fiber::clock`](clock) internally to compute the
+    /// relative timeout.
+    ///
+    /// Returns:
+    /// - `true` if cond was signalled or fiber was awoken by other means.
+    /// - `false` on deadline, last [`TarantoolError::last`] is set to `TimedOut`
+    ///
+    /// [`TarantoolError::last`]: crate::error::TarantoolError::last
+    #[inline(always)]
+    pub fn wait_deadline(&self, deadline: Instant) -> bool {
+        let timeout = deadline.duration_since(clock());
         unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0 }
     }
 
