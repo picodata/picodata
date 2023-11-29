@@ -669,7 +669,7 @@ impl Clusterwide {
             old_role_versions.insert(def.id, def.schema_version);
         }
         for def in self.privileges.iter()? {
-            let schema_version = def.schema_version;
+            let schema_version = def.schema_version();
             old_priv_versions.insert(def, schema_version);
         }
 
@@ -2465,10 +2465,10 @@ impl Privileges {
     pub fn delete_all_by_grantee_id(&self, grantee_id: UserId) -> tarantool::Result<()> {
         for priv_def in self.by_grantee_id(grantee_id)? {
             self.delete(
-                priv_def.grantee_id,
-                &priv_def.object_type,
-                priv_def.object_id,
-                &priv_def.privilege,
+                priv_def.grantee_id(),
+                &priv_def.object_type(),
+                priv_def.object_id_raw(),
+                &priv_def.privilege(),
             )?;
         }
         Ok(())
@@ -2478,15 +2478,15 @@ impl Privileges {
     #[inline]
     pub fn delete_all_by_granted_role(&self, role_id: u32) -> Result<()> {
         for priv_def in self.iter()? {
-            if priv_def.privilege == PrivilegeType::Execute
-                && priv_def.object_type == SchemaObjectType::Role
-                && priv_def.object_id == role_id as i64
+            if priv_def.privilege() == PrivilegeType::Execute
+                && priv_def.object_type() == SchemaObjectType::Role
+                && priv_def.object_id() == Some(role_id)
             {
                 self.delete(
-                    priv_def.grantee_id,
-                    &priv_def.object_type,
-                    priv_def.object_id,
-                    &priv_def.privilege,
+                    priv_def.grantee_id(),
+                    &priv_def.object_type(),
+                    priv_def.object_id_raw(),
+                    &priv_def.privilege(),
                 )?;
             }
         }
@@ -2501,11 +2501,12 @@ impl Privileges {
         object_id: i64,
     ) -> tarantool::Result<()> {
         for priv_def in self.by_object(object_type, object_id)? {
+            debug_assert_eq!(priv_def.object_id_raw(), object_id);
             self.delete(
-                priv_def.grantee_id,
-                &priv_def.object_type,
-                priv_def.object_id,
-                &priv_def.privilege,
+                priv_def.grantee_id(),
+                &priv_def.object_type(),
+                object_id,
+                &priv_def.privilege(),
             )?;
         }
         Ok(())
@@ -2729,7 +2730,9 @@ impl SchemaDef for PrivilegeDef {
 
     #[inline(always)]
     fn schema_version(&self) -> u64 {
-        self.schema_version
+        // Note: this doesnt lead to recursion because of the
+        // method resolution order: https://doc.rust-lang.org/reference/expressions/method-call-expr.html
+        self.schema_version()
     }
 
     #[inline(always)]
@@ -2767,8 +2770,8 @@ pub mod acl {
             &self,
             storage: &Clusterwide,
         ) -> tarantool::Result<(&'static str, String)> {
-            let role_def = storage.roles.by_id(self.grantee_id)?;
-            let user_def = storage.users.by_id(self.grantee_id)?;
+            let role_def = storage.roles.by_id(self.grantee_id())?;
+            let user_def = storage.users.by_id(self.grantee_id())?;
             match (role_def, user_def) {
                 (Some(role_def), None) => Ok(("role", role_def.name)),
                 (None, Some(user_def)) => Ok(("user", user_def.name)),
@@ -2785,41 +2788,45 @@ pub mod acl {
     ) -> [PrivilegeDef; 4] {
         [
             // SQL: GRANT 'public' TO <user_name>
-            PrivilegeDef {
-                privilege: PrivilegeType::Execute,
-                object_type: SchemaObjectType::Role,
-                object_id: PUBLIC_ID as _,
-                grantee_id: user_def.id,
+            PrivilegeDef::new(
+                PrivilegeType::Execute,
+                SchemaObjectType::Role,
+                PUBLIC_ID as _,
+                user_def.id,
                 grantor_id,
-                schema_version: user_def.schema_version,
-            },
+                user_def.schema_version,
+            )
+            .expect("valid"),
             // ALTER USER <user_name> LOGIN
-            PrivilegeDef {
-                privilege: PrivilegeType::Session,
-                object_type: SchemaObjectType::Universe,
-                object_id: UNIVERSE_ID,
-                grantee_id: user_def.id,
-                grantor_id: ADMIN_ID,
-                schema_version: user_def.schema_version,
-            },
+            PrivilegeDef::new(
+                PrivilegeType::Session,
+                SchemaObjectType::Universe,
+                UNIVERSE_ID,
+                user_def.id,
+                ADMIN_ID,
+                user_def.schema_version,
+            )
+            .expect("valid"),
             // ALTER USER <user_name> ENABLE
-            PrivilegeDef {
-                privilege: PrivilegeType::Usage,
-                object_type: SchemaObjectType::Universe,
-                object_id: UNIVERSE_ID,
-                grantee_id: user_def.id,
-                grantor_id: ADMIN_ID,
-                schema_version: user_def.schema_version,
-            },
+            PrivilegeDef::new(
+                PrivilegeType::Usage,
+                SchemaObjectType::Universe,
+                UNIVERSE_ID,
+                user_def.id,
+                ADMIN_ID,
+                user_def.schema_version,
+            )
+            .expect("valid"),
             // SQL: GRANT ALTER ON <user_name> TO <user_name>
-            PrivilegeDef {
-                privilege: PrivilegeType::Alter,
-                object_type: SchemaObjectType::User,
-                object_id: user_def.id as _,
-                grantee_id: user_def.id,
+            PrivilegeDef::new(
+                PrivilegeType::Alter,
+                SchemaObjectType::User,
+                user_def.id as _,
+                user_def.id,
                 grantor_id,
-                schema_version: user_def.schema_version,
-            },
+                user_def.schema_version,
+            )
+            .expect("valid"),
         ]
     }
 
@@ -2927,8 +2934,8 @@ pub mod acl {
     ) -> tarantool::Result<()> {
         storage.privileges.insert(priv_def)?;
 
-        let privilege = &priv_def.privilege;
-        let (object, object_type) = (priv_def.object_id(), &priv_def.object_type);
+        let privilege = priv_def.privilege();
+        let (object, object_type) = (priv_def.object_id(), priv_def.object_type());
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
         match (privilege.as_str(), object_type.as_str()) {
@@ -2972,14 +2979,14 @@ pub mod acl {
     ) -> tarantool::Result<()> {
         // FIXME: currently there's no way to revoke a default privilege
         storage.privileges.delete(
-            priv_def.grantee_id,
-            &priv_def.object_type,
-            priv_def.object_id,
-            &priv_def.privilege,
+            priv_def.grantee_id(),
+            &priv_def.object_type(),
+            priv_def.object_id_raw(),
+            &priv_def.privilege(),
         )?;
 
-        let privilege = &priv_def.privilege;
-        let (object, object_type) = (priv_def.object_id(), &priv_def.object_type);
+        let privilege = priv_def.privilege();
+        let (object, object_type) = (priv_def.object_id(), &priv_def.object_type());
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
         match (privilege.as_str(), object_type.as_str()) {
@@ -3131,9 +3138,9 @@ pub mod acl {
                 box.schema.role.grant(grantee_id, privilege, object_type, object_id)
             end",
             (
-                priv_def.grantee_id,
-                &priv_def.privilege,
-                &priv_def.object_type.into_tarantool(),
+                priv_def.grantee_id(),
+                &priv_def.privilege(),
+                &priv_def.object_type().into_tarantool(),
                 priv_def.object_id(),
             ),
         )
@@ -3158,9 +3165,9 @@ pub mod acl {
                 box.schema.role.revoke(grantee_id, privilege, object_type, object_id)
             end",
             (
-                priv_def.grantee_id,
-                &priv_def.privilege,
-                &priv_def.object_type.into_tarantool(),
+                priv_def.grantee_id(),
+                &priv_def.privilege(),
+                &priv_def.object_type().into_tarantool(),
                 priv_def.object_id(),
             ),
         )

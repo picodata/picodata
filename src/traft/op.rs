@@ -153,27 +153,27 @@ impl std::fmt::Display for Op {
             }
             Self::Acl(Acl::GrantPrivilege { priv_def }) => {
                 let object_id = priv_def.object_id();
-                let PrivilegeDef {
-                    grantee_id,
-                    grantor_id,
-                    object_type,
-                    privilege,
-                    schema_version,
-                    ..
-                } = priv_def;
-                write!(f, "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})")
+
+                write!(
+                    f,
+                    "GrantPrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})", 
+                    schema_version = priv_def.schema_version(),
+                    grantor_id = priv_def.grantor_id(),
+                    grantee_id = priv_def.grantee_id(),
+                    object_type = priv_def.object_type(),
+                    privilege = priv_def.privilege(),
+                )
             }
             Self::Acl(Acl::RevokePrivilege { priv_def }) => {
                 let object_id = priv_def.object_id();
-                let PrivilegeDef {
-                    grantee_id,
-                    grantor_id,
-                    object_type,
-                    privilege,
-                    schema_version,
-                    ..
-                } = priv_def;
-                write!(f, "RevokePrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})")
+                write!(
+                    f,
+                    "RevokePrivilege({schema_version}, {grantor_id}, {grantee_id}, {object_type}, {object_id:?}, {privilege})",
+                    schema_version = priv_def.schema_version(),
+                    grantor_id = priv_def.grantor_id(),
+                    grantee_id = priv_def.grantee_id(),
+                    object_type = priv_def.object_type(),
+                    privilege = priv_def.privilege(),)
             }
         };
 
@@ -268,19 +268,6 @@ impl Op {
         match self {
             Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit => false,
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
-        }
-    }
-
-    #[inline]
-    pub fn set_schema_version(&mut self, new_schema_version: u64) {
-        match self {
-            Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit => {}
-            Self::DdlPrepare { schema_version, .. } => {
-                *schema_version = new_schema_version;
-            }
-            Self::Acl(acl) => {
-                acl.set_schema_version(new_schema_version);
-            }
         }
     }
 }
@@ -576,20 +563,8 @@ impl Acl {
             Self::DropUser { schema_version, .. } => *schema_version,
             Self::CreateRole { role_def, .. } => role_def.schema_version,
             Self::DropRole { schema_version, .. } => *schema_version,
-            Self::GrantPrivilege { priv_def } => priv_def.schema_version,
-            Self::RevokePrivilege { priv_def } => priv_def.schema_version,
-        }
-    }
-
-    pub fn set_schema_version(&mut self, new_schema_version: u64) {
-        match self {
-            Self::CreateUser { user_def } => user_def.schema_version = new_schema_version,
-            Self::ChangeAuth { schema_version, .. } => *schema_version = new_schema_version,
-            Self::DropUser { schema_version, .. } => *schema_version = new_schema_version,
-            Self::CreateRole { role_def, .. } => role_def.schema_version = new_schema_version,
-            Self::DropRole { schema_version, .. } => *schema_version = new_schema_version,
-            Self::GrantPrivilege { priv_def } => priv_def.schema_version = new_schema_version,
-            Self::RevokePrivilege { priv_def } => priv_def.schema_version = new_schema_version,
+            Self::GrantPrivilege { priv_def } => priv_def.schema_version(),
+            Self::RevokePrivilege { priv_def } => priv_def.schema_version(),
         }
     }
 }
