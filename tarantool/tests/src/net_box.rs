@@ -1,10 +1,12 @@
-#![allow(clippy::redundant_allocation)]
 use std::io;
 use std::rc::Rc;
 use std::time::Duration;
 
 use tarantool::error::Error;
-use tarantool::fiber::{reschedule, sleep, start, Cond, Fiber};
+use tarantool::fiber;
+use tarantool::fiber::reschedule;
+use tarantool::fiber::sleep;
+use tarantool::fiber::Cond;
 use tarantool::index::IteratorType;
 use tarantool::net_box::{promise::State, Conn, ConnOptions, ConnTriggers, Options};
 use tarantool::space::Space;
@@ -101,22 +103,16 @@ pub fn ping_timeout() {
 }
 
 pub fn ping_concurrent() {
-    let conn = Rc::new(default_conn());
+    let conn_a = Rc::new(default_conn());
+    let conn_b = conn_a.clone();
 
-    let mut fiber_a = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
-        conn.ping(&Options::default()).unwrap();
-        0
+    let fiber_a = fiber::start(move || {
+        conn_a.ping(&Options::default()).unwrap();
     });
-    fiber_a.set_joinable(true);
 
-    let mut fiber_b = Fiber::new("test_fiber_b", &mut |conn: Box<Rc<Conn>>| {
-        conn.ping(&Options::default()).unwrap();
-        0
+    let fiber_b = fiber::start(move || {
+        conn_b.ping(&Options::default()).unwrap();
     });
-    fiber_b.set_joinable(true);
-
-    fiber_a.start(conn.clone());
-    fiber_b.start(conn);
 
     fiber_a.join();
     fiber_b.join();
@@ -212,7 +208,7 @@ pub fn call_async_timeout() {
 pub fn call_async_wait_disconnected() {
     let conn = test_user_conn();
     let p = conn.call_async::<_, ()>("test_timeout", ()).unwrap();
-    let jh = start(|| {
+    let jh = fiber::start(|| {
         reschedule();
         drop(conn);
     });
@@ -535,20 +531,18 @@ pub fn delete() {
 
 pub fn cancel_recv() {
     let conn = Rc::new(default_conn());
+    let conn_2 = conn.clone();
 
-    let mut fiber = Fiber::new("test_fiber_a", &mut |conn: Box<Rc<Conn>>| {
+    let fiber = fiber::start(move || {
         for _ in 0..10 {
-            match conn.ping(&Options::default()) {
+            match conn_2.ping(&Options::default()) {
                 Ok(_) => {}
                 Err(Error::IO(e)) if e.kind() == io::ErrorKind::ConnectionAborted => {}
                 Err(Error::IO(e)) if e.kind() == io::ErrorKind::NotConnected => {}
                 e => e.unwrap(),
             }
         }
-        0
     });
-    fiber.set_joinable(true);
-    fiber.start(conn.clone());
     conn.close();
     fiber.join();
 }

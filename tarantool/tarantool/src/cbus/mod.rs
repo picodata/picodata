@@ -235,18 +235,21 @@ unsafe impl Sync for UnsafeCond {}
 mod tests {
     use crate::cbus;
     use crate::cbus::Message;
-    use crate::fiber::{Cond, Fiber};
+    use crate::fiber;
+    use crate::fiber::Cond;
     use std::thread;
     use std::thread::ThreadId;
 
-    pub(super) fn run_cbus_endpoint(endpoint_name: &str) -> Fiber<'static, ()> {
-        let mut fiber = Fiber::new("cbus_fiber", &mut |_: Box<()>| {
-            let cbus_endpoint = cbus::Endpoint::new(endpoint_name).unwrap();
-            cbus_endpoint.cbus_loop();
-            0
-        });
-        fiber.start(());
-        fiber
+    pub(super) fn run_cbus_endpoint(endpoint_name: &'static str) -> fiber::FiberId {
+        fiber::Builder::new()
+            .name("cbus_fiber")
+            .func(move || {
+                let cbus_endpoint = cbus::Endpoint::new(endpoint_name).unwrap();
+                cbus_endpoint.cbus_loop();
+            })
+            .start()
+            .expect("failed to start the cbus_fiber")
+            .detach()
     }
 
     #[crate::test(tarantool = "crate")]
@@ -254,7 +257,7 @@ mod tests {
         static mut TX_THREAD_ID: Option<ThreadId> = None;
         static mut SENDER_THREAD_ID: Option<ThreadId> = None;
 
-        let mut cbus_fiber = run_cbus_endpoint("cbus_send_message_test");
+        let cbus_fiber_id = run_cbus_endpoint("cbus_send_message_test");
 
         struct CondPtr(*const Cond);
         unsafe impl Send for CondPtr {}
@@ -282,6 +285,6 @@ mod tests {
         }
 
         thread.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 }

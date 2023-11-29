@@ -302,7 +302,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     pub fn single_producer() {
-        let mut cbus_fiber = run_cbus_endpoint("tokio_single_producer");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_single_producer");
 
         let cap = NonZeroUsize::new(10).unwrap();
         let (tx, rx) = sync::tokio::channel("tokio_single_producer", cap);
@@ -334,12 +334,12 @@ mod tests {
         );
 
         tokio_rt.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn single_producer_lock() {
-        let mut cbus_fiber = run_cbus_endpoint("tokio_single_producer_lock");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_single_producer_lock");
 
         static SEND_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -374,7 +374,7 @@ mod tests {
         assert_eq!((0..100).collect::<Vec<_>>(), recv_results);
 
         tokio_rt.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
@@ -383,7 +383,7 @@ mod tests {
         // receiver part. Previously, when the receiver was drop after sender, [`Fiber::Cond`] release outside the tx thread
         // and segfault is occurred.
 
-        let mut cbus_fiber = run_cbus_endpoint("tokio_drop_rx_before_tx");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_drop_rx_before_tx");
         let cap = NonZeroUsize::new(1000).unwrap();
         let (tx, rx) = sync::tokio::channel("tokio_drop_rx_before_tx", cap);
 
@@ -406,12 +406,12 @@ mod tests {
         drop(rx);
         tokio_rt.join().unwrap();
 
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn tx_disconnect() {
-        let mut cbus_fiber = run_cbus_endpoint("tokio_tx_disconnect");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_tx_disconnect");
 
         let cap = NonZeroUsize::new(1).unwrap();
         let (tx, rx) = sync::tokio::channel("tokio_tx_disconnect", cap);
@@ -432,12 +432,12 @@ mod tests {
         assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
         tokio_rt.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn rx_disconnect() {
-        let mut cbus_fiber = run_cbus_endpoint("tokio_rx_disconnect");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_rx_disconnect");
 
         let cap = NonZeroUsize::new(1).unwrap();
         let (tx, rx) = sync::tokio::channel("tokio_rx_disconnect", cap);
@@ -459,13 +459,13 @@ mod tests {
         drop(rx);
 
         tokio_rt.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn multiple_producer() {
         const MESSAGES_PER_PRODUCER: i32 = 10_000;
-        let mut cbus_fiber = run_cbus_endpoint("tokio_multiple_producer");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_multiple_producer");
 
         let cap = NonZeroUsize::new(10).unwrap();
         let (tx, rx) = sync::tokio::channel("tokio_multiple_producer", cap);
@@ -500,13 +500,13 @@ mod tests {
         assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
         tokio_rt.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn multiple_producer_lock() {
         const MESSAGES_PER_PRODUCER: i32 = 100;
-        let mut cbus_fiber = run_cbus_endpoint("tokio_multiple_producer_lock");
+        let cbus_fiber_id = run_cbus_endpoint("tokio_multiple_producer_lock");
         let cap = NonZeroUsize::new(10).unwrap();
         let (tx, rx) = sync::tokio::channel("tokio_multiple_producer_lock", cap);
 
@@ -549,6 +549,6 @@ mod tests {
         assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
         tokio_rt.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 }

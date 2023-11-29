@@ -184,13 +184,14 @@ impl<T> Default for Channel<T> {
 mod tests {
     use super::super::tests::run_cbus_endpoint;
     use crate::cbus::{oneshot, RecvError};
+    use crate::fiber;
     use crate::fiber::{check_yield, YieldResult};
     use std::time::Duration;
     use std::{mem, thread};
 
     #[crate::test(tarantool = "crate")]
     pub fn oneshot_test() {
-        let mut cbus_fiber = run_cbus_endpoint("oneshot_test");
+        let cbus_fiber_id = run_cbus_endpoint("oneshot_test");
 
         let (sender, receiver) = oneshot::channel("oneshot_test");
         let thread = thread::spawn(move || {
@@ -215,12 +216,12 @@ mod tests {
             YieldResult::DidntYield(2)
         );
 
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn oneshot_multiple_channels_test() {
-        let mut cbus_fiber = run_cbus_endpoint("oneshot_multiple_channels_test");
+        let cbus_fiber_id = run_cbus_endpoint("oneshot_multiple_channels_test");
 
         let (sender1, receiver1) = oneshot::channel("oneshot_multiple_channels_test");
         let (sender2, receiver2) = oneshot::channel("oneshot_multiple_channels_test");
@@ -243,12 +244,12 @@ mod tests {
 
         thread1.join().unwrap();
         thread2.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn oneshot_sender_drop_test() {
-        let mut cbus_fiber = run_cbus_endpoint("oneshot_sender_drop_test");
+        let cbus_fiber_id = run_cbus_endpoint("oneshot_sender_drop_test");
 
         let (sender, receiver) = oneshot::channel::<()>("oneshot_sender_drop_test");
 
@@ -261,6 +262,6 @@ mod tests {
         assert!(matches!(result, Err(RecvError::Disconnected)));
 
         thread.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 }

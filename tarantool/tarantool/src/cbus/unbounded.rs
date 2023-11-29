@@ -273,7 +273,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     pub fn unbounded_test() {
-        let mut cbus_fiber = run_cbus_endpoint("unbounded_test");
+        let cbus_fiber_id = run_cbus_endpoint("unbounded_test");
 
         let (tx, rx) = unbounded::channel("unbounded_test");
 
@@ -297,7 +297,7 @@ mod tests {
             YieldResult::Yielded((0..1000).collect::<Vec<_>>())
         );
         thread.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
@@ -306,7 +306,7 @@ mod tests {
         // receiver part. Previously, when the receiver was drop after sender, [`Fiber::Cond`] release outside the tx thread
         // and segfault is occurred.
 
-        let mut cbus_fiber = run_cbus_endpoint("unbounded_test_drop_rx_before_tx");
+        let cbus_fiber_id = run_cbus_endpoint("unbounded_test_drop_rx_before_tx");
         let (tx, rx) = unbounded::channel("unbounded_test_drop_rx_before_tx");
 
         let thread = thread::spawn(move || {
@@ -322,12 +322,12 @@ mod tests {
         drop(rx);
         thread.join().unwrap();
 
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn unbounded_disconnect_test() {
-        let mut cbus_fiber = run_cbus_endpoint("unbounded_disconnect_test");
+        let cbus_fiber_id = run_cbus_endpoint("unbounded_disconnect_test");
 
         let (tx, rx) = unbounded::channel("unbounded_disconnect_test");
 
@@ -341,13 +341,13 @@ mod tests {
         assert!(matches!(rx.receive(), Err(RecvError::Disconnected)));
 
         thread.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn unbounded_mpsc_test() {
         const MESSAGES_PER_PRODUCER: i32 = 10_000;
-        let mut cbus_fiber = run_cbus_endpoint("unbounded_mpsc_test");
+        let cbus_fiber_id = run_cbus_endpoint("unbounded_mpsc_test");
 
         let (tx, rx) = unbounded::channel("unbounded_mpsc_test");
 
@@ -371,6 +371,6 @@ mod tests {
         jh1.join().unwrap();
         jh2.join().unwrap();
         jh3.join().unwrap();
-        cbus_fiber.cancel();
+        assert!(fiber::cancel(cbus_fiber_id));
     }
 }

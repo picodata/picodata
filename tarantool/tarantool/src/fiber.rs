@@ -1,7 +1,7 @@
 //! Сooperative multitasking module with optional async runtime.
 //!
 //! With the fiber module, you can:
-//! - create, run and manage [fibers](struct.Fiber.html),
+//! - create, run and manage [fibers](Builder),
 //! - use a synchronization mechanism for fibers, similar to “condition variables” and similar to operating-system
 //! functions such as `pthread_cond_wait()` plus `pthread_cond_signal()`,
 //! - spawn a fiber based [async runtime](async).
@@ -49,8 +49,10 @@ pub use csw::YieldResult;
 /// Type alias for a fiber id.
 pub type FiberId = u64;
 
-/// *OBSOLETE*: This struct is being deprecated in favour of [`Fyber`], due to
-/// them being more efficient and idiomatic.
+/// *WARNING*: This api is deprecated due to a number of issues including safety
+/// related ones (See doc-comments in [`Fiber::cancel`] for details).
+/// Use [`fiber::start`](start), [`fiber::defer`](defer) and/or
+/// [`fiber::Builder`](Builder) (choose the one most suitable for you).
 ///
 /// A fiber is a set of instructions which are executed with cooperative multitasking.
 ///
@@ -89,18 +91,21 @@ pub type FiberId = u64;
 /// I'm a fiber
 /// Fiber started
 /// ```
+#[deprecated = "use fiber::start, fiber::defer or fiber::Builder"]
 pub struct Fiber<'a, T: 'a> {
     inner: *mut ffi::Fiber,
     callback: *mut c_void,
     phantom: PhantomData<&'a T>,
 }
 
+#[allow(deprecated)]
 impl<'a, T> ::std::fmt::Debug for Fiber<'a, T> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         f.debug_struct("Fiber").finish_non_exhaustive()
     }
 }
 
+#[allow(deprecated)]
 impl<'a, T> Fiber<'a, T> {
     /// Create a new fiber.
     ///
@@ -159,6 +164,9 @@ impl<'a, T> Fiber<'a, T> {
 
     /// Start execution of created fiber.
     ///
+    /// WARNING: **This function is unsafe**, because it doesn't check if fiber
+    /// creation failed and may cause a crash.
+    ///
     /// - `arg` - argument to start the fiber with
     ///
     /// See also: [fiber.new()](#method.new)
@@ -208,8 +216,8 @@ impl<'a, T> Fiber<'a, T> {
     /// as soon as they finish execution. After this the pointer to the fiber
     /// may or may not point to a newly constructed unrelated fiber. For this
     /// reason it's not safe to operate with non-joinalbe fibers using this api.
-    /// Use [`fiber::start`], [`fiber::defer`] and/or [`fiber::Builder`]
-    /// instead, as they don't share the same limitations.
+    /// Use [`fiber::start`](start), [`fiber::defer`](defer) and/or
+    /// [`fiber::Builder`](Builder) instead, as they don't share the same limitations.
     ///
     /// - `is_joinable` - status to set
     pub fn set_joinable(&mut self, is_joinable: bool) {
@@ -474,9 +482,6 @@ where
 /// A helper struct which is used to store information about a fiber being
 /// created. It's only utility is the generic parameter which are associated
 /// with it.
-///
-/// **TODO**: add support for cancellable fibers.
-/// **TODO**: add support for non-joinable fibers.
 pub struct Fyber<F, T> {
     _marker: PhantomData<(F, T)>,
 }
@@ -971,6 +976,7 @@ impl<'f, T> JoinHandle<'f, T> {
     /// Consider using [`Self::detach_checked`] if you want to handle errors.
     #[inline(always)]
     #[track_caller]
+    #[must_use]
     pub fn detach(self) -> FiberId {
         self.detach_checked()
             .expect("should've called detach_checked")

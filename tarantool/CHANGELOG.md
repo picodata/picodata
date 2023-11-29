@@ -73,6 +73,10 @@
   `var` variable in the current scope.
 
 ### Deprecated
+- `tarantool::fiber::Fiber` is now deprecated in favour of `fiber::start`,
+  `fiber::defer` and/or `fiber::Builder`. This is because old api is among other
+  things unsafe as it may result in crashes or even worse. See doc-comments for
+  more info.
 
 ### Breaking changes
 - Remove erroneously added `clap::ArgEnum` implementation for `AuthMethod`.

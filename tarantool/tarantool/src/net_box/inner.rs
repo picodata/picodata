@@ -5,10 +5,14 @@ use std::net::SocketAddr;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
+use crate::clock::INFINITY;
 use crate::coio::CoIOStream;
 use crate::error::Error;
-use crate::fiber::{clock, is_cancelled, set_cancellable, sleep, Cond, Fiber};
+use crate::fiber;
+use crate::fiber::is_cancelled;
+use crate::fiber::Cond;
 use crate::net_box::stream::ConnStream;
+use crate::time::Instant;
 use crate::tuple::Decode;
 use crate::unwrap_or;
 
@@ -41,26 +45,25 @@ pub struct ConnInner {
     stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
-    send_fiber: RefCell<Fiber<'static, Weak<ConnInner>>>,
-    recv_fiber: RefCell<Fiber<'static, Weak<ConnInner>>>,
+    send_worker_join_handle: Cell<Option<fiber::JoinHandle<'static, ()>>>,
+    receive_worker_join_handle: Cell<Option<fiber::JoinHandle<'static, ()>>>,
     triggers: RefCell<Option<Rc<dyn ConnTriggers>>>,
     error: RefCell<Option<io::Error>>,
 }
 
 impl ConnInner {
+    /// Contructs a new `ConnInner` instance. Does not actually connect to
+    /// anything, only initializes the internal data structures and worker
+    /// fibers.
+    ///
+    /// Returns an error if starting a worker fiber failed.
+    #[inline(always)]
+    #[track_caller]
     pub fn new(
         addrs: Vec<SocketAddr>,
         options: ConnOptions,
         triggers: Option<Rc<dyn ConnTriggers>>,
-    ) -> Rc<Self> {
-        // init recv fiber
-        let mut recv_fiber = Fiber::new("_recv_worker", &mut recv_worker);
-        recv_fiber.set_joinable(true);
-
-        // init send fiber
-        let mut send_fiber = Fiber::new("_send_worker", &mut send_worker);
-        send_fiber.set_joinable(true);
-
+    ) -> Result<Rc<Self>, Error> {
         // construct object
         let conn_inner = Rc::new(ConnInner {
             state: Cell::new(ConnState::Init),
@@ -74,25 +77,35 @@ impl ConnInner {
                 options.send_buffer_flush_interval,
             ),
             recv_queue: RecvQueue::new(options.recv_buffer_size),
-            send_fiber: RefCell::new(send_fiber),
-            recv_fiber: RefCell::new(recv_fiber),
+
+            send_worker_join_handle: Cell::new(None),
+            receive_worker_join_handle: Cell::new(None),
+
             triggers: RefCell::new(triggers),
             error: RefCell::new(None),
             addrs,
             options,
         });
 
-        // start send/recv fibers
-        conn_inner
-            .send_fiber
-            .borrow_mut()
-            .start(Rc::downgrade(&conn_inner));
-        conn_inner
-            .recv_fiber
-            .borrow_mut()
-            .start(Rc::downgrade(&conn_inner));
+        // init recv fiber
+        let weak_conn = Rc::downgrade(&conn_inner);
+        let jh = fiber::Builder::new()
+            .name("_recv_worker")
+            .func(|| recv_worker(weak_conn))
+            // This yields but than almost immediately return control back to us.
+            .start()?;
+        conn_inner.receive_worker_join_handle.set(Some(jh));
 
-        conn_inner
+        // init send fiber
+        let weak_conn = Rc::downgrade(&conn_inner);
+        let jh = fiber::Builder::new()
+            .name("_send_worker")
+            .func(|| send_worker(weak_conn))
+            // This yields but than almost immediately return control back to us.
+            .start()?;
+        conn_inner.send_worker_join_handle.set(Some(jh));
+
+        Ok(conn_inner)
     }
 
     pub fn is_connected(&self) -> bool {
@@ -100,7 +113,8 @@ impl ConnInner {
     }
 
     pub fn wait_connected(self: &Rc<Self>, timeout: Option<Duration>) -> Result<bool, Error> {
-        let begin_ts = clock();
+        let timeout = timeout.unwrap_or(INFINITY);
+        let deadline = fiber::clock().saturating_add(timeout);
         loop {
             let state = self.state.get();
             match state {
@@ -110,12 +124,7 @@ impl ConnInner {
                 ConnState::Active => return Ok(true),
                 ConnState::Closed => return Ok(false),
                 _ => {
-                    let timeout = match timeout {
-                        None => None,
-                        Some(timeout) => timeout.checked_sub(clock().duration_since(begin_ts)),
-                    };
-
-                    if !self.wait_state_changed(timeout) {
+                    if !self.wait_state_changed(Some(deadline)) {
                         return Err(io::Error::from(io::ErrorKind::TimedOut).into());
                     }
                 }
@@ -215,13 +224,15 @@ impl ConnInner {
         if !matches!(self.state.get(), ConnState::Closed) {
             self.disconnect();
 
-            let mut send_fiber = self.send_fiber.borrow_mut();
-            send_fiber.cancel();
-            send_fiber.join();
+            if let Some(jh) = self.send_worker_join_handle.take() {
+                jh.cancel();
+                jh.join();
+            }
 
-            let mut recv_fiber = self.recv_fiber.borrow_mut();
-            recv_fiber.cancel();
-            recv_fiber.join();
+            if let Some(jh) = self.receive_worker_join_handle.take() {
+                jh.cancel();
+                jh.join();
+            }
         }
     }
 
@@ -316,15 +327,18 @@ impl ConnInner {
         Ok(())
     }
 
+    #[inline(always)]
     fn update_state(&self, state: ConnState) {
         self.state.set(state);
         self.state_change_cond.broadcast();
     }
 
-    fn wait_state_changed(&self, timeout: Option<Duration>) -> bool {
-        match timeout {
-            Some(timeout) => self.state_change_cond.wait_timeout(timeout),
-            None => self.state_change_cond.wait(),
+    #[inline(always)]
+    fn wait_state_changed(&self, deadline: Option<Instant>) -> bool {
+        if let Some(deadline) = deadline {
+            self.state_change_cond.wait_deadline(deadline)
+        } else {
+            self.state_change_cond.wait()
         }
     }
 
@@ -357,7 +371,7 @@ impl ConnInner {
             self.update_state(ConnState::Error);
             return Err(error.into());
         } else {
-            sleep(reconnect_after);
+            fiber::sleep(reconnect_after);
             match self.connect() {
                 Ok(_) => {}
                 Err(err) => {
@@ -376,7 +390,11 @@ impl ConnInner {
         self.update_state(ConnState::Closed);
         if let Some(stream) = self.stream.borrow().as_ref() {
             if stream.is_reader_acquired() {
-                self.recv_fiber.borrow().wakeup();
+                let jh_ptr = self.receive_worker_join_handle.as_ptr();
+                // SAFETY: safe as long as this is only called from tx thread.
+                if let Some(jh) = unsafe { &*jh_ptr } {
+                    jh.wakeup();
+                }
             }
         }
 
@@ -390,29 +408,25 @@ impl ConnInner {
     }
 }
 
-#[allow(clippy::redundant_allocation, clippy::boxed_local)]
-fn send_worker(conn: Box<Weak<ConnInner>>) -> i32 {
-    set_cancellable(true);
-    let weak_conn = *conn;
-
+fn send_worker(weak_conn: Weak<ConnInner>) {
     loop {
         if is_cancelled() {
-            return 0;
+            return;
         }
 
-        let conn = unwrap_or!(weak_conn.upgrade(), return 0);
+        let conn = unwrap_or!(weak_conn.upgrade(), return);
 
         match conn.state.get() {
             ConnState::Active => {
                 let mut writer = conn.stream.borrow().as_ref().unwrap().acquire_writer();
                 if let Err(e) = conn.send_queue.flush_to_stream(&mut writer) {
                     if is_cancelled() {
-                        return 0;
+                        return;
                     }
                     conn.handle_error(e.into()).unwrap();
                 }
             }
-            ConnState::Closed => return 0,
+            ConnState::Closed => return,
             _ => {
                 conn.wait_state_changed(None);
             }
@@ -420,17 +434,13 @@ fn send_worker(conn: Box<Weak<ConnInner>>) -> i32 {
     }
 }
 
-#[allow(clippy::redundant_allocation, clippy::boxed_local)]
-fn recv_worker(conn: Box<Weak<ConnInner>>) -> i32 {
-    set_cancellable(true);
-    let weak_conn = *conn;
-
+fn recv_worker(weak_conn: Weak<ConnInner>) {
     loop {
         if is_cancelled() {
-            return 0;
+            return;
         }
 
-        let conn = unwrap_or!(weak_conn.upgrade(), return 0);
+        let conn = unwrap_or!(weak_conn.upgrade(), return);
 
         match conn.state.get() {
             ConnState::Active => {
@@ -441,7 +451,7 @@ fn recv_worker(conn: Box<Weak<ConnInner>>) -> i32 {
                 match result {
                     Err(e) => {
                         if is_cancelled() {
-                            return 0;
+                            return;
                         }
                         conn.handle_error(e).unwrap();
                     }
@@ -452,7 +462,7 @@ fn recv_worker(conn: Box<Weak<ConnInner>>) -> i32 {
                     }
                 }
             }
-            ConnState::Closed => return 0,
+            ConnState::Closed => return,
             _ => {
                 conn.wait_state_changed(None);
             }
