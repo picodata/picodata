@@ -19,6 +19,7 @@
   functions for getting and setting the corresponding properties of fibers and
   `ffi::has_fiber_id` function for checking if the corresponding api is
   supported in the current tarantool version.
+- `fiber::exists` function for checking if fiber with given id exists.
 - `fiber::JoinHandle::cancel` for cancelling the fiber by it's join handle.
 - `fiber::JoinHandle::wakeup` for waking up the fiber by it's join handle.
 - `fiber::cancel` function for cancelling the fiber by id.
@@ -26,6 +27,9 @@
 - `JoinHandle::detach`, `JoinHandle::detach_checked` functions for making a
   fiber non-joinable and `fiber::DetachError` enum of errors which can happen
   when doing so.
+- `JoinHandle::detach_and_forget` function for making a fiber non-joinable
+  without returning the fiber id. This is needed on older version of tarantool
+  which don't support `ffi::fiber_id`.
 - `fiber::Cond::wait_deadline` for waiting until `tarantool::time::Instant`
   rather than a `Duration`. Uses `fiber::clock` internally.
 - `fiber::r#async::timeout::{deadline, IntoTimeout::deadline}` for constraining

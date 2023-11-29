@@ -915,6 +915,9 @@ impl<'f, T> JoinHandle<'f, T> {
     /// The fiber will be marked as non-joinable and it's resources will be
     /// automatically recycled by tarantool when the fiber finishes execution.
     ///
+    /// NOTE: If your tarantool version doesn't support `fiber_id` and you
+    /// still want to detach the fiber use [`Self::detach_and_forget`].
+    ///
     /// # Panicking
     /// Will panic if the underlying fiber function has a non ZST return type.
     pub fn detach_checked(mut self) -> std::result::Result<FiberId, (Self, DetachError)> {
@@ -980,6 +983,55 @@ impl<'f, T> JoinHandle<'f, T> {
     pub fn detach(self) -> FiberId {
         self.detach_checked()
             .expect("should've called detach_checked")
+    }
+
+    /// Detaches the underlying fiber, so it's impossible to join it after that.
+    ///
+    /// The fiber will be marked as non-joinable and it's resources will be
+    /// automatically recycled by tarantool when the fiber finishes execution.
+    /// The fiber will be forever forgotten, so it will also not be possible
+    /// to cancel or wake it up (unless you have called [`Self::id`] before that).
+    ///
+    /// Returns `Err(self)` if the underlying fiber function has a non-ZST return type,
+    /// because otherwise some memory would be leaked.
+    ///
+    /// NOTE: this function is only needed on older version of tarantool which
+    /// don't support getting fiber id (i.e. [`has_fiber_id`] returns `false`).
+    /// On newer versions you should instead always use [`Self::detach_checked`]
+    /// (or [`Self::detach`] if you ~~like living dangerously~~ know what you're doing).
+    pub fn detach_and_forget(mut self) -> std::result::Result<(), Self> {
+        if needs_returning::<T>() {
+            // When the fiber function returns, it's result if any will
+            // be written into the result cell, which is owned by the
+            // join handle. When detaching the fiber the join handle
+            // gets dropped, so there's nowhere to store that result
+            // anymore, so we panic instead. There's no need to detach a
+            // fiber which returns a value anyway.
+            return Err(self);
+        }
+
+        let inner = self
+            .inner
+            .take()
+            .expect("inner is only ever taken when self is consumed");
+        match inner {
+            JoinHandleImpl::Ffi { fiber, result_cell } => {
+                debug_assert!(result_cell.is_none());
+
+                // SAFETY: safe as long as the fiber pointer is valid.
+                unsafe {
+                    ffi::fiber_set_joinable(fiber.as_ptr(), false);
+                    return Ok(());
+                }
+            }
+            JoinHandleImpl::Lua { fiber_id } => {
+                let lua = crate::global_lua();
+                lua.exec_with("require'fiber'.find(...):set_joinable(false)", fiber_id)
+                    .expect("lua error");
+
+                Ok(())
+            }
+        }
     }
 
     /// Block until the fiber's termination and return it's result value.
@@ -1486,6 +1538,26 @@ pub fn r#yield() -> Result<()> {
 #[inline(always)]
 pub fn reschedule() {
     unsafe { ffi::fiber_reschedule() }
+}
+
+/// Returns `true` if fiber with given id exists.
+///
+/// Returns `false` if such fiber has never existed or has already been recycled.
+///
+/// NOTE: if a fiber with given id is joinable and has finished executing, it
+/// will not be recycled until it's joined. So this function will return `true`
+/// for such fibers until they are joined.
+#[inline(always)]
+pub fn exists(id: FiberId) -> bool {
+    // SAFETY: safe as long as we only call this from the tx thread.
+    if unsafe { has_fiber_id() } {
+        // SAFETY: always safe.
+        return unsafe { !ffi::fiber_find(id).is_null() };
+    } else {
+        crate::global_lua()
+            .eval_with("return require'fiber'.find(...) ~= nil", id)
+            .expect("lua error")
+    }
 }
 
 /// Returns id of current fiber.
@@ -2067,14 +2139,19 @@ mod tests {
             // Set/get name of child fiber.
             assert!(fiber::set_name_of(f_id, NAME2));
             assert_eq!(fiber::name_of(f_id).unwrap(), NAME2);
+
+            assert!(fiber::exists(f_id));
             jh.join();
+            assert!(!fiber::exists(f_id));
 
             // After the fiber has been joined, it no longer exists.
             assert!(fiber::name_of(f_id).is_none());
             assert!(!fiber::set_name_of(f_id, "foo"));
         } else {
             // Check lua implementation at least works.
+            let f_id = Cell::new(None);
             let jh = fiber::start(|| {
+                f_id.set(Some(fiber::id()));
                 fiber::set_name(NAME1);
                 assert_eq!(fiber::name(), NAME1);
 
@@ -2084,7 +2161,11 @@ mod tests {
                 assert!(!fiber::set_name_of(0xCAFE_BABE_DEAD_F00D, "foo"));
                 assert!(fiber::name_of(0xCAFE_BABE_DEAD_F00D).is_none());
             });
+
+            let f_id = f_id.get().unwrap();
+            assert!(fiber::exists(f_id));
             jh.join();
+            assert!(!fiber::exists(f_id));
         }
     }
 
@@ -2146,6 +2227,7 @@ mod tests {
             let jh = fiber::start(|| 10569);
             let (jh, e) = jh.detach_checked().unwrap_err();
             assert_eq!(e, fiber::DetachError::ReturnsNonZST);
+            let jh = jh.detach_and_forget().unwrap_err();
             jh.join();
 
             // Happy path.
@@ -2203,6 +2285,23 @@ mod tests {
             assert!(!fiber::wakeup(id));
             assert!(!fiber::cancel(id));
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn fiber_detach_and_forget() {
+        let evidence = Cell::new(None);
+
+        fiber::start(|| {
+            fiber::reschedule();
+            evidence.set(Some(fiber::id()));
+        })
+        .detach_and_forget()
+        .unwrap();
+
+        assert_eq!(evidence.get(), None);
+        fiber::reschedule();
+        let recycled_fiber_id = evidence.get().unwrap();
+        assert!(!fiber::exists(recycled_fiber_id));
     }
 
     #[crate::test(tarantool = "crate")]
