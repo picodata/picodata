@@ -107,6 +107,30 @@ impl Error {
             actual_msgpack: data,
         }
     }
+
+    /// Returns the name of the variant as it is spelled in the source code.
+    pub const fn variant_name(&self) -> &'static str {
+        match self {
+            Self::Tarantool(_) => "Tarantool",
+            Self::IO(_) => "IO",
+            Self::Encode(_) => "Encode",
+            Self::Decode { .. } => "Decode",
+            Self::DecodeRmpValue(_) => "DecodeRmpValue",
+            Self::Unicode(_) => "Unicode",
+            Self::NumValueRead(_) => "NumValueRead",
+            Self::ValueRead(_) => "ValueRead",
+            Self::ValueWrite(_) => "ValueWrite",
+            #[cfg(feature = "net_box")]
+            Self::Remote(_) => "Remote",
+            Self::Protocol(_) => "Protocol",
+            #[cfg(feature = "network_client")]
+            Self::Tcp(_) => "Tcp",
+            Self::LuaError(_) => "LuaError",
+            Self::MetaNotFound => "MetaNotFound",
+            Self::MsgpackEncode(_) => "MsgpackEncode",
+            Self::MsgpackDecode(_) => "MsgpackDecode",
+        }
+    }
 }
 
 impl From<rmp_serde::encode::Error> for Error {

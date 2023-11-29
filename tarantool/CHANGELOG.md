@@ -45,10 +45,10 @@
 - `tarantool::proc::Proc::is_public` attribute which returns true if the stored
   procedure defined with `#[tarantool::proc]` has a `pub` visibility modifier or
   has an explicit `(public = true)` attribute. `(public = false)` also works.
+- `tarantool::error::Error::variant_name` method for getting name of the error
+  variant, because somebody needs this.
 
 ### Changed
-- `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
-  and `MsgpackDecode` variants correspondingly.
 - `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
 - Fibers created with `fiber::start`, `fiber::defer` and/or `fiber::Builder` are
   now always marked as cancellable. On newer versions of tarantool fibers cannot
@@ -101,6 +101,8 @@
 - `space::SPACE_ID_MAX` constant's value is decreased by one and now has the
   same value as in tarantool-3.0. Most likely you shouldn't care about this, but
   in some rare cases we may forbid you from creating a space with id 0x7fff_ffff.
+- `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
+  and `MsgpackDecode` variants correspondingly.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.
