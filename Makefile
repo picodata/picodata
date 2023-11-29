@@ -19,6 +19,8 @@ reset-submodules:
 
 tarantool-patch:
 	echo "${VER_TNT}" > tarantool-sys/VERSION
+	PATCH_DIR=$(pwd)/certification_patches/svace_patches
+	(cd tarantool-sys/third_party/luajit; find ${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
 
 build: tarantool-patch
 	. ~/.cargo/env && \
