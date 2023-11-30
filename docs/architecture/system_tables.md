@@ -191,14 +191,14 @@ Picodata 23.06.0-232-ge436159d5
 * `grantor_id` (*unsigned*)
 * `grantee_id` (*unsigned*)
 * `object_type` (*string*)
-* `object_name` (*string*)
+* `object_id` (*integer*)
 * `privilege` (*string*)
 * `schema_version` (*unsigned*)
 
 Индексы:
 
-* `primary` (unique), parts: `[grantee_id, object_type, object_name, privilege]`
-* `object` (unique), parts: `[object_type, object_name]`
+* `primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
+* `object` (unique), parts: `[object_type, object_id]`
 
 ### _pico_role {: #_pico_role }
 
