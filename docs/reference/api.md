@@ -1056,7 +1056,20 @@ pico.sql([[
 ...
 ```
 
-См. также [пример работы с SQL в Picodata](../tutorial/sql_examples.md) и [описание
+Пример создания пользователя:
+
+```lua
+pico.sql([[
+  create user "alice"
+  with password 'totallysecret'
+  using chap-sha1
+  ]])
+```
+
+См. также:
+
+- [Работа с данным SQL](../tutorial/sql_examples.md)
+- [Описание
 команд SQL](../reference/sql_queries.md).
 
 ### pico.wait_ddl_finalize
