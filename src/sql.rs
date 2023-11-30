@@ -800,7 +800,8 @@ fn reenterable_schema_change_request(
                     grantee_id,
                     grantor_id,
                     schema_version,
-                );
+                )
+                .map_err(Error::other)?;
 
                 match alter_option_param {
                     AlterOptionParam::ChangePassword(auth) => {
@@ -912,7 +913,8 @@ fn reenterable_schema_change_request(
                         grantee_id,
                         grantor_id,
                         schema_version,
-                    ),
+                    )
+                    .map_err(Error::other)?,
                 })
             }
             Params::RevokePrivilege(revoke_type, grantee_name) => {
@@ -939,7 +941,8 @@ fn reenterable_schema_change_request(
                         grantee_id,
                         grantor_id,
                         schema_version,
-                    ),
+                    )
+                    .map_err(Error::other)?,
                 })
             }
         };

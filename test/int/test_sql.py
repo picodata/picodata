@@ -936,8 +936,6 @@ def test_sql_alter_login(cluster: Cluster):
     # * TODO: Check SESSION privilege is removed.
 
 
-# TODO: replace all Lua `i1.call`s to SQL `iq.sql`.
-# See https://git.picodata.io/picodata/picodata/sbroad/-/issues/492.
 def test_sql_acl_privileges(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
@@ -976,9 +974,6 @@ def test_sql_acl_privileges(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
-
-    # Grant remote functions call.
-    i1.grant_privilege(username, "execute", "universe", None)
 
     # Remember number of default privileges.
     default_privileges_number = len(

@@ -1,6 +1,7 @@
 use once_cell::sync::OnceCell;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Display;
 use std::time::Duration;
 
 use tarantool::auth::AuthDef;
@@ -379,14 +380,20 @@ tarantool::define_str_enum! {
         Drop = "drop",
         /// ALTER
         Alter = "alter",
-        /// This is never granted, but used internally.
-        Grant = "grant",
-        /// Never granted, but used internally.
-        Revoke = "revoke",
     }
 }
 
 /// Privilege definition.
+/// Note the differences between picodata privileges and vanilla tarantool ones.
+/// 1) Super role in picodata is a placeholder. It exists because picodata reuses user
+///    ids from vanilla and super occupies an id. So to avoid assigning some piciodata
+///    user Id of the vanilla role super we keep it as a placeholder. Aside from that
+///    vanilla super role has some privileges that cannot be represented in picodata,
+///    namely privileges on universe. This hole opens possibility for unwanted edge cases.
+/// 2) Only Session and Usage can be granted on Universe.
+/// Note that validation is not performed in Deserialize. We assume that for untrusted data
+/// the object is created via constructor. In other cases validation was already performed
+/// prior to serialization thus deserialization always creates a valid object.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
     privilege: PrivilegeType,
@@ -410,6 +417,22 @@ pub struct PrivilegeDef {
 
 impl Encode for PrivilegeDef {}
 
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub struct InvalidPrivilegeError {
+    object_type: SchemaObjectType,
+    unsupported: PrivilegeType,
+    expected_one_of: &'static [PrivilegeType],
+}
+
+impl Display for InvalidPrivilegeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "Unsupported {} privilege '{}', expected one of {:?}",
+            self.object_type, self.unsupported, self.expected_one_of,
+        ))
+    }
+}
+
 impl PrivilegeDef {
     pub fn new(
         privilege: PrivilegeType,
@@ -418,15 +441,43 @@ impl PrivilegeDef {
         grantee_id: UserId,
         grantor_id: UserId,
         schema_version: u64,
-    ) -> PrivilegeDef {
-        PrivilegeDef {
+    ) -> Result<PrivilegeDef, InvalidPrivilegeError> {
+        let privilege_def = PrivilegeDef {
             privilege,
             object_type,
             object_id,
             grantee_id,
             grantor_id,
             schema_version,
+        };
+
+        use PrivilegeType::*;
+
+        let valid_privileges: &[PrivilegeType] = match privilege_def.object_type {
+            SchemaObjectType::Table => match privilege_def.object_id() {
+                Some(_) => &[Read, Write, Alter, Drop],
+                None => &[Read, Write, Create, Alter, Drop],
+            },
+            SchemaObjectType::Role => match privilege_def.object_id() {
+                Some(_) => &[Execute, Drop],
+                None => &[Create, Drop],
+            },
+            SchemaObjectType::User => match privilege_def.object_id() {
+                Some(_) => &[Alter, Drop],
+                None => &[Create, Alter, Drop],
+            },
+            SchemaObjectType::Universe => &[Session, Usage],
+        };
+
+        if !valid_privileges.contains(&privilege) {
+            return Err(InvalidPrivilegeError {
+                object_type,
+                unsupported: privilege,
+                expected_one_of: valid_privileges,
+            });
         }
+
+        Ok(privilege_def)
     }
 
     #[inline(always)]
@@ -503,15 +554,18 @@ impl PrivilegeDef {
             let mut v = Vec::new();
 
             // SQL: GRANT <'usage', 'session'> ON 'universe' TO 'guest'
-            for privilege in [PrivilegeType::Usage, PrivilegeType::Session] {
-                v.push(PrivilegeDef {
-                    grantor_id: ADMIN_ID,
-                    grantee_id: GUEST_ID,
-                    object_type: SchemaObjectType::Universe,
-                    object_id: UNIVERSE_ID,
-                    privilege,
-                    schema_version: 0,
-                });
+            // SQL: GRANT <'usage', 'session'> ON 'universe' TO 'admin'
+            for user in [GUEST_ID, ADMIN_ID] {
+                for privilege in [PrivilegeType::Usage, PrivilegeType::Session] {
+                    v.push(PrivilegeDef {
+                        grantor_id: ADMIN_ID,
+                        grantee_id: user,
+                        object_type: SchemaObjectType::Universe,
+                        object_id: UNIVERSE_ID,
+                        privilege,
+                        schema_version: 0,
+                    });
+                }
             }
 
             // SQL: GRANT 'public' TO 'guest'
@@ -523,18 +577,6 @@ impl PrivilegeDef {
                 privilege: PrivilegeType::Execute,
                 schema_version: 0,
             });
-
-            // SQL: GRANT 'all privileges' ON 'universe' TO 'admin'
-            for privilege in PrivilegeType::VARIANTS {
-                v.push(PrivilegeDef {
-                    grantor_id: ADMIN_ID,
-                    grantee_id: ADMIN_ID,
-                    object_type: SchemaObjectType::Universe,
-                    object_id: UNIVERSE_ID,
-                    privilege: *privilege,
-                    schema_version: 0,
-                });
-            }
 
             v
         })
@@ -1266,7 +1308,7 @@ mod tests {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tarantool::tuple::ToTupleBuffer;
+    use tarantool::tuple::{Decode, ToTupleBuffer};
 
     #[test]
     #[rustfmt::skip]
@@ -1317,5 +1359,62 @@ mod test {
         let tuple_data = i.to_tuple_buffer().unwrap();
         let format = PrivilegeDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PrivilegeDef::format");
+    }
+
+    #[track_caller]
+    fn check_object_privilege(
+        object_type: SchemaObjectType,
+        valid_privileges: &'static [PrivilegeType],
+        object_id: i64,
+    ) {
+        for privilege in PrivilegeType::VARIANTS {
+            let res = PrivilegeDef::new(*privilege, object_type, object_id, 1, 1, 1);
+
+            if valid_privileges.contains(privilege) {
+                assert!(res.is_ok())
+            } else {
+                assert_eq!(
+                    res.unwrap_err(),
+                    InvalidPrivilegeError {
+                        object_type,
+                        unsupported: *privilege,
+                        expected_one_of: valid_privileges,
+                    }
+                )
+            }
+        }
+    }
+
+    #[test]
+    fn privilege_def_validation() {
+        use PrivilegeType::*;
+
+        // table
+        let valid = &[Read, Write, Create, Alter, Drop];
+        check_object_privilege(SchemaObjectType::Table, valid, -1);
+
+        // particular table
+        let valid = &[Read, Write, Alter, Drop];
+        check_object_privilege(SchemaObjectType::Table, valid, 42);
+
+        // user
+        let valid = &[Create, Alter, Drop];
+        check_object_privilege(SchemaObjectType::User, valid, -1);
+
+        // particular user
+        let valid = &[Alter, Drop];
+        check_object_privilege(SchemaObjectType::User, valid, 42);
+
+        // role
+        let valid = &[Create, Drop];
+        check_object_privilege(SchemaObjectType::Role, valid, -1);
+
+        // particular role
+        let valid = &[Execute, Drop];
+        check_object_privilege(SchemaObjectType::Role, valid, 42);
+
+        // universe
+        let valid = &[Session, Usage];
+        check_object_privilege(SchemaObjectType::Universe, valid, 0);
     }
 }

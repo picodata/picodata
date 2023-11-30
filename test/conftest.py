@@ -1354,6 +1354,32 @@ class Cluster:
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
         return instance.call("pico.cas", dml, predicate, user=user, password=password)
 
+    def masters(self) -> List[Instance]:
+        ret = []
+        for instance in self.instances:
+            if not instance.eval("return box.info.ro"):
+                ret.append(instance)
+
+        return ret
+
+    def grant_box_privilege(
+        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
+    ):
+        """
+        Sometimes in our tests we go beyond picodata privilege model and need
+        to grant priveleges on something that is not part of the picodata access control model.
+        For example execute access on universe mainly needed to invoke functions.
+        """
+        for instance in self.masters():
+            instance.eval(
+                """
+                box.session.su("admin")
+                user, privilege, object_type, object_name = ...
+                return box.schema.user.grant(user, privilege, object_type, object_name)
+                """,
+                [user, privilege, object_type, object_name],
+            )
+
 
 @dataclass
 class PortalStorage:
