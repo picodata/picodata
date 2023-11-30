@@ -289,50 +289,98 @@ fn redirect_interactive_sql() {
 /// Sets a check for user exceeding maximum number of login attempts through `picodata connect`.
 /// Also see [`storage::PropertyName::MaxLoginAttempts`].
 fn set_login_attempts_check(storage: Clusterwide) {
-    use std::collections::hash_map::Entry;
+    enum Verdict {
+        AuthOk,
+        AuthFail,
+        UserBlocked,
+    }
 
-    // It's ok to loose this information during restart, so we keep it as a static.
-    static mut LOGIN_ATTEMPTS: OnceCell<HashMap<String, usize>> = OnceCell::new();
-    const ERROR: &str = "Maximum number of login attempts exceeded";
+    // Determines the outcome of an authentication attempt.
+    let compute_auth_verdict = move |user: String, status: bool| {
+        use std::collections::hash_map::Entry;
+
+        // It's ok to lose this information during restart, so we keep it as a static.
+        static mut LOGIN_ATTEMPTS: OnceCell<HashMap<String, usize>> = OnceCell::new();
+
+        // SAFETY: Accessing `USER_ATTEMPTS` is safe as it is only done from a single thread
+        let attempts = unsafe {
+            LOGIN_ATTEMPTS.get_or_init(HashMap::new);
+            LOGIN_ATTEMPTS.get_mut().expect("is initialized")
+        };
+
+        let max_login_attempts = || {
+            storage
+                .properties
+                .max_login_attempts()
+                .expect("accessing storage should not fail")
+        };
+
+        match attempts.entry(user) {
+            Entry::Occupied(e) if *e.get() >= max_login_attempts() => {
+                // The account is suspended until restart
+                Verdict::UserBlocked
+            }
+            Entry::Occupied(mut e) => {
+                if status {
+                    // Forget about previous failures
+                    e.remove();
+                    Verdict::AuthOk
+                } else {
+                    *e.get_mut() += 1;
+                    Verdict::AuthFail
+                }
+            }
+            Entry::Vacant(e) => {
+                if status {
+                    Verdict::AuthOk
+                } else {
+                    // Remember the failure, but don't raise an error yet
+                    e.insert(1);
+                    Verdict::AuthFail
+                }
+            }
+        }
+    };
 
     let lua = ::tarantool::lua_state();
     lua.exec_with(
         "box.session.on_auth(...)",
-        tlua::function3(
-            move |user: String, status: bool, lua: tlua::LuaState| unsafe {
-                // SAFETY: Accessing `USER_ATTEMPTS` is safe as it is only done from a single thread
-                LOGIN_ATTEMPTS.get_or_init(HashMap::new);
-                let attempts = LOGIN_ATTEMPTS.get_mut().expect("is initialized");
+        tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
+            const ERROR: &str = "Maximum number of login attempts exceeded";
 
-                match attempts.entry(user) {
-                    Entry::Occupied(mut count) => {
-                        if *count.get()
-                            >= storage
-                                .properties
-                                .max_login_attempts()
-                                .expect("accessing storage should not fail")
-                        {
-                            // Raises an error instead of returning it as a function result.
-                            // This is the behavior required by `on_auth` trigger to drop the connection.
-                            // All the drop implementations are called, no need to clean anything up.
-                            tlua::ffi::lua_pushlstring(lua, ERROR.as_ptr() as _, ERROR.len());
-                            tlua::ffi::lua_error(lua);
-                            unreachable!();
-                        } else if status {
-                            // reset count on successful login
-                            count.remove();
-                        } else {
-                            *count.get_mut() += 1
-                        }
-                    }
-                    Entry::Vacant(count) => {
-                        if !status {
-                            count.insert(1);
-                        }
-                    }
+            match compute_auth_verdict(user.clone(), status) {
+                Verdict::AuthOk => {
+                    crate::audit!(
+                        message: "successfully authenticated user `{user}`",
+                        title: "auth_ok",
+                        severity: High,
+                        user: &user,
+                    );
                 }
-            },
-        ),
+                Verdict::AuthFail => {
+                    crate::audit!(
+                        message: "failed to authenticate user `{user}`",
+                        title: "auth_fail",
+                        severity: High,
+                        user: &user,
+                    );
+                }
+                Verdict::UserBlocked => {
+                    crate::audit!(
+                        message: "failed to authenticate user `{user}`",
+                        title: "auth_fail",
+                        severity: High,
+                        user: &user,
+                        verdict: format_args!("{ERROR}; user will be blocked indefinitely"),
+                    );
+
+                    // Raises an error instead of returning it as a function result.
+                    // This is the behavior required by `on_auth` trigger to drop the connection.
+                    // All the drop implementations are called, no need to clean anything up.
+                    tlua::error!(lua, "{}", ERROR);
+                }
+            }
+        }),
     )
     .expect("setting on auth trigger should not fail")
 }
