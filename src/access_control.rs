@@ -532,7 +532,8 @@ mod tests {
             grantee_id,
             grantor_id.unwrap_or(session::uid().unwrap()),
             0,
-        );
+        )
+        .expect("must be valid");
 
         access_check_op(
             &Op::Acl(Acl::GrantPrivilege {
@@ -559,7 +560,8 @@ mod tests {
             grantee_id,
             session::uid().unwrap(),
             0,
-        );
+        )
+        .expect("must be valid");
 
         access_check_op(
             &Op::Acl(Acl::RevokePrivilege {

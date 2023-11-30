@@ -202,9 +202,9 @@ def test_acl_lua_api(cluster: Cluster):
             i1.call(
                 f"pico.{f}",
                 "User is not found",
-                "execute",
-                "universe",
-                None,
+                "read",
+                "table",
+                "_pico_property",
             )
 
         # No such privilege -> error.
@@ -219,7 +219,7 @@ def test_acl_lua_api(cluster: Cluster):
             ReturnError,
             match=rf"unsupported privilege 'read,write', see pico.help\('{f}'\) for details",
         ):
-            i1.call(f"pico.{f}", "Dave", "read,write", "universe", None)
+            i1.call(f"pico.{f}", "Dave", "read,write", "role", None)
 
         # No object_type -> error.
         with pytest.raises(ReturnError, match="object_type should be a string"):
@@ -463,9 +463,7 @@ def test_acl_basic(cluster: Cluster):
     # Grant some privileges.
     # Doing anything via remote function execution requires execute access
     # to the "universe"
-    index = i1.grant_privilege(user, "execute", "universe")
-    cluster.raft_wait_index(index)
-    v += 1
+    cluster.grant_box_privilege(user, "execute", "universe")
 
     index = i1.grant_privilege(user, "read", "table", "money")
     cluster.raft_wait_index(index)
@@ -592,8 +590,7 @@ def test_acl_roles_basic(cluster: Cluster):
 
     # Doing anything via remote function execution requires execute access
     # to the "universe"
-    index = i1.grant_privilege(user, "execute", "universe", None)
-    cluster.raft_wait_index(index)
+    cluster.grant_box_privilege(user, "execute", "universe", None)
 
     # Try reading from table on behalf of the user.
     for i in cluster.instances:
@@ -757,8 +754,8 @@ def test_acl_from_snapshot(cluster: Cluster):
             ("read", "space", "_pico_table"),
         }
 
-        with pytest.raises(TarantoolError, match="Role 'Executor' is not found"):
-            i.call("box.schema.role.info", "Executor")
+        with pytest.raises(TarantoolError, match="Role 'Writer' is not found"):
+            i.call("box.schema.role.info", "Writer")
 
     #
     # These will be catching up by snapshot.
@@ -791,13 +788,13 @@ def test_acl_from_snapshot(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.create_role", "Executor")
+    index = i1.call("pico.create_role", "Writer")
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege("Executor", "execute", "universe", None)
+    index = i1.grant_privilege("Writer", "write", "table", None)
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege("Blam", "execute", "role", "Executor")
+    index = i1.grant_privilege("Blam", "execute", "role", "Writer")
     cluster.raft_wait_index(index)
 
     # Compact log to trigger snapshot generation.
@@ -822,7 +819,7 @@ def test_acl_from_snapshot(cluster: Cluster):
 
         assert to_set_of_tuples(i.call("box.schema.user.info", "Blam")) == {
             ("execute", "role", "public"),
-            ("execute", "role", "Executor"),
+            ("execute", "role", "Writer"),
             ("session,usage", "universe", ""),
             ("alter", "user", "Blam"),
         }
@@ -831,8 +828,8 @@ def test_acl_from_snapshot(cluster: Cluster):
             ("read", "space", "_pico_instance"),
         }
 
-        assert to_set_of_tuples(i.call("box.schema.role.info", "Executor")) == {
-            ("execute", "universe", ""),
+        assert to_set_of_tuples(i.call("box.schema.role.info", "Writer")) == {
+            ("write", "space", ""),
         }
 
 
@@ -886,16 +883,18 @@ def test_builtin_users_and_roles(cluster: Cluster):
             "_pico_property",
         )
 
+    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    i1.raft_wait_index(index)
+
     # granting already granted privilege does not raise an error
     index = i1.call("pico.raft_get_index")
     new_index = i1.grant_privilege(
-        "admin",
-        "write",
+        "Dave",
+        "session",
         "universe",
     )
     assert index == new_index
 
-    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
     new_index = i1.grant_privilege(
         "Dave",
         "execute",

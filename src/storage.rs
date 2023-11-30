@@ -2477,6 +2477,7 @@ impl Privileges {
     /// Remove any privilege definitions assigning the given role.
     #[inline]
     pub fn delete_all_by_granted_role(&self, role_id: u32) -> Result<()> {
+        // here we failed to deserialize the privilege that has alter on universe
         for priv_def in self.iter()? {
             if priv_def.privilege() == PrivilegeType::Execute
                 && priv_def.object_type() == SchemaObjectType::Role
@@ -2730,9 +2731,7 @@ impl SchemaDef for PrivilegeDef {
 
     #[inline(always)]
     fn schema_version(&self) -> u64 {
-        // Note: this doesnt lead to recursion because of the
-        // method resolution order: https://doc.rust-lang.org/reference/expressions/method-call-expr.html
-        self.schema_version()
+        PrivilegeDef::schema_version(self)
     }
 
     #[inline(always)]
