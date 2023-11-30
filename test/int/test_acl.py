@@ -47,14 +47,14 @@ def test_max_login_attempts(cluster: Cluster):
     c.eval(
         """
         box.session.su(1)
-        box.schema.user.create('foo', {password='bar'})
-        box.schema.user.grant('foo', 'read,write,execute', 'universe')
+        pico.create_user('foo', '12345678')
+        pico.grant_privilege('foo', 'execute', 'universe')
         """
     )
     c.close()
 
     # First login is successful
-    c = connect(i1, user="foo", password="bar")
+    c = connect(i1, user="foo", password="12345678")
     assert c
 
     # Several failed login attempts but one less than maximum
@@ -69,7 +69,7 @@ def test_max_login_attempts(cluster: Cluster):
     c = connect(
         i1,
         user="foo",
-        password="bar",
+        password="12345678",
     )
     assert c
 

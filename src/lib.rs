@@ -292,6 +292,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
     enum Verdict {
         AuthOk,
         AuthFail,
+        UnknownUser,
         UserBlocked,
     }
 
@@ -314,6 +315,19 @@ fn set_login_attempts_check(storage: Clusterwide) {
                 .max_login_attempts()
                 .expect("accessing storage should not fail")
         };
+
+        let user_exists = storage
+            .users
+            .by_name(&user)
+            .expect("accessing storage should not fail")
+            .is_some();
+
+        // Prevent DOS attacks by first checking whether the user exists.
+        // If it doesn't, we shouldn't even bother tracking its attempts.
+        // Too many hashmap records will cause a global OOM event.
+        if !user_exists {
+            return Verdict::UnknownUser;
+        }
 
         match attempts.entry(user) {
             Entry::Occupied(e) if *e.get() >= max_login_attempts() => {
@@ -360,6 +374,14 @@ fn set_login_attempts_check(storage: Clusterwide) {
                 Verdict::AuthFail => {
                     crate::audit!(
                         message: "failed to authenticate user `{user}`",
+                        title: "auth_fail",
+                        severity: High,
+                        user: &user,
+                    );
+                }
+                Verdict::UnknownUser => {
+                    crate::audit!(
+                        message: "failed to authenticate unknown user `{user}`",
                         title: "auth_fail",
                         severity: High,
                         user: &user,
