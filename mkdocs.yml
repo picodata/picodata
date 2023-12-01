@@ -15,12 +15,12 @@ nav:
   - Инструкции и руководства:
     - tutorial/install.md
     - tutorial/deploy.md
-    - tutorial/monitoring.md
     - tutorial/connecting.md
-    - tutorial/webui.md
-    - tutorial/ldap.md
-    - tutorial/access_control.md
     - tutorial/sql_examples.md
+    - tutorial/webui.md
+    - tutorial/access_control.md
+    - tutorial/ldap.md
+    - tutorial/monitoring.md
     - tutorial/audit_log.md
   - Справочные материалы:
     - reference/cli.md

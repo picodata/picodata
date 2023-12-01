@@ -18,12 +18,12 @@ Picodata — это распределенная система промышле
 ### Инструкции и руководства {: #tutorial }
 * [Установка Picodata](tutorial/install.md)
 * [Запуск кластера](tutorial/deploy.md)
-* [Мониторинг кластера](tutorial/monitoring.md)
 * [Подключение и работа в консоли](tutorial/connecting.md)
-* [Работа в веб-интерфейсе](tutorial/webui.md)
-* [Авторизация с помощью LDAP](tutorial/ldap.md)
-* [Управление доступом](tutorial/access_control.md)
 * [Работа с данными SQL](tutorial/sql_examples.md)
+* [Работа в веб-интерфейсе](tutorial/webui.md)
+* [Управление доступом](tutorial/access_control.md)
+* [Авторизация с помощью LDAP](tutorial/ldap.md)
+* [Мониторинг кластера](tutorial/monitoring.md)
 * [Использование журнала аудита](tutorial/audit_log.md)
 
 ### Справочные материалы {: #reference }
