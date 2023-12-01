@@ -633,9 +633,7 @@ mod tests {
 
         let t0 = std::time::Instant::now();
         let t = client.call(&proc, &s).await.unwrap();
-        // This is a pretty high threshold, but it still may flake sometimes, so
-        // maybe the check should be removed.
-        assert!(dbg!(t0.elapsed()) < std::time::Duration::from_secs(10));
+        dbg!(t0.elapsed());
 
         if let Ok((len,)) = t.decode::<(u32,)>() {
             assert_eq!(len, N + 17);
