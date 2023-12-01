@@ -680,15 +680,42 @@ impl NodeImpl {
                 }
                 Ok(ClusterwideTable::Instance) => {
                     *wake_governor = true;
-                    let instance = match op {
-                        Dml::Insert { tuple, .. } => Some(tuple),
-                        Dml::Replace { tuple, .. } => Some(tuple),
-                        Dml::Update { .. } => None,
-                        Dml::Delete { .. } => None,
-                    };
-                    if let Some(new) = instance {
-                        let new: Instance = rmp_serde::from_slice(new.as_ref())
-                            .expect("should be a valid instance tuple");
+                }
+                _ => {}
+            },
+            Op::DdlPrepare { .. } => {
+                *wake_governor = true;
+            }
+            _ => {}
+        }
+
+        let storage_properties = &self.storage.properties;
+
+        // apply the operation
+        let mut result = Box::new(()) as Box<dyn AnyWithTypeName>;
+        match op {
+            Op::Nop => {}
+            Op::Dml(op) => {
+                let res = self.storage.do_dml(&op);
+                match &res {
+                    Err(e) => {
+                        tlog!(Error, "clusterwide dml failed: {e}");
+                    }
+                    Ok(Some(tuple))
+                        if op.space() == ClusterwideTable::Instance.id()
+                        // TODO: do we need to log something into the audit when deleting instances?
+                        && !matches!(op, Dml::Delete { .. }) =>
+                    {
+                        // FIXME: we do this prematurely, because the
+                        // transaction may still be rolled back for some reason.
+                        let new: Instance = tuple
+                            .decode()
+                            .expect("tuple already passed format verification");
+
+                        if has_grades!(new, Expelled -> *) && new.raft_id == self.raft_id() {
+                            // cannot exit during a transaction
+                            *expelled = true;
+                        }
 
                         // Check if we're handling a "new node joined" event:
                         // * Either there's no tuple for this node in the storage;
@@ -728,32 +755,10 @@ impl NodeImpl {
                                 raft_id: %new.raft_id,
                             );
                         }
-
-                        if has_grades!(new, Expelled -> *) && new.raft_id == self.raft_id() {
-                            // cannot exit during a transaction
-                            *expelled = true;
-                        }
                     }
+                    Ok(_) => {}
                 }
-                _ => {}
-            },
-            Op::DdlPrepare { .. } => {
-                *wake_governor = true;
-            }
-            _ => {}
-        }
 
-        let storage_properties = &self.storage.properties;
-
-        // apply the operation
-        let mut result = Box::new(()) as Box<dyn AnyWithTypeName>;
-        match op {
-            Op::Nop => {}
-            Op::Dml(op) => {
-                let res = self.storage.do_dml(&op);
-                if let Err(e) = &res {
-                    tlog!(Error, "clusterwide dml failed: {e}");
-                }
                 result = Box::new(res) as _;
             }
             Op::DdlPrepare {
