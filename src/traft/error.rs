@@ -14,6 +14,8 @@ pub enum Error {
     Uninitialized,
     #[error("timeout")]
     Timeout,
+    #[error("current instance is expelled from the cluster")]
+    Expelled,
     #[error("{0}")]
     Raft(#[from] raft::Error),
     #[error("downcast error: expected {expected:?}, actual: {actual:?}")]
