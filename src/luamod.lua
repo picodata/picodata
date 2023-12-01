@@ -786,6 +786,10 @@ Returns:
 
 Examples:
 
+    -- Enable the newly created user 'Dave' to perform essential actions,
+    -- eg. create a table, write to it, read data from it.
+    pico.grant_privilege('Dave', 'create', 'table')
+
     -- Grant read access to table 'Fruit' for user 'Dave'.
     pico.grant_privilege('Dave', 'read', 'table', 'Fruit')
 
@@ -800,6 +804,10 @@ Examples:
 
     -- Assign role 'Maintainer' to user 'Dave'.
     pico.grant_privilege('Dave', 'execute', 'role', 'Maintainer')
+
+Notice:
+
+    Only database admin can grant global privileges.
 ]]
 function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
     local ok, err = pcall(function()
