@@ -9,38 +9,37 @@ Picodata — это распределенная система промышле
 
 На этом портале представлена документация по Picodata:
 
-
 ### Ознакомление с ПО Picodata {: #overview }
-* [Общее описание продукта](overview/description)
-* [Преимущества использования Picodata](overview/benefits)
-* [Глоссарий](overview/glossary)
-* [Обратная связь и получение помощи](overview/feedback)
+* [Общее описание продукта](overview/description.md)
+* [Преимущества использования Picodata](overview/benefits.md)
+* [Глоссарий](overview/glossary.md)
+* [Обратная связь и получение помощи](overview/feedback.md)
 
 ### Инструкции и руководства {: #tutorial }
-* [Установка Picodata](tutorial/install)
-* [Запуск кластера](tutorial/deploy)
-* [Мониторинг кластера](tutorial/monitoring)
-* [Подключение и работа в консоли](tutorial/connecting)
-* [Работа в веб-интерфейсе](tutorial/webui)
-* [Авторизация с помощью LDAP](tutorial/ldap)
-* [Управление доступом](tutorial/access_control)
-* [Работа с данными SQL](tutorial/sql_examples)
-* [Использование журнала аудита](tutorial/audit_log)
+* [Установка Picodata](tutorial/install.md)
+* [Запуск кластера](tutorial/deploy.md)
+* [Мониторинг кластера](tutorial/monitoring.md)
+* [Подключение и работа в консоли](tutorial/connecting.md)
+* [Работа в веб-интерфейсе](tutorial/webui.md)
+* [Авторизация с помощью LDAP](tutorial/ldap.md)
+* [Управление доступом](tutorial/access_control.md)
+* [Работа с данными SQL](tutorial/sql_examples.md)
+* [Использование журнала аудита](tutorial/audit_log.md)
 
 ### Справочные материалы {: #reference }
-* [Аргументы командной строки](reference/cli)
-* [Типы данных SQL](reference/sql_types)
-* [Команды SQL](reference/sql_queries)
-* [Публичный API](reference/api)
-* [Совместимость с ANSI SQL](reference/ansi_sql)
-* [Регистрируемые события безопасности](reference/audit_events)
+* [Аргументы командной строки](reference/cli.md)
+* [Типы данных SQL](reference/sql_types.md)
+* [Команды SQL](reference/sql_queries.md)
+* [Публичный API](reference/api.md)
+* [Совместимость с ANSI SQL](reference/ansi_sql.md)
+* [Регистрируемые события безопасности](reference/audit_events.md)
 
 ### Архитектура {: #architecture }
-* [Распределенный SQL](architecture/distributed_sql)
-* [Алгоритм discovery](architecture/discovery)
-* [Жизненный цикл инстанса](architecture/instance_lifecycle)
-* [Управление топологией](architecture/topology_management)
-* [Raft и отказоустойчивость](architecture/raft_failover)
+* [Распределенный SQL](architecture/distributed_sql.md)
+* [Алгоритм discovery](architecture/discovery.md)
+* [Жизненный цикл инстанса](architecture/instance_lifecycle.md)
+* [Управление топологией](architecture/topology_management.md)
+* [Raft и отказоустойчивость](architecture/raft_failover.md)
 * [Описание системных таблиц](architecture/system_tables.md)
 
 <!-- План на развитие структуры документации:
