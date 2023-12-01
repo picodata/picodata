@@ -962,6 +962,10 @@ impl Clusterwide {
     }
 
     /// Perform the `dml` operation on the local storage.
+    /// When possible, return the new tuple produced by the operation:
+    ///   * `Some(tuple)` in case of insert and replace;
+    ///   * `Some(tuple)` or `None` depending on update's result (it may be NOP);
+    ///   * `None` in case of delete (because the tuple is gone).
     #[inline]
     pub fn do_dml(&self, dml: &Dml) -> tarantool::Result<Option<Tuple>> {
         let space = space_by_id_unchecked(dml.space());
@@ -969,7 +973,7 @@ impl Clusterwide {
             Dml::Insert { tuple, .. } => space.insert(tuple).map(Some),
             Dml::Replace { tuple, .. } => space.replace(tuple).map(Some),
             Dml::Update { key, ops, .. } => space.update(key, ops),
-            Dml::Delete { key, .. } => space.delete(key),
+            Dml::Delete { key, .. } => space.delete(key).map(|_| None),
         }
     }
 }
@@ -1170,6 +1174,22 @@ impl PropertyName {
 
         Ok(())
     }
+
+    /// Try decoding property's value specifically for audit log.
+    /// Returns `Some(string)` if it should be logged, `None` otherwise.
+    pub fn should_be_audited(&self, tuple: &Tuple) -> Result<Option<String>> {
+        let bad_value = || Error::other("bad value");
+        Ok(match self {
+            Self::PasswordMinLength
+            | Self::MaxLoginAttempts
+            | Self::SnapshotChunkMaxSize
+            | Self::MaxPgPortals => {
+                let v = tuple.field::<usize>(1)?.ok_or_else(bad_value)?;
+                Some(format!("{v}"))
+            }
+            _ => None,
+        })
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1225,7 +1245,8 @@ impl Properties {
                     // Not a builtin property.
                     // Cannot be a wrong type error, because tarantool checks
                     // the format for us.
-                    if old.is_none() { // Insert
+                    if old.is_none() {
+                        // Insert
                         // FIXME: this is currently printed twice
                         tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
                     }

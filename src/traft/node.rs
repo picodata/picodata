@@ -17,6 +17,7 @@ use crate::schema::{Distribution, IndexDef, TableDef};
 use crate::sentinel;
 use crate::storage::acl;
 use crate::storage::ddl_meta_drop_space;
+use crate::storage::space_by_id;
 use crate::storage::SnapshotData;
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
@@ -60,7 +61,7 @@ use ::tarantool::space::FieldType as SFT;
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
-use ::tarantool::tuple::Decode;
+use ::tarantool::tuple::{Decode, Tuple};
 use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
 
@@ -728,32 +729,101 @@ impl NodeImpl {
         match op {
             Op::Nop => {}
             Op::Dml(op) => {
-                let res = self.storage.do_dml(&op);
+                let space = op.space().try_into();
+
+                // In order to implement the audit log events, we have to compare
+                // tuples from certain system spaces before and after a DML operation.
+                //
+                // In theory, we could move this code to `do_dml`, but in practice we
+                // cannot do that just yet, because we aren't allowed to universally call
+                // `extract_key` for arbitrary tuple/space pairs due to insufficient validity
+                // checks on its side -- it might just crash for user input.
+                //
+                // Remeber, we're not the only ones using CaS; users may call it for their
+                // own spaces, thus emitting unrestricted (and unsafe) DML records.
+                //
+                // TODO: merge this into `do_dml` once `box_tuple_extract_key` is fixed.
+                let old = match space {
+                    Ok(s @ (ClusterwideTable::Property | ClusterwideTable::Instance)) => {
+                        let s = space_by_id(s.id()).expect("system space must exist");
+                        match &op {
+                            // There may be no previous version for inserts.
+                            Dml::Insert { .. } => Ok(None),
+                            Dml::Update { key, .. } => s.get(key),
+                            Dml::Delete { key, .. } => s.get(key),
+                            Dml::Replace { tuple, .. } => {
+                                let key = s.primary_key().extract_key(Tuple::from(tuple));
+                                s.get(&key)
+                            }
+                        }
+                    }
+                    _ => Ok(None),
+                };
+
+                // Perform DML and combine both tuple versions into a pair.
+                let res = old.and_then(|old| {
+                    let new = self.storage.do_dml(&op)?;
+                    Ok((old, new))
+                });
+
                 match &res {
                     Err(e) => {
                         tlog!(Error, "clusterwide dml failed: {e}");
                     }
-                    Ok(Some(tuple))
-                        if op.space() == ClusterwideTable::Instance.id()
-                        // TODO: do we need to log something into the audit when deleting instances?
-                        && !matches!(op, Dml::Delete { .. }) =>
-                    {
+                    // Handle delete from _pico_property
+                    Ok((Some(old), None)) if space == Ok(ClusterwideTable::Property) => {
+                        assert!(matches!(op, Dml::Delete { .. }));
+
+                        if let Ok(Some(key)) = old.field::<PropertyName>(0) {
+                            crate::audit!(
+                                message: "property `{key}` was deleted",
+                                title: "change_config",
+                                severity: High,
+                            );
+                        }
+                    }
+                    // Handle insert, replace, update in _pico_property
+                    Ok((_old, Some(new))) if space == Ok(ClusterwideTable::Property) => {
+                        // Dml::Delete mandates that new tuple is None.
+                        assert!(!matches!(op, Dml::Delete { .. }));
+
+                        // Keep in mind that currently we allow invalid names,
+                        // which means that we have to ignore the decoding error.
+                        let key = new.field::<PropertyName>(0).ok().flatten();
+
+                        // Try decoding the value iff the name's known.
+                        let value = key
+                            .map(|p| p.should_be_audited(new))
+                            .transpose()
+                            .expect("property value decoding should not fail")
+                            .flatten();
+
+                        if let Some((key, value)) = key.zip(value) {
+                            crate::audit!(
+                                message: "property `{key}` was changed to {value}",
+                                title: "change_config",
+                                severity: High,
+                            );
+                        }
+                    }
+                    // Handle insert, replace, update in _pico_instance
+                    Ok((old, Some(new))) if space == Ok(ClusterwideTable::Instance) => {
+                        // Dml::Delete mandates that new tuple is None.
+                        assert!(!matches!(op, Dml::Delete { .. }));
+
+                        let old: Option<Instance> =
+                            old.as_ref().map(|x| x.decode().expect("must be Instance"));
+
                         // FIXME: we do this prematurely, because the
                         // transaction may still be rolled back for some reason.
-                        let new: Instance = tuple
+                        let new: Instance = new
                             .decode()
                             .expect("tuple already passed format verification");
-
-                        if has_grades!(new, Expelled -> *) && new.raft_id == self.raft_id() {
-                            // cannot exit during a transaction
-                            *expelled = true;
-                        }
 
                         // Check if we're handling a "new node joined" event:
                         // * Either there's no tuple for this node in the storage;
                         // * Or its raft id has changed, meaning it's no longer the same node.
-                        let prev = self.storage.instances.get(&new.instance_id).ok();
-                        if prev.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
+                        if old.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
                             let instance_id = &new.instance_id;
                             crate::audit!(
                                 message: "a new instance `{instance_id}` joined the cluster",
@@ -764,7 +834,7 @@ impl NodeImpl {
                             );
                         }
 
-                        if prev.as_ref().map(|x| x.current_grade) != Some(new.current_grade) {
+                        if old.as_ref().map(|x| x.current_grade) != Some(new.current_grade) {
                             let instance_id = &new.instance_id;
                             let grade = &new.current_grade;
                             crate::audit!(
@@ -772,11 +842,12 @@ impl NodeImpl {
                                 title: "change_current_grade",
                                 severity: Medium,
                                 instance_id: %instance_id,
+                                raft_id: %new.raft_id,
                                 new_grade: %grade,
                             );
                         }
 
-                        if prev.as_ref().map(|x| x.target_grade) != Some(new.target_grade) {
+                        if old.as_ref().map(|x| x.target_grade) != Some(new.target_grade) {
                             let instance_id = &new.instance_id;
                             let grade = &new.target_grade;
                             crate::audit!(
@@ -785,7 +856,24 @@ impl NodeImpl {
                                 severity: Low,
                                 instance_id: %instance_id,
                                 raft_id: %new.raft_id,
+                                new_grade: %grade,
                             );
+                        }
+
+                        if has_grades!(new, Expelled -> *) {
+                            let instance_id = &new.instance_id;
+                            crate::audit!(
+                                message: "instance `{instance_id}` was expelled from the cluster",
+                                title: "expel_instance",
+                                severity: Low,
+                                instance_id: %instance_id,
+                                raft_id: %new.raft_id,
+                            );
+
+                            if new.raft_id == self.raft_id() {
+                                // cannot exit during a transaction
+                                *expelled = true;
+                            }
                         }
                     }
                     Ok(_) => {}

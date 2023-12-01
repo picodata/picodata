@@ -339,7 +339,7 @@ pub enum Dml {
 
 // TODO: remove this
 impl OpResult for Dml {
-    type Result = tarantool::Result<Option<Tuple>>;
+    type Result = tarantool::Result<(Option<Tuple>, Option<Tuple>)>;
     fn result(&self) -> Self::Result {
         unreachable!()
     }
