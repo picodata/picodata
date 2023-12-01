@@ -466,39 +466,21 @@ impl PrivilegeDef {
                 });
             }
 
-            // execute public
-            // execute on super (temporary until we switch to service account)
-            // SQL: GRANT 'execute' ON <'public', 'user'> TO 'guest'
-            for role in [PUBLIC_ID, SUPER_ID] {
-                v.push(PrivilegeDef {
-                    grantor_id: ADMIN_ID,
-                    grantee_id: GUEST_ID,
-                    object_type: SchemaObjectType::Role,
-                    object_id: role as _,
-                    privilege: PrivilegeType::Execute,
-                    schema_version: 0,
-                });
-            }
+            // SQL: GRANT 'public' TO 'guest'
+            v.push(PrivilegeDef {
+                grantor_id: ADMIN_ID,
+                grantee_id: GUEST_ID,
+                object_type: SchemaObjectType::Role,
+                object_id: PUBLIC_ID as _,
+                privilege: PrivilegeType::Execute,
+                schema_version: 0,
+            });
 
-            // admin - all on universe
             // SQL: GRANT 'all privileges' ON 'universe' TO 'admin'
             for privilege in PrivilegeType::VARIANTS {
                 v.push(PrivilegeDef {
                     grantor_id: ADMIN_ID,
                     grantee_id: ADMIN_ID,
-                    object_type: SchemaObjectType::Universe,
-                    object_id: UNIVERSE_ID,
-                    privilege: *privilege,
-                    schema_version: 0,
-                });
-            }
-
-            // super - all on universe
-            // GRANT 'all privileges' ON 'universe' TO 'super'
-            for privilege in PrivilegeType::VARIANTS {
-                v.push(PrivilegeDef {
-                    grantor_id: ADMIN_ID,
-                    grantee_id: SUPER_ID,
                     object_type: SchemaObjectType::Universe,
                     object_id: UNIVERSE_ID,
                     privilege: *privilege,

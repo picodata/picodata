@@ -838,10 +838,21 @@ def test_acl_from_snapshot(cluster: Cluster):
 
 def test_acl_drop_table_with_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
-    number_of_privileges_since_bootstrap = 28
 
     # Check that we can drop a table with privileges granted on it.
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+
+    dave_id = i1.sql(""" select "id" from "_pico_user" where "name" = 'Dave' """)[
+        "rows"
+    ][0][0]
+
+    def dave_privileges_count():
+        return i1.sql(
+            f""" select count(*) from "_pico_privilege" where "grantee_id" = {dave_id} """,
+        )["rows"][0][0]
+
+    dave_privileges_count_at_start = dave_privileges_count()
+
     cluster.raft_wait_index(index)
     ddl = i1.sql(
         """
@@ -849,14 +860,18 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
+    assert dave_privileges_count_at_start == dave_privileges_count()
+
     index = i1.grant_privilege("Dave", "read", "table", "T")
     cluster.raft_wait_index(index)
+
+    assert dave_privileges_count_at_start + 1 == dave_privileges_count()
+
     ddl = i1.sql(""" drop table t """)
     assert ddl["row_count"] == 1
 
-    # Check that the picodata privileges are gone.
-    privs = i1.call("box.execute", """ select count(*) from "_pico_privilege" """)
-    assert privs["rows"][0][0] == number_of_privileges_since_bootstrap
+    # Check that the picodata privilege on table t are gone.
+    assert dave_privileges_count_at_start == dave_privileges_count()
 
 
 def test_builtin_users_and_roles(cluster: Cluster):

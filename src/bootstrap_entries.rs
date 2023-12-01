@@ -174,9 +174,8 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
 
     // equivalent SQL expressions under 'admin' user:
     // GRANT <'usage', 'session'> ON 'universe' TO 'guest'
-    // GRANT <'public', 'super'> TO 'guest'
+    // GRANT 'public' TO 'guest'
     // GRANT 'all privileges' ON 'universe' TO 'admin'
-    // GRANT 'all privileges' ON 'universe' TO 'super'
     for priv_def in PrivilegeDef::get_default_privileges() {
         init_entries_push_op(op::Dml::insert(ClusterwideTable::Privilege, priv_def));
     }
