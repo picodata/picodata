@@ -57,9 +57,9 @@ pack-doc:
   stage: pack-doc
   script:
     - echo "Pack picodata doc..."
-    - VER=$(date +%Y%m%d%H%M)
-    - FNAME="picodata-doc-$VER.tgz"
-    - echo "FNAME=$FNAME" > .vars
+    - VER=$(date +%Y%m%d%H%M%S)
+    - FNAME="picodata-doc-${VER}-${CI_COMMIT_REF_SLUG}.tgz"
+    - echo "FNAME=$FNAME" | tee .vars
     - mkdocs build -d site --strict
     - pushd site
     - tar -cvzf ../$FNAME ./
