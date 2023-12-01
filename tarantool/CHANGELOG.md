@@ -55,6 +55,10 @@
   spaces with repeating ids. This is now fixed.
 - Some tests were broken on tarantool builds from master branch.
 - Removed an erroneously added print statement from Vclock::ignore_zero.
+- `tlua::error!` macro now expands the format even when no arguments are
+  specified. Before this `tlua::error!(lua, "{var}")` would return error
+  containing literally the message "{var}", but now it will use the value of
+  `var` variable in the current scope.
 
 ### Deprecated
 
@@ -69,6 +73,11 @@
 - `fiber::csw` now returns `u64` instead of `i32`.
 - Removed `datetime::Error::ErrorEpochTypeConvert` as it's never used.
 - `TarantoolErrorCode` & `SayLevel` no longer implement `num_traits::FromPrimitive`.
+- `tlua::error!` macro no longer prepends file:line:column to the error message
+  when called with a single string literal. This used to be done as an
+  optimization because we could do it for free at compile time, but now the code
+  is simpler and the source location was unreliable anyway (didn't take into
+  account `#[track_caller]`).
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

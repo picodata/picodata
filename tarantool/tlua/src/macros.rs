@@ -92,31 +92,36 @@ macro_rules! c_ptr {
     };
 }
 
+/// Throws the lua error with the given message.
+/// The first argument is the lua context in which the error should be thrown.
+/// When throwing an error from a rust callback use the lua state
+/// which was passed to the callback.
+///
+/// This macro will exit the current function so no code after it will be executed.
+///
+/// # Example
+/// ```no_run
+/// let lua = tlua::Lua::new();
+/// lua.set("rust_callback_which_may_throw",
+///     tlua::Function::new(|arg1: i32, arg2: String, lua: tlua::LuaState| {
+///         // - `arg1` & `arg2` are passed by caller from lua
+///         // - `lua` is a special argument inserted by tlua.
+///         //    Only it should be used with `tlua::error!()`!
+///         tlua::error!(lua, "invalid arguments: {arg1}, {arg2}");
+///     }));
+/// ```
 #[macro_export]
 macro_rules! error {
-    ($l:expr, $msg:literal) => {
-        $crate::error!(@impl $l, $crate::error!(@locz $msg).as_ptr().cast())
-    };
-    ($l:expr, $f:literal $($args:tt)*) => {
-        {
-            let msg = ::std::format!(::std::concat![$f, "\0"] $($args)*);
-            $crate::error!(@impl $l, $crate::c_ptr!("%s"), msg.as_ptr())
+    ($l:expr, $($args:tt)+) => {{
+        let msg = ::std::format!($($args)+);
+        #[allow(unused_unsafe)]
+        unsafe {
+            let lua = $crate::AsLua::as_lua(&$l);
+            $crate::ffi::lua_pushlstring(lua, msg.as_ptr() as _, msg.len());
+            $crate::ffi::lua_error($crate::AsLua::as_lua(&$l));
         }
-    };
-    (@locz $f:literal) => {
-        ::std::concat![
-            ::std::file!(), ":", ::std::line!(), ":", ::std::column!(), "> ", $f, "\0"
-        ]
-    };
-    (@impl $l:expr, $($args:tt)+) => {
-        {
-            #[allow(unused_unsafe)]
-            unsafe {
-                $crate::ffi::luaL_error($crate::AsLua::as_lua(&$l), $($args)+);
-            }
-            unreachable!("luaL_error never returns")
-        }
-    }
+        unreachable!("luaL_error never returns")
+    }};
 }
 
 #[macro_export]

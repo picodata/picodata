@@ -256,9 +256,7 @@ pub fn pcall() {
         .pcall(|l| tlua::error!(l, "catch this"))
         .unwrap_err()
         .to_string();
-    let l = line!() - 3;
-    let f = file!();
-    assert_eq!(err_msg, format!("{}:{}:20> catch this", f, l));
+    assert_eq!(err_msg, "catch this");
 }
 
 #[rustfmt::skip]
@@ -267,10 +265,8 @@ pub fn error() {
     lua.set("error_callback",
         tlua::function1(|lua: tlua::LuaState| tlua::error!(lua, "but it compiled :("))
     );
-    let l = line!() - 2;
-    let f = file!();
     let msg = lua.exec("return error_callback()").unwrap_err().to_string();
-    assert_eq!(msg, format!("{}:{}:47> but it compiled :(", f, l));
+    assert_eq!(msg, "but it compiled :(");
 
     lua.set("error_callback_2",
         tlua::function2(|msg: String, lua: tlua::LuaState| tlua::error!(lua, "your message: {}", msg))
@@ -281,7 +277,7 @@ pub fn error() {
     lua.set("error_callback_3",
         tlua::Function::new(
             |qualifier: String, lua: tlua::StaticLua| {
-                tlua::error!(lua, "this way is {}", qualifier)
+                tlua::error!(lua, "this way is {qualifier}")
             }
         )
     );
