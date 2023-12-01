@@ -726,10 +726,8 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     box_cfg.replication_connect_quorum = 0;
     tarantool::set_cfg(&box_cfg);
 
-    let node = traft::node::Node::new(storage.clone(), raft_storage.clone());
+    let node = traft::node::Node::init(storage.clone(), raft_storage.clone());
     let node = node.expect("failed initializing raft node");
-    traft::node::set_global(node);
-    let node = traft::node::global().unwrap();
     let raft_id = node.raft_id();
 
     let cs = raft_storage.conf_state().unwrap();

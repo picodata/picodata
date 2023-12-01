@@ -161,11 +161,22 @@ impl std::fmt::Debug for Node {
     }
 }
 
+static mut RAFT_NODE: Option<Box<Node>> = None;
+
 impl Node {
-    /// Initialize the raft node.
+    /// Initialize the global raft node singleton. Returns a reference to it.
+    ///
+    /// Returns an error in case of storage failure.
     ///
     /// **This function yields**
-    pub fn new(storage: Clusterwide, raft_storage: RaftSpaceAccess) -> Result<Self, RaftError> {
+    pub fn init(
+        storage: Clusterwide,
+        raft_storage: RaftSpaceAccess,
+    ) -> Result<&'static Self, Error> {
+        if unsafe { RAFT_NODE.is_some() } {
+            return Err(Error::other("raft node is already initialized"));
+        }
+
         let opts = WorkerOptions {
             raft_msg_handler: stringify_cfunc!(proc_raft_interact),
             call_timeout: MainLoop::TICK.saturating_mul(4),
@@ -186,9 +197,13 @@ impl Node {
 
         let node_impl = Rc::new(Mutex::new(node_impl));
 
+        // Raft main loop accesses the global node refernce,
+        // so it must be initilized before the main loop starts.
+        let guard = crate::util::NoYieldsGuard::new();
+
         let node = Node {
             raft_id,
-            main_loop: MainLoop::start(node_impl.clone()), // yields
+            main_loop: MainLoop::start(node_impl.clone()),
             governor_loop: governor::Loop::start(
                 pool.clone(),
                 status.clone(),
@@ -209,6 +224,11 @@ impl Node {
             applied,
             instances_update: Mutex::new(()),
         };
+
+        unsafe { RAFT_NODE = Some(Box::new(node)) };
+        let node = global().expect("just initialized it");
+
+        drop(guard);
 
         // Wait for the node to enter the main loop
         node.tick_and_yield(0);
@@ -1834,18 +1854,6 @@ impl Drop for MainLoop {
         self.stop_flag.set(true);
         let _ = self.loop_waker.send(());
         self._loop.take().unwrap().join(); // yields
-    }
-}
-
-static mut RAFT_NODE: Option<Box<Node>> = None;
-
-pub fn set_global(node: Node) {
-    unsafe {
-        assert!(
-            RAFT_NODE.is_none(),
-            "discovery::set_global() called twice, it's a leak"
-        );
-        RAFT_NODE = Some(Box::new(node));
     }
 }
 

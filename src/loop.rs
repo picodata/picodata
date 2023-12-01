@@ -3,6 +3,7 @@ pub enum FlowControl {
     Break,
 }
 
+/// Creates the fiber and schedules it for execution. Doesn't yield.
 #[macro_export]
 macro_rules! loop_start {
     ($name:expr, $fn:expr, $state:expr $(,)?) => {
@@ -20,7 +21,7 @@ macro_rules! loop_start {
                     }
                 })
             })
-            .start()
+            .defer()
             .unwrap()
             .into()
     };
