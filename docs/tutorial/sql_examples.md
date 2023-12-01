@@ -21,7 +21,7 @@ Picodata с помощью языка [SQL-запросов](../reference/sql_qu
 ```sql
 pico.sql([[
 	create table "friends_of_peppa" (
-    	        "id" integer,
+    	        "id" integer not null,
                 "name" text not null,
     	        primary key ("id")
 	) using memtx distributed by ("id")
@@ -37,13 +37,15 @@ pico.sql([[
 - ключ шардирования таблицы (колонка `"id"`);
 - таймаут перед возвращением управления пользователю.
 
+<!-- TODO: использовать другое имя для таблицы чтобы оба примера работали -->
+
 Для того чтобы создать такую же, но глобальную таблицу, следует указать
 соответствующий тип:
 
 ```sql
 pico.sql([[
 	create table "friends_of_peppa" (
-    	        "id" integer,
+    	        "id" integer not null,
                 "name" text not null,
     	        primary key ("id")
 	) using memtx distributed globally
@@ -62,7 +64,7 @@ pico.sql([[
 
 ```sql
 pico.sql(
-	[[insert into "friends_of_peppa" ("id", "name") values (1, "Suzy")]]
+	[[insert into "friends_of_peppa" ("id", "name") values (1, 'Suzy')]]
 )
 ```
 
