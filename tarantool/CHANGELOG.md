@@ -32,6 +32,9 @@
 - `define_str_enum` now also uses `define_enum_with_introspection` internally
   so that these enums also have the introspection facilities.
 - `Vclock::cmp_ignore_zero` method for comparing vclocks from different replicas.
+- `tarantool::proc::Proc::is_public` attribute which returns true if the stored
+  procedure defined with `#[tarantool::proc]` has a `pub` visibility modifier or
+  has an explicit `(public = true)` attribute. `(public = false)` also works.
 
 ### Changed
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`

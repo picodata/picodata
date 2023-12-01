@@ -46,11 +46,23 @@ impl Proc {
     ///
     /// [`tarantool::proc`]: macro@crate::proc
     /// [`module_path`]: module_path()
-    pub const fn new(name: &'static str, proc: ffi::Proc, public: bool) -> Self {
-        Self { name, proc, public }
+    #[inline(always)]
+    pub const fn new(name: &'static str, proc: ffi::Proc) -> Self {
+        Self {
+            name,
+            proc,
+            public: false,
+        }
+    }
+
+    #[inline(always)]
+    pub const fn with_public(mut self, public: bool) -> Self {
+        self.public = public;
+        self
     }
 
     /// Get the name of the stored procedure NOT including the module name.
+    #[inline(always)]
     pub const fn name(&self) -> &'static str {
         self.name
     }
@@ -60,8 +72,22 @@ impl Proc {
     /// This function is usually not necessary for defining tarantool's stored
     /// procedures, the name is enough. But it is there if you need it for some
     /// reason.
+    #[inline(always)]
     pub const fn proc(&self) -> ffi::Proc {
         self.proc
+    }
+
+    /// Returns `true` if the proc has `pub` visibility specifier, but can be
+    /// overriden with the `public` attribute.
+    ///
+    /// Can be used when choosing which stored procedures the "public" role
+    /// should have access to.
+    ///
+    /// See <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/>
+    /// for more info about role "public".
+    #[inline(always)]
+    pub const fn is_public(&self) -> bool {
+        self.public
     }
 }
 

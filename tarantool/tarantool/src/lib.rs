@@ -138,6 +138,39 @@ pub mod vclock;
 /// no reason for you to do. If you want to test collecting of stored procedures,
 /// consider using `#[tarantool::test]`.
 ///
+/// # Public attribute
+///
+/// Proc metadata returned from `all_procs` also contains the flag indicating if
+/// the procedure is defined with `pub` visibility modifier. This info may be
+/// useful to specify to which stored procedures the "public" tarantool role
+/// should have access to. Use [`Proc::is_public`] method to get this data.
+///
+/// Also, if for some reason you don't want to use the visibility modifier or
+/// you want to override it (e.g. your proc is pub, but you want the flag to be
+/// false) you can specify the `public` attribute.
+/// ```no_run
+/// use tarantool::proc::all_procs;
+///
+/// #[tarantool::proc]
+/// pub fn public_proc() {}
+///
+/// #[tarantool::proc]
+/// fn private_proc() {}
+///
+/// #[tarantool::proc(public = true)]
+/// fn also_public_proc() {}
+///
+/// #[tarantool::proc(public = false)]
+/// pub fn also_private_proc() {}
+///
+/// for proc in all_procs() {
+///     if proc.name() == "public_proc"       { assert!( proc.is_public()) }
+///     if proc.name() == "private_proc"      { assert!(!proc.is_public()) }
+///     if proc.name() == "also_public_proc"  { assert!( proc.is_public()) }
+///     if proc.name() == "also_private_proc" { assert!(!proc.is_public()) }
+/// }
+/// ```
+///
 /// # Accepting borrowed arguments
 ///
 /// It can sometimes be more efficient to borrow the procedure's arguments
@@ -314,6 +347,7 @@ pub mod vclock;
 /// [`TarantoolError::last`]: crate::error::TarantoolError::last
 /// [`Return`]: crate::proc::Return
 /// [`ReturnMsgpack`]: crate::proc::ReturnMsgpack
+/// [`Proc::is_public`]: crate::proc::Proc::is_public
 pub use tarantool_proc::stored_proc as proc;
 pub use tlua;
 

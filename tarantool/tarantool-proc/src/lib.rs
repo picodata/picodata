@@ -518,9 +518,8 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let input = parse_macro_input!(item as Item);
 
-    let ItemFn {
-        sig, block, attrs, ..
-    } = match input {
+    #[rustfmt::skip]
+    let ItemFn { vis, sig, block, attrs, .. } = match input {
         Item::Fn(f) => f,
         _ => panic!("only `fn` items can be stored procedures"),
     };
@@ -569,7 +568,10 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let inner_fn_name = syn::Ident::new("__tp_inner", ident.span());
     let desc_name = ident.to_string();
     let desc_ident = syn::Ident::new(&desc_name.to_uppercase(), ident.span());
-    let public = ctx.public;
+    let mut public = matches!(vis, syn::Visibility::Public(_));
+    if let Some(override_public) = ctx.public {
+        public = override_public;
+    }
 
     quote! {
         #[#linkme::distributed_slice(#section)]
@@ -578,8 +580,7 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         static #desc_ident: #tarantool::proc::Proc = #tarantool::proc::Proc::new(
             #desc_name,
             #ident,
-            #public
-        );
+        ).with_public(#public);
 
         #(#attrs)*
         #[no_mangle]
@@ -623,7 +624,7 @@ struct Context {
     linkme: syn::Path,
     debug_tuple: TokenStream2,
     is_packed: bool,
-    public: bool,
+    public: Option<bool>,
     wrap_ret: TokenStream2,
 }
 
@@ -634,7 +635,7 @@ impl Context {
         let mut section = None;
         let mut debug_tuple_needed = false;
         let mut is_packed = false;
-        let mut public = false;
+        let mut public = None;
         let mut wrap_ret = quote! {};
 
         for arg in args {
@@ -664,11 +665,11 @@ impl Context {
                 debug_tuple_needed = true;
                 continue;
             }
-            if imp::is_path_eq_to(&arg, "public") {
-                public = true;
+            if let Some(v) = imp::parse_bool_with_key(&arg, "public") {
+                public = Some(v);
                 continue;
             }
-            panic!("unsuported attribute argument: {:?}", arg)
+            panic!("unsuported attribute argument `{}`", quote!(#arg))
         }
 
         let section = section.unwrap_or_else(|| {
@@ -798,6 +799,22 @@ mod imp {
                 syn::Lit::Str(s) => Some(crate::imp::parse_lit_str(s).unwrap()),
                 _ => panic!("{key} value must be a string literal"),
             },
+            _ => None,
+        }
+    }
+
+    #[track_caller]
+    pub(crate) fn parse_bool_with_key(nm: &syn::NestedMeta, key: &str) -> Option<bool> {
+        match nm {
+            syn::NestedMeta::Meta(syn::Meta::NameValue(syn::MetaNameValue {
+                path, lit, ..
+            })) if path.is_ident(key) => match &lit {
+                syn::Lit::Bool(b) => Some(b.value),
+                _ => panic!("value for attribute '{key}' must be a bool literal (true | false)"),
+            },
+            syn::NestedMeta::Meta(syn::Meta::Path(path)) if path.is_ident(key) => {
+                panic!("expected ({key} = true|false), got just {key}");
+            }
             _ => None,
         }
     }

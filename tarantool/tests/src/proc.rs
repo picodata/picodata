@@ -341,3 +341,33 @@ fn module_path() {
         Some(OsStr::new("tarantool"))
     );
 }
+
+#[rustfmt::skip]
+#[tarantool::test]
+fn proc_public_attribute() {
+    #[tarantool::proc]
+    pub fn test_proc_pub_visibility() {}
+
+    #[tarantool::proc]
+    fn test_proc_priv_visibility() {}
+
+    #[tarantool::proc(public = true)]
+    fn test_proc_priv_visibility_public_true() {}
+
+    #[tarantool::proc(public = false)]
+    pub fn test_proc_pub_visibility_public_false() {}
+
+    let procs = tarantool::proc::all_procs();
+
+    let proc = procs.iter().find(|p| p.name() == "test_proc_pub_visibility").unwrap();
+    assert!(proc.is_public());
+
+    let proc = procs.iter().find(|p| p.name() == "test_proc_priv_visibility").unwrap();
+    assert!(!proc.is_public());
+
+    let proc = procs.iter().find(|p| p.name() == "test_proc_priv_visibility_public_true").unwrap();
+    assert!(proc.is_public());
+
+    let proc = procs.iter().find(|p| p.name() == "test_proc_pub_visibility_public_false").unwrap();
+    assert!(!proc.is_public());
+}
