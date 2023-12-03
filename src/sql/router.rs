@@ -7,7 +7,7 @@ use sbroad::executor::bucket::Buckets;
 use sbroad::executor::engine::helpers::vshard::{
     exec_ir_on_all_buckets, exec_ir_on_some_buckets, get_random_bucket,
 };
-use sbroad::executor::engine::helpers::{dispatch, explain_format, materialize_motion};
+use sbroad::executor::engine::helpers::{dispatch_impl, explain_format, materialize_motion};
 use sbroad::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
 use sbroad::executor::engine::{QueryCache, Router, Vshard};
 use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
@@ -235,7 +235,7 @@ impl Router for RouterRuntime {
         top_id: usize,
         buckets: &sbroad::executor::bucket::Buckets,
     ) -> Result<Box<dyn std::any::Any>, SbroadError> {
-        dispatch(self, plan, top_id, buckets)
+        dispatch_impl(self, plan, top_id, buckets)
     }
 
     fn explain_format(&self, explain: String) -> Result<Box<dyn std::any::Any>, SbroadError> {
