@@ -11,6 +11,7 @@ use tarantool::tuple::Tuple;
 use tarantool::util::Value;
 use tarantool::{update, upsert};
 
+use crate::common::on_scope_exit;
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
 pub fn space_get_by_name() {
@@ -993,18 +994,13 @@ pub fn index_parts() {
 }
 
 pub fn fully_temporary_space() {
-    // This will panic in case fully-temporary api is not supported in
-    // current version of tarantool, before doing box.cfg { read_only = true }.
-    // Otherwise testing harness will fail to run other tests in read-only mode.
-    Space::builder("fully-temporary")
-        .space_type(SpaceType::Temporary)
-        .create()
-        .unwrap()
-        .drop()
-        .unwrap();
-
     let lua = tarantool::lua_state();
     lua.exec("box.cfg { read_only = true }").unwrap();
+    let _guard = on_scope_exit(|| {
+        tarantool::lua_state()
+            .exec("box.cfg { read_only = false }")
+            .unwrap();
+    });
 
     // Data-temporary space cannot be created when read_only = true
     let err = Space::builder("data-temporary")
@@ -1096,6 +1092,4 @@ pub fn fully_temporary_space() {
     space_4.drop().unwrap();
     space_5.drop().unwrap();
     space_6.drop().unwrap();
-
-    lua.exec("box.cfg { read_only = false }").unwrap();
 }

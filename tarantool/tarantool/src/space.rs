@@ -26,7 +26,17 @@ use std::os::raw::c_char;
 pub const SYSTEM_ID_MAX: SpaceId = 511;
 
 /// Maximum possible space id.
-pub const SPACE_ID_MAX: SpaceId = i32::MAX as _;
+///
+/// Note that on older versions of tarantool it's actually possible to create a
+/// space with id 1 higher than this, but that value is also used as an error
+/// marker in some api functions so it realy shouldn't be used as a valid space
+/// id. This value is used when creating spaces via this library, so we may
+/// prohibit you from creating a space with id which is valid on your tarantool
+/// version (but this is unlikely to cause problems).
+///
+/// You can also use `box.schema.SPACE_MAX` from lua to know for a fact what is
+/// the maximum allowed space id on your tarantool version.
+pub const SPACE_ID_MAX: SpaceId = (i32::MAX as SpaceId) - 1;
 
 pub type SpaceId = u32;
 

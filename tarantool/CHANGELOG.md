@@ -81,6 +81,9 @@
   optimization because we could do it for free at compile time, but now the code
   is simpler and the source location was unreliable anyway (didn't take into
   account `#[track_caller]`).
+- `space::SPACE_ID_MAX` constant's value is decreased by one and now has the
+  same value as in tarantool-3.0. Most likely you shouldn't care about this, but
+  in some rare cases we may forbid you from creating a space with id 0x7fff_ffff.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.
