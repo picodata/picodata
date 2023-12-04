@@ -713,10 +713,10 @@ def test_sql_acl_users_roles(cluster: Cluster):
     rolename = "Role"
     upper_rolename = "ROLE"
     default_users = [
-        [0, "guest", 0, ["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="]],
-        [1, "admin", 0, ["chap-sha1", ""]],
+        [0, "guest", 0, ["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="], 1],
+        [1, "admin", 0, ["chap-sha1", ""], 1],
     ]
-    default_roles = [[2, "public", 0], [31, "super", 0]]
+    default_roles = [[2, "public", 0, 1], [31, "super", 0, 1]]
     acl = i1.sql(
         f"""
         create user "{username}" with password '{password}'

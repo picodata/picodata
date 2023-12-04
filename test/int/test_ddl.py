@@ -88,6 +88,7 @@ def test_ddl_lua_api(cluster: Cluster):
         2,
         True,
         "memtx",
+        0,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -110,6 +111,7 @@ def test_ddl_lua_api(cluster: Cluster):
         3,
         True,
         "memtx",
+        0,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -129,6 +131,7 @@ def test_ddl_lua_api(cluster: Cluster):
         4,
         True,
         "vinyl",
+        0,
     ]
     cluster.create_table(
         dict(
@@ -216,6 +219,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
             primary_key=[dict(field="(this will cause an error)")],
             distribution=dict(kind="global"),
             engine="memtx",
+            owner=0,
         ),
     )
 
@@ -280,6 +284,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         2,
         True,
         "memtx",
+        0,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -288,7 +293,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
 
     tt_space_def = [
         space_id,
-        1,
+        0,
         "stuff",
         "memtx",
         0,
@@ -395,13 +400,14 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         schema_version,
         True,
         "memtx",
+        0,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
 
     tt_space_def = [
         space_id,
-        1,
+        0,
         "stuff",
         "memtx",
         0,
@@ -488,6 +494,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
                 kind="sharded_implicitly", sharding_key=["id"], sharding_fn="murmur3"
             ),
             engine="memtx",
+            owner=0,
         ),
         wait_index=False,
     )
@@ -551,6 +558,7 @@ def test_ddl_create_table_abort(cluster: Cluster):
                 sharding_fn="murmur3",
             ),
             engine="memtx",
+            owner=0,
         ),
         wait_index=False,
     )
@@ -610,6 +618,7 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
         primary_key=[dict(field="id")],
         distribution=dict(kind="global"),
         engine="memtx",
+        owner=0,  # guest
     )
     index = i1.propose_create_space(space_def)
 
@@ -722,7 +731,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
 
     tt_space_def = [
         space_id,
-        1,
+        0,
         "stuff",
         "memtx",
         0,
@@ -805,7 +814,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
 
     tt_space_def = [
         space_id,
-        1,
+        0,
         "stuff",
         "memtx",
         0,

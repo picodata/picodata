@@ -251,10 +251,10 @@ def test_raft_log(instance: Instance):
 |  9  | 1  |1.0.9|Insert({_pico_property}, ["max_pg_portals",50])|
 | 10  | 1  |1.0.10|Insert({_pico_property}, ["snapshot_chunk_max_size",16777216])|
 | 11  | 1  |1.0.11|Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0])|
-| 12  | 1  |1.0.12|Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="]])|
-| 13  | 1  |1.0.13|Insert({_pico_user}, [1,"admin",0,["chap-sha1",""]])|
-| 14  | 1  |1.0.14|Insert({_pico_role}, [2,"public",0])|
-| 15  | 1  |1.0.15|Insert({_pico_role}, [31,"super",0])|
+| 12  | 1  |1.0.12|Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|
+| 13  | 1  |1.0.13|Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1])|
+| 14  | 1  |1.0.14|Insert({_pico_role}, [2,"public",0,1])|
+| 15  | 1  |1.0.15|Insert({_pico_role}, [31,"super",0,1])|
 | 16  | 1  |1.0.16|Insert({_pico_privilege}, ["usage","universe",0,0,1,0])|
 | 17  | 1  |1.0.17|Insert({_pico_privilege}, ["session","universe",0,0,1,0])|
 | 18  | 1  |1.0.18|Insert({_pico_privilege}, ["execute","role",2,0,1,0])|

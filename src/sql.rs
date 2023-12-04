@@ -14,7 +14,7 @@ use crate::traft::error::Error;
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
-use crate::util::duration_from_secs_f64_clamped;
+use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or, ADMIN_USER_ID};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
@@ -581,6 +581,8 @@ fn reenterable_schema_change_request(
     ir_node: IrNode,
 ) -> traft::Result<ConsumerResult> {
     let storage = &node.storage;
+    // Save current user as later user is switched to admin
+    let current_user = effective_user_id();
 
     let timeout = match &ir_node {
         IrNode::Ddl(ddl) => ddl.timeout()?,
@@ -626,6 +628,7 @@ fn reenterable_schema_change_request(
                 sharding_fn: Some(ShardingFn::Murmur3),
                 engine: Some(engine_type),
                 timeout: None,
+                owner: current_user,
             };
             params.validate()?;
             Params::CreateTable(params)
@@ -730,7 +733,7 @@ fn reenterable_schema_change_request(
                 // painfull in rust.
                 let mut params = params.clone();
                 params.choose_id_if_not_specified()?;
-                params.test_create_space()?;
+                params.test_create_space(storage)?;
                 let ddl = params.into_ddl()?;
                 Op::DdlPrepare {
                     // This field will be updated later.
@@ -770,6 +773,7 @@ fn reenterable_schema_change_request(
                     // This field will be updated later.
                     schema_version: 0,
                     auth: auth.clone(),
+                    owner: current_user,
                 };
                 Op::Acl(OpAcl::CreateUser { user_def })
             }
@@ -875,6 +879,7 @@ fn reenterable_schema_change_request(
                     name: name.clone(),
                     // This field will be updated later.
                     schema_version: 0,
+                    owner: current_user,
                 };
                 Op::Acl(OpAcl::CreateRole { role_def })
             }
@@ -991,6 +996,7 @@ fn reenterable_schema_change_request(
         NoLogin,
     }
 
+    // THOUGHT: should `owner_id` be part of `CreateUser`, `CreateRole` params?
     enum Params {
         CreateTable(CreateTableParams),
         DropTable(String),

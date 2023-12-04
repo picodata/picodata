@@ -120,6 +120,12 @@ fn user_by_id(id: UserId) -> tarantool::Result<Tuple> {
 /// This wrapper is needed because usually before checking permissions we need to
 /// retrieve some metadata about the object being tested for access and this requires
 /// access to system spaces which original user is not required to have.
+///
+/// # Panicking
+///
+/// Note that not all combinations of parameters are valid.
+/// For in depth description of cases when this function may panic see
+/// [box_access_check_ddl](::tarantool::access_control::box_access_check_ddl) in tarantool module.
 fn box_access_check_ddl_as_user(
     object_name: &str,
     object_id: u32,
@@ -142,14 +148,23 @@ fn access_check_dml(dml: &op::Dml, as_user: UserId) -> tarantool::Result<()> {
 /// vanilla tarantool in on_replace_dd_space and on_replace_dd_index respectively
 fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
     match ddl {
-        op::Ddl::CreateTable { id, name, .. } => box_access_check_ddl_as_user(
-            name,
-            *id,
-            as_user,
-            TntSchemaObjectType::Space,
-            PrivType::Create,
-            as_user,
-        ),
+        op::Ddl::CreateTable {
+            id, name, owner, ..
+        } => {
+            assert_eq!(
+                *owner, as_user,
+                "when creating objects creator is the owner"
+            );
+
+            box_access_check_ddl_as_user(
+                name,
+                *id,
+                *owner,
+                TntSchemaObjectType::Space,
+                PrivType::Create,
+                as_user,
+            )
+        }
         op::Ddl::DropTable { id } => {
             let space = space_by_id(*id)?;
             let meta = space.meta()?;
@@ -223,7 +238,7 @@ fn access_check_grant_revoke(
 
     match priv_def.object_type {
         PicoSchemaObjectType::Universe => {
-            // only admin can grant on universe
+            // Only admin can grant on universe
             if grantor_id != ADMIN_USER_ID {
                 return Err(make_access_denied(
                     access_name,
@@ -234,12 +249,12 @@ fn access_check_grant_revoke(
             }
         }
         PicoSchemaObjectType::Table => {
-            // only owner or admin can grant on space
             let space = space_by_id(object_id)?;
             let meta = space.meta()?;
 
             assert_eq!(object_id, meta.id, "user metadata id mismatch");
 
+            // Only owner or admin can grant on space
             if meta.user_id != grantor_id && grantor_id != ADMIN_USER_ID {
                 return Err(make_access_denied(
                     access_name,
@@ -252,7 +267,7 @@ fn access_check_grant_revoke(
             return box_access_check_ddl_as_user(
                 &meta.name,
                 meta.id,
-                meta.user_id,
+                grantor_id,
                 TntSchemaObjectType::Space,
                 access,
                 grantor_id,
@@ -264,7 +279,7 @@ fn access_check_grant_revoke(
 
             assert_eq!(object_id, sys_role_meta.id, "user metadata id mismatch");
 
-            // Only the creator of the role can grant or revoke it.
+            // Only the creator of the role or admin can grant or revoke it.
             // Everyone can grant 'PUBLIC' role.
             // Note that having a role means having execute privilege on it.
             if sys_role_meta.owner_id != grantor_id
@@ -285,7 +300,7 @@ fn access_check_grant_revoke(
             return box_access_check_ddl_as_user(
                 &sys_role_meta.name,
                 sys_role_meta.id,
-                sys_role_meta.owner_id,
+                grantor_id,
                 TntSchemaObjectType::Role,
                 access,
                 grantor_id,
@@ -298,6 +313,7 @@ fn access_check_grant_revoke(
                 return Err(make_no_such_user(&target_sys_user_meta.name));
             }
 
+            // Only owner or admin can grant on user
             if target_sys_user_meta.owner_id != grantor_id && grantor_id != ADMIN_USER_ID {
                 return Err(make_access_denied(
                     access_name,
@@ -310,7 +326,7 @@ fn access_check_grant_revoke(
             return box_access_check_ddl_as_user(
                 &target_sys_user_meta.name,
                 target_sys_user_meta.id,
-                target_sys_user_meta.owner_id,
+                grantor_id,
                 TntSchemaObjectType::User,
                 access,
                 grantor_id,
@@ -323,14 +339,20 @@ fn access_check_grant_revoke(
 
 fn access_check_acl(acl: &op::Acl, as_user: UserId) -> tarantool::Result<()> {
     match acl {
-        op::Acl::CreateUser { user_def } => box_access_check_ddl_as_user(
-            &user_def.name,
-            user_def.id,
-            as_user,
-            TntSchemaObjectType::User,
-            PrivType::Create,
-            as_user,
-        ),
+        op::Acl::CreateUser { user_def } => {
+            assert_eq!(
+                user_def.owner, as_user,
+                "when creating objects creator is the owner"
+            );
+            box_access_check_ddl_as_user(
+                &user_def.name,
+                user_def.id,
+                user_def.owner,
+                TntSchemaObjectType::User,
+                PrivType::Create,
+                as_user,
+            )
+        }
         op::Acl::ChangeAuth { user_id, .. } => {
             let sys_user = user_by_id(*user_id)?;
             let sys_user_meta: UserMetadata = sys_user.decode()?;
@@ -361,14 +383,20 @@ fn access_check_acl(acl: &op::Acl, as_user: UserId) -> tarantool::Result<()> {
                 as_user,
             )
         }
-        op::Acl::CreateRole { role_def } => box_access_check_ddl_as_user(
-            &role_def.name,
-            role_def.id,
-            as_user,
-            TntSchemaObjectType::Role,
-            PrivType::Create,
-            as_user,
-        ),
+        op::Acl::CreateRole { role_def } => {
+            assert_eq!(
+                role_def.owner, as_user,
+                "when creating objects creator is the owner"
+            );
+            box_access_check_ddl_as_user(
+                &role_def.name,
+                role_def.id,
+                role_def.owner,
+                TntSchemaObjectType::Role,
+                PrivType::Create,
+                as_user,
+            )
+        }
         op::Acl::DropRole { role_id, .. } => {
             // In vanilla roles and users are stored in the same space
             // so we can reuse the definition
@@ -422,19 +450,22 @@ mod tests {
 
     use super::{access_check_acl, access_check_ddl, user_by_id, UserMetadata};
     use crate::{
-        access_control::UserMetadataKind,
-        schema::{Distribution, PrivilegeDef, PrivilegeType, RoleDef, SchemaObjectType, UserDef},
+        access_control::{access_check_op, UserMetadataKind},
+        schema::{
+            Distribution, PrivilegeDef, PrivilegeType, RoleDef, SchemaObjectType, UserDef, ADMIN_ID,
+        },
         storage::acl::{
             on_master_create_role, on_master_create_user, on_master_grant_privilege,
             on_master_revoke_privilege,
         },
-        traft::op::{Acl, Ddl},
+        traft::op::{Acl, Ddl, Dml, Op},
         ADMIN_USER_ID,
     };
     use tarantool::{
         auth::{AuthData, AuthDef, AuthMethod},
         session::{self, UserId},
         space::{Space, SpaceCreateOptions, SpaceEngineType},
+        tuple::{Tuple, TupleBuffer},
     };
 
     static mut NEXT_USER_ID: u32 = 42;
@@ -467,38 +498,49 @@ mod tests {
         )
     }
 
-    fn dummy_user_def(id: UserId, name: String) -> UserDef {
+    fn dummy_user_def(id: UserId, name: String, owner: Option<UserId>) -> UserDef {
         UserDef {
             id,
             name,
             schema_version: 0,
             auth: dummy_auth_def(),
+            owner: owner.unwrap_or_else(|| session::uid().unwrap()),
         }
     }
 
     #[track_caller]
-    fn make_user(name: &str) -> u32 {
+    fn make_user(name: &str, owner: Option<UserId>) -> u32 {
         let id = next_user_id();
-        let user_def = dummy_user_def(id, name.to_owned());
+        let user_def = dummy_user_def(id, name.to_owned(), owner);
         on_master_create_user(&user_def).unwrap();
         id
     }
 
     #[track_caller]
     fn grant(
-        grantee_id: UserId,
         privilege: PrivilegeType,
         object_type: SchemaObjectType,
         object_id: i64,
+        grantee_id: UserId,
+        grantor_id: Option<UserId>,
     ) {
         let priv_def = PrivilegeDef {
-            grantor_id: session::uid().unwrap(),
+            grantor_id: grantor_id.unwrap_or(session::uid().unwrap()),
             grantee_id,
             object_type,
             object_id,
             privilege,
             schema_version: 0,
         };
+
+        access_check_op(
+            &Op::Acl(Acl::GrantPrivilege {
+                priv_def: priv_def.clone(),
+            }),
+            priv_def.grantor_id,
+        )
+        .unwrap();
+
         on_master_grant_privilege(&priv_def).unwrap()
     }
 
@@ -517,6 +559,14 @@ mod tests {
             privilege,
             schema_version: 0,
         };
+
+        access_check_op(
+            &Op::Acl(Acl::RevokePrivilege {
+                priv_def: priv_def.clone(),
+            }),
+            priv_def.grantor_id,
+        )
+        .unwrap();
         on_master_revoke_privilege(&priv_def).unwrap()
     }
 
@@ -524,7 +574,7 @@ mod tests {
     fn validate_access_check_ddl() {
         let user_name = "box_access_check_space_test_user";
 
-        let user_id = make_user(user_name);
+        let user_id = make_user(user_name, None);
 
         // space
         let space_name = "test_box_access_check_ddl";
@@ -539,6 +589,7 @@ mod tests {
                 primary_key: vec![],
                 distribution: Distribution::Global,
                 engine: SpaceEngineType::Blackhole,
+                owner: user_id,
             };
 
             let e = access_check_ddl(&space_to_be_created, user_id).unwrap_err();
@@ -548,7 +599,13 @@ mod tests {
                 format!("tarantool error: AccessDenied: Create access to space 'space_to_be_created' is denied for user '{user_name}'"),
             );
 
-            grant(user_id, PrivilegeType::Create, SchemaObjectType::Table, -1);
+            grant(
+                PrivilegeType::Create,
+                SchemaObjectType::Table,
+                -1,
+                user_id,
+                None,
+            );
 
             access_check_ddl(&space_to_be_created, user_id).unwrap();
         }
@@ -562,7 +619,13 @@ mod tests {
                 format!("tarantool error: AccessDenied: Drop access to space '{space_name}' is denied for user '{user_name}'"),
             );
 
-            grant(user_id, PrivilegeType::Drop, SchemaObjectType::Table, -1);
+            grant(
+                PrivilegeType::Drop,
+                SchemaObjectType::Table,
+                -1,
+                user_id,
+                None,
+            );
 
             access_check_ddl(&Ddl::DropTable { id: space.id() }, user_id).unwrap();
         }
@@ -579,21 +642,67 @@ mod tests {
             );
 
             grant(
-                user_id,
                 PrivilegeType::Drop,
                 SchemaObjectType::Table,
                 space.id() as i64,
+                user_id,
+                None,
             );
 
             access_check_ddl(&Ddl::DropTable { id: space.id() }, user_id).unwrap();
         }
 
-        // TODO: logic with ownership doesnt work yet, because owner is not set correctly
+        // owner has privileges on the object
         // owner can grant permissions on the object to other users
-        grant(user_id, PrivilegeType::Create, SchemaObjectType::User, -1);
+        {
+            let grantee_user_name = format!("{user_name}_grantee");
+            let grantee_user_id = make_user(&grantee_user_name, None);
 
-        let grantee_user_name = format!("{user_name}_grantee");
-        let _grantee_user_id = make_user(&grantee_user_name);
+            let space_name_grant = format!("{space_name}_grant");
+            let space_opts = SpaceCreateOptions {
+                user: Some(user_name.into()),
+                ..Default::default()
+            };
+            let space_grant = Space::create(&space_name_grant, &space_opts).unwrap();
+
+            let drop_op = Op::DdlPrepare {
+                schema_version: 0,
+                ddl: Ddl::DropTable {
+                    id: space_grant.id(),
+                },
+            };
+            let write_op = Op::Dml(Dml::Insert {
+                table: space_grant.id(),
+                tuple: TupleBuffer::from(Tuple::new(&(1,)).unwrap()),
+            });
+            for (privilege, privilege_name, op) in [
+                (PrivilegeType::Drop, "Drop", drop_op),
+                (PrivilegeType::Write, "Write", write_op),
+            ] {
+                // owner himself has permission on an object
+                access_check_op(&op, user_id).unwrap();
+
+                // run access check for another user, it fails without grant
+                let e = access_check_op(&op, grantee_user_id).unwrap_err();
+
+                assert_eq!(
+                    e.to_string(),
+                    format!("tarantool error: AccessDenied: {privilege_name} access to space '{space_name_grant}' is denied for user '{grantee_user_name}'"),
+                );
+
+                // grant permission on behalf of the user owning the space
+                grant(
+                    privilege,
+                    SchemaObjectType::Table,
+                    space_grant.id() as _,
+                    grantee_user_id,
+                    Some(user_id),
+                );
+
+                // access check should succeed
+                access_check_op(&op, grantee_user_id).unwrap();
+            }
+        }
     }
 
     #[tarantool::test]
@@ -602,14 +711,18 @@ mod tests {
         let actor_user_name = "box_access_check_ddl_test_user_actor";
         let user_under_test_name = "box_access_check_ddl_test_user";
 
-        let actor_user_id = make_user(actor_user_name);
-        let user_under_test_id = make_user(user_under_test_name);
+        let actor_user_id = make_user(actor_user_name, None);
+        let user_under_test_id = make_user(user_under_test_name, None);
 
         // create works with passed id
         {
             let e = access_check_acl(
                 &Acl::CreateUser {
-                    user_def: dummy_user_def(123, String::from("user_to_be_created")),
+                    user_def: dummy_user_def(
+                        123,
+                        String::from("user_to_be_created"),
+                        Some(actor_user_id),
+                    ),
                 },
                 actor_user_id,
             )
@@ -621,15 +734,20 @@ mod tests {
             );
 
             grant(
-                actor_user_id,
                 PrivilegeType::Create,
                 SchemaObjectType::User,
                 -1,
+                actor_user_id,
+                None,
             );
 
             access_check_acl(
                 &Acl::CreateUser {
-                    user_def: dummy_user_def(123, String::from("user_to_be_created")),
+                    user_def: dummy_user_def(
+                        123,
+                        String::from("user_to_be_created"),
+                        Some(actor_user_id),
+                    ),
                 },
                 actor_user_id,
             )
@@ -653,10 +771,11 @@ mod tests {
             );
 
             grant(
-                actor_user_id,
                 PrivilegeType::Drop,
                 SchemaObjectType::User,
                 -1,
+                actor_user_id,
+                None,
             );
 
             access_check_acl(
@@ -687,10 +806,11 @@ mod tests {
             );
 
             grant(
-                actor_user_id,
                 PrivilegeType::Alter,
                 SchemaObjectType::User,
                 -1,
+                actor_user_id,
+                None,
             );
 
             access_check_acl(
@@ -734,10 +854,11 @@ mod tests {
             );
 
             grant(
-                actor_user_id,
                 PrivilegeType::Drop,
                 SchemaObjectType::User,
                 user_under_test_id as i64,
+                actor_user_id,
+                None,
             );
 
             access_check_acl(
@@ -768,10 +889,11 @@ mod tests {
             );
 
             grant(
-                actor_user_id,
                 PrivilegeType::Alter,
                 SchemaObjectType::User,
                 user_under_test_id as i64,
+                actor_user_id,
+                None,
             );
 
             access_check_acl(
@@ -784,19 +906,68 @@ mod tests {
             )
             .unwrap();
         }
+
+        // owner has privileges on the object
+        // owner can grant permissions on the object to other users
+        {
+            let grantee_user_name = format!("{actor_user_name}_grantee");
+            let grantee_user_id = make_user(&grantee_user_name, None);
+
+            let user_name_grant = format!("{actor_user_name}_grant");
+            let user_id_grant = make_user(&user_name_grant, Some(actor_user_id));
+
+            let drop_op = Op::Acl(Acl::DropUser {
+                user_id: user_id_grant,
+                schema_version: 0,
+            });
+
+            let alter_op = Op::Acl(Acl::ChangeAuth {
+                user_id: user_id_grant,
+                auth: dummy_auth_def(),
+                schema_version: 0,
+            });
+            for (privilege, privilege_name, op) in [
+                (PrivilegeType::Drop, "Drop", drop_op),
+                (PrivilegeType::Alter, "Alter", alter_op),
+            ] {
+                // owner himself has permission on an object
+                access_check_op(&op, actor_user_id).unwrap();
+
+                // run access check for another user, it fails without grant
+                let e = access_check_op(&op, grantee_user_id).unwrap_err();
+
+                assert_eq!(
+                    e.to_string(),
+                    format!("tarantool error: AccessDenied: {privilege_name} access to user '{user_name_grant}' is denied for user '{grantee_user_name}'"),
+                );
+
+                // grant permission on behalf of the user owning the user
+                grant(
+                    privilege,
+                    SchemaObjectType::User,
+                    user_id_grant as _,
+                    grantee_user_id,
+                    Some(actor_user_id),
+                );
+
+                // access check should succeed
+                access_check_op(&op, grantee_user_id).unwrap();
+            }
+        }
     }
 
     #[tarantool::test]
     fn validate_access_check_acl_role() {
         let user_name = "box_access_check_ddl_test_role";
 
-        let user_id = make_user(user_name);
+        let user_id = make_user(user_name, None);
 
         let role_name = "box_access_check_ddl_test_role_some_role";
         let role_def = RoleDef {
             id: next_user_id(),
             name: String::from(role_name),
             schema_version: 0,
+            owner: ADMIN_ID,
         };
         on_master_create_role(&role_def).expect("create role shouldnt fail");
 
@@ -806,6 +977,7 @@ mod tests {
                 id: 123,
                 name: String::from("role_to_be_created"),
                 schema_version: 0,
+                owner: user_id,
             };
 
             let e = access_check_acl(
@@ -821,7 +993,13 @@ mod tests {
                 format!("tarantool error: AccessDenied: Create access to role 'role_to_be_created' is denied for user '{user_name}'"),
             );
 
-            grant(user_id, PrivilegeType::Create, SchemaObjectType::Role, -1);
+            grant(
+                PrivilegeType::Create,
+                SchemaObjectType::Role,
+                -1,
+                user_id,
+                None,
+            );
 
             access_check_acl(
                 &Acl::CreateRole {
@@ -848,7 +1026,13 @@ mod tests {
                 format!("tarantool error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
             );
 
-            grant(user_id, PrivilegeType::Drop, SchemaObjectType::Role, -1);
+            grant(
+                PrivilegeType::Drop,
+                SchemaObjectType::Role,
+                -1,
+                user_id,
+                None,
+            );
 
             access_check_acl(
                 &Acl::DropRole {
@@ -879,10 +1063,11 @@ mod tests {
             );
 
             grant(
-                user_id,
                 PrivilegeType::Drop,
                 SchemaObjectType::Role,
                 role_def.id as i64,
+                user_id,
+                None,
             );
 
             access_check_acl(
@@ -893,6 +1078,51 @@ mod tests {
                 user_id,
             )
             .unwrap();
+        }
+
+        // owner has privileges on the object
+        // owner can grant permissions on the object to other users
+        {
+            let grantee_user_name = format!("{user_name}_grantee");
+            let grantee_user_id = make_user(&grantee_user_name, None);
+
+            let role_name_grant = format!("{role_name}_grant");
+            let role_id_grant = next_user_id();
+            let role_def = RoleDef {
+                id: role_id_grant,
+                name: role_name_grant.clone(),
+                schema_version: 0,
+                owner: user_id,
+            };
+            on_master_create_role(&role_def).expect("create role shouldn't fail");
+
+            let op = Op::Acl(Acl::DropRole {
+                role_id: role_id_grant,
+                schema_version: 0,
+            });
+
+            // owner himself has permission on an object
+            access_check_op(&op, user_id).unwrap();
+
+            // run access check for another user, it fails without grant
+            let e = access_check_op(&op, grantee_user_id).unwrap_err();
+
+            assert_eq!(
+                    e.to_string(),
+                    format!("tarantool error: AccessDenied: Drop access to role '{role_name_grant}' is denied for user '{grantee_user_name}'"),
+                );
+
+            // grant permission on behalf of the user owning the role
+            grant(
+                PrivilegeType::Drop,
+                SchemaObjectType::Role,
+                role_id_grant as _,
+                grantee_user_id,
+                Some(user_id),
+            );
+
+            // access check should succeed
+            access_check_op(&op, grantee_user_id).unwrap();
         }
     }
 }

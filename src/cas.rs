@@ -140,7 +140,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
         req.op,
         Op::Acl(..) | Op::Dml(..) | Op::DdlPrepare { .. } | Op::DdlAbort
     ) {
-        return Err(TraftError::Cas(Error::InvalidOpKind(req.op)));
+        return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(req.op))));
     }
 
     let Predicate {
@@ -382,8 +382,10 @@ pub enum Error {
     #[error("KeyTypeMismatch: failed comparing predicate ranges: {0}")]
     KeyTypeMismatch(#[from] TntError),
 
+    /// NOTE: Boxing is caused by big difference in size compared to other variants
+    /// See <https://rust-lang.github.io/rust-clippy/master/index.html#/result_large_err> for more context
     #[error("InvalidOpKind: Expected one of Acl, Dml, DdlPrepare or DdlAbort, got {0}")]
-    InvalidOpKind(Op),
+    InvalidOpKind(Box<Op>),
 }
 
 /// Represents a lua table describing a [`Predicate`].
@@ -743,7 +745,7 @@ mod tests {
     use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
 
-    use crate::schema::{Distribution, TableDef};
+    use crate::schema::{Distribution, TableDef, ADMIN_ID};
     use crate::storage::TClusterwideTable as _;
     use crate::storage::{Clusterwide, Properties, PropertyName};
     use crate::traft::op::DdlBuilder;
@@ -776,6 +778,7 @@ mod tests {
             primary_key: vec![],
             distribution: Distribution::Global,
             engine: SpaceEngineType::Memtx,
+            owner: ADMIN_ID,
         });
         let drop_space = builder.with_op(Ddl::DropTable { id: space_id });
         let create_index = builder.with_op(Ddl::CreateIndex {
@@ -813,6 +816,7 @@ mod tests {
                 format: vec![],
                 schema_version: 1,
                 engine: SpaceEngineType::Memtx,
+                owner: ADMIN_ID,
             })
             .unwrap();
         assert!(t(&drop_space, Range::new(props).eq(&pending_schema_change)).is_err());

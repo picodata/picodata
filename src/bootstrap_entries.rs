@@ -130,6 +130,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
                 AuthMethod::ChapSha1,
                 AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
             ),
+            owner: ADMIN_ID,
         },
     ));
 
@@ -145,6 +146,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             // we use ChapSha with invalid password
             // (its impossible to get empty string as output of sha1)
             auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
+            owner: ADMIN_ID,
         },
     ));
 
@@ -155,6 +157,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             id: PUBLIC_ID,
             name: String::from("public"),
             schema_version: 0,
+            owner: ADMIN_ID,
         },
     ));
 
@@ -165,6 +168,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             id: SUPER_ID,
             name: String::from("super"),
             schema_version: 0,
+            owner: ADMIN_ID,
         },
     ));
 

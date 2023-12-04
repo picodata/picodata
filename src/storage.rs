@@ -3002,16 +3002,23 @@ pub mod acl {
     /// Create a tarantool user. Grant it default privileges.
     pub fn on_master_create_user(user_def: &UserDef) -> tarantool::Result<()> {
         let sys_user = Space::from(SystemSpace::User);
+        let user_id = user_def.id;
 
         // This implementation was copied from box.schema.user.create excluding the
         // password hashing.
-        let user_id = user_def.id;
-        let euid = ::tarantool::session::euid()?;
 
         // Tarantool expects auth info to be a map of form `{ method: data }`,
         // and currently the simplest way to achieve this is to use a HashMap.
         let auth_map = HashMap::from([(user_def.auth.method, &user_def.auth.data)]);
-        sys_user.insert(&(user_id, euid, &user_def.name, "user", auth_map, &[(); 0], 0))?;
+        sys_user.insert(&(
+            user_id,
+            user_def.owner,
+            &user_def.name,
+            "user",
+            auth_map,
+            &[(); 0],
+            0,
+        ))?;
 
         let lua = ::tarantool::lua_state();
         lua.exec_with("box.schema.user.grant(...)", (user_id, "public"))
@@ -3071,7 +3078,7 @@ pub mod acl {
         // way to achieve this is to use a HashMap.
         sys_user.insert(&(
             role_def.id,
-            ::tarantool::session::euid()?,
+            role_def.owner,
             &role_def.name,
             "role",
             HashMap::<(), ()>::new(),

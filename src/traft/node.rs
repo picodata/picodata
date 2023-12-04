@@ -1039,6 +1039,7 @@ impl NodeImpl {
                 mut primary_key,
                 distribution,
                 engine,
+                owner,
             } => {
                 use ::tarantool::util::NumOrStr::*;
 
@@ -1166,6 +1167,7 @@ impl NodeImpl {
                     format,
                     operable: false,
                     engine,
+                    owner,
                 };
                 let res = self.storage.tables.insert(&space_def);
                 if let Err(e) = res {

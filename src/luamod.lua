@@ -232,6 +232,8 @@ Returns:
 ]]
 function pico.create_user(user, password, opts)
     local auth_type = box.cfg.auth_type
+    -- Set the creator/owner of the user being created to current user
+    local owner = box.session.euid()
 
     local ok, err = pcall(function()
         box.internal.check_param_table(opts, {
@@ -283,7 +285,8 @@ function pico.create_user(user, password, opts)
                 auth = {
                     method = auth_type,
                     data = auth_data,
-                }
+                },
+                owner = owner
             }
         }
     end
@@ -478,6 +481,9 @@ Returns:
     (nil, error) in case of an error
 ]]
 function pico.create_role(role, opts)
+    -- Set the creator/owner user of the role being created to current user
+    local owner = box.session.euid()
+
     local ok, err = pcall(function()
         box.internal.check_param(role, 'role', 'string')
         box.internal.check_param_table(opts, { timeout = 'number' })
@@ -512,6 +518,7 @@ function pico.create_role(role, opts)
                 id = get_next_grantee_id(),
                 name = role,
                 schema_version = next_schema_version(),
+                owner = owner
             }
         }
     end
@@ -1075,6 +1082,9 @@ See also:
     [1]: https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/
 ]]
 function pico.create_table(opts)
+    -- Set the creator/owner user of the table being created to current user
+    opts.owner = box.session.euid()
+
     local ok, err = pcall(function()
         box.internal.check_param_table(opts, {
             name = 'string',
@@ -1087,6 +1097,7 @@ function pico.create_table(opts)
             sharding_fn = 'string',
             engine = 'string',
             timeout = 'number',
+            owner = 'number,'
         })
         mandatory_param(opts, 'opts')
         mandatory_param(opts.name, 'opts.name')

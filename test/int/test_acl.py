@@ -889,7 +889,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
     )
 
 
-def test_create_space_smoke(cluster: Cluster):
+def test_create_table_smoke(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
@@ -908,14 +908,24 @@ def test_create_space_smoke(cluster: Cluster):
 
     i1.grant_privilege("Dave", "create", "table")
 
-    ddl = i1.sql(
-        """
-        create table t (a int not null, primary key (a)) distributed by (a)
-        """,
-        user="Dave",
-        password=VALID_PASSWORD,
-    )
-    assert ddl["row_count"] == 1
+    with i1.connect(timeout=1, user="Dave", password=VALID_PASSWORD) as conn:
+        ddl = conn.sql(
+            """
+            create table t (a int not null, primary key (a)) distributed by (a)
+            """,
+        )
+        assert ddl["row_count"] == 1
+
+        # Dave is the owner thus has all privileges on t
+        ret = conn.sql("insert into t values(1);")
+        assert ret["row_count"] == 1
+
+        ret = conn.sql("select * from t")
+
+        assert ret == {"metadata": [{"name": "A", "type": "integer"}], "rows": [[1]]}
+
+        ddl = conn.sql("drop table t")
+        assert ddl["row_count"] == 1
 
 
 def test_grant_and_revoke_default_users_privileges(cluster: Cluster):

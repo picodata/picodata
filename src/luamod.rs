@@ -1271,7 +1271,7 @@ pub(crate) fn setup(args: &args::Run) {
                     return Ok(None);
                 }
                 params.choose_id_if_not_specified()?;
-                params.test_create_space()?;
+                params.test_create_space(storage)?;
                 let ddl = params.into_ddl()?;
                 let schema_version = storage.properties.next_schema_version()?;
                 let op = Op::DdlPrepare {

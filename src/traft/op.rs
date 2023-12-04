@@ -477,6 +477,7 @@ pub enum Ddl {
         primary_key: Vec<Part>,
         distribution: Distribution,
         engine: SpaceEngineType,
+        owner: UserId,
     },
     DropTable {
         id: SpaceId,

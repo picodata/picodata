@@ -25,7 +25,7 @@ use tarantool::{
 use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
-use crate::storage::SPACE_ID_INTERNAL_MAX;
+use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
@@ -48,6 +48,7 @@ pub struct TableDef {
     pub schema_version: u64,
     pub operable: bool,
     pub engine: SpaceEngineType,
+    pub owner: UserId,
 }
 
 impl Encode for TableDef {}
@@ -68,6 +69,7 @@ impl TableDef {
             Field::from(("schema_version", FieldType::Unsigned)),
             Field::from(("operable", FieldType::Boolean)),
             Field::from(("engine", FieldType::String)),
+            Field::from(("owner", FieldType::Unsigned)),
         ]
     }
 
@@ -82,12 +84,11 @@ impl TableDef {
             schema_version: 420,
             operable: true,
             engine: SpaceEngineType::Blackhole,
+            owner: 42,
         }
     }
 
     pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata> {
-        use tarantool::session::uid;
-
         // FIXME: this is copy pasted from tarantool::schema::space::create_space
         let format = self
             .format
@@ -109,8 +110,7 @@ impl TableDef {
 
         let space_def = SpaceMetadata {
             id: self.id,
-            // Do we want to be more explicit about user_id?
-            user_id: uid()? as _,
+            user_id: self.owner,
             name: self.name.as_str().into(),
             engine: self.engine,
             field_count: 0,
@@ -251,6 +251,7 @@ pub struct UserDef {
     pub name: String,
     pub schema_version: u64,
     pub auth: AuthDef,
+    pub owner: UserId,
 }
 
 impl Encode for UserDef {}
@@ -270,6 +271,7 @@ impl UserDef {
             Field::from(("name", FieldType::String)),
             Field::from(("schema_version", FieldType::Unsigned)),
             Field::from(("auth", FieldType::Array)),
+            Field::from(("owner", FieldType::Unsigned)),
         ]
     }
 
@@ -281,6 +283,7 @@ impl UserDef {
             name: "david".into(),
             schema_version: 421,
             auth: AuthDef::new(tarantool::auth::AuthMethod::ChapSha1, "".into()),
+            owner: 42,
         }
     }
 }
@@ -295,6 +298,7 @@ pub struct RoleDef {
     pub id: UserId,
     pub name: String,
     pub schema_version: u64,
+    pub owner: UserId,
 }
 
 impl Encode for RoleDef {}
@@ -308,6 +312,7 @@ impl RoleDef {
             Field::from(("id", FieldType::Unsigned)),
             Field::from(("name", FieldType::String)),
             Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("owner", FieldType::Unsigned)),
         ]
     }
 
@@ -318,6 +323,7 @@ impl RoleDef {
             id: 13,
             name: "devops".into(),
             schema_version: 419,
+            owner: 42,
         }
     }
 }
@@ -619,6 +625,7 @@ pub struct CreateTableParams {
     pub(crate) sharding_key: Option<Vec<String>>,
     pub(crate) sharding_fn: Option<ShardingFn>,
     pub(crate) engine: Option<SpaceEngineType>,
+    pub(crate) owner: UserId,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
@@ -748,9 +755,15 @@ impl CreateTableParams {
     /// Create space and then rollback.
     ///
     /// Should be used for checking if a space with these params can be created.
-    pub fn test_create_space(&self) -> traft::Result<()> {
+    pub fn test_create_space(&self, storage: &Clusterwide) -> traft::Result<()> {
         let id = self.id.expect("space id should've been chosen by now");
+        let user = storage
+            .users
+            .by_id(self.owner)?
+            .ok_or_else(|| Error::Other(format!("user with id {} not found", self.owner).into()))?
+            .name;
         let err = transaction(|| -> Result<(), Option<tarantool::error::Error>> {
+            // TODO: allow create_space to accept user by id
             ::tarantool::schema::space::create_space(
                 &self.name,
                 &SpaceCreateOptions {
@@ -758,7 +771,7 @@ impl CreateTableParams {
                     engine: self.engine.unwrap_or_default(),
                     id: Some(id),
                     field_count: self.format.len() as u32,
-                    user: None,
+                    user: Some(user),
                     space_type: SpaceType::Normal,
                     format: Some(
                         self.format
@@ -866,6 +879,7 @@ impl CreateTableParams {
             primary_key,
             distribution,
             engine: self.engine.unwrap_or_default(),
+            owner: self.owner,
         };
         Ok(res)
     }
@@ -947,12 +961,28 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
 }
 
 mod tests {
-    use tarantool::space::FieldType;
+    use tarantool::{auth::AuthMethod, space::FieldType};
 
     use super::*;
 
+    fn storage() -> Clusterwide {
+        let storage = Clusterwide::for_tests();
+        storage
+            .users
+            .insert(&UserDef {
+                id: ADMIN_ID,
+                name: String::from("admin"),
+                schema_version: 0,
+                auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
+                owner: ADMIN_ID,
+            })
+            .unwrap();
+        storage
+    }
+
     #[::tarantool::test]
     fn test_create_space() {
+        let storage = storage();
         CreateTableParams {
             id: Some(1337),
             name: "friends_of_peppa".into(),
@@ -975,8 +1005,9 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
-        .test_create_space()
+        .test_create_space(&storage)
         .unwrap();
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
@@ -991,8 +1022,9 @@ mod tests {
             sharding_fn: None,
             engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
+            owner: ADMIN_ID,
         }
-        .test_create_space()
+        .test_create_space(&storage)
         .unwrap();
         assert!(tarantool::space::Space::find("friends_of_peppa").is_none());
 
@@ -1007,8 +1039,9 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
-        .test_create_space()
+        .test_create_space(&storage)
         .unwrap_err();
         assert_eq!(
             err.to_string(),
@@ -1042,6 +1075,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1058,6 +1092,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1074,6 +1109,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1090,6 +1126,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1106,6 +1143,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1122,6 +1160,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1141,6 +1180,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
@@ -1160,6 +1200,7 @@ mod tests {
             sharding_fn: None,
             engine: None,
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap();
@@ -1175,6 +1216,7 @@ mod tests {
             sharding_fn: None,
             engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
+            owner: ADMIN_ID,
         }
         .validate()
         .unwrap_err();
