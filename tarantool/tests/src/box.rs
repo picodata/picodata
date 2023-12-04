@@ -330,48 +330,55 @@ pub fn delete() {
     let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
+    // Insert a test tuple into the space.
     let input = S1Record {
-        id: 1,
+        id: 334,
         text: "Test".to_string(),
     };
     space.insert(&input).unwrap();
 
+    // Delete the tuple we just inserted.
     let delete_result = space.delete(&(input.id,)).unwrap();
     assert!(delete_result.is_some());
     assert_eq!(delete_result.unwrap().decode::<S1Record>().unwrap(), input);
 
+    // Tuple is no longer in the space.
     let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_none());
+
+    // If id isn't found in the space, delete returns Ok(None).
+    let invalid_id = 0xdead_beef_u32;
+    let res = space.delete(&[invalid_id]).unwrap();
+    assert!(res.is_none());
 }
 
 pub fn update() {
     let space = Space::find("test_s1").unwrap();
     space.truncate().unwrap();
 
+    // Insert a test tuple into the space.
     let input = S1Record {
-        id: 1,
+        id: 361,
         text: "Original".to_string(),
     };
     space.insert(&input).unwrap();
 
-    let update_result = space
-        .update(
-            &(input.id,),
-            [QueryOperation {
-                op: "=".to_string(),
-                field_id: 1,
-                value: "New".into(),
-            }],
-        )
-        .unwrap();
+    // Update the tuple we just inserted.
+    let update_result = space.update(&[input.id], [("=", 1, "New")]).unwrap();
     assert!(update_result.is_some());
     assert_eq!(
         update_result.unwrap().decode::<S1Record>().unwrap().text,
         "New"
     );
 
+    // Tuple was updated.
     let output = space.get(&(input.id,)).unwrap();
     assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+
+    // If id isn't found in the space, update returns Ok(None).
+    let invalid_id = 0xdead_beef_u32;
+    let res = space.update(&[invalid_id], [("=", 1, "New")]).unwrap();
+    assert!(res.is_none());
 }
 
 pub fn update_macro() {

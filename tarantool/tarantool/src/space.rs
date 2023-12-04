@@ -790,8 +790,12 @@ impl Space {
     ///
     /// The `update` function supports operations on fields — assignment, arithmetic (if the field is numeric),
     /// cutting and pasting fragments of a field, deleting or inserting a field. Multiple operations can be combined in
-    /// a single update request, and in this case they are performed atomically and sequentially. Each operation
-    /// requires specification of a field number. When multiple operations are present, the field number for each
+    /// a single update request, and in this case they are performed atomically and sequentially.
+    ///
+    /// Each operation requires specification of a field index (first field has
+    /// index `0`).
+    ///
+    /// When multiple operations are present, the field index for each
     /// operation is assumed to be relative to the most recent state of the tuple, that is, as if all previous
     /// operations in a multi-operation update have already been applied.
     /// In other words, it is always safe to merge multiple `update` invocations into a single invocation with no
