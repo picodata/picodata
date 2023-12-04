@@ -897,13 +897,16 @@ impl Index {
         }
     }
 
-    /// Extract key from tuple according to key definition of given
-    /// index. Returned buffer is allocated on `box_txn_alloc()` with
-    /// this key.
+    /// Extract key from `tuple` according to key definition of given
+    /// index.
     ///
-    /// - `tuple` - tuple from which need to extract key.
+    /// # Safety
+    /// The current index & it's space must exist and `tuple` must conform to
+    /// the space format.
+    ///
+    /// You should probably use [`KeyDef::extract_key`] instead.
     #[inline(always)]
-    pub fn extract_key(&self, tuple: Tuple) -> Tuple {
+    pub unsafe fn extract_key(&self, tuple: Tuple) -> Tuple {
         unsafe {
             let mut result_size = MaybeUninit::uninit();
             let result_ptr = ffi::box_tuple_extract_key(

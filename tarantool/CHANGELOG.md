@@ -113,6 +113,8 @@
 - `index::Part::{collation, path}` builder methods now take a `impl Into<String>`
   instead of `String`. This shouldn't be a problem for you unless you're calling
   them like `Part::path(p.into())`, in which case just remove the `.into()`.
+- `index::Index::extract_key` method is now unsafe, because it is unsafe and may
+  cause crashes if called with invalid arguments.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

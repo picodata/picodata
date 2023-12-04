@@ -283,7 +283,7 @@ pub fn extract_key() {
         a: 1,
         b: 2,
     };
-    let key: Tuple = idx.extract_key(Tuple::new(&record).unwrap());
+    let key: Tuple = unsafe { idx.extract_key(Tuple::new(&record).unwrap()) };
     assert_eq!(key.decode::<S2Key>().unwrap(), S2Key { id: 11, a: 1, b: 2 });
     let tuple = idx.get(&key).unwrap().unwrap();
     assert_eq!(tuple.decode::<S2Record>().unwrap(), record);
