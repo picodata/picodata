@@ -426,6 +426,7 @@ class Instance:
 
     color: Callable[[str], str]
 
+    audit: str | bool = True
     tier: str | None = None
     init_replication_factor: int | None = None
     init_cfg_path: str | None = None
@@ -453,7 +454,23 @@ class Instance:
         return self.eval("return box.info.cluster.uuid")
 
     @property
+    def audit_flag_value(self):
+        """
+        This property abstracts away peculiarities of the audit config.
+        This is the value we're going to pass via `--audit`, or `None`
+        if audit is disabled for this instance.
+        """
+        if self.audit:
+            if isinstance(self.audit, bool):
+                return os.path.join(self.data_dir, "audit.log")
+            if isinstance(self.audit, str):
+                return self.audit
+        return None
+
+    @property
     def command(self):
+        audit = self.audit_flag_value
+
         # fmt: off
         return [
             self.binary_path, "run",
@@ -469,6 +486,7 @@ class Instance:
             *(["--init-cfg", self.init_cfg_path]
               if self.init_cfg_path is not None else []),
             *(["--tier", self.tier] if self.tier is not None else []),
+            *(["--audit", audit] if audit else []),
         ]
         # fmt: on
 
@@ -1179,6 +1197,7 @@ class Cluster:
             init_replication_factor=init_replication_factor,
             tier=tier,
             init_cfg_path=self.cfg_path,
+            audit=True,
         )
 
         self.instances.append(instance)

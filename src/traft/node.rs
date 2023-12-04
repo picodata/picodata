@@ -779,6 +779,7 @@ impl NodeImpl {
                                 message: "property `{key}` was deleted",
                                 title: "change_config",
                                 severity: High,
+                                key: %key,
                             );
                         }
                     }
@@ -803,6 +804,8 @@ impl NodeImpl {
                                 message: "property `{key}` was changed to {value}",
                                 title: "change_config",
                                 severity: High,
+                                key: %key,
+                                value: &value,
                             );
                         }
                     }

@@ -2986,7 +2986,7 @@ pub mod acl {
             ("execute", "role") => {
                 let object = object.expect("should be set");
                 crate::audit!(
-                    message: "revoke role `{object}` from {grantee_type} `{grantee}`",
+                    message: "revoked role `{object}` from {grantee_type} `{grantee}`",
                     title: "revoke_role",
                     severity: High,
                     role: object,
