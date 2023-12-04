@@ -76,35 +76,6 @@ fn global_lua() -> tlua::StaticLua {
     unsafe { tlua::Lua::from_static(tarantool::ffi::tarantool::luaT_state()) }
 }
 
-pub trait BoolExt {
-    fn so(&self) -> bool;
-
-    #[inline(always)]
-    fn as_some<T>(&self, v: T) -> Option<T> {
-        if self.so() {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
-    #[inline(always)]
-    fn as_some_from<T>(&self, f: impl FnOnce() -> T) -> Option<T> {
-        if self.so() {
-            Some(f())
-        } else {
-            None
-        }
-    }
-}
-
-impl BoolExt for bool {
-    #[inline(always)]
-    fn so(&self) -> bool {
-        *self
-    }
-}
-
 use once_cell::unsync::OnceCell;
 
 pub fn lib_name() -> String {

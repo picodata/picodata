@@ -1,4 +1,4 @@
-use crate::common::{BoolExt, LuaStackIntegrityGuard};
+use crate::common::LuaStackIntegrityGuard;
 use std::{
     any::type_name,
     cell::RefCell,
@@ -103,7 +103,7 @@ pub fn push_hashset() {
     let values: HashSet<i32> = table
         .iter::<i32, bool>()
         .flatten()
-        .filter_map(|(v, is_set)| is_set.as_some(v))
+        .filter_map(|(v, is_set)| is_set.then_some(v))
         .collect();
     assert_eq!(values, orig_set);
 
@@ -112,7 +112,7 @@ pub fn push_hashset() {
     let values: HashSet<i32> = table
         .iter::<i32, bool>()
         .flatten()
-        .filter_map(|(v, is_set)| is_set.as_some(v))
+        .filter_map(|(v, is_set)| is_set.then_some(v))
         .collect();
     assert_eq!(values, orig_set);
 }
