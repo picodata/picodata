@@ -189,6 +189,7 @@ bench-vanilla:
   variables:
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
   script:
+    - cat /proc/cpuinfo
     - make bench
 
 test-fork:
