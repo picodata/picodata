@@ -198,6 +198,26 @@ impl Decode for () {
     }
 }
 
+impl<T> Decode for Box<T>
+where
+    T: Decode,
+{
+    #[inline(always)]
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        T::decode(r, context).map(Box::new)
+    }
+}
+
+impl<T> Decode for std::rc::Rc<T>
+where
+    T: Decode,
+{
+    #[inline(always)]
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        T::decode(r, context).map(std::rc::Rc::new)
+    }
+}
+
 impl<T> Decode for Vec<T>
 where
     T: Decode,
@@ -393,6 +413,46 @@ impl Encode for () {
     }
 }
 
+impl<T> Encode for &'_ T
+where
+    T: Encode + ?Sized,
+{
+    #[inline(always)]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        (**self).encode(w, context)
+    }
+}
+
+impl<T> Encode for &'_ mut T
+where
+    T: Encode + ?Sized,
+{
+    #[inline(always)]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        (**self).encode(w, context)
+    }
+}
+
+impl<T> Encode for Box<T>
+where
+    T: Encode,
+{
+    #[inline(always)]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        (**self).encode(w, context)
+    }
+}
+
+impl<T> Encode for std::rc::Rc<T>
+where
+    T: Encode,
+{
+    #[inline(always)]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        (**self).encode(w, context)
+    }
+}
+
 impl<T> Encode for [T]
 where
     T: Encode,
@@ -492,7 +552,6 @@ impl_simple_encode! {
     (f32, write_f32, f32)
     (f64, write_f64, f64)
     (bool, write_bool, bool)
-    (&str, write_str, &str)
 }
 
 macro_rules! _impl_array_encode {
