@@ -8,7 +8,11 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::hash::Hash;
 use std::io::{Read, Write};
 use std::ops::Deref;
 
@@ -237,6 +241,40 @@ where
     }
 }
 
+impl<T> Decode for HashSet<T>
+where
+    T: Decode + Hash + Eq,
+{
+    #[inline]
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let mut res = HashSet::with_capacity(n);
+        for i in 0..n {
+            let v = T::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("element {i}")))?;
+            res.insert(v);
+        }
+        Ok(res)
+    }
+}
+
+impl<T> Decode for BTreeSet<T>
+where
+    T: Decode + Ord + Eq,
+{
+    #[inline]
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let mut res = BTreeSet::new();
+        for i in 0..n {
+            let v = T::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("element {i}")))?;
+            res.insert(v);
+        }
+        Ok(res)
+    }
+}
+
 impl<'a, T> Decode for Cow<'a, T>
 where
     T: Decode + ToOwned + ?Sized,
@@ -272,6 +310,26 @@ where
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
         let mut res = BTreeMap::new();
+        for i in 0..n {
+            let k = K::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th key")))?;
+            let v = V::decode(r, context)
+                .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th value")))?;
+            res.insert(k, v);
+        }
+        Ok(res)
+    }
+}
+
+impl<K, V> Decode for HashMap<K, V>
+where
+    K: Decode + Ord + Hash,
+    V: Decode,
+{
+    #[inline]
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
+        let mut res = HashMap::with_capacity(n as _);
         for i in 0..n {
             let k = K::decode(r, context)
                 .map_err(|err| DecodeError::new::<Self>(err).with_part(format!("{i}th key")))?;
@@ -459,8 +517,36 @@ where
 {
     #[inline]
     fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
-        rmp::encode::write_array_len(w, self.len() as u32)?;
-        for v in self.iter() {
+        rmp::encode::write_array_len(w, self.len() as _)?;
+        for v in self {
+            v.encode(w, context)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T> Encode for BTreeSet<T>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        rmp::encode::write_array_len(w, self.len() as _)?;
+        for v in self {
+            v.encode(w, context)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T> Encode for HashSet<T>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        rmp::encode::write_array_len(w, self.len() as _)?;
+        for v in self {
             v.encode(w, context)?;
         }
         Ok(())
@@ -502,6 +588,22 @@ impl Encode for str {
 }
 
 impl<K, V> Encode for BTreeMap<K, V>
+where
+    K: Encode,
+    V: Encode,
+{
+    #[inline]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        rmp::encode::write_map_len(w, self.len() as u32)?;
+        for (k, v) in self.iter() {
+            k.encode(w, context)?;
+            v.encode(w, context)?;
+        }
+        Ok(())
+    }
+}
+
+impl<K, V> Encode for HashMap<K, V>
 where
     K: Encode,
     V: Encode,
@@ -955,12 +1057,46 @@ mod tests {
     }
 
     #[test]
+    fn encode_set() {
+        let mut original = BTreeSet::new();
+        original.insert(30);
+        original.insert(10);
+        original.insert(20);
+
+        let bytes = encode(&original).unwrap();
+        // Set is encoded as array
+        assert_value(
+            &bytes,
+            Value::Array(vec![Value::from(10), Value::from(20), Value::from(30)]),
+        );
+        assert_eq!(original, decode::<BTreeSet<i32>>(&bytes).unwrap());
+
+        let mut original = HashSet::new();
+        original.insert(30);
+        original.insert(10);
+        original.insert(20);
+
+        let bytes = encode(&original).unwrap();
+        // Set is encoded as array
+        let len = rmp::decode::read_array_len(&mut &bytes[..]).unwrap();
+        assert_eq!(len, 3);
+        assert_eq!(original, decode::<HashSet<i32>>(&bytes).unwrap());
+    }
+
+    #[test]
     fn encode_map() {
         let mut original = BTreeMap::new();
         original.insert(1, "abc".to_string());
         original.insert(2, "def".to_string());
         let bytes = encode(&original).unwrap();
         let decoded: BTreeMap<u32, String> = decode(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let mut original = HashMap::new();
+        original.insert(1, "abc".to_string());
+        original.insert(2, "def".to_string());
+        let bytes = encode(&original).unwrap();
+        let decoded: HashMap<u32, String> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
 
