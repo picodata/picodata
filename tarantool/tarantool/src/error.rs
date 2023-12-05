@@ -547,40 +547,47 @@ pub fn clear_error() {
 }
 
 /// Set the last error.
+///
+/// # Example:
+/// ```rust
+/// # use tarantool::error::{TarantoolErrorCode, TarantoolError};
+/// # fn foo() -> Result<(), tarantool::error::TarantoolError> {
+/// let reason = "just 'cause";
+/// tarantool::set_error!(TarantoolErrorCode::Unsupported, "this you cannot do, because: {reason}");
+/// return Err(TarantoolError::last());
+/// # }
+/// ```
 #[macro_export]
 macro_rules! set_error {
-    ($code:expr, $msg:literal) => {
+    ($code:expr, $($msg_args:tt)+) => {
+        let msg = ::std::fmt::format(::std::format_args!($($msg_args)+));
+        let msg = ::std::ffi::CString::new(msg).unwrap();
+        // `msg` must outlive `msg_ptr`
+        let msg_ptr = msg.as_ptr().cast();
+        let file = $crate::c_ptr!(::std::file!());
+        #[allow(unused_unsafe)]
         unsafe {
-            let file = std::concat!(file!(), "\0").as_ptr().cast();
-            let msg_ptr = std::concat!($msg, "\0").as_ptr().cast();
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr)
-        }
-    };
-    ($code:expr, $($msg_args:expr),+) => {
-        unsafe {
-            let msg = std::fmt::format(format_args!($($msg_args),*));
-            let file = std::concat!(file!(), "\0").as_ptr().cast();
-            let msg: std::ffi::CString = std::ffi::CString::new(msg).unwrap();
-            // `msg` must outlive `msg_ptr`
-            let msg_ptr = msg.as_ptr().cast();
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr)
+            $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, msg_ptr)
         }
     };
 }
 
 /// Set the last tarantool error and return it immediately.
+///
+/// # Example:
+/// ```rust
+/// # use tarantool::set_and_get_error;
+/// # use tarantool::error::TarantoolErrorCode;
+/// # fn foo() -> Result<(), tarantool::error::TarantoolError> {
+/// let reason = "just 'cause";
+/// return Err(set_and_get_error!(TarantoolErrorCode::Unsupported, "this you cannot do, because: {reason}"));
+/// # }
+/// ```
 #[macro_export]
 macro_rules! set_and_get_error {
-    ($code:expr, $($msg_args:expr),+ $(,)?) => {{
-        let msg = ::std::fmt::format(format_args!($($msg_args),*));
-        let file = ::std::concat!(file!(), "\0").as_ptr().cast();
-        let msg = ::std::ffi::CString::new(msg).expect("msg mustn't contain nul bytes");
-        // `msg` must outlive `msg_ptr`
-        let msg_ptr = msg.as_ptr().cast();
-        unsafe {
-            $crate::ffi::tarantool::box_error_set(file, line!(), $code as u32, msg_ptr);
-            $crate::error::TarantoolError::last()
-        }
+    ($code:expr, $($msg_args:tt)+) => {{
+        $crate::set_error!($code, $($msg_args)+);
+        $crate::error::TarantoolError::last()
     }};
 }
 
@@ -614,4 +621,16 @@ fn tarantool_error_doesnt_depend_on_link_error() {
     // linked into a standalone executable without access to those symbols.
     assert!(!err.to_string().is_empty());
     assert!(!format!("{}", err).is_empty());
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+
+    #[crate::test(tarantool = "crate")]
+    fn set_error_expands_format() {
+        let msg = "my message";
+        let e = set_and_get_error!(TarantoolErrorCode::Unknown, "{msg}");
+        assert_eq!(e.to_string(), "Unknown: my message");
+    }
 }
