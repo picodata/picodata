@@ -93,6 +93,9 @@ pub enum StructStyle {
     /// Overrides struct level attributes such as `as_map`.
     /// Forces the struct and all nested struct to be serialized as `MP_ARRAY`.
     ForceAsArray,
+    // TODO ForceAsMapTopLevel
+    // TODO ForceAsArrayTopLevel
+    // TODO AllowDecodeAny - to allow decoding both arrays & maps
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -542,6 +545,8 @@ impl_tuple_encode! { A B C D E F G H I J K L M N O P }
 impl Encode for serde_json::Value {
     #[inline]
     fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        // TODO: custom implementation. It is super simple, at some point we
+        // will get rid of rmp_serde dependency.
         let bytes = rmp_serde::to_vec(self).map_err(|e| EncodeError(e.to_string()))?;
         w.write_all(bytes.as_slice())?;
         Ok(())
@@ -551,6 +556,8 @@ impl Encode for serde_json::Value {
 impl Encode for serde_json::Map<String, serde_json::Value> {
     #[inline]
     fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        // TODO: custom implementation. It is super simple, at some point we
+        // will get rid of rmp_serde dependency.
         let bytes = rmp_serde::to_vec(self).map_err(|e| EncodeError(e.to_string()))?;
         w.write_all(bytes.as_slice())?;
         Ok(())
@@ -564,26 +571,8 @@ impl Encode for serde_json::Map<String, serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rmp::decode::Bytes;
+    use rmpv::Value;
     use std::{collections::BTreeMap, io::Cursor};
-
-    #[track_caller]
-    fn assert_map(bytes: &[u8]) {
-        let marker = rmp::decode::read_marker(&mut Bytes::new(bytes)).unwrap();
-        assert!(matches!(
-            dbg!(marker),
-            rmp::Marker::Map16 | rmp::Marker::Map32 | rmp::Marker::FixMap(_)
-        ))
-    }
-
-    #[track_caller]
-    fn assert_array(bytes: &[u8]) {
-        let marker = rmp::decode::read_marker(&mut Bytes::new(bytes)).unwrap();
-        assert!(matches!(
-            dbg!(marker),
-            rmp::Marker::Array16 | rmp::Marker::Array32 | rmp::Marker::FixArray(_)
-        ))
-    }
 
     #[track_caller]
     fn assert_value(mut bytes: &[u8], v: rmpv::Value) {
@@ -602,13 +591,6 @@ mod tests {
         #[encode(tarantool = "crate")]
         struct Test2 {
             not_b: f32,
-        }
-        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
-        #[encode(tarantool = "crate", as_map)]
-        struct Test {
-            a: usize,
-            b: String,
-            c: Test1,
         }
 
         // Do not override, encode as array
@@ -633,7 +615,10 @@ mod tests {
         let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
         let mut bytes = vec![];
         test_1.encode(&mut bytes, &ctx_as_map).unwrap();
-        assert_map(&bytes);
+        assert_value(
+            &bytes,
+            Value::Map(vec![(Value::from("b"), Value::from(42))]),
+        );
         let test_1_dec = Test1::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
         assert_eq!(test_1_dec, test_1);
 
@@ -643,41 +628,99 @@ mod tests {
             e.to_string(),
             "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2: expected field not_b, got b"
         );
+    }
+
+    #[test]
+    fn encode_nested_struct() {
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        // Wants to be encoded as map
+        #[encode(as_map)]
+        struct Outer {
+            i: usize,
+            s: String,
+            inner: Inner,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        // Wants to be encoded as array
+        struct Inner {
+            i: usize,
+            s: String,
+        }
+
+        let test = Outer {
+            i: 1,
+            s: "abc".into(),
+            inner: Inner {
+                i: 2,
+                s: "def".into(),
+            },
+        };
 
         // Do not override, encode as map
-        let test = Test {
-            a: 1,
-            b: "abc".to_owned(),
-            c: test_1,
-        };
-        let bytes_named = encode(&test).unwrap();
+        let bytes = encode(&test).unwrap();
         assert_value(
-            &bytes_named,
-            rmpv::Value::Map(vec![
+            &bytes,
+            Value::Map(vec![
+                (Value::from("i"), Value::from(1)),
+                (Value::from("s"), Value::from("abc")),
                 (
-                    rmpv::Value::String("a".into()),
-                    rmpv::Value::Integer(1.into()),
-                ),
-                (
-                    rmpv::Value::String("b".into()),
-                    rmpv::Value::String("abc".into()),
-                ),
-                (
-                    rmpv::Value::String("c".into()),
-                    rmpv::Value::Array(vec![rmpv::Value::Integer(42.into())]),
+                    Value::from("inner"),
+                    Value::Array(vec![Value::from(2), Value::from("def")]),
                 ),
             ]),
         );
-        let test_dec: Test = decode(bytes_named.as_slice()).unwrap();
+        let test_dec: Outer = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_dec, test);
-        // TODO: add negative tests for nested structs
 
         // Override, encode as array
         let ctx_as_array = Context::default().with_struct_style(StructStyle::ForceAsArray);
-        let mut bytes_named = vec![];
-        test.encode(&mut bytes_named, &ctx_as_array).unwrap();
-        assert_array(&bytes_named);
-        let test_dec = Test::decode(&mut bytes_named.as_slice(), &ctx_as_array).unwrap();
+        let mut bytes = vec![];
+        test.encode(&mut bytes, &ctx_as_array).unwrap();
+        assert_value(
+            &bytes,
+            Value::Array(vec![
+                Value::from(1),
+                Value::from("abc"),
+                Value::Array(vec![Value::from(2), Value::from("def")]),
+            ]),
+        );
+
+        // Because we forced as array when encoding, we need to force as array when decoding
+        let e = Outer::decode(&mut bytes.as_slice(), &Context::default()).unwrap_err();
+        // TODO: better error messages <https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/176>
+        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer: the type decoded isn't match with the expected one");
+
+        let test_dec = Outer::decode(&mut bytes.as_slice(), &ctx_as_array).unwrap();
+        assert_eq!(test_dec, test);
+
+        // Override, encode as map
+        let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
+        let mut bytes = vec![];
+        test.encode(&mut bytes, &ctx_as_map).unwrap();
+        assert_value(
+            &bytes,
+            Value::Map(vec![
+                (Value::from("i"), Value::from(1)),
+                (Value::from("s"), Value::from("abc")),
+                (
+                    Value::from("inner"),
+                    Value::Map(vec![
+                        (Value::from("i"), Value::from(2)),
+                        (Value::from("s"), Value::from("def")),
+                    ]),
+                ),
+            ]),
+        );
+
+        // Because we forced as map when encoding, we need to force as map when decoding
+        let e = Outer::decode(&mut bytes.as_slice(), &Context::default()).unwrap_err();
+        // TODO: better error messages <https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/176>
+        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer(field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner: the type decoded isn't match with the expected one");
+
+        let test_dec = Outer::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
         assert_eq!(test_dec, test);
     }
 
@@ -720,9 +763,15 @@ mod tests {
         enum Foo {
             BarUnit,
             BarTuple1(bool),
-            BarTupleN((), (), ()),
-            BarStruct1 { bar: bool },
-            BarStructN { bar1: (), bar2: (), bar3: () },
+            BarTupleN(i32, f64, String),
+            BarStruct1 {
+                bar: bool,
+            },
+            BarStructN {
+                bar1: usize,
+                bar2: [u8; 3],
+                bar3: Box<Foo>,
+            },
         }
         let original = Foo::BarUnit;
         let bytes = encode(&original).unwrap();
@@ -760,13 +809,17 @@ mod tests {
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
-        let original = Foo::BarTupleN((), (), ());
+        let original = Foo::BarTupleN(13, 0.37, "hello".into());
         let bytes = encode(&original).unwrap();
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
                 rmpv::Value::String("BarTupleN".into()),
-                rmpv::Value::Array(vec![rmpv::Value::Nil; 3]),
+                rmpv::Value::Array(vec![
+                    rmpv::Value::from(13),
+                    rmpv::Value::from(0.37),
+                    rmpv::Value::from("hello"),
+                ]),
             )]),
         );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
@@ -785,16 +838,27 @@ mod tests {
         assert_eq!(original, decoded);
 
         let original = Foo::BarStructN {
-            bar1: (),
-            bar2: (),
-            bar3: (),
+            bar1: 420,
+            bar2: [b'a', b'b', b'c'],
+            bar3: Box::new(Foo::BarUnit),
         };
         let bytes = encode(&original).unwrap();
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
                 rmpv::Value::String("BarStructN".into()),
-                rmpv::Value::Array(vec![rmpv::Value::Nil; 3]),
+                rmpv::Value::Array(vec![
+                    rmpv::Value::from(420),
+                    rmpv::Value::Array(vec![
+                        rmpv::Value::from(b'a'),
+                        rmpv::Value::from(b'b'),
+                        rmpv::Value::from(b'c'),
+                    ]),
+                    rmpv::Value::Map(vec![(
+                        rmpv::Value::String("BarUnit".into()),
+                        rmpv::Value::Nil,
+                    )]),
+                ]),
             )]),
         );
         let decoded: Foo = decode(bytes.as_slice()).unwrap();
