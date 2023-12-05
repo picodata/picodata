@@ -418,9 +418,9 @@ impl Part {
 
     define_setters! {
         field_type(r#type: FieldType)
-        collation(collation: String)
+        collation(collation: impl Into<String>)
         is_nullable(is_nullable: bool)
-        path(path: String)
+        path(path: impl Into<String>)
     }
 
     #[inline(always)]
@@ -948,6 +948,8 @@ impl Metadata<'_> {
     /// error.
     #[inline(always)]
     pub fn to_key_def(&self) -> KeyDef {
+        // TODO: we could optimize by caching these things and only recreating
+        // then once box_schema_version changes.
         self.try_to_key_def().unwrap()
     }
 
@@ -979,10 +981,15 @@ impl Metadata<'_> {
                     .into()
             });
             let kd_p = KeyDefPart {
+                // `p.field_no` is the location of the key part in the original tuple,
+                // but here we only care about the location of the part in the key itself
                 field_no: i,
                 field_type: p.r#type.map(From::from).unwrap_or_default(),
                 collation,
                 is_nullable: p.is_nullable.unwrap_or(false),
+                // `p.path` describes the location of the key part in the original tuple,
+                // but in the key the part will be placed at the top level,
+                // hence path is always empty
                 path: None,
             };
             kd_parts.push(kd_p);

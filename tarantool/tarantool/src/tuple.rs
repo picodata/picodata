@@ -823,6 +823,28 @@ impl From<index::FieldType> for FieldType {
 // KeyDef
 ////////////////////////////////////////////////////////////////////////////////
 
+/// An object which describes how to extract a key for a given tarantool index
+/// from a tuple. Basically it contains information the parts of the key,
+/// specifically location of the parts within the tuple, their types, their
+/// nullability and collation.
+///
+/// Can be used to
+/// - compare tuples ([`Self::compare`])
+/// - extract a key from a tuple ([`Self::extract_key`])
+/// - check if a tuple has the expected format ([`Self::validate_tuple`])
+/// - etc.
+///
+/// You can construct one of these from an explicit list of key part definitions
+/// using [`Self::new`], or automtically from an index's metadata like so:
+/// ```no_run
+/// # use tarantool::index::Index;
+/// # use tarantool::space::Space;
+/// # use tarantool::tuple::KeyDef;
+/// let space = Space::find("some_space").unwrap();
+/// let index = space.index("some_index").unwrap();
+/// let meta = index.meta().unwrap();
+/// let key_def: KeyDef = meta.to_key_def();
+/// ```
 #[derive(Debug)]
 pub struct KeyDef {
     inner: NonNull<ffi::BoxKeyDef>,
@@ -941,6 +963,79 @@ impl KeyDef {
         }
     }
 
+    /// Checks if `tuple` satisfies the key definition's format, i.e. do the
+    /// tuple's fields described the `self`'s key parts have the same types.
+    /// Note that the tuple may still not satisfy the full format of the space,
+    /// this function only checks if it contains a part which could be used as
+    /// a key of an index.
+    ///
+    /// There's currently no good way of checking if the tuple satisfies the
+    /// format of the space other than trying to insert into that space.
+    ///
+    /// This function is used internally by [`Self::extract_key`] to check if
+    /// it's safe to extract the key described by this `KeyDef` from a given tuple.
+    #[inline]
+    pub fn validate_tuple(&self, tuple: &Tuple) -> Result<()> {
+        // SAFETY: safe as long as both pointers are valid.
+        let rc =
+            unsafe { ffi::box_key_def_validate_tuple(self.inner.as_ptr(), tuple.ptr.as_ptr()) };
+        if rc != 0 {
+            return Err(TarantoolError::last().into());
+        }
+        Ok(())
+    }
+
+    /// Extracts the key described by this `KeyDef` from `tuple`.
+    /// Returns an error if `tuple` doesn't satisfy this `KeyDef`.
+    #[inline]
+    pub fn extract_key(&self, tuple: &Tuple) -> Result<TupleBuffer> {
+        self.validate_tuple(tuple)?;
+        let res;
+        // SAFETY: safe, because we only truncate the region to where it was
+        // before the call to this function.
+        unsafe {
+            let used_before = ffi::box_region_used();
+            let data = self.extract_key_raw(tuple, -1)?;
+            res = TupleBuffer::from_vec_unchecked(data.into());
+            ffi::box_region_truncate(used_before);
+        }
+        Ok(res)
+    }
+
+    /// Extracts the key described by this `KeyDef` from `tuple`.
+    ///
+    /// TODO: what is `multikey_idx`? Pass a `-1` as the default value.
+    ///
+    /// Returns an error in case memory runs out.
+    ///
+    /// # Safety
+    /// `tuple` must satisfy the key definition's format.
+    /// Use [`Self::extract_key`] if you want the tuple to be validated automatically,
+    /// or use [`Self::validate_tuple`] to validate the tuple explicitly.
+    #[inline]
+    pub unsafe fn extract_key_raw<'box_region>(
+        &self,
+        tuple: &Tuple,
+        multikey_idx: i32,
+    ) -> Result<&'box_region [u8]> {
+        let slice;
+        // SAFETY: safe as long as both pointers are valid.
+        unsafe {
+            let mut size = 0;
+            let data = ffi::box_key_def_extract_key(
+                self.inner.as_ptr(),
+                tuple.ptr.as_ptr(),
+                multikey_idx,
+                &mut size,
+            );
+            if data.is_null() {
+                return Err(TarantoolError::last().into());
+            }
+            slice = std::slice::from_raw_parts(data as _, size as _);
+        }
+        Ok(slice)
+    }
+
     /// Calculate a tuple hash for a given key definition.
     /// At the moment 32-bit murmur3 hash is used but it may
     /// change in future.
@@ -959,6 +1054,15 @@ impl Drop for KeyDef {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_key_def_delete(self.inner.as_ptr()) }
+    }
+}
+
+impl std::convert::TryFrom<&index::Metadata<'_>> for KeyDef {
+    type Error = index::FieldMustBeNumber;
+
+    #[inline(always)]
+    fn try_from(meta: &index::Metadata<'_>) -> std::result::Result<Self, Self::Error> {
+        meta.try_to_key_def()
     }
 }
 
@@ -1515,6 +1619,8 @@ mod picodata {
 #[cfg(feature = "internal_test")]
 mod test {
     use super::*;
+    use crate::space;
+    use crate::space::Space;
 
     #[crate::test(tarantool = "crate")]
     fn tuple_buffer_from_lua() {
@@ -1587,5 +1693,69 @@ mod test {
             err.to_string(),
             r#"failed to decode tuple: invalid type: integer `2`, expected a string when decoding msgpack b"\x93\xa5\x68\x65\x6c\x6c\x6f\x93\x01\x02\x03\xa7\x67\x6f\x6f\x64\x62\x79\x65" into rust type (alloc::string::String, (i32, alloc::string::String, i32), alloc::string::String)"#
         )
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn key_def_extract_key() {
+        let space = Space::builder(&crate::temp_space_name!())
+            .field(("id", space::FieldType::Unsigned))
+            .field(("not-key", space::FieldType::Array))
+            .field(("s", space::FieldType::String))
+            .field(("nested", space::FieldType::Any))
+            .create()
+            .unwrap();
+
+        let index = space
+            .index_builder("pk")
+            .part("id")
+            .part("s")
+            .part(
+                index::Part::field("nested")
+                    .field_type(index::FieldType::Unsigned)
+                    .path("[2].blabla"),
+            )
+            .create()
+            .unwrap();
+
+        let key_def = index.meta().unwrap().to_key_def();
+
+        let tuple = Tuple::new(&["foo"]).unwrap();
+        let e = key_def.extract_key(&tuple).unwrap_err();
+        assert_eq!(e.to_string(), "tarantool error: KeyPartType: Supplied key type of part 0 does not match index part type: expected unsigned");
+
+        let tuple = Tuple::new(&[1]).unwrap();
+        let e = key_def.extract_key(&tuple).unwrap_err();
+        // XXX: notice how this error message shows the 1-based index, but the
+        // previous one showed the 0-based index. You can thank tarantool devs
+        // for that.
+        assert_eq!(
+            e.to_string(),
+            "tarantool error: FieldMissing: Tuple field [3] required by space format is missing"
+        );
+
+        let tuple = Tuple::new(&(1, [1, 2, 3], "foo")).unwrap();
+        let e = key_def.extract_key(&tuple).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "tarantool error: FieldMissing: Tuple field [4][2].blabla required by space format is missing"
+        );
+
+        let raw_data = b"\x94\x69\x93\x01\x02\x03\xa3foo\x93\xc0\x81\xa6blabla\x42\x07"; // [0x69, [1, 2, 3], "foo", [null, {blabla: 0x42}, 7]]
+        let tuple = Tuple::new(RawBytes::new(raw_data)).unwrap();
+        let key = key_def.extract_key(&tuple).unwrap();
+        assert_eq!(key.as_ref(), b"\x93\x69\xa3foo\x42"); // [0x69, "foo", 0x42]
+
+        let raw_data = b"\x94\x13\xa9not-array\xa3bar\x92\xc0\x81\xa6blabla\x37"; // [0x13, "not-array", "bar", [null, {blabla: 0x37}]]
+
+        // Even though the tuple doesn't actually satisfy the space's format,
+        // the key def only know about the locations & types of the key parts,
+        // so it doesn't care.
+        let tuple = Tuple::new(RawBytes::new(raw_data)).unwrap();
+        let key = key_def.extract_key(&tuple).unwrap();
+        assert_eq!(key.as_ref(), b"\x93\x13\xa3bar\x37");
+
+        // This tuple can't be inserted into the space.
+        let e = space.insert(&tuple).unwrap_err();
+        assert_eq!(e.to_string(), "tarantool error: FieldType: Tuple field 2 (not-key) type does not match one required by operation: expected array, got string");
     }
 }

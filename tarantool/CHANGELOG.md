@@ -46,6 +46,10 @@
 - `tarantool::error::Error::variant_name` method for getting name of the error
   variant, because somebody needs this.
 - `tarantool::static_assert` macro for adding checks that run at compile time.
+- `tuple::KeyDef::{extract_key, extract_key_raw}` methods for extracting index keys
+  from tuples.
+- `tuple::KeyDef::validate_tuple` method for checking if tuple contains the index key.
+- `impl TryFrom<&index::Metadata> for tuple::KeyDef`
 
 ### Changed
 - `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
@@ -106,6 +110,9 @@
   and `MsgpackDecode` variants correspondingly.
 - `error::Error` enum now contains `Other` variant which can contain an value of
   a type which implements `Error + Send + Sync` traits.
+- `index::Part::{collation, path}` builder methods now take a `impl Into<String>`
+  instead of `String`. This shouldn't be a problem for you unless you're calling
+  them like `Part::path(p.into())`, in which case just remove the `.into()`.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.
@@ -184,7 +191,7 @@
     log::Level to SayLevel taking the mapping function into account.
 - `tlua::Push` and `tlua::LuaRead` implementations for `SayLevel`.
 - `examples/luaopen` example of how to implement native lua modules.
-- `tarantool::cbus` module for communication between any arbitrary thread and 
+- `tarantool::cbus` module for communication between any arbitrary thread and
 tarantool thread via syncronization primitives (channels) and low-level cbus api.
 - `tarantool::time::Instant` a custom implementation of std-like `Instant` with more saturating operations
 and support of the `fiber_clock` API.

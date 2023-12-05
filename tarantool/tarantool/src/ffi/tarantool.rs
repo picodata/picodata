@@ -836,6 +836,7 @@ extern "C" {
     pub fn box_iterator_free(iterator: *mut BoxIterator);
 }
 
+/// Analogue of tarantool's `box_tuple_t`
 #[cfg(not(feature = "picodata"))]
 #[repr(C)]
 pub struct BoxTuple {
@@ -987,6 +988,7 @@ extern "C" {
 // box_key_def_t
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Analogue of tarantool's `box_key_def_t`.
 #[repr(C)]
 pub struct BoxKeyDef {
     _unused: [u8; 0],
@@ -1049,6 +1051,101 @@ extern "C" {
     pub fn box_key_def_new(fields: *mut u32, types: *mut u32, part_count: u32) -> *mut BoxKeyDef;
     pub fn box_key_def_new_v2(parts: *mut box_key_part_def_t, part_count: u32) -> *mut BoxKeyDef;
     pub fn box_key_def_delete(key_def: *mut BoxKeyDef);
+
+    /// Check that tuple fields match with given key definition.
+    ///
+    /// Arguments:
+    /// `key_def`  Key definition.
+    /// `tuple`    Tuple to validate.
+    ///
+    /// Returns:
+    /// - `0`   The tuple is valid.
+    /// - `-1`  The tuple is invalid.
+    ///
+    /// In case of an invalid tuple set a diag and return -1.
+    /// See also [`box_error_last`]
+    pub fn box_key_def_validate_tuple(key_def: *mut BoxKeyDef, tuple: *mut BoxTuple) -> c_int;
+
+    /// Extract key from tuple by given key definition and return
+    /// buffer allocated on the box region with this key.
+    /// See also [`box_region_truncate`]
+    ///
+    /// This function has _O(n)_ complexity, where _n_ is the number of key
+    /// parts.
+    ///
+    /// Arguments:
+    /// `key_def`       Definition of key that need to extract.
+    /// `tuple`         Tuple from which need to extract key.
+    /// `multikey_idx`  Multikey index hint or `-1`.
+    /// `key_size_ptr`  Here will be size of extracted key.
+    ///
+    /// Returns:
+    /// - not `NULL`  Success.
+    /// - `NULL`      Memory allocation error.
+    ///
+    /// In case of an error set a diag and return `NULL`.
+    /// See also [`box_error_last`]
+    pub fn box_key_def_extract_key(
+        key_def: *mut BoxKeyDef,
+        tuple: *mut BoxTuple,
+        multikey_idx: c_int,
+        key_size_ptr: *mut u32,
+    ) -> *mut c_char;
+
+    /// Check a key against given key definition.
+    ///
+    /// Verifies key parts against given key_def's field types with
+    /// respect to nullability.
+    ///
+    /// A partial key (with less part than defined in @a key_def) is
+    /// verified by given key parts, the omitted tail is not verified
+    /// anyhow.
+    ///
+    /// Note: nil is accepted for nullable fields, but only for them.
+    ///
+    /// Arguments:
+    /// `key_def`       Key definition.
+    /// `key`           MessagePack'ed data for matching.
+    /// `key_size_ptr`  Here will be size of the validated key.
+    ///
+    /// Returns:
+    /// - `0`   The key is valid.
+    /// - `-1`  The key is invalid.
+    ///
+    /// In case of an invalid key set a diag and return -1.
+    /// See also [`box_error_last`]
+    pub fn box_key_def_validate_key(
+        key_def: *const BoxKeyDef,
+        key: *const c_char,
+        key_size_ptr: *mut u32,
+    ) -> c_int;
+
+    /// Check a full key against given key definition.
+    ///
+    /// Verifies key parts against given key_def's field types with
+    /// respect to nullability.
+    ///
+    /// Imposes the same parts count in @a key as in @a key_def.
+    /// Absence of trailing key parts fails the check.
+    ///
+    /// Note: nil is accepted for nullable fields, but only for them.
+    ///
+    /// Arguments:
+    /// `key_def`       Key definition.
+    /// `key`           MessagePack'ed data for matching.
+    /// `key_size_ptr`  Here will be size of the validated key.
+    ///
+    /// Returns:
+    /// - `0`   The key is valid.
+    /// - `-1`  The key is invalid.
+    ///
+    /// In case of an invalid key set a diag and return -1.
+    /// See also [`box_error_last`]
+    pub fn box_key_def_validate_full_key(
+        key_def: *const BoxKeyDef,
+        key: *const c_char,
+        key_size_ptr: *mut u32,
+    ) -> c_int;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
