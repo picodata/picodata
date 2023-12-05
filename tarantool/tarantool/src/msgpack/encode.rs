@@ -19,7 +19,9 @@ pub use tarantool_proc::{Decode, Encode};
 /// See [`Encode`].
 #[inline(always)]
 pub fn encode(value: &impl Encode) -> Result<Vec<u8>, EncodeError> {
-    let mut v = Vec::new();
+    // 128 is chosen pretty randomly, we might want to benchmark this to find
+    // better values
+    let mut v = Vec::with_capacity(128);
     value.encode(&mut v, &Context::DEFAULT)?;
     Ok(v)
 }
@@ -32,19 +34,25 @@ pub fn decode<T: Decode>(mut bytes: &[u8]) -> Result<T, DecodeError> {
     T::decode(&mut bytes, &Context::DEFAULT)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Context
+////////////////////////////////////////////////////////////////////////////////
+
 /// Additional parameters that influence (de)serializetion through
 /// [`Encode`] and ['Decode'].
 pub struct Context {
-    /// Defines if the struct itself controls its (de)serialization
-    /// or if it is overriden.
-    ///
-    /// See [`Encode`], ['Decode'].
-    pub style: EncodeStyle,
+    /// Defines the (de)serialization style for structs.
+    struct_style: StructStyle,
+    // TODO: parameter which allows encoding/decoding Vec<u8> as string and/or binary
 }
 
 impl Context {
+    /// A default instance of `Context`.
+    ///
+    /// This is also an enforcement of the fact that the default `Context` can
+    /// be constructed at compile time.
     pub const DEFAULT: Self = Self {
-        style: EncodeStyle::Default,
+        struct_style: StructStyle::Default,
     };
 }
 
@@ -56,28 +64,40 @@ impl Default for Context {
 }
 
 impl Context {
+    /// A builder-style method which sets `struct_style` and returns `self` by
+    /// value.
     #[inline(always)]
-    pub fn new(style: EncodeStyle) -> Self {
-        Self { style }
+    pub const fn with_struct_style(mut self, struct_style: StructStyle) -> Self {
+        self.struct_style = struct_style;
+        self
+    }
+
+    /// Returns the style of encoding for structs set by this context.
+    #[inline(always)]
+    pub fn struct_style(&self) -> StructStyle {
+        self.struct_style
     }
 }
 
-/// Defines if the struct itself controls its (de)serialization
-/// or if it is overriden.
+/// Defines the (de)serialization style for structs.
 ///
-/// See [`Encode`], ['Decode'].
+/// See [`Encode`], [`Decode`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EncodeStyle {
+pub enum StructStyle {
     /// Respects struct level attributes such as `as_map`.
     #[default]
     Default,
     /// Overrides struct level attributes such as `as_map`.
-    /// Forces the top level struct to be serialized as `MP_MAP`.
+    /// Forces the struct and all nested structs to be serialized as `MP_MAP`.
     ForceAsMap,
     /// Overrides struct level attributes such as `as_map`.
-    /// Forces the top level struct to be serialized as `MP_ARRAY`.
+    /// Forces the struct and all nested struct to be serialized as `MP_ARRAY`.
     ForceAsArray,
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Decode
+////////////////////////////////////////////////////////////////////////////////
 
 /// A general purpose trait for msgpack deserialization.
 /// Reads `self` from a reader supplied in `r`.
@@ -95,7 +115,7 @@ pub enum EncodeStyle {
 ///
 /// `context.style` let's you override `as_map` attribute if it is defined for a struct.
 /// does not override behavior of std types. To override supply `Encode::ForceAsMap` or
-/// `EncodeStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
+/// `StructStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
 ///
 /// It should replace `tuple::Decode` when it's ready.
 ///
@@ -117,6 +137,10 @@ pub enum EncodeStyle {
 pub trait Decode: Sized {
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError>;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// DecodeError
+////////////////////////////////////////////////////////////////////////////////
 
 // TODO: Provide a similar error type for encode
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,6 +167,7 @@ impl Display for DecodeError {
 impl std::error::Error for DecodeError {}
 
 impl DecodeError {
+    #[inline(always)]
     pub fn new<DecodedTy>(source: impl ToString) -> Self {
         Self {
             ty: std::any::type_name::<DecodedTy>(),
@@ -157,6 +182,10 @@ impl DecodeError {
         self
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// impl Decode
+////////////////////////////////////////////////////////////////////////////////
 
 impl Decode for () {
     #[inline(always)]
@@ -281,6 +310,10 @@ impl_simple_decode! {
 
 // TODO: Provide decode for tuples and serde json value
 
+////////////////////////////////////////////////////////////////////////////////
+// Encode
+////////////////////////////////////////////////////////////////////////////////
+
 /// A general purpose trait for msgpack serialization.
 /// Writes `self` to writer supplied in `w`.
 ///
@@ -297,7 +330,7 @@ impl_simple_decode! {
 ///
 /// `context.style` let's you override `as_map` attribute if it is defined for a struct.
 /// does not override behavior of std types. To override supply `Encode::ForceAsMap` or
-/// `EncodeStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
+/// `StructStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
 ///
 /// It should replace `tuple::Encode` when it's ready.
 ///
@@ -320,6 +353,10 @@ pub trait Encode {
     fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError>;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// EncodeError
+////////////////////////////////////////////////////////////////////////////////
+
 // `EncodeError` is just an IO error, but we can't get the underlying
 // IO error type from rmp, so we might just as well store it as a `String`
 // for simplicity.
@@ -340,6 +377,10 @@ impl From<std::io::Error> for EncodeError {
         Self(err.to_string())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// impl Encode
+////////////////////////////////////////////////////////////////////////////////
 
 impl Encode for () {
     #[inline(always)]
@@ -516,12 +557,15 @@ impl Encode for serde_json::Map<String, serde_json::Value> {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
+
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, io::Cursor};
-
-    use super::{decode, encode, Context, Decode, Encode, EncodeStyle};
+    use super::*;
     use rmp::decode::Bytes;
+    use std::{collections::BTreeMap, io::Cursor};
 
     #[track_caller]
     fn assert_map(bytes: &[u8]) {
@@ -586,25 +630,17 @@ mod tests {
         );
 
         // Override, encode as map
+        let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
         let mut bytes = vec![];
-        test_1
-            .encode(&mut bytes, &Context::new(EncodeStyle::ForceAsMap))
-            .unwrap();
+        test_1.encode(&mut bytes, &ctx_as_map).unwrap();
         assert_map(&bytes);
-        let test_1_dec: Test1 = Decode::decode(
-            &mut bytes.as_slice(),
-            &Context::new(EncodeStyle::ForceAsMap),
-        )
-        .unwrap();
+        let test_1_dec = Test1::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
         assert_eq!(test_1_dec, test_1);
 
         // Try decoding as a different struct
-        let res: Result<Test2, _> = Decode::decode(
-            &mut bytes.as_slice(),
-            &Context::new(EncodeStyle::ForceAsMap),
-        );
+        let e = Test2::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap_err();
         assert_eq!(
-            res.unwrap_err().to_string(),
+            e.to_string(),
             "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2: expected field not_b, got b"
         );
 
@@ -637,15 +673,11 @@ mod tests {
         // TODO: add negative tests for nested structs
 
         // Override, encode as array
+        let ctx_as_array = Context::default().with_struct_style(StructStyle::ForceAsArray);
         let mut bytes_named = vec![];
-        test.encode(&mut bytes_named, &Context::new(EncodeStyle::ForceAsArray))
-            .unwrap();
+        test.encode(&mut bytes_named, &ctx_as_array).unwrap();
         assert_array(&bytes_named);
-        let test_dec: Test = Decode::decode(
-            &mut bytes_named.as_slice(),
-            &Context::new(EncodeStyle::ForceAsArray),
-        )
-        .unwrap();
+        let test_dec = Test::decode(&mut bytes_named.as_slice(), &ctx_as_array).unwrap();
         assert_eq!(test_dec, test);
     }
 

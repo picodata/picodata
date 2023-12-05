@@ -104,10 +104,10 @@ mod msgpack {
                     let field_count = fields.named.len() as u32;
                     let fields = encode_named_fields(fields, tarantool_crate, true);
                     quote! {
-                        let as_map = match context.style {
-                            EncodeStyle::Default => #as_map,
-                            EncodeStyle::ForceAsMap => true,
-                            EncodeStyle::ForceAsArray => false,
+                        let as_map = match context.struct_style() {
+                            StructStyle::Default => #as_map,
+                            StructStyle::ForceAsMap => true,
+                            StructStyle::ForceAsArray => false,
                         };
                         if as_map {
                             #tarantool_crate::msgpack::rmp::encode::write_map_len(w, #field_count)?;
@@ -294,10 +294,10 @@ mod msgpack {
                 Fields::Named(ref fields) => {
                     let fields = decode_named_fields(fields, tarantool_crate, None);
                     quote! {
-                        let as_map = match context.style {
-                            EncodeStyle::Default => #as_map,
-                            EncodeStyle::ForceAsMap => true,
-                            EncodeStyle::ForceAsArray => false,
+                        let as_map = match context.struct_style() {
+                            StructStyle::Default => #as_map,
+                            StructStyle::ForceAsMap => true,
+                            StructStyle::ForceAsArray => false,
                         };
                         // TODO: Assert map and array len with number of struct fields
                         if as_map {
@@ -455,7 +455,7 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
             fn encode(&self, w: &mut impl ::std::io::Write, context: &#tarantool_crate::msgpack::Context)
                 -> Result<(), #tarantool_crate::msgpack::EncodeError>
             {
-                use #tarantool_crate::msgpack::EncodeStyle;
+                use #tarantool_crate::msgpack::StructStyle;
                 #encode_fields
                 Ok(())
             }
@@ -499,7 +499,7 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
             fn decode(r: &mut &[u8], context: &#tarantool_crate::msgpack::Context)
                 -> std::result::Result<Self, #tarantool_crate::msgpack::DecodeError>
             {
-                use #tarantool_crate::msgpack::EncodeStyle;
+                use #tarantool_crate::msgpack::StructStyle;
                 #encode_fields
             }
         }
