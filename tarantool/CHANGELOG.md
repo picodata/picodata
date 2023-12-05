@@ -103,6 +103,8 @@
   in some rare cases we may forbid you from creating a space with id 0x7fff_ffff.
 - `error::Error` enum now contains errors from `msgpack::encode` module in `MsgpackEncode`
   and `MsgpackDecode` variants correspondingly.
+- `error::Error` enum now contains `Other` variant which can contain an
+  arbitrary error value.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

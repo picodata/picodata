@@ -96,9 +96,22 @@ pub enum Error {
 
     #[error("msgpack decode error: {0}")]
     MsgpackDecode(#[from] crate::msgpack::DecodeError),
+
+    /// This should only be used if the error doesn't fall into one of the above
+    /// categories.
+    #[error("{0}")]
+    Other(Box<dyn std::error::Error>),
 }
 
 impl Error {
+    #[inline(always)]
+    pub fn other<E>(error: E) -> Self
+    where
+        E: Into<Box<dyn std::error::Error>>,
+    {
+        Self::Other(error.into())
+    }
+
     #[inline(always)]
     pub fn decode<T>(error: rmp_serde::decode::Error, data: Vec<u8>) -> Self {
         Error::Decode {
@@ -129,6 +142,7 @@ impl Error {
             Self::MetaNotFound => "MetaNotFound",
             Self::MsgpackEncode(_) => "MsgpackEncode",
             Self::MsgpackDecode(_) => "MsgpackDecode",
+            Self::Other(_) => "Other",
         }
     }
 }
