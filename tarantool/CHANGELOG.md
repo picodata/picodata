@@ -51,6 +51,8 @@
 - Fibers created with `fiber::start`, `fiber::defer` and/or `fiber::Builder` are
   now always marked as cancellable. On newer versions of tarantool fibers cannot
   be made non-cancellable, so we explicitly do the same for older versions.
+- `tarantool::{c_str, c_ptr}` macros now check at compile time if the provided
+  literal contains a nul byte, and therefore they aren't `unsafe` anymore.
 
 ### Fixed
 - `define_str_enum` will no longer produce warning "`&` without an explicit

@@ -4,13 +4,62 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr::NonNull;
 
+////////////////////////////////////////////////////////////////////////////////
+// c_str!
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns a [`std::ffi::CStr`] constructed from the provided literal with a
+/// nul byte appended to the end. Use this when you need a `&CStr` from a
+/// string literal.
+///
+/// # Example
+/// ```rust
+/// # use tarantool::c_str;
+///
+/// let c_str = c_str!("hello");
+/// assert_eq!(c_str.to_bytes(), b"hello");
+/// ```
+///
+/// This macro will also check at compile time if the string literal contains
+/// any interior nul bytes.
+/// ```compile_fail
+/// # use tarantool::c_str;
+/// let this_doesnt_compile = c_str!("interior\0nul\0byte");
+/// ```
 #[macro_export]
 macro_rules! c_str {
-    ($s:expr) => {
-        ::std::ffi::CStr::from_bytes_with_nul_unchecked(::std::concat!($s, "\0").as_bytes())
-    };
+    ($s:expr) => {{
+        #[allow(unused_unsafe)]
+        const RESULT: &'static ::std::ffi::CStr = unsafe {
+            ::std::ffi::CStr::from_bytes_with_nul_unchecked(::std::concat!($s, "\0").as_bytes())
+        };
+        RESULT
+    }};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// c_ptr!
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns a `*const std::ffi::c_char` constructed from the provided literal
+/// with a nul byte appended to the end. Use this to pass static c-strings when
+/// working with ffi.
+///
+/// # Example
+/// ```rust
+/// # use tarantool::c_ptr;
+/// extern "C" {
+///     fn strlen(s: *const std::ffi::c_char) -> usize;
+/// }
+///
+/// let count = unsafe { strlen(c_ptr!("foo bar")) };
+/// assert_eq!(count, 7);
+/// ```
+///
+/// Same as [`c_str!`], this macro will check at compile time if the string
+/// literal contains any interior nul bytes.
+///
+/// [`c_str!`]: crate::c_str
 #[macro_export]
 macro_rules! c_ptr {
     ($s:expr) => {
