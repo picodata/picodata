@@ -284,9 +284,9 @@ macro_rules! define_str_enum {
             fn encode(
                 &self,
                 w: &mut impl std::io::Write,
-                _context: &$crate::msgpack::Context,
+                context: &$crate::msgpack::Context,
             ) -> std::result::Result<(), $crate::msgpack::EncodeError> {
-                <&str as $crate::msgpack::Encode>::encode(&self.as_str(), w, &Default::default())
+                <&str as $crate::msgpack::Encode>::encode(&self.as_str(), w, context)
             }
         }
 
