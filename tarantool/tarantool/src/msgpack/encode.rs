@@ -1181,4 +1181,30 @@ mod tests {
             "failed decoding char: expected a msgpack string not longer than 4 characters, got length 5"
         );
     }
+
+    #[test]
+    #[rustfmt::skip]
+    fn encode_integer() {
+        assert_eq!(&encode(&i8::MAX).unwrap(), &b"\x7f"[..]);
+        assert_eq!(&encode(&(i8::MAX as i64)).unwrap(), &b"\x7f"[..]);
+        assert_eq!(&encode(&i16::MAX).unwrap(), &b"\xcd\x7f\xff"[..]);
+        assert_eq!(&encode(&i32::MAX).unwrap(), &b"\xce\x7f\xff\xff\xff"[..]);
+        assert_eq!(&encode(&i64::MAX).unwrap(), &b"\xcf\x7f\xff\xff\xff\xff\xff\xff\xff"[..]);
+
+        assert_eq!(&encode(&u8::MAX).unwrap(), &b"\xcc\xff"[..]);
+        assert_eq!(&encode(&(u8::MAX as i64)).unwrap(), &b"\xcc\xff"[..]);
+        assert_eq!(&encode(&u16::MAX).unwrap(), &b"\xcd\xff\xff"[..]);
+        assert_eq!(&encode(&u32::MAX).unwrap(), &b"\xce\xff\xff\xff\xff"[..]);
+        assert_eq!(&encode(&u64::MAX).unwrap(), &b"\xcf\xff\xff\xff\xff\xff\xff\xff\xff"[..]);
+
+        assert_eq!(decode::<i8>(b"\x7f").unwrap(), i8::MAX);
+        assert_eq!(decode::<i16>(b"\xcd\x7f\xff").unwrap(), i16::MAX);
+        assert_eq!(decode::<i32>(b"\xce\x7f\xff\xff\xff").unwrap(), i32::MAX);
+        assert_eq!(decode::<i64>(b"\xcf\x7f\xff\xff\xff\xff\xff\xff\xff").unwrap(), i64::MAX);
+
+        assert_eq!(decode::<u8>(b"\xcc\xff").unwrap(), u8::MAX);
+        assert_eq!(decode::<u16>(b"\xcd\xff\xff").unwrap(), u16::MAX);
+        assert_eq!(decode::<u32>(b"\xce\xff\xff\xff\xff").unwrap(), u32::MAX);
+        assert_eq!(decode::<u64>(b"\xcf\xff\xff\xff\xff\xff\xff\xff\xff").unwrap(), u64::MAX);
+    }
 }
