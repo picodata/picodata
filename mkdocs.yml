@@ -6,6 +6,10 @@ site_description: Picodata documentation site
 repo_url: https://git.picodata.io/picodata/picodata/docs
 edit_uri: -/blob/main/docs/
 
+# https://www.mkdocs.org/user-guide/configuration/#not_in_nav
+not_in_nav: |
+  /index.md
+
 nav:
   - Ознакомление с ПО Picodata:
     - overview/description.md
