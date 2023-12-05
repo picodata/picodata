@@ -48,6 +48,10 @@ pub struct Context {
     /// Defines the (de)serialization style for structs.
     struct_style: StructStyle,
     // TODO: parameter which allows encoding/decoding Vec<u8> as string and/or binary
+    // TODO: maybe we should allow empty input to be decoded as `Option::None`,
+    // but this should be configurable via context & not sure if this may break
+    // deserialization in some case, e.g. when doing `untagged` style decoding
+    // of enums.
 }
 
 impl Context {
@@ -219,6 +223,24 @@ where
     #[inline(always)]
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
         T::decode(r, context).map(std::rc::Rc::new)
+    }
+}
+
+impl<T> Decode for Option<T>
+where
+    T: Decode,
+{
+    #[inline(always)]
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        // In case input is empty, don't return `None` but call the T::decode.
+        // This will allow some users to handle empty input the way they want,
+        // if they want to.
+        if !r.is_empty() && r[0] == super::MARKER_NULL {
+            rmp::decode::read_nil(r).map_err(DecodeError::new::<Self>)?;
+            Ok(None)
+        } else {
+            T::decode(r, context).map(Some)
+        }
     }
 }
 
@@ -521,6 +543,21 @@ where
     #[inline(always)]
     fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
         (**self).encode(w, context)
+    }
+}
+
+impl<T> Encode for Option<T>
+where
+    T: Encode,
+{
+    #[inline(always)]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        if let Some(v) = self {
+            v.encode(w, context)
+        } else {
+            rmp::encode::write_nil(w)?;
+            Ok(())
+        }
     }
 }
 

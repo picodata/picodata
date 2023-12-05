@@ -8,6 +8,9 @@ pub mod encode;
 pub use encode::*;
 pub use rmp;
 
+/// Msgpack encoding of `null`.
+pub const MARKER_NULL: u8 = 0xc0;
+
 macro_rules! read_be {
     ($r:expr, $ty:ty) => {{
         let mut buf = [0_u8; std::mem::size_of::<$ty>()];
