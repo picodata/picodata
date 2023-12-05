@@ -343,13 +343,26 @@ where
 
 impl Decode for char {
     #[inline(always)]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
-        let s = <String as Decode>::decode(r, context)?;
-        if s.len() != 1 {
-            Err(DecodeError::new::<char>(format!(
-                "expected string length to be 1, got {}",
-                s.len()
-            )))
+    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+        let n = rmp::decode::read_str_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        if n == 0 {
+            return Err(DecodeError::new::<char>(
+                "expected a msgpack non-empty string, got string length 0",
+            ));
+        }
+        if n > 4 {
+            return Err(DecodeError::new::<char>(format!(
+                "expected a msgpack string not longer than 4 characters, got length {n}"
+            )));
+        }
+        let mut buf = [0; 4];
+        let buf = &mut buf[0..n];
+        r.read_exact(buf).map_err(DecodeError::new::<Self>)?;
+        let s = std::str::from_utf8(buf).map_err(DecodeError::new::<Self>)?;
+        if s.chars().count() != 1 {
+            return Err(DecodeError::new::<char>(format!(
+                "expected a single unicode character, got sequence of length {n}"
+            )));
         } else {
             Ok(s.chars()
                 .next()
@@ -621,8 +634,11 @@ where
 
 impl Encode for char {
     #[inline(always)]
-    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
-        self.to_string().encode(w, context)
+    fn encode(&self, w: &mut impl Write, _context: &Context) -> Result<(), EncodeError> {
+        let mut buf = [0; 4];
+        let s = self.encode_utf8(&mut buf);
+        rmp::encode::write_str(w, s)?;
+        Ok(())
     }
 }
 
@@ -1103,8 +1119,66 @@ mod tests {
     #[test]
     fn encode_str() {
         let original = "hello";
+
         let bytes = encode(&original).unwrap();
         let decoded: String = decode(&bytes).unwrap();
         assert_eq!(original, decoded);
+
+        let bytes = encode(&Cow::Borrowed(original)).unwrap();
+        assert_eq!(original, decode::<String>(&bytes).unwrap());
+
+        let bytes = encode(&String::from(original)).unwrap();
+        assert_eq!(original, decode::<String>(&bytes).unwrap());
+
+        let bytes = encode(&Cow::<str>::Owned(original.to_owned())).unwrap();
+        assert_eq!(original, decode::<String>(&bytes).unwrap());
+    }
+
+    #[test]
+    fn encode_char() {
+        let bytes = encode(&'a').unwrap();
+        assert_eq!(bytes, b"\xa1a");
+        assert_eq!('a', decode::<char>(&bytes).unwrap());
+        assert_eq!("a", decode::<String>(&bytes).unwrap());
+
+        let bytes = encode(&'я').unwrap();
+        assert_eq!(bytes, b"\xa2\xd1\x8f");
+        assert_eq!('я', decode::<char>(&bytes).unwrap());
+        assert_eq!("я", decode::<String>(&bytes).unwrap());
+
+        let bytes = encode(&'☺').unwrap();
+        assert_eq!(bytes, b"\xa3\xe2\x98\xba");
+        assert_eq!('☺', decode::<char>(&bytes).unwrap());
+        assert_eq!("☺", decode::<String>(&bytes).unwrap());
+
+        let e = decode::<char>(b"").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed decoding char: failed to read MessagePack marker"
+        );
+
+        let e = decode::<char>(b"\xa0").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed decoding char: expected a msgpack non-empty string, got string length 0"
+        );
+
+        let e = decode::<char>(b"\xa1\xff").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed decoding char: invalid utf-8 sequence of 1 bytes from index 0"
+        );
+
+        let e = decode::<char>(b"\xa2hi").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed decoding char: expected a single unicode character, got sequence of length 2"
+        );
+
+        let e = decode::<char>(b"\xa5aaaaa").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "failed decoding char: expected a msgpack string not longer than 4 characters, got length 5"
+        );
     }
 }
