@@ -101,3 +101,10 @@ markdown_extensions:
 validation:
   links:
     unrecognized_links: warn
+
+# Хуки
+# https://www.mkdocs.org/user-guide/configuration/#hooks
+hooks:
+
+  ## Фильтрует записи плагина mkdocs-plugin-inline-svg в логе MkDocs
+  - filter_plugin_records.py
