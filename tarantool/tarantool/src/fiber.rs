@@ -47,6 +47,15 @@ pub mod mutex;
 /// Type alias for a fiber id.
 pub type FiberId = u64;
 
+/// A value of type `FiberId` which cannot be a valid fiber id.
+pub const FIBER_ID_INVALID: FiberId = 0;
+
+/// Id of the main fiber, i.e. the first fiber created on the tarantool cord.
+pub const FIBER_ID_SCHED: FiberId = 1;
+
+/// End of the fiber id range reserved for internal use by tarantool.
+pub const FIBER_ID_MAX_RESERVED: FiberId = 100;
+
 /// *WARNING*: This api is deprecated due to a number of issues including safety
 /// related ones (See doc-comments in [`Fiber::cancel`] for details).
 /// Use [`fiber::start`](start), [`fiber::defer`](defer) and/or
