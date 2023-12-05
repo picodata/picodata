@@ -297,6 +297,50 @@ where
     }
 }
 
+impl<T, const N: usize> Decode for [T; N]
+where
+    T: Decode,
+{
+    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        if n != N {
+            return Err(DecodeError::new::<Self>(format!(
+                "expected array count {N}, got {n}"
+            )));
+        }
+
+        let mut res = std::mem::MaybeUninit::uninit();
+        let ptr = &mut res as *mut _ as *mut [T; N] as *mut T;
+        let mut num_assigned = 0;
+
+        for i in 0..N {
+            match T::decode(r, context) {
+                Ok(v) => {
+                    // SAFETY: safe, because MaybeUninit<[T; N]> has the same
+                    // memory representation as [T; N], and we're writing into
+                    // the array's elements.
+                    unsafe { std::ptr::write(ptr.add(i), v) }
+                    num_assigned += 1;
+                }
+                Err(e) => {
+                    for i in 0..num_assigned {
+                        // SAFETY: safe, because we assigned all of these elements
+                        // a valid value of type T.
+                        unsafe { std::ptr::drop_in_place(ptr.add(i)) }
+                    }
+
+                    return Err(DecodeError::new::<Self>(e).with_part(format!("element {i}")));
+                }
+            }
+        }
+
+        debug_assert_eq!(num_assigned, N);
+
+        // SAFETY: safe, we've assigned every single element.
+        return Ok(unsafe { res.assume_init() });
+    }
+}
+
 impl<'a, T> Decode for Cow<'a, T>
 where
     T: Decode + ToOwned + ?Sized,
@@ -709,27 +753,18 @@ impl_simple_encode! {
     (bool, write_bool, bool)
 }
 
-macro_rules! _impl_array_encode {
-    ($($n:literal)+) => {
-        $(
-            #[allow(clippy::zero_prefixed_literal)]
-            impl<T> Encode for [T; $n] where T: Encode {
-                #[inline]
-                fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
-                    rmp::encode::write_array_len(w, $n)?;
-                    for item in self {
-                        item.encode(w, context)?;
-                    }
-                    Ok(())
-                }
-            }
-        )+
+impl<T, const N: usize> Encode for [T; N]
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode(&self, w: &mut impl Write, context: &Context) -> Result<(), EncodeError> {
+        rmp::encode::write_array_len(w, N as _)?;
+        for item in self {
+            item.encode(w, context)?;
+        }
+        Ok(())
     }
-}
-
-_impl_array_encode! {
-    00 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15
-    16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32
 }
 
 macro_rules! impl_tuple_encode {
@@ -1103,10 +1138,59 @@ mod tests {
         let decoded: Vec<u32> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
-        let original = vec![(), (), (), (), ()];
+        let original = vec![1, 2, 3, 4, 5];
         let bytes = encode(&original).unwrap();
-        let decoded: Vec<()> = decode(bytes.as_slice()).unwrap();
+        let decoded: Vec<i32> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
+
+        let original = Vec::<i32>::new();
+        let bytes = encode(&original).unwrap();
+        let decoded: Vec<i32> = decode(bytes.as_slice()).unwrap();
+        assert_eq!(&original, &decoded);
+    }
+
+    #[test]
+    fn encode_array() {
+        let original = [1u32];
+        let bytes = encode(&original).unwrap();
+        let decoded: [u32; 1] = decode(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let original = [1, 2, 3, 4, 5];
+        let bytes = encode(&original).unwrap();
+        let decoded: [u32; 5] = decode(bytes.as_slice()).unwrap();
+        assert_eq!(original, decoded);
+
+        let original = [0_u32; 0];
+        let bytes = encode(&original).unwrap();
+        let decoded: [u32; 0] = decode(bytes.as_slice()).unwrap();
+        assert_eq!(&original, &decoded);
+
+        static mut DROP_COUNT: usize = 0;
+
+        #[derive(Decode, Debug)]
+        #[encode(tarantool = "crate")]
+        struct DropChecker;
+
+        impl Drop for DropChecker {
+            fn drop(&mut self) {
+                unsafe { DROP_COUNT += 1 }
+            }
+        }
+
+        // Decoding a msgpack array [nil, nil, nil] fails early because count doesn't match,
+        // and we don't initialize any elements, hence DROP_COUNT == 0.
+        let err = decode::<[DropChecker; 4]>(b"\x93\xc0\xc0\xc0").unwrap_err();
+        assert_eq!(unsafe { DROP_COUNT }, 0);
+
+        assert_eq!(err.to_string(), "failed decoding [tarantool::msgpack::encode::tests::encode_array::DropChecker; 4]: expected array count 4, got 3");
+
+        // Decoding a msgpack array [nil, nil, 1, nil] fails, after initializing 2 values,
+        // so we automatically drop the 2 values, hence the DROP_COUNT == 2.
+        let err = decode::<[DropChecker; 4]>(b"\x94\xc0\xc0\x01\xc0").unwrap_err();
+        assert_eq!(unsafe { DROP_COUNT }, 2);
+
+        assert_eq!(err.to_string(), "failed decoding [tarantool::msgpack::encode::tests::encode_array::DropChecker; 4](element 2): failed decoding (): the type decoded isn't match with the expected one");
     }
 
     #[test]
