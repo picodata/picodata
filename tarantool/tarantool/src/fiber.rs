@@ -16,7 +16,6 @@ use crate::ffi::tarantool::fiber_sleep;
 use crate::ffi::{lua, tarantool as ffi};
 use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
-use crate::Result;
 use crate::{c_ptr, set_error};
 use ::va_list::VaList;
 pub use channel::Channel;
@@ -399,7 +398,7 @@ impl<F> Builder<F> {
     ///
     /// [`Error::Tarantool`]: crate::error::Error::Tarantool
     #[inline(always)]
-    pub fn stack_size(mut self, stack_size: usize) -> Result<Self> {
+    pub fn stack_size(mut self, stack_size: usize) -> crate::Result<Self> {
         let mut attr = FiberAttr::new();
         attr.set_stack_size(stack_size)?;
         self.attr = Some(attr);
@@ -420,7 +419,7 @@ where
     ///
     /// See the [`start`] free function for more details.
     #[inline(always)]
-    pub fn start(self) -> Result<JoinHandle<'f, T>> {
+    pub fn start(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
         Fyber::spawn_and_yield(name, f, attr.as_ref())
@@ -438,7 +437,7 @@ where
     ///
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
-    pub fn defer(self) -> Result<JoinHandle<'f, T>> {
+    pub fn defer(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
         // SAFETY this is safe as long as we only call this from the tx thread.
@@ -461,7 +460,7 @@ where
     ///
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
-    pub fn defer_ffi(self) -> Result<JoinHandle<'f, T>> {
+    pub fn defer_ffi(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
         Fyber::spawn_deferred(name, f, attr.as_ref())
@@ -475,7 +474,7 @@ where
     ///
     /// Consider using [`Self::defer`] instead.
     #[inline(always)]
-    pub fn defer_lua(self) -> Result<JoinHandle<'f, T>> {
+    pub fn defer_lua(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
         Fyber::spawn_lua(name, f, attr.as_ref())
@@ -509,7 +508,7 @@ where
         name: String,
         f: F,
         attr: Option<&FiberAttr>,
-    ) -> Result<JoinHandle<'f, T>> {
+    ) -> crate::Result<JoinHandle<'f, T>> {
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
@@ -575,7 +574,7 @@ where
         name: String,
         f: F,
         attr: Option<&FiberAttr>,
-    ) -> Result<JoinHandle<'f, T>> {
+    ) -> crate::Result<JoinHandle<'f, T>> {
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
@@ -649,7 +648,7 @@ where
 {
     /// Creates a joinable **LUA** fiber and schedules it for execution at some
     /// point later. Does **NOT** yield.
-    pub fn spawn_lua(name: String, f: F, _attr: Option<&FiberAttr>) -> Result<JoinHandle<'f, T>> {
+    pub fn spawn_lua(name: String, f: F, _attr: Option<&FiberAttr>) -> crate::Result<JoinHandle<'f, T>> {
         unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
@@ -744,7 +743,7 @@ mod impl_details {
         lptr: *mut lua::lua_State,
         nargs: i32,
         nresults: i32,
-    ) -> Result<()> {
+    ) -> crate::Result<()> {
         match lua::lua_pcall(lptr, nargs, nresults, 0) {
             lua::LUA_OK => Ok(()),
             lua::LUA_ERRRUN => {
@@ -756,7 +755,7 @@ mod impl_details {
         }
     }
 
-    pub(super) unsafe fn lua_fiber_join(f_id: FiberId) -> Result<PushGuard<StaticLua>> {
+    pub(super) unsafe fn lua_fiber_join(f_id: FiberId) -> crate::Result<PushGuard<StaticLua>> {
         let lua = crate::global_lua();
         let l = lua.as_lua();
         let top_svp = lua::lua_gettop(l);
@@ -784,24 +783,6 @@ mod impl_details {
 
         Ok(guard)
     }
-
-    // pub(super) unsafe fn lua_fiber_set_joinable_and_unref(f_ref: i32) -> Result<()> {
-    //     let mut l = Lua::from_existing_state(ffi::luaT_state(), false);
-    //     let lptr = l.as_mut_lua().state_ptr();
-    //     let top_before = lua::lua_gettop(lptr);
-
-    //     lua::lua_rawgeti(lptr, lua::LUA_REGISTRYINDEX, f_ref);
-    //     lua::lua_getfield(lptr, -1, c_ptr!("set_joinable"));
-    //     lua::lua_pushvalue(lptr, -2);
-    //     lua::lua_pushboolean(lptr, false as _);
-
-    //     // fiber instance can now be garbage collected by lua
-    //     lua::luaL_unref(lptr, lua::LUA_REGISTRYINDEX, f_ref);
-
-    //     let res = guarded_pcall(lptr, 2, 0);
-    //     lua::lua_settop(lptr, top_before);
-    //     res
-    // }
 
     /// # Safety
     /// **WARNING** this function is super unsafe in case `T` is not 'static.
@@ -927,7 +908,7 @@ impl<'f, T> JoinHandle<'f, T> {
     ///
     /// # Panicking
     /// Will panic if the underlying fiber function has a non ZST return type.
-    pub fn detach_checked(mut self) -> std::result::Result<FiberId, (Self, DetachError)> {
+    pub fn detach_checked(mut self) -> Result<FiberId, (Self, DetachError)> {
         if needs_returning::<T>() {
             // When the fiber function returns, it's result if any will
             // be written into the result cell, which is owned by the
@@ -1006,7 +987,7 @@ impl<'f, T> JoinHandle<'f, T> {
     /// don't support getting fiber id (i.e. [`has_fiber_id`] returns `false`).
     /// On newer versions you should instead always use [`Self::detach_checked`]
     /// (or [`Self::detach`] if you ~~like living dangerously~~ know what you're doing).
-    pub fn detach_and_forget(mut self) -> std::result::Result<(), Self> {
+    pub fn detach_and_forget(mut self) -> Result<(), Self> {
         if needs_returning::<T>() {
             // When the fiber function returns, it's result if any will
             // be written into the result cell, which is owned by the
@@ -1532,7 +1513,7 @@ pub fn fiber_yield() {
 /// Works likewise [`fiber::sleep`]`(Duration::ZERO)` but return error if fiber was canceled by another routine.
 ///
 /// [`fiber::sleep`]: crate::fiber::sleep
-pub fn r#yield() -> Result<()> {
+pub fn r#yield() -> crate::Result<()> {
     unsafe { fiber_sleep(0f64) };
     if is_cancelled() {
         set_error!(TarantoolErrorCode::ProcLua, "fiber is cancelled");
@@ -1781,7 +1762,7 @@ impl FiberAttr {
     ///
     /// - `stack_size` - stack size for new fibers
     #[inline(always)]
-    pub fn set_stack_size(&mut self, stack_size: usize) -> Result<()> {
+    pub fn set_stack_size(&mut self, stack_size: usize) -> crate::Result<()> {
         if unsafe { ffi::fiber_attr_setstacksize(self.inner, stack_size) } < 0 {
             Err(TarantoolError::last().into())
         } else {
