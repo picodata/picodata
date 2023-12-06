@@ -5,7 +5,7 @@ from tarantool.connection import Connection  # type: ignore
 
 VALID_PASSWORD = "long enough"
 PASSWORD_MIN_LENGTH_KEY = "password_min_length"
-MAX_LOGIN_ATTEMPTS = 5
+MAX_LOGIN_ATTEMPTS = 4
 
 
 def expected_min_password_violation_error(min_length: int):

@@ -1201,7 +1201,7 @@ pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
 pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
 pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
 pub const DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT: f64 = (24 * 3600) as _;
-pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 5;
+pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 4;
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
