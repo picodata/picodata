@@ -293,10 +293,10 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
         // These two must be linked as positional arguments, because they define
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
-        let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-        let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
-        rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
-        rustc::link_arg(format!("{lib_dir}/libunwind.a"));
+        // let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+        // let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
+        // rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
+        // rustc::link_arg(format!("{lib_dir}/libunwind.a"));
     }
 
     rustc::link_arg("-lc");
@@ -310,7 +310,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_dynamic("icuuc");
 
     /* linked with curl on cmake stage */
-    // rustc::link_lib_dynamic("z");
+    rustc::link_lib_dynamic("z");
 
     rustc::link_lib_dynamic("curl");
 
