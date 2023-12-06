@@ -122,6 +122,11 @@ struct AuditSerializer {
 }
 
 impl slog::Serializer for AuditSerializer {
+    /// Don't print `None` values at all.
+    fn emit_none(&mut self, _key: slog::Key) -> slog::Result {
+        Ok(())
+    }
+
     fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
         // TODO: optimize excessive string allocations here and below.
         // TODO: make sure we're not trying to overwrite a value here (via assert).
