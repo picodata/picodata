@@ -51,8 +51,6 @@ theme:
   favicon: assets/favicon.png
   language: ru
   features:
-    - navigation.indexes
-    - navigation.path
     - toc.follow
     - content.code.copy
     - content.action.edit
@@ -93,10 +91,6 @@ plugins:
 
 markdown_extensions:
   - attr_list
-  - md_in_html
-  - meta
-  - toc:
-      permalink: False
 
 validation:
   links:
