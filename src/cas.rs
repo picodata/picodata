@@ -268,7 +268,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     // Note: audit log record is automatically emmitted in case there is an error,
     // because it is hooked into AccessDenied error creation (on_access_denied) trigger
-    access_control::access_check_op(&req.op, req.as_user)?;
+    access_control::access_check_op(storage, &req.op, req.as_user)?;
 
     if let Op::Dml(dml) = &req.op {
         // Check if the requested dml is applicable to the local storage.

@@ -991,5 +991,68 @@ def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     assert new_index == index
 
 
+# it's part of https://git.picodata.io/picodata/picodata/picodata/-/issues/421
+# https://git.picodata.io/picodata/tarantool/-/blob/82123356764155d1f4b294c0f2b96d919c2a8ec7/test/box/role.test.lua#L34
+def test_circular_grants_for_role(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    i1.sql("CREATE ROLE Grandfather")
+
+    i1.sql("CREATE ROLE Father")
+
+    i1.sql("CREATE ROLE Son")
+
+    i1.sql("CREATE ROLE Daughter")
+
+    i1.sql("GRANT Father to Grandfather")
+
+    i1.sql("GRANT Son to Father")
+
+    i1.sql("GRANT Daughter to Father")
+
+    # Graph of grants isn't tree
+    i1.sql("GRANT Son to Daughter")
+
+    # At this point graph of grants looks like:
+    #               Grandfather
+    #              /
+    #             /
+    #            /--->   Father
+    #                /           \
+    #               /             \
+    #              /               \
+    #             /                 \
+    #            /                   \
+    #           /                     \
+    #          /->  Son <-- Daugther <-\
+
+    def throws_on_grant(grantee, granted):
+        with pytest.raises(
+            ReturnError,
+            match=f"Granting role {granted.upper()} to role {grantee.upper()} would create a loop",
+        ):
+            i1.sql(f"GRANT {granted} to {grantee}")
+
+    # Following grants creating a loop
+    throws_on_grant("Son", "Grandfather")
+    throws_on_grant("Son", "Father")
+    throws_on_grant("Son", "Daughter")
+    throws_on_grant("Daughter", "Grandfather")
+    throws_on_grant("Daughter", "Father")
+    throws_on_grant("Father", "Grandfather")
+
+    # Giving user nested roles is allowed
+    i1.sql(f"CREATE USER Dave WITH PASSWORD '{VALID_PASSWORD}'")
+
+    i1.sql("GRANT Grandfather to Dave")
+
+    i1.sql("GRANT Father to Dave")
+
+    i1.sql("GRANT Son to Dave")
+
+    # Granting role to itself isn't allowed
+    throws_on_grant("Son", "Son")
+
+
 # TODO: test acl get denied when there's an unfinished ddl
 # TODO: check various retryable cas outcomes when doing schema change requests

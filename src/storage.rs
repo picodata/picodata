@@ -1420,8 +1420,8 @@ impl ToEntryIter for Replicasets {
     type Entry = Replicaset;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -1489,8 +1489,8 @@ impl ToEntryIter for PeerAddresses {
     type Entry = traft::PeerAddress;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -1630,8 +1630,8 @@ impl ToEntryIter for Instances {
     type Entry = Instance;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -1675,10 +1675,10 @@ pub trait ToEntryIter {
     /// Target type for entry deserialization.
     type Entry;
 
-    fn index_iter(&self) -> Result<IndexIterator>;
+    fn index_iter(&self) -> tarantool::Result<IndexIterator>;
 
     #[inline(always)]
-    fn iter(&self) -> Result<EntryIter<Self::Entry>> {
+    fn iter(&self) -> tarantool::Result<EntryIter<Self::Entry>> {
         Ok(EntryIter::new(self.index_iter()?))
     }
 }
@@ -1902,8 +1902,8 @@ impl ToEntryIter for Tables {
     type Entry = TableDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -1996,8 +1996,8 @@ impl ToEntryIter for Indexes {
     type Entry = IndexDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -2281,8 +2281,8 @@ impl ToEntryIter for Users {
     type Entry = UserDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -2363,8 +2363,8 @@ impl ToEntryIter for Roles {
     type Entry = RoleDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -2518,8 +2518,8 @@ impl ToEntryIter for Privileges {
     type Entry = PrivilegeDef;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
@@ -2562,8 +2562,8 @@ impl ToEntryIter for Tiers {
     type Entry = Tier;
 
     #[inline(always)]
-    fn index_iter(&self) -> Result<IndexIterator> {
-        Ok(self.space.select(IteratorType::All, &())?)
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
     }
 }
 
