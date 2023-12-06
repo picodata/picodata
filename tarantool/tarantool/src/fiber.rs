@@ -10,6 +10,26 @@
 //! - [Threads, fibers and yields](https://www.tarantool.io/en/doc/latest/book/box/atomic/#threads-fibers-and-yields)
 //! - [Lua reference: Module fiber](https://www.tarantool.io/en/doc/latest/reference/reference_lua/fiber/)
 //! - [C API reference: Module fiber](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/fiber/)
+use crate::error::{TarantoolError, TarantoolErrorCode};
+use crate::ffi::has_fiber_id;
+use crate::ffi::tarantool::fiber_sleep;
+use crate::ffi::{lua, tarantool as ffi};
+use crate::time::Instant;
+use crate::tlua::{self as tlua, AsLua};
+use crate::Result;
+use crate::{c_ptr, set_error};
+use ::va_list::VaList;
+pub use channel::Channel;
+pub use channel::RecvError;
+pub use channel::RecvTimeout;
+pub use channel::SendError;
+pub use channel::SendTimeout;
+pub use channel::TryRecvError;
+pub use channel::TrySendError;
+pub use csw::check_yield;
+pub use csw::YieldResult;
+pub use mutex::Mutex;
+pub use r#async::block_on;
 use std::cell::UnsafeCell;
 use std::ffi::CString;
 use std::future::Future;
@@ -17,34 +37,12 @@ use std::marker::PhantomData;
 use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
-
-use crate::time::Instant;
-use crate::tlua::{self as tlua, AsLua};
-
-use ::va_list::VaList;
 use tlua::unwrap_or;
-
-use crate::error::{TarantoolError, TarantoolErrorCode};
-use crate::ffi::has_fiber_id;
-use crate::ffi::{lua, tarantool as ffi};
-use crate::Result;
-use crate::{c_ptr, set_error};
 
 pub mod r#async;
 pub mod channel;
-
-pub use channel::{
-    Channel, RecvError, RecvTimeout, SendError, SendTimeout, TryRecvError, TrySendError,
-};
-
-pub mod mutex;
-use crate::ffi::tarantool::fiber_sleep;
-pub use mutex::Mutex;
-pub use r#async::block_on;
-
 mod csw;
-pub use csw::check_yield;
-pub use csw::YieldResult;
+pub mod mutex;
 
 /// Type alias for a fiber id.
 pub type FiberId = u64;
