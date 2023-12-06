@@ -1,9 +1,12 @@
+#![allow(unknown_lints)]
 #![allow(clippy::let_and_return)]
 #![allow(clippy::approx_constant)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::redundant_closure_call)]
 #![allow(clippy::len_without_is_empty)]
 #![allow(clippy::unnecessary_cast)]
+#![allow(clippy::needless_late_init)]
+#![allow(rustdoc::redundant_explicit_links)]
 //! Tarantool C API bindings for Rust.
 //! This library contains the following Tarantool API's:
 //!

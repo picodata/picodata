@@ -411,13 +411,16 @@ where
     F: FnOnce() -> T + 'f,
     T: 'f,
 {
-    /// Spawns a new fiber by taking ownership of the `Builder`, and returns a
-    /// [`Result`] to its [`JoinHandle`].
+    /// Spawns a new joinable fiber with the given configuration.
+    ///
+    /// Returns an error if spawning the fiber failed.
     ///
     /// The current fiber performs a **yield** and the execution is transfered
     /// to the new fiber immediately.
     ///
-    /// See the [`start`] free function for more details.
+    /// # Panicking
+    /// If [`JoinHandle::join`] is not called on the join handle, a panic will
+    /// happen when the join handle is dropped.
     #[inline(always)]
     pub fn start(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
@@ -425,15 +428,16 @@ where
         Fyber::spawn_and_yield(name, f, attr.as_ref())
     }
 
-    /// Spawns a new deferred fiber by taking ownership of the `Builder`, and
-    /// returns a [`Result`] to its [`JoinHandle`].
+    /// Spawns a new deferred joinable fiber with the given configuration.
     ///
     /// **NOTE:** On older versions of tarantool this will create a lua fiber
     /// which is less efficient. You can use [`ffi::has_fiber_set_ctx`]
     /// to check if your version of tarantool has api needed for this function
     /// to work efficiently.
     ///
-    /// See the [`defer`] free function for more details.
+    /// # Panicking
+    /// If [`JoinHandle::join`] is not called on the join handle, a panic will
+    /// happen when the join handle is dropped.
     ///
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
@@ -448,8 +452,7 @@ where
         }
     }
 
-    /// Spawns a new deferred fiber by taking ownership of the `Builder`, and
-    /// returns a [`Result`] to its [`JoinHandle`].
+    /// Spawns a new joinable deferred fiber with the given configuration.
     ///
     /// # Panicking
     /// This may panic on older version of tarantool. You can use
@@ -466,8 +469,8 @@ where
         Fyber::spawn_deferred(name, f, attr.as_ref())
     }
 
-    /// Spawns a new deferred lua fiber by taking ownership of the `Builder`,
-    /// and returns a [`Result`] to its [`JoinHandle`].
+    /// Spawns a new joinable deferred fiber with the given configuration using
+    /// the lua implementation.
     ///
     /// This is legacy api and you probably don't want to use it. This mainly
     /// exists for testing.
@@ -839,6 +842,8 @@ pub struct NoFunc;
 /// caught. Note also that panics within tarantool are in general not recoverable.
 #[derive(PartialEq, Eq, Hash)]
 pub struct JoinHandle<'f, T> {
+    /// It's wrapped in a `Option`, because we drop the inner part when joining
+    /// the fiber, and if join wasn't called, we panic in drop.
     inner: Option<JoinHandleImpl<T>>,
     marker: PhantomData<&'f ()>,
 }
@@ -860,10 +865,15 @@ pub type LuaUnitJoinHandle<'f> = JoinHandle<'f, ()>;
 
 #[derive(Debug)]
 enum JoinHandleImpl<T> {
+    /// Implementation based on the ffi api.
     Ffi {
         fiber: NonNull<ffi::Fiber>,
         result_cell: Option<FiberResultCell<T>>,
     },
+    /// Legacy lua implementation, which was added, because on older versions of
+    /// tarantool there was no way to spawn a fiber from a rust closure without
+    /// yielding execution to it.
+    #[rustfmt::skip] // what a great tool
     Lua {
         fiber_id: FiberId,
     },
@@ -1082,6 +1092,9 @@ impl<'f, T> JoinHandle<'f, T> {
 
     /// Returns the underlying fiber id.
     ///
+    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
+    /// [`exists`], [`csw_of`], etc.
+    ///
     /// # Panicking
     /// This will panic if the current tarantool executable doesn't support the
     /// required api (i.e. [`has_fiber_id`] returns `false`).
@@ -1095,6 +1108,9 @@ impl<'f, T> JoinHandle<'f, T> {
     /// Returns the underlying fiber id or `None` if the current tarantool
     /// executable doesn't support the required api
     /// (i.e. [`has_fiber_id`] returns `false`).
+    ///
+    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
+    /// [`exists`], [`csw_of`], etc.
     pub fn id_checked(&self) -> Option<FiberId> {
         match self.inner {
             None => {
@@ -1107,7 +1123,10 @@ impl<'f, T> JoinHandle<'f, T> {
                     // the current version of tarantool.
                     return None;
                 }
-                // SAFETY: safe as long as the fiber pointer is valid.
+                // SAFETY: always safe, because fiber pointer always points at
+                // a valid fiber struct. And because at this point the fiber is
+                // guaranteed to be joinable and not yet joined, tarantool
+                // hasn't recycled it, hence the id is also valid.
                 let res = unsafe { ffi::fiber_id(fiber.as_ptr()) };
                 return Some(res);
             }
@@ -1129,8 +1148,6 @@ impl<'f, T> JoinHandle<'f, T> {
                 unreachable!("it has either been moved into JoinHandle::join, or been dropped")
             }
             Some(JoinHandleImpl::Ffi { fiber, .. }) => {
-                // SAFETY: safe as long as we only call this from the tx thread.
-                //
                 // NOTE: if the fiber was non-joinable and has already finished
                 // execution tarantool may have recycled it and now the pointer
                 // may refer to a completely unrelated fiber, which we will now
@@ -1160,8 +1177,6 @@ impl<'f, T> JoinHandle<'f, T> {
                 unreachable!("it has either been moved into JoinHandle::join, or been dropped")
             }
             Some(JoinHandleImpl::Ffi { fiber, .. }) => {
-                // SAFETY: safe as long as we only call this from the tx thread.
-                //
                 // NOTE: if the fiber was non-joinable and has already finished
                 // execution tarantool may have recycled it and now the pointer
                 // may refer to a completely unrelated fiber, which we will now
@@ -1251,10 +1266,12 @@ impl<T> ::std::hash::Hash for JoinHandleImpl<T> {
 /// Creates a new fiber and **yields** execution to it immediately, returning a
 /// [`JoinHandle`] for the new fiber.
 ///
-/// The join handle will implicitly *detach* the child fiber upon being
-/// dropped. In this case, the child fiber may outlive the parent. Additionally,
-/// the join handle provides a [`JoinHandle::join`] method that can be used to
-/// join the child fiber and acquire the result value of the fiber function.
+/// The current fiber performs a **yield** and the execution is transfered
+/// to the new fiber immediately.
+///
+/// # Panicking
+/// If [`JoinHandle::join`] is not called on the join handle, a panic will
+/// happen when the join handle is dropped.
 ///
 /// This will create a fiber using default parameters of [`Builder`], if you
 /// want to specify the stack size or the name of the thread, use builder's API
@@ -1311,8 +1328,9 @@ where
 /// to check if your version of tarantool has api needed for this function
 /// to work efficiently.
 ///
-/// The new fiber can be joined by calling [`JoinHandle::join`] method on
-/// it's join handle.
+/// # Panicking
+/// If [`JoinHandle::join`] is not called on the join handle, a panic will
+/// happen when the join handle is dropped.
 ///
 /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
 #[inline(always)]
@@ -1498,10 +1516,10 @@ pub fn clock() -> Instant {
 /// another fiber. The current fiber can later be awoken for example if another
 /// fiber calls [`fiber::wakeup`].
 ///
-/// Consider using [`fiber::sleep`]`(Duration::ZERO)` or [`fiber::yield`] instead, that way the
+/// Consider using [`fiber::reschedule`] or [`fiber::yield`] instead, that way the
 /// fiber will be automatically awoken and will resume execution shortly.
 ///
-/// [`fiber::sleep`]: crate::fiber::sleep
+/// [`fiber::reschedule`]: crate::fiber::reschedule
 /// [`fiber::yield`]: crate::fiber::yield
 /// [`fiber::wakeup`]: crate::fiber::wakeup
 #[inline(always)]
@@ -1513,6 +1531,7 @@ pub fn fiber_yield() {
 /// Works likewise [`fiber::sleep`]`(Duration::ZERO)` but return error if fiber was canceled by another routine.
 ///
 /// [`fiber::sleep`]: crate::fiber::sleep
+#[inline(always)]
 pub fn r#yield() -> crate::Result<()> {
     unsafe { fiber_sleep(0f64) };
     if is_cancelled() {
@@ -1523,6 +1542,11 @@ pub fn r#yield() -> crate::Result<()> {
 }
 
 /// Reschedule fiber to end of event loop cycle.
+///
+/// This is equivalent to [`fiber::sleep`]`(Duration::ZERO)`, except a little be
+/// more efficient.
+///
+/// [`fiber::sleep`]: crate::fiber::sleep
 #[inline(always)]
 pub fn reschedule() {
     unsafe { ffi::fiber_reschedule() }
@@ -1861,8 +1885,10 @@ impl Cond {
     /// Returns:
     /// - `true` if cond was signalled or fiber was awoken by other means.
     /// - `false` on timeout, last [`TarantoolError::last`] is set to `TimedOut`
+    /// - `false` if current fiber was cancelled (check [`fiber::is_cancelled`]).
     ///
     /// [`TarantoolError::last`]: crate::error::TarantoolError::last
+    /// [`fiber::is_cancelled`]: crate::fiber::is_cancelled
     #[inline(always)]
     pub fn wait_timeout(&self, timeout: Duration) -> bool {
         unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0 }
@@ -1882,15 +1908,29 @@ impl Cond {
     /// Returns:
     /// - `true` if cond was signalled or fiber was awoken by other means.
     /// - `false` on deadline, last [`TarantoolError::last`] is set to `TimedOut`
+    /// - `false` if current fiber was cancelled (check [`fiber::is_cancelled`]).
     ///
     /// [`TarantoolError::last`]: crate::error::TarantoolError::last
+    /// [`fiber::is_cancelled`]: crate::fiber::is_cancelled
     #[inline(always)]
     pub fn wait_deadline(&self, deadline: Instant) -> bool {
         let timeout = deadline.duration_since(clock());
         unsafe { ffi::fiber_cond_wait_timeout(self.inner, timeout.as_secs_f64()) >= 0 }
     }
 
-    /// Shortcut for [wait_timeout()](#method.wait_timeout).
+    /// Suspend the execution of the current fiber (i.e. yield) until
+    /// [`Self::signal`] or [`Self::broadcast`] is called.
+    ///
+    /// Like pthread_cond, Cond can issue spurious wake ups caused by explicit
+    /// [fiber::wakeup](wakeup) or [fiber::cancel](cancel) calls.
+    /// Keep this in mind when designing your algorithms.
+    ///
+    /// Returns:
+    /// - `true` if cond was signalled or fiber was awoken by other means.
+    /// - `false` if current fiber was cancelled (check [`fiber::is_cancelled`]).
+    ///
+    /// [`TarantoolError::last`]: crate::error::TarantoolError::last
+    /// [`fiber::is_cancelled`]: crate::fiber::is_cancelled
     #[inline(always)]
     pub fn wait(&self) -> bool {
         unsafe { ffi::fiber_cond_wait(self.inner) >= 0 }
