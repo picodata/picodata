@@ -247,9 +247,9 @@ mod tests {
                 let cbus_endpoint = cbus::Endpoint::new(endpoint_name).unwrap();
                 cbus_endpoint.cbus_loop();
             })
-            .start()
+            .start_non_joinable()
             .expect("failed to start the cbus_fiber")
-            .detach()
+            .expect("fiber_id should be supported")
     }
 
     #[crate::test(tarantool = "crate")]

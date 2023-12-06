@@ -24,6 +24,10 @@
 - `fiber::JoinHandle::wakeup` for waking up the fiber by it's join handle.
 - `fiber::cancel` function for cancelling the fiber by id.
 - `fiber::wakeup` function for waking up the fiber by id.
+- `fiber::Builder::{start_non_joinable, defer_non_joinable}` functions for
+  spawning non-joinable fibers. These functions return the fiber id, if the
+  corresponding api is supported in your tarantool version. If not, you can use
+  `fiber::id`, which works on older versions by using lua api.
 - `fiber::Cond::wait_deadline` for waiting until `tarantool::time::Instant`
   rather than a `Duration`. Uses `fiber::clock` internally.
 - `fiber::r#async::timeout::{deadline, IntoTimeout::deadline}` for constraining

@@ -36,7 +36,6 @@ use std::marker::PhantomData;
 use std::os::raw::c_void;
 use std::ptr::NonNull;
 use std::time::Duration;
-use tlua::unwrap_or;
 
 pub mod r#async;
 pub mod channel;
@@ -425,7 +424,39 @@ where
     pub fn start(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Fyber::spawn_and_yield(name, f, attr.as_ref())
+
+        let res = Fyber::spawn_and_yield(name, f, true, attr.as_ref())?;
+        let Ok(jh) = res else {
+            unreachable!("spawn_and_yield returns the join handle when is_joinable = true");
+        };
+        Ok(jh)
+    }
+
+    /// Spawns a new non-joinable fiber with the given configuration.
+    ///
+    /// Returns the new fiber's id, if the corresponding api is supported in
+    /// current tarantool executable (i.e. [`has_fiber_id`] returns `true`),
+    /// otherwise returns `None`.
+    ///
+    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
+    /// [`exists`], [`csw_of`], etc.
+    ///
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber function returns a non zero-sized value.
+    ///
+    /// The current fiber performs a **yield** and the execution is transfered
+    /// to the new fiber immediately.
+    #[inline(always)]
+    pub fn start_non_joinable(self) -> crate::Result<Option<FiberId>> {
+        let Self { name, attr, f } = self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+
+        let res = Fyber::spawn_and_yield(name, f, false, attr.as_ref())?;
+        let Err(id) = res else {
+            unreachable!("spawn_and_yield returns the fiber id when is_joinable = false");
+        };
+        Ok(id)
     }
 
     /// Spawns a new deferred joinable fiber with the given configuration.
@@ -445,11 +476,49 @@ where
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
         // SAFETY this is safe as long as we only call this from the tx thread.
-        if unsafe { crate::ffi::has_fiber_set_ctx() } {
-            Fyber::spawn_deferred(name, f, attr.as_ref())
-        } else {
-            Fyber::spawn_lua(name, f, attr.as_ref())
+        if !unsafe { crate::ffi::has_fiber_set_ctx() } {
+            return Fyber::spawn_lua(name, f, attr.as_ref());
         }
+
+        let res = Fyber::spawn_deferred(name, f, true, attr.as_ref())?;
+        let Ok(jh) = res else {
+            unreachable!("spawn_deferred returns the join handle when is_joinable = true");
+        };
+        Ok(jh)
+    }
+
+    /// Spawns a new deferred non-joinable fiber with the given configuration.
+    ///
+    /// Returns the new fiber's id, if the corresponding api is supported in
+    /// current tarantool executable (i.e. [`has_fiber_id`] returns `true`),
+    /// otherwise returns `None`.
+    ///
+    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
+    /// [`exists`], [`csw_of`], etc.
+    ///
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber function returns a non zero-sized value,
+    /// - the necessary api is not supported on current tarantool version
+    ///   (i.e. [`ffi::has_fiber_set_ctx`] returns `false`).
+    ///
+    /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
+    #[inline(always)]
+    pub fn defer_non_joinable(self) -> crate::Result<Option<FiberId>> {
+        let Self { name, attr, f } = self;
+        let name = name.unwrap_or_else(|| "<rust>".into());
+        // SAFETY this is safe as long as we only call this from the tx thread.
+        if !unsafe { crate::ffi::has_fiber_set_ctx() } {
+            #[rustfmt::skip]
+            set_error!(TarantoolErrorCode::Unsupported, "non-joinable fibers via lua implementation are not supported");
+            return Err(TarantoolError::last().into());
+        }
+
+        let res = Fyber::spawn_deferred(name, f, false, attr.as_ref())?;
+        let Err(id) = res else {
+            unreachable!("spawn_deferred returns the fiber id when is_joinable = false");
+        };
+        Ok(id)
     }
 
     /// Spawns a new joinable deferred fiber with the given configuration.
@@ -466,7 +535,12 @@ where
     pub fn defer_ffi(self) -> crate::Result<JoinHandle<'f, T>> {
         let Self { name, attr, f } = self;
         let name = name.unwrap_or_else(|| "<rust>".into());
-        Fyber::spawn_deferred(name, f, attr.as_ref())
+
+        let res = Fyber::spawn_deferred(name, f, true, attr.as_ref())?;
+        let Ok(jh) = res else {
+            unreachable!("spawn_deferred returns the join handle when is_joinable = true");
+        };
+        Ok(jh)
     }
 
     /// Spawns a new joinable deferred fiber with the given configuration using
@@ -506,12 +580,26 @@ where
     F: FnOnce() -> T + 'f,
     T: 'f,
 {
-    /// Creates a joinable fiber and immediately **yields** execution to it.
+    /// Creates a fiber and immediately **yields** execution to it.
+    ///
+    /// Returns a `Ok(Ok(`[`JoinHandle`]`))` if `is_joinable` is `true`.
+    /// Returns `Ok(Err(Some(`[`FiberId`]`)))` if `is_joinable` is `false` and
+    /// [`has_fiber_id`] returns `true`.
+    ///
+    /// Returns an error if `is_joinable` is `false` and `F` returns a non
+    /// zero-sized value.
     pub fn spawn_and_yield(
         name: String,
         f: F,
+        is_joinable: bool,
         attr: Option<&FiberAttr>,
-    ) -> crate::Result<JoinHandle<'f, T>> {
+    ) -> crate::Result<Result<JoinHandle<'f, T>, Option<FiberId>>> {
+        if !is_joinable && needs_returning::<T>() {
+            #[rustfmt::skip]
+            set_error!(TarantoolErrorCode::Unsupported, "non-joinable fibers which return a value are not supported");
+            return Err(TarantoolError::last().into());
+        }
+
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
@@ -526,22 +614,41 @@ where
             }
         };
 
-        let inner = unwrap_or!(NonNull::new(inner_raw),
+        let Some(inner) = NonNull::new(inner_raw) else {
             return Err(TarantoolError::last().into());
-        );
+        };
 
         unsafe {
-            ffi::fiber_set_joinable(inner.as_ptr(), true);
+            ffi::fiber_set_joinable(inner.as_ptr(), is_joinable);
 
+            // Prepare the storage for rust closure & result value.
             let result_cell = needs_returning::<T>().then(FiberResultCell::default);
             let result_ptr = result_cell
                 .as_ref()
                 .map_or(std::ptr::null_mut(), |cell| cell.get());
+            let closure_ptr = Box::into_raw(Box::new(f));
 
-            let boxed_f = Box::new(f);
-            ffi::fiber_start(inner.as_ptr(), Box::into_raw(boxed_f), result_ptr);
-            let jh = JoinHandle::ffi(inner, result_cell);
-            Ok(jh)
+            // Save the fiber id, if possible, before starting the fiber.
+            let mut id = None;
+            if !is_joinable && has_fiber_id() {
+                id = Some(ffi::fiber_id(inner.as_ptr()));
+            }
+
+            ffi::fiber_start(inner.as_ptr(), closure_ptr, result_ptr);
+
+            if is_joinable {
+                // At this point the fiber could have already finished execution
+                // and may be dead, which means that the only safe thing to do
+                // with a pointer to it is to call fiber_join.
+                Ok(Ok(JoinHandle::ffi(inner, result_cell)))
+            } else {
+                // At this point the fiber could have already finished execution
+                // and may be dead, which means tarantool may have recycled it,
+                // so using a pointer to it is not safe after this point.
+                // For this reason we return fiber id (if possible) which can be
+                // used to cancel or wake up the fiber.
+                Ok(Err(id))
+            }
         }
     }
 
@@ -567,8 +674,15 @@ where
         0
     }
 
-    /// Creates a joinable fiber and schedules it for execution at some
-    /// point later. Does **NOT** yield.
+    /// Creates a fiber and schedules it for execution at some point later.
+    /// Does **NOT** yield.
+    ///
+    /// Returns a `Ok(Ok(`[`JoinHandle`]`))` if `is_joinable` is `true`.
+    /// Returns `Ok(Err(Some(`[`FiberId`]`)))` if `is_joinable` is `false` and
+    /// [`has_fiber_id`] returns `true`.
+    ///
+    /// Returns an error if `is_joinable` is `false` and `F` returns a non
+    /// zero-sized value.
     ///
     /// # Panicking
     /// May panic if the current tarantool executable doesn't support the
@@ -576,8 +690,15 @@ where
     pub fn spawn_deferred(
         name: String,
         f: F,
+        is_joinable: bool,
         attr: Option<&FiberAttr>,
-    ) -> crate::Result<JoinHandle<'f, T>> {
+    ) -> crate::Result<Result<JoinHandle<'f, T>, Option<FiberId>>> {
+        if !is_joinable && needs_returning::<T>() {
+            #[rustfmt::skip]
+            set_error!(TarantoolErrorCode::Unsupported, "non-joinable fibers which return a value are not supported");
+            return Err(TarantoolError::last().into());
+        }
+
         let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
 
         let inner_raw = unsafe {
@@ -592,13 +713,14 @@ where
             }
         };
 
-        let inner = unwrap_or!(NonNull::new(inner_raw),
+        let Some(inner) = NonNull::new(inner_raw) else {
             return Err(TarantoolError::last().into());
-        );
+        };
 
         unsafe {
-            ffi::fiber_set_joinable(inner.as_ptr(), true);
+            ffi::fiber_set_joinable(inner.as_ptr(), is_joinable);
 
+            // Prepare the storage for rust closure & result value.
             let result_cell = needs_returning::<T>().then(FiberResultCell::default);
             let result_ptr = result_cell
                 .as_ref()
@@ -607,8 +729,22 @@ where
 
             ffi::fiber_set_ctx(inner.as_ptr(), Box::into_raw(ctx) as _);
             ffi::fiber_wakeup(inner.as_ptr());
-            let jh = JoinHandle::ffi(inner, result_cell);
-            Ok(jh)
+
+            if is_joinable {
+                // After the current fiber yields, the spawned fiber may
+                // finish execution and become dead at which point the only safe
+                // thing to do with it's pointer is to call fiber_join.
+                Ok(Ok(JoinHandle::ffi(inner, result_cell)))
+            } else {
+                // After the current fiber yields, the spawned fiber may
+                // finish execution and become dead at which point tarantool
+                // will recycle it and using the pointer will be unsafe.
+                if has_fiber_id() {
+                    Ok(Err(Some(ffi::fiber_id(inner.as_ptr()))))
+                } else {
+                    Ok(Err(None))
+                }
+            }
         }
     }
 
@@ -651,7 +787,11 @@ where
 {
     /// Creates a joinable **LUA** fiber and schedules it for execution at some
     /// point later. Does **NOT** yield.
-    pub fn spawn_lua(name: String, f: F, _attr: Option<&FiberAttr>) -> crate::Result<JoinHandle<'f, T>> {
+    pub fn spawn_lua(
+        name: String,
+        f: F,
+        _attr: Option<&FiberAttr>,
+    ) -> crate::Result<JoinHandle<'f, T>> {
         unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));
@@ -899,37 +1039,26 @@ impl<'f, T> JoinHandle<'f, T> {
     }
 
     /// Block until the fiber's termination and return it's result value.
+    #[rustfmt::skip]
     pub fn join(mut self) -> T {
         let inner = self
             .inner
             .take()
             .expect("after construction join is called at most once");
         match inner {
-            JoinHandleImpl::Ffi {
-                fiber,
-                mut result_cell,
-            } => {
-                // TODO: add error handling
-                let _code = unsafe { ffi::fiber_join(fiber.as_ptr()) };
+            JoinHandleImpl::Ffi { fiber, mut result_cell, .. } => {
+                // SAFETY: this fiber is joinable, therefore
+                // tarantool doesn't recycle it until we call fiber_join on it
+                let code = unsafe { ffi::fiber_join(fiber.as_ptr()) };
+                debug_assert_eq!(code, 0, "rust fiber functions always return 0");
 
                 if needs_returning::<T>() {
-                    let mut result_cell = result_cell
-                        .take()
-                        .expect("should not be None for non unit types");
-                    result_cell
-                        .get_mut()
-                        .take()
-                        .expect("should have been set by the fiber function")
-                } else {
-                    if cfg!(debug_assertions) {
-                        assert!(result_cell.is_none());
-                    }
-                    // SAFETY: this is safe because () is a zero sized type.
-                    #[allow(clippy::uninit_assumed_init)]
-                    unsafe {
-                        std::mem::MaybeUninit::uninit().assume_init()
-                    }
+                    let mut result_cell = result_cell.take().expect("should not be None for non unit types");
+                    let res = result_cell.get_mut().take().expect("should have been set by the fiber function");
+                    return res;
                 }
+
+                debug_assert!(result_cell.is_none());
             }
             JoinHandleImpl::Lua { fiber_id } => unsafe {
                 let guard = impl_details::lua_fiber_join(fiber_id)
@@ -943,17 +1072,16 @@ impl<'f, T> JoinHandle<'f, T> {
                         .expect("fiber:join must return correct userdata")
                         .take()
                         .expect("data can only be taken once from the UDBox");
-                    res
-                } else {
-                    if cfg!(debug_assertions) {
-                        assert!(lua::lua_isnil(guard.as_lua(), -1));
-                    }
-                    // SAFETY: this is safe because () is a zero sized type.
-                    #[allow(clippy::uninit_assumed_init)]
-                    std::mem::MaybeUninit::uninit().assume_init()
+                    return res;
                 }
+
+                debug_assert!(lua::lua_isnil(guard.as_lua(), -1));
             },
         }
+
+        // SAFETY: this is safe because () is a zero sized type.
+        #[allow(clippy::uninit_assumed_init)]
+        unsafe { std::mem::MaybeUninit::uninit().assume_init() }
     }
 
     /// Returns the underlying fiber id.
@@ -2098,6 +2226,173 @@ mod tests {
 
             assert!(fiber::csw_of(0xFACE_BEEF_BAD_DEED5).is_none());
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn start_non_joinable() {
+        // Check we can't spawn a non-joinable fiber, which needs to write
+        // its return value into the join handle.
+        let e = fiber::Builder::new()
+            .func(|| 10569)
+            .start_non_joinable()
+            .unwrap_err();
+        assert_eq!(e.to_string(), "tarantool error: Unsupported: non-joinable fibers which return a value are not supported");
+
+        if unsafe { has_fiber_id() } {
+            // Spawn a non-joinable fiber which immediately exits
+            struct ZeroSizedType; // () also works
+            let id = fiber::Builder::new()
+                .func(|| ZeroSizedType)
+                .start_non_joinable()
+                .unwrap()
+                .unwrap();
+            // It gets immediately recycled
+            assert!(!fiber::exists(id));
+        }
+
+        let id = if unsafe { has_fiber_id() } {
+            // Happy path.
+            fiber::Builder::new()
+                .func(|| {
+                    while !fiber::is_cancelled() {
+                        fiber::fiber_yield();
+                    }
+                })
+                .start_non_joinable()
+                .unwrap()
+                .unwrap()
+        } else {
+            // This is the best you can do, if `has_fiber_id` returns `false`.
+            let id = Cell::new(0);
+
+            let maybe_id = fiber::Builder::new()
+                .func(|| {
+                    // This will do the lua implementation
+                    id.set(fiber::id());
+                    while !fiber::is_cancelled() {
+                        fiber::fiber_yield();
+                    }
+                })
+                .start_non_joinable()
+                .unwrap();
+            assert_eq!(maybe_id, None);
+
+            id.get()
+        };
+
+        let csw0 = fiber::csw_of(id).unwrap();
+        assert!(fiber::wakeup(id));
+
+        fiber::reschedule(); // yield
+
+        assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 1);
+        assert!(fiber::wakeup(id));
+
+        fiber::reschedule(); // yield
+
+        assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 2);
+        assert!(fiber::cancel(id));
+
+        fiber::reschedule(); // yield
+
+        // Fiber has voluntarily finished executing and was destroyed.
+        assert!(!fiber::exists(id));
+        assert!(fiber::csw_of(id).is_none());
+        assert!(!fiber::wakeup(id));
+        assert!(!fiber::cancel(id));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn defer_non_joinable() {
+        // Check we can't spawn a non-joinable fiber, which needs to write
+        // its return value into the join handle.
+        let e = fiber::Builder::new()
+            .func(|| 10569)
+            .defer_non_joinable()
+            .unwrap_err();
+        assert_eq!(e.to_string(), "tarantool error: Unsupported: non-joinable fibers which return a value are not supported");
+
+        if unsafe { has_fiber_id() } {
+            // Spawn a non-joinable fiber which immediately exits
+            struct ZeroSizedType; // () also works
+            let id = fiber::Builder::new()
+                .func(|| ZeroSizedType)
+                .defer_non_joinable()
+                .unwrap()
+                .unwrap();
+            // It hasn't started yet.
+            assert!(fiber::exists(id));
+
+            fiber::reschedule();
+
+            // But now it has been recycled.
+            assert!(!fiber::exists(id));
+
+            // Cancel a non-joinable fiber before it starts
+            let is_cancelled = Cell::new(None);
+            let id = fiber::Builder::new()
+                .func(|| is_cancelled.set(Some(fiber::is_cancelled())))
+                .defer_non_joinable()
+                .unwrap()
+                .unwrap();
+            assert!(fiber::cancel(id));
+            fiber::reschedule();
+            assert!(!fiber::exists(id));
+            assert_eq!(is_cancelled.get(), Some(true));
+        }
+
+        let id = if unsafe { has_fiber_id() } {
+            // Happy path.
+            fiber::Builder::new()
+                .func(|| {
+                    while !fiber::is_cancelled() {
+                        fiber::fiber_yield();
+                    }
+                })
+                .defer_non_joinable()
+                .unwrap()
+                .unwrap()
+        } else {
+            // This is the best you can do, if `has_fiber_id` returns `false`.
+            let id = Cell::new(None);
+
+            let maybe_id = fiber::Builder::new()
+                .func(|| {
+                    // This will do the lua implementation
+                    id.set(Some(fiber::id()));
+                    while !fiber::is_cancelled() {
+                        fiber::fiber_yield();
+                    }
+                })
+                .defer_non_joinable()
+                .unwrap();
+            assert_eq!(maybe_id, None);
+
+            assert_eq!(id.get(), None);
+            fiber::reschedule();
+            id.get().unwrap()
+        };
+
+        let csw0 = fiber::csw_of(id).unwrap();
+        assert!(fiber::wakeup(id));
+
+        fiber::reschedule(); // yield
+
+        assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 1);
+        assert!(fiber::wakeup(id));
+
+        fiber::reschedule(); // yield
+
+        assert_eq!(fiber::csw_of(id).unwrap(), csw0 + 2);
+        assert!(fiber::cancel(id));
+
+        fiber::reschedule(); // yield
+
+        // Fiber has voluntarily finished executing and was destroyed.
+        assert!(!fiber::exists(id));
+        assert!(fiber::csw_of(id).is_none());
+        assert!(!fiber::wakeup(id));
+        assert!(!fiber::cancel(id));
     }
 
     #[crate::test(tarantool = "crate")]
