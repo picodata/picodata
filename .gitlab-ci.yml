@@ -725,7 +725,7 @@ check-deployment-rpm:
         PACKAGE: rosa/chrome/x86_64/picodata-release-1.1.2.0-1-rosa2021.1.x86_64.rpm
         GIT_FETCH_PARAM: deepen
   before_script:
-    - yum install -y git
+    - yum install -y git curl
     - until git describe; do git fetch --${GIT_FETCH_PARAM} 100; done
     - export VER=$(git describe --long | sed -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
   script:
