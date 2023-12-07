@@ -16,6 +16,7 @@ use crate::ffi::tarantool::fiber_sleep;
 use crate::ffi::{lua, tarantool as ffi};
 use crate::time::Instant;
 use crate::tlua::{self as tlua, AsLua};
+use crate::unwrap_ok_or;
 use crate::{c_ptr, set_error};
 use ::va_list::VaList;
 pub use channel::Channel;
@@ -412,7 +413,9 @@ where
 {
     /// Spawns a new joinable fiber with the given configuration.
     ///
-    /// Returns an error if spawning the fiber failed.
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber name contains a nul byte.
     ///
     /// The current fiber performs a **yield** and the execution is transfered
     /// to the new fiber immediately.
@@ -443,6 +446,7 @@ where
     ///
     /// Returns an error if
     /// - spawning the fiber failed,
+    /// - fiber name contains a nul byte,
     /// - fiber function returns a non zero-sized value.
     ///
     /// The current fiber performs a **yield** and the execution is transfered
@@ -465,6 +469,10 @@ where
     /// which is less efficient. You can use [`ffi::has_fiber_set_ctx`]
     /// to check if your version of tarantool has api needed for this function
     /// to work efficiently.
+    ///
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber name contains a nul byte.
     ///
     /// # Panicking
     /// If [`JoinHandle::join`] is not called on the join handle, a panic will
@@ -499,6 +507,7 @@ where
     /// Returns an error if
     /// - spawning the fiber failed,
     /// - fiber function returns a non zero-sized value,
+    /// - fiber name contains a nul byte,
     /// - the necessary api is not supported on current tarantool version
     ///   (i.e. [`ffi::has_fiber_set_ctx`] returns `false`).
     ///
@@ -527,6 +536,10 @@ where
     /// This may panic on older version of tarantool. You can use
     /// [`ffi::has_fiber_set_ctx`] to check if your version of
     /// tarantool has the needed api.
+    ///
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber name contains a nul byte.
     ///
     /// Consider using [`Self::defer`] instead.
     ///
@@ -600,7 +613,13 @@ where
             return Err(TarantoolError::last().into());
         }
 
-        let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
+        let cname = unwrap_ok_or!(CString::new(name),
+            Err(e) => {
+                #[rustfmt::skip]
+                set_error!(TarantoolErrorCode::IllegalParams, "fiber name may not contain nul-bytes: {e}");
+                return Err(TarantoolError::last().into());
+            }
+        );
 
         let inner_raw = unsafe {
             if let Some(attr) = attr {
@@ -699,7 +718,13 @@ where
             return Err(TarantoolError::last().into());
         }
 
-        let cname = CString::new(name).expect("fiber name may not contain interior null bytes");
+        let cname = unwrap_ok_or!(CString::new(name),
+            Err(e) => {
+                #[rustfmt::skip]
+                set_error!(TarantoolErrorCode::IllegalParams, "fiber name may not contain nul-bytes: {e}");
+                return Err(TarantoolError::last().into());
+            }
+        );
 
         let inner_raw = unsafe {
             if let Some(attr) = attr {
@@ -2405,5 +2430,24 @@ mod tests {
 
         let jh = Builder::new().func(|| ()).defer_lua().unwrap();
         jh.join();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn illegal_fiber_name() {
+        let e = Builder::new()
+            .name("nul\0byte")
+            .func(|| {})
+            .start()
+            .unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "tarantool error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
+
+        let e = Builder::new()
+            .name("nul\0byte")
+            .func(|| {})
+            .defer()
+            .unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "tarantool error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
     }
 }
