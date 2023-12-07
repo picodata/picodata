@@ -244,7 +244,7 @@ revoke read table from "woody"
 
 ```sql
 create table "characters" (
-            "id" integer,
+            "id" integer not null,
             "name" text not null,
             "year" integer,
             primary key ("id")
