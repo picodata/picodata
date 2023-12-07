@@ -116,7 +116,7 @@ GRANT DROP ROLE TO "admin"
 набором привилегий: у него есть роль [`public`](#public) и право подключаться к
 системе. Это описывается следующими командами:
 
-- `GRANT ROLE "public" TO "guest"`
+- `GRANT "public" TO "guest"`
 - `ALTER USER "guest" LOGIN`
 
 #### Администратор БД {: #db_admin }
@@ -165,7 +165,7 @@ GRANT DROP ON ROLE <role name> TO <owner>
 Пример:
 
 ```sql
-GRANT [ ROLE ] <role name> TO <role name>
+GRANT <role name> TO <role name>
 ```
 
 Информация о ролях хранится системной таблице `_pico_role`. Данная
@@ -312,7 +312,7 @@ DROP ROLE <role name>
 Для назначения роли используйте следующую команду:
 
 ```sql
-GRANT [ ROLE ] <role name> TO <grantee>
+GRANT <role name> TO <grantee>
 ```
 
 Назначение привилегий роли происходит при помощи команды `GRANT`:
@@ -333,7 +333,7 @@ GRANT <action> ON <object name> TO <grantee>
 Отозвать роль можно следующим образом:
 
 ```sql
-REVOKE [ ROLE ] <role name> FROM <grantee>
+REVOKE <role name> FROM <grantee>
 ```
 
 ## Управление доступом к таблицам {: #tables_access }
@@ -400,7 +400,7 @@ GRANT DROP ON TABLE <table name> TO <grantee>
 GRANT DROP ON USER <user name> TO <grantee>
 GRANT DROP ON ROLE <role name> TO <grantee>
 
-GRANT [ ROLE ] <role name> TO <grantee>
+GRANT <role name> TO <grantee>
 ```
 
 См. также:
