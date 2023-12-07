@@ -17,10 +17,13 @@ reset-submodules:
 	git submodule foreach --recursive 'git clean -dxf && git reset --hard'
 	git submodule update --init --recursive
 
+# find instruction need to work both in ci and certification vm building processes
+.ONESHELL:
 tarantool-patch:
 	echo "${VER_TNT}" > tarantool-sys/VERSION
-	PATCH_DIR=$(pwd)/certification_patches/svace_patches
-	(cd tarantool-sys/third_party/luajit; find ${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
+	PICODATA_DIR=$(shell find / -type d -name "picodata" 2>/dev/null | grep -v helm)
+	PATCH_DIR=$${PICODATA_DIR}/certification_patches/svace_patches
+	(cd $${PICODATA_DIR}/tarantool-sys/third_party/luajit; find $${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
 
 build: tarantool-patch
 	. ~/.cargo/env && \
