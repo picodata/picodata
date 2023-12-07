@@ -767,8 +767,8 @@ select cast("score" as int) from "scoring" ;
 Для решения этих задач в DQL- и DML-запросах предусмотрены следующие
 необязательные [опции](#option):
 
-- `sql_vdbe_max_steps`, ограничение на максимальное число
-  [опкодов](https://www.sqlite.org/opcode.html){:target="_blank"} при
+- `sql_vdbe_max_steps`, ограничение на максимальное количество
+  [opcode](https://www.sqlite.org/opcode.html){:target="_blank"} при
   работе [VDBE](https://www.sqlite.org/vdbe.html){:target="_blank"} на
   локальных узлах Picodata;
 - `vtable_max_rows`, ограничение на максимальное число строк в
