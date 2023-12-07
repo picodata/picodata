@@ -45,6 +45,7 @@
   has an explicit `(public = true)` attribute. `(public = false)` also works.
 - `tarantool::error::Error::variant_name` method for getting name of the error
   variant, because somebody needs this.
+- `tarantool::static_assert` macro for adding checks that run at compile time.
 
 ### Changed
 - `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
