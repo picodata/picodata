@@ -342,6 +342,8 @@ gamayun-run:
       (cd tarantool-sys/third_party/luajit; find ${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
       (cd tarantool-sys/third_party/nghttp2; find ${PATCH_DIR} -name "nghttp2_*" | xargs -n 1 git apply)
       (cd tarantool-sys/third_party/checks; find ${PATCH_DIR} -name "checks_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/libeio; find ${PATCH_DIR} -name "libeio_*" | xargs -n 1 git apply)
+      (cd tarantool-sys/third_party/libev; find ${PATCH_DIR} -name "libev_*" | xargs -n 1 git apply)
       (cd http; find ${PATCH_DIR} -name "http_*" | xargs -n 1 git apply)
       (cd vshard; find ${PATCH_DIR} -name "vshard_*" | xargs -n 1 git apply)
     - |
@@ -785,4 +787,3 @@ deploy-docker:
     - echo "deb [arch=amd64] https://download.picodata.io/tarantool-picodata/astra/ orel main" > /etc/apt/sources.list.d/picodata.list
     - apt-get update
     - apt-get install -y picodata=${VER}-1
-
