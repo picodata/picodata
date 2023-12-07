@@ -62,12 +62,12 @@ pub(crate) fn setup(args: &args::Run) {
 
             picodata> pico.PICODATA_VERSION
             ---
-            - 23.06.0
+            - 23.12.0
             ...
         "},
         {
-            const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "23.6.0"));
-            "23.06.0"
+            const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "23.12.0"));
+            "23.12.0"
         },
     );
 
@@ -404,7 +404,7 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "sql",
         indoc! {r#"
-        pico.sql(query[, params])
+        pico.sql(query, [params], [traceable])
         =========================
 
         Executes a cluster-wide SQL query.

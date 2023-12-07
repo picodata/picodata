@@ -72,7 +72,7 @@ def test_webui(cluster_with_webui: Cluster):
             "capacityUsage": 100,
             "replicasetsCount": 1,
             "instancesCurrentGradeOffline": 0,
-            "currentInstaceVersion": "23.06.0",
+            "currentInstaceVersion": "23.12.0",
             "memory": {"usable": 33554432, "used": 33554432},
             "instancesCurrentGradeOnline": 1,
         }

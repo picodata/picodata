@@ -8,19 +8,92 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
+<!--
 ## Unreleased
 
 ### Features
 
-- Transferred replication factor from Properties table to new Tier table. Each tier has his own replication factor.
+- New feature `tier` - a group of instances with own replication factor. Tiers can span multiple failure domains and a single cluster can have multiple tiers. Going forward it will be possible to specify which tier a table belongs to.
 
-- New feature `tier` - group of instances with own replication factor.
+- New option `--init-cfg` for `picodata run` allows supplying bootstrap
+  configuration in a yaml format file.
 
-- New option `--init-cfg` for `picodata run` allows supplying bootstrap configuration in a yaml format file.
+- New option `--tier` for `picodata run` allows to specify whether an
+  instance belongs to a tier.
 
-- New option `--tier` for `picodata run` allows to specify whether an instance belongs to a tier.
+-->
 
-- New option `--password-file` for `picodata connect' allows supplying password in a plain-text file.
+## [23.12.0] - 2023-12-08
+
+### Features
+
+- Clusterwide SQL is available via `\set language sql` in the
+  interactive console with the support of global and sharded tables,
+  see [Reference — SQL Queries]. The basic features are:
+
+  ```
+  # DDL
+  CREATE TABLE ... USING memtx DISTRIBUTED GLOBALLY
+  CREATE TABLE ... USING memtx/vinyl DISTRIBUTED BY
+  DROP TABLE
+
+  # ACL
+  CREATE USER
+  CREATE ROLE
+  ALTER USER
+  DROP USER
+  DROP ROLE
+  GRANT ... TO
+  REVOKE ... FROM
+
+  # DQL
+  SELECT
+  SELECT ... JOIN
+  SELECT ... LEFT JOIN
+  SELECT ... WHERE
+  SELECT ... WHERE ... IN
+  SELECT ... UNION ALL
+  SELECT ... GROUP BY
+
+  # DML
+  INSERT
+  UPDATE
+  DELETE
+
+  # other
+  EXPLAIN
+  ```
+
+- Implement request authorization based on access control lists (ACL),
+  see [Tutorial — Access Control].
+
+- Implement security audit log, see [Tutorial — Audit log].
+
+- Implement automatic failover of replicaset leaders,
+  see [Architecture — Topology management].
+
+- Introduce Web UI. It includes cluster status panel and replicaset
+  list. Current status of Web UI is still beta.
+
+[Reference — SQL Queries]: https://docs.picodata.io/picodata/reference/sql_queries/
+[Tutorial — Access Control]: https://docs.picodata.io/picodata/tutorial/access_control/
+[Tutorial — Audit log]: https://docs.picodata.io/picodata/tutorial/audit_log/
+[Architecture — Topology management]: https://docs.picodata.io/picodata/architecture/topology_management/
+
+### CLI
+
+- Interactive console is disabled by default. Enable it implicitly with
+  `picodata run -i`.
+
+- Allow connecting interactive console over a unix socket `picodata run --console-sock`.
+  Use `picodata connect --unix` to connect. Unlike connecting to a `--listen` address,
+  console communication occurs in plain text and always operates under the admin account.
+
+- New option `--password-file` for `picodata connect' allows supplying
+  password in a plain-text file.
+
+- Allow specifying `picodata connect [user@][host][:port]` format. It
+  overrides the `--user` option.
 
 - Enable the audit log with `picodata run --audit`.
 
@@ -28,73 +101,9 @@ with the `YY.0M.MICRO` scheme.
   Use `picodata connect --unix` to connect. Unlike connecting to a `--listen` address,
   console communication occurs in plain text and always operates under the admin account.
 
-- Restrict the number of login attempts through `picodata connect`. The limit can be set
-  through `max_login_attempts` property. The default value is `4`.
+- Block a user after 4 failed login attempts.
 
-- _Clusterwide SQL_ now available via `\set language sql` in interactive console.
-
-- Interactive console is disabled by default. Enable it implicitly with `picodata run -i`.
-
-- Allow specifying `picodata connect [user@][host][:port]` format. It
-  overrides the `--user` option.
-
-- Allow creating sharded vinyl tables via `pico.create_table`.
-
-- _Clusterwide SQL_ now uses an internal module called `key_def` to
-  determine tuple buckets. In case the tables were sharded using a
-  different hash function, executing SQL queries on these tables would
-  return inaccurate outcomes. For more examples, refer to
-  `pico.help('create_table')`.
-
-- _Clusterwide SQL_ now features Lua documentation. Refer to
-  `pico.help('sql')` for more information.
-
-- _Clusterwide SQL_ now enables the creation of sharded tables.
-  To learn more, please consult `pico.help('sql')`.
-
-- _Clusterwide SQL_ introduces the capability to delete sharded tables.
-  To obtain more details, please consult `pico.help('sql')`.
-
-- _Clusterwide SQL_ now supports simple `on conflict` clause in insert
-  to specify behaviour when duplicate error arises. Supported behaviour:
-  replace the conflicting tuple (`do replace`), skip the tuple which causes
-  error (`do nothing`), return error back to user (`do fail`).
-
-- _Clusterwide SQL_ now supports two execution limits per query:
-  max number of rows in virtual table and max number of VDBE opcodes
-  for local query execution.
-
-- _Picodata WebUI_ is introduced. It includes cluster status panel and replicaset list.
-  Current status of WebUI is still beta.
-
-- _Clusterwide SQL_ introduces the capability to drop users.
-
-- _Clusterwide SQL_ introduces the capability to create and drop roles.
-
-- _Clusterwide SQL_ now allows creation of a global table through
-  `create table`.
-
-- _Clusterwide SQL_ introduces the capability to create users.
-
-- _Clusterwide SQL_ introduces the capability to grant and revoke privileges.
-
-- New clusterwide tables now have ids higher than any of the existing ones,
-  instead of taking the first available id as it was previously. If there's
-  already a table with the highest possible id, then the "wholes" in the id
-  ranges start to get filled.
-
-- **BREAKING CHANGE**: pico.trace() function is removed. Now we can trace an
-  SQL query via pico.sql().
-
-- **BREAKING CHANGE**: opentelemetry tables __SBROAD_STAT and __SBROAD_QUERY were renamed
-  into _sql_stat and _sql_query tables.
-
-### Fixes
-
-- `calculate_bucket_id` now returns values in inclusive range [1, bucket_count] instead of [0, bucket_count - 1] as it was previously.
-
-### Lua API:
-
+### Lua API
 
 - Changes in terminology - all appearances of `space` changed to `table`
 - Update `pico.LUA_API_VERSION`: `1.0.0` -> `3.1.0`
@@ -102,6 +111,7 @@ with the `YY.0M.MICRO` scheme.
 - `pico.create_table()` has new optional parameter: `engine`.
   Note: global spaces can only have memtx engine.
 - `pico.whoami()` and `pico.instance_info()` returns new field `tier`
+- Add `pico.sql()`
 - Add `pico.drop_table()`
 - Add `pico.create_user()`, `pico.drop_user()`
 - Add `pico.create_role()`, `pico.drop_role()`
@@ -113,6 +123,11 @@ with the `YY.0M.MICRO` scheme.
 - `pico.cas` now verifies dml operations before applying them
 - Change `pico.raft_log()` arguments
 - Make `opts.timeout` optional in most functions
+
+### Compatibility
+
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots.
 
 ## [23.06.0] - 2023-06-16
 

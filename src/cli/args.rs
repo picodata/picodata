@@ -12,7 +12,7 @@ use tarantool::log::SayLevel;
 use tarantool::tlua;
 
 #[derive(Debug, Parser)]
-#[clap(name = "picodata", version = "23.06.0")]
+#[clap(name = "picodata", version = "23.12.0")]
 pub enum Picodata {
     Run(Box<Run>),
     Tarantool(Tarantool),
