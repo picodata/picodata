@@ -184,6 +184,10 @@ def normalize_net_box_result(func):
                 case _:
                     raise exc from exc
 
+        # This is special case for Connection.__init__
+        if result is None:
+            return
+
         match result.data:
             case []:
                 return None
@@ -405,14 +409,42 @@ POSITION_IN_SPACE_INSTANCE_ID = 3
 
 
 class Connection(tarantool.Connection):  # type: ignore
+    @normalize_net_box_result
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @normalize_net_box_result
+    def call(self, func_name, *args, on_push=None, on_push_ctx=None):
+        return super().call(func_name, *args, on_push=on_push, on_push_ctx=on_push_ctx)
+
+    @normalize_net_box_result
+    def eval(self, expr, *args, on_push=None, on_push_ctx=None):
+        return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
+
     def sql(
         self,
         sql: str,
         *params,
     ) -> dict:
         """Run SQL query and return result"""
+        return self.call("pico.sql", sql, *params)
 
-        return normalize_net_box_result(self.call)("pico.sql", sql, params)
+    def sudo_sql(
+        self,
+        sql: str,
+        *params,
+    ) -> dict:
+        """Run SQL query as admin and return result"""
+        old_euid = self.eval(
+            """
+            local before = box.session.euid()
+            box.session.su('admin')
+            return before
+            """
+        )
+        ret = self.sql(sql, params)
+        self.eval("box.session.su(...)", old_euid)
+        return ret
 
 
 @dataclass
@@ -512,7 +544,6 @@ class Instance:
         finally:
             c.close()
 
-    @normalize_net_box_result
     def call(
         self,
         fn,
@@ -524,7 +555,6 @@ class Instance:
         with self.connect(timeout, user=user, password=password) as conn:
             return conn.call(fn, args)
 
-    @normalize_net_box_result
     def eval(
         self,
         expr,
@@ -568,9 +598,8 @@ class Instance:
         timeout: int | float = 1,
     ) -> dict:
         """Run SQL query and return result"""
-        return self.call(
-            "pico.sql", sql, params, user=user, password=password, timeout=timeout
-        )
+        with self.connect(timeout=timeout, user=user, password=password) as conn:
+            return conn.sql(sql, params)
 
     def sudo_sql(
         self,
@@ -582,8 +611,7 @@ class Instance:
     ) -> dict:
         """Run SQL query as admin and return result"""
         with self.connect(timeout, user=user, password=password) as conn:
-            conn.eval("box.session.su('admin')")
-            return conn.sql(sql, params)
+            return conn.sudo_sql(sql, params)
 
     def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""
@@ -703,6 +731,11 @@ class Instance:
 
         # FIXME: copy-pasted from above
         self.process.wait(timeout)
+
+        # When logs are disabled stdour and stderr are set to None
+        if not (self.process.stdout or self.process.stderr):
+            self.process = None
+            return
 
         # Wait for all the output to be handled in the separate threads
         while not self.process.stdout.closed or not self.process.stderr.closed:  # type: ignore
