@@ -1,15 +1,23 @@
-# MkDocs configuration reference:
+# Конфигурация MkDocs
 # https://www.mkdocs.org/user-guide/configuration/
 
+# Общие настройки
+# site_name — https://www.mkdocs.org/user-guide/configuration/#site_name
+# site_description — https://www.mkdocs.org/user-guide/configuration/#site_description
+# repo_url — https://www.mkdocs.org/user-guide/configuration/#repo_url
+# edit_uri — https://www.mkdocs.org/user-guide/configuration/#edit_uri
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
 repo_url: https://git.picodata.io/picodata/picodata/docs
 edit_uri: -/blob/main/docs/
 
+# Исключения из навигации
 # https://www.mkdocs.org/user-guide/configuration/#not_in_nav
 not_in_nav: |
   /index.md
 
+# Навигация
+# https://www.mkdocs.org/user-guide/configuration/#nav
 nav:
   - Ознакомление с ПО Picodata:
     - overview/description.md
@@ -41,6 +49,16 @@ nav:
     - architecture/raft_failover.md
     - architecture/system_tables.md
 
+# Настройки темы Material
+  ## name, custom_dir — https://squidfunk.github.io/mkdocs-material/customization/#setup-and-theme-structure
+  ## font — https://squidfunk.github.io/mkdocs-material/setup/changing-the-fonts/#regular-font
+  ## logo — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#logo
+  ## favicon — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#favicon
+  ## language — https://squidfunk.github.io/mkdocs-material/setup/changing-the-language/#site-language
+  ## features:
+    ### toc.follow — https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
+    ### content.code.copy — https://squidfunk.github.io/mkdocs-material/upgrade/#contentcodecopy
+    ### content.action.edit — https://squidfunk.github.io/mkdocs-material/upgrade/#contentaction
 theme:
   name: material
   custom_dir: overrides
@@ -55,6 +73,9 @@ theme:
     - content.code.copy
     - content.action.edit
 
+# Дополнительные настройки темы Material
+  ## homepage — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#logo
+  ## analytics — https://squidfunk.github.io/mkdocs-material/setup/setting-up-site-analytics/#setting-up-site-analytics
 extra:
   homepage: https://docs.picodata.io/
   analytics:
@@ -76,29 +97,45 @@ extra:
             target="_blank" rel="noopener">Напишите</a>, что бы вы хотели
             улучшить на этой странице или в целом на сайте документации.
 
+# Кастомизация CSS
+# https://www.mkdocs.org/user-guide/configuration/#extra_css
 extra_css:
   - extra/style.css
 
+# Плагины MkDocs
+# https://www.mkdocs.org/user-guide/configuration/#plugins
+  ## > inline-svg
+  ## Вставляет изображений формата svg с относительными ссылками
+  ## https://pypi.org/project/mkdocs-plugin-inline-svg/
+  ## > search
+  ## Добавляет в хедер панель поиска
+  ## https://www.mkdocs.org/user-guide/configuration/#search
+  ## https://squidfunk.github.io/mkdocs-material/plugins/search/
 plugins:
-  # https://pypi.org/project/mkdocs-plugin-inline-svg/
   - inline-svg
-
-  # https://squidfunk.github.io/mkdocs-material/plugins/search/
   - search:
       lang:
         - en
         - ru
 
+# Расширения Python Markdown
+# https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/
+  ## > attr_list
+  ## Добавляет синтаксис для определения атрибутов различных элементов HTML в выводе Markdown.
+  ## Используется для кастомизации якорей в формате {: #anchor }. Двоеточие и пробелы можно убирать
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#attribute-lists
+  ## https://python-markdown.github.io/extensions/attr_list/
 markdown_extensions:
   - attr_list
 
+# Валидация ссылок
+# https://www.mkdocs.org/user-guide/configuration/#validation
 validation:
   links:
     unrecognized_links: warn
 
 # Хуки
 # https://www.mkdocs.org/user-guide/configuration/#hooks
+  ## filter_plugin_records.py — фильтрует записи плагина mkdocs-plugin-inline-svg в логе MkDocs
 hooks:
-
-  ## Фильтрует записи плагина mkdocs-plugin-inline-svg в логе MkDocs
   - filter_plugin_records.py
