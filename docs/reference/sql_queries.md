@@ -392,7 +392,7 @@ pico.sql([[select "name","year" from "characters" where "id" > ? and "year" > ? 
    сущность и может включать как простое указание на таблицу, так и
    конструкцию из разных условий.
 
-### **Имя объекта** {: #name }
+### Имя объекта {: #name }
 Имена объектов (таблиц, колонок, ролей, пользователей и т.д.) могут
 содержать русские и английские буквы во всех регистрах, цифры, а также
 символы дефиса (`-`, U+2010) и нижнего подчеркивания (`_`, U+005F). Если
@@ -409,33 +409,95 @@ pico.sql([[select "name","year" from "characters" where "id" > ? and "year" > ? 
 characters...` и `create table "CHARACTERS"...` создадут одну и ту же
 таблицу `CHARACTERS`.
 
-### **values**
-![Column](../images/ebnf/VALUES.svg)
+### Запрос VALUES {: #values-usage }
 
-### **row**
-![Column](../images/ebnf/row.svg)
+Команда `VALUES` представляет собой конструктор строки значений для
+использования в запросе `SELECT`.
 
-### **alias**
+#### Values {: #values }
+На схеме показана структура использования элемента `VALUES`, который может
+содержать одну или несколько строк ([кортежей](#row)):
+
+![Values](../images/ebnf/VALUES.svg)
+
+Пример:
+
+```sql
+VALUES (1, 'Woody', 2561),(2, "Buzz Lightyear", 4781)
+```
+
+В некотором смысле, передаваемые с `VALUES` значения являются временной
+таблицей, которая существует только в рамках запроса. Использовать
+`VALUES` имеет смысл тогда, когда требуется получить набор строк, для
+которых известны значения одного или более столбцов. Например, с помощью
+команды ниже можно выяснить название игрушки, зная ее количество на
+складе:
+
+```sql
+select "name" from "assets" where ("stock") in (values (2561)) ;
+```
+
+Вывод в консоль:
+
+```
+---
+- metadata:
+  - {'name': 'name', 'type': 'string'}
+  rows:
+  - ['Woody']
+...
+```
+
+#### Кортеж {: #row }
+
+Каждый кортеж (`row`) может содержать одно или несколько значений в виде
+перечисления через запятую:
+
+![Row](../images/ebnf/row.svg)
+
+Пример:
+
+```sql
+(1, 'Woody', 2561)
+```
+
+
+### Псевдоним {: #alias }
+Cхема использования [псевдонимов](#aliases):
+
 ![Alias](../images/ebnf/alias.svg)
 
-### **password**
+
+### Пароль {: #password }
 Пароль пользователя может использовать русские и английские буквы во
 всех регистрах, а так же цифры и основные знаки препинания из [таблицы
-ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойства_таблицы).
+ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойства_таблицы){:target="_blank"}.
 При использовании методов аутентификации `chap-sha1` и `md5` требуется
 использовать пароль не короче 8 символов, для метода `ldap` длина пароля
 не проверяется.
 
-### **expression**
+### Выражение {: #expression }
+
+Схема использования элемента `expression`:
+
 ![Expression](../images/ebnf/expression.svg)
 
-### **reference**
+### Ссылка {: #reference }
+
+Схема использования элемента `reference`:
+
 ![Reference](../images/ebnf/reference.svg)
 
-### **value**
+### Значение {: #value }
+
+Схема использования элемента `value`:
+
 ![Value](../images/ebnf/value.svg)
 
-### **type**
+### Тип {: #type }
+
+Схема использования элемента `type`:
+
 ![Type](../images/ebnf/type.svg)
 
 ## Использование агрегатных функций {: #aggregate }
@@ -483,30 +545,6 @@ select group_concat("name",' character, ') from "characters" ;
   - ['Woody character, Buzz Lightyear character, Bo Peep character, Mr. Potato Head
       character, Slinky Dog character, Barbie character, Daisy character, Forky character,
       Dragon character, The Dummies']
-...
-```
-
-## Использование VALUES {: #values }
-Команда `VALUES` представляет собой конструктор строки значений для
-использования в запросе `SELECT`. В некотором смысле, передаваемые с
-`VALUES` значения являются временной таблицей, которая существует только
-в рамках запроса. Использовать `VALUES` имеет смысл тогда, когда
-требуется получить набор строк, для которых известны значения одного или
-более столбцов. Например, с помощью команды ниже можно выяснить название
-игрушки, зная ее количество на складе:
-
-```sql
-select "name" from "assets" where ("stock") in (values (2561)) ;
-```
-
-Вывод в консоль:
-
-```
----
-- metadata:
-  - {'name': 'name', 'type': 'string'}
-  rows:
-  - ['Woody']
 ...
 ```
 
@@ -775,7 +813,7 @@ select cast("score" as int) from "scoring" ;
   результирующей виртуальной таблице, собирающей результаты отдельных
   локальных запросов.
 
-#### **Options**
+#### Опции {: #options }
 ![Options](../images/ebnf/Options.svg)
 
 
