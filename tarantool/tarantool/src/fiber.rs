@@ -330,7 +330,7 @@ impl Builder<NoFunc> {
     }
 
     /// Sets the callee function for the new fiber.
-    #[inline]
+    #[inline(always)]
     pub fn func<'f, F, T>(self, f: F) -> Builder<F>
     where
         F: FnOnce() -> T,
@@ -427,8 +427,7 @@ where
     /// happen when the join handle is dropped.
     #[inline(always)]
     pub fn start(self) -> crate::Result<JoinHandle<'f, T>> {
-        let Self { name, attr, f } = self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
+        let (name, f, attr) = self.into_fiber_args();
 
         let res = Fyber::spawn_and_yield(name, f, true, attr.as_ref())?;
         let Ok(jh) = res else {
@@ -455,8 +454,7 @@ where
     /// to the new fiber immediately.
     #[inline(always)]
     pub fn start_non_joinable(self) -> crate::Result<Option<FiberId>> {
-        let Self { name, attr, f } = self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
+        let (name, f, attr) = self.into_fiber_args();
 
         let res = Fyber::spawn_and_yield(name, f, false, attr.as_ref())?;
         let Err(id) = res else {
@@ -483,8 +481,8 @@ where
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer(self) -> crate::Result<JoinHandle<'f, T>> {
-        let Self { name, attr, f } = self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
+        let (name, f, attr) = self.into_fiber_args();
+
         // SAFETY this is safe as long as we only call this from the tx thread.
         if !unsafe { crate::ffi::has_fiber_set_ctx() } {
             return Fyber::spawn_lua(name, f, attr.as_ref());
@@ -516,8 +514,8 @@ where
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer_non_joinable(self) -> crate::Result<Option<FiberId>> {
-        let Self { name, attr, f } = self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
+        let (name, f, attr) = self.into_fiber_args();
+
         // SAFETY this is safe as long as we only call this from the tx thread.
         if !unsafe { crate::ffi::has_fiber_set_ctx() } {
             #[rustfmt::skip]
@@ -548,8 +546,7 @@ where
     /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
     #[inline(always)]
     pub fn defer_ffi(self) -> crate::Result<JoinHandle<'f, T>> {
-        let Self { name, attr, f } = self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
+        let (name, f, attr) = self.into_fiber_args();
 
         let res = Fyber::spawn_deferred(name, f, true, attr.as_ref())?;
         let Ok(jh) = res else {
@@ -567,9 +564,18 @@ where
     /// Consider using [`Self::defer`] instead.
     #[inline(always)]
     pub fn defer_lua(self) -> crate::Result<JoinHandle<'f, T>> {
-        let Self { name, attr, f } = self;
-        let name = name.unwrap_or_else(|| "<rust>".into());
+        let (name, f, attr) = self.into_fiber_args();
+
         Fyber::spawn_lua(name, f, attr.as_ref())
+    }
+
+    fn into_fiber_args(self) -> (String, F, Option<FiberAttr>) {
+        #[rustfmt::skip]
+        let Self { name, attr, f } = self;
+
+        let name = name.unwrap_or_else(|| "<rust>".into());
+
+        (name, f, attr)
     }
 }
 
