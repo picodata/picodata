@@ -8,3 +8,6 @@ tmp/
 tags
 test/manual/sql/*.json
 venv
+.direnv
+.envrc
+.vscode
