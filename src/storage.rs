@@ -3024,8 +3024,12 @@ pub mod acl {
     ) -> tarantool::Result<()> {
         storage.privileges.insert(priv_def)?;
 
-        let privilege = priv_def.privilege();
-        let (object, object_type) = (priv_def.object_id(), priv_def.object_type());
+        let privilege = &priv_def.privilege();
+        let object = priv_def
+            .resolve_object_name(storage)
+            .expect("target object should exist");
+        let object_type = &priv_def.object_type();
+
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
         let initiator_def = user_by_id(priv_def.grantor_id())?;
@@ -3037,24 +3041,24 @@ pub mod acl {
                     message: "granted role `{object}` to {grantee_type} `{grantee}`",
                     title: "grant_role",
                     severity: High,
-                    role: object,
+                    role: &object,
                     grantee: &grantee,
                     grantee_type: grantee_type,
                     initiator: initiator_def.name,
                 );
             }
             _ => {
-                let object = match object {
+                let object_fmt = match &object {
                     Some(object) => format!("`{object}` "),
                     None => "".into(),
                 };
                 crate::audit!(
-                    message: "granted privilege {privilege} on {object_type} {object}\
+                    message: "granted privilege {privilege} on {object_type} {object_fmt}\
                               to {grantee_type} `{grantee}`",
                     title: "grant_privilege",
                     severity: High,
                     privilege: privilege.as_str(),
-                    object: priv_def.object_id(),
+                    object: object,
                     object_type: object_type.as_str(),
                     grantee: &grantee,
                     grantee_type: grantee_type,
@@ -3080,8 +3084,11 @@ pub mod acl {
             &priv_def.privilege(),
         )?;
 
-        let privilege = priv_def.privilege();
-        let (object, object_type) = (priv_def.object_id(), &priv_def.object_type());
+        let privilege = &priv_def.privilege();
+        let object = priv_def
+            .resolve_object_name(storage)
+            .expect("target object should exist");
+        let object_type = &priv_def.object_type();
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
         let initiator_def = user_by_id(initiator)?;
@@ -3093,24 +3100,24 @@ pub mod acl {
                     message: "revoked role `{object}` from {grantee_type} `{grantee}`",
                     title: "revoke_role",
                     severity: High,
-                    role: object,
+                    role: &object,
                     grantee: &grantee,
                     grantee_type: grantee_type,
                     initiator: initiator_def.name,
                 );
             }
             _ => {
-                let object = match object {
+                let object_fmt = match &object {
                     Some(object) => format!("`{object}` "),
                     None => "".into(),
                 };
                 crate::audit!(
-                    message: "revoked privilege {privilege} on {object_type} {object}\
+                    message: "revoked privilege {privilege} on {object_type} {object_fmt}\
                               from {grantee_type} `{grantee}`",
                     title: "revoke_privilege",
                     severity: High,
                     privilege: privilege.as_str(),
-                    object: priv_def.object_id(),
+                    object: object,
                     object_type: object_type.as_str(),
                     grantee: &grantee,
                     grantee_type: grantee_type,

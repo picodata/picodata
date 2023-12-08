@@ -610,6 +610,31 @@ impl PrivilegeDef {
             // alter on himself
             || (self.object_type == SchemaObjectType::User && self.privilege == PrivilegeType::Alter && self.grantee_id as i64 == self.object_id)
     }
+
+    /// Retrieves object_name from system spaces based on `object_id` and `object_type`.
+    /// Returns `Ok(None)` in the case when the privilege has no target object (e.g. `object_id == -1`)
+    /// or when target object is universe.
+    /// Returns `Err` in case when target object was not found in system tables.
+    ///
+    /// # Panics
+    /// 1. On storage failure
+    pub fn resolve_object_name(&self, storage: &Clusterwide) -> Result<Option<String>, Error> {
+        let Some(id) = self.object_id() else {
+            return Ok(None);
+        };
+        let name = match self.object_type {
+            SchemaObjectType::Table => storage.tables.get(id).map(|t| t.map(|t| t.name)),
+            SchemaObjectType::Role => storage.roles.by_id(id).map(|t| t.map(|t| t.name)),
+            SchemaObjectType::User => storage.users.by_id(id).map(|t| t.map(|t| t.name)),
+            SchemaObjectType::Universe => {
+                debug_assert_eq!(self.object_id, 0);
+                return Ok(None);
+            }
+        }
+        .expect("storage should not fail")
+        .ok_or_else(|| Error::other(format!("object with id {id} should exist")))?;
+        Ok(Some(name))
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

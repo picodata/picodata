@@ -447,7 +447,7 @@ def test_role(instance: Instance):
 
     grant_role = take_until_type(events, EventGrantRole)
     assert grant_role is not None
-    # assert grant_role.role == "dummy"  # FIXME: currently it's u32
+    assert grant_role.role == "dummy"
     assert grant_role.grantee == "skibidi"
     assert grant_role.grantee_type == "role"
     assert (
@@ -459,7 +459,7 @@ def test_role(instance: Instance):
 
     revoke_role = take_until_type(events, EventRevokeRole)
     assert revoke_role is not None
-    # assert revoke_role.role == "dummy"  # FIXME: currently it's u32
+    assert revoke_role.role == "dummy"
     assert revoke_role.grantee == "skibidi"
     assert revoke_role.grantee_type == "role"
     assert (
