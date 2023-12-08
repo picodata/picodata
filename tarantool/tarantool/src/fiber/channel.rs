@@ -18,6 +18,7 @@ use crate::{error::TarantoolErrorCode, ffi::tarantool as ffi};
 pub struct Channel<T>(Rc<ChannelBox<T>>);
 
 impl<T> Clone for Channel<T> {
+    #[inline(always)]
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
@@ -35,6 +36,7 @@ impl<T> std::fmt::Debug for Channel<T> {
 }
 
 impl<T> Channel<T> {
+    #[inline]
     pub fn new(size: u32) -> Self {
         let inner_raw = unsafe { ffi::fiber_channel_new(size) };
         let inner = NonNull::new(inner_raw)
@@ -45,34 +47,42 @@ impl<T> Channel<T> {
         }))
     }
 
+    #[inline(always)]
     fn as_ptr(&self) -> *mut ffi::fiber_channel {
         self.0.inner.as_ptr()
     }
 
+    #[inline(always)]
     pub fn close(self) {
         unsafe { ffi::fiber_channel_close(self.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn is_closed(&self) -> bool {
         unsafe { ffi::fiber_channel_is_closed(self.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         unsafe { ffi::fiber_channel_is_empty(self.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn size(&self) -> u32 {
         unsafe { ffi::fiber_channel_size(self.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn count(&self) -> u32 {
         unsafe { ffi::fiber_channel_count(self.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn has_readers(&self) -> bool {
         unsafe { ffi::fiber_channel_has_readers(self.as_ptr()) }
     }
 
+    #[inline(always)]
     pub fn has_writers(&self) -> bool {
         unsafe { ffi::fiber_channel_has_writers(self.as_ptr()) }
     }
@@ -178,6 +188,7 @@ pub trait SendTimeout<T> {
     where
         T: 'static;
 
+    #[inline(always)]
     fn send(&self, t: T) -> Result<(), T>
     where
         T: 'static,
@@ -191,6 +202,7 @@ pub trait SendTimeout<T> {
         }
     }
 
+    #[inline(always)]
     fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), SendError<T>>
     where
         T: 'static,
@@ -198,6 +210,7 @@ pub trait SendTimeout<T> {
         self.send_maybe_timeout(t, Some(timeout))
     }
 
+    #[inline(always)]
     fn try_send(&self, t: T) -> Result<(), TrySendError<T>>
     where
         T: 'static,
@@ -213,6 +226,7 @@ pub enum SendError<T> {
 }
 
 impl<T> SendError<T> {
+    #[inline(always)]
     pub fn into_inner(self) -> T {
         match self {
             Self::Timeout(t) | Self::Disconnected(t) => t,
@@ -227,6 +241,7 @@ pub enum TrySendError<T> {
 }
 
 impl<T> TrySendError<T> {
+    #[inline(always)]
     pub fn into_inner(self) -> T {
         match self {
             Self::Full(t) | Self::Disconnected(t) => t,
@@ -235,6 +250,7 @@ impl<T> TrySendError<T> {
 }
 
 impl<T> From<SendError<T>> for TrySendError<T> {
+    #[inline(always)]
     fn from(e: SendError<T>) -> Self {
         match e {
             SendError::Disconnected(t) => Self::Disconnected(t),
@@ -252,6 +268,7 @@ pub trait RecvTimeout<T> {
     /// This function may perform a **yield** in case there is no message ready.
     fn recv_maybe_timeout(&self, timeout: Option<Duration>) -> Result<T, RecvError>;
 
+    #[inline(always)]
     fn recv(&self) -> Option<T> {
         match self.recv_maybe_timeout(None) {
             Err(RecvError::Timeout) => {
@@ -261,20 +278,24 @@ pub trait RecvTimeout<T> {
         }
     }
 
+    #[inline(always)]
     fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvError> {
         self.recv_maybe_timeout(Some(timeout))
     }
 
+    #[inline(always)]
     fn try_recv(&self) -> Result<T, TryRecvError> {
         self.recv_timeout(Duration::ZERO).map_err(From::from)
     }
 }
 
 impl<T> Channel<T> {
+    #[inline(always)]
     pub fn iter(&self) -> Iter<'_, T> {
         Iter(self)
     }
 
+    #[inline(always)]
     pub fn try_iter(&self) -> TryIter<'_, T> {
         TryIter(self)
     }
@@ -356,6 +377,7 @@ impl<'a, T> IntoIterator for &'a Channel<T> {
     type Item = T;
     type IntoIter = Iter<'a, T>;
 
+    #[inline(always)]
     fn into_iter(self) -> Iter<'a, T> {
         self.iter()
     }
@@ -365,6 +387,7 @@ impl<T> IntoIterator for Channel<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
+    #[inline(always)]
     fn into_iter(self) -> IntoIter<T> {
         IntoIter(self)
     }
@@ -376,6 +399,7 @@ struct ChannelBox<T> {
 }
 
 impl<T> Drop for ChannelBox<T> {
+    #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::fiber_channel_delete(self.inner.as_ptr()) }
     }
@@ -394,6 +418,7 @@ pub enum TryRecvError {
 }
 
 impl From<RecvError> for TryRecvError {
+    #[inline(always)]
     fn from(e: RecvError) -> Self {
         match e {
             RecvError::Disconnected => Self::Disconnected,
