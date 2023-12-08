@@ -2566,4 +2566,57 @@ mod tests {
         #[rustfmt::skip]
         assert_eq!(e.to_string(), "tarantool error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
     }
+
+    #[rustfmt::skip]
+    #[crate::test(tarantool = "crate")]
+    fn wakeup_or_cancel_while_waiting_on_cond() {
+        let cond = Cond::new();
+        let ch = Channel::new(1);
+
+        // NOTE: we use Cell instead of JoinHandle::id just for backwards compatibility,
+        // you should always use JoinHandle::id if it's available in your tarantool
+        let fiber_id = Cell::new(None);
+        let jh = fiber::start(|| {
+            fiber_id.set(Some(fiber::id()));
+            ch.send(cond.wait()).unwrap();
+            ch.send(cond.wait_timeout(crate::clock::INFINITY)).unwrap();
+            ch.send(cond.wait_deadline(fiber::clock().saturating_add(crate::clock::INFINITY))).unwrap();
+
+            ch.send(cond.wait()).unwrap();
+            ch.send(cond.wait_timeout(crate::clock::INFINITY)).unwrap();
+            ch.send(cond.wait_deadline(fiber::clock().saturating_add(crate::clock::INFINITY))).unwrap();
+        });
+
+        let fiber_id = fiber_id.get().unwrap();
+
+        fiber::wakeup(fiber_id);
+        // Return value from cond.wait() after fiber::wakeup was called
+        assert_eq!(ch.recv().unwrap(), true);
+
+        fiber::wakeup(fiber_id);
+        // Return value from cond.wait_timeout() after fiber::wakeup was called
+        assert_eq!(ch.recv().unwrap(), true);
+
+        fiber::wakeup(fiber_id);
+        // Return value from cond.wait_deadline() after fiber::wakeup was called
+        assert_eq!(ch.recv().unwrap(), true);
+
+        fiber::cancel(fiber_id);
+        // Cancelling a fiber who's waiting on a cond doesn't wake it up
+        assert_eq!(ch.try_recv(), Err(TryRecvError::Empty));
+
+        fiber::wakeup(fiber_id);
+        // Return value from cond.wait() after fiber::wakeup was called on a cancelled fiber
+        assert_eq!(ch.recv().unwrap(), false);
+
+        fiber::wakeup(fiber_id);
+        // Return value from cond.wait_timeout() after fiber::wakeup was called on a cancelled fiber
+        assert_eq!(ch.recv().unwrap(), false);
+
+        fiber::wakeup(fiber_id);
+        // Return value from cond.wait_deadline() after fiber::wakeup was called on a cancelled fiber
+        assert_eq!(ch.recv().unwrap(), false);
+
+        jh.join();
+    }
 }
