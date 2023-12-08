@@ -32,6 +32,7 @@ def test_connect_testuser(i1: Instance):
     cli.expect_exact(f"connected to {i1.host}:{i1.port}")
     cli.expect_exact(f"{i1.host}:{i1.port}>")
 
+    cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- testuser\r\n")
@@ -58,6 +59,7 @@ def test_connect_user_host_port(i1: Instance):
     cli.expect_exact(f"connected to {i1.host}:{i1.port}")
     cli.expect_exact(f"{i1.host}:{i1.port}>")
 
+    cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- testuser\r\n")
@@ -81,6 +83,7 @@ def test_connect_guest(i1: Instance):
     cli.expect_exact(f"connected to {i1.host}:{i1.port}")
     cli.expect_exact(f"{i1.host}:{i1.port}>")
 
+    cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- guest\r\n")
@@ -159,6 +162,7 @@ def test_connect_auth_type_ok(i1: Instance):
     cli.expect_exact(f"connected to {i1.host}:{i1.port}")
     cli.expect_exact(f"{i1.host}:{i1.port}>")
 
+    cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- testuser\r\n")
@@ -286,6 +290,7 @@ def test_connect_unix_ok(cluster: Cluster):
     cli.expect_exact("connected to unix/:./console.sock")
     cli.expect_exact("unix/:./console.sock>")
 
+    cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- admin\r\n")
@@ -362,6 +367,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
     cli.expect_exact(f"connected to {i1.host}:{i1.port}")
     cli.expect_exact(f"{i1.host}:{i1.port}>")
 
+    cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- testuser\r\n")
