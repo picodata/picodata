@@ -221,7 +221,10 @@ pub trait SendTimeout<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SendError<T> {
+    /// Timeout exceeded while waiting for a spot for the message in the channel
+    /// to become available.
     Timeout(T),
+    /// The channel was disconnected or the current fiber is cancelled.
     Disconnected(T),
 }
 
@@ -236,7 +239,9 @@ impl<T> SendError<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TrySendError<T> {
+    /// There's no place to put a message in the channel.
     Full(T),
+    /// The channel was disconnected or the current fiber is cancelled.
     Disconnected(T),
 }
 
@@ -407,13 +412,18 @@ impl<T> Drop for ChannelBox<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RecvError {
+    /// Timeout exceeded while waiting for a message from a channel.
     Timeout,
+    /// The channel was disconnected or the fiber was cancelled while waiting
+    /// for message from a channel.
     Disconnected,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TryRecvError {
+    /// There's no message in the channel at the moment.
     Empty,
+    /// The channel was disconnected or the fiber was cancelled.
     Disconnected,
 }
 
@@ -424,5 +434,61 @@ impl From<RecvError> for TryRecvError {
             RecvError::Disconnected => Self::Disconnected,
             RecvError::Timeout => Self::Empty,
         }
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+    use crate::fiber;
+    use std::cell::Cell;
+
+    #[rustfmt::skip]
+    #[crate::test(tarantool = "crate")]
+    fn wakeup_recv() {
+        if !crate::ffi::has_fiber_channel() {
+            return;
+        }
+
+        let ch_dry_recv = Channel::<i32>::new(1);
+        let ch_dry_send = Channel::<i32>::new(0);
+        let ch_control = Channel::new(1);
+
+        // NOTE: we use Cell instead of JoinHandle::id just for backwards compatibility,
+        // you should always use JoinHandle::id if it's available in your tarantool
+        let fiber_id = Cell::new(None);
+        let jh = fiber::start(|| {
+            fiber_id.set(Some(fiber::id()));
+            let recv_res = ch_dry_recv.recv();
+            let try_recv_res = ch_dry_recv.try_recv();
+            let send_res = ch_dry_send.send(420);
+            let try_send_res = ch_dry_send.try_send(420);
+            // We don't do assertions outside the main fiber, because they're
+            // impossible to catch and will just crash tarantool altogether.
+            //
+            // But the point is that the channel thinks it's closed because the
+            // fiber was cancelled.
+            ch_control.send((fiber::is_cancelled(), recv_res, try_recv_res, send_res, try_send_res)).unwrap();
+        });
+
+        let fiber_id = fiber_id.get().unwrap();
+        // Waking up a fiber while it's waiting for a message from a channel does
+        // nothing, the fiber automatically checks the channel and falls back a sleep.
+        fiber::wakeup(fiber_id);
+        assert_eq!(ch_control.try_recv().unwrap_err(), TryRecvError::Empty);
+
+        // Cancelling the fiber while it's waiting for a message from a channel
+        // makes it think that the channel was closed.
+        fiber::cancel(fiber_id);
+        fiber::reschedule();
+
+        let (is_cancelled, recv_res, try_recv_res, send_res, try_send_res) = ch_control.try_recv().unwrap();
+        assert!(is_cancelled);
+        assert_eq!(recv_res, None);
+        assert_eq!(try_recv_res, Err(TryRecvError::Disconnected));
+        assert_eq!(send_res, Err(420));
+        assert_eq!(try_send_res, Err(TrySendError::Disconnected(420)));
+
+        jh.join();
     }
 }
