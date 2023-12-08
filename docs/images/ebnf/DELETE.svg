@@ -5,7 +5,7 @@
    version="1.1"
    id="svg12"
    sodipodi:docname="DELETE.svg"
-   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
+   inkscape:version="1.3.1 (91b66b0783, 2023-11-16)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -20,9 +20,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.99890708"
-     inkscape:cx="313.843"
-     inkscape:cy="40.544312"
+     inkscape:zoom="3.9956283"
+     inkscape:cx="575.37884"
+     inkscape:cy="38.29185"
      inkscape:window-width="1439"
      inkscape:window-height="749"
      inkscape:window-x="116"
@@ -33,7 +33,19 @@
      id="defs1">
     <style
        type="text/css"
-       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }&#10;.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }&#10;.thin-line { stroke: #1F0000; shape-rendering: crispEdges }&#10;.filled { fill: #330000; stroke: none; }&#10;text.terminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #140000;                            font-weight: bold; }&#10;text.nonterminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1A0000;                            font-weight: normal; }&#10;text.regexp { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1F0000;                            font-weight: normal; }&#10;rect, circle, polygon { fill: #330000; stroke: #330000; }&#10;rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }&#10;rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }&#10;rect.text { fill: none; stroke: none; }&#10;polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }&#10;</style>
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
+.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #330000; stroke: none; }
+text.terminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #140000;                            font-weight: bold; }
+text.nonterminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1A0000;                            font-weight: normal; }
+text.regexp { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #330000; stroke: #330000; }
+rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }
+rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
+</style>
   </defs>
   <path
      id="polygon1"
@@ -53,7 +65,7 @@
      style="fill:#ff4d4d;stroke:#330000"
      d="m 39,1 h 50 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 39 C 33.46,33 29,28.54 29,23 V 11 C 29,5.46 33.46,1 39,1 Z" />
   <path
-     d="m 39.98,21 v -9.968 h 4.032 q 2.324,0 3.57,1.288 1.26,1.288 1.26,3.696 0,2.408 -1.26,3.696 Q 46.336,21 44.012,21 Z m 2.17,-1.82 h 1.596 q 2.898,0 2.898,-3.164 0,-1.526 -0.728,-2.338 -0.714,-0.826 -2.17,-0.826 H 42.15 Z m 15.665989,-8.148 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z m 8.65201,8.092 V 21 h -7.056 v -9.968 h 2.184 v 8.092 z m 8.722006,-8.092 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z m 9.00201,0 v 1.862 h -2.996 V 21 h -2.198 v -8.106 h -2.996 v -1.862 z m 8.624001,0 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z"
+     d="m 37.98,21 v -9.968 h 4.032 q 2.324,0 3.57,1.288 1.26,1.288 1.26,3.696 0,2.408 -1.26,3.696 Q 44.336,21 42.012,21 Z m 2.17,-1.82 h 1.596 q 2.898,0 2.898,-3.164 0,-1.526 -0.728,-2.338 -0.714,-0.826 -2.17,-0.826 H 40.15 Z m 15.665989,-8.148 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z m 8.65201,8.092 V 21 h -7.056 v -9.968 h 2.184 v 8.092 z m 8.722006,-8.092 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z m 9.00201,0 v 1.862 h -2.996 V 21 h -2.198 v -8.106 h -2.996 v -1.862 z m 8.624001,0 v 1.792 h -5.306 v 2.17 h 4.872 v 1.722 h -4.872 v 2.45 h 5.404 V 21 h -7.574 v -9.968 z"
      id="text3"
      class="terminal"
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
