@@ -4,14 +4,14 @@ import classNames from "classnames";
 
 import { CloseIcon } from "shared/icons/CloseIcon";
 import { LeaderBigIcon } from "shared/icons/LeaderBigIcon";
-import { ClientInstanceType } from "store/slices/types";
+import { InstanceType } from "shared/entity/instance";
 
 import styles from "./InstanceModal.module.css";
 
 export interface InstanceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  instance: ClientInstanceType;
+  instance: InstanceType;
 }
 
 export const InstanceModal: FC<InstanceModalProps> = ({
@@ -24,7 +24,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
     return (
       <div className={styles.boxInfoWrapper}>
         {keys.map((key, index) => {
-          if (typeof instance[key as keyof ClientInstanceType] === "string") {
+          if (typeof instance[key as keyof InstanceType] === "string") {
             return (
               <div
                 key={index}
@@ -35,7 +35,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
                 <span>
                   <p className={styles.titleText}>{key}</p>
                 </span>
-                <p>{instance[key as keyof ClientInstanceType].toString()}</p>
+                <p>{instance[key as keyof InstanceType].toString()}</p>
               </div>
             );
           }

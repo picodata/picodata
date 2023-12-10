@@ -2,15 +2,15 @@ import cn from "classnames";
 import React, { FC, useCallback, useState } from "react";
 
 import { LeaderIcon } from "shared/icons/LeaderIcon";
-import { ClientInstanceType } from "store/slices/types";
 import { formatFailDomains } from "modules/replicaset/replicasetsPage/ReplicasetsContent/utils";
+import { InstanceType } from "shared/entity/instance";
 
 import { InstanceModal } from "./instanceModal/InstanceModal";
 
 import styles from "./InstanceCard.module.scss";
 
 interface InstanceCardProps {
-  instance: ClientInstanceType;
+  instance: InstanceType;
   theme?: "primary" | "secondary";
 }
 

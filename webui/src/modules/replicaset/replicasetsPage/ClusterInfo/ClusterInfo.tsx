@@ -1,10 +1,8 @@
-import { useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
 import cn from "classnames";
 
-import { AppDispatch, RootState } from "store";
-import { getClusterInfo } from "store/slices/clusterSlice";
 import { Content } from "shared/ui/layout/Content/Content";
+
+import { useClusterInfo } from "../../../../shared/entity/cluster/info";
 
 import { CapacityProgress } from "./CapacityProgress/CapacityProgress";
 
@@ -17,15 +15,9 @@ type ClusterInfoProps = {
 export const ClusterInfo = (props: ClusterInfoProps) => {
   const { className } = props;
 
-  const dispatch = useDispatch<AppDispatch>();
-  const clusterInfoSelector = useSelector(
-    (state: RootState) => state.cluster.clusterInfo
-  );
-  useEffect(() => {
-    dispatch(getClusterInfo());
-  }, [dispatch]);
+  const { data: clusterInfoData } = useClusterInfo();
 
-  if (!clusterInfoSelector) {
+  if (!clusterInfoData) {
     return null;
   }
 
@@ -35,9 +27,9 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
         <div className={styles.columnName}>Capacity Usage</div>
         <div className={styles.capacityWrapper}>
           <CapacityProgress
-            percent={clusterInfoSelector.capacityUsage}
-            currentValue={clusterInfoSelector.memory.used}
-            limit={clusterInfoSelector.memory.usable}
+            percent={clusterInfoData.capacityUsage}
+            currentValue={clusterInfoData.memory.used}
+            limit={clusterInfoData.memory.usable}
             currentValueLabel="Useful capacity"
           />
         </div>
@@ -46,7 +38,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
         <div className={styles.columnName}>Replicasets</div>
         <div className={styles.columnContent}>
           <div className={styles.columnValue}>
-            {clusterInfoSelector.replicasetsCount}
+            {clusterInfoData.replicasetsCount}
           </div>
           <div className={styles.columnLabel}>
             total <br />
@@ -59,7 +51,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
         <div className={styles.instancesBlock}>
           <div className={styles.columnContent}>
             <div className={styles.columnValue}>
-              {clusterInfoSelector.instancesCurrentGradeOnline}
+              {clusterInfoData.instancesCurrentGradeOnline}
             </div>
             <div className={styles.columnLabel}>
               current grade <br />
@@ -68,7 +60,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           </div>
           <div className={styles.columnContent}>
             <div className={styles.columnValue}>
-              {clusterInfoSelector.instancesCurrentGradeOffline}
+              {clusterInfoData.instancesCurrentGradeOffline}
             </div>
             <div className={styles.columnLabel}>
               current grade <br />
@@ -81,7 +73,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
         <div className={styles.columnName}>Version</div>
         <div className={styles.columnContent}>
           <div className={styles.columnValue}>
-            {clusterInfoSelector.currentInstaceVersion}
+            {clusterInfoData.currentInstaceVersion}
           </div>
           <div className={styles.columnLabel}>
             current <br /> instance

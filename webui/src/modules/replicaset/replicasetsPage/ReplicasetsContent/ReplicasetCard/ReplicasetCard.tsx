@@ -2,7 +2,7 @@ import React, { FC, useState } from "react";
 import cn from "classnames";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
-import { ClientInstanceType } from "store/slices/types";
+import { InstanceType } from "shared/entity/instance";
 
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
@@ -13,7 +13,7 @@ import styles from "./ReplicasetCard.module.scss";
 export type TReplicaset = {
   id: string;
   instanceCount: number;
-  instances: ClientInstanceType[];
+  instances: InstanceType[];
   version: string;
   grade: string;
   capacityUsage: number;

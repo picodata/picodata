@@ -1,9 +1,8 @@
 import React from "react";
-import { useSelector } from "react-redux";
 
 import { FunnelIcon } from "shared/icons/FunnelIcon";
 import { ButtonModal } from "shared/ui/ButtonModal/ButtonModal";
-import { RootState } from "store";
+import { useReplicasets } from "shared/entity/replicaset/list";
 
 import { TFilterByValue } from "./config";
 import { FilterByModal } from "./FilterByModal/FilterByModal";
@@ -18,9 +17,9 @@ export type FilterByProps = {
 
 export const FilterBy: React.FC<FilterByProps> = (props) => {
   const { filterByValue, setFilterByValue } = props;
-  const instances = useSelector((state: RootState) => state.cluster.instances);
+  const { data } = useReplicasets();
 
-  const { domains } = useInstancesFiltersData(instances);
+  const { domains } = useInstancesFiltersData(data?.instances ?? []);
 
   return (
     <ButtonModal

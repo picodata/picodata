@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useUSP } from "shared/router/hooks/useUSP";
-import { ClientInstanceType } from "store/slices/types";
+import { InstanceType } from "shared/entity/instance";
 
 import { filterByValue } from "./config";
 
@@ -12,7 +12,7 @@ export const useFilterBy = () => {
   });
 };
 
-export const useInstancesFiltersData = (instances: ClientInstanceType[]) => {
+export const useInstancesFiltersData = (instances: InstanceType[]) => {
   return useMemo(() => {
     const domainMap = new Map<string, { key: string; value: string }>();
 

@@ -1,17 +1,19 @@
 import { useMemo } from "react";
 
 import { sortByString } from "shared/utils/string/sort";
-import { ClientInstanceType } from "store/slices/types";
+import { InstanceType } from "shared/entity/instance";
 
 import { TSortValue } from "./TopBar/SortBy/config";
 import { formatFailDomains } from "./utils";
 import { TFilterByValue } from "./TopBar/FilterBy/config";
 
 export const useFilteredInstances = (
-  instances: ClientInstanceType[],
+  instances?: InstanceType[],
   filteredBy?: TFilterByValue
 ) => {
   return useMemo(() => {
+    if (!instances) return [];
+
     if (!filteredBy) return instances;
 
     let filteredInstances = instances;
@@ -33,10 +35,12 @@ export const useFilteredInstances = (
 };
 
 export const useSortedInstances = (
-  instances: ClientInstanceType[],
+  instances?: InstanceType[],
   sortBy?: TSortValue
 ) => {
   return useMemo(() => {
+    if (!instances) return [];
+
     if (!sortBy) return instances;
 
     return [...instances].sort((a, b) => {

@@ -1,10 +1,6 @@
-import { useDispatch, useSelector } from "react-redux";
-import { useEffect } from "react";
-
-import { getReplicasets } from "store/slices/clusterSlice";
-import { AppDispatch, RootState } from "store";
 import { Content } from "shared/ui/layout/Content/Content";
 import { NoData } from "shared/ui/NoData/NoData";
+import { useReplicasets } from "shared/entity/replicaset/list";
 
 import { ReplicasetCard } from "./ReplicasetCard/ReplicasetCard";
 import { InstanceCard } from "./ReplicasetCard/instanceBlock/InstanceCard";
@@ -17,23 +13,16 @@ import { useFilterBy } from "./TopBar/FilterBy/hooks";
 import styles from "./ReplicasetsContent.module.scss";
 
 export const ReplicasetsContent = () => {
-  const dispatch = useDispatch<AppDispatch>();
-  const { replicasets, instances } = useSelector((state: RootState) => {
-    return {
-      replicasets: state.cluster.replicasets,
-      instances: state.cluster.instances,
-    };
-  });
-
-  useEffect(() => {
-    dispatch(getReplicasets());
-  }, [dispatch]);
+  const { data } = useReplicasets();
 
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
   const [sortByValue, setSortByValue] = useSortBy();
   const [filterByValue, setFilterByValue] = useFilterBy();
 
-  const filteredInstances = useFilteredInstances(instances, filterByValue);
+  const filteredInstances = useFilteredInstances(
+    data?.instances,
+    filterByValue
+  );
   const sortedFilteredInstances = useSortedInstances(
     filteredInstances,
     sortByValue
@@ -41,7 +30,7 @@ export const ReplicasetsContent = () => {
 
   const groupedByReplicates = groupByFilterValue === "REPLICASETS";
 
-  const isNoData = replicasets.length === 0;
+  const isNoData = data?.replicasets.length === 0;
 
   return (
     <Content className={styles.gridWrapper}>
@@ -62,7 +51,7 @@ export const ReplicasetsContent = () => {
           />
           <div className={styles.replicasetsWrapper}>
             {groupedByReplicates &&
-              replicasets.map((rep) => (
+              data?.replicasets.map((rep) => (
                 <ReplicasetCard key={rep.id} replicaset={rep} />
               ))}
             {!groupedByReplicates &&
