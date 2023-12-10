@@ -29,10 +29,9 @@ export const SideMenu = () => {
       className={cn(styles.container, isOpen && styles.openContainer)}
       ref={containerRef}
     >
-      <BurgerIcon
-        className={styles.menuIcon}
-        onClick={() => setIsOpen(!isOpen)}
-      />
+      <div className={styles.menuIcon} onClick={() => setIsOpen(!isOpen)}>
+        <BurgerIcon />
+      </div>
       <div className={styles.navLinksList}>
         <NavLink
           to={URL_CONFIG.NODES.absolutePath}

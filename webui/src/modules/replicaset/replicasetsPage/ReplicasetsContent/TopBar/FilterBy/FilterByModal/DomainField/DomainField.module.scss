@@ -1,5 +1,5 @@
 .keyValueField {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
 }
 
@@ -7,15 +7,25 @@
   align-items: center;
 }
 
-.keys {
-  display: flex;
-  flex-wrap: wrap;
-  row-gap: 24px;
-  column-gap: 12px;
-  margin-left: 43px;
-}
-
 .valueSelect {
   width: 100%;
-  margin-left: 28px;
+}
+
+.container {
+  &:nth-child(2) {
+    margin-top: 24px;
+  }
+}
+
+.deleteContainer {
+  display: flex;
+  align-items: center;
+}
+
+.delete {
+  display: inline-flex;
+  color: #dd4a4a;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: auto;
 }

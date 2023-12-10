@@ -24,7 +24,7 @@ export const CapacityProgress: React.FC<CapacityProgressProps> = (props) => {
     currentValue,
     limit,
     currentValueLabel = "",
-    progressLineWidth = 261,
+    progressLineWidth = 194,
   } = props;
 
   const percent = Math.round(props.percent ?? (currentValue / limit) * 100);
@@ -32,25 +32,23 @@ export const CapacityProgress: React.FC<CapacityProgressProps> = (props) => {
   const showLabels = !!currentValueLabel;
 
   return (
-    <div className={cn(styles.container, styles[size], styles[theme])}>
-      <div className={styles.text}>{percent} %</div>
-      <div className={styles.progressLineContainer}>
-        <CapacityProgressLine
-          width={progressLineWidth}
-          percent={percent}
-          theme={theme}
-          size={size}
-        />
-        <div className={styles.progressLineInfo}>
-          <div className={styles.text}>{formatBytes(currentValue)}</div>
-          <div className={styles.text}>{formatBytes(limit)}</div>
-        </div>
-        {showLabels && (
-          <div className={styles.progressLabels}>
-            <div className={styles.label}>{currentValueLabel}</div>
+    <div>
+      <div className={cn(styles.container, styles[size], styles[theme])}>
+        <div className={styles.text}>{percent} %</div>
+        <div className={styles.progressLineContainer}>
+          <CapacityProgressLine
+            width={progressLineWidth}
+            percent={percent}
+            theme={theme}
+            size={size}
+          />
+          <div className={styles.progressLineInfo}>
+            <div className={styles.text}>{formatBytes(currentValue)}</div>
+            <div className={styles.text}>{formatBytes(limit)}</div>
           </div>
-        )}
+        </div>
       </div>
+      {showLabels && <div className={styles.label}>{currentValueLabel}</div>}
     </div>
   );
 };

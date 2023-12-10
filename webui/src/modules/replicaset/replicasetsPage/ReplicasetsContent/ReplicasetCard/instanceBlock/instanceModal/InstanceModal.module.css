@@ -15,9 +15,9 @@
 
 .body {
   background-color: #fff;
-  width: 844px;
-  height: 462px;
-  border-radius: 16px;
+  width: 956px;
+  height: 480px;
+  border-radius: 8px;
   padding: 40px 56px;
 }
 
@@ -32,24 +32,33 @@
 }
 
 .titleWrapper {
-  padding: 0px 0px 8px 16px;
   display: flex;
   justify-content: space-between;
+  margin: 16px 0;
 }
 
 .titleText {
   font-size: 24px;
-  font-weight: 600;
-  font-family: Montserrat, sans-serif;
-  align-items: center;
-  gap: 8px;
-  justify-content: center;
+  font-weight: 500;
   display: flex;
+  align-items: center;
+}
+
+.starIcon {
+  margin-right: 4px;
+}
+
+.close {
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .tabGroup {
   display: flex;
-  gap: 80px;
   border-bottom: 1px solid;
   padding: 8px 16px;
 }
@@ -87,5 +96,5 @@
 }
 
 .grayRaw {
-  background-color: #ede9e3;
+  background-color: #f9f9f8;
 }

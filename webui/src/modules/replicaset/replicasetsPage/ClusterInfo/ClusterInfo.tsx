@@ -40,10 +40,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           <div className={styles.columnValue}>
             {clusterInfoData.replicasetsCount}
           </div>
-          <div className={styles.columnLabel}>
-            total <br />
-            replicasets
-          </div>
+          <div className={styles.columnLabel}>total replicasets</div>
         </div>
       </div>
       <div className={cn(styles.infoColumn, styles.instancesColumn)}>
@@ -53,19 +50,13 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
             <div className={styles.columnValue}>
               {clusterInfoData.instancesCurrentGradeOnline}
             </div>
-            <div className={styles.columnLabel}>
-              current grade <br />
-              online
-            </div>
+            <div className={styles.columnLabel}>current grade online</div>
           </div>
           <div className={styles.columnContent}>
             <div className={styles.columnValue}>
               {clusterInfoData.instancesCurrentGradeOffline}
             </div>
-            <div className={styles.columnLabel}>
-              current grade <br />
-              offline
-            </div>
+            <div className={styles.columnLabel}>current grade offline</div>
           </div>
         </div>
       </div>
@@ -75,9 +66,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           <div className={styles.columnValue}>
             {clusterInfoData.currentInstaceVersion}
           </div>
-          <div className={styles.columnLabel}>
-            current <br /> instance
-          </div>
+          <div className={styles.columnLabel}>current instance</div>
         </div>
       </div>
     </Content>

@@ -11,16 +11,14 @@ export const PlusIcon: FC<IconProps> = (props) => (
     {...props}
   >
     <path
-      d="M8 3.33398V12.6673"
+      d="M8 3.33301V12.6663"
       stroke="currentColor"
-      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
     <path
-      d="M3.33398 8H12.6673"
+      d="M3.3335 8H12.6668"
       stroke="currentColor"
-      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
     />

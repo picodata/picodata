@@ -24,8 +24,12 @@ export type FilterByModalProps = {
 export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
   const { domains, values, onApply } = props;
 
-  const [keyValueFilters, addKeyValueFilter, updateKeyValueFilter] =
-    useKeyValues(values.domainValuesFilters);
+  const [
+    keyValueFilters,
+    addKeyValueFilter,
+    updateKeyValueFilter,
+    deleteFilter,
+  ] = useKeyValues(values.domainValuesFilters);
 
   const onApplyClick = useCallback(() => {
     const domainValuesFilters = keyValueFilters
@@ -56,32 +60,48 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
   }, [onApply, keyValueFilters]);
 
   return (
-    <div className={styles.container}>
+    <>
       <div className={styles.field}>
         <div className={styles.label}>Failure domain</div>
-        {keyValueFilters.map((filter) => {
-          return (
-            <DomainField
-              key={filter.id}
-              filter={filter}
-              className={styles.keyValueForm}
-              domains={domains}
-              updateKeyValueFilter={updateKeyValueFilter}
-            />
-          );
-        })}
+        <div className={styles.scroll}>
+          {keyValueFilters.map((filter, i) => {
+            return (
+              <DomainField
+                key={filter.id}
+                filter={filter}
+                domains={domains}
+                onDelete={
+                  i === 0
+                    ? undefined
+                    : () => {
+                        deleteFilter(filter.id);
+                      }
+                }
+                updateKeyValueFilter={updateKeyValueFilter}
+              />
+            );
+          })}
+        </div>
       </div>
-      <Button
-        size="extraSmall"
-        theme="secondary"
-        leftIcon={<PlusIcon />}
-        onClick={addKeyValueFilter}
-      >
-        Add key value pair
-      </Button>
+      <div className={styles.addFilter} onClick={addKeyValueFilter}>
+        <PlusIcon />
+      </div>
       <div className={styles.footer}>
-        <Button onClick={onApplyClick}>Apply filter</Button>
+        <Button className={styles.apply} onClick={onApplyClick}>
+          Apply
+        </Button>
+        <Button
+          className={styles.clear}
+          theme="secondary"
+          onClick={() =>
+            onApply({
+              domainValuesFilters: undefined,
+            })
+          }
+        >
+          Clear all
+        </Button>
       </div>
-    </div>
+    </>
   );
 };

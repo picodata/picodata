@@ -1,3 +1,17 @@
 .button {
-  border-radius: 16px;
+  border-radius: 4px;
+}
+
+.selectTag {
+  background-color: #fdfdfd;
+  box-shadow: 1px 1px 3px 0px rgba(157, 153, 172, 1);
+  padding: 2px 12px;
+
+  &:active {
+    background-color: #efefef;
+  }
+
+  &:hover {
+    background-color: #efefef;
+  }
 }

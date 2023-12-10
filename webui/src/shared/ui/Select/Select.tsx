@@ -57,6 +57,8 @@ export const Select = <T extends TOption>(props: SelectProps<T>) => {
       closeMenuOnSelect={other.isMulti ? false : true}
       {...other}
       classNames={classNames}
+      menuPlacement="auto"
+      menuPortalTarget={document.body}
       components={{
         Option: (args) => (
           <Option isSelected={args.isSelected} {...args.innerProps}>
@@ -77,6 +79,7 @@ export const Select = <T extends TOption>(props: SelectProps<T>) => {
                 <Tag
                   size="extraSmall"
                   theme="secondary"
+                  isSelectValue
                   className={args.innerProps?.className}
                 >
                   See all ({value.length})
@@ -89,6 +92,7 @@ export const Select = <T extends TOption>(props: SelectProps<T>) => {
             <Tag
               size="extraSmall"
               className={args.innerProps?.className}
+              isSelectValue
               rightIcon={
                 <div {...args.removeProps}>
                   <CircleCloseIcon />

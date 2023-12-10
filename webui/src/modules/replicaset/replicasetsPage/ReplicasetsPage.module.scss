@@ -1,3 +1,17 @@
+@import 'styles/vars';
+
 .clusterInfo {
   margin-bottom: 24px;
+}
+
+.hh {
+  width: 100px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 30px;
+  color: $colorTextOrange;
+  margin-bottom: 16px;
 }

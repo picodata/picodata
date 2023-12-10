@@ -23,6 +23,9 @@ $menuIndent: 40px;
 }
 
 .menuIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: $menuIndent;
   color: $colorTextBlack;
   cursor: pointer;

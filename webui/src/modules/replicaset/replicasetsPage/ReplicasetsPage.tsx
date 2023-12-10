@@ -8,6 +8,7 @@ import styles from "./ReplicasetsPage.module.scss";
 export const ReplicasetsPage = () => {
   return (
     <PageContainer>
+      <div className={styles.title}>Cluster ID</div>
       <ClusterInfo className={styles.clusterInfo} />
       <ReplicasetsContent />
     </PageContainer>

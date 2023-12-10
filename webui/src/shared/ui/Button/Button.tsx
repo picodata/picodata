@@ -4,7 +4,7 @@ import cn from "classnames";
 import styles from "./Button.module.scss";
 
 export type ButtonProps = {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   theme?: "primary" | "secondary";

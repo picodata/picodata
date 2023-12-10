@@ -17,20 +17,24 @@
 
 .text {
   color: $colorTextBlack;
+  white-space: nowrap;
 }
 
 .medium {
   .progressLineContainer {
-    margin-left: 12px;
-  }
-
-  .progressLineInfo {
-    margin-top: 8px;
+    margin-left: 8px;
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   .text {
-    font-size: 24px;
-    line-height: 30px;
+    font-size: 16px;
+    line-height: 24px;
+    margin-top: -3px;
+  }
+
+  .progressLineInfo {
+    margin-top: 2px;
   }
 }
 
@@ -59,7 +63,7 @@
 
 .label {
   color: $colorTextGrey;
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 400;
-  line-height: 24px;
+  line-height: 16px;
 }

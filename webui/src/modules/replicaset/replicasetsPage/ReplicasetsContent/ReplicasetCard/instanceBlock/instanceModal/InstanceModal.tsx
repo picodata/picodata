@@ -49,19 +49,28 @@ export const InstanceModal: FC<InstanceModalProps> = ({
   }
 
   return createPortal(
-    <div className={styles.wrapper}>
+    <div
+      className={styles.wrapper}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+    >
       <div className={styles.body}>
         <div className={styles.titleWrapper}>
           <span className={styles.titleText}>
-            {instance.isLeader && <LeaderBigIcon />}
+            {instance.isLeader && <LeaderBigIcon className={styles.starIcon} />}
             {instance.name}
           </span>
-          <CloseIcon
+          <div
+            className={styles.close}
             onClick={(event) => {
               event.stopPropagation();
               onClose();
             }}
-          />
+          >
+            <CloseIcon />
+          </div>
         </div>
         <div className={styles.tabGroup}>
           <span>General</span>

@@ -3,8 +3,8 @@ import cn from "classnames";
 
 import { Select } from "shared/ui/Select/Select";
 import { isArrayContainsOtherArray } from "shared/utils/array/isArrayContainsOtherArray";
+import { TrashIcon } from "shared/icons/TrashIcon";
 
-import { FilterKey } from "./FilterKey/FilterKey";
 import { TKeyValueFilter } from "./types";
 import { useKeysValuesData } from "./hooks";
 
@@ -12,6 +12,7 @@ import styles from "./DomainField.module.scss";
 
 export type DomainFieldProps = {
   className?: string;
+  onDelete?: () => void;
   filter: TKeyValueFilter;
   domains: Array<{ key: string; value: string }>;
   updateKeyValueFilter: (
@@ -21,7 +22,7 @@ export type DomainFieldProps = {
 };
 
 export const DomainField: React.FC<DomainFieldProps> = (props) => {
-  const { className, filter, domains, updateKeyValueFilter } = props;
+  const { className, filter, domains, updateKeyValueFilter, onDelete } = props;
 
   const { keys, values } = useKeysValuesData(domains, filter);
 
@@ -50,31 +51,36 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
   }, [domainValuesOptions, filter.value]);
 
   return (
-    <div className={className}>
+    <div className={cn(styles.container, className)}>
       <div className={styles.keyValueField}>
-        <div className={styles.label}>Key</div>
-        <div className={styles.keys}>
-          {keys.map((key) => {
-            const isActive = key === filter.key;
+        <Select
+          options={keys.map((key) => ({ label: key, value: key }))}
+          classNames={{ container: () => styles.valueSelect }}
+          isMulti={false}
+          placeholder="Key"
+          value={
+            filter.key ? { label: filter.key, value: filter.key } : undefined
+          }
+          onChange={(newOptions) => {
+            if (!newOptions || Array.isArray(newOptions)) return;
 
-            return (
-              <FilterKey
-                key={key}
-                isActive={isActive}
-                onClick={() => updateKeyValueFilter(filter.id, { key })}
-              >
-                {key}
-              </FilterKey>
-            );
-          })}
-        </div>
+            const newValue = newOptions as {
+              label: string;
+              value: string;
+            };
+
+            updateKeyValueFilter(filter.id, {
+              key: newValue.value,
+            });
+          }}
+        />
       </div>
       <div className={cn(styles.keyValueField, styles.keyValueFieldCenter)}>
-        <div className={styles.label}>Value</div>
         <Select
           options={domainValuesOptions}
           classNames={{ container: () => styles.valueSelect }}
           isMulti
+          placeholder="Value"
           value={domainValuesValue}
           onChange={(newOptions) => {
             if (!newOptions || !Array.isArray(newOptions)) return;
@@ -85,6 +91,13 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
           }}
         />
       </div>
+      {!!onDelete && (
+        <div className={styles.deleteContainer}>
+          <div className={styles.delete} onClick={onDelete}>
+            <TrashIcon />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

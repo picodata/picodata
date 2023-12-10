@@ -1,10 +1,5 @@
 @import 'styles/vars';
 
-.container {
-  margin-left: 16px;
-  margin-right: 16px;
-}
-
 .field {
   margin-bottom: 24px;
 }
@@ -16,12 +11,33 @@
   line-height: 24px;
 }
 
-.keyValueForm {
-  padding-left: 24px;
+.footer {
+  margin-top: 56px;
+  display: flex;
 }
 
-.footer {
-  margin-top: 40px;
+.apply {
+  flex-grow: 1;
+}
+
+.clear {
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.addFilter {
+  width: 32px;
+  height: 32px;
   display: flex;
-  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: center;
+  background: #e8ebf1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.scroll {
+  overflow: auto;
+  max-height: 492px;
+  margin-top: 4px;
 }

@@ -26,6 +26,6 @@ export const getConfigBySize = (size: "small" | "medium") => {
   }
 
   return {
-    height: 24,
+    height: 16,
   };
 };

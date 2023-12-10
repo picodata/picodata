@@ -4,6 +4,7 @@ import cn from "classnames";
 import { ChevronDown } from "shared/icons/ChevronDown";
 import { InstanceType } from "shared/entity/instance";
 import { TextInFrame } from "shared/ui/typography/TextInFrame/TextInFrame";
+import { Collapse } from "shared/ui/Collapse/Collapse";
 
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
@@ -73,13 +74,13 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
             />
           </div>
         </div>
-        {isOpen && (
+        <Collapse isOpen={isOpen}>
           <div className={styles.instancesWrapper}>
             {replicaset.instances.map((instance) => (
               <InstanceCard key={instance.name} instance={instance} />
             ))}
           </div>
-        )}
+        </Collapse>
       </div>
     );
   }

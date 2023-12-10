@@ -1,11 +1,9 @@
 import cn from "classnames";
-import React, { FC, useCallback, useState } from "react";
+import React, { FC } from "react";
 
 import { LeaderIcon } from "shared/icons/LeaderIcon";
 import { formatFailDomains } from "modules/replicaset/replicasetsPage/ReplicasetsContent/utils";
 import { InstanceType } from "shared/entity/instance";
-
-import { InstanceModal } from "./instanceModal/InstanceModal";
 
 import styles from "./InstanceCard.module.scss";
 
@@ -16,17 +14,17 @@ interface InstanceCardProps {
 
 export const InstanceCard: FC<InstanceCardProps> = React.memo(
   ({ instance, theme = "primary" }) => {
-    const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-    const onCloseHandler = useCallback(() => {
-      setIsOpenModal(false);
-    }, []);
+    // const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+    // const onCloseHandler = useCallback(() => {
+    //   setIsOpenModal(false);
+    // }, []);
 
     return (
       <>
         <div
           onClick={(event) => {
             event.stopPropagation();
-            setIsOpenModal(true);
+            // setIsOpenModal(true);
           }}
           className={cn(styles.instanceWrapper, styles[theme])}
         >
@@ -58,12 +56,12 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
             <div className={styles.value}>{instance.version}</div>
           </div>
         </div>
-        <InstanceModal
+        {/* <InstanceModal
           key={`${instance.name}_modal`}
           instance={instance}
           isOpen={isOpenModal}
           onClose={onCloseHandler}
-        />
+        /> */}
       </>
     );
   }

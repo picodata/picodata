@@ -32,5 +32,16 @@ export const useKeyValues = (
     });
   };
 
-  return [keyValueFilters, addNewKeyValueFilter, updateKeyValueFilter] as const;
+  const deleteKeyValue = (id: number) => {
+    setKeyValueFilters((prevFilters) => {
+      return prevFilters.filter((f) => f.id !== id);
+    });
+  };
+
+  return [
+    keyValueFilters,
+    addNewKeyValueFilter,
+    updateKeyValueFilter,
+    deleteKeyValue,
+  ] as const;
 };

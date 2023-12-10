@@ -1,4 +1,5 @@
 import React from "react";
+import cn from "classnames";
 
 import { CircleCloseIcon } from "shared/icons/CircleCloseIcon";
 
@@ -7,12 +8,19 @@ import { Button, ButtonProps } from "../Button/Button";
 import styles from "./Tag.module.scss";
 
 type TagProps = ButtonProps & {
+  isSelectValue?: boolean;
   closeIcon?: boolean;
   onClose?: (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => void;
 };
 
 export const Tag: React.FC<TagProps> = (props) => {
-  const { closeIcon, rightIcon: RightIcon, onClose, ...other } = props;
+  const {
+    closeIcon,
+    rightIcon: RightIcon,
+    onClose,
+    isSelectValue,
+    ...other
+  } = props;
 
   const renderIcon = () => {
     if (RightIcon) return RightIcon;
@@ -31,6 +39,10 @@ export const Tag: React.FC<TagProps> = (props) => {
   };
 
   return (
-    <Button {...other} rightIcon={renderIcon()} className={styles.button} />
+    <Button
+      {...other}
+      rightIcon={renderIcon()}
+      className={cn(styles.button, isSelectValue && styles.selectTag)}
+    />
   );
 };
