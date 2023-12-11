@@ -1,3 +1,4 @@
+use crate::tlog;
 use std::collections::HashSet;
 
 static mut INJECTED_ERRORS: Option<HashSet<String>> = None;
@@ -9,7 +10,9 @@ pub fn enable(error: &str, enable: bool) {
     let injected_errors = injected_errors.get_or_insert_with(Default::default);
     if enable {
         injected_errors.insert(error.into());
+        tlog!(Info, "ERROR INJECTION '{error}': fused");
     } else {
+        tlog!(Info, "ERROR INJECTION '{error}': defused");
         injected_errors.remove(error);
     }
 }
@@ -38,7 +41,7 @@ macro_rules! error_injection {
         #[rustfmt::skip]
         if $crate::error_injection::is_enabled($error) {
             $crate::tlog!(Info, "################################################################");
-            $crate::tlog!(Info, "ERROR INJECTED '{}': EXITING", $error);
+            $crate::tlog!(Info, "ERROR INJECTION '{}': EXITING", $error);
             $crate::tlog!(Info, "################################################################");
             $crate::tarantool::exit(69);
         };
@@ -48,7 +51,7 @@ macro_rules! error_injection {
         #[rustfmt::skip]
         if $crate::error_injection::is_enabled(error) {
             $crate::tlog!(Info, "################################################################");
-            $crate::tlog!(Info, "ERROR INJECTED '{}': BLOCKING", error);
+            $crate::tlog!(Info, "ERROR INJECTION '{}': BLOCKING", error);
             $crate::tlog!(Info, "################################################################");
 
             while $crate::error_injection::is_enabled(error) {
@@ -56,7 +59,7 @@ macro_rules! error_injection {
             }
 
             $crate::tlog!(Info, "################################################################");
-            $crate::tlog!(Info, "ERROR UNINJECTED '{}': UNBLOCKING", error);
+            $crate::tlog!(Info, "ERROR INJECTION '{}': UNBLOCKING", error);
             $crate::tlog!(Info, "################################################################");
         };
     }};
