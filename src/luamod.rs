@@ -1462,8 +1462,11 @@ pub(crate) fn setup(args: &args::Run) {
             1. error (string)
             2. enable (bool)
         "},
-        tlua::Function::new(|error: String, enable: bool| {
-            crate::error_injection::enable(&error, enable);
-        }),
+        {
+            tlog!(Info, "error injection enabled");
+            tlua::Function::new(|error: String, enable: bool| {
+                crate::error_injection::enable(&error, enable);
+            })
+        },
     );
 }
