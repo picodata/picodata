@@ -136,3 +136,5 @@ validation:
 # https://www.mkdocs.org/user-guide/configuration/#hooks
 hooks:
   - ./hooks/filter_logs.py
+  - ./hooks/check_headers.py
+  - ./hooks/check_links.py
