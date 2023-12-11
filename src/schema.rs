@@ -121,6 +121,23 @@ impl TableDef {
 
         Ok(space_def)
     }
+
+    /// Initial entries that should be put into system table [Tables](crate::storage::Tables) at bootstrap.
+    pub fn system_tables() -> Vec<Self> {
+        ClusterwideTable::all_tables()
+            .iter()
+            .map(|t| Self {
+                id: t.id(),
+                name: t.name().into(),
+                distribution: Distribution::Global,
+                format: t.format(),
+                schema_version: 0,
+                operable: true,
+                engine: SpaceEngineType::Memtx,
+                owner: ADMIN_ID,
+            })
+            .collect()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

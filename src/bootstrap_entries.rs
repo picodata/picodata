@@ -8,6 +8,7 @@ use crate::cli::args;
 use crate::instance::Instance;
 use crate::schema::PrivilegeDef;
 use crate::schema::RoleDef;
+use crate::schema::TableDef;
 use crate::schema::UserDef;
 use crate::schema::{ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID};
 use crate::sql::pgproto;
@@ -197,6 +198,14 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         init_entries_push_op(op::Dml::insert(
             ClusterwideTable::Privilege,
             priv_def,
+            ADMIN_ID,
+        ));
+    }
+
+    for table_def in TableDef::system_tables() {
+        init_entries_push_op(op::Dml::insert(
+            ClusterwideTable::Table,
+            &table_def,
             ADMIN_ID,
         ));
     }
