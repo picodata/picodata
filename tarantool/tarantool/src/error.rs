@@ -100,14 +100,20 @@ pub enum Error {
     /// This should only be used if the error doesn't fall into one of the above
     /// categories.
     #[error("{0}")]
-    Other(Box<dyn std::error::Error>),
+    Other(Box<dyn std::error::Error + Send + Sync>),
 }
+
+const _: () = {
+    /// Assert Error implements Send + Sync
+    const fn if_this_compiles_the_type_implements_send_and_sync<T: Send + Sync>() {}
+    if_this_compiles_the_type_implements_send_and_sync::<Error>();
+};
 
 impl Error {
     #[inline(always)]
     pub fn other<E>(error: E) -> Self
     where
-        E: Into<Box<dyn std::error::Error>>,
+        E: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         Self::Other(error.into())
     }
