@@ -133,8 +133,6 @@ validation:
   links:
     unrecognized_links: warn
 
-# Хуки
 # https://www.mkdocs.org/user-guide/configuration/#hooks
-  ## filter_plugin_records.py — фильтрует записи плагина mkdocs-plugin-inline-svg в логе MkDocs
 hooks:
-  - filter_plugin_records.py
+  - ./hooks/filter_logs.py
