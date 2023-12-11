@@ -1,9 +1,10 @@
 mod client;
+mod entrypoints;
 mod error;
 mod helpers;
 mod messages;
 mod server;
-mod sql;
+mod storage;
 mod stream;
 
 use crate::client::PgClient;

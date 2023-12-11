@@ -1,27 +1,27 @@
+use crate::storage::StorageManager;
+use crate::{error::PgResult, messages, stream::PgStream};
 use pgwire::messages::simplequery::Query;
 use std::io;
 
-use crate::{error::PgResult, messages, sql::statement::Statement, stream::PgStream};
-
 pub fn process_query_message(
     stream: &mut PgStream<impl io::Read + io::Write>,
+    manager: &StorageManager,
     query: Query,
 ) -> PgResult<()> {
-    let statement = Statement::prepare(query.query())?;
-    let mut portal = statement.bind()?;
+    let mut query_result = manager.simple_query(query.query())?;
 
-    if portal.sends_rows() {
-        let row_description = messages::row_description(portal.row_description()?);
+    if let Some(row_description) = query_result.row_description()? {
+        let row_description = messages::row_description(row_description);
         stream.write_message_noflush(row_description)?;
     }
 
-    while let Some(data_row) = portal.execute_one()? {
+    for data_row in query_result.by_ref() {
         let data_row = messages::data_row(data_row);
         stream.write_message_noflush(data_row)?;
     }
 
-    let tag = portal.command_tag().as_str();
-    let command_complete = messages::command_complete(tag, portal.row_count());
+    let tag = query_result.command_tag().as_str();
+    let command_complete = messages::command_complete(tag, query_result.row_count());
     stream.write_message(command_complete)?;
     Ok(())
 }

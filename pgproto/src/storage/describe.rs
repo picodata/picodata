@@ -1,4 +1,4 @@
-use crate::{error::PgResult, sql::value};
+use crate::{error::PgResult, storage::value};
 use pgwire::messages::data::{FieldDescription, RowDescription};
 use postgres_types::Type;
 use serde::Deserialize;
@@ -111,15 +111,21 @@ impl Describe {
         &self.command_tag
     }
 
-    pub fn row_description(&self) -> PgResult<RowDescription> {
-        let row_description = self
-            .metadata
-            .iter()
-            .map(|col| {
-                let type_str = col.r#type.as_str();
-                value::type_from_name(type_str).map(|ty| field_description(col.name.clone(), ty))
-            })
-            .collect::<PgResult<_>>()?;
-        Ok(RowDescription::new(row_description))
+    pub fn row_description(&self) -> PgResult<Option<RowDescription>> {
+        match self.query_type() {
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml => Ok(None),
+            QueryType::Dql | QueryType::Explain => {
+                let row_description = self
+                    .metadata
+                    .iter()
+                    .map(|col| {
+                        let type_str = col.r#type.as_str();
+                        value::type_from_name(type_str)
+                            .map(|ty| field_description(col.name.clone(), ty))
+                    })
+                    .collect::<PgResult<_>>()?;
+                Ok(Some(RowDescription::new(row_description)))
+            }
+        }
     }
 }

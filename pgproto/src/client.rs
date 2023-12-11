@@ -1,6 +1,7 @@
 use crate::client::simple_query::process_query_message;
 use crate::error::*;
 use crate::messages;
+use crate::storage::StorageManager;
 use crate::stream::{BeMessage, FeMessage, PgStream};
 use pgwire::messages::startup::*;
 use std::io;
@@ -9,8 +10,12 @@ mod auth;
 mod simple_query;
 mod startup;
 
+pub type ClientId = u32;
+
 /// Postgres client representation.
 pub struct PgClient<S> {
+    // The portal and statement storage manager.
+    manager: StorageManager,
     /// Stream for network communication.
     stream: PgStream<S>,
 }
@@ -36,7 +41,10 @@ impl<S: io::Read + io::Write> PgClient<S> {
             error
         })?;
 
-        Ok(PgClient { stream })
+        Ok(PgClient {
+            manager: StorageManager::new(),
+            stream,
+        })
     }
 
     /// Send paraneter to the frontend.
@@ -77,7 +85,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
         match message {
             FeMessage::Query(query) => {
                 log::info!("executing query");
-                process_query_message(&mut self.stream, query)?;
+                process_query_message(&mut self.stream, &self.manager, query)?;
                 Ok(ConnectionState::ReadyForQuery)
             }
             FeMessage::Terminate(_) => {
