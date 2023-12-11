@@ -102,6 +102,12 @@ macro_rules! define_clusterwide_tables {
                 }
             }
 
+            pub fn format(&self) -> Vec<tarantool::space::Field> {
+                match self {
+                    $( Self::$cw_space_var => $space_struct::format(), )+
+                }
+            }
+
             /// A slice of all possible variants of `Self`.
             /// Guaranteed to return spaces in ascending order of their id
             pub const fn all_tables() -> &'static [Self] {
@@ -241,6 +247,7 @@ define_clusterwide_tables! {
     ///
     /// Use [`Self::id`] to get [`SpaceId`].
     /// Use [`Self::name`] to get space name.
+    /// Each variant (e.g. system space) should have `new` and `format` methods in its implementation.
     pub enum ClusterwideTable {
         Table = 512, "_pico_table" => {
             Clusterwide::tables;
@@ -392,16 +399,18 @@ impl Clusterwide {
     ///
     /// Should only be used in tests.
     pub(crate) fn for_tests() -> Self {
-        Self::initialize().unwrap()
+        let storage = Self::initialize().unwrap();
+
+        // Add system tables
+        for table in TableDef::system_tables() {
+            storage.tables.put(&table).unwrap();
+        }
+
+        storage
     }
 
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
         let mut space_indexes = Vec::with_capacity(32);
-        // ClusterwideTable::all_tables is guaranteed to iterate in order
-        // of ascending space ids
-        for space in ClusterwideTable::all_tables() {
-            space_indexes.push((space.id(), 0));
-        }
 
         for space_def in self.tables.iter()? {
             if !matches!(space_def.distribution, Distribution::Global) {
@@ -627,14 +636,10 @@ impl Clusterwide {
     }
 
     fn global_table_name(&self, id: SpaceId) -> Result<Cow<'static, str>> {
-        if let Ok(space) = ClusterwideTable::try_from(id) {
-            Ok(space.name().into())
-        } else {
-            let Some(space_def) = self.tables.get(id)? else {
-                return Err(Error::other(format!("global space #{id} not found")));
-            };
-            Ok(space_def.name.into())
-        }
+        let Some(space_def) = self.tables.get(id)? else {
+            return Err(Error::other(format!("global space #{id} not found")));
+        };
+        Ok(space_def.name.into())
     }
 
     /// Applies contents of the raft snapshot. This includes
@@ -1208,8 +1213,7 @@ impl Properties {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("key", FieldType::String))
-            .field(("value", FieldType::Any))
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1223,6 +1227,15 @@ impl Properties {
         on_replace(space.id(), Self::on_replace)?;
 
         Ok(Self { space, index })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("key", FieldType::String)),
+            Field::from(("value", FieldType::Any)),
+        ]
     }
 
     /// Callback which is called when data in _pico_property is updated.
@@ -1394,7 +1407,7 @@ impl Replicasets {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(Replicaset::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1406,6 +1419,11 @@ impl Replicasets {
             .create()?;
 
         Ok(Self { space, index })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        Replicaset::format()
     }
 
     #[allow(unused)]
@@ -1434,8 +1452,7 @@ impl PeerAddresses {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .field(("raft_id", FieldType::Unsigned))
-            .field(("address", FieldType::String))
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1447,6 +1464,15 @@ impl PeerAddresses {
             .create()?;
 
         Ok(Self { space, index })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("raft_id", FieldType::Unsigned)),
+            Field::from(("address", FieldType::String)),
+        ]
     }
 
     #[inline]
@@ -1503,7 +1529,7 @@ impl Instances {
         let space_instances = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(Instance::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1534,6 +1560,11 @@ impl Instances {
             index_raft_id,
             index_replicaset_id,
         })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        Instance::format()
     }
 
     #[inline]
@@ -1835,7 +1866,7 @@ impl Tables {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(TableDef::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1858,6 +1889,11 @@ impl Tables {
             index_id,
             index_name,
         })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        TableDef::format()
     }
 
     #[inline]
@@ -1916,7 +1952,7 @@ impl Indexes {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(IndexDef::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -1941,6 +1977,11 @@ impl Indexes {
             index_id,
             index_name,
         })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        IndexDef::format()
     }
 
     #[inline]
@@ -2205,7 +2246,7 @@ impl Users {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(UserDef::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2228,6 +2269,11 @@ impl Users {
             index_id,
             index_name,
         })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        UserDef::format()
     }
 
     #[inline]
@@ -2295,7 +2341,7 @@ impl Roles {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(RoleDef::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2318,6 +2364,11 @@ impl Roles {
             index_id,
             index_name,
         })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        RoleDef::format()
     }
 
     #[inline]
@@ -2377,7 +2428,7 @@ impl Privileges {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(PrivilegeDef::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2401,6 +2452,11 @@ impl Privileges {
             primary_key,
             object_idx,
         })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        PrivilegeDef::format()
     }
 
     #[inline(always)]
@@ -2531,7 +2587,7 @@ impl Tiers {
         let space = Space::builder(Self::TABLE_NAME)
             .id(Self::TABLE_ID)
             .space_type(SpaceType::DataLocal)
-            .format(Tier::format())
+            .format(Self::format())
             .if_not_exists(true)
             .create()?;
 
@@ -2543,6 +2599,11 @@ impl Tiers {
             .create()?;
 
         Ok(Self { space, index_name })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        Tier::format()
     }
 
     #[inline(always)]
@@ -2645,9 +2706,13 @@ impl SchemaDef for TableDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         let space_id = self.id;
+        // If it's a built-in system table - skip creating.
+        if ClusterwideTable::try_from(space_id).is_ok() {
+            return Ok(());
+        }
         if let Some(abort_reason) = ddl_create_space_on_master(storage, space_id)? {
             return Err(Error::other(format!(
-                "failed to create space {space_id}: {abort_reason}"
+                "failed to create table {space_id}: {abort_reason}"
             )));
         }
         Ok(())
@@ -2658,7 +2723,7 @@ impl SchemaDef for TableDef {
         _ = storage;
         if let Some(abort_reason) = ddl_drop_space_on_master(*space_id)? {
             return Err(Error::other(format!(
-                "failed to drop space {space_id}: {abort_reason}"
+                "failed to drop table {space_id}: {abort_reason}"
             )));
         }
         Ok(())
@@ -3433,7 +3498,6 @@ mod tests {
     #[::tarantool::test]
     fn snapshot_data() {
         let storage = Clusterwide::for_tests();
-        storage.for_each_space(|s| s.truncate()).unwrap();
 
         let i = Instance {
             raft_id: 1,
