@@ -18,8 +18,10 @@ fn main() {
     // ├── tarantool-sys
     // │   └── static-build
     // │       └── CMakeLists.txt
+    // ├── picodata-webui
     // └── <target-dir>/<build-type>/build  // <- build_root
-    //     ├── picodata-<smth>/out          // <- out_dir
+    //     ├── picodata-<smth>/out          // <- std::env::var("OUT_DIR")
+    //     ├── picodata-webui
     //     ├── tarantool-http
     //     └── tarantool-sys
     //         ├── ncurses-prefix
@@ -31,8 +33,10 @@ fn main() {
     dbg!(&out_dir); // "<target-dir>/<build-type>/build/picodata-<smth>/out"
 
     // Running `cargo build` and `cargo clippy` produces 2 different
-    // `out_dir` paths. This is stupid, we're not going to use them.
-    let build_root = Path::new(&out_dir).parent().unwrap().parent().unwrap();
+    // `out_dir` paths. To avoid unnecessary rebuilds we use a different
+    // build root for foreign deps (tarantool-sys, tarantool-http,
+    // picodata-webui)
+    let build_root = Path::new(&out_dir).ancestors().nth(2).unwrap();
     dbg!(&build_root); // "<target-dir>/<build-type>/build"
 
     // See also:
@@ -137,9 +141,18 @@ fn rerun_if_webui_changed() {
 
 #[cfg(feature = "webui")]
 fn build_webui(build_root: &Path) {
+    if std::env::var("WEBUI_BUNDLE").is_ok() {
+        println!("building webui_bundle skipped");
+        return;
+    }
+
+    println!("building webui_bundle ...");
     let source_dir = std::env::current_dir().unwrap().join("picodata-webui");
-    let build_dir = build_root.join("picodata-webui");
-    let build_dir_str = build_dir.display().to_string();
+    let out_dir = build_root.join("picodata-webui");
+    let out_dir_str = out_dir.display().to_string();
+
+    let webui_bundle = out_dir.join("bundle.json");
+    println!("cargo:rustc-env=WEBUI_BUNDLE={}", webui_bundle.display());
 
     Command::new("yarn")
         .arg("install")
@@ -152,7 +165,7 @@ fn build_webui(build_root: &Path) {
     Command::new("yarn")
         .arg("vite")
         .arg("build")
-        .args(["--outDir", &build_dir_str])
+        .args(["--outDir", &out_dir_str])
         .arg("--emptyOutDir")
         .current_dir(&source_dir)
         .run();

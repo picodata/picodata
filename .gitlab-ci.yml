@@ -361,6 +361,23 @@ gamayun-run:
         -u $(id -u):$(id -g) --ulimit nofile=100000:100000 --network=host \
         docker.binary.picodata.io/gamayun
 
+build-webui-bundle:
+  stage: pack
+  tags:
+    - docker
+  image:
+    docker-proxy.binary.picodata.io/node:21
+  only:
+    - web
+    - tags
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  script:
+    - make build-webui-bundle
+  artifacts:
+    paths:
+      - picodata-webui/dist/bundle.json
+
 .pack:
   stage: pack
   tags:
@@ -369,7 +386,10 @@ gamayun-run:
     - web
     - tags
   variables:
-    PRESERVE_ENVVARS: VER_TNT
+    # Relative paths are interpreted relative to `src/`
+    # Escape it with extra `../`
+    WEBUI_BUNDLE: ../picodata-webui/dist/bundle.json
+    PRESERVE_ENVVARS: VER_TNT,WEBUI_BUNDLE
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
@@ -395,7 +415,8 @@ gamayun-run:
       until git describe; do git fetch --deepen 100; done
       git describe --long
   timeout: 2h
-  dependencies: []
+  needs:
+    - build-webui-bundle
 
 pack-sources:
   extends: .pack
@@ -479,7 +500,6 @@ pack-macos-arm:
     export CARGO_HOME=$HOME/.cargo
     VER=$(git describe --long | $SED -n 's/^\([0-9\.]*\)-\([0-9]*\)-\([a-z0-9]*\)/\1.\2/p')
     MAJOR=$(echo $VER | cut -f 1-2 -d '.')
-    make reset-submodules
     echo "-------------------------------------------------------------------"
     echo "Prepare bottle"
     echo "-------------------------------------------------------------------"
@@ -505,6 +525,8 @@ pack-macos-arm:
     cd $BUILDDIR
     tar --uid=0 --gid=0 -caPf $PKGNAME-$VER.tar.gz $PKGNAME-$VER
     shasum -a 256  $PKGNAME*$VER*.tar.gz
+  needs:
+    - build-webui-bundle
   artifacts:
     paths:
       - $BUILDDIR/*.tar.gz

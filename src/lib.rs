@@ -190,10 +190,7 @@ fn start_webui() {
     }
 
     let lua = ::tarantool::lua_state();
-    let bundle = include_str!(concat!(
-        concat!(env!("OUT_DIR"), "/../../"), // build root
-        "picodata-webui/bundle.json"
-    ));
+    let bundle = include_str!(env!("WEBUI_BUNDLE"));
     let bundle: HashMap<String, File> =
         serde_json::from_str(bundle).expect("failed to parse Web UI bundle");
     if !bundle.contains_key("index.html") {
