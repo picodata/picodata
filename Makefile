@@ -22,11 +22,11 @@ tarantool-patch:
 
 build: tarantool-patch
 	. ~/.cargo/env && \
-	cargo build --locked
+	cargo build --locked --features webui
 
 build-release: tarantool-patch
 	. ~/.cargo/env && \
-	cargo build --locked --release
+	cargo build --locked --release --features webui
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin
@@ -40,7 +40,7 @@ lint:
 	cargo fmt --check
 	cargo check
 	cargo clippy --version
-	cargo clippy -- --deny clippy::all --no-deps
+	cargo clippy --all-features -- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" cargo doc --workspace --no-deps --document-private-items --exclude tlua --exclude sbroad-core --exclude tarantool
 
@@ -72,3 +72,16 @@ flamegraph:
 
 k6:
 	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/sql/test_sql_perf.py
+
+# IMPORTANT. This rule is primarily used in CI pack stage. It repeats
+# the behavior of build.rs `build_webui()`, but uses a different out_dir
+# `picodata-webui/dist` instead of `target/debug/build/picodata-webui`
+build-webui-bundle:
+	yarn --cwd picodata-webui install \
+		--prefer-offline \
+		--frozen-lockfile \
+		--no-progress \
+		--non-interactive
+	yarn --cwd picodata-webui vite build \
+		--outDir dist \
+		--emptyOutDir
