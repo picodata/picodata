@@ -2,7 +2,7 @@ use crate::storage;
 use crate::storage::Clusterwide;
 use crate::storage::PropertyName;
 use crate::traft::RaftId;
-use std::cell::RefCell;
+use crate::util::NoYieldsRefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -18,13 +18,18 @@ use tarantool::time::Instant;
 /// all known instances.
 #[derive(Debug, Default)]
 pub struct InstanceReachabilityManager {
-    // TODO: Will be used to read configuration from
-    #[allow(unused)]
     storage: Option<Clusterwide>,
     infos: HashMap<RaftId, InstanceReachabilityInfo>,
 }
 
-pub type InstanceReachabilityManagerRef = Rc<RefCell<InstanceReachabilityManager>>;
+pub type InstanceReachabilityManagerRef = Rc<NoYieldsRefCell<InstanceReachabilityManager>>;
+
+#[inline(always)]
+pub fn instance_reachability_manager(storage: Clusterwide) -> InstanceReachabilityManagerRef {
+    Rc::new(NoYieldsRefCell::new(InstanceReachabilityManager::new(
+        storage,
+    )))
+}
 
 impl InstanceReachabilityManager {
     pub fn new(storage: Clusterwide) -> Self {

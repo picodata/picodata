@@ -12,7 +12,8 @@ use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
 use crate::r#loop::FlowControl;
-use crate::reachability::InstanceReachabilityManager;
+use crate::reachability::instance_reachability_manager;
+use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::schema::{Distribution, IndexDef, TableDef};
 use crate::sentinel;
@@ -67,7 +68,6 @@ use ::tarantool::vclock::Vclock;
 use protobuf::Message as _;
 
 use std::cell::Cell;
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -185,9 +185,7 @@ impl Node {
             ..Default::default()
         };
         let mut pool = ConnectionPool::new(storage.clone(), opts);
-        let instance_reachability = Rc::new(RefCell::new(InstanceReachabilityManager::new(
-            storage.clone(),
-        )));
+        let instance_reachability = instance_reachability_manager(storage.clone());
         pool.instance_reachability = instance_reachability.clone();
         let pool = Rc::new(pool);
 
@@ -430,7 +428,7 @@ pub(crate) struct NodeImpl {
     lc: LogicalClock,
     status: watch::Sender<Status>,
     applied: watch::Sender<RaftIndex>,
-    instance_reachability: Rc<RefCell<InstanceReachabilityManager>>,
+    instance_reachability: InstanceReachabilityManagerRef,
 }
 
 impl NodeImpl {
