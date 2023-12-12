@@ -67,6 +67,23 @@ def pytest_addoption(parser: pytest.Parser):
         default=False,
         help="Whether gather flamegraphs or not (for benchmarks only)",
     )
+    parser.addoption(
+        "--with-webui",
+        action="store_true",
+        default=False,
+        help="Whether to run Web UI tests",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]):
+    # https://docs.pytest.org/en/7.4.x/how-to/writing_hook_functions.html
+    # https://docs.pytest.org/en/7.4.x/example/simple.html#control-skipping-of-tests-according-to-command-line-option
+
+    if not config.getoption("--with-webui"):
+        skip = pytest.mark.skip(reason="run: pytest --with-webui")
+        for item in items:
+            if "webui" in item.keywords:
+                item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")
@@ -1444,25 +1461,32 @@ class PortalStorage:
 
 
 @pytest.fixture(scope="session")
-def binary_path() -> str:
+def binary_path(cargo_build: None) -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
-    assert (
-        subprocess.call(["cargo", "build", "--features", "error_injection"]) == 0
-    ), "cargo build failed"
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
     return os.path.realpath(os.path.join(target, "debug/picodata"))
 
 
 @pytest.fixture(scope="session")
-def path_to_binary_with_webui() -> str:
-    """Path to the picodata binary built with webui feature, e.g. "./target/debug/picodata"."""
-    assert (
-        subprocess.call(["cargo", "build", "--features", "webui"]) == 0
-    ), "cargo build failed"
-    metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
-    target = json.loads(metadata)["target_directory"]
-    return os.path.realpath(os.path.join(target, "debug/picodata"))
+def cargo_build(pytestconfig: pytest.Config) -> None:
+    """Run cargo build before tests. Skipped in CI"""
+
+    # Start test logs with a newline. This makes them prettier with
+    # `pytest -s` (a shortcut for `pytest --capture=no`)
+    eprint("")
+
+    if os.environ.get("CI") is not None:
+        eprint("Skipping cargo build")
+        return
+
+    features = ["error_injection"]
+    if bool(pytestconfig.getoption("with_webui")):
+        features.append("webui")
+
+    cmd = ["cargo", "build", "--features", ",".join(features)]
+    eprint(f"Running {cmd}")
+    assert subprocess.call(cmd) == 0, "cargo build failed"
 
 
 @pytest.fixture(scope="session")
@@ -1479,24 +1503,6 @@ def cluster(
     base_port, max_port = port_range
     cluster = Cluster(
         binary_path=binary_path,
-        id=next(cluster_ids),
-        data_dir=tmpdir,
-        base_host=BASE_HOST,
-        base_port=base_port,
-        max_port=max_port,
-    )
-    yield cluster
-    cluster.kill()
-
-
-@pytest.fixture
-def cluster_with_webui(
-    path_to_binary_with_webui, tmpdir, cluster_ids, port_range
-) -> Generator[Cluster, None, None]:
-    """Return a `Cluster` object capable of deploying test clusters with webui feature enabled."""
-    base_port, max_port = port_range
-    cluster = Cluster(
-        binary_path=path_to_binary_with_webui,
         id=next(cluster_ids),
         data_dir=tmpdir,
         base_host=BASE_HOST,
