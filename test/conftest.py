@@ -117,18 +117,18 @@ def seed(pytestconfig):
     """Return a seed for randomized tests. Unless passed via
     command-line options it is generated automatically.
     """
-    seed = pytestconfig.getoption("seed")
+    seed = pytestconfig.getoption("--seed")
     return seed if seed else generate_seed()
 
 
 @pytest.fixture(scope="session")
 def delay(pytestconfig):
-    return pytestconfig.getoption("delay")
+    return pytestconfig.getoption("--delay")
 
 
 @pytest.fixture(scope="session")
 def with_flamegraph(pytestconfig):
-    return bool(pytestconfig.getoption("with_flamegraph"))
+    return bool(pytestconfig.getoption("--with-flamegraph"))
 
 
 @pytest.fixture(scope="session")
@@ -1481,7 +1481,7 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
         return
 
     features = ["error_injection"]
-    if bool(pytestconfig.getoption("with_webui")):
+    if bool(pytestconfig.getoption("--with-webui")):
         features.append("webui")
 
     cmd = ["cargo", "build", "--features", ",".join(features)]
