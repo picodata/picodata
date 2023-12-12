@@ -5,6 +5,7 @@ from conftest import (
     Cluster,
     KeyDef,
     KeyPart,
+    Retriable,
     ReturnError,
 )
 
@@ -151,88 +152,124 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
     data = i1.sql("""insert into s values (1), (2), (3), (10);""")
     assert data["row_count"] == 4
 
-    data = i1.sql(
-        """
-        select b from g
-        where b in (select c from s where c in (2, 10))
-        """,
-    )
-    assert data["rows"] == [[2]]
-
-    data = i1.sql(
-        """
-        select b from g
-        where b in (select sum(c) from s)
-        """,
-    )
-    assert len(data["rows"]) == 0
-
-    data = i1.sql(
-        """
-        select b from g
-        where b in (select c * 5 from s)
-        """,
-    )
-    assert data["rows"] == [[5]]
-
-    # first subquery selects [1], [2], [3]
-    # second subquery must add additional [4] tuple
-    data = i1.sql(
-        """
-        select b from g
-        where b in (select c from s) or a in (select count(*) from s)
-        """,
-    )
-    assert data["rows"] == [[1], [2], [3], [4]]
-
-    data = i1.sql(
-        """
-        select b from g
-        where b in (select c from s) and a in (select count(*) from s)
-        """,
-    )
-    assert len(data["rows"]) == 0
-
-    data = i1.sql(
-        """
-        select c from s inner join
-        (select c as c1 from s)
-        on c = c1 + 3 and c in (select a from g)
-        """,
-    )
-    assert data["rows"] == []
-
-    # Full join because of 'OR'
-    data = i1.sql(
-        """
-        select min(c) from s inner join
-        (select c as c1 from s)
-        on c = c1 + 3 or c in (select a from g)
-        """,
-    )
-    assert data["rows"] == [[1]]
-
-    data = i1.sql(
-        """
-        select a from g
-        where b in (select c from s where c = 1) or
-        b in (select c from s where c = 3)
-        """,
-    )
-    assert data["rows"] == [[1], [3]]
-
-    # TODO: uncomment when
+    # TODO: remove retries and add more instances when
     # https://git.picodata.io/picodata/picodata/sbroad/-/issues/542
     # is done.
-    # data = i1.sql(
-    #     """
-    #     select a from g
-    #     where b in (select c from s where c = 1) or
-    #     b in (select c from s where c = 3) and
-    #     a < (select sum(c) from s)
-    #     """,
-    # )
-    # assert data["rows"] == [[1], [3]]
+    def check_sq_with_segment_dist():
+        data = i1.sql(
+            """
+            select b from g
+            where b in (select c from s where c in (2, 10))
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[2]]
+
+    Retriable(rps=5, timeout=6).call(check_sq_with_segment_dist)
+
+    def check_sq_with_single_distribution():
+        data = i1.sql(
+            """
+            select b from g
+            where b in (select sum(c) from s)
+            """,
+            timeout=2,
+        )
+        assert len(data["rows"]) == 0
+
+    Retriable(rps=5, timeout=6).call(check_sq_with_single_distribution)
+
+    def check_sq_with_any_distribution():
+        data = i1.sql(
+            """
+            select b from g
+            where b in (select c * 5 from s)
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[5]]
+
+    Retriable(rps=5, timeout=6).call(check_sq_with_any_distribution)
+
+    def check_sqs_joined_with_or():
+        # first subquery selects [1], [2], [3]
+        # second subquery must add additional [4] tuple
+        data = i1.sql(
+            """
+            select b from g
+            where b in (select c from s) or a in (select count(*) from s)
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[1], [2], [3], [4]]
+
+    Retriable(rps=5, timeout=6).call(check_sqs_joined_with_or)
+
+    def check_sqs_joined_with_and():
+        data = i1.sql(
+            """
+            select b from g
+            where b in (select c from s) and a in (select count(*) from s)
+            """,
+            timeout=2,
+        )
+        assert len(data["rows"]) == 0
+
+    Retriable(rps=5, timeout=6).call(check_sqs_joined_with_and)
+
+    def check_sq_in_join_condition_joined_with_and():
+        data = i1.sql(
+            """
+            select c from s inner join
+            (select c as c1 from s)
+            on c = c1 + 3 and c in (select a from g)
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == []
+
+    Retriable(rps=5, timeout=6).call(check_sq_in_join_condition_joined_with_and)
+
+    def check_sq_in_join_condition_joined_with_or():
+        # Full join because of 'OR'
+        data = i1.sql(
+            """
+            select min(c) from s inner join
+            (select c as c1 from s)
+            on c = c1 + 3 or c in (select a from g)
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[1]]
+
+    Retriable(rps=5, timeout=6).call(check_sq_in_join_condition_joined_with_or)
+
+    def check_bucket_discovery_when_sqs_joined_with_or():
+        data = i1.sql(
+            """
+            select a from g
+            where b in (select c from s where c = 1) or
+            b in (select c from s where c = 3)
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[1], [3]]
+
+    Retriable(rps=5, timeout=6).call(check_bucket_discovery_when_sqs_joined_with_or)
+
+    def check_sqs_joined_with_or_and():
+        data = i1.sql(
+            """
+            select a from g
+            where b in (select c from s where c = 1) or
+            b in (select c from s where c = 3) and
+            a < (select sum(c) from s)
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[1], [3]]
+
+    Retriable(rps=5, timeout=6).call(check_sqs_joined_with_or_and)
 
 
 def test_aggregates_on_global_tbl(cluster: Cluster):
