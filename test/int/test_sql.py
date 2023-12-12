@@ -1452,3 +1452,22 @@ def test_sql_privileges(cluster: Cluster):
     assert dml["row_count"] == 2
     dml = i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
     assert dml["row_count"] == 2
+
+
+def test_user_changes_password(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+    user_name = "U"
+    old_password = "12341234"
+    new_password = "11111111"
+
+    i1.create_user(with_name=user_name, with_password=old_password)
+
+    i1.sql(
+        f"""
+        ALTER USER "{user_name}" PASSWORD '{new_password}'
+        """,
+        user=user_name,
+        password=old_password,
+    )
+    # ensure we can authenticate with new password
+    i1.sql("SELECT * FROM (VALUES (1))", user=user_name, password=new_password)
