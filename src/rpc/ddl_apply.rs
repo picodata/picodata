@@ -123,7 +123,7 @@ pub fn apply_schema_change(
             }
         }
 
-        Ddl::DropTable { id } => {
+        Ddl::DropTable { id, .. } => {
             if !is_commit {
                 // Space is only dropped on commit.
                 return Ok(());

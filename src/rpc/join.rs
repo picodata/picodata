@@ -92,10 +92,10 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
         };
-        let op_addr = Dml::replace(ClusterwideTable::Address, &peer_address)
+        let op_addr = Dml::replace(ClusterwideTable::Address, &peer_address, ADMIN_USER_ID)
             .expect("encoding should not fail");
-        let op_instance =
-            Dml::replace(ClusterwideTable::Instance, &instance).expect("encoding should not fail");
+        let op_instance = Dml::replace(ClusterwideTable::Instance, &instance, ADMIN_USER_ID)
+            .expect("encoding should not fail");
         let ranges = vec![
             cas::Range::new(ClusterwideTable::Instance),
             cas::Range::new(ClusterwideTable::Address),

@@ -27,7 +27,6 @@
 //! is used again to switch to user provided in the request. This is needed because tarantool functions we use for access checks
 //! make them based on effective user.
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::Display,
 };
@@ -39,7 +38,7 @@ use tarantool::{
     },
     session::{self, UserId},
     space::{Space, SystemSpace},
-    tuple::{Encode, Tuple},
+    tuple::Encode,
 };
 
 use crate::{
@@ -59,10 +58,10 @@ tarantool::define_str_enum! {
 /// User metadata. Represents a tuple of a system `_user` space.
 /// TODO move to tarantool-module along with some space specific methods from storage.rs
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct UserMetadata<'a> {
+pub struct UserMetadata {
     pub id: UserId,
     pub owner_id: UserId,
-    pub name: Cow<'a, str>,
+    pub name: String,
     #[serde(rename = "type")]
     pub ty: UserMetadataKind,
     pub auth: HashMap<String, String>,
@@ -73,7 +72,7 @@ pub struct UserMetadata<'a> {
     pub last_modified: usize,
 }
 
-impl Encode for UserMetadata<'_> {}
+impl Encode for UserMetadata {}
 
 fn make_no_such_user(name: &str) -> tarantool::error::Error {
     tarantool::set_error!(
@@ -103,11 +102,11 @@ fn make_access_denied(
     return tarantool::error::TarantoolError::last().into();
 }
 
-fn user_by_id(id: UserId) -> tarantool::Result<Tuple> {
+pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
     let sys_user = Space::from(SystemSpace::User).get(&(id,))?;
 
     match sys_user {
-        Some(u) => Ok(u),
+        Some(u) => u.decode(),
         None => {
             tarantool::set_error!(
                 tarantool::error::TarantoolErrorCode::NoSuchUser,
@@ -169,7 +168,7 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
                 as_user,
             )
         }
-        op::Ddl::DropTable { id } => {
+        op::Ddl::DropTable { id, .. } => {
             let space = space_by_id(*id)?;
             let meta = space.meta()?;
 
@@ -220,8 +219,7 @@ fn detect_role_grant_cycles(
     let grantee_id = priv_def.grantee_id();
     let grantee_name = {
         let grantee = user_by_id(grantee_id)?;
-        let grantee_meta: UserMetadata = grantee.decode()?;
-        grantee_meta.name
+        grantee.name
     };
 
     let role_id_to_grantees_id = {
@@ -284,8 +282,7 @@ fn access_check_grant_revoke(
     access_name: &str,
 ) -> tarantool::Result<()> {
     // Note: this is vanilla tarantool user, not picodata one.
-    let grantor_tuple = user_by_id(grantor_id)?;
-    let grantor: UserMetadata = grantor_tuple.decode()?;
+    let grantor = user_by_id(grantor_id)?;
 
     let object_id = match priv_def.object_id() {
         None => {
@@ -345,31 +342,30 @@ fn access_check_grant_revoke(
         }
         PicoSchemaObjectType::Role => {
             let granted_role = user_by_id(object_id)?;
-            let granted_role_meta: UserMetadata = granted_role.decode()?;
 
-            assert_eq!(object_id, granted_role_meta.id, "user metadata id mismatch");
+            assert_eq!(object_id, granted_role.id, "user metadata id mismatch");
 
             // Only the creator of the role or admin can grant or revoke it.
             // Everyone can grant 'PUBLIC' role.
             // Note that having a role means having execute privilege on it.
-            if granted_role_meta.owner_id != grantor_id
+            if granted_role.owner_id != grantor_id
                 && grantor_id != ADMIN_USER_ID
-                && !(granted_role_meta.name == "public"
+                && !(granted_role.name == "public"
                     && priv_def.privilege() == PrivilegeType::Execute)
             {
                 return Err(make_access_denied(
                     access_name,
                     PicoSchemaObjectType::Role,
-                    granted_role_meta.name,
+                    granted_role.name,
                     grantor.name,
                 ));
             }
 
-            detect_role_grant_cycles(&granted_role_meta, priv_def, storage)?;
+            detect_role_grant_cycles(&granted_role, priv_def, storage)?;
 
             return box_access_check_ddl_as_user(
-                &granted_role_meta.name,
-                granted_role_meta.id,
+                &granted_role.name,
+                granted_role.id,
                 grantor_id,
                 TntSchemaObjectType::Role,
                 access,
@@ -378,24 +374,23 @@ fn access_check_grant_revoke(
         }
         PicoSchemaObjectType::User => {
             let target_sys_user = user_by_id(object_id)?;
-            let target_sys_user_meta: UserMetadata = target_sys_user.decode()?;
-            if target_sys_user_meta.ty != UserMetadataKind::User {
-                return Err(make_no_such_user(&target_sys_user_meta.name));
+            if target_sys_user.ty != UserMetadataKind::User {
+                return Err(make_no_such_user(&target_sys_user.name));
             }
 
             // Only owner or admin can grant on user
-            if target_sys_user_meta.owner_id != grantor_id && grantor_id != ADMIN_USER_ID {
+            if target_sys_user.owner_id != grantor_id && grantor_id != ADMIN_USER_ID {
                 return Err(make_access_denied(
                     access_name,
                     PicoSchemaObjectType::User,
-                    target_sys_user_meta.name,
+                    target_sys_user.name,
                     grantor.name,
                 ));
             }
 
             return box_access_check_ddl_as_user(
-                &target_sys_user_meta.name,
-                target_sys_user_meta.id,
+                &target_sys_user.name,
+                target_sys_user.id,
                 grantor_id,
                 TntSchemaObjectType::User,
                 access,
@@ -429,14 +424,13 @@ fn access_check_acl(
         }
         op::Acl::ChangeAuth { user_id, .. } => {
             let sys_user = user_by_id(*user_id)?;
-            let sys_user_meta: UserMetadata = sys_user.decode()?;
 
-            assert_eq!(sys_user_meta.id, *user_id, "user metadata id mismatch");
+            assert_eq!(sys_user.id, *user_id, "user metadata id mismatch");
 
             box_access_check_ddl_as_user(
-                &sys_user_meta.name,
-                sys_user_meta.id,
-                sys_user_meta.owner_id,
+                &sys_user.name,
+                sys_user.id,
+                sys_user.owner_id,
                 TntSchemaObjectType::User,
                 PrivType::Alter,
                 as_user,
@@ -444,14 +438,13 @@ fn access_check_acl(
         }
         op::Acl::DropUser { user_id, .. } => {
             let sys_user = user_by_id(*user_id)?;
-            let sys_user_meta: UserMetadata = sys_user.decode()?;
 
-            assert_eq!(sys_user_meta.id, *user_id, "user metadata id mismatch");
+            assert_eq!(sys_user.id, *user_id, "user metadata id mismatch");
 
             box_access_check_ddl_as_user(
-                &sys_user_meta.name,
-                sys_user_meta.id,
-                sys_user_meta.owner_id,
+                &sys_user.name,
+                sys_user.id,
+                sys_user.owner_id,
                 TntSchemaObjectType::User,
                 PrivType::Drop,
                 as_user,
@@ -475,14 +468,13 @@ fn access_check_acl(
             // In vanilla roles and users are stored in the same space
             // so we can reuse the definition
             let sys_user = user_by_id(*role_id)?;
-            let sys_user_meta: UserMetadata = sys_user.decode()?;
 
-            assert_eq!(sys_user_meta.id, *role_id, "user metadata id mismatch");
+            assert_eq!(sys_user.id, *role_id, "user metadata id mismatch");
 
             box_access_check_ddl_as_user(
-                &sys_user_meta.name,
-                sys_user_meta.id,
-                sys_user_meta.owner_id,
+                &sys_user.name,
+                sys_user.id,
+                sys_user.owner_id,
                 TntSchemaObjectType::Role,
                 PrivType::Drop,
                 as_user,
@@ -491,7 +483,7 @@ fn access_check_acl(
         op::Acl::GrantPrivilege { priv_def } => {
             access_check_grant_revoke(storage, priv_def, as_user, PrivType::Grant, "Grant")
         }
-        op::Acl::RevokePrivilege { priv_def } => {
+        op::Acl::RevokePrivilege { priv_def, .. } => {
             access_check_grant_revoke(storage, priv_def, as_user, PrivType::Revoke, "Revoke")
         }
     }
@@ -509,12 +501,11 @@ pub(super) fn access_check_op(
         Op::DdlCommit | Op::DdlAbort => {
             if as_user != ADMIN_USER_ID {
                 let sys_user = user_by_id(as_user)?;
-                let sys_user_meta: UserMetadata = sys_user.decode()?;
                 return Err(make_access_denied(
                     "ddl",
                     PicoSchemaObjectType::Universe,
                     "",
-                    sys_user_meta.name,
+                    sys_user.name,
                 ));
             }
             Ok(())
@@ -526,7 +517,7 @@ pub(super) fn access_check_op(
 mod tests {
     use std::collections::HashMap;
 
-    use super::{access_check_acl, access_check_ddl, user_by_id, UserMetadata};
+    use super::{access_check_acl, access_check_ddl, user_by_id};
     use crate::{
         access_control::{access_check_op, UserMetadataKind},
         schema::{
@@ -561,15 +552,14 @@ mod tests {
 
     #[tarantool::test]
     fn decode_user_metadata() {
-        let sys_user_tuple = user_by_id(ADMIN_USER_ID).unwrap();
-        let sys_user_model: UserMetadata = sys_user_tuple.decode().unwrap();
-        assert_eq!(sys_user_model.id, ADMIN_USER_ID);
-        assert_eq!(sys_user_model.owner_id, ADMIN_USER_ID);
-        assert_eq!(&sys_user_model.name, "admin");
-        assert_eq!(sys_user_model.ty, UserMetadataKind::User);
-        assert_eq!(sys_user_model.auth, HashMap::new());
-        assert_eq!(sys_user_model.auth_history, []);
-        assert_eq!(sys_user_model.last_modified, 0);
+        let sys_user = user_by_id(ADMIN_USER_ID).unwrap();
+        assert_eq!(sys_user.id, ADMIN_USER_ID);
+        assert_eq!(sys_user.owner_id, ADMIN_USER_ID);
+        assert_eq!(&sys_user.name, "admin");
+        assert_eq!(sys_user.ty, UserMetadataKind::User);
+        assert_eq!(sys_user.auth, HashMap::new());
+        assert_eq!(sys_user.auth_history, []);
+        assert_eq!(sys_user.last_modified, 0);
     }
 
     fn dummy_auth_def() -> AuthDef {
@@ -650,6 +640,7 @@ mod tests {
             storage,
             &Op::Acl(Acl::RevokePrivilege {
                 priv_def: priv_def.clone(),
+                initiator: session::uid().unwrap(),
             }),
             priv_def.grantor_id(),
         )
@@ -701,7 +692,14 @@ mod tests {
 
         // drop can be granted with wildcard, check on particular entity works
         {
-            let e = access_check_ddl(&Ddl::DropTable { id: space.id() }, user_id).unwrap_err();
+            let e = access_check_ddl(
+                &Ddl::DropTable {
+                    id: space.id(),
+                    initiator: user_id,
+                },
+                user_id,
+            )
+            .unwrap_err();
 
             assert_eq!(
                 e.to_string(),
@@ -717,7 +715,14 @@ mod tests {
                 None,
             );
 
-            access_check_ddl(&Ddl::DropTable { id: space.id() }, user_id).unwrap();
+            access_check_ddl(
+                &Ddl::DropTable {
+                    id: space.id(),
+                    initiator: user_id,
+                },
+                user_id,
+            )
+            .unwrap();
         }
 
         revoke(
@@ -730,7 +735,14 @@ mod tests {
 
         // drop on particular entity works
         {
-            let e = access_check_ddl(&Ddl::DropTable { id: space.id() }, user_id).unwrap_err();
+            let e = access_check_ddl(
+                &Ddl::DropTable {
+                    id: space.id(),
+                    initiator: user_id,
+                },
+                user_id,
+            )
+            .unwrap_err();
 
             assert_eq!(
                 e.to_string(),
@@ -746,7 +758,14 @@ mod tests {
                 None,
             );
 
-            access_check_ddl(&Ddl::DropTable { id: space.id() }, user_id).unwrap();
+            access_check_ddl(
+                &Ddl::DropTable {
+                    id: space.id(),
+                    initiator: user_id,
+                },
+                user_id,
+            )
+            .unwrap();
         }
 
         // owner has privileges on the object
@@ -762,23 +781,31 @@ mod tests {
             };
             let space_grant = Space::create(&space_name_grant, &space_opts).unwrap();
 
-            let drop_op = Op::DdlPrepare {
+            let drop_op = |initiator| Op::DdlPrepare {
                 schema_version: 0,
                 ddl: Ddl::DropTable {
                     id: space_grant.id(),
+                    initiator,
                 },
             };
-            let write_op = Op::Dml(Dml::Insert {
-                table: space_grant.id(),
-                tuple: TupleBuffer::from(Tuple::new(&(1,)).unwrap()),
-            });
-            for (privilege, privilege_name, op) in [
-                (PrivilegeType::Drop, "Drop", drop_op),
-                (PrivilegeType::Write, "Write", write_op),
-            ] {
-                // owner himself has permission on an object
-                access_check_op(&storage, &op, user_id).unwrap();
+            let write_op = |initiator| {
+                Op::Dml(Dml::Insert {
+                    table: space_grant.id(),
+                    tuple: TupleBuffer::from(Tuple::new(&(1,)).unwrap()),
+                    initiator,
+                })
+            };
 
+            // owner himself has permission on an object
+            for op in [drop_op(user_id), write_op(user_id)] {
+                access_check_op(&storage, &op, user_id).unwrap();
+            }
+
+            // owner can grant permissions to another user
+            for (privilege, privilege_name, op) in [
+                (PrivilegeType::Drop, "Drop", drop_op(grantee_user_id)),
+                (PrivilegeType::Write, "Write", write_op(grantee_user_id)),
+            ] {
                 // run access check for another user, it fails without grant
                 let e = access_check_op(&storage, &op, grantee_user_id).unwrap_err();
 
@@ -863,6 +890,7 @@ mod tests {
                 &storage,
                 &Acl::DropUser {
                     user_id: user_under_test_id,
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -887,6 +915,7 @@ mod tests {
                 &storage,
                 &Acl::DropUser {
                     user_id: user_under_test_id,
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -901,6 +930,7 @@ mod tests {
                 &Acl::ChangeAuth {
                     user_id: user_under_test_id,
                     auth: dummy_auth_def(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -926,6 +956,7 @@ mod tests {
                 &Acl::ChangeAuth {
                     user_id: user_under_test_id,
                     auth: dummy_auth_def(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -954,6 +985,7 @@ mod tests {
                 &storage,
                 &Acl::DropUser {
                     user_id: user_under_test_id,
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -978,6 +1010,7 @@ mod tests {
                 &storage,
                 &Acl::DropUser {
                     user_id: user_under_test_id,
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -992,6 +1025,7 @@ mod tests {
                 &Acl::ChangeAuth {
                     user_id: user_under_test_id,
                     auth: dummy_auth_def(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -1017,6 +1051,7 @@ mod tests {
                 &Acl::ChangeAuth {
                     user_id: user_under_test_id,
                     auth: dummy_auth_def(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -1033,23 +1068,33 @@ mod tests {
             let user_name_grant = format!("{actor_user_name}_grant");
             let user_id_grant = make_user(&user_name_grant, Some(actor_user_id));
 
-            let drop_op = Op::Acl(Acl::DropUser {
-                user_id: user_id_grant,
-                schema_version: 0,
-            });
+            let drop_op = |initiator| {
+                Op::Acl(Acl::DropUser {
+                    user_id: user_id_grant,
+                    initiator,
+                    schema_version: 0,
+                })
+            };
 
-            let alter_op = Op::Acl(Acl::ChangeAuth {
-                user_id: user_id_grant,
-                auth: dummy_auth_def(),
-                schema_version: 0,
-            });
-            for (privilege, privilege_name, op) in [
-                (PrivilegeType::Drop, "Drop", drop_op),
-                (PrivilegeType::Alter, "Alter", alter_op),
-            ] {
-                // owner himself has permission on an object
+            let alter_op = |initiator| {
+                Op::Acl(Acl::ChangeAuth {
+                    user_id: user_id_grant,
+                    auth: dummy_auth_def(),
+                    initiator,
+                    schema_version: 0,
+                })
+            };
+
+            // owner himself has permission on an object
+            for op in [drop_op(actor_user_id), alter_op(actor_user_id)] {
                 access_check_op(&storage, &op, actor_user_id).unwrap();
+            }
 
+            // owner can grant it to another user
+            for (privilege, privilege_name, op) in [
+                (PrivilegeType::Drop, "Drop", drop_op(grantee_user_id)),
+                (PrivilegeType::Alter, "Alter", alter_op(grantee_user_id)),
+            ] {
                 // run access check for another user, it fails without grant
                 let e = access_check_op(&storage, &op, grantee_user_id).unwrap_err();
 
@@ -1138,6 +1183,7 @@ mod tests {
                 &storage,
                 &Acl::DropRole {
                     role_id: role_def.id,
+                    initiator: user_id,
                     schema_version: 0,
                 },
                 user_id,
@@ -1162,6 +1208,7 @@ mod tests {
                 &storage,
                 &Acl::DropRole {
                     role_id: role_def.id,
+                    initiator: user_id,
                     schema_version: 0,
                 },
                 user_id,
@@ -1183,6 +1230,7 @@ mod tests {
                 &storage,
                 &Acl::DropRole {
                     role_id: role_def.id,
+                    initiator: user_id,
                     schema_version: 0,
                 },
                 user_id,
@@ -1207,6 +1255,7 @@ mod tests {
                 &storage,
                 &Acl::DropRole {
                     role_id: role_def.id,
+                    initiator: user_id,
                     schema_version: 0,
                 },
                 user_id,
@@ -1230,16 +1279,19 @@ mod tests {
             };
             on_master_create_role(&role_def).expect("create role shouldn't fail");
 
-            let op = Op::Acl(Acl::DropRole {
-                role_id: role_id_grant,
-                schema_version: 0,
-            });
+            let op = |initiator| {
+                Op::Acl(Acl::DropRole {
+                    role_id: role_id_grant,
+                    initiator,
+                    schema_version: 0,
+                })
+            };
 
             // owner himself has permission on an object
-            access_check_op(&storage, &op, user_id).unwrap();
+            access_check_op(&storage, &op(user_id), user_id).unwrap();
 
             // run access check for another user, it fails without grant
-            let e = access_check_op(&storage, &op, grantee_user_id).unwrap_err();
+            let e = access_check_op(&storage, &op(grantee_user_id), grantee_user_id).unwrap_err();
 
             assert_eq!(
                     e.to_string(),
@@ -1257,7 +1309,7 @@ mod tests {
             );
 
             // access check should succeed
-            access_check_op(&storage, &op, grantee_user_id).unwrap();
+            access_check_op(&storage, &op(grantee_user_id), grantee_user_id).unwrap();
         }
     }
 

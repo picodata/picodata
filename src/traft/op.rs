@@ -56,18 +56,20 @@ impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             Self::Nop => f.write_str("Nop"),
-            Self::Dml(Dml::Insert { table, tuple }) => {
+            Self::Dml(Dml::Insert { table, tuple, .. }) => {
                 write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
             }
-            Self::Dml(Dml::Replace { table, tuple }) => {
+            Self::Dml(Dml::Replace { table, tuple, .. }) => {
                 write!(f, "Replace({table}, {})", DisplayAsJson(tuple))
             }
-            Self::Dml(Dml::Update { table, key, ops }) => {
+            Self::Dml(Dml::Update {
+                table, key, ops, ..
+            }) => {
                 let key = DisplayAsJson(key);
                 let ops = DisplayAsJson(&**ops);
                 write!(f, "Update({table}, {key}, {ops})")
             }
-            Self::Dml(Dml::Delete { table, key }) => {
+            Self::Dml(Dml::Delete { table, key, .. }) => {
                 write!(f, "Delete({table}, {})", DisplayAsJson(key))
             }
             Self::DdlPrepare {
@@ -88,7 +90,7 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
-                ddl: Ddl::DropTable { id },
+                ddl: Ddl::DropTable { id, .. },
             } => {
                 write!(f, "DdlPrepare({schema_version}, DropTable({id}))")
             }
@@ -125,16 +127,18 @@ impl std::fmt::Display for Op {
             }
             Self::Acl(Acl::ChangeAuth {
                 user_id,
+                initiator,
                 schema_version,
                 ..
             }) => {
-                write!(f, "ChangeAuth({schema_version}, {user_id})")
+                write!(f, "ChangeAuth({schema_version}, {user_id}, {initiator})")
             }
             Self::Acl(Acl::DropUser {
                 user_id,
+                initiator,
                 schema_version,
             }) => {
-                write!(f, "DropUser({schema_version}, {user_id})")
+                write!(f, "DropUser({schema_version}, {user_id} {initiator})")
             }
             Self::Acl(Acl::CreateRole { role_def }) => {
                 let RoleDef {
@@ -148,6 +152,7 @@ impl std::fmt::Display for Op {
             Self::Acl(Acl::DropRole {
                 role_id,
                 schema_version,
+                ..
             }) => {
                 write!(f, "DropRole({schema_version}, {role_id})")
             }
@@ -164,7 +169,7 @@ impl std::fmt::Display for Op {
                     privilege = priv_def.privilege(),
                 )
             }
-            Self::Acl(Acl::RevokePrivilege { priv_def }) => {
+            Self::Acl(Acl::RevokePrivilege { priv_def, .. }) => {
                 let object_id = priv_def.object_id();
                 write!(
                     f,
@@ -293,11 +298,13 @@ pub enum Dml {
         table: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
+        initiator: UserId,
     },
     Replace {
         table: SpaceId,
         #[serde(with = "serde_bytes")]
         tuple: TupleBuffer,
+        initiator: UserId,
     },
     Update {
         table: SpaceId,
@@ -306,13 +313,26 @@ pub enum Dml {
         key: TupleBuffer,
         #[serde(with = "vec_of_raw_byte_buf")]
         ops: Vec<TupleBuffer>,
+        initiator: UserId,
     },
     Delete {
         table: SpaceId,
         /// Key in primary index
         #[serde(with = "serde_bytes")]
         key: TupleBuffer,
+        initiator: UserId,
     },
+}
+
+impl Dml {
+    pub fn initiator(&self) -> UserId {
+        match self {
+            Dml::Insert { initiator, .. } => *initiator,
+            Dml::Replace { initiator, .. } => *initiator,
+            Dml::Update { initiator, .. } => *initiator,
+            Dml::Delete { initiator, .. } => *initiator,
+        }
+    }
 }
 
 ::tarantool::define_str_enum! {
@@ -344,10 +364,12 @@ impl Dml {
     pub fn insert(
         space: impl Into<SpaceId>,
         tuple: &impl ToTupleBuffer,
+        initiator: UserId,
     ) -> tarantool::Result<Self> {
         let res = Self::Insert {
             table: space.into(),
             tuple: tuple.to_tuple_buffer()?,
+            initiator,
         };
         Ok(res)
     }
@@ -357,10 +379,12 @@ impl Dml {
     pub fn replace(
         space: impl Into<SpaceId>,
         tuple: &impl ToTupleBuffer,
+        initiator: UserId,
     ) -> tarantool::Result<Self> {
         let res = Self::Replace {
             table: space.into(),
             tuple: tuple.to_tuple_buffer()?,
+            initiator,
         };
         Ok(res)
     }
@@ -371,21 +395,28 @@ impl Dml {
         space: impl Into<SpaceId>,
         key: &impl ToTupleBuffer,
         ops: impl Into<Vec<TupleBuffer>>,
+        initiator: UserId,
     ) -> tarantool::Result<Self> {
         let res = Self::Update {
             table: space.into(),
             key: key.to_tuple_buffer()?,
             ops: ops.into(),
+            initiator,
         };
         Ok(res)
     }
 
     /// Serializes `key` and returns an [`Dml::Delete`] in case of success.
     #[inline(always)]
-    pub fn delete(space: impl Into<SpaceId>, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn delete(
+        space: impl Into<SpaceId>,
+        key: &impl ToTupleBuffer,
+        initiator: UserId,
+    ) -> tarantool::Result<Self> {
         let res = Self::Delete {
             table: space.into(),
             key: key.to_tuple_buffer()?,
+            initiator,
         };
         Ok(res)
     }
@@ -401,7 +432,7 @@ impl Dml {
     }
 
     /// Parse lua arguments to an api function such as `pico.cas`.
-    pub fn from_lua_args(op: DmlInLua) -> Result<Self, String> {
+    pub fn from_lua_args(op: DmlInLua, initiator: UserId) -> Result<Self, String> {
         let space = space_by_name(&op.table).map_err(|e| e.to_string())?;
         let table = space.id();
         match op.kind {
@@ -409,13 +440,21 @@ impl Dml {
                 let Some(tuple) = op.tuple else {
                     return Err("insert operation must have a tuple".into());
                 };
-                Ok(Self::Insert { table, tuple })
+                Ok(Self::Insert {
+                    table,
+                    tuple,
+                    initiator,
+                })
             }
             DmlKind::Replace => {
                 let Some(tuple) = op.tuple else {
                     return Err("replace operation must have a tuple".into());
                 };
-                Ok(Self::Replace { table, tuple })
+                Ok(Self::Replace {
+                    table,
+                    tuple,
+                    initiator,
+                })
             }
             DmlKind::Update => {
                 let Some(key) = op.key else {
@@ -424,13 +463,22 @@ impl Dml {
                 let Some(ops) = op.ops else {
                     return Err("update operation must have ops".into());
                 };
-                Ok(Self::Update { table, key, ops })
+                Ok(Self::Update {
+                    table,
+                    key,
+                    ops,
+                    initiator,
+                })
             }
             DmlKind::Delete => {
                 let Some(key) = op.key else {
                     return Err("delete operation must have a key".into());
                 };
-                Ok(Self::Delete { table, key })
+                Ok(Self::Delete {
+                    table,
+                    key,
+                    initiator,
+                })
             }
         }
     }
@@ -468,6 +516,7 @@ pub enum Ddl {
     },
     DropTable {
         id: SpaceId,
+        initiator: UserId,
     },
     CreateIndex {
         space_id: SpaceId,
@@ -488,7 +537,7 @@ pub enum Ddl {
 ///
 /// // Assuming that space `1` was created.
 /// let op = DdlBuilder::with_schema_version(1)
-///     .with_op(Ddl::DropTable { id: 1 });
+///     .with_op(Ddl::DropTable { id: 1, initiator: 1 });
 /// ```
 pub struct DdlBuilder {
     schema_version: u64,
@@ -530,12 +579,14 @@ pub enum Acl {
     ChangeAuth {
         user_id: UserId,
         auth: AuthDef,
+        initiator: UserId,
         schema_version: u64,
     },
 
     /// Drop a tarantool user and any entities owned by it.
     DropUser {
         user_id: UserId,
+        initiator: UserId,
         schema_version: u64,
     },
 
@@ -545,6 +596,7 @@ pub enum Acl {
     /// Drop a tarantool role and revoke it from any grantees.
     DropRole {
         role_id: UserId,
+        initiator: UserId,
         schema_version: u64,
     },
 
@@ -552,7 +604,10 @@ pub enum Acl {
     GrantPrivilege { priv_def: PrivilegeDef },
 
     /// Revoke some privilege from a user or a role.
-    RevokePrivilege { priv_def: PrivilegeDef },
+    RevokePrivilege {
+        priv_def: PrivilegeDef,
+        initiator: UserId,
+    },
 }
 
 impl Acl {
@@ -564,7 +619,7 @@ impl Acl {
             Self::CreateRole { role_def, .. } => role_def.schema_version,
             Self::DropRole { schema_version, .. } => *schema_version,
             Self::GrantPrivilege { priv_def } => priv_def.schema_version(),
-            Self::RevokePrivilege { priv_def } => priv_def.schema_version(),
+            Self::RevokePrivilege { priv_def, .. } => priv_def.schema_version(),
         }
     }
 }

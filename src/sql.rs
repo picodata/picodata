@@ -704,7 +704,7 @@ fn reenterable_schema_change_request(
         }
     };
 
-    let su = session::su(ADMIN_USER_ID).expect("cant fail because session is available");
+    let _su = session::su(ADMIN_USER_ID).expect("cant fail because session is available");
 
     'retry: loop {
         if Instant::now() > deadline {
@@ -747,7 +747,10 @@ fn reenterable_schema_change_request(
                     // Space doesn't exist yet, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 };
-                let ddl = OpDdl::DropTable { id: space_def.id };
+                let ddl = OpDdl::DropTable {
+                    id: space_def.id,
+                    initiator: current_user,
+                };
                 Op::DdlPrepare {
                     schema_version,
                     ddl,
@@ -812,6 +815,7 @@ fn reenterable_schema_change_request(
                         Op::Acl(OpAcl::ChangeAuth {
                             user_id: user_def.id,
                             auth: auth.clone(),
+                            initiator: current_user,
                             schema_version,
                         })
                     }
@@ -840,7 +844,10 @@ fn reenterable_schema_change_request(
                             // Login is not granted yet, no op needed.
                             return Ok(ConsumerResult { row_count: 0 });
                         }
-                        Op::Acl(OpAcl::RevokePrivilege { priv_def })
+                        Op::Acl(OpAcl::RevokePrivilege {
+                            priv_def,
+                            initiator: current_user,
+                        })
                     }
                 }
             }
@@ -851,6 +858,7 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::DropUser {
                     user_id: user_def.id,
+                    initiator: current_user,
                     schema_version,
                 })
             }
@@ -887,11 +895,12 @@ fn reenterable_schema_change_request(
                 };
                 Op::Acl(OpAcl::DropRole {
                     role_id: role_def.id,
+                    initiator: current_user,
                     schema_version,
                 })
             }
             Params::GrantPrivilege(grant_type, grantee_name) => {
-                let grantor_id = session::euid()?;
+                let grantor_id = current_user;
                 let grantee_id = get_grantee_id(storage, grantee_name)?;
                 let (object_type, privilege, object_id) = node.object_resolve(grant_type)?;
 
@@ -918,7 +927,7 @@ fn reenterable_schema_change_request(
                 })
             }
             Params::RevokePrivilege(revoke_type, grantee_name) => {
-                let grantor_id = session::euid()?;
+                let grantor_id = current_user;
                 let grantee_id = get_grantee_id(storage, grantee_name)?;
                 let (object_type, privilege, object_id) = node.object_resolve(revoke_type)?;
 
@@ -943,6 +952,7 @@ fn reenterable_schema_change_request(
                         schema_version,
                     )
                     .map_err(Error::other)?,
+                    initiator: current_user,
                 })
             }
         };
@@ -959,7 +969,7 @@ fn reenterable_schema_change_request(
         let res = cas::compare_and_swap(
             op,
             predicate,
-            su.original_user_id,
+            current_user,
             deadline.duration_since(Instant::now()),
         );
         let (index, term) = unwrap_ok_or!(res,

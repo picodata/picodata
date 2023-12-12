@@ -719,7 +719,7 @@ fn space(op: &Op) -> Option<SpaceId> {
 fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
     let ddl_modifies = |ddl: &Ddl| match ddl {
         Ddl::CreateTable { id, .. } => *id == space,
-        Ddl::DropTable { id } => *id == space,
+        Ddl::DropTable { id, .. } => *id == space,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
     };
@@ -780,7 +780,10 @@ mod tests {
             engine: SpaceEngineType::Memtx,
             owner: ADMIN_ID,
         });
-        let drop_space = builder.with_op(Ddl::DropTable { id: space_id });
+        let drop_space = builder.with_op(Ddl::DropTable {
+            id: space_id,
+            initiator: ADMIN_ID,
+        });
         let create_index = builder.with_op(Ddl::CreateIndex {
             space_id,
             index_id,
@@ -894,19 +897,23 @@ mod tests {
             Dml::Insert {
                 table: table.into(),
                 tuple: tuple.clone(),
+                initiator: ADMIN_ID,
             },
             Dml::Replace {
                 table: table.into(),
                 tuple,
+                initiator: ADMIN_ID,
             },
             Dml::Update {
                 table: table.into(),
                 key: key.clone(),
                 ops: vec![],
+                initiator: ADMIN_ID,
             },
             Dml::Delete {
                 table: table.into(),
                 key,
+                initiator: ADMIN_ID,
             },
         ];
 

@@ -2760,6 +2760,8 @@ impl SchemaDef for PrivilegeDef {
 pub mod acl {
     use tarantool::clock;
 
+    use crate::access_control::user_by_id;
+
     use super::*;
 
     impl PrivilegeDef {
@@ -2837,6 +2839,8 @@ pub mod acl {
     pub fn global_create_user(storage: &Clusterwide, user_def: &UserDef) -> tarantool::Result<()> {
         storage.users.insert(user_def)?;
 
+        let owner_def = user_by_id(user_def.owner)?;
+
         let user = &user_def.name;
         crate::audit!(
             message: "created user `{user}`",
@@ -2844,10 +2848,10 @@ pub mod acl {
             severity: High,
             auth_type: user_def.auth.method.as_str(),
             user: user,
+            initiator: owner_def.name,
         );
 
-        let grantor_id = ::tarantool::session::euid()?; // TODO: should be replaced by owner of user
-        for user_priv in get_default_privileges_for_user(user_def, grantor_id) {
+        for user_priv in get_default_privileges_for_user(user_def, user_def.owner) {
             global_grant_privilege(storage, &user_priv)?;
         }
 
@@ -2859,17 +2863,22 @@ pub mod acl {
         storage: &Clusterwide,
         user_id: UserId,
         auth: &AuthDef,
+        initiator: UserId,
     ) -> tarantool::Result<()> {
         storage.users.update_auth(user_id, auth)?;
 
         let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
         let user = &user_def.name;
+
+        let initiator_def = user_by_id(initiator)?;
+
         crate::audit!(
             message: "password of user `{user}` was changed",
             title: "change_password",
             severity: High,
             auth_type: auth.method.as_str(),
             user: user,
+            initiator: initiator_def.name,
         );
 
         Ok(())
@@ -2877,10 +2886,16 @@ pub mod acl {
 
     /// Remove a user definition and any entities owned by it from the internal
     /// clusterwide storage.
-    pub fn global_drop_user(storage: &Clusterwide, user_id: UserId) -> tarantool::Result<()> {
+    pub fn global_drop_user(
+        storage: &Clusterwide,
+        user_id: UserId,
+        initiator: UserId,
+    ) -> tarantool::Result<()> {
         let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
         storage.privileges.delete_all_by_grantee_id(user_id)?;
         storage.users.delete(user_id)?;
+
+        let initiator_def = user_by_id(initiator)?;
 
         let user = &user_def.name;
         crate::audit!(
@@ -2888,6 +2903,7 @@ pub mod acl {
             title: "drop_user",
             severity: Medium,
             user: user,
+            initiator: initiator_def.name,
         );
 
         Ok(())
@@ -2897,12 +2913,15 @@ pub mod acl {
     pub fn global_create_role(storage: &Clusterwide, role_def: &RoleDef) -> tarantool::Result<()> {
         storage.roles.insert(role_def)?;
 
+        let initiator_def = user_by_id(role_def.owner)?;
+
         let role = &role_def.name;
         crate::audit!(
             message: "created role `{role}`",
             title: "create_role",
             severity: High,
             role: role,
+            initiator: initiator_def.name,
         );
 
         Ok(())
@@ -2910,11 +2929,17 @@ pub mod acl {
 
     /// Remove a role definition and any entities owned by it from the internal
     /// clusterwide storage.
-    pub fn global_drop_role(storage: &Clusterwide, role_id: UserId) -> Result<()> {
+    pub fn global_drop_role(
+        storage: &Clusterwide,
+        role_id: UserId,
+        initiator: UserId,
+    ) -> Result<()> {
         let role_def = storage.roles.by_id(role_id)?.expect("role should exist");
         storage.privileges.delete_all_by_grantee_id(role_id)?;
         storage.privileges.delete_all_by_granted_role(role_id)?;
         storage.roles.delete(role_id)?;
+
+        let initiator_def = user_by_id(initiator)?;
 
         let role = &role_def.name;
         crate::audit!(
@@ -2922,6 +2947,7 @@ pub mod acl {
             title: "drop_role",
             severity: Medium,
             role: role,
+            initiator: initiator_def.name,
         );
         Ok(())
     }
@@ -2937,6 +2963,8 @@ pub mod acl {
         let (object, object_type) = (priv_def.object_id(), priv_def.object_type());
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
+        let initiator_def = user_by_id(priv_def.grantor_id())?;
+
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 let object = object.expect("should be set");
@@ -2947,6 +2975,7 @@ pub mod acl {
                     role: object,
                     grantee: &grantee,
                     grantee_type: grantee_type,
+                    initiator: initiator_def.name,
                 );
             }
             _ => {
@@ -2964,6 +2993,7 @@ pub mod acl {
                     object_type: object_type.as_str(),
                     grantee: &grantee,
                     grantee_type: grantee_type,
+                    initiator: initiator_def.name,
                 );
             }
         }
@@ -2975,6 +3005,7 @@ pub mod acl {
     pub fn global_revoke_privilege(
         storage: &Clusterwide,
         priv_def: &PrivilegeDef,
+        initiator: UserId,
     ) -> tarantool::Result<()> {
         // FIXME: currently there's no way to revoke a default privilege
         storage.privileges.delete(
@@ -2988,6 +3019,8 @@ pub mod acl {
         let (object, object_type) = (priv_def.object_id(), &priv_def.object_type());
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
 
+        let initiator_def = user_by_id(initiator)?;
+
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 let object = object.expect("should be set");
@@ -2998,6 +3031,7 @@ pub mod acl {
                     role: object,
                     grantee: &grantee,
                     grantee_type: grantee_type,
+                    initiator: initiator_def.name,
                 );
             }
             _ => {
@@ -3015,6 +3049,7 @@ pub mod acl {
                     object_type: object_type.as_str(),
                     grantee: &grantee,
                     grantee_type: grantee_type,
+                    initiator: initiator_def.name,
                 );
             }
         }

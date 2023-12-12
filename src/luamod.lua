@@ -379,7 +379,8 @@ function pico.change_password(user, password, opts)
             auth = {
                 method = auth_type,
                 data = auth_data,
-            }
+            },
+            initiator = box.session.euid(),
         }
     end
 
@@ -445,6 +446,7 @@ function pico.drop_user(user, opts)
             op_kind = 'drop_user',
             user_id = user_def.id,
             schema_version = next_schema_version(),
+            initiator = box.session.euid(),
         }
     end
 
@@ -584,6 +586,7 @@ function pico.drop_role(role, opts)
             op_kind = 'drop_role',
             role_id = role_def.id,
             schema_version = next_schema_version(),
+            initiator = box.session.euid(),
         }
     end
 
@@ -981,6 +984,7 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
                 grantor_id = priv.grantor_id,
                 schema_version = next_schema_version(),
             },
+            initiator = box.session.euid(),
         }
     end
 
@@ -1225,6 +1229,7 @@ function pico.drop_table(table, opts)
             ddl = {
                 kind = 'drop_table',
                 id = space_def.id,
+                initiator = box.session.euid(),
             }
         }
     end

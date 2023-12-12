@@ -370,6 +370,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         title: "auth_ok",
                         severity: High,
                         user: &user,
+                        initiator: &user,
                     );
                 }
                 Verdict::AuthFail => {
@@ -378,6 +379,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         title: "auth_fail",
                         severity: High,
                         user: &user,
+                        initiator: &user,
                     );
                 }
                 Verdict::UnknownUser => {
@@ -386,6 +388,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         title: "auth_fail",
                         severity: High,
                         user: &user,
+                        initiator: &user,
                     );
                 }
                 Verdict::UserBlocked => {
@@ -394,6 +397,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         title: "auth_fail",
                         severity: High,
                         user: &user,
+                        initiator: &user,
                         verdict: format_args!("{ERROR}; user will be blocked indefinitely"),
                     );
 

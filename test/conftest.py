@@ -862,6 +862,7 @@ class Instance:
         # guest has super privs for now by default this should be equal
         # to ADMIN_USER_ID on the rust side
         as_user = 1
+        op["initiator"] = as_user
 
         eprint(f"CaS:\n  {predicate=}\n  {op=}")
         return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)[0][
