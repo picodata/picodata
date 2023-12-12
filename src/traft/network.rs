@@ -224,8 +224,6 @@ impl PoolWorker {
             poll_fn(|cx| {
                 let mut has_ready: bool = false;
                 let mut cursor = 0;
-                // NOTE: must not yield until this is dropped.
-                let mut reachability = instance_reachability.borrow_mut();
                 while cursor < futures.len() {
                     let poll_result = Future::poll(futures[cursor].2.as_mut(), cx);
                     if let Poll::Ready(result) = poll_result {
@@ -260,7 +258,9 @@ impl PoolWorker {
                                             | TOError::Failed(NetError::Io(_))
                                     );
                                 }
-                                reachability.report_result(raft_id, success);
+                                instance_reachability
+                                    .borrow_mut()
+                                    .report_result(raft_id, success);
                             }
                         }
                         has_ready = true;
