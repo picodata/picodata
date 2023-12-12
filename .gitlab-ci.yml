@@ -184,13 +184,17 @@ test-linux:
 
     - make lint
 
+    # There are no Rust tests for `webui` feature, it's checked in pytest
     - cargo build --locked
-    - cargo build --features webui --locked
-    # There are no Rust tests for `webui` feature.
-    # It will be checked during integration tests.
     - cargo test --locked
 
-    - pipenv run pytest --numprocesses auto -v --junitxml=junit_pytest.xml
+    - cargo build --features webui,error_injection --locked
+    - >
+      pipenv run pytest -v
+      --numprocesses auto
+      --junitxml=junit_pytest.xml
+      --with-webui
+
     - |
       # Save cache
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
