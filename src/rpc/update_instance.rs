@@ -125,7 +125,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             return Ok(());
         }
 
-        let dml = Dml::replace(ClusterwideTable::Instance, &new_instance)
+        let dml = Dml::replace(ClusterwideTable::Instance, &new_instance, ADMIN_USER_ID)
             .expect("encoding should not fail");
 
         let ranges = vec![

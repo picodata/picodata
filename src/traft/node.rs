@@ -5,6 +5,7 @@
 //! - handling configuration changes,
 //! - processing raft `Ready` - persisting entries, communicating with other raft nodes.
 
+use crate::access_control::user_by_id;
 use crate::governor;
 use crate::has_grades;
 use crate::instance::Instance;
@@ -766,6 +767,9 @@ impl NodeImpl {
                     Ok((old, new))
                 });
 
+                let initiator = op.initiator();
+                let initiator_def = user_by_id(initiator).expect("user must exist");
+
                 match &res {
                     Err(e) => {
                         tlog!(Error, "clusterwide dml failed: {e}");
@@ -780,6 +784,7 @@ impl NodeImpl {
                                 title: "change_config",
                                 severity: High,
                                 key: %key,
+                                initiator: initiator_def.name,
                             );
                         }
                     }
@@ -806,6 +811,7 @@ impl NodeImpl {
                                 severity: High,
                                 key: %key,
                                 value: &value,
+                                initiator: initiator_def.name,
                             );
                         }
                     }
@@ -834,6 +840,7 @@ impl NodeImpl {
                                 severity: Low,
                                 instance_id: %instance_id,
                                 raft_id: %new.raft_id,
+                                initiator: &initiator_def.name,
                             );
                         }
 
@@ -847,6 +854,7 @@ impl NodeImpl {
                                 instance_id: %instance_id,
                                 raft_id: %new.raft_id,
                                 new_grade: %grade,
+                                initiator: &initiator_def.name,
                             );
                         }
 
@@ -860,6 +868,7 @@ impl NodeImpl {
                                 instance_id: %instance_id,
                                 raft_id: %new.raft_id,
                                 new_grade: %grade,
+                                initiator: &initiator_def.name,
                             );
                         }
 
@@ -871,6 +880,7 @@ impl NodeImpl {
                                 severity: Low,
                                 instance_id: %instance_id,
                                 raft_id: %new.raft_id,
+                                initiator: &initiator_def.name,
                             );
 
                             if new.raft_id == self.raft_id() {
@@ -931,22 +941,29 @@ impl NodeImpl {
 
                 // Update pico metadata.
                 match ddl {
-                    Ddl::CreateTable { id, name, .. } => {
+                    Ddl::CreateTable {
+                        id, name, owner, ..
+                    } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(owner).expect("user must exist");
 
                         crate::audit!(
                             message: "created table `{name}`",
                             title: "create_table",
                             severity: Medium,
                             name: &name,
+                            initiator: initiator_def.name,
                         );
                     }
 
-                    Ddl::DropTable { id } => {
+                    Ddl::DropTable { id, initiator } => {
                         let space_raw = self.storage.tables.get(id);
                         let space = space_raw.ok().flatten().expect("failed to get space");
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(initiator).expect("user must exist");
 
                         let name = &space.name;
                         crate::audit!(
@@ -954,6 +971,7 @@ impl NodeImpl {
                             title: "drop_table",
                             severity: Medium,
                             name: &name,
+                            initiator: initiator_def.name,
                         );
                     }
 
@@ -1001,7 +1019,7 @@ impl NodeImpl {
                         ddl_meta_drop_space(&self.storage, id).expect("storage shouldn't fail");
                     }
 
-                    Ddl::DropTable { id } => {
+                    Ddl::DropTable { id, .. } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
                             .expect("storage shouldn't fail");
                     }
@@ -1052,7 +1070,7 @@ impl NodeImpl {
                                 acl::on_master_grant_privilege(priv_def)
                                     .expect("granting a privilege shouldn't fail");
                             }
-                            Acl::RevokePrivilege { priv_def } => {
+                            Acl::RevokePrivilege { priv_def, .. } => {
                                 acl::on_master_revoke_privilege(priv_def)
                                     .expect("revoking a privilege shouldn't fail");
                             }
@@ -1066,28 +1084,40 @@ impl NodeImpl {
                         acl::global_create_user(&self.storage, user_def)
                             .expect("persisting a user definition shouldn't fail");
                     }
-                    Acl::ChangeAuth { user_id, auth, .. } => {
-                        acl::global_change_user_auth(&self.storage, *user_id, auth)
+                    Acl::ChangeAuth {
+                        user_id,
+                        auth,
+                        initiator,
+                        ..
+                    } => {
+                        acl::global_change_user_auth(&self.storage, *user_id, auth, *initiator)
                             .expect("changing user definition shouldn't fail");
                     }
-                    Acl::DropUser { user_id, .. } => {
-                        acl::global_drop_user(&self.storage, *user_id)
+                    Acl::DropUser {
+                        user_id, initiator, ..
+                    } => {
+                        acl::global_drop_user(&self.storage, *user_id, *initiator)
                             .expect("droping a user definition shouldn't fail");
                     }
                     Acl::CreateRole { role_def } => {
                         acl::global_create_role(&self.storage, role_def)
                             .expect("persisting a role definition shouldn't fail");
                     }
-                    Acl::DropRole { role_id, .. } => {
-                        acl::global_drop_role(&self.storage, *role_id)
+                    Acl::DropRole {
+                        role_id, initiator, ..
+                    } => {
+                        acl::global_drop_role(&self.storage, *role_id, *initiator)
                             .expect("droping a role definition shouldn't fail");
                     }
                     Acl::GrantPrivilege { priv_def } => {
                         acl::global_grant_privilege(&self.storage, priv_def)
                             .expect("persiting a privilege definition shouldn't fail");
                     }
-                    Acl::RevokePrivilege { priv_def } => {
-                        acl::global_revoke_privilege(&self.storage, priv_def)
+                    Acl::RevokePrivilege {
+                        priv_def,
+                        initiator,
+                    } => {
+                        acl::global_revoke_privilege(&self.storage, priv_def, *initiator)
                             .expect("removing a privilege definition shouldn't fail");
                     }
                 }
@@ -1276,7 +1306,7 @@ impl NodeImpl {
                 todo!();
             }
 
-            Ddl::DropTable { id } => {
+            Ddl::DropTable { id, .. } => {
                 ddl_meta_space_update_operable(&self.storage, id, false)
                     .expect("storage shouldn't fail");
             }

@@ -50,11 +50,16 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             raft_id: instance.raft_id,
             address: args.advertise_address(),
         },
+        ADMIN_ID,
     ));
-    init_entries_push_op(op::Dml::insert(ClusterwideTable::Instance, &instance));
+    init_entries_push_op(op::Dml::insert(
+        ClusterwideTable::Instance,
+        &instance,
+        ADMIN_ID,
+    ));
 
     for tier in tiers {
-        init_entries_push_op(op::Dml::insert(ClusterwideTable::Tier, &tier));
+        init_entries_push_op(op::Dml::insert(ClusterwideTable::Tier, &tier, ADMIN_ID));
     }
 
     // populate initial values for cluster-wide properties
@@ -62,10 +67,12 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
     init_entries_push_op(op::Dml::insert(
         ClusterwideTable::Property,
         &(PropertyName::GlobalSchemaVersion, 0),
+        ADMIN_ID,
     ));
     init_entries_push_op(op::Dml::insert(
         ClusterwideTable::Property,
         &(PropertyName::NextSchemaVersion, 1),
+        ADMIN_ID,
     ));
 
     #[rustfmt::skip]
@@ -73,6 +80,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::PasswordMinLength, storage::DEFAULT_PASSWORD_MIN_LENGTH),
+            ADMIN_ID,
         )
     );
 
@@ -81,6 +89,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::AutoOfflineTimeout, storage::DEFAULT_AUTO_OFFLINE_TIMEOUT),
+            ADMIN_ID,
         )
     );
 
@@ -89,6 +98,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::MaxHeartbeatPeriod, storage::DEFAULT_MAX_HEARTBEAT_PERIOD),
+            ADMIN_ID,
         )
     );
 
@@ -97,6 +107,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
+            ADMIN_ID,
         )
     );
 
@@ -105,6 +116,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::SnapshotChunkMaxSize, storage::DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE),
+            ADMIN_ID,
         )
     );
 
@@ -113,6 +125,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         op::Dml::insert(
             ClusterwideTable::Property,
             &(PropertyName::SnapshotReadViewCloseTimeout, storage::DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT),
+            ADMIN_ID,
         )
     );
     // Populate system roles and their privileges to match tarantool ones
@@ -132,6 +145,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             ),
             owner: ADMIN_ID,
         },
+        ADMIN_ID,
     ));
 
     // equivalent SQL expression: CREATE USER 'admin' with PASSWORD 'no password, see below for more details' USING chap-sha1
@@ -148,6 +162,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
             owner: ADMIN_ID,
         },
+        ADMIN_ID,
     ));
 
     // equivalent SQL expression: CREATE ROLE 'public'
@@ -159,6 +174,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             schema_version: 0,
             owner: ADMIN_ID,
         },
+        ADMIN_ID,
     ));
 
     // equivalent SQL expression: CREATE ROLE 'super'
@@ -170,6 +186,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             schema_version: 0,
             owner: ADMIN_ID,
         },
+        ADMIN_ID,
     ));
 
     // equivalent SQL expressions under 'admin' user:
@@ -177,7 +194,11 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
     // GRANT 'public' TO 'guest'
     // GRANT 'all privileges' ON 'universe' TO 'admin'
     for priv_def in PrivilegeDef::get_default_privileges() {
-        init_entries_push_op(op::Dml::insert(ClusterwideTable::Privilege, priv_def));
+        init_entries_push_op(op::Dml::insert(
+            ClusterwideTable::Privilege,
+            priv_def,
+            ADMIN_ID,
+        ));
     }
 
     init_entries.push({

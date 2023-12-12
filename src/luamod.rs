@@ -1154,7 +1154,8 @@ pub(crate) fn setup(args: &args::Run) {
                 // and the user executing cas request may not (even shouldnt) have access to these spaces
                 let su = session::su(ADMIN_USER_ID)?;
 
-                let op = op::Dml::from_lua_args(op).map_err(traft::error::Error::other)?;
+                let op = op::Dml::from_lua_args(op, su.original_user_id)
+                    .map_err(traft::error::Error::other)?;
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
                 let (index, _) = compare_and_swap(
                     op.into(),

@@ -6,6 +6,7 @@ use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
+use crate::schema::ADMIN_ID;
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::tier::Tier;
 use crate::tlog;
@@ -116,6 +117,7 @@ pub(super) fn action_plan<'i>(
                 state: ReplicasetState::NotReady,
                 tier: tier.clone(),
             },
+            ADMIN_ID,
         )?;
         #[rustfmt::skip]
         return Ok(CreateReplicaset { master_id, replicaset_id, rpc, op }.into());
@@ -128,7 +130,12 @@ pub(super) fn action_plan<'i>(
         let rpc = rpc::replication::promote::Request {};
         let mut ops = UpdateOps::new();
         ops.assign("master_id", &to.instance_id)?;
-        let op = Dml::update(ClusterwideTable::Replicaset, &[&to.replicaset_id], ops)?;
+        let op = Dml::update(
+            ClusterwideTable::Replicaset,
+            &[&to.replicaset_id],
+            ops,
+            ADMIN_ID,
+        )?;
         return Ok(TransferMastership { to, rpc, op }.into());
     }
 
@@ -188,7 +195,12 @@ pub(super) fn action_plan<'i>(
             uops.assign("weight", 1.)?;
         }
         uops.assign("state", ReplicasetState::Ready)?;
-        let op = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], uops)?;
+        let op = Dml::update(
+            ClusterwideTable::Replicaset,
+            &[replicaset_id],
+            uops,
+            ADMIN_ID,
+        )?;
         return Ok(ProposeReplicasetStateChanges { op }.into());
     }
 
@@ -201,6 +213,7 @@ pub(super) fn action_plan<'i>(
             ClusterwideTable::Property,
             // FIXME: encode as map
             &(&PropertyName::TargetVshardConfig, vshard_config),
+            ADMIN_ID,
         )?;
         return Ok(UpdateTargetVshardConfig { dml }.into());
     }
@@ -222,6 +235,7 @@ pub(super) fn action_plan<'i>(
             ClusterwideTable::Property,
             // FIXME: encode as map
             &(&PropertyName::CurrentVshardConfig, target_vshard_config),
+            ADMIN_ID,
         )?;
         return Ok(UpdateCurrentVshardConfig { targets, rpc, dml }.into());
     }
@@ -241,6 +255,7 @@ pub(super) fn action_plan<'i>(
         let op = Dml::replace(
             ClusterwideTable::Property,
             &(PropertyName::VshardBootstrapped, true),
+            ADMIN_ID,
         )?;
         return Ok(ShardingBoot { target, rpc, op }.into());
     };

@@ -96,12 +96,14 @@ class EventInitAudit(Event):
 class EventAuthOk(Event):
     TITLE: ClassVar[str] = "auth_ok"
     user: str
+    initiator: str
 
 
 @dataclass
 class EventAuthFail(Event):
     TITLE: ClassVar[str] = "auth_fail"
     user: str
+    initiator: str
     verdict: Optional[str] = None
 
 
@@ -109,6 +111,7 @@ class EventAuthFail(Event):
 class EventChangeConfig(Event):
     TITLE: ClassVar[str] = "change_config"
     key: str
+    initiator: str
     value: Optional[str] = None
 
 
@@ -117,6 +120,7 @@ class EventChangePassword(Event):
     TITLE: ClassVar[str] = "change_password"
     user: str
     auth_type: str
+    initiator: str
 
 
 @dataclass
@@ -125,6 +129,7 @@ class EventChangeTargetGrade(Event):
     instance_id: str
     raft_id: str
     new_grade: str
+    initiator: str
 
 
 @dataclass
@@ -133,6 +138,7 @@ class EventChangeCurrentGrade(Event):
     instance_id: str
     raft_id: str
     new_grade: str
+    initiator: str
 
 
 @dataclass
@@ -140,6 +146,7 @@ class EventJoinInstance(Event):
     TITLE: ClassVar[str] = "join_instance"
     instance_id: str
     raft_id: str
+    initiator: str
 
 
 @dataclass
@@ -147,16 +154,18 @@ class EventExpelInstance(Event):
     TITLE: ClassVar[str] = "expel_instance"
     instance_id: str
     raft_id: str
+    initiator: str
 
 
 @dataclass
 class EventGrantPrivilege(Event):
     TITLE: ClassVar[str] = "grant_privilege"
     privilege: str
-    object: str
     object_type: str
     grantee: str
     grantee_type: str
+    initiator: str
+    object: Optional[str] = None
 
 
 @dataclass
@@ -167,6 +176,7 @@ class EventRevokePrivilege(Event):
     object_type: str
     grantee: str
     grantee_type: str
+    initiator: str
 
 
 @dataclass
@@ -175,6 +185,7 @@ class EventGrantRole(Event):
     role: str
     grantee: str
     grantee_type: str
+    initiator: str
 
 
 @dataclass
@@ -183,18 +194,21 @@ class EventRevokeRole(Event):
     role: str
     grantee: str
     grantee_type: str
+    initiator: str
 
 
 @dataclass
 class EventCreateRole(Event):
     TITLE: ClassVar[str] = "create_role"
     role: str
+    initiator: str
 
 
 @dataclass
 class EventDropRole(Event):
     TITLE: ClassVar[str] = "drop_role"
     role: str
+    initiator: str
 
 
 @dataclass
@@ -202,24 +216,28 @@ class EventCreateUser(Event):
     TITLE: ClassVar[str] = "create_user"
     user: str
     auth_type: str
+    initiator: str
 
 
 @dataclass
 class EventDropUser(Event):
     TITLE: ClassVar[str] = "drop_user"
     user: str
+    initiator: str
 
 
 @dataclass
 class EventCreateTable(Event):
     TITLE: ClassVar[str] = "create_table"
     name: str
+    initiator: str
 
 
 @dataclass
 class EventDropTable(Event):
     TITLE: ClassVar[str] = "drop_table"
     name: str
+    initiator: str
 
 
 class AuditFile:
@@ -263,6 +281,7 @@ def test_startup(instance: Instance):
     assert event is not None
     assert event.instance_id == "i1"
     assert event.raft_id == "1"
+    assert event.initiator == "admin"
 
     event = take_until_type(iter(events), EventChangeTargetGrade)
     assert event is not None
@@ -274,6 +293,7 @@ def test_startup(instance: Instance):
         == f"target grade of instance `{event.instance_id}` changed to {event.new_grade}"
     )
     assert event.severity == Severity.Low
+    assert event.initiator == "admin"
 
     event = take_until_type(iter(events), EventChangeCurrentGrade)
     assert event is not None
@@ -285,9 +305,11 @@ def test_startup(instance: Instance):
         == f"current grade of instance `{event.instance_id}` changed to {event.new_grade}"
     )
     assert event.severity == Severity.Medium
+    assert event.initiator == "admin"
 
     event = take_until_type(iter(events), EventChangeConfig)
     assert event is not None
+    assert event.initiator == "admin"
 
 
 def test_create_drop_table(instance: Instance):
@@ -312,12 +334,14 @@ def test_create_drop_table(instance: Instance):
     assert create_table.name == "foo"
     assert create_table.message == "created table `foo`"
     assert create_table.severity == Severity.Medium
+    assert create_table.initiator == "guest"
 
     drop_table = take_until_type(events, EventDropTable)
     assert drop_table is not None
     assert drop_table.name == "foo"
     assert drop_table.message == "dropped table `foo`"
     assert drop_table.severity == Severity.Medium
+    assert drop_table.initiator == "guest"
 
 
 def test_user(instance: Instance):
@@ -327,10 +351,12 @@ def test_user(instance: Instance):
         create user "ymir" with password '0123456789' using chap-sha1
         """
     )
-    instance.sql(
+    # TODO user cant change password without access to _pico_property
+    # https://git.picodata.io/picodata/picodata/picodata/-/issues/449
+    instance.sudo_sql(
         """
         alter user "ymir" password '9876543210'
-        """
+        """,
     )
     instance.sql(
         """
@@ -347,6 +373,7 @@ def test_user(instance: Instance):
     assert create_user.auth_type == "chap-sha1"
     assert create_user.message == f"created user `{create_user.user}`"
     assert create_user.severity == Severity.High
+    assert create_user.initiator == "guest"
 
     change_password = take_until_type(events, EventChangePassword)
     assert change_password is not None
@@ -357,41 +384,56 @@ def test_user(instance: Instance):
         == f"password of user `{change_password.user}` was changed"
     )
     assert change_password.severity == Severity.High
+    assert change_password.initiator == "admin"
 
     drop_user = take_until_type(events, EventDropUser)
     assert drop_user is not None
     assert drop_user.user == "ymir"
     assert drop_user.message == f"dropped user `{drop_user.user}`"
     assert drop_user.severity == Severity.Medium
+    assert drop_user.initiator == "guest"
 
 
 def test_role(instance: Instance):
     instance.start()
-    instance.sql(
+
+    setup = [
         """
-        create role "skibidi"
+        create user "bubba" with password '0123456789' using chap-sha1
+        """,
         """
-    )
-    instance.sql(
-        """
-        create role "dummy"
-        """
-    )
-    instance.sudo_sql(
-        """
-        grant "dummy" to "skibidi"
-        """
-    )
-    instance.sudo_sql(
-        """
-        revoke "dummy" from "skibidi"
-        """
-    )
-    instance.sql(
-        """
-        drop role "skibidi"
-        """
-    )
+        grant create role to "bubba"
+        """,
+    ]
+    for query in setup:
+        instance.sudo_sql(query)
+
+    with instance.connect(timeout=1, user="bubba", password="0123456789") as c:
+        c.sql(
+            """
+            create role "skibidi"
+            """
+        )
+        c.sql(
+            """
+            create role "dummy"
+            """
+        )
+        c.sql(
+            """
+            grant "dummy" to "skibidi"
+            """
+        )
+        c.sql(
+            """
+            revoke "dummy" from "skibidi"
+            """
+        )
+        c.sql(
+            """
+            drop role "skibidi"
+            """
+        )
     instance.terminate()
 
     events = AuditFile(instance.audit_flag_value).events()
@@ -401,6 +443,7 @@ def test_role(instance: Instance):
     assert create_role.role == "skibidi"
     assert create_role.message == f"created role `{create_role.role}`"
     assert create_role.severity == Severity.High
+    assert create_role.initiator == "bubba"
 
     grant_role = take_until_type(events, EventGrantRole)
     assert grant_role is not None
@@ -412,6 +455,7 @@ def test_role(instance: Instance):
         == f"granted role `{grant_role.role}` to role `{grant_role.grantee}`"
     )
     assert grant_role.severity == Severity.High
+    assert grant_role.initiator == "bubba"
 
     revoke_role = take_until_type(events, EventRevokeRole)
     assert revoke_role is not None
@@ -423,12 +467,14 @@ def test_role(instance: Instance):
         == f"revoked role `{grant_role.role}` from role `{revoke_role.grantee}`"
     )
     assert revoke_role.severity == Severity.High
+    assert revoke_role.initiator == "bubba"
 
     drop_role = take_until_type(events, EventDropRole)
     assert drop_role is not None
     assert drop_role.role == "skibidi"
     assert drop_role.message == f"dropped role `{drop_role.role}`"
     assert drop_role.severity == Severity.Medium
+    assert drop_role.initiator == "bubba"
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
@@ -453,6 +499,7 @@ def test_join_expel_instance(cluster: Cluster):
     assert join_instance.instance_id == "i2"
     assert join_instance.raft_id == str(i2.raft_id)
     assert join_instance.severity == Severity.Low
+    assert join_instance.initiator == "admin"
 
     cluster.expel(i2)
     retrying(lambda: assert_instance_expelled(i2, i1))
@@ -462,6 +509,7 @@ def test_join_expel_instance(cluster: Cluster):
     assert expel_instance.instance_id == "i2"
     assert expel_instance.raft_id == str(i2.raft_id)
     assert expel_instance.severity == Severity.Low
+    assert expel_instance.initiator == "admin"
 
 
 def test_auth(instance: Instance):
@@ -490,6 +538,7 @@ def test_auth(instance: Instance):
     assert auth_ok is not None
     assert auth_ok.user == "ymir"
     assert auth_ok.severity == Severity.High
+    assert auth_ok.initiator == "ymir"
 
     with pytest.raises(NetworkError):
         with instance.connect(4, user="ymir", password="wrong_pwd") as _:
@@ -499,3 +548,4 @@ def test_auth(instance: Instance):
     assert auth_fail is not None
     assert auth_fail.user == "ymir"
     assert auth_fail.severity == Severity.High
+    assert auth_fail.initiator == "ymir"
