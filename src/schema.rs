@@ -335,6 +335,8 @@ impl RoleDef {
 
 // default users
 pub const GUEST_ID: UserId = 0;
+// Note: Admin user id is used when we need to elevate privileges
+// because current user doesnt have access to system spaces
 pub const ADMIN_ID: UserId = 1;
 
 // default roles
@@ -1308,7 +1310,7 @@ mod tests {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tarantool::tuple::{Decode, ToTupleBuffer};
+    use tarantool::tuple::ToTupleBuffer;
 
     #[test]
     #[rustfmt::skip]

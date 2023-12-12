@@ -42,10 +42,9 @@ use tarantool::{
 };
 
 use crate::{
-    schema::{PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType},
+    schema::{PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID},
     storage::{space_by_id, Clusterwide, ToEntryIter},
     traft::op::{self, Op},
-    ADMIN_USER_ID,
 };
 
 tarantool::define_str_enum! {
@@ -290,7 +289,7 @@ fn access_check_grant_revoke(
             // In vanilla tarantool each object type has counterpart with entity suffix
             // i e BOX_SC_ENTITY_SPACE. Since these variants are not stored we do
             // not materialize them as valid SchemaObjectType variants and streamline this check.
-            if grantor_id != ADMIN_USER_ID {
+            if grantor_id != ADMIN_ID {
                 return Err(make_access_denied(
                     access_name,
                     priv_def.object_type(),
@@ -306,7 +305,7 @@ fn access_check_grant_revoke(
     match priv_def.object_type() {
         PicoSchemaObjectType::Universe => {
             // Only admin can grant on universe
-            if grantor_id != ADMIN_USER_ID {
+            if grantor_id != ADMIN_ID {
                 return Err(make_access_denied(
                     access_name,
                     PicoSchemaObjectType::Universe,
@@ -322,7 +321,7 @@ fn access_check_grant_revoke(
             assert_eq!(object_id, meta.id, "user metadata id mismatch");
 
             // Only owner or admin can grant on space
-            if meta.user_id != grantor_id && grantor_id != ADMIN_USER_ID {
+            if meta.user_id != grantor_id && grantor_id != ADMIN_ID {
                 return Err(make_access_denied(
                     access_name,
                     PicoSchemaObjectType::Table,
@@ -349,7 +348,7 @@ fn access_check_grant_revoke(
             // Everyone can grant 'PUBLIC' role.
             // Note that having a role means having execute privilege on it.
             if granted_role.owner_id != grantor_id
-                && grantor_id != ADMIN_USER_ID
+                && grantor_id != ADMIN_ID
                 && !(granted_role.name == "public"
                     && priv_def.privilege() == PrivilegeType::Execute)
             {
@@ -379,7 +378,7 @@ fn access_check_grant_revoke(
             }
 
             // Only owner or admin can grant on user
-            if target_sys_user.owner_id != grantor_id && grantor_id != ADMIN_USER_ID {
+            if target_sys_user.owner_id != grantor_id && grantor_id != ADMIN_ID {
                 return Err(make_access_denied(
                     access_name,
                     PicoSchemaObjectType::User,
@@ -499,7 +498,7 @@ pub(super) fn access_check_op(
         Op::Dml(dml) => access_check_dml(dml, as_user),
         Op::DdlPrepare { ddl, .. } => access_check_ddl(ddl, as_user),
         Op::DdlCommit | Op::DdlAbort => {
-            if as_user != ADMIN_USER_ID {
+            if as_user != ADMIN_ID {
                 let sys_user = user_by_id(as_user)?;
                 return Err(make_access_denied(
                     "ddl",
@@ -531,7 +530,6 @@ mod tests {
             Clusterwide,
         },
         traft::op::{Acl, Ddl, Dml, Op},
-        ADMIN_USER_ID,
     };
     use tarantool::{
         auth::{AuthData, AuthDef, AuthMethod},
@@ -552,9 +550,9 @@ mod tests {
 
     #[tarantool::test]
     fn decode_user_metadata() {
-        let sys_user = user_by_id(ADMIN_USER_ID).unwrap();
-        assert_eq!(sys_user.id, ADMIN_USER_ID);
-        assert_eq!(sys_user.owner_id, ADMIN_USER_ID);
+        let sys_user = user_by_id(ADMIN_ID).unwrap();
+        assert_eq!(sys_user.id, ADMIN_ID);
+        assert_eq!(sys_user.owner_id, ADMIN_ID);
         assert_eq!(&sys_user.name, "admin");
         assert_eq!(sys_user.ty, UserMetadataKind::User);
         assert_eq!(sys_user.auth, HashMap::new());

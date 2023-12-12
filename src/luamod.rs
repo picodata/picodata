@@ -5,14 +5,14 @@ use std::time::Duration;
 
 use crate::cas::{self, compare_and_swap};
 use crate::instance::InstanceId;
-use crate::schema::{self, CreateTableParams};
+use crate::schema::{self, CreateTableParams, ADMIN_ID};
 use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::str_eq;
 use crate::util::INFINITY;
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{args, rpc, sync, tlog, ADMIN_USER_ID};
+use crate::{args, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::session;
 use ::tarantool::tlua;
@@ -1152,7 +1152,7 @@ pub(crate) fn setup(args: &args::Run) {
              -> traft::Result<RaftIndex> {
                 // su is needed here because for cas execution we need to consult with system spaces like `_raft_state`
                 // and the user executing cas request may not (even shouldnt) have access to these spaces
-                let su = session::su(ADMIN_USER_ID)?;
+                let su = session::su(ADMIN_ID)?;
 
                 let op = op::Dml::from_lua_args(op, su.original_user_id)
                     .map_err(traft::error::Error::other)?;

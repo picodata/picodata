@@ -8,12 +8,12 @@ use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetId;
+use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::storage::{Clusterwide, ToEntryIter as _};
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
-use crate::ADMIN_USER_ID;
 
 use ::tarantool::fiber;
 
@@ -92,9 +92,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
         };
-        let op_addr = Dml::replace(ClusterwideTable::Address, &peer_address, ADMIN_USER_ID)
+        let op_addr = Dml::replace(ClusterwideTable::Address, &peer_address, ADMIN_ID)
             .expect("encoding should not fail");
-        let op_instance = Dml::replace(ClusterwideTable::Instance, &instance, ADMIN_USER_ID)
+        let op_instance = Dml::replace(ClusterwideTable::Instance, &instance, ADMIN_ID)
             .expect("encoding should not fail");
         let ranges = vec![
             cas::Range::new(ClusterwideTable::Instance),
@@ -132,7 +132,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 term: raft_storage.term()?,
                 ranges: ranges.clone(),
             },
-            ADMIN_USER_ID,
+            ADMIN_ID,
             deadline.duration_since(fiber::clock()),
         ));
         handle_result!(cas::compare_and_swap(
@@ -142,7 +142,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 term: raft_storage.term()?,
                 ranges,
             },
-            ADMIN_USER_ID,
+            ADMIN_ID,
             deadline.duration_since(fiber::clock()),
         ));
         node.main_loop.wakeup();
