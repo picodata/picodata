@@ -1,6 +1,6 @@
 import { Content } from "shared/ui/layout/Content/Content";
 import { NoData } from "shared/ui/NoData/NoData";
-import { useReplicasets } from "shared/entity/replicaset/list";
+import { useTiers } from "shared/entity/tier";
 
 import { ReplicasetCard } from "./ReplicasetCard/ReplicasetCard";
 import { InstanceCard } from "./ReplicasetCard/instanceBlock/InstanceCard";
@@ -9,11 +9,13 @@ import { useGroupByFilter } from "./TopBar/GroupByFilter/hooks";
 import { useSortBy } from "./TopBar/SortBy/hooks";
 import { useFilteredInstances, useSortedInstances } from "./hooks";
 import { useFilterBy } from "./TopBar/FilterBy/hooks";
+import { TierCard } from "./TierCard/TierCard";
 
 import styles from "./ReplicasetsContent.module.scss";
 
+// переименовать!!!
 export const ReplicasetsContent = () => {
-  const { data } = useReplicasets();
+  const { data } = useTiers();
 
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
   const [sortByValue, setSortByValue] = useSortBy();
@@ -28,7 +30,9 @@ export const ReplicasetsContent = () => {
     sortByValue
   );
 
+  const groupedByTiers = groupByFilterValue === "TIERS";
   const groupedByReplicates = groupByFilterValue === "REPLICASETS";
+  const groupedByInstances = groupByFilterValue === "INSTANCES";
 
   const isNoData = data?.replicasets.length === 0;
 
@@ -43,18 +47,22 @@ export const ReplicasetsContent = () => {
             groupByFilterValue={groupByFilterValue}
             setGroupByFilterValue={setGroupByFilterValue}
             sortByValue={sortByValue}
-            showSortBy={!groupedByReplicates}
+            showSortBy={groupedByInstances}
             setSortByValue={setSortByValue}
-            showFilterBy={!groupedByReplicates}
+            showFilterBy={groupedByInstances}
             filterByValue={filterByValue}
             setFilterByValue={setFilterByValue}
           />
           <div className={styles.replicasetsWrapper}>
+            {groupedByTiers &&
+              data?.tiers.map((tier) => (
+                <TierCard key={tier.name} tier={tier} />
+              ))}
             {groupedByReplicates &&
               data?.replicasets.map((rep) => (
                 <ReplicasetCard key={rep.id} replicaset={rep} />
               ))}
-            {!groupedByReplicates &&
+            {groupedByInstances &&
               sortedFilteredInstances.map((instance) => (
                 <InstanceCard
                   key={instance.name}

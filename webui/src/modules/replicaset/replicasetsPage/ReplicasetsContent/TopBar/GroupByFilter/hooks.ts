@@ -7,6 +7,6 @@ export const useGroupByFilter = () => {
   return useUSP({
     key: "groupBy",
     schema: groupByValue,
-    defaultValue: "REPLICASETS",
+    defaultValue: "TIERS",
   });
 };

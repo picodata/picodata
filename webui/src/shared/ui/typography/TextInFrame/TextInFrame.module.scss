@@ -1,0 +1,11 @@
+@import 'styles/vars';
+
+.container {
+  background-color: $colorBgTabs;
+  padding: 4px 24px;
+  box-shadow: 1px 1px 3px 0px #9d99ac;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}

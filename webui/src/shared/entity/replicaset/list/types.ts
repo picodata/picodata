@@ -1,4 +1,4 @@
-import { ServerReplicasetType } from "../types";
+import { ServerReplicasetType } from "../common/types";
 
 export type ServerReplicasetItemType = ServerReplicasetType;
 

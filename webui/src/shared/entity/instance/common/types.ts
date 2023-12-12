@@ -1,4 +1,4 @@
-import { Override } from "../../utils/tsUtils";
+import { Override } from "../../../utils/tsUtils";
 
 export type ServerInstanceType = {
   name: string;

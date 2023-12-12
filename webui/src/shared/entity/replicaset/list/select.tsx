@@ -1,25 +1,13 @@
 import { InstanceType } from "../../instance";
-import { ReplicasetType } from "../types";
+import { ReplicasetType } from "../common/types";
+import { mapReplicasetToClient } from "../common";
 
 import { ServerReplicasetsListType } from "./types";
 
 export const select = (
   data: ServerReplicasetsListType
 ): { replicasets: ReplicasetType[]; instances: InstanceType[] } => {
-  const replicasets = data.map((replicaset) => {
-    return {
-      ...replicaset,
-      instances: replicaset.instances.map((instance) => ({
-        ...instance,
-        failureDomain: Object.entries(instance.failureDomain).map(
-          ([key, value]) => ({
-            key,
-            value,
-          })
-        ),
-      })),
-    };
-  });
+  const replicasets = data.map(mapReplicasetToClient);
 
   return {
     replicasets,

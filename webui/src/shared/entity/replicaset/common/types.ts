@@ -1,5 +1,5 @@
-import { Override } from "../../utils/tsUtils";
-import { ServerInstanceType, InstanceType } from "../instance/types";
+import { Override } from "../../../utils/tsUtils";
+import { ServerInstanceType, InstanceType } from "../../instance/common/types";
 
 export type ServerReplicasetType = {
   id: string;
