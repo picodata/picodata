@@ -1403,13 +1403,13 @@ impl NodeImpl {
         let mut sent_count = 0;
         let mut skip_count = 0;
 
-        let instance_reachability = self.instance_reachability.borrow();
         for msg in messages {
-            if msg.msg_type == raft::MessageType::MsgHeartbeat
-                && !instance_reachability.should_send_heartbeat_this_tick(msg.to)
-            {
-                skip_count += 1;
-                continue;
+            if msg.msg_type == raft::MessageType::MsgHeartbeat {
+                let instance_reachability = self.instance_reachability.borrow();
+                if !instance_reachability.should_send_heartbeat_this_tick(msg.to) {
+                    skip_count += 1;
+                    continue;
+                }
             }
             sent_count += 1;
             if let Err(e) = self.pool.send(msg) {
