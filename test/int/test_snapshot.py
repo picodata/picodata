@@ -66,7 +66,7 @@ def assert_eq(lhs, rhs):
 
 
 def test_large_snapshot(cluster: Cluster):
-    i1, i2, i3 = cluster.deploy(instance_count=3)
+    i1, i2, i3, i4 = cluster.deploy(instance_count=4)
 
     # TODO: rewrite using clusterwide settings when we implement those
     script_path = f"{cluster.data_dir}/postjoin.lua"
@@ -80,7 +80,7 @@ def test_large_snapshot(cluster: Cluster):
     param = dict(
         # Number of tuples to insert
         # N=4 * 1024 * 1024,
-        N=4 * 1024 * 1024 / 8,
+        N=4 * 1024 * 1024 / 32,
         # Average size of each tuple (approximate, doesn't include key and meta)
         T=512,
         # Max deviation from the average tuple size
@@ -171,6 +171,7 @@ def test_large_snapshot(cluster: Cluster):
 
         Retriable(timeout, 5).call(inner)
 
+    cluster.cas("replace", "_pico_property", ["snapshot_chunk_max_size", 1024 * 1024])
     cluster.create_table(
         dict(
             name="BIG",
@@ -184,13 +185,13 @@ def test_large_snapshot(cluster: Cluster):
     )
 
     # This one will be receiving a snapshot
-    i3.terminate()
+    i4.terminate()
 
-    for i in [i1, i2]:
+    for i in [i1, i2, i3]:
         def_prepare_samples(i)
         start_preparing_data(i)
 
-    for i in [i1, i2]:
+    for i in [i1, i2, i3]:
         wait_data_prepared(i)
 
     index = cluster.cas("insert", "_pico_property", ["big", "data"])
@@ -198,59 +199,61 @@ def test_large_snapshot(cluster: Cluster):
 
     i1.raft_compact_log()
     i2.raft_compact_log()
+    i3.raft_compact_log()
 
-    # First i1 is leader and i3 starts reading snapshot from it.
+    # First i1 is leader and i4 starts reading snapshot from it.
     i1.promote_or_fail()
 
-    t_i3 = time.time()
-    # Restart the instance triggering the chunky snapshot application.
-    i3.env["PICODATA_SCRIPT"] = script_path
-    i3.start()
-
-    # Wait for i3 to start receiving the snapshot
-    Retriable(10, 60).call(
-        lambda: assert_eq(i3._raft_status().main_loop_status, "receiving snapshot")
-    )
-
-    # In the middle of snapshot application propose a new entry
-    index = cluster.cas("insert", "_pico_property", ["pokemon", "snap"])
-    for i in [i1, i2]:
-        i.raft_wait_index(index)
-
-    # Add a new instance so that it starts reading the same snapshot
     t_i4 = time.time()
-    i4 = cluster.add_instance(wait_online=False)
+    # Restart the instance triggering the chunky snapshot application.
     i4.env["PICODATA_SCRIPT"] = script_path
     i4.start()
 
     # Wait for i4 to start receiving the snapshot
     Retriable(10, 60).call(
-        lambda: assert_eq(i3._raft_status().main_loop_status, "receiving snapshot")
+        lambda: assert_eq(i4._raft_status().main_loop_status, "receiving snapshot")
+    )
+
+    # In the middle of snapshot application propose a new entry
+    index = cluster.cas("insert", "_pico_property", ["pokemon", "snap"])
+    for i in [i1, i2, i3]:
+        i.raft_wait_index(index)
+
+    # Add a new instance so that it starts reading the same snapshot
+    t_i5 = time.time()
+    i5 = cluster.add_instance(wait_online=False)
+    i5.env["PICODATA_SCRIPT"] = script_path
+    i5.start()
+
+    # Wait for i5 to start receiving the snapshot
+    Retriable(10, 60).call(
+        lambda: assert_eq(i5._raft_status().main_loop_status, "receiving snapshot")
     )
 
     i1.raft_compact_log()
     i2.raft_compact_log()
+    i3.raft_compact_log()
 
-    # At some point i2 becomes leader but i3 keeps reading snapshot from i1.
+    # At some point i2 becomes leader but i4 keeps reading snapshot from i1.
     i2.promote_or_fail()
 
-    i3.wait_online(timeout=30 - (time.time() - t_i3))
-    print(f"i3 catching up by snapshot took: {time.time() - t_i3}s")
+    i4.wait_online(timeout=30 - (time.time() - t_i4))
+    print(f"i4 catching up by snapshot took: {time.time() - t_i4}s")
 
-    i4.wait_online(timeout=20 - (time.time() - t_i4))
-    print(f"i4 booting up by snapshot took: {time.time() - t_i4}s")
+    i5.wait_online(timeout=20 - (time.time() - t_i5))
+    print(f"i5 booting up by snapshot took: {time.time() - t_i5}s")
 
     #
     # Check snapshot was applied correctly.
     #
-    assert i3.call("box.space._pico_property:get", "big") == ["big", "data"]
+    assert i4.call("box.space._pico_property:get", "big") == ["big", "data"]
 
     expected_count = i1.call("box.space._pico_property:count")
     assert isinstance(expected_count, int)
-    assert i3.call("box.space._pico_property:count") == expected_count
+    assert i4.call("box.space._pico_property:count") == expected_count
 
-    def_prepare_samples(i3)
-    i3.eval(
+    def_prepare_samples(i4)
+    i4.eval(
         """\
         local log = require 'log'
         local math = require 'math'
