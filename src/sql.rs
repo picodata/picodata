@@ -2,7 +2,7 @@
 
 use crate::schema::{
     wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, PrivilegeDef, PrivilegeType,
-    RoleDef, SchemaObjectType, ShardingFn, UserDef,
+    RoleDef, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -15,7 +15,7 @@ use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{cas, unwrap_ok_or, ADMIN_USER_ID};
+use crate::{cas, unwrap_ok_or};
 
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
@@ -89,7 +89,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
 
     // Switch to admin to get space ids. At the moment we don't use space cache in tarantool
     // module and can't get space metadata without _space table read permissions.
-    with_su(ADMIN_USER_ID, || -> traft::Result<()> {
+    with_su(ADMIN_ID, || -> traft::Result<()> {
         for (_, node_id) in nodes {
             let rel_node = plan.get_relation_node(node_id).map_err(Error::from)?;
             let (relation, privileges) = match rel_node {
@@ -189,7 +189,7 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
         &params.pattern,
         || {
             let runtime = RouterRuntime::new().map_err(Error::from)?;
-            let query = with_su(ADMIN_USER_ID, || -> traft::Result<Query<RouterRuntime>> {
+            let query = with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
                 Query::new(&runtime, &params.pattern, params.params).map_err(Error::from)
             })??;
             dispatch(query)
@@ -339,7 +339,7 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
             }
             let ast = <RouterRuntime as Router>::ParseTree::new(&query).map_err(Error::from)?;
             let metadata = &*runtime.metadata().map_err(Error::from)?;
-            let plan = with_su(ADMIN_USER_ID, || -> traft::Result<IrPlan> {
+            let plan = with_su(ADMIN_ID, || -> traft::Result<IrPlan> {
                 let mut plan = ast.resolve_metadata(metadata).map_err(Error::from)?;
                 if runtime.provides_versions() {
                     let mut table_version_map =
@@ -704,7 +704,7 @@ fn reenterable_schema_change_request(
         }
     };
 
-    let _su = session::su(ADMIN_USER_ID).expect("cant fail because session is available");
+    let _su = session::su(ADMIN_ID).expect("cant fail because session is available");
 
     'retry: loop {
         if Instant::now() > deadline {

@@ -6,11 +6,11 @@ use crate::instance::Grade;
 use crate::instance::GradeVariant;
 use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
+use crate::schema::ADMIN_ID;
 use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
-use crate::ADMIN_USER_ID;
 
 use ::tarantool::fiber;
 
@@ -125,7 +125,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             return Ok(());
         }
 
-        let dml = Dml::replace(ClusterwideTable::Instance, &new_instance, ADMIN_USER_ID)
+        let dml = Dml::replace(ClusterwideTable::Instance, &new_instance, ADMIN_ID)
             .expect("encoding should not fail");
 
         let ranges = vec![
@@ -140,7 +140,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
                 term: raft_storage.term()?,
                 ranges,
             },
-            ADMIN_USER_ID,
+            ADMIN_ID,
             deadline.duration_since(fiber::clock()),
         );
         match res {
