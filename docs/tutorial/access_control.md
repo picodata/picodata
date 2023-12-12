@@ -107,8 +107,8 @@ GRANT DROP ROLE TO "admin"
 Однако, у него по умолчанию отсутствует привилегия `SESSION`.
 Использовать учетную запись можно двумя способами:
 
-- запустив инстанс с [интерактивной консолью](../reference/cli.md#interactive) `picodata run -i`
-- подключившись [по сокету](../reference/cli.md#console-sock) `picodata connect --unix`
+- запустив инстанс с [интерактивной консолью администратора](../reference/cli.md#interactive) командой `picodata run -i`
+- подключившись к [консоли администратора](../reference/cli.md#console-sock) командой [`picodata admin`](../reference/cli.md#admin-command)
 
 #### Гость {: #guest }
 
