@@ -530,7 +530,11 @@ fn check_password_min_length(
     }
 
     let storage = &node.storage;
-    let password_min_length = storage.properties.password_min_length()?;
+
+    // This check is called from user facing API.
+    // A user is not expected to have access to _pico_property
+    let password_min_length =
+        session::with_su(ADMIN_ID, || storage.properties.password_min_length())??;
     if password.len() < password_min_length {
         return Err(Error::Other(
             format!(
