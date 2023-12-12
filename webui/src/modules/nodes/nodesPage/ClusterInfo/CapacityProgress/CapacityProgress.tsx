@@ -32,8 +32,8 @@ export const CapacityProgress: React.FC<CapacityProgressProps> = (props) => {
   const showLabels = !!currentValueLabel;
 
   return (
-    <div>
-      <div className={cn(styles.container, styles[size], styles[theme])}>
+    <div className={styles.container}>
+      <div className={cn(styles.content, styles[size], styles[theme])}>
         <div className={styles.text}>{percent} %</div>
         <div className={styles.progressLineContainer}>
           <CapacityProgressLine

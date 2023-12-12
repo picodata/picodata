@@ -7,6 +7,8 @@ export type ServerInstanceType = {
   failureDomain: Record<string, string>;
   version: string;
   isLeader: boolean;
+  binaryAddress: string;
+  httpAddress?: string;
 };
 
 export type InstanceType = Override<

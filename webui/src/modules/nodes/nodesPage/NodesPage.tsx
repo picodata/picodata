@@ -1,16 +1,16 @@
 import { PageContainer } from "shared/ui/layout/PageContainer/PageContainer";
 
 import { ClusterInfo } from "./ClusterInfo/ClusterInfo";
-import { ReplicasetsContent } from "./ReplicasetsContent/ReplicasetsContent";
+import { NodesContent } from "./NodesContent/NodesContent";
 
-import styles from "./ReplicasetsPage.module.scss";
+import styles from "./NodesPage.module.scss";
 
-export const ReplicasetsPage = () => {
+export const NodesPage = () => {
   return (
     <PageContainer>
       <div className={styles.title}>Cluster ID</div>
       <ClusterInfo className={styles.clusterInfo} />
-      <ReplicasetsContent />
+      <NodesContent />
     </PageContainer>
   );
 };

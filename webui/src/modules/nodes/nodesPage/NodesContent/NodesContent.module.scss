@@ -3,12 +3,11 @@
 $list-horizontal-padding: 16px;
 $list-horizontal-margin: 8px;
 $content-horizontal-indent: calc($list-horizontal-padding + $list-horizontal-margin);
-$vertical-indent: 24px;
+$vertical-indent: 16px;
 
 .gridWrapper {
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
   overflow: hidden;
 }
 
@@ -16,7 +15,7 @@ $vertical-indent: 24px;
   margin: $vertical-indent $content-horizontal-indent;
 }
 
-.replicasetsWrapper {
+.list {
   display: flex;
   flex-direction: column;
   gap: $vertical-indent;
@@ -24,5 +23,5 @@ $vertical-indent: 24px;
   overflow: scroll;
   padding: 0 $list-horizontal-padding;
   margin: 0 $list-horizontal-margin;
-  padding-bottom: 80px;
+  padding-bottom: 40px;
 }

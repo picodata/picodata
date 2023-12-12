@@ -24,12 +24,14 @@ export type TReplicaset = {
     used: number;
   };
 };
+
 export interface ReplicasetCardProps {
+  theme?: "primary" | "secondary";
   replicaset: TReplicaset;
 }
 
 export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
-  ({ replicaset }) => {
+  ({ replicaset, theme = "primary" }) => {
     const [isOpen, setIsOpen] = useState<boolean>(false);
 
     const onClick = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
@@ -38,8 +40,8 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
     };
 
     return (
-      <div className={styles.cardWrapper} onClick={onClick}>
-        <div className={styles.replicasetInfo}>
+      <div className={cn(styles.cardWrapper, styles[theme])} onClick={onClick}>
+        <div className={styles.content}>
           <div className={cn(styles.infoColumn, styles.nameColumn)}>
             <div className={styles.label}>Name</div>
             <div className={styles.infoValue}>{replicaset.id}</div>
@@ -50,19 +52,18 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
           </div>
           <div className={styles.infoColumn}>
             <div className={styles.label}>Grade</div>
-            <div className={styles.infoValue}>
+            <div className={cn(styles.infoValue, styles.gradeValue)}>
               <TextInFrame>{replicaset.grade}</TextInFrame>
             </div>
           </div>
           <div className={cn(styles.infoColumn, styles.capacityColumn)}>
-            <div className={styles.label}>Capacity</div>
             <CapacityProgress
               percent={replicaset.capacityUsage}
               currentValue={replicaset.memory.used}
               limit={replicaset.memory.usable}
               size="small"
               theme="secondary"
-              progressLineWidth={190}
+              progressLineWidth="100%"
             />
           </div>
           <div className={cn(styles.infoColumn, styles.chevronColumn)}>
@@ -77,7 +78,12 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
         <Collapse isOpen={isOpen}>
           <div className={styles.instancesWrapper}>
             {replicaset.instances.map((instance) => (
-              <InstanceCard key={instance.name} instance={instance} />
+              <InstanceCard
+                key={instance.name}
+                instance={instance}
+                theme="secondary"
+                classes={{ cardWrapper: styles.instancesCardWrapper }}
+              />
             ))}
           </div>
         </Collapse>

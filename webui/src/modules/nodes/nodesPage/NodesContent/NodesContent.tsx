@@ -11,10 +11,9 @@ import { useFilteredInstances, useSortedInstances } from "./hooks";
 import { useFilterBy } from "./TopBar/FilterBy/hooks";
 import { TierCard } from "./TierCard/TierCard";
 
-import styles from "./ReplicasetsContent.module.scss";
+import styles from "./NodesContent.module.scss";
 
-// переименовать!!!
-export const ReplicasetsContent = () => {
+export const NodesContent = () => {
   const { data } = useTiers();
 
   const [groupByFilterValue, setGroupByFilterValue] = useGroupByFilter();
@@ -53,7 +52,7 @@ export const ReplicasetsContent = () => {
             filterByValue={filterByValue}
             setFilterByValue={setFilterByValue}
           />
-          <div className={styles.replicasetsWrapper}>
+          <div className={styles.list}>
             {groupedByTiers &&
               data?.tiers.map((tier) => (
                 <TierCard key={tier.name} tier={tier} />
@@ -67,7 +66,7 @@ export const ReplicasetsContent = () => {
                 <InstanceCard
                   key={instance.name}
                   instance={instance}
-                  theme="secondary"
+                  theme="primary"
                 />
               ))}
           </div>
