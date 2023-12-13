@@ -67,7 +67,7 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         {
             const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "23.12.0"));
-            "23.12.0"
+            env!("GIT_DESCRIBE")
         },
     );
 
