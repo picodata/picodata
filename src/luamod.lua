@@ -4,6 +4,10 @@ setmetatable(pico, help)
 
 local fiber = require 'fiber'
 local log = require 'log'
+local utils = require('internal.utils')
+
+local check_param = utils.check_param
+local check_param_table = utils.check_param_table
 
 local intro = [[
 pico.help([topic])
@@ -236,7 +240,7 @@ function pico.create_user(user, password, opts)
     local owner = box.session.euid()
 
     local ok, err = pcall(function()
-        box.internal.check_param_table(opts, {
+        check_param_table(opts, {
             timeout = 'number',
             auth_type = 'string',
         })
@@ -248,8 +252,8 @@ function pico.create_user(user, password, opts)
             auth_type = opts.auth_type
         end
 
-        box.internal.check_param(user, 'user', 'string')
-        box.internal.check_param(password, 'password', 'string')
+        check_param(user, 'user', 'string')
+        check_param(password, 'password', 'string')
 
         check_password_min_length(password, auth_type)
     end)
@@ -333,7 +337,7 @@ function pico.change_password(user, password, opts)
     local auth_type = box.cfg.auth_type
 
     local ok, err = pcall(function()
-        box.internal.check_param_table(opts, {
+        check_param_table(opts, {
             timeout = 'number',
             auth_type = 'string',
         })
@@ -345,8 +349,8 @@ function pico.change_password(user, password, opts)
             auth_type = opts.auth_type
         end
 
-        box.internal.check_param(user, 'user', 'string')
-        box.internal.check_param(password, 'password', 'string')
+        check_param(user, 'user', 'string')
+        check_param(password, 'password', 'string')
 
         check_password_min_length(password, auth_type)
     end)
@@ -418,8 +422,8 @@ Returns:
 ]]
 function pico.drop_user(user, opts)
     local ok, err = pcall(function()
-        box.internal.check_param(user, 'user', 'string')
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        check_param(user, 'user', 'string')
+        check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             opts.timeout = TIMEOUT_INFINITY
@@ -487,8 +491,8 @@ function pico.create_role(role, opts)
     local owner = box.session.euid()
 
     local ok, err = pcall(function()
-        box.internal.check_param(role, 'role', 'string')
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        check_param(role, 'role', 'string')
+        check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             opts.timeout = TIMEOUT_INFINITY
@@ -559,8 +563,8 @@ Returns:
 ]]
 function pico.drop_role(role, opts)
     local ok, err = pcall(function()
-        box.internal.check_param(role, 'role', 'string')
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        check_param(role, 'role', 'string')
+        check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             opts.timeout = TIMEOUT_INFINITY
@@ -821,17 +825,17 @@ Notice:
 ]]
 function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
     local ok, err = pcall(function()
-        box.internal.check_param(grantee, 'grantee', 'string')
-        box.internal.check_param(privilege, 'privilege', 'string')
-        box.internal.check_param(object_type, 'object_type', 'string')
+        check_param(grantee, 'grantee', 'string')
+        check_param(privilege, 'privilege', 'string')
+        check_param(object_type, 'object_type', 'string')
         object_name = object_name ~= nil and object_name or ''
         -- `object_name` is optional, thus it might contain `opts` instead
         if type(object_name) == 'table' and opts == nil then
             opts = object_name
             object_name = ''
         end
-        box.internal.check_param(object_name, 'object_name', 'string')
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        check_param(object_name, 'object_name', 'string')
+        check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             opts.timeout = TIMEOUT_INFINITY
@@ -929,12 +933,12 @@ Returns:
 ]]
 function pico.revoke_privilege(grantee, privilege, object_type, object_name, opts)
     local ok, err = pcall(function()
-        box.internal.check_param(grantee, 'grantee', 'string')
-        box.internal.check_param(privilege, 'privilege', 'string')
-        box.internal.check_param(object_type, 'object_type', 'string')
+        check_param(grantee, 'grantee', 'string')
+        check_param(privilege, 'privilege', 'string')
+        check_param(object_type, 'object_type', 'string')
         object_name = object_name ~= nil and object_name or ''
-        box.internal.check_param(object_name, 'object_name', 'string')
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        check_param(object_name, 'object_name', 'string')
+        check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             opts.timeout = TIMEOUT_INFINITY
@@ -1090,7 +1094,7 @@ function pico.create_table(opts)
     opts.owner = box.session.euid()
 
     local ok, err = pcall(function()
-        box.internal.check_param_table(opts, {
+        check_param_table(opts, {
             name = 'string',
             format = 'table',
             primary_key = 'table',
@@ -1194,7 +1198,7 @@ function pico.drop_table(table, opts)
         if type(table) ~= 'string' and type(table) ~= 'number' then
             box.error(box.error.ILLEGAL_PARAMS, 'table should be a number or a string')
         end
-        box.internal.check_param_table(opts, { timeout = 'number' })
+        check_param_table(opts, { timeout = 'number' })
         opts = opts or {}
         if not opts.timeout then
             opts.timeout = TIMEOUT_INFINITY
