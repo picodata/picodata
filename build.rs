@@ -271,10 +271,10 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_search(format!("{tarantool_build}"));
     rustc::link_search(format!("{tarantool_build}/src"));
     rustc::link_search(format!("{tarantool_build}/src/box"));
-    rustc::link_search(format!("{tarantool_build}/third_party/luajit/src"));
-    rustc::link_search(format!("{tarantool_build}/third_party/libyaml"));
-    rustc::link_search(format!("{tarantool_build}/third_party/c-dt/build"));
+    rustc::link_search(format!("{tarantool_build}/build/libyaml/lib"));
     rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
+    rustc::link_search(format!("{tarantool_build}/third_party/c-dt/build"));
+    rustc::link_search(format!("{tarantool_build}/third_party/luajit/src"));
 
     rustc::link_lib_static("tarantool");
     rustc::link_lib_static("ev");
