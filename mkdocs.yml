@@ -77,7 +77,6 @@ theme:
   ## homepage — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#logo
   ## analytics — https://squidfunk.github.io/mkdocs-material/setup/setting-up-site-analytics/#setting-up-site-analytics
 extra:
-  homepage: https://docs.picodata.io/
   analytics:
     provider: google
     property: G-6X8Z5N2CGR

@@ -10,7 +10,7 @@ fmt:
 
 init:
 	python3 -m venv venv && \
-	source venv/bin/activate && \
+	. venv/bin/activate && \
 	pip install -r requirements.txt && \
 	pip install -r ci/ci-requirements.txt
 
