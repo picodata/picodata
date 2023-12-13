@@ -64,11 +64,13 @@ def test_webui(instance: Instance):
 
     with urlopen(f"http://{http_listen}/api/v1/cluster") as response:
         assert response.headers.get("content-type") == "application/json"
-        assert json.load(response) == {
+        response = json.load(response)
+        version = response.pop("currentInstaceVersion")
+        assert response == {
             "capacityUsage": 100,
             "replicasetsCount": 1,
             "instancesCurrentGradeOffline": 0,
-            "currentInstaceVersion": "23.12.0",
             "memory": {"usable": 33554432, "used": 33554432},
             "instancesCurrentGradeOnline": 1,
         }
+        assert version.startswith("23.12.0")

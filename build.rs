@@ -46,6 +46,8 @@ fn main() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
 
+    set_git_describe_env_var();
+
     generate_export_stubs(&out_dir);
     build_tarantool(jobserver, build_root);
     build_http(jobserver, build_root);
@@ -56,6 +58,17 @@ fn main() {
     println!("cargo:rerun-if-changed=http/http");
     #[cfg(feature = "webui")]
     rerun_if_webui_changed();
+}
+
+fn set_git_describe_env_var() {
+    if std::env::var("GIT_DESCRIBE").is_ok() {
+        return;
+    }
+
+    let output = Command::new("git").arg("describe").output().unwrap();
+    assert!(output.status.success());
+    let git_describe = String::from_utf8(output.stdout).unwrap();
+    println!("cargo:rustc-env=GIT_DESCRIBE={git_describe}");
 }
 
 fn generate_export_stubs(out_dir: &str) {
