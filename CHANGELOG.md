@@ -25,13 +25,14 @@ with the `YY.0M.MICRO` scheme.
 - System table `_pico_replicaset` now has a different format: the field `master_id`
   is replaced with 2 fields `current_master_id` and `target_master_id`.
 
-
-
 ### CLI
 
 - New command `picodata admin` to connect to picodata instance via unix socket under the admin account.
 
 - SQL by default in `picodata connect`. Lua language is deprecated in `picodata connect`.
+
+- Rename `picodata run --console-sock` option to `--admin-sock` and
+  provide a default value `<data_dir>/admin.sock`.
 
 ## [23.12.0] - 2023-12-08
 

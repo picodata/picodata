@@ -15,7 +15,6 @@ use ::tarantool::{fiber, session};
 use rpc::{join, update_instance};
 use std::cell::OnceCell;
 use std::collections::HashMap;
-use std::io;
 use std::time::Duration;
 use storage::Clusterwide;
 use traft::RaftSpaceAccess;
@@ -31,7 +30,7 @@ use crate::plugin::*;
 use crate::schema::ADMIN_ID;
 use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
-use crate::util::{effective_user_id, unwrap_or_terminate, validate_and_complete_unix_socket_path};
+use crate::util::{effective_user_id, listen_admin_console, unwrap_or_terminate};
 
 mod access_control;
 pub mod audit;
@@ -787,31 +786,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     box_cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
     tarantool::set_cfg(&box_cfg);
 
-    // Listen interactive console connections on a unix socket
-    if let Some(ref console_sock) = args.console_sock {
-        let l = ::tarantool::lua_state();
-
-        let validated_path = validate_and_complete_unix_socket_path(console_sock);
-
-        if validated_path.is_err() {
-            tlog!(
-                Critical,
-                "failed to listen interactive console on {console_sock:?}: invalid path"
-            );
-            std::process::exit(-1);
-        }
-
-        let console_sock = validated_path.unwrap();
-        if let Err(e) = l.exec_with(r#"require('console').listen(...)"#, &console_sock) {
-            tlog!(Error, "{e}");
-            tlog!(
-                Critical,
-                "failed to listen interactive console on {console_sock:?}: {}",
-                io::Error::last_os_error()
-            );
-            std::process::exit(-1);
-        }
-    }
+    unwrap_or_terminate(listen_admin_console(args));
 
     if let Err(e) =
         tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback(PluginList::get())))

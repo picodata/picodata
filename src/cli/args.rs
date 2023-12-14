@@ -135,12 +135,13 @@ pub struct Run {
     /// Enable interactive console
     pub interactive_mode: bool,
 
-    #[clap(long, value_name = "PATH", env = "PICODATA_CONSOLE_SOCK")]
+    #[clap(long, value_name = "PATH", env = "PICODATA_ADMIN_SOCK")]
     /// Unix socket for the interactive console to connect using
-    /// `picodata admin`. Unlike connecting to a
-    /// `--listen` address, console communication occurs in plain text
+    /// `picodata admin`. Unlike connecting via `picodata connect`
+    /// console communication occurs in plain text
     /// and always operates under the admin account.
-    pub console_sock: Option<String>,
+    /// Default value: <data_dir>/admin.sock
+    pub admin_sock: Option<String>,
 
     #[clap(
         long,
@@ -218,6 +219,13 @@ impl Run {
         }
 
         Ok(args)
+    }
+
+    pub fn admin_sock(&self) -> String {
+        match &self.admin_sock {
+            Some(path) => path.clone(),
+            None => self.data_dir.clone() + "/admin.sock",
+        }
     }
 
     pub fn advertise_address(&self) -> String {

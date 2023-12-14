@@ -1,3 +1,4 @@
+use crate::cli::args;
 use crate::traft::error::Error;
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use std::any::{Any, TypeId};
@@ -509,15 +510,16 @@ pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
 ////////////////////////////////////////////////////////////////////////////////
 /// Validate unix socket uri via lua uri module
 ///
-/// Unix socket uri should start with ./ or ../ so we prepend it manually
+/// Doesn't change path in case of absolute path.
+/// To relative path `./` prepended.
 ///
 /// Return None in case of incorrect path
-/// Return Some(`value`) with `unix/:` and, probably, `./`, `../` prepended to `value`
+/// Return Some(`value`) with `unix/:` and, probably, `./` prepended to `value`
 pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<String, String> {
     let l = ::tarantool::lua_state();
     let path = std::path::Path::new(socket_path);
     let console_sock = match path.components().next() {
-        Some(std::path::Component::Normal(_)) => {
+        Some(std::path::Component::Normal(_)) | Some(std::path::Component::ParentDir) => {
             format!("unix/:./{socket_path}")
         }
         _ => format!("unix/:{socket_path}"),
@@ -531,6 +533,19 @@ pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<Strin
     .map_err(|_| format!("invalid socket path: {socket_path}"))?;
 
     Ok(console_sock)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Starts admin console.
+///
+/// Returns Err in case of problems with socket path.
+pub fn listen_admin_console(args: &args::Run) -> Result<(), String> {
+    let lua = ::tarantool::lua_state();
+
+    let validated_path = validate_and_complete_unix_socket_path(&args.admin_sock())?;
+
+    lua.exec_with(r#"require('console').listen(...)"#, &validated_path)
+        .map_err(|err| err.to_string())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

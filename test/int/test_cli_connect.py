@@ -233,30 +233,29 @@ def test_admin_empty_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_ok(cluster: Cluster):
+def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
-    i1.env.update({"PICODATA_CONSOLE_SOCK": f"{i1.data_dir}/console.sock"})
     i1.start()
     i1.wait_online()
 
     cli = pexpect.spawn(
         # For some uninvestigated reason, readline trims the propmt in CI
         # Instead of
-        #   unix/:/some/path/to/console.sock>
+        #   unix/:/some/path/to/admin.sock>
         # it prints
-        #   </path/to/console.sock>
+        #   </path/to/admin.sock>
         #
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.data_dir,
         command=i1.binary_path,
-        args=["admin", "./console.sock"],
+        args=["admin", "./admin.sock"],
         encoding="utf-8",
         timeout=1,
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("connected to unix/:./console.sock")
-    cli.expect_exact("unix/:./console.sock>")
+    cli.expect_exact("connected to unix/:./admin.sock")
+    cli.expect_exact("unix/:./admin.sock>")
 
     cli.sendline("\\set language lua")
     cli.sendline("box.session.user()")
