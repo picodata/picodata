@@ -19,14 +19,12 @@ Picodata с помощью языка [SQL-запросов](../reference/sql_qu
 котором будет два поля: идентификатор записи и имя друга:
 
 ```sql
-pico.sql([[
-	create table "friends_of_peppa" (
-    	        "id" integer not null,
-                "name" text not null,
-    	        primary key ("id")
-	) using memtx distributed by ("id")
-	option (timeout = 3.0)
-]])
+CREATE TABLE "friends_of_peppa" (
+			"id" INTEGER NOT NULL,
+			"name" TEXT NOT NULL,
+			PRIMARY KEY ("id"))
+USING memtx DISTRIBUTED BY ("id")
+OPTION (TIMEOUT = 3.0);
 ```
 
 Помимо двух колонок, в примере указаны:
@@ -43,14 +41,12 @@ pico.sql([[
 соответствующий тип:
 
 ```sql
-pico.sql([[
-	create table "friends_of_peppa" (
-    	        "id" integer not null,
-                "name" text not null,
-    	        primary key ("id")
-	) using memtx distributed globally
-	option (timeout = 3.0)
-]])
+CREATE TABLE "friends_of_peppa" (
+			"id" INTEGER NOT NULL,
+			"name" TEXT NOT NULL,
+			PRIMARY KEY ("id"))
+USING memtx DISTRIBUTED GLOBALLY
+OPTION (TIMEOUT = 3.0);
 ```
 
 Подробнее о типах таблиц см. в [глоссарии](../overview/glossary.md#table).
@@ -63,18 +59,16 @@ pico.sql([[
 прямой передачей значений:
 
 ```sql
-pico.sql(
-	[[insert into "friends_of_peppa" ("id", "name") values (1, 'Suzy')]]
-)
+INSERT INTO "friends_of_peppa" ("id", "name") VALUES (1, 'Suzy');
 ```
 
-Либо параметризированный запрос:
+Либо параметризированный запрос, но в Lua-режиме (`\s l lua`):
 
 ```sql
 pico.sql(
-	[[insert into "friends_of_peppa" ("id", "name") values (?, ?)]],
+	[[INSERT INTO "friends_of_peppa" ("id", "name") VALUES (?, ?)]],
 	{1, "Suzy"}
-)
+);
 ```
 
 См. [подробнее](../reference/sql_queries.md#insert) о различиях в `INSERT`-запросах.
@@ -82,14 +76,14 @@ pico.sql(
 ## Чтение данных из таблицы {: #reading-from-table }
 Для чтения всех данных из таблицы подойдёт команда:
 
-```
-pico.sql([[select * from "friends_of_peppa"]])
+```sql
+SELECT * FROM "friends_of_peppa";
 ```
 
 Можно вывести отдельно строку по известному полю:
 
-```
-pico.sql([[select * from "friends_of_peppa" where "id" = 1]])
+```sql
+SELECT * FROM "friends_of_peppa" WHERE "id" = 1;
 ```
 
 См. [подробнее](../reference/sql_queries.md#select) о вариантах чтения данных в SQL.
@@ -99,7 +93,7 @@ pico.sql([[select * from "friends_of_peppa" where "id" = 1]])
 Удаление строки с известным `id`:
 
 ```sql
-picodata> pico.sql([[delete from "friends_of_peppa" where "id" = 1]])
+DELETE FROM "friends_of_peppa" WHERE "id" = 1;
 ```
 
 В консоли будет выведено количество удаленных строк (в данном случае, это `1`).

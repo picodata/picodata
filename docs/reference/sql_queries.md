@@ -53,7 +53,7 @@ Picodata при работе с распределенной СУБД.
 ```lua
 \set language sql
 ```
-Для возможности вводить многострочные (и легче читаемые) запросы, следует задать разделитель команд:
+Для возможности вводить многострочные запросы следует задать разделитель команд:
 ```lua
 \set delimiter ;
 ```
@@ -84,11 +84,12 @@ Picodata при работе с распределенной СУБД.
 пустым или не указывать его совсем. Пример команды:
 
 ```lua
-pico.sql([[select * from "characters"]])
+pico.sql([[SELECT * FROM "characters"]]);
 ```
 Далее приведены команды с объяснением их действия. Для большинства
 примеров используется язык консоли SQL кроме тех случаев, когда
-использование ввода на Lua предпочтительнее.
+использование ввода на Lua предпочтительнее. Разделителем команд
+выступает знак `;`.
 
 ## Управление пользователями {: #users }
 Ниже показаны схемы для создания и удаления пользователей и ролей.
@@ -111,13 +112,13 @@ pico.sql([[select * from "characters"]])
 Пример команды для создания пользователя:
 
 ```sql
-create user andy with password 'P@ssw0rd' using md5 option (timeout = 3.0)
+CREATE USER "andy" WITH PASSWORD 'P@ssw0rd' USING md5 OPTION (TIMEOUT = 3.0);
 ```
 
 Удаление пользователя:
 
 ```sql
-drop user andy
+DROP USER ANDY;
 ```
 См. также:
 
@@ -142,19 +143,19 @@ drop user andy
 Примеры изменения пароля и метода аутентификации:
 
 ```sql
-alter user "andy" with password 'Str0ng_P@ssw0rd' using chap-sha1 option (timeout = 3.0)
+ALTER USER "andy" WITH PASSWORD 'Str0ng_P@ssw0rd' USING chap-sha1 OPTION (TIMEOUT = 3.0);
 ```
 
 Блокировка пользователя:
 
 ```sql
-alter user "andy" with nologin
+ALTER USER "andy" WITH NOLOGIN;
 ```
 
 Разблокировка пользователя:
 
 ```sql
-alter user "andy" with login
+ALTER USER "andy" WITH LOGIN;
 ```
 
 ## Управление привилегиями {: #Privileges }
@@ -188,19 +189,19 @@ alter user "andy" with login
 Пример выдачи права изменять данные пользователя `woody` пользователю `andy`:
 
 ```sql
-grant alter on user "woody" to "andy"
+GRANT ALTER ON USER "woody" TO "andy";
 ```
 
 Пример выдачи права записи в таблицу `characters` для пользователя `woody`:
 
 ```sql
-grant write on table "characters" to "woody"
+GRANT WRITE ON TABLE "characters" to "woody";
 ```
 
 Пример изъятия права чтения таблиц у пользователя `woody`:
 
 ```sql
-revoke read table from "woody"
+REVOKE READ TABLE FROM "woody";
 ```
 
 ## Создание таблицы {: #create_table }
@@ -243,14 +244,14 @@ revoke read table from "woody"
 Создадим первую таблицу следующей командой:
 
 ```sql
-create table "characters" (
-            "id" integer not null,
-            "name" text not null,
-            "year" integer,
-            primary key ("id")
+CREATE TABLE "characters" (
+            "id" INTEGER NOT NULL,
+            "name" TEXT NOT NULL,
+            "year" INTEGER,
+            PRIMARY KEY ("id")
 )
-using memtx distributed by ("id")
-option (timeout = 3.0) ;
+USING memtx DISTRIBUTED BY ("ID")
+OPTION (TIMEOUT = 3.0);
 ```
 
 Для второй таблицы команда будет отличаться только именем третьей колонки.
@@ -271,7 +272,7 @@ Cхема запроса для удаления таблицы показана
 Пример удаления таблицы:
 
 ```sql
-drop table "characters" ;
+DROP TABLE "characters";
 ```
 
 ## Запрос SELECT {: #query-select }
@@ -296,7 +297,7 @@ Cхема возможных распределенных запросов `SELE
 Пример получения данных всей таблицы:
 
 ```sql
-select * from "characters" ;
+SELECT * FROM "characters";
 ```
 
 Вывод в консоль:
@@ -332,11 +333,11 @@ _Примечание_: строки в выводе идут в том поря
 команды дадут одинаковый результат (вывод строки по известному `id`). :
 
 ```sql
-select "name" from "characters" where "id" = 1;
+SELECT "name" FROM "characters" WHERE "id" = 1;
 ```
 
 ```lua
-pico.sql([[select "name" from "characters" where "id" = ?]], {1})
+pico.sql([[SELECT "name" FROM "characters" WHERE "id" = ?]], {1});
 ```
 
 Вывод в консоль:
@@ -361,11 +362,11 @@ from "characters" where "id" = ?`), и если подобных запросо�
 два варианта):
 
 ```sql
-select "name","year" from "characters" where "id" > 3 and "year" > 2000 ;
+SELECT "name","year" FROM "characters" WHERE "id" > 3 AND "year" > 2000;
 ```
 
 ```lua
-pico.sql([[select "name","year" from "characters" where "id" > ? and "year" > ? ]], {3, 2000})
+pico.sql([[SELECT "name","year" FROM "characters" WHERE "id" > ? AND "year" > ? ]], {3, 2000});
 ```
 
 Вывод в консоль:
@@ -423,7 +424,7 @@ characters...` и `create table "CHARACTERS"...` создадут одну и т
 Пример:
 
 ```sql
-VALUES (1, 'Woody', 2561),(2, "Buzz Lightyear", 4781)
+VALUES (1, 'Woody', 2561),(2, "Buzz Lightyear", 4781);
 ```
 
 В некотором смысле, передаваемые с `VALUES` значения являются временной
@@ -434,7 +435,7 @@ VALUES (1, 'Woody', 2561),(2, "Buzz Lightyear", 4781)
 складе:
 
 ```sql
-select "name" from "assets" where ("stock") in (values (2561)) ;
+SELECT "name" FROM "assets" WHERE ("stock") IN (VALUES (2561));
 ```
 
 Вывод в консоль:
@@ -515,7 +516,7 @@ ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойств
 Пример подсчета общего числа товаров на складе:
 
 ```sql
-select sum("stock") from "assets" ;
+SELECT SUM("stock") FROM "assets";
 ```
 
 Вывод в консоль:
@@ -532,7 +533,7 @@ select sum("stock") from "assets" ;
 Пример добавления текста к значениям в колонке:
 
 ```sql
-select group_concat("name",' character, ') from "characters" ;
+SELECT GROUP_CONCAT("name",' character, ') FROM "characters";
 ```
 
 Вывод в консоль:
@@ -559,12 +560,11 @@ select group_concat("name",' character, ') from "characters" ;
 превышают 1000 штук:
 
 ```sql
-select "name"
-from "characters"
-where "year" = 1995
-union all
-select "name" from "assets"
-where "stock" > 1000 ;
+SELECT "name" FROM "characters"
+WHERE "year" = 1995
+UNION ALL
+SELECT "name" FROM "assets"
+WHERE "stock" > 1000;
 ```
 
 Вывод в консоль:
@@ -598,12 +598,11 @@ where "stock" > 1000 ;
 только если их запасы меньше 1000 штук:
 
 ```sql
-select "name"
-from "characters"
-where "year" = 1995
-except select "name"
-from "assets"
-where "stock" > 1000 ;
+SELECT "name" FROM "characters"
+WHERE "year" = 1995
+EXCEPT
+SELECT "name" FROM "assets"
+WHERE "stock" > 1000;
 ```
 
 Вывод в консоль:
@@ -629,7 +628,7 @@ where "stock" > 1000 ;
 Пример для вывода столбцы таблицы:
 
 ```sql
-select "score" as "Total_score" from "scoring" ;
+SELECT "score" AS "Total_score" FROM "scoring";
 ---
 - metadata:
   - {'name': 'Total_score', 'type': 'decimal'}
@@ -643,7 +642,7 @@ select "score" as "Total_score" from "scoring" ;
 Пример для функции `CAST()`:
 
 ```sql
-select sum(cast("score" as int)) as "_Total_score_1" from "scoring" ;
+SELECT SUM(CAST("score" AS INT)) AS "_Total_score_1" FROM "scoring";
 ---
 - metadata:
   - {'name': '_Total_score_1', 'type': 'decimal'}
@@ -670,12 +669,10 @@ select sum(cast("score" as int)) as "_Total_score_1" from "scoring" ;
 Команда:
 
 ```sql
-select "id","name","stock","year"
-from "characters"
-join (
-select "id" as "number","stock" from "assets"
-) as stock
-on "characters"."id" = stock."number" ;
+SELECT "id","name","stock","year" FROM "characters"
+JOIN
+(SELECT "id" AS "number","stock" FROM "assets") AS stock
+ON "characters"."id" = stock."number";
 ```
 
 Вывод в консоль:
@@ -708,16 +705,15 @@ on "characters"."id" = stock."number" ;
 Пример:
 
 ```sql
-select
-  "id" as "id1",
-  "name" as "name1",
-  "stock" as "stock1",
-  "year" as "year1"
-from "characters"
-join (
-  select "id" as "number", "stock" from "assets"
-) as stock
-on "characters"."id" = stock."number" ;
+SELECT
+  "id" AS "id1",
+  "name" AS "name1",
+  "stock" AS "stock1",
+  "year" AS "year1"
+FROM "characters"
+JOIN
+(SELECT "id" AS "number", "stock" FROM "assets") AS stock
+ON "characters"."id" = stock."number";
 ```
 
 Вывод в консоль:
@@ -765,7 +761,7 @@ SELECT-запросах. С ее помощью можно преобразов�
 в схеме данных типом `decimal`:
 
 ```sql
-select "score" from "scoring" ;
+SELECT "score" FROM "scoring";
 ---
   'metadata': [
    {'name': 'score', 'type': 'decimal'}],
@@ -779,7 +775,7 @@ select "score" from "scoring" ;
 Преобразуем эти числа в `int`:
 
 ```sql
-select cast("score" as int) from "scoring" ;
+SELECT CAST("score" AS INT) FROM "scoring";
 ---
   'metadata': [
   {'name': 'COL_1', 'type': 'integer'}],
@@ -820,7 +816,7 @@ select cast("score" as int) from "scoring" ;
 ### Пример использования {: #tuple-limit-example }
 
 ```sql
-select * from "characters" option(sql_vdbe_max_steps = 55, vtable_max_rows = 10) ;
+SELECT * FROM "characters" OPTION(sql_vdbe_max_steps = 55, vtable_max_rows = 10);
 ---
 - metadata:
   - {'name': 'id', 'type': 'integer'}
@@ -877,7 +873,7 @@ select * from "characters" option(sql_vdbe_max_steps = 55, vtable_max_rows = 10)
 параметризированной вставки строки значений в таблицу:
 
 ```lua
-pico.sql([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {1, "Woody", 2561})
+pico.sql([[INSERT INTO "assets" ("id", "name", "stock") VALUES (?, ?, ?)]], {1, "Woody", 2561});
 ```
 
 Если вставляемая строка точно содержит значения для всех столбцов, то их
@@ -885,12 +881,12 @@ pico.sql([[insert into "assets" ("id", "name", "stock") values (?, ?, ?)]], {1, 
 
 Пример для Lua:
 ```lua
-pico.sql([[insert into "assets" values (1, 'Woody', 2561)]], {})
+pico.sql([[INSERT INTO "assets" VALUES (1, 'Woody', 2561)]], {});
 ```
 
 Пример для SQL:
 ```sql
-insert into "assets" values (1, 'Woody', 2561) ;
+INSERT INTO "assets" VALUES (1, 'Woody', 2561);
 ```
 
 Параметризация значений при `INSERT` влияет на тип данных при выполнении
@@ -905,7 +901,7 @@ insert into "assets" values (1, 'Woody', 2561) ;
 чтобы выиграть в скорости при выполнении последующих подобных запросов:
 
 ```lua
-pico.sql([[insert into "assets" select * from "assets2" where "id2" = ?]], {11}
+pico.sql([[INSERT INTO "assets" SELECT * FROM "assets2" WHERE "id2" = ?]], {11};
 ```
 
 Результатом `INSERT` в приведенных примерах будет вывод в консоль
@@ -922,7 +918,7 @@ pico.sql([[insert into "assets" select * from "assets2" where "id2" = ?]], {11}
 попытке вставить строку с уже существующим индексом:
 
 ```sql
-insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019) ;
+INSERT INTO "characters" ("id", "name", "year") VALUES (10, 'Duke Caboom', 2019);
 ---
 - null
 - 'sbroad: Lua error (IR dispatch): LuaError(ExecutionError("sbroad: failed to create
@@ -934,50 +930,50 @@ insert into "characters" ("id", "name", "year") values (10, 'Duke Caboom', 2019)
 ```
 
 Для обработки таких ситуаций можно использовать необязательный параметр
-`on conflict`, который может принимать одно из трех значений:
+`ON CONFLICT`, который может принимать одно из трех значений:
 
-- `fail`, вернуть ошибку в случае конфликта;
-- `replace`, затереть старую строку новой по первичному ключу;
-- `nothing`, ничего не делать (оставить старую версию строки).
+- `FAIL`, вернуть ошибку в случае конфликта;
+- `REPLACE`, затереть старую строку новой по первичному ключу;
+- `NOTHING`, ничего не делать (оставить старую версию строки).
 
-Вариант с `do fail` предполагает, что запрос будет возвращать ошибку в
+Вариант с `DO FAIL` предполагает, что запрос будет возвращать ошибку в
 случае конфликта вставки. Может возникнуть ситуация, когда запрос успешно
 вставит данные на части узлов хранения, но вернет ошибку на остальных
 (данные на них откатятся), что приведет к неконсистентному состоянию
 кластера.
 Чтобы решить эту проблему, можно повторить вставку с другими параметрами
-разрешения конфликта — например, `do replace` (замена кортежа на новый).
+разрешения конфликта — например, `DO REPLACE` (замена кортежа на новый).
 
-Вариант с `do replace` решает проблему конфликтов только в первичном
+Вариант с `DO REPLACE` решает проблему конфликтов только в первичном
 ключе. Если таблица содержит несколько уникальных индексов (помимо
-первичного ключа) и конфликт произошел в одном из них, `do replace`
+первичного ключа) и конфликт произошел в одном из них, `DO REPLACE`
 вернет ошибку. На узле хранения, где произошел конфликт, данные не будут
 зафиксированы в таблице.
 
-Вариант с `do nothing` никогда не возвращает ошибку из-за конфликтов в
+Вариант с `DO NOTHING` никогда не возвращает ошибку из-за конфликтов в
 уникальных индексах, т.к. просто оставляет старую версию строки в
 таблице. При такой вставке в результате вернется только количество
 успешно вставленных новых строк (строки где был конфликт и остались
 прежние данные в подсчет не попадают).
 
-Если параметр `on conflict` не указан, то по умолчанию используется
-поведение `do fail`.
+Если параметр `ON CONFLICT` не указан, то по умолчанию используется
+поведение `DO FAIL`.
 
 ```sql
-insert into "characters" ("id", "name", "year")
-values (10, 'Duke Caboom', 2019)
-on conflict do nothing ;
+INSERT INTO "characters" ("id", "name", "year")
+VALUES (10, 'Duke Caboom', 2019)
+ON CONFLICT DO NOTHING;
 ---
 - row_count: 0
 ...
 ```
 
-Для успешной вставки (замены строки) следует использовать вариант `do replace`:
+Для успешной вставки (замены строки) следует использовать вариант `DO REPLACE`:
 
 ```sql
-insert into "characters" ("id", "name", "year")
-values (10, 'Duke Caboom', 2019)
-on conflict do replace ;
+INSERT INTO "characters" ("id", "name", "year")
+VALUES (10, 'Duke Caboom', 2019)
+ON CONFLICT DO REPLACE ;
 ---
 - row_count: 1
 ...
@@ -987,7 +983,7 @@ on conflict do replace ;
 SQL](#tuple_limit). Если речь идет о запросе на вставку более одной
 строки, то для исправления неконсистентного состояния кластера следует
 повторить запрос с другими [опциями](#options) и способом разрешения
-конфликтов `do nothing`.
+конфликтов `DO NOTHING`.
 
 ## Запрос UPDATE {: #query-update }
 Команда `UPDATE` используется для обновления данных в колонках таблицы.
@@ -997,7 +993,7 @@ SQL](#tuple_limit). Если речь идет о запросе на встав
 replace`, команда `UPDATE` подойдет для выборочной замены значений
 отдельных колонок в нужных строках. В качестве источника данных для
 `UPDATE` можно использовать как непосредственно передаваемые значения,
-так и результат подзапроса в конструкции `from (select ...)`.
+так и результат подзапроса в конструкции `FROM (SELECT ...)`.
 
 ### **UPDATE** {: #update }
 ![Update](../images/ebnf/UPDATE.svg)
@@ -1011,33 +1007,38 @@ replace`, команда `UPDATE` подойдет для выборочной �
 
 ### Примеры запросов {: #update-examples }
 Обновление явно указанных данных в отдельной строке с использованием условия:
+
 ```sql
-pico.sql([[update "characters" set "name" = 'Etch', "year" = 2010 where "id" = 2]], {})
+UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;
 ```
 
 Обновление всех значений в колонке:
+
 ```sql
-pico.sql([[update "characters" set "year" = 2010]], {})
+UPDATE "characters" SET "year" = 2010;
 ```
 
 Обновление с помощью ссылки на существующую колонку таблицы (без
 необходимости использовать подзапрос):
-```
-pico.sql([[update "characters" set "year" = "year" + 1]], {})
+
+```sql
+UPDATE "characters" SET "year" = "year" + 1;
 ```
 
 Обновление значений колонки на основе значений другой колонки (с
 подзапросом):
+
 ```sql
-pico.sql([[update "characters" set "name" = "item" from (select "id" as i, "name" as "item" from "assets") where "id" = i]], {})
+UPDATE "characters" SET "name" = "item" FROM (SELECT "id" AS i, "name" AS "item" FROM "assets") WHERE "id" = i;
 ```
 
-В данном случае использования подзапроса (`from (select ...)`),
-потребуется указать и фильтр (`where`) для того, чтобы каждой строке
+В данном случае использования подзапроса (`FROM (SELECT ...)`),
+потребуется указать и фильтр (`WHERE`) для того, чтобы каждой строке
 первой таблицы соответствовала ровно одна строка второй таблицы.
 
 В каждом случае результатом успешного выполнения будет сообщение с
 количеством обработанных строк. Например:
+
 ```lua
 ---
 - row_count: 10
@@ -1053,19 +1054,19 @@ pico.sql([[update "characters" set "name" = "item" from (select "id" as i, "name
 Простой запрос удаляет все данные из указанной таблицы:
 
 ```sql
-delete from "characters" ;
+DELETE FROM "characters";
 ```
 
 Запрос с условием позволяет удалить только нужную строку:
 
 ```sql
-delete from "characters" where "id" = 1 ;
+DELETE FROM "characters" where "id" = 1;
 ```
 
 Или несколько строк:
 
 ```sql
-delete from "characters" where "id" in (1,2,3) ;
+DELETE FROM "characters" WHERE "id" IN (1,2,3);
 ```
 
 В всех случаях в выводе в консоль будет указано количество удаленных
@@ -1103,7 +1104,7 @@ delete from "characters" where "id" in (1,2,3) ;
 Для начала рассмотрим план простого запроса на получение данных одного столбца таблицы:
 
 ```sql
-explain select "score" from "scoring" ;
+EXPLAIN SELECT "score" FROM "scoring";
 ```
 
 Вывод в консоль:
@@ -1124,7 +1125,7 @@ explain select "score" from "scoring" ;
 Если в запросе есть условие (`where`), то в план добавляется узел `selection`:
 
 ```sql
-explain select "score" from "scoring" where "score" > 70 ;
+EXPLAIN SELECT "score" FROM "scoring" WHERE "score" > 70;
 ```
 
 Вывод в консоль:
@@ -1147,12 +1148,10 @@ explain select "score" from "scoring" where "score" > 70 ;
 Пример построения проекции из более сложного запроса:
 
 ```sql
-explain select
-  "id","name"
-from "characters"
-except select
-  "id","name" from "assets"
-where "stock" > 1000 ;
+EXPLAIN SELECT "id","name" FROM "characters"
+EXCEPT
+SELECT "id","name" FROM "assets"
+WHERE "stock" > 1000;
 ```
 
 Вывод в консоль:
@@ -1169,7 +1168,7 @@ where "stock" > 1000 ;
 ```
 
 В таком плане запроса присутствует два блока `projection`, перед
-которыми стоит логическое условие (`except`). В каждом блоке есть свое
+которыми стоит логическое условие (`EXCEPT`). В каждом блоке есть свое
 сканирование таблицы и, опционально, дополнительный фильтр по строкам
 (`selection`).
 
@@ -1224,7 +1223,7 @@ where "stock" > 1000 ;
 **Локальная вставка** характерна для `INSERT` с передачей строки значений:
 
 ```sql
-explain insert into "assets" values (1, 'Woody', 2561) ;
+EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561);
 ```
 
 Вывод в консоль:
@@ -1245,7 +1244,7 @@ explain insert into "assets" values (1, 'Woody', 2561) ;
 Примером может служить удаление данных из таблицы:
 
 ```sql
-explain delete from "characters" where "id" = 1 ;
+EXPLAIN DELETE FROM "characters" WHERE "id" = 1;
 ```
 
 Вывод в консоль:
@@ -1266,8 +1265,8 @@ explain delete from "characters" where "id" = 1 ;
 узел-маршрутизатор. Поскольку при `UPDATE` не происходит пересчет
 `bucket_id`, то планировщик использует политику `local`:
 
-```
-picodata> pico.sql([[explain update "characters" set "year" = 2010]], {})
+```sql
+EXPLAIN UPDATE "characters" SET "year" = 2010;
 ```
 
 Вывод в консоль:
@@ -1291,7 +1290,7 @@ picodata> pico.sql([[explain update "characters" set "year" = 2010]], {})
 которой отличается ключ шардирования:
 
 ```sql
-explain insert into "assets" select * from "assets3" where "id3" = 1 ;
+EXPLAIN INSERT INTO "assets" SELECT * FROM "assets3" WHERE "id3" = 1;
 ```
 
 Вывод в консоль:
@@ -1309,13 +1308,10 @@ explain insert into "assets" select * from "assets3" where "id3" = 1 ;
 Пример `JOIN` двух таблиц с разными ключами шардирования:
 
 ```sql
-explain select
-  "id","name"
-from "assets"
-join (
-  select "id3","name3" from "assets3"
-  ) as "new_assets"
-on "assets"."id" = "new_assets"."id3" ;
+EXPLAIN SELECT "id","name" FROM "assets"
+JOIN
+(SELECT "id3","name3" FROM "assets3") AS "new_assets"
+ON "assets"."id" = "new_assets"."id3";
 ```
 
 Вывод в консоль:
@@ -1337,8 +1333,8 @@ on "assets"."id" = "new_assets"."id3" ;
 
 Пример `UPDATE` с обновлением колонки, по которой шардирована таблица (например, `distributed by ("id", "name")`):
 
-```
-picodata> pico.sql([[explain update "characters" set "name" = 'Etch', "year" = 2010 where "id" = 2]], {})
+```sql
+EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;
 ```
 
 Вывод в консоль:
@@ -1367,13 +1363,10 @@ picodata> pico.sql([[explain update "characters" set "name" = 'Etch', "year" = 2
 Пример `JOIN` с соединениям не по колонкам шардирования для обеих таблиц:
 
 ```sql
-explain select
-  "id","name","stock","year"
-from "characters"
-join (
-  select "id" as "number","stock" from "assets"
-) as stock
-on "characters"."id" = stock."number" ;
+EXPLAIN SELECT "id","name","stock","year" FROM "characters"
+JOIN
+(SELECT "id" AS "number","stock" FROM "assets") AS stock
+ON "characters"."id" = stock."number";
 ```
 
 Вывод в консоль:
@@ -1404,7 +1397,7 @@ on "characters"."id" = stock."number" ;
 Пример выполнения агрегатной функции.
 
 ```sql
-explain select count("id") from "characters" ;
+EXPLAIN SELECT COUNT("id") FROM "characters";
 ```
 
 Вывод в консоль:
