@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
-use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
+use ::tarantool::{fiber, session};
 use rpc::{join, update_instance};
 use std::cell::OnceCell;
 use std::collections::HashMap;
@@ -18,6 +18,7 @@ use std::time::Duration;
 use storage::Clusterwide;
 use traft::RaftSpaceAccess;
 
+use crate::access_control::user_by_id;
 use crate::cli::args;
 use crate::cli::args::Address;
 use crate::cli::init_cfg::InitCfg;
@@ -25,9 +26,10 @@ use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::plugin::*;
+use crate::schema::ADMIN_ID;
 use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
-use crate::util::{unwrap_or_terminate, validate_and_complete_unix_socket_path};
+use crate::util::{effective_user_id, unwrap_or_terminate, validate_and_complete_unix_socket_path};
 
 mod access_control;
 pub mod audit;
@@ -404,6 +406,41 @@ fn set_login_attempts_check(storage: Clusterwide) {
     .expect("setting on auth trigger should not fail")
 }
 
+fn set_on_access_denied_audit_trigger() {
+    let lua = ::tarantool::lua_state();
+
+    lua.exec_with(
+        "box.session.on_access_denied(...)",
+        tlua::function4(
+            move |privilege_type: String,
+                  object_type: String,
+                  object_name: String,
+                  _lua: tlua::LuaState| {
+                let effective_user = effective_user_id();
+
+                // we do not have box.session.user() equivalent that returns an id straight away
+                // so we look up the user by id.
+                // Note: since we're in a user context we may not have access to use space.
+                let user = session::with_su(ADMIN_ID, || {
+                    user_by_id(effective_user).expect("user exists").name
+                })
+                .expect("must be able to su into admin");
+
+                crate::audit!(
+                    message: "{privilege_type} access to {object_type} `{object_name}` is denied for user `{user}`",
+                    title: "access_denied",
+                    severity: Medium,
+                    privilege_type: &privilege_type,
+                    object_type: &object_type,
+                    object_name: &object_name,
+                    initiator: &user,
+                );
+            },
+        ),
+    )
+    .expect("setting on auth trigger should not fail")
+}
+
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Entrypoint {
@@ -451,6 +488,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
 
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
     set_login_attempts_check(storage.clone());
+    set_on_access_denied_audit_trigger();
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
     (storage.clone(), raft_storage)
