@@ -389,7 +389,7 @@ build-webui-bundle:
     # Relative paths are interpreted relative to `src/`
     # Escape it with extra `../`
     WEBUI_BUNDLE: ../picodata-webui/dist/bundle.json
-    PRESERVE_ENVVARS: VER_TNT,WEBUI_BUNDLE
+    PRESERVE_ENVVARS: VER_TNT,WEBUI_BUNDLE,GIT_DESCRIBE
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
     DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
@@ -413,7 +413,8 @@ build-webui-bundle:
     - |
       # Describe picodata
       until git describe; do git fetch --deepen 100; done
-      git describe --long
+      export GIT_DESCRIBE=$(git describe --long)
+      echo $GIT_DESCRIBE
   timeout: 2h
   needs:
     - build-webui-bundle
