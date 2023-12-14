@@ -75,6 +75,10 @@ class Event:
                 return EventCreateTable(**s)
             case EventDropTable.TITLE:
                 return EventDropTable(**s)
+            case EventAccessDenied.TITLE:
+                return EventAccessDenied(**s)
+            case _:
+                raise ValueError(f"Unknown event type for event: '{s}'")
 
 
 @dataclass
@@ -237,6 +241,15 @@ class EventCreateTable(Event):
 class EventDropTable(Event):
     TITLE: ClassVar[str] = "drop_table"
     name: str
+    initiator: str
+
+
+@dataclass
+class EventAccessDenied(Event):
+    TITLE: ClassVar[str] = "access_denied"
+    privilege_type: str
+    object_type: str
+    object_name: str
     initiator: str
 
 
@@ -549,3 +562,33 @@ def test_auth(instance: Instance):
     assert auth_fail.user == "ymir"
     assert auth_fail.severity == Severity.High
     assert auth_fail.initiator == "ymir"
+
+
+def test_access_denied(instance: Instance):
+    instance.start()
+
+    instance.create_user(with_name="ymir", with_password="12341234")
+
+    audit = AuditFile(instance.audit_flag_value)
+    for _ in audit.events():
+        pass
+
+    events = audit.events()
+
+    expected_error = "Create access to role 'R' is denied for user 'ymir'"
+    expected_audit = "Create access to role `R` is denied for user `ymir`"
+
+    with pytest.raises(
+        Exception,
+        match=expected_error,
+    ):
+        instance.sql('CREATE ROLE "R"', user="ymir", password="12341234")
+
+    access_denied = take_until_type(events, EventAccessDenied)
+    assert access_denied is not None
+    assert access_denied.message == expected_audit
+    assert access_denied.severity == Severity.Medium
+    assert access_denied.privilege_type == "Create"
+    assert access_denied.object_type == "role"
+    assert access_denied.object_name == "R"
+    assert access_denied.initiator == "ymir"
