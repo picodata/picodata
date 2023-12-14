@@ -47,13 +47,15 @@ picodata run [Параметры]
 Имя кластера. Инстанс не сможет стать частью кластера, если у него указано другое имя.
 Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`.
 
-#### console-sock {: #console-sock}
-`--console-sock <path>`<br>
+#### admin-sock {: #admin-sock}
+`--admin-sock <path>`<br>
 Путь к файлу сокета, который впоследствие можно использовать для
-подключения с помощью команды [`picodata admin`](#admin-command). В
-отличие от подключения через `picodata connect` данный способ использует
-обычный текстовый протокол и привилегии администратора. Аналогичная
-переменная окружения: `PICODATA_CONSOLE_SOCK`.
+подключения с помощью команды [`picodata admin`](#admin-command). В отличие от подключения к адресу,
+указанному в параметре `--listen`, данный способ использует обычный
+текстовый протокол и привилегии администратора.
+По умолчанию создается сокет `admin.sock` в директории `--data-dir`.
+Аналогичная переменная окружения:
+`PICODATA_ADMIN_SOCK`.
 
 #### audit {: #audit}
 `--audit <file>`<br>
@@ -225,7 +227,7 @@ picodata> pico.cas({
 -->
 
 ## Команда `admin` {: #admin-command }
-Подключается к консоли администратора указанного инстанса.
+Подключается к консоли администратора.
 
 ### Использование {: #admin-usage }
 ```
@@ -234,12 +236,12 @@ picodata admin <Аргументы>
 
 ### Аргументы {: #admin-arguments }
 `PATH`: Путь к файлу юникс-сокета, который был передан в качестве параметра
-[`--console-sock`](#console-sock) при старте инстанса.
+[`--admin-sock`](#admin-sock) при старте инстанса.
 
 ### Пример {: #admin-example }
 
 ```console
-picodata admin ./picodata.sock
+picodata admin i1/admin.sock
 ```
 
 ## Команда `tarantool` {: #tarantool-command}
