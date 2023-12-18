@@ -119,7 +119,9 @@ impl Default for Cfg {
             memtx_dir: ".".into(),
             vinyl_dir: ".".into(),
 
-            memtx_memory: 32 * 1024 * 1024,
+            // Effectively this is the minimum value. Values less than 64MB will be rounded up to 64MB.
+            // See memtx_engine_set_memory
+            memtx_memory: 64 * 1024 * 1024,
 
             log_level: tarantool::log::SayLevel::Info as u8,
         }

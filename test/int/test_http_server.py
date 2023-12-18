@@ -62,9 +62,9 @@ def test_webui(instance: Instance):
                                 }
                             ],
                             "instanceCount": 1,
-                            "capacityUsage": 100,
+                            "capacityUsage": 50,
                             "memory": {
-                                "usable": 33554432,
+                                "usable": 67108864,
                                 "used": 33554432,
                             },
                             "uuid": instance.replicaset_uuid(),
@@ -88,11 +88,11 @@ def test_webui(instance: Instance):
         diff = DeepDiff(
             response,
             {
-                "capacityUsage": 100,
+                "capacityUsage": 50,
                 "replicasetsCount": 1,
                 "instancesCurrentGradeOffline": 0,
                 "currentInstaceVersion": instance_version,
-                "memory": {"usable": 33554432, "used": 33554432},
+                "memory": {"usable": 67108864, "used": 33554432},
                 "instancesCurrentGradeOnline": 1,
             },
         )
