@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import cn from "classnames";
 
 import styles from "./Button.module.scss";
@@ -22,9 +22,11 @@ export const Button: React.FC<ButtonProps> = (props) => {
     rightIcon,
     ...buttonProps
   } = props;
+  const ref = useRef<HTMLButtonElement>(null);
 
   return (
     <button
+      ref={ref}
       {...buttonProps}
       className={cn(
         styles.container,
@@ -32,6 +34,12 @@ export const Button: React.FC<ButtonProps> = (props) => {
         styles[theme],
         buttonProps.className
       )}
+      onClick={(e) => {
+        if (buttonProps.onClick) {
+          buttonProps.onClick(e);
+        }
+        ref.current?.focus();
+      }}
       disabled={disabled}
     >
       <span className={styles.content}>
