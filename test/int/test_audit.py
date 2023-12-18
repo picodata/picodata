@@ -10,6 +10,7 @@ from tarantool.error import (  # type: ignore
 )
 
 from conftest import (
+    MAX_LOGIN_ATTEMPTS,
     Instance,
     Cluster,
     retrying,
@@ -101,6 +102,7 @@ class EventAuthOk(Event):
     TITLE: ClassVar[str] = "auth_ok"
     user: str
     initiator: str
+    verdict: str
 
 
 @dataclass
@@ -108,7 +110,7 @@ class EventAuthFail(Event):
     TITLE: ClassVar[str] = "auth_fail"
     user: str
     initiator: str
-    verdict: Optional[str] = None
+    verdict: str
 
 
 @dataclass
@@ -544,7 +546,7 @@ def test_auth(instance: Instance):
         pass
     events = audit.events()
 
-    with instance.connect(4, user="ymir", password="0123456789") as _:
+    with instance.connect(4, user="ymir", password="0123456789"):
         pass
 
     auth_ok = take_until_type(events, EventAuthOk)
@@ -552,15 +554,35 @@ def test_auth(instance: Instance):
     assert auth_ok.user == "ymir"
     assert auth_ok.severity == Severity.High
     assert auth_ok.initiator == "ymir"
+    assert auth_ok.verdict == "user is not blocked"
 
-    with pytest.raises(NetworkError):
-        with instance.connect(4, user="ymir", password="wrong_pwd") as _:
+    for _ in range(MAX_LOGIN_ATTEMPTS):
+        with pytest.raises(
+            NetworkError, match="User not found or supplied credentials are invalid"
+        ):
+            with instance.connect(4, user="ymir", password="wrong_pwd"):
+                pass
+
+        auth_fail = take_until_type(events, EventAuthFail)
+        assert auth_fail is not None
+        assert auth_fail.message == "failed to authenticate user `ymir`"
+        assert auth_fail.severity == Severity.High
+        assert auth_fail.verdict == "user is not blocked"
+        assert auth_fail.user == "ymir"
+        assert auth_fail.initiator == "ymir"
+
+    with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
+        with instance.connect(4, user="ymir", password="wrong_pwd"):
             pass
 
     auth_fail = take_until_type(events, EventAuthFail)
     assert auth_fail is not None
-    assert auth_fail.user == "ymir"
+    assert auth_fail.message == "failed to authenticate user `ymir`"
     assert auth_fail.severity == Severity.High
+    assert auth_fail.verdict == (
+        "Maximum number of login attempts exceeded; user will be blocked indefinitely"
+    )
+    assert auth_fail.user == "ymir"
     assert auth_fail.initiator == "ymir"
 
 

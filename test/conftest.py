@@ -46,6 +46,8 @@ BASE_HOST = "127.0.0.1"
 BASE_PORT = 3300
 PORT_RANGE = 200
 
+MAX_LOGIN_ATTEMPTS = 4
+
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -730,6 +732,12 @@ class Instance:
             start_new_session=True,
         )
 
+        # Assert a new process group is created
+        assert os.getpgid(self.process.pid) == self.process.pid
+
+        if out == subprocess.DEVNULL:
+            return
+
         for src, out in [
             (self.process.stdout, sys.stdout),
             (self.process.stderr, sys.stderr),
@@ -739,9 +747,6 @@ class Instance:
                 args=(src, out),
                 daemon=True,
             ).start()
-
-        # Assert a new process group is created
-        assert os.getpgid(self.process.pid) == self.process.pid
 
     def fail_to_start(self, timeout: int = 5):
         assert self.process is None
