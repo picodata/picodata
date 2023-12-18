@@ -308,6 +308,7 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::Projection { .. }
                 | Relational::ScanRelation { .. }
                 | Relational::ScanSubQuery { .. }
+                | Relational::Intersect { .. }
                 | Relational::Selection { .. }
                 | Relational::GroupBy { .. }
                 | Relational::Having { .. }

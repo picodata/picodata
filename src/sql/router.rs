@@ -551,30 +551,34 @@ impl Metadata for RouterMetadata {
             columns.push(column);
         }
 
+        let normalized_name = normalize_name_from_sql(table_name);
+        let pk_cols = space_pk_columns(&name, &columns)?;
+        let pk_cols_str: &[&str] = &pk_cols.iter().map(String::as_str).collect::<Vec<_>>();
+
         // Try to find the sharding columns of the space in "_pico_table".
         // If nothing found then the space is local and we can't query it with
         // distributed SQL.
         let is_system_table = ClusterwideTable::values()
             .iter()
             .any(|sys_name| *sys_name == name.as_str());
-        let shard_key_cols: Vec<String> = if is_system_table {
-            vec![]
-        } else {
-            Self::get_shard_cols(&name, &meta)?
-        };
-        let sharding_key_arg: &[&str] = &shard_key_cols
+
+        if is_system_table {
+            return Table::new_system(&normalized_name, columns, pk_cols_str);
+        }
+        let sharded_columns = Self::get_shard_cols(&name, &meta)?;
+        if sharded_columns.is_empty() {
+            return Table::new_global(&normalized_name, columns, pk_cols_str);
+        }
+        let sharding_columns_str: &[&str] = &sharded_columns
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let pk_cols = space_pk_columns(&name, &columns)?;
-        let pk_arg = &pk_cols.iter().map(String::as_str).collect::<Vec<_>>();
-        Table::new(
-            &normalize_name_from_sql(table_name),
+        Table::new_sharded(
+            &normalized_name,
             columns,
-            sharding_key_arg,
-            pk_arg,
+            sharding_columns_str,
+            pk_cols_str,
             engine.into(),
-            is_system_table,
         )
     }
 

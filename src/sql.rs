@@ -75,7 +75,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
         false
     };
     let mut plan_traversal = PostOrderWithFilter::with_capacity(
-        |node| plan.subtree_iter(node),
+        |node| plan.subtree_iter(node, false),
         REL_CAPACITY,
         Box::new(filter),
     );

@@ -692,6 +692,149 @@ def test_union_all_on_global_tbls(cluster: Cluster):
     Retriable(rps=5, timeout=6).call(check_complex_segment_child)
 
 
+def test_except_on_global_tbls(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table g (a int not null, b int not null, primary key (a))
+        using memtx
+        distributed globally
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+    for i in range(1, 6):
+        index = i1.cas("insert", "G", [i, i])
+        i1.raft_wait_index(index, 3)
+
+    ddl = i1.sql(
+        """
+        create table s (c int not null, d int not null, primary key (c))
+        using memtx
+        distributed by (c)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    data = i1.sql("""insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);""")
+    assert data["row_count"] == 5
+
+    def check_global_vs_global():
+        data = i1.sql(
+            """
+            select a from g
+            except
+            select a - 1 from g
+            """,
+            timeout=2,
+        )
+        assert data["rows"] == [[5]]
+
+    Retriable(rps=5, timeout=6).call(check_global_vs_global)
+
+    def check_global_vs_segment():
+        data = i1.sql(
+            """
+            select a from g
+            except
+            select c from s
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+
+    Retriable(rps=5, timeout=6).call(check_global_vs_segment)
+
+    def check_global_vs_any():
+        data = i1.sql(
+            """
+            select b from g
+            except
+            select d from s
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[1]]
+
+    Retriable(rps=5, timeout=6).call(check_global_vs_any)
+
+    def check_global_vs_single():
+        data = i1.sql(
+            """
+            select b from g
+            where b = 1 or b = 2
+            except
+            select sum(d) from s
+            where d = 3
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+
+    Retriable(rps=5, timeout=6).call(check_global_vs_single)
+
+    def check_single_vs_global():
+        data = i1.sql(
+            """
+            select sum(d) from s
+            where d = 3 or d = 2
+            except
+            select b from g
+            where b = 1 or b = 2
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[5]]
+
+    Retriable(rps=5, timeout=6).call(check_single_vs_global)
+
+    def check_segment_vs_global():
+        data = i1.sql(
+            """
+            select c from s
+            except
+            select a from g
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[6], [7]]
+
+    Retriable(rps=5, timeout=6).call(check_segment_vs_global)
+
+    def check_any_vs_global():
+        data = i1.sql(
+            """
+            select d from s
+            except
+            select b from g
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[6]]
+
+    Retriable(rps=5, timeout=6).call(check_any_vs_global)
+
+    def check_multiple_excepts():
+        data = i1.sql(
+            """
+            select a + 5 from g
+            where a = 1 or a = 2
+            except select * from (
+            select d from s
+            except
+            select b from g
+            )
+            """,
+            timeout=2,
+        )
+        assert sorted(data["rows"], key=lambda x: x[0]) == [[7]]
+
+    Retriable(rps=5, timeout=6).call(check_multiple_excepts)
+
+
 def test_hash(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
