@@ -365,6 +365,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         severity: High,
                         user: &user,
                         initiator: &user,
+                        verdict: "user is not blocked",
                     );
                 }
                 Verdict::AuthFail => {
@@ -374,6 +375,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         severity: High,
                         user: &user,
                         initiator: &user,
+                        verdict: "user is not blocked",
                     );
                 }
                 Verdict::UnknownUser => {
@@ -383,6 +385,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         severity: High,
                         user: &user,
                         initiator: &user,
+                        verdict: "user is not blocked",
                     );
                 }
                 Verdict::UserBlocked => {
