@@ -62,7 +62,7 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
               currentValue={replicaset.memory.used}
               limit={replicaset.memory.usable}
               size="small"
-              theme="secondary"
+              theme={theme === "secondary" ? "primary" : "secondary"}
               progressLineWidth="100%"
             />
           </div>

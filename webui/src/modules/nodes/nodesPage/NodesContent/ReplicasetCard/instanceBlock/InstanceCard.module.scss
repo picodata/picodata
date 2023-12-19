@@ -39,6 +39,11 @@ $version-column-flex: 0.75;
 
 .failureDomainColumn {
   flex: $failure-domain-column-flex;
+  overflow: hidden;
+}
+
+.binaryAddressColumn {
+  overflow: hidden;
 }
 
 .targetGradeColumn {
@@ -69,14 +74,18 @@ $version-column-flex: 0.75;
   line-height: 16px;
   color: $colorTextBlack;
   padding: $column-item-vertical-padding $column-item-horizontal-padding;
-
-  @include ellipsis;
 }
 
 .nameValue {
   display: flex;
   align-items: center;
   column-gap: 8px;
+}
+
+.domainValue {
+  display: flex;
+  width: 100%;
+  justify-content: center;
 }
 
 .targetGradeValue {

@@ -2,6 +2,7 @@ import React from "react";
 import cn from "classnames";
 
 import { LinkSystemIcon } from "shared/icons/LinkSystemIcon";
+import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 
 import { formatFailDomain } from "../../../utils";
 
@@ -21,15 +22,20 @@ export const FailureDomainLabel: React.FC<FailureDomainLabelProps> = (
   const { className, failureDomain } = props;
 
   return (
-    <div className={cn(styles.container, className)}>
+    <HiddenWrapper className={cn(styles.container, className)}>
       {failureDomain.map((domain, index) => {
+        const isLastItem = index === failureDomain.length - 1;
+
         return (
-          <div key={index} className={styles.row}>
-            <LinkSystemIcon width={16} height={16} />
-            {formatFailDomain(domain)}
-          </div>
+          <React.Fragment key={index}>
+            <LinkSystemIcon width={16} height={16} className={styles.icon} />
+            <span className={styles.text}>
+              {formatFailDomain(domain)}
+              {isLastItem ? "" : ";"}
+            </span>
+          </React.Fragment>
         );
       })}
-    </div>
+    </HiddenWrapper>
   );
 };

@@ -5,6 +5,7 @@ import { ChevronDown } from "shared/icons/ChevronDown";
 import { TierType } from "shared/entity/tier";
 import { SwitchInfo } from "shared/ui/SwitchInfo/SwitchInfo";
 import { Collapse } from "shared/ui/Collapse/Collapse";
+import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 
 import { ReplicasetCard } from "../ReplicasetCard/ReplicasetCard";
 
@@ -32,7 +33,7 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
         <div className={styles.infoColumn}>
           <div className={styles.label}>Plugins</div>
           <div className={styles.infoValue}>
-            {tier.plugins.join(", ") || "No Plugins"}
+            {tier.plugins.length ? tier.plugins.join(", ") : <InfoNoData />}
           </div>
         </div>
         <div className={styles.infoColumn}>
@@ -48,7 +49,7 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
           <div className={styles.infoValue}>{tier.rf}</div>
         </div>
         <div className={styles.infoColumn}>
-          <div className={styles.label}>Can Voter</div>
+          <div className={styles.label}>Can vote</div>
           <div className={styles.infoValue}>
             <SwitchInfo checked={tier.can_vote} />
           </div>

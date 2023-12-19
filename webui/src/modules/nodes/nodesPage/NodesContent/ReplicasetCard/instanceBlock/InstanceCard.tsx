@@ -46,10 +46,9 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
             </div>
             <div className={cn(styles.infoColumn, styles.failureDomainColumn)}>
               <div className={styles.label}>Failure domain</div>
-              <FailureDomainLabel
-                className={styles.value}
-                failureDomain={instance.failureDomain}
-              />
+              <div className={cn(styles.value, styles.domainValue)}>
+                <FailureDomainLabel failureDomain={instance.failureDomain} />
+              </div>
             </div>
             <div className={cn(styles.infoColumn, styles.targetGradeColumn)}>
               <div className={styles.label}>Target grade</div>
@@ -63,7 +62,7 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
                 <TextInFrame>{instance.currentGrade}</TextInFrame>
               </div>
             </div>
-            <div className={cn(styles.infoColumn)}>
+            <div className={cn(styles.infoColumn, styles.binaryAddressColumn)}>
               <div className={styles.label}>Binary address</div>
               <IpAddressLabel
                 className={styles.value}

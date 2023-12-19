@@ -21,10 +21,13 @@
   font-size: 14px;
   white-space: initial;
   word-wrap: break-word;
-  background-color: #FFBA79;
+  background-color: #ffba79;
   border-radius: 4px;
   padding: 4px 8px;
-  box-shadow: 0px 0px 3px 0px rgba(157, 153, 172, 0.40);
+  box-shadow: 0px 0px 3px 0px rgba(157, 153, 172, 0.4);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .container {

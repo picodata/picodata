@@ -1,10 +1,22 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
 .container {
   display: flex;
   column-gap: 4px;
+  align-items: center;
 }
 
 .row {
   display: flex;
   align-items: center;
   column-gap: 2px;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.text {
+  flex-shrink: 0;
 }
