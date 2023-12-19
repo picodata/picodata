@@ -148,12 +148,25 @@ impl AuditSerializer {
     }
 
     fn serialize_any(mut self, msg: impl std::fmt::Display) -> Self {
-        // TODO: include the name of a subject (who performed the operation).
         let id = self.clock.to_string();
         self.map.insert("id".into(), id.into());
         let time = chrono::Local::now().format("%FT%H:%M:%S%.3f%z").to_string();
         self.map.insert("time".into(), time.into());
         let message = msg.to_string();
+
+        // Unfortunately we have to match by string there because this message is emitted on tarantool side
+        // in say.c::log_rotate without any additional arguments we'd like to have in resulting audit log entry
+        if message == "log file has been reopened" {
+            self.map.insert(
+                String::from("title"),
+                serde_json::Value::from("audit_rotate"),
+            );
+            self.map.insert(
+                String::from("severity"),
+                serde_json::Value::from(Severity::Low.as_str()),
+            );
+        }
+
         self.map.insert("message".into(), message.into());
 
         self
