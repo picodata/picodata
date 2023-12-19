@@ -8,7 +8,6 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
-<!--
 ## Unreleased
 
 ### Features
@@ -21,7 +20,12 @@ with the `YY.0M.MICRO` scheme.
 - New option `--tier` for `picodata run` allows to specify whether an
   instance belongs to a tier.
 
--->
+### Compatibility
+
+- System table `_pico_replicaset` now has a different format: the field `master_id`
+  is replaced with 2 fields `current_master_id` and `target_master_id`.
+
+
 
 ## [23.12.0] - 2023-12-08
 
