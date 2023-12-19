@@ -1,3 +1,4 @@
+import signal
 import pytest
 import json
 
@@ -13,6 +14,7 @@ from conftest import (
     MAX_LOGIN_ATTEMPTS,
     Instance,
     Cluster,
+    Retriable,
     retrying,
 )
 
@@ -33,7 +35,7 @@ class Event:
 
     @staticmethod
     def parse(s):
-        match s["title"]:
+        match s.get("title"):
             case EventLocalStartup.TITLE:
                 return EventLocalStartup(**s)
             case EventLocalShutdown.TITLE:
@@ -78,6 +80,8 @@ class Event:
                 return EventDropTable(**s)
             case EventAccessDenied.TITLE:
                 return EventAccessDenied(**s)
+            case EventAuditRotate.TITLE:
+                return EventAuditRotate(**s)
             case _:
                 raise ValueError(f"Unknown event type for event: '{s}'")
 
@@ -253,6 +257,11 @@ class EventAccessDenied(Event):
     object_type: str
     object_name: str
     initiator: str
+
+
+@dataclass
+class EventAuditRotate(Event):
+    TITLE: ClassVar[str] = "audit_rotate"
 
 
 class AuditFile:
@@ -813,3 +822,30 @@ def test_grant_revoke(instance: Instance):
     assert revoke_role.grantee == "R2"
     assert revoke_role.grantee_type == "role"
     assert revoke_role.initiator == user
+
+
+def check_rotate(audit: AuditFile):
+    rotate = take_until_type(audit.events(), EventAuditRotate)
+    assert rotate is not None
+    assert rotate.message == "log file has been reopened"
+    assert rotate.severity == Severity.Low
+
+
+def test_rotation(instance: Instance):
+    instance.start()
+
+    user = "ymir"
+    password = "12341234"
+
+    audit = AuditFile(instance.audit_flag_value)
+    for _ in audit.events():
+        pass
+
+    instance.create_user(with_name=user, with_password=password)
+
+    instance.sudo_sql(f'GRANT CREATE ROLE TO "{user}"')
+
+    assert instance.process is not None
+    instance.process.send_signal(sig=signal.SIGHUP)
+
+    Retriable(timeout=5, rps=1).call(check_rotate, audit)
