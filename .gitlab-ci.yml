@@ -26,6 +26,8 @@ variables:
   CACHE_ARCHIVE: /shared-storage/picodata/cache-23.12.tar
   # Helps to tolerate spurious network failures
   GET_SOURCES_ATTEMPTS: 3
+  NO_CACHE:
+    description: "Do not use cache during build phase"
 
 # job:rules explained:
 #
@@ -123,7 +125,9 @@ build-base-image:
     # Gitlab CI caching is shit. So we implement it manually
     - |
       # Restore cache
-      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
+      if [[ -n "$NO_CACHE" ]]; then
+        echo "Skipping restoring from cache because NO_CACHE is set"
+      elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         echo "Skip restoring cache on the master branch"
       elif git diff origin/"$MAIN_BRANCH" "$CI_COMMIT_SHA" --submodule=short | grep '^[+-]Subproject commit'; then
         echo "Skip restoring cache because submodule(s) changed"
