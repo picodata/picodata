@@ -5,6 +5,7 @@
 	path = tarantool-sys
 	url = ../../tarantool.git
 	ignore = dirty
+	branch = picodata-23.12
 [submodule "vshard"]
 	path = vshard
 	url = https://github.com/tarantool/vshard
