@@ -1,3 +1,4 @@
+#![allow(unknown_lints)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::let_and_return)]
 #![allow(clippy::needless_return)]

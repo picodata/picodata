@@ -990,10 +990,13 @@ class Instance:
     def wait_online(
         self, timeout: int | float = 6, rps: int | float = 5, expected_incarnation=None
     ):
-        """Wait until instance attains Online grade
+        """Wait until instance attains Online grade.
+
+        This function will periodically check the current instance's grade and
+        reset the timeout each time the grade changes.
 
         Args:
-            timeout (int | float, default=6): total time limit
+            timeout (int | float, default=6): time limit since last grade change
             rps (int | float, default=5): retries per second
 
         Raises:
@@ -1006,9 +1009,9 @@ class Instance:
         if self.process is None:
             raise ProcessDead("process was not started")
 
-        def fetch_info():
+        def fetch_current_grade() -> Tuple[str, int]:
             try:
-                exit_code = self.process.wait(timeout=0)
+                exit_code = self.process.wait(timeout=0)  # type: ignore
             except subprocess.TimeoutExpired:
                 # it's fine, the process is still running
                 pass
@@ -1025,11 +1028,46 @@ class Instance:
             myself = self.call("pico.instance_info", self.instance_id)
             assert isinstance(myself, dict)
             assert isinstance(myself["current_grade"], dict)
-            assert myself["current_grade"]["variant"] == "Online"
-            if expected_incarnation is not None:
-                assert myself["current_grade"]["incarnation"] == expected_incarnation
+            return (
+                myself["current_grade"]["variant"],
+                myself["current_grade"]["incarnation"],
+            )
 
-        Retriable(timeout, rps, fatal=ProcessDead).call(fetch_info)
+        now = time.monotonic()
+        deadline = now + timeout
+        next_retry = now
+        last_grade = None
+        while True:
+            now = time.monotonic()
+            assert now < deadline, "timeout"
+
+            # Throttling
+            if now < next_retry:
+                time.sleep(next_retry - now)
+            next_retry = time.monotonic() + 1 / rps
+
+            try:
+                # Fetch grade
+                grade = fetch_current_grade()
+                if grade != last_grade:
+                    last_grade = grade
+                    deadline = time.monotonic() + timeout
+
+                # Check grade
+                variant, incarnation = grade
+                assert variant == "Online"
+                if expected_incarnation is not None:
+                    assert incarnation == expected_incarnation
+
+                # Success!
+                break
+
+            except ProcessDead as e:
+                raise e from e
+            except Exception as e:
+                if time.monotonic() > deadline:
+                    raise e from e
+
         eprint(f"{self} is online")
 
     def raft_term(self) -> int:
