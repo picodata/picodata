@@ -19,11 +19,11 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
-  BASE_IMAGE_LATEST: latest
-  MAIN_BRANCH: &main-branch master
+  BASE_IMAGE_LATEST: "23.12"
+  MAIN_BRANCH: &main-branch "23.12"
   CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
-  CACHE_ARCHIVE: /shared-storage/picodata/cache.tar
+  CACHE_ARCHIVE: /shared-storage/picodata/cache-23.12.tar
   # Helps to tolerate spurious network failures
   GET_SOURCES_ATTEMPTS: 3
 
