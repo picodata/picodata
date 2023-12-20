@@ -8,20 +8,13 @@ with the `YY.0M.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
 
-<!--
-## Unreleased
+## [23.12.1] - 2023-12-21
 
-### Features
+### Fixes
 
-- New feature `tier` - a group of instances with own replication factor. Tiers can span multiple failure domains and a single cluster can have multiple tiers. Going forward it will be possible to specify which tier a table belongs to.
-
-- New option `--init-cfg` for `picodata run` allows supplying bootstrap
-  configuration in a yaml format file.
-
-- New option `--tier` for `picodata run` allows to specify whether an
-  instance belongs to a tier.
-
--->
+- Correct `picodata -V`
+- Web UI appeared to be broken in 23.12.0
+- And `picodata connect --unix` too
 
 ## [23.12.0] - 2023-12-08
 
