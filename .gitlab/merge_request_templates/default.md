@@ -2,14 +2,16 @@
 
 %{all_commits}
 
-Close #...
+<!--
+Reminder:
+- Ensure proposed changes are tested in CI
+- Ensure docstrings and comments are up to date
+- Update changelog if you want a mention in release notes
+-->
 
-## Ensure that
+---
 
-- [ ] New code is covered by tests
-- [ ] API is documented
-- [ ] Changelog is up to date
-- [ ] (if Lua API changed) Lua API version is bumped in `luamod.rs`
-- [ ] (if necessary) A follow-up doc issue is created in [picodata/docs] and linked here
-
-[picodata/docs]: https://git.picodata.io/picodata/picodata/docs/-/issues/new
+- Close #...
+- Target branch: %{target_branch}
+- Changes should be cherry-picked to 23.12: yes / no
+- Docs follow-up: not necessary / [new issue](https://git.picodata.io/picodata/picodata/docs/-/issues/new?issuable_template=followup)
