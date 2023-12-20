@@ -19,6 +19,8 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
+  BASE_IMAGE_LATEST: latest
+  MAIN_BRANCH: &main-branch master
   CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
   CACHE_ARCHIVE: /shared-storage/picodata/cache.tar
@@ -42,7 +44,7 @@ variables:
 #
 .rules:
   - &if-build-base-changes-on-master-branch
-    if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
     changes:
       # implies compare_to HEAD~1
       paths: &build-base-changes-paths
@@ -50,9 +52,9 @@ variables:
         - .gitlab-ci.yml
 
   - &if-build-base-changes-on-dev-branch
-    if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
     changes:
-      compare_to: master
+      compare_to: *main-branch
       paths: *build-base-changes-paths
 
   - &else {}
@@ -64,7 +66,7 @@ build-base-image:
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
-        BASE_IMAGE_TAG: latest
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
@@ -75,17 +77,17 @@ build-base-image:
     GIT_STRATEGY: fetch
     GIT_SUBMODULE_STRATEGY: none
   script:
-    - docker pull ${BASE_IMAGE}:latest || true
+    - docker pull ${BASE_IMAGE}:${BASE_IMAGE_LATEST} || true
     - >
       docker build
-      --cache-from ${BASE_IMAGE}:latest
+      --cache-from ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
       --label GIT_COMMIT=${CI_COMMIT_SHA}
       -t ${BASE_IMAGE}:${BASE_IMAGE_TAG}
       -f ./docker-build-base/Dockerfile
       ./docker-build-base
     - |
       # Push image to registry
-      if [ "${CI_COMMIT_BRANCH}" == "${CI_DEFAULT_BRANCH}" ]; then
+      if [ "${CI_COMMIT_BRANCH}" == "${MAIN_BRANCH}" ]; then
         echo "Pushing ${BASE_IMAGE}:${BASE_IMAGE_TAG}"
         mkdir -p $CI_PROJECT_DIR/.docker
         echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
@@ -121,9 +123,9 @@ build-base-image:
     # Gitlab CI caching is shit. So we implement it manually
     - |
       # Restore cache
-      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         echo "Skip restoring cache on the master branch"
-      elif git diff origin/"$CI_DEFAULT_BRANCH" "$CI_COMMIT_SHA" --submodule=short | grep '^[+-]Subproject commit'; then
+      elif git diff origin/"$MAIN_BRANCH" "$CI_COMMIT_SHA" --submodule=short | grep '^[+-]Subproject commit'; then
         echo "Skip restoring cache because submodule(s) changed"
       elif [ -f "${CACHE_ARCHIVE}" ]; then
         ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
@@ -142,13 +144,13 @@ test-linux:
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
-        BASE_IMAGE_TAG: latest
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - <<: *else
       variables:
-        BASE_IMAGE_TAG: latest
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
@@ -199,7 +201,7 @@ test-linux:
 
     - |
       # Save cache
-      if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
+      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
         du -sh ${CACHE_PATHS} || true
         TMPEXT=$RANDOM
@@ -248,13 +250,13 @@ test-docker:
   tags:
     - shell
   rules:
-    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
-        compare_to: master
+        compare_to: *main-branch
         paths:
           - helm/picodata.Dockerfile
           - helm/picodata-diag.Dockerfile
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       when: on_success
     - # else
       when: never
@@ -282,13 +284,13 @@ gamayun-prepare:
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
-        BASE_IMAGE_TAG: latest
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     - <<: *else
       variables:
-        BASE_IMAGE_TAG: latest
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
@@ -712,9 +714,9 @@ deploy-docker:
         ci-log-section start "deploy-docker-${image}" Building and pushing docker image ${image}
         docker build \
           --label GIT_COMMIT=${CI_COMMIT_SHA} \
-          -t ${REGISTRY}/${image}:latest \
+          -t ${REGISTRY}/${image}:${BASE_IMAGE_LATEST} \
           -f helm/${image}.Dockerfile .
-        docker --config $CI_PROJECT_DIR/.docker push ${REGISTRY}/${image}:latest
+        docker --config $CI_PROJECT_DIR/.docker push ${REGISTRY}/${image}:${BASE_IMAGE_LATEST}
         ci-log-section end "deploy-docker-${image}"
       done
 
