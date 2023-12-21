@@ -290,8 +290,7 @@ DROP TABLE "characters";
 которая может храниться на нескольких узлах кластера. В Picodata
 источником данных для запроса `SELECT` может выступать таблица, строка
 значений или другой подзапрос. Также можно соединять несколько запросов
-одного уровня вместе. Внутри запроса значения имен полей (например,
-имена колонок) не должны дублироваться.
+одного уровня вместе.
 
 Cхема возможных распределенных запросов `SELECT` показана ниже.
 
@@ -690,13 +689,35 @@ SELECT SUM(CAST("score" AS INT)) AS "_Total_score_1" FROM "scoring";
 
 ![Table_joined](../images/table_joined.svg)
 
-Команда:
+Это можно сделать с использованием подзапроса:
 
 ```sql
-SELECT "id","name","stock","year" FROM "characters"
-JOIN
-(SELECT "id" AS "number","stock" FROM "assets") AS stock
-ON "characters"."id" = stock."number";
+select 
+    "id",
+    "name",
+    "stock",
+    "year"
+from "characters"
+join (
+  select 
+      "id" as "number",
+      "stock" from "assets"
+) as stock
+on "characters"."id" = stock."number";
+```
+
+Но, если у соединяемых таблиц есть дублирующиеся имена колонок, то следующий
+пример без подзапроса также сработает:
+
+```sql
+select
+    "c"."id",
+    "c"."name",
+    "a"."stock",
+    "c"."year"
+from "characters" as "c"
+join "assets" as "a"
+on "c"."id" = "a"."id";
 ```
 
 Вывод в консоль:
@@ -704,10 +725,10 @@ ON "characters"."id" = stock."number";
 ```
 ---
 - metadata:
-  - {'name': 'characters.id', 'type': 'integer'}
-  - {'name': 'characters.name', 'type': 'string'}
-  - {'name': 'STOCK.stock', 'type': 'integer'}
-  - {'name': 'characters.year', 'type': 'integer'}
+  - {'name': 'c.id', 'type': 'integer'}
+  - {'name': 'c.name', 'type': 'string'}
+  - {'name': 'a.stock', 'type': 'integer'}
+  - {'name': 'c.year', 'type': 'integer'}
   rows:
   - [1, 'Woody', 2561, 1995]
   - [2, 'Buzz Lightyear', 4781, 1995]
@@ -723,9 +744,8 @@ ON "characters"."id" = stock."number";
 ```
 
 При использование после `JOIN` подзапроса (см. [схему](#select))
-обязательно следует указать псевдоним (`AS`) для временной таблицы
-подзапроса. С помощью дополнительных псевдонимов можно заменить
-автоматические имена колонок в результирующей таблице на собственные.
+обязательно следует указать псевдоним (`AS`) для подзапроса.
+
 Пример:
 
 ```sql
@@ -739,6 +759,9 @@ JOIN
 (SELECT "id" AS "number", "stock" FROM "assets") AS stock
 ON "characters"."id" = stock."number";
 ```
+
+В этом примере имена колонок в результирующей таблице были заменены
+на собственные с помощью псевдонимов.
 
 Вывод в консоль:
 
@@ -762,11 +785,6 @@ ON "characters"."id" = stock."number";
   - [10, 'The Dummies', 78, 2019]
 ...
 ```
-
-Более того, использование псевдонимов может быть обязательным, если во
-внутренней и внешней таблицах есть колонки с одинаковыми именами: так как
-у реляционного оператора `JOIN` в плане будут в финальном кортеже все
-колонки из этих таблиц, то их имена должны быть уникальными.
 
 ## Использование функции CAST() {: #cast }
 
