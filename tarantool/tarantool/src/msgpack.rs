@@ -794,7 +794,7 @@ mod tests {
         let d: Result<ViaMsgpack<D>, _> = lua.eval("return { a = 'bar' }");
         assert_eq!(
             d.unwrap_err().to_string(),
-            r#"failed reading lua value via msgpack: tarantool::msgpack::tests::via_msgpack::D expected, got error: missing field `b`; when decoding msgpack b"\x81\xa1\x61\xa3\x62\x61\x72"
+            r#"failed reading lua value via msgpack: tarantool::msgpack::tests::via_msgpack::D expected, got error: missing field `b`; when decoding msgpack b"\x81\xa1a\xa3bar"
     while reading value(s) returned by Lua: tarantool::msgpack::ViaMsgpack<tarantool::msgpack::tests::via_msgpack::D> expected, got table"#,
         );
 
@@ -841,7 +841,7 @@ mod tests {
             let e: Result<ViaMsgpack<E>, _> = lua.eval("return { NoSuchTag = { 1, 2, 3 } }");
             assert_eq!(
                 e.unwrap_err().to_string(),
-                r#"failed reading lua value via msgpack: tarantool::msgpack::tests::via_msgpack::E expected, got error: unknown variant `NoSuchTag`, expected one of `Foo`, `Bar`, `Car`; when decoding msgpack b"\x81\xa9\x4e\x6f\x53\x75\x63\x68\x54\x61\x67\x93\x01\x02\x03"
+                r#"failed reading lua value via msgpack: tarantool::msgpack::tests::via_msgpack::E expected, got error: unknown variant `NoSuchTag`, expected one of `Foo`, `Bar`, `Car`; when decoding msgpack b"\x81\xa9NoSuchTag\x93\x01\x02\x03"
     while reading value(s) returned by Lua: tarantool::msgpack::ViaMsgpack<tarantool::msgpack::tests::via_msgpack::E> expected, got table"#,
             );
         }

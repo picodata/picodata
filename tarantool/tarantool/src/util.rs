@@ -175,7 +175,11 @@ impl std::fmt::Display for DisplayAsHexBytes<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "b\"")?;
         for byte in self.0 {
-            write!(f, "\\x{byte:02x}")?;
+            if byte.is_ascii_graphic() {
+                write!(f, "{}", *byte as char)?;
+            } else {
+                write!(f, "\\x{byte:02x}")?;
+            }
         }
         write!(f, "\"")?;
         Ok(())
