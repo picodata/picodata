@@ -47,8 +47,10 @@ use self::tcp::{Error as TcpError, TcpStream};
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
 use super::protocol::{self, Error as ProtocolError, Protocol, SyncIndex};
 use crate::fiber;
+use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
-use crate::fiber::r#async::{oneshot, watch};
+use crate::fiber::FiberId;
+use crate::fiber::FIBER_ID_INVALID;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 use futures::io::{ReadHalf, WriteHalf};
@@ -118,44 +120,39 @@ impl State {
     }
 }
 
-type WorkerHandle = fiber::JoinHandle<'static, ()>;
-
 #[derive(Debug)]
 struct ClientInner {
     protocol: Protocol,
     awaiting_response: HashMap<SyncIndex, oneshot::Sender<Result<(), Error>>>,
     state: State,
     close_token: Option<tcp::CloseToken>,
-    worker_handles: Vec<WorkerHandle>,
-    sender_waker: watch::Sender<()>,
+    sender_fiber_id: FiberId,
+    receiver_fiber_id: FiberId,
     clients_count: usize,
 }
 
 impl ClientInner {
-    pub fn new(config: protocol::Config, sender_waker: watch::Sender<()>) -> Self {
+    pub fn new(config: protocol::Config) -> Self {
         Self {
             protocol: Protocol::with_config(config),
             awaiting_response: HashMap::new(),
             state: State::Alive,
             close_token: None,
-            worker_handles: Vec::new(),
-            sender_waker,
+            sender_fiber_id: FIBER_ID_INVALID,
+            receiver_fiber_id: FIBER_ID_INVALID,
             clients_count: 1,
         }
     }
 }
 
 /// Wakes sender if `protocol` has new outgoing data.
-///
-/// # Errors
-/// Returns an error if `sender_waker` channel receivers are holding a reference to the previous value.
-/// Which generally shouldn't be the case as it is an empty value.
-fn wake_sender(client: &RefCell<ClientInner>) -> Result<(), watch::SendError<()>> {
-    let len = client.borrow().protocol.ready_outgoing_len();
-    if len > 0 {
-        client.borrow().sender_waker.send(())?;
+fn maybe_wake_sender(client: &ClientInner) {
+    if client.protocol.ready_outgoing_len() == 0 {
+        // No point in waking the sender if there's nothing to send
+        return;
     }
-    Ok(())
+    debug_assert!(client.sender_fiber_id != FIBER_ID_INVALID);
+    fiber::wakeup(client.sender_fiber_id);
 }
 
 /// Actual client that can be used to send and receive messages to tarantool instance.
@@ -192,28 +189,31 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, Error> {
-        let (sender_waker_tx, sender_waker_rx) = watch::channel(());
-        let mut client = ClientInner::new(config, sender_waker_tx);
+        let mut client = ClientInner::new(config);
         let stream = TcpStream::connect(url, port).await?;
         client.close_token = Some(stream.close_token());
 
         let (reader, writer) = stream.split();
         let client = Rc::new(RefCell::new(client));
 
-        // start receiver in a separate fiber
-        let receiver_handle = fiber::Builder::new()
+        let receiver_fiber_id = fiber::Builder::new()
             .func_async(receiver(client.clone(), reader))
-            .name("network-client-receiver")
-            .start()
+            .name(format!("iproto-in/{url}:{port}"))
+            .start_non_joinable()
             .unwrap();
 
-        // start sender in a separate fiber
-        let sender_handle = fiber::Builder::new()
-            .func_async(sender(client.clone(), writer, sender_waker_rx))
-            .name("network-client-sender")
-            .start()
+        let sender_fiber_id = fiber::Builder::new()
+            .func_async(sender(client.clone(), writer))
+            .name(format!("iproto-out/{url}:{port}"))
+            .start_non_joinable()
             .unwrap();
-        client.borrow_mut().worker_handles = vec![receiver_handle, sender_handle];
+
+        {
+            let mut client_mut = client.borrow_mut();
+            client_mut.receiver_fiber_id = receiver_fiber_id;
+            client_mut.sender_fiber_id = sender_fiber_id;
+        }
+
         Ok(Self(client))
     }
 
@@ -294,7 +294,7 @@ impl AsClient for Client {
         let sync = self.0.borrow_mut().protocol.send_request(request)?;
         let (tx, rx) = oneshot::channel();
         self.0.borrow_mut().awaiting_response.insert(sync, tx);
-        wake_sender(&self.0).unwrap();
+        maybe_wake_sender(&self.0.borrow());
         // Cleanup `awaiting_response` entry in case of `send` future cancelation
         // at this `.await`.
         // `send` can be canceled for example with `Timeout`.
@@ -321,9 +321,8 @@ impl Drop for Client {
             client.state = State::ClosedManually;
 
             let close_token = client.close_token.take();
-            let handles: Vec<_> = client.worker_handles.drain(..).collect();
-            // Wake sender so it can exit loop
-            client.sender_waker.send(()).unwrap();
+            let receiver_fiber_id = client.receiver_fiber_id;
+            let sender_fiber_id = client.sender_fiber_id;
 
             // Drop ref before executing code that switches fibers.
             drop(client);
@@ -331,10 +330,15 @@ impl Drop for Client {
                 // Close TCP stream to wake fibers waiting on coio events
                 let _ = close_token.close();
             }
-            // Join fibers
-            for handle in handles {
-                handle.join();
-            }
+
+            // Cancel the worker fibers and wake them up so they can exit their loops
+            debug_assert!(receiver_fiber_id != FIBER_ID_INVALID);
+            fiber::cancel(receiver_fiber_id);
+            fiber::wakeup(receiver_fiber_id);
+
+            debug_assert!(sender_fiber_id != FIBER_ID_INVALID);
+            fiber::cancel(sender_fiber_id);
+            fiber::wakeup(sender_fiber_id);
         } else {
             self.0.borrow_mut().clients_count -= 1;
         }
@@ -368,20 +372,16 @@ macro_rules! handle_result {
 }
 
 /// Sender work loop. Yields on each iteration and during awaits.
-async fn sender(
-    client: Rc<RefCell<ClientInner>>,
-    mut writer: WriteHalf<TcpStream>,
-    mut waker: watch::Receiver<()>,
-) {
+async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStream>) {
     loop {
-        if client.borrow().state.is_closed() {
+        if client.borrow().state.is_closed() || fiber::is_cancelled() {
             return;
         }
         // TODO: limit max send size
         let data = client.borrow_mut().protocol.take_outgoing_data();
         if data.is_empty() {
             // Wait for explicit wakeup, it should happen when there is new outgoing data
-            waker.changed().await.expect("channel should be open");
+            fiber::fiber_yield();
         } else {
             let result = writer.write_all(&data).await;
             handle_result!(client.borrow_mut(), result);
@@ -392,7 +392,7 @@ async fn sender(
 /// Receiver work loop. Yields on each iteration and during awaits.
 async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStream>) {
     loop {
-        if client.borrow().state.is_closed() {
+        if client.borrow().state.is_closed() || fiber::is_cancelled() {
             return;
         }
         let size = client.borrow().protocol.read_size_hint();
@@ -413,7 +413,7 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
                 log::warn!("received unwaited message for {sync:?}");
             }
         }
-        wake_sender(&client).unwrap();
+        maybe_wake_sender(&client.borrow());
     }
 }
 
@@ -554,10 +554,14 @@ mod tests {
         let close_token = client.0.borrow_mut().close_token.take();
         close_token.unwrap().close().unwrap();
         // Receiver wakes and closes
-        fiber::r#yield().unwrap();
-        client.0.borrow().sender_waker.send(()).unwrap();
+        fiber::reschedule();
+
+        let fiber_id = client.0.borrow().sender_fiber_id;
+        let fiber_exists = fiber::wakeup(fiber_id);
+        debug_assert!(fiber_exists);
+
         // Sender wakes and closes
-        fiber::r#yield().unwrap();
+        fiber::reschedule();
         // Sender and receiver stopped and dropped their refs
         assert_eq!(Rc::strong_count(&client.0), 1);
 
