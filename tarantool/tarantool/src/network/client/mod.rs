@@ -390,21 +390,37 @@ async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStrea
 }
 
 /// Receiver work loop. Yields on each iteration and during awaits.
-async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStream>) {
+// Clippy falsely reports that we're holding a `RefCell` reference across an
+// `await`, even though we're explicitly dropping the reference right before
+// awaiting. Thank you clippy, very helpful!
+#[allow(clippy::await_holding_refcell_ref)]
+async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStream>) {
+    let mut buf = vec![0_u8; 4096];
     loop {
-        if client.borrow().state.is_closed() || fiber::is_cancelled() {
+        let client = client_cell.borrow();
+        if client.state.is_closed() || fiber::is_cancelled() {
             return;
         }
-        let size = client.borrow().protocol.read_size_hint();
-        let mut buf = vec![0; size];
-        handle_result!(client.borrow_mut(), reader.read_exact(&mut buf).await);
+
+        let size = client.protocol.read_size_hint();
+        if buf.len() < size {
+            buf.resize(size, 0);
+        }
+        let buf_slice = &mut buf[0..size];
+
+        // Reference must be dropped before yielding.
+        drop(client);
+        let res = reader.read_exact(buf_slice).await;
+
+        let mut client = client_cell.borrow_mut();
+        handle_result!(client, res);
+
         let result = client
-            .borrow_mut()
             .protocol
-            .process_incoming(&mut Cursor::new(buf));
-        let result = handle_result!(client.borrow_mut(), result);
+            .process_incoming(&mut Cursor::new(buf_slice));
+        let result = handle_result!(client, result);
         if let Some(sync) = result {
-            let subscription = client.borrow_mut().awaiting_response.remove(&sync);
+            let subscription = client.awaiting_response.remove(&sync);
             if let Some(subscription) = subscription {
                 subscription
                     .send(Ok(()))
@@ -413,7 +429,7 @@ async fn receiver(client: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStre
                 log::warn!("received unwaited message for {sync:?}");
             }
         }
-        maybe_wake_sender(&client.borrow());
+        maybe_wake_sender(&client);
     }
 }
 
