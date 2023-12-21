@@ -3,7 +3,7 @@
 //! Example:
 //! ```no_run
 //! use log::{info, LevelFilter};
-//! use tarantool::log::{TarantoolLogger, say, SayLevel};
+//! use tarantool::log::{TarantoolLogger, SayLevel};
 //!
 //! static LOGGER: TarantoolLogger = TarantoolLogger::new();
 //! log::set_logger(&LOGGER).unwrap();
@@ -12,7 +12,9 @@
 //! info!("Hello {}", username);
 //!
 //! // Or you can write to Tarantool logger directly
-//! say(SayLevel::Info, "log_demo.rs", 9, None, "Hello world");
+//! tarantool::say_verbose!("Logging some messages...");
+//! tarantool::say_info!("Hello world");
+//! tarantool::say_warn!("Watch out!");
 //! ```
 //!
 //! See also:
@@ -81,6 +83,15 @@ crate::define_enum_with_introspection! {
         Info = 5,
         Verbose = 6,
         Debug = 7,
+    }
+}
+
+impl SayLevel {
+    #[inline(always)]
+    pub fn current() -> Self {
+        let level = Self::from_i64(unsafe { ffi::LOG_LEVEL as _ });
+        debug_assert!(level.is_some());
+        level.unwrap_or(SayLevel::Info)
     }
 }
 
@@ -223,6 +234,97 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
     }
 }
 
+#[track_caller]
+pub fn say_format_args(level: SayLevel, args: std::fmt::Arguments) {
+    if SayLevel::current() < level {
+        return;
+    }
+    let loc = std::panic::Location::caller();
+    let file = CString::new(loc.file()).unwrap();
+    let line = loc.line();
+
+    let mut error_str = String::new();
+    let mut error_ptr = std::ptr::null();
+    if matches!(level, SayLevel::System) {
+        error_str = std::io::Error::last_os_error().to_string();
+        error_str.push('\0');
+        // error_str must outlive error_ptr
+        error_ptr = error_str.as_ptr();
+    }
+
+    let mut message = std::fmt::format(args);
+    message.push('\0');
+
+    unsafe {
+        ffi::SAY_FN.expect("_say is always not NULL")(
+            level as _,
+            file.as_ptr(),
+            line as _,
+            error_ptr as _,
+            crate::c_ptr!("%s"),
+            message.as_ptr(),
+        )
+    }
+
+    drop(error_str);
+}
+
+#[macro_export]
+macro_rules! say_fatal {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Fatal, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_sys_error {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::System, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_error {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Error, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_crit {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Crit, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_warn {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Warn, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_verbose {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Verbose, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_debug {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Debug, ::std::format_args!($($f)*))
+    }
+}
+
+#[macro_export]
+macro_rules! say_info {
+    ($($f:tt)*) => {
+        $crate::log::say_format_args($crate::log::SayLevel::Info, ::std::format_args!($($f)*))
+    }
+}
+
 #[cfg(feature = "internal_test")]
 #[cfg(not(test))]
 mod tests {
@@ -349,5 +451,28 @@ mod tests {
             let s = format!("%{c}");
             say(SayLevel::Warn, "<file>", 0, Some("<error>"), &s);
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn say_macros() {
+        // TODO: it would be nice if we could log these to a file and then check
+        // that file's contents, but unfortunately tarantool doesn't allow changing
+        // logging configuration after the first box.cfg, so there's a bunch of
+        // hoops to jump through to get this working.
+        // For now we just check that this code compiles and doesn't crash.
+        let var = "World";
+        say_debug!("Hello, {var}! {}", 69);
+        say_verbose!("Hello, {var}! {}", 69);
+        say_info!("Hello, {var}! {}", 69);
+        say_warn!("Hello, {var}! {}", 69);
+        say_crit!("Hello, {var}! {}", 69);
+        say_error!("Hello, {var}! {}", 69);
+        say_fatal!("Hello, {var}! {}", 69);
+
+        #[rustfmt::skip]
+        let rc = unsafe { libc::open(crate::c_ptr!("/this file doesn't exist hopefully"), libc::O_RDONLY) };
+        assert_eq!(rc, -1);
+        // This will print the os error saying `No such file or directory` or something similar
+        say_sys_error!("Hello, {var}! {}", 69);
     }
 }
