@@ -422,13 +422,13 @@ mod tests {
     use super::*;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::space::Space;
-    use crate::test::util::TARANTOOL_LISTEN;
+    use crate::test::util::listen_port;
     use std::time::Duration;
 
     async fn test_client() -> Client {
         Client::connect_with_config(
             "localhost",
-            TARANTOOL_LISTEN,
+            listen_port(),
             protocol::Config {
                 creds: Some(("test_user".into(), "password".into())),
             },
@@ -440,9 +440,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn connect() {
-        let _client = Client::connect("localhost", TARANTOOL_LISTEN)
-            .await
-            .unwrap();
+        let _client = Client::connect("localhost", listen_port()).await.unwrap();
     }
 
     #[crate::test(tarantool = "crate")]

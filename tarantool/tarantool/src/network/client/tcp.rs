@@ -296,7 +296,7 @@ mod tests {
     use crate::fiber;
     use crate::fiber::r#async::timeout::{self, IntoTimeout};
     use crate::test::util::always_pending;
-    use crate::test::util::TARANTOOL_LISTEN;
+    use crate::test::util::listen_port;
 
     use std::collections::HashSet;
     use std::net::{TcpListener, ToSocketAddrs};
@@ -347,13 +347,13 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn connect() {
-        let _ = fiber::block_on(TcpStream::connect("localhost", TARANTOOL_LISTEN).timeout(_10_SEC))
+        let _ = fiber::block_on(TcpStream::connect("localhost", listen_port()).timeout(_10_SEC))
             .unwrap();
     }
 
     #[crate::test(tarantool = "crate")]
     async fn read() {
-        let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+        let mut stream = TcpStream::connect("localhost", listen_port())
             .timeout(_10_SEC)
             .await
             .unwrap();
@@ -364,7 +364,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn read_timeout() {
-        let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+        let mut stream = TcpStream::connect("localhost", listen_port())
             .timeout(_10_SEC)
             .await
             .unwrap();
@@ -459,7 +459,7 @@ mod tests {
     fn join_correct_timeout() {
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                let mut stream = TcpStream::connect("localhost", listen_port())
                     .timeout(_10_SEC)
                     .await
                     .unwrap();
@@ -476,7 +476,7 @@ mod tests {
         // Testing with different order in join
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                let mut stream = TcpStream::connect("localhost", listen_port())
                     .timeout(_10_SEC)
                     .await
                     .unwrap();
@@ -496,7 +496,7 @@ mod tests {
     fn select_correct_timeout() {
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                let mut stream = TcpStream::connect("localhost", listen_port())
                     .timeout(_10_SEC)
                     .await
                     .unwrap();
@@ -516,7 +516,7 @@ mod tests {
         // Testing with different future timeouting first
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", TARANTOOL_LISTEN)
+                let mut stream = TcpStream::connect("localhost", listen_port())
                     .timeout(_10_SEC)
                     .await
                     .unwrap();

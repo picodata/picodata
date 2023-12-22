@@ -70,13 +70,6 @@ macro_rules! tests {
 #[derive(Clone, Deserialize)]
 struct TestConfig {
     filter: Option<String>,
-
-    #[serde(default = "default_listen")]
-    listen: u16,
-}
-
-const fn default_listen() -> u16 {
-    3301
 }
 
 fn create_test_spaces() -> Result<(), Error> {
@@ -172,10 +165,7 @@ fn drop_test_spaces() -> Result<(), Error> {
     Ok(())
 }
 
-static mut LISTEN: u16 = default_listen();
-
 fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
-    unsafe { LISTEN = cfg.listen };
     run_tests_console(
         &TestOpts {
             list: false,

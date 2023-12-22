@@ -12,6 +12,7 @@ fn l_n_iters() -> usize {
 
 mod iproto_clients {
     use super::{harness_iter, harness_iter_async, print_stats};
+    use tarantool::test::util::listen_port;
     use tarantool::{
         fiber,
         net_box::{Conn, ConnOptions, Options},
@@ -21,7 +22,7 @@ mod iproto_clients {
 
     #[proc]
     fn bench_network_client() {
-        let client = fiber::block_on(Client::connect("localhost", 3301)).unwrap();
+        let client = fiber::block_on(Client::connect("localhost", listen_port())).unwrap();
         let samples = harness_iter_async(|| async {
             client.call("test_stored_proc", &(1, 2)).await.unwrap();
         });
@@ -31,7 +32,7 @@ mod iproto_clients {
     #[proc]
     fn bench_netbox() {
         let conn = Conn::new(
-            ("localhost", 3301),
+            ("localhost", listen_port()),
             ConnOptions {
                 ..ConnOptions::default()
             },

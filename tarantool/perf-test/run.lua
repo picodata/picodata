@@ -6,7 +6,7 @@ local tmpdir = fio.tempdir()
 
 box.cfg{
     log_level = 'verbose',
-    listen = 3301,
+    listen = 0,
     wal_mode = 'none',
     memtx_dir = tmpdir,
 }
@@ -60,7 +60,7 @@ box.schema.func.create('libperf_test.l_n_iters', {language = 'C'})
 function bench_lua_netbox()
     local clock = require('clock')
     local net_box = require("net.box")
-    local conn = net_box:connect('localhost:3301')
+    local conn = net_box:connect(box.info.listen)
     conn:wait_connected()
     local samples = {}
     local n = box.func['libperf_test.l_n_iters']:call()

@@ -6,30 +6,9 @@ local fiber = require('fiber')
 
 local tmpdir = fio.tempdir()
 
-function free_port()
-    local socket = require 'socket'
-    local port = 3301
-    for i = 1,64,1 do
-        local sock, err = socket.bind('localhost', port)
-        if sock then
-            sock:close()
-            return port
-        elseif err ~= 'Address already in use' then
-            io.stderr:write(string.format('Error: %s\n', err))
-            os.exit(1)
-        end
-        port = math.random(49152, 65535)
-    end
-
-    io.stderr:write("Couldn't pick an available port to listen on")
-    os.exit(1)
-end
-
-local port = free_port()
-
 box.cfg{
     log_level = 'verbose',
-    listen = port,
+    listen = 0,
     wal_mode = 'none',
     memtx_dir = tmpdir,
 }
@@ -91,7 +70,6 @@ package.cpath = string.format(
 -- Prepare config
 cfg = json.encode {
     filter = arg[1] or "",
-    listen = port,
 }
 
 -- Run tests

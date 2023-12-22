@@ -10,26 +10,19 @@ use tarantool::fiber::Cond;
 use tarantool::index::IteratorType;
 use tarantool::net_box::{promise::State, Conn, ConnOptions, ConnTriggers, Options};
 use tarantool::space::Space;
+use tarantool::test::util::listen_port;
 use tarantool::tuple::Tuple;
 
-use crate::{
-    common::{QueryOperation, S1Record, S2Record},
-    LISTEN,
-};
+use crate::common::{QueryOperation, S1Record, S2Record};
 use std::cell::{Cell, RefCell};
 
 fn default_conn() -> Conn {
-    Conn::new(
-        ("localhost", unsafe { LISTEN }),
-        ConnOptions::default(),
-        None,
-    )
-    .unwrap()
+    Conn::new(("localhost", listen_port()), ConnOptions::default(), None).unwrap()
 }
 
 fn test_user_conn() -> Conn {
     Conn::new(
-        ("localhost", unsafe { LISTEN }),
+        ("localhost", listen_port()),
         ConnOptions {
             user: "test_user".into(),
             password: "password".into(),
@@ -41,7 +34,7 @@ fn test_user_conn() -> Conn {
 }
 
 pub fn immediate_close() {
-    let port = unsafe { LISTEN };
+    let port = listen_port();
     let _ = Conn::new(("localhost", port), ConnOptions::default(), None).unwrap();
 }
 
@@ -288,7 +281,7 @@ pub fn connection_error() {
 }
 
 pub fn is_connected() {
-    let port = unsafe { LISTEN };
+    let port = listen_port();
     let conn = Conn::new(
         ("localhost", port),
         ConnOptions {
@@ -548,7 +541,7 @@ pub fn cancel_recv() {
 }
 
 pub fn triggers_connect() {
-    let port = unsafe { LISTEN };
+    let port = listen_port();
     struct Checklist {
         connected: bool,
         disconnected: bool,
@@ -590,7 +583,7 @@ pub fn triggers_connect() {
 }
 
 pub fn triggers_reject() {
-    let port = unsafe { LISTEN };
+    let port = listen_port();
     struct TriggersMock {}
 
     impl ConnTriggers for TriggersMock {
@@ -613,7 +606,7 @@ pub fn triggers_reject() {
 }
 
 pub fn triggers_schema_sync() {
-    let port = unsafe { LISTEN };
+    let port = listen_port();
     struct TriggersMock {
         is_trigger_called: Rc<Cell<bool>>,
     }

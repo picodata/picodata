@@ -146,7 +146,7 @@ mod tests {
     use crate::fiber;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::network::AsClient as _;
-    use crate::test::util::TARANTOOL_LISTEN;
+    use crate::test::util::listen_port;
     use std::time::Duration;
 
     const _3_SEC: Duration = Duration::from_secs(3);
@@ -154,7 +154,7 @@ mod tests {
     fn test_client() -> Client {
         Client::with_config(
             "localhost".into(),
-            TARANTOOL_LISTEN,
+            listen_port(),
             protocol::Config {
                 creds: Some(("test_user".into(), "password".into())),
             },

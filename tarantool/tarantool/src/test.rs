@@ -110,8 +110,14 @@ pub mod util {
     use tlua::AsLua;
     use tlua::LuaState;
 
-    /// The default port where tarantool listens in tests
-    pub const TARANTOOL_LISTEN: u16 = 3301;
+    /// Returns the binary protocol port of the current tarantool instance.
+    pub fn listen_port() -> u16 {
+        let lua = crate::lua_state();
+        let listen: String = lua.eval("return box.info.listen").unwrap();
+        let (address, port) = listen.split_once(':').unwrap();
+        assert_eq!(address, "0.0.0.0");
+        port.parse().unwrap()
+    }
 
     /// Returns a future, which is never resolved
     pub async fn always_pending() -> Result<Infallible, Infallible> {
