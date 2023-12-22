@@ -14,6 +14,6 @@ fn main() -> ! {
         Picodata::Tarantool(args) => cli::tarantool::main(args),
         Picodata::Expel(args) => cli::expel::main(args),
         Picodata::Connect(args) => cli::connect::main(args),
-        Picodata::Sql(args) => cli::sql::main(args),
+        Picodata::Admin(args) => cli::admin::main(args),
     }
 }

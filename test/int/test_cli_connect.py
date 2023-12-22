@@ -29,15 +29,7 @@ def test_connect_testuser(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("testpass")
 
-    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
-    cli.expect_exact(f"{i1.host}:{i1.port}>")
-
-    cli.sendline("\\set language lua")
-    cli.sendline("box.session.user()")
-    cli.expect_exact("---\r\n")
-    cli.expect_exact("- testuser\r\n")
-    cli.expect_exact("...\r\n")
-    cli.expect_exact("\r\n")
+    cli.expect_exact("picosql :)")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -56,15 +48,7 @@ def test_connect_user_host_port(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("testpass")
 
-    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
-    cli.expect_exact(f"{i1.host}:{i1.port}>")
-
-    cli.sendline("\\set language lua")
-    cli.sendline("box.session.user()")
-    cli.expect_exact("---\r\n")
-    cli.expect_exact("- testuser\r\n")
-    cli.expect_exact("...\r\n")
-    cli.expect_exact("\r\n")
+    cli.expect_exact("picosql :)")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -80,15 +64,7 @@ def test_connect_guest(i1: Instance):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
-    cli.expect_exact(f"{i1.host}:{i1.port}>")
-
-    cli.sendline("\\set language lua")
-    cli.sendline("box.session.user()")
-    cli.expect_exact("---\r\n")
-    cli.expect_exact("- guest\r\n")
-    cli.expect_exact("...\r\n")
-    cli.expect_exact("\r\n")
+    cli.expect_exact("picosql :)")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -124,7 +100,7 @@ def test_wrong_pass(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("badpass")
 
-    cli.expect_exact("Connection is not established")
+    cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
     cli.expect_exact(pexpect.EOF)
 
@@ -142,8 +118,8 @@ def test_connection_refused(binary_path: str):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("")
 
-    cli.expect_exact("Connection is not established")
-    cli.expect_exact("Connection refused")
+    cli.expect_exact("failed to connect to address 'localhost:0'")
+    cli.expect_exact("Connection refused (os error 111)")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -159,15 +135,7 @@ def test_connect_auth_type_ok(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("testpass")
 
-    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
-    cli.expect_exact(f"{i1.host}:{i1.port}>")
-
-    cli.sendline("\\set language lua")
-    cli.sendline("box.session.user()")
-    cli.expect_exact("---\r\n")
-    cli.expect_exact("- testuser\r\n")
-    cli.expect_exact("...\r\n")
-    cli.expect_exact("\r\n")
+    cli.expect_exact("picosql :)")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -186,7 +154,7 @@ def test_connect_auth_type_different(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("")
 
-    cli.expect_exact("Connection is not established")
+    cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
     cli.expect_exact(pexpect.EOF)
 
@@ -205,10 +173,10 @@ def test_connect_auth_type_unknown(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_unix_enoent(binary_path: str):
+def test_admin_enoent(binary_path: str):
     cli = pexpect.spawn(
         command=binary_path,
-        args=["connect", "--unix", "wrong/path/t.sock"],
+        args=["admin", "wrong/path/t.sock"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=1,
@@ -221,10 +189,10 @@ def test_connect_unix_enoent(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_unix_econnrefused(binary_path: str):
+def test_admin_econnrefused(binary_path: str):
     cli = pexpect.spawn(
         command=binary_path,
-        args=["connect", "--unix", "/dev/null"],
+        args=["admin", "/dev/null"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=1,
@@ -237,10 +205,10 @@ def test_connect_unix_econnrefused(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_unix_invalid_path(binary_path: str):
+def test_admin_invalid_path(binary_path: str):
     cli = pexpect.spawn(
         command=binary_path,
-        args=["connect", "--unix", "./[][]"],
+        args=["admin", "./[][]"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=1,
@@ -251,10 +219,10 @@ def test_connect_unix_invalid_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_unix_empty_path(binary_path: str):
+def test_admin_empty_path(binary_path: str):
     cli = pexpect.spawn(
         command=binary_path,
-        args=["connect", "--unix", ""],
+        args=["admin", ""],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
         timeout=1,
@@ -265,7 +233,7 @@ def test_connect_unix_empty_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_unix_ok(cluster: Cluster):
+def test_admin_ok(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONSOLE_SOCK": f"{i1.data_dir}/console.sock"})
     i1.start()
@@ -281,7 +249,7 @@ def test_connect_unix_ok(cluster: Cluster):
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.data_dir,
         command=i1.binary_path,
-        args=["connect", "--unix", "./console.sock"],
+        args=["admin", "./console.sock"],
         encoding="utf-8",
         timeout=1,
     )
@@ -364,15 +332,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact(f"connected to {i1.host}:{i1.port}")
-    cli.expect_exact(f"{i1.host}:{i1.port}>")
-
-    cli.sendline("\\set language lua")
-    cli.sendline("box.session.user()")
-    cli.expect_exact("---\r\n")
-    cli.expect_exact("- testuser\r\n")
-    cli.expect_exact("...\r\n")
-    cli.expect_exact("\r\n")
+    cli.expect_exact("picosql :)")
 
     eprint("^D")
     cli.sendcontrol("d")

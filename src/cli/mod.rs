@@ -1,9 +1,9 @@
+pub mod admin;
 pub mod args;
 pub mod connect;
 pub mod expel;
 pub mod init_cfg;
 pub mod run;
-pub mod sql;
 pub mod tarantool;
 pub mod test;
 

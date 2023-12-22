@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::ops::ControlFlow;
 use std::path::Path;
+use std::str::FromStr;
 use std::{env, fs, io, process};
 
 use comfy_table::{ContentArrangement, Table};
@@ -12,8 +13,25 @@ use tarantool::network::{client, AsClient, Client, Config};
 use crate::tarantool_main;
 use crate::util::unwrap_or_terminate;
 
-use super::args::{self, DEFAULT_USERNAME};
-use super::connect::get_password_from_file;
+use super::args::{self, Address, DEFAULT_USERNAME};
+
+pub(crate) fn get_password_from_file(path: &str) -> Result<String, String> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        format!(r#"can't read password from password file by "{path}", reason: {e}"#)
+    })?;
+
+    let password = content
+        .lines()
+        .next()
+        .ok_or("Empty password file".to_string())?
+        .trim();
+
+    if password.is_empty() {
+        return Ok(String::new());
+    }
+
+    Ok(password.into())
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 struct ColDesc {
@@ -99,7 +117,7 @@ enum SqlReplError {
 
 const HISTORY_FILE_NAME: &str = ".picodata_history";
 
-async fn sql_repl_main(args: args::ConnectSql) {
+async fn sql_repl_main(args: args::Connect) {
     unwrap_or_terminate(sql_repl(args).await);
     std::process::exit(0)
 }
@@ -140,8 +158,9 @@ fn handle_special_sequence(line: &str) -> Result<ControlFlow<String>, SqlReplErr
     Ok(ControlFlow::Break(line))
 }
 
-async fn sql_repl(args: args::ConnectSql) -> Result<(), SqlReplError> {
-    let user = args.address.user.as_ref().unwrap_or(&args.user).clone();
+async fn sql_repl(args: args::Connect) -> Result<(), SqlReplError> {
+    let address = unwrap_or_terminate(Address::from_str(&args.address));
+    let user = address.user.as_ref().unwrap_or(&args.user).clone();
 
     let password = if user == DEFAULT_USERNAME {
         String::new()
@@ -158,8 +177,8 @@ async fn sql_repl(args: args::ConnectSql) -> Result<(), SqlReplError> {
     };
 
     let client = Client::connect_with_config(
-        &args.address.host,
-        args.address.port.parse().unwrap(),
+        &address.host,
+        address.port.parse().unwrap(),
         Config {
             creds: Some((user, password)),
         },
@@ -225,11 +244,11 @@ async fn sql_repl(args: args::ConnectSql) -> Result<(), SqlReplError> {
     Ok(())
 }
 
-pub fn main(args: args::ConnectSql) -> ! {
+pub fn main(args: args::Connect) -> ! {
     let rc = tarantool_main!(
         args.tt_args().unwrap(),
         callback_data: (args,),
-        callback_data_type: (args::ConnectSql,),
+        callback_data_type: (args::Connect,),
         callback_body: {
             ::tarantool::fiber::block_on(sql_repl_main(args))
         }

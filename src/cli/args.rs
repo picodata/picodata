@@ -19,7 +19,7 @@ pub enum Picodata {
     Expel(Expel),
     Test(Test),
     Connect(Connect),
-    Sql(ConnectSql),
+    Admin(Admin),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +137,7 @@ pub struct Run {
 
     #[clap(long, value_name = "PATH", env = "PICODATA_CONSOLE_SOCK")]
     /// Unix socket for the interactive console to connect using
-    /// `picodata connect --unix`. Unlike connecting to a
+    /// `picodata admin`. Unlike connecting to a
     /// `--listen` address, console communication occurs in plain text
     /// and always operates under the admin account.
     pub console_sock: Option<String>,
@@ -339,7 +339,24 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Parser)]
-#[clap(about = "Connect a Picodata instance and start interactive Lua console")]
+#[clap(about = "Connect to a Picodata instance and start interactive SQL console")]
+#[clap(
+    long_about = "Connect to a Picodata instance and start interactive SQL console
+
+In addition to running sql queries picodata connect supports simple meta commands.
+
+Anything you enter in picodata sql that begins with an unquoted backslash is a
+meta-command that is processed by the cli itself. These commands make cli more
+useful for administration or scripting.
+
+Currently there is only one such command, but other ones are expected to appear.
+
+\\e (edit)
+    Opens a temporary file and passes it to binary specified in EDITOR environment
+    variable. When the editor is closed if the exit code is zero then the file
+    content is treated as a SQL query and attempted to be executed.
+"
+)]
 pub struct Connect {
     #[clap(
         short = 'u',
@@ -360,13 +377,9 @@ pub struct Connect {
     /// The preferred authentication method.
     pub auth_method: AuthMethod,
 
-    #[clap(long = "unix")]
-    /// Treat ADDRESS as a unix socket path.
-    pub address_as_socket: bool,
-
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address to connect. Format:
-    /// `[user@][host][:port]` or `--unix <PATH>`.
+    /// `[user@][host][:port]`.
     pub address: String,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
@@ -383,55 +396,14 @@ impl Connect {
 }
 
 #[derive(Debug, Parser)]
-#[clap(about = "Connect a Picodata instance and start interactive SQL console")]
-#[clap(
-    long_about = "Connect a Picodata instance and start interactive SQL console
-
-In addition to running sql queries picodata sql supports simple meta commands.
-
-Anything you enter in picodata sql that begins with an unquoted backslash is a
-meta-command that is processed by the cli itself. These commands make cli more
-useful for administration or scripting.
-
-Currently there is only one such command, but other ones are expected to appear.
-
-\\e (edit)
-    Opens a temporary file and passes it to binary specified in EDITOR environment
-    variable. When the editor is closed if the exit code is zero then the file
-    content is treated as a SQL query and attempted to be executed.
-"
-)]
-pub struct ConnectSql {
-    #[clap(
-        short = 'u',
-        long = "user",
-        value_name = "USER",
-        default_value = "guest",
-        env = "PICODATA_USER"
-    )]
-    /// The username to connect with. Ignored if provided in `ADDRESS`.
-    pub user: String,
-
-    #[clap(
-        short = 'a',
-        long = "auth-type",
-        value_name = "METHOD",
-        default_value = AuthMethod::ChapSha1.as_str(),
-    )]
-    /// The preferred authentication method.
-    pub auth_method: AuthMethod,
-
-    #[clap(value_name = "ADDRESS")]
-    /// Picodata instance address. Format: `[user@][host][:port]`
-    pub address: Address,
-
-    #[clap(long, env = "PICODATA_PASSWORD_FILE")]
-    /// Path to a plain-text file with a password.
-    /// If this option isn't provided, the password is prompted from the terminal.
-    pub password_file: Option<String>,
+#[clap(about = "Connect to admin console of a Picodata instance")]
+pub struct Admin {
+    #[clap(value_name = "PATH")]
+    /// Picodata instance admin socket path to connect.
+    pub socket_path: String,
 }
 
-impl ConnectSql {
+impl Admin {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])

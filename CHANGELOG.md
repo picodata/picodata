@@ -27,6 +27,12 @@ with the `YY.0M.MICRO` scheme.
 
 
 
+### CLI
+
+- New command `picodata admin` to connect to picodata instance via unix socket under the admin account.
+
+- SQL by default in `picodata connect`. Lua language is deprecated in `picodata connect`.
+
 ## [23.12.0] - 2023-12-08
 
 ### Features
