@@ -53,7 +53,6 @@ use crate::fiber::FiberId;
 use crate::fiber::FIBER_ID_INVALID;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
-use futures::io::{ReadHalf, WriteHalf};
 use futures::{AsyncReadExt, AsyncWriteExt};
 
 /// Error returned by [`Client`].
@@ -125,19 +124,21 @@ struct ClientInner {
     protocol: Protocol,
     awaiting_response: HashMap<SyncIndex, oneshot::Sender<Result<(), Error>>>,
     state: State,
-    close_token: Option<tcp::CloseToken>,
+    /// The same tcp stream sender & receiver fibers a working with. Only stored
+    /// here for closing.
+    stream: TcpStream,
     sender_fiber_id: FiberId,
     receiver_fiber_id: FiberId,
     clients_count: usize,
 }
 
 impl ClientInner {
-    pub fn new(config: protocol::Config) -> Self {
+    pub fn new(config: protocol::Config, stream: TcpStream) -> Self {
         Self {
             protocol: Protocol::with_config(config),
             awaiting_response: HashMap::new(),
             state: State::Alive,
-            close_token: None,
+            stream,
             sender_fiber_id: FIBER_ID_INVALID,
             receiver_fiber_id: FIBER_ID_INVALID,
             clients_count: 1,
@@ -189,21 +190,18 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, Error> {
-        let mut client = ClientInner::new(config);
         let stream = TcpStream::connect(url, port).await?;
-        client.close_token = Some(stream.close_token());
-
-        let (reader, writer) = stream.split();
+        let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(RefCell::new(client));
 
         let receiver_fiber_id = fiber::Builder::new()
-            .func_async(receiver(client.clone(), reader))
+            .func_async(receiver(client.clone(), stream.clone()))
             .name(format!("iproto-in/{url}:{port}"))
             .start_non_joinable()
             .unwrap();
 
         let sender_fiber_id = fiber::Builder::new()
-            .func_async(sender(client.clone(), writer))
+            .func_async(sender(client.clone(), stream))
             .name(format!("iproto-out/{url}:{port}"))
             .start_non_joinable()
             .unwrap();
@@ -320,16 +318,26 @@ impl Drop for Client {
             // Stop fibers
             client.state = State::ClosedManually;
 
-            let close_token = client.close_token.take();
             let receiver_fiber_id = client.receiver_fiber_id;
             let sender_fiber_id = client.sender_fiber_id;
 
+            // We need to close the stream here, because otherwise receiver will
+            // never wake up, because our async runtime blocks forever until the
+            // future is ready.
+            if let Err(e) = client.stream.close() {
+                // FIXME: do this instead
+                // crate::say_error!("Client::drop: failed closing tcp stream: {e}");
+                crate::log::say(
+                    crate::log::SayLevel::Error,
+                    file!(),
+                    line!() as _,
+                    None,
+                    &format!("Client::drop: failed closing tcp stream: {e}"),
+                )
+            }
+
             // Drop ref before executing code that switches fibers.
             drop(client);
-            if let Some(close_token) = close_token {
-                // Close TCP stream to wake fibers waiting on coio events
-                let _ = close_token.close();
-            }
 
             // Cancel the worker fibers and wake them up so they can exit their loops
             debug_assert!(receiver_fiber_id != FIBER_ID_INVALID);
@@ -372,7 +380,7 @@ macro_rules! handle_result {
 }
 
 /// Sender work loop. Yields on each iteration and during awaits.
-async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStream>) {
+async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: TcpStream) {
     loop {
         if client.borrow().state.is_closed() || fiber::is_cancelled() {
             return;
@@ -394,7 +402,7 @@ async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: WriteHalf<TcpStrea
 // `await`, even though we're explicitly dropping the reference right before
 // awaiting. Thank you clippy, very helpful!
 #[allow(clippy::await_holding_refcell_ref)]
-async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<TcpStream>) {
+async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: TcpStream) {
     let mut buf = vec![0_u8; 4096];
     loop {
         let client = client_cell.borrow();
@@ -410,6 +418,7 @@ async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<Tc
 
         // Reference must be dropped before yielding.
         drop(client);
+
         let res = reader.read_exact(buf_slice).await;
 
         let mut client = client_cell.borrow_mut();
@@ -426,9 +435,19 @@ async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: ReadHalf<Tc
                     .send(Ok(()))
                     .expect("cannot be closed at this point");
             } else {
-                log::warn!("received unwaited message for {sync:?}");
+                // FIXME: do this instead
+                // crate::say_warn!("received unwaited message for {sync:?}");
+                crate::log::say(
+                    crate::log::SayLevel::Warn,
+                    file!(),
+                    line!() as _,
+                    None,
+                    &format!("received unwaited message for {sync:?}"),
+                )
             }
         }
+
+        // Wake sender to handle the greeting we may have just received
         maybe_wake_sender(&client);
     }
 }
@@ -567,8 +586,7 @@ mod tests {
     async fn client_count_regression() {
         let client = test_client().await;
         // Should close sender and receiver fibers
-        let close_token = client.0.borrow_mut().close_token.take();
-        close_token.unwrap().close().unwrap();
+        client.0.borrow_mut().stream.close().unwrap();
         // Receiver wakes and closes
         fiber::reschedule();
 

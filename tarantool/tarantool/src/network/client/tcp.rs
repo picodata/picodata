@@ -66,9 +66,17 @@ pub enum Error {
 /// See module level [documentation](super::tcp) for examples.
 ///
 /// [t]: crate::fiber::async::timeout::timeout
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TcpStream {
-    fd: RawFd,
+    /// A raw tcp socket file descriptor. Replaced with `None` when the stream
+    /// is closed.
+    ///
+    /// Note that it's wrapped in a `Rc`, because the outer `TcpStream` needs to
+    /// be mutably borrowable (thanks to AsyncWrite & AsyncRead traits) and it
+    /// doesn't make sense to wrap it in a Mutex of any sort, because it's
+    /// perfectly safe to read & write on a tcp socket even from concurrent threads,
+    /// but we only use it from different fibers.
+    fd: Rc<Cell<Option<RawFd>>>,
 }
 
 impl TcpStream {
@@ -84,38 +92,48 @@ impl TcpStream {
             // Try IPv4 addresses first when connecting
             ipv4_first(addrs?)
         };
+        // FIXME: we're blocking the whole tx thread over here
         let stream = crate::unwrap_ok_or!(std::net::TcpStream::connect(addrs.as_slice()),
             Err(e) => {
                 return Err(Error::Connect { error: e, address: format!("{url}:{port}") });
             }
         );
         stream.set_nonblocking(true).map_err(Error::SetNonBlock)?;
+        let fd = stream.into_raw_fd();
         Ok(Self {
-            fd: stream.into_raw_fd(),
+            fd: Rc::new(Cell::new(Some(fd))),
         })
     }
 
-    /// Close token for [`TcpStream`] to be able to close it from other fibers.
-    pub fn close_token(&self) -> CloseToken {
-        CloseToken(self.fd)
-    }
-}
+    #[inline(always)]
+    #[track_caller]
+    pub fn close(&mut self) -> io::Result<()> {
+        let Some(fd) = self.fd.take() else {
+            // Already closed.
+            return Ok(());
+        };
 
-/// Close token for [`TcpStream`] to be able to close it from other fibers.
-#[derive(Debug)]
-pub struct CloseToken(RawFd);
-
-impl CloseToken {
-    pub fn close(&self) -> io::Result<()> {
-        let (res, err) = (
-            unsafe { ffi::coio_close(self.0) },
-            io::Error::last_os_error(),
-        );
-        if res != 0 {
-            Err(err)
-        } else {
-            Ok(())
+        // SAFETY: safe because we close the `fd` only once
+        let rc = unsafe { ffi::coio_close(fd) };
+        if rc != 0 {
+            let e = io::Error::last_os_error();
+            if e.raw_os_error() == Some(libc::EBADF) {
+                // FIXME: do this instead
+                // crate::say_error!("close({fd}): Bad file descriptor");
+                crate::log::say(
+                    crate::log::SayLevel::Error,
+                    file!(),
+                    line!() as _,
+                    None,
+                    &format!("close({fd}): Bad file descriptor"),
+                );
+                if cfg!(debug_assertions) {
+                    panic!("close({}): Bad file descriptor", fd);
+                }
+            }
+            return Err(e);
         }
+        Ok(())
     }
 }
 
@@ -205,9 +223,14 @@ impl AsyncWrite for TcpStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
+        let Some(fd) = self.fd.get() else {
+            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
+            return Poll::Ready(Err(e));
+        };
+
         let (result, err) = (
             // `self.fd` must be nonblocking for this to work correctly
-            unsafe { libc::write(self.fd, buf.as_ptr() as *const libc::c_void, buf.len()) },
+            unsafe { libc::write(fd, buf.as_ptr() as *const libc::c_void, buf.len()) },
             io::Error::last_os_error(),
         );
 
@@ -218,7 +241,7 @@ impl AsyncWrite for TcpStream {
             io::ErrorKind::WouldBlock => {
                 // SAFETY: Safe as long as this future is executed by
                 // `fiber::block_on` async executor.
-                unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::WRITE) }
+                unsafe { ContextExt::set_coio_wait(cx, fd, ffi::CoIOFlags::WRITE) }
                 Poll::Pending
             }
             io::ErrorKind::Interrupted => {
@@ -235,6 +258,11 @@ impl AsyncWrite for TcpStream {
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.fd.get().is_none() {
+            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
+            return Poll::Ready(Err(e));
+        };
+
         // [`TcpStream`] similarily to std does not buffer anything,
         // so there is nothing to flush.
         //
@@ -242,8 +270,14 @@ impl AsyncWrite for TcpStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(self.close_token().close())
+    fn poll_close(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        if self.fd.get().is_none() {
+            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
+            return Poll::Ready(Err(e));
+        };
+
+        let res = self.close();
+        Poll::Ready(res)
     }
 }
 
@@ -253,9 +287,14 @@ impl AsyncRead for TcpStream {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
+        let Some(fd) = self.fd.get() else {
+            let e = io::Error::new(io::ErrorKind::Other, "socket closed already");
+            return Poll::Ready(Err(e));
+        };
+
         let (result, err) = (
             // `self.fd` must be nonblocking for this to work correctly
-            unsafe { libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) },
+            unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) },
             io::Error::last_os_error(),
         );
 
@@ -266,7 +305,7 @@ impl AsyncRead for TcpStream {
             io::ErrorKind::WouldBlock => {
                 // SAFETY: Safe as long as this future is executed by
                 // `fiber::block_on` async executor.
-                unsafe { ContextExt::set_coio_wait(cx, self.fd, ffi::CoIOFlags::READ) }
+                unsafe { ContextExt::set_coio_wait(cx, fd, ffi::CoIOFlags::READ) }
                 Poll::Pending
             }
             io::ErrorKind::Interrupted => {
@@ -285,7 +324,17 @@ impl AsyncRead for TcpStream {
 
 impl Drop for TcpStream {
     fn drop(&mut self) {
-        let _ = self.close_token().close();
+        if let Err(e) = self.close() {
+            // FIXME: do this instead
+            // crate::say_error!("TcpStream::drop: closing tcp stream failed: {e}");
+            crate::log::say(
+                crate::log::SayLevel::Error,
+                file!(),
+                line!() as _,
+                None,
+                &format!("TcpStream::drop: closing tcp stream failed: {e}"),
+            );
+        }
     }
 }
 
@@ -537,18 +586,18 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn no_socket_double_close() {
-        let stream = TcpStream::connect("localhost", listen_port())
+        let mut stream = TcpStream::connect("localhost", listen_port())
             .timeout(_10_SEC)
             .await
             .unwrap();
 
-        let fd = stream.fd;
+        let fd = stream.fd.get().unwrap();
 
         // Socket is not closed yet
         assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
 
         // Close the socket
-        stream.close_token().close().unwrap();
+        stream.close().unwrap();
 
         // Socket is closed now
         assert_eq!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
