@@ -41,6 +41,8 @@ use std::ptr::NonNull;
 use std::time::Duration;
 
 pub mod r#async;
+pub mod safety;
+pub use safety::*;
 pub mod channel;
 mod csw;
 pub mod mutex;

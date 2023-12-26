@@ -13,6 +13,11 @@
   errors returned from `network::client`.
 - `tlua::as_table` macro for more straight-forward creation of lua tables
   compared to naked `tlua::AsTable`.
+- `fiber::NoYieldsGuard` helper struct for scope-level guarding against yields.
+  Can be used to assert that a function or it's portion must not yield.
+- `fiber::NoYieldsRefCell` a RefCell replacement for fiber-safety. Will cause a
+  panic if a value is borrowed across yields. Also displays the source location
+  of the last borrow unlike the standard RefCell.
 - `TarantoolError::{file, line, errno, cause, fields}` methods for getting the
   corresponding info from the tarantool error (currently only work for remote errors).
 - `Tuple::to_vec` method to get raw msgpack bytes from `Tuple`.
