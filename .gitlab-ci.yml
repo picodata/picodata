@@ -125,6 +125,8 @@ build-base-image:
     # Gitlab CI caching is shit. So we implement it manually
     - |
       # Restore cache
+      git fetch origin master:refs/remotes/origin/master
+      git branch -a
       if [[ -n "$NO_CACHE" ]]; then
         echo "Skipping restoring from cache because NO_CACHE is set"
       elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
@@ -139,6 +141,21 @@ build-base-image:
         ci-log-section end "restore-cache"
       else
         echo "No cache found"
+      fi
+  after_script:
+    - |
+      # Save cache
+      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
+        ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
+        du -sh ${CACHE_PATHS} || true
+        TMPEXT=$RANDOM
+        tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" ${CACHE_PATHS}
+        mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
+        echo Ok
+        du -sh ${CACHE_ARCHIVE}
+        ci-log-section end "save-cache"
+      else
+        echo "Skip saving cache on a non-master branch"
       fi
 
 test-linux:
@@ -204,20 +221,6 @@ test-linux:
       --junitxml=junit_pytest.xml
       --with-webui
 
-    - |
-      # Save cache
-      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
-        ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
-        du -sh ${CACHE_PATHS} || true
-        TMPEXT=$RANDOM
-        tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" ${CACHE_PATHS}
-        mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
-        echo Ok
-        du -sh ${CACHE_ARCHIVE}
-        ci-log-section end "save-cache"
-      else
-        echo "Skip saving cache on a non-master branch"
-      fi
   artifacts:
     when: always
     paths:
