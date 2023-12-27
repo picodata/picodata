@@ -183,9 +183,10 @@ def test_admin_enoent(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Connection is not established")
+    cli.expect_exact(
+        "connection via unix socket by path 'wrong/path/t.sock' is not established"
+    )
     cli.expect_exact("No such file or directory")
-    cli.expect_exact("uri: unix/:./wrong/path/t.sock")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -199,9 +200,10 @@ def test_admin_econnrefused(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("Connection is not established")
+    cli.expect_exact(
+        "connection via unix socket by path '/dev/null' is not established"
+    )
     cli.expect_exact("Connection refused")
-    cli.expect_exact("uri: unix/:/dev/null")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -215,7 +217,8 @@ def test_admin_invalid_path(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("invalid socket path: ./[][]")
+    cli.expect_exact("connection via unix socket by path './[][]' is not established")
+    cli.expect_exact("No such file or directory")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -229,7 +232,8 @@ def test_admin_empty_path(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("invalid socket path:")
+    cli.expect_exact("connection via unix socket by path '' is not established")
+    cli.expect_exact("Invalid argument")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -254,10 +258,17 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("connected to unix/:./admin.sock")
-    cli.expect_exact("unix/:./admin.sock>")
+    cli.expect_exact("picoadmin :) ")
 
-    cli.sendline("\\set language lua")
+    # Change language to SQL works
+    cli.sendline("\\sql")
+    cli.sendline("CREATE ROLE CHANGE_TO_SQL_WORKS")
+    cli.expect_exact("---\r\n")
+    cli.expect_exact("- row_count: 1\r\n")
+    cli.expect_exact("...\r\n")
+    cli.expect_exact("\r\n")
+
+    cli.sendline("\\lua")
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- admin\r\n")
@@ -266,6 +277,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
 
     eprint("^D")
     cli.sendcontrol("d")
+    cli.expect_exact("Bye")
     cli.expect_exact(pexpect.EOF)
 
 

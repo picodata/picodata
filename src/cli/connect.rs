@@ -1,21 +1,17 @@
 use std::fmt::Display;
-use std::ops::ControlFlow;
-use std::path::Path;
 use std::str::FromStr;
-use std::{env, fs, io, process};
 
-use comfy_table::{ContentArrangement, Table};
-
-use rustyline::error::ReadlineError;
-use rustyline::DefaultEditor;
-use tarantool::network::{client, AsClient, Client, Config};
+use tarantool::network::{AsClient, Client, Config};
 
 use crate::tarantool_main;
-use crate::util::unwrap_or_terminate;
+use crate::util::{prompt_password, unwrap_or_terminate};
 
 use super::args::{self, Address, DEFAULT_USERNAME};
+use super::console::{Console, ReplError};
+use comfy_table::{ContentArrangement, Table};
+use serde::{Deserialize, Serialize};
 
-pub(crate) fn get_password_from_file(path: &str) -> Result<String, String> {
+fn get_password_from_file(path: &str) -> Result<String, String> {
     let content = std::fs::read_to_string(path).map_err(|e| {
         format!(r#"can't read password from password file by "{path}", reason: {e}"#)
     })?;
@@ -33,22 +29,22 @@ pub(crate) fn get_password_from_file(path: &str) -> Result<String, String> {
     Ok(password.into())
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-struct ColDesc {
+#[derive(Serialize, Deserialize, Debug)]
+struct ColumnDesc {
     name: String,
     #[serde(rename = "type")]
     ty: String,
 }
 
-impl Display for ColDesc {
+impl Display for ColumnDesc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name)
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct RowSet {
-    metadata: Vec<ColDesc>,
+    metadata: Vec<ColumnDesc>,
     rows: Vec<Vec<rmpv::Value>>,
 }
 
@@ -67,7 +63,7 @@ impl Display for RowSet {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct RowCount {
     row_count: usize,
 }
@@ -78,11 +74,16 @@ impl Display for RowCount {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 enum ResultSet {
     RowSet(Vec<RowSet>),
     RowCount(Vec<RowCount>),
+    // Option<()> here is for ignoring tarantool redundant "null"
+    // Example:
+    // ---
+    // - null   <-----
+    // - "sbroad: rule parsing error: ...
     Error(Option<()>, String),
 }
 
@@ -103,142 +104,43 @@ impl Display for ResultSet {
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-enum SqlReplError {
-    #[error("{0}")]
-    Client(#[from] client::Error),
+fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
+    let address = Address::from_str(&args.address).map_err(ReplError::Other)?;
 
-    #[error("Failed to prompt for a password: {0}")]
-    Prompt(io::Error),
-
-    #[error("{0}")]
-    Io(io::Error),
-}
-
-const HISTORY_FILE_NAME: &str = ".picodata_history";
-
-async fn sql_repl_main(args: args::Connect) {
-    unwrap_or_terminate(sql_repl(args).await);
-    std::process::exit(0)
-}
-
-// Ideally we should have an enum for all commands. For now we have only two options, usual line
-// and only one special command. To not overengineer things at this point just handle this as ifs.
-// When the set of commands grows it makes total sense to transform this to clear parse/execute pipeline
-// and separate enum variants for each command variant.
-fn handle_special_sequence(line: &str) -> Result<ControlFlow<String>, SqlReplError> {
-    if line != "\\e" {
-        eprintln!("Unknown special sequence");
-        return Ok(ControlFlow::Continue(()));
-    }
-
-    let editor = match env::var_os("EDITOR") {
-        Some(e) => e,
-        None => {
-            eprintln!("EDITOR environment variable is not set");
-            return Ok(ControlFlow::Continue(()));
-        }
-    };
-
-    let temp = tempfile::Builder::new()
-        .suffix(".sql")
-        .tempfile()
-        .map_err(SqlReplError::Io)?;
-    let status = process::Command::new(&editor)
-        .arg(temp.path())
-        .status()
-        .map_err(SqlReplError::Io)?;
-
-    if !status.success() {
-        eprintln!("{:?} returned non zero exit status: {}", editor, status);
-        return Ok(ControlFlow::Continue(()));
-    }
-
-    let line = fs::read_to_string(temp.path()).map_err(SqlReplError::Io)?;
-    Ok(ControlFlow::Break(line))
-}
-
-async fn sql_repl(args: args::Connect) -> Result<(), SqlReplError> {
-    let address = unwrap_or_terminate(Address::from_str(&args.address));
     let user = address.user.as_ref().unwrap_or(&args.user).clone();
 
     let password = if user == DEFAULT_USERNAME {
         String::new()
     } else if let Some(path) = args.password_file {
-        unwrap_or_terminate(get_password_from_file(&path))
+        get_password_from_file(&path).map_err(ReplError::Other)?
     } else {
         let prompt = format!("Enter password for {user}: ");
-        match crate::util::prompt_password(&prompt) {
-            Ok(password) => password,
-            Err(e) => {
-                return Err(SqlReplError::Prompt(e));
-            }
-        }
+        prompt_password(&prompt)
+            .map_err(|err| ReplError::Other(format!("Failed to prompt for a password: {err}")))?
     };
 
-    let client = Client::connect_with_config(
+    let client = ::tarantool::fiber::block_on(Client::connect_with_config(
         &address.host,
         address.port.parse().unwrap(),
         Config {
             creds: Some((user, password)),
         },
-    )
-    .await?;
+    ))?;
 
     // Check if connection is valid. We need to do it because connect is lazy
     // and we want to check whether authentication have succeeded or not
-    client.call("box.schema.user.info", &()).await?;
+    ::tarantool::fiber::block_on(client.call("box.schema.user.info", &()))?;
 
-    // It is deprecated because of unexpected behavior on windows.
-    // We're ok with that.
-    #[allow(deprecated)]
-    let history_file = env::home_dir()
-        .unwrap_or_default()
-        .join(Path::new(HISTORY_FILE_NAME));
+    let mut console = Console::new("picosql :) ")?;
 
-    let mut rl = DefaultEditor::new().unwrap();
-    rl.load_history(&history_file).ok();
+    while let Some(line) = console.read()? {
+        let response = ::tarantool::fiber::block_on(client.call("pico.sql", &(line,)))?;
 
-    loop {
-        let readline = rl.readline("picosql :) ");
-        match readline {
-            Ok(line) => {
-                let line = {
-                    if line.starts_with('\\') {
-                        match handle_special_sequence(&line)? {
-                            ControlFlow::Continue(_) => continue,
-                            ControlFlow::Break(line) => line,
-                        }
-                    } else {
-                        line
-                    }
-                };
+        let res: ResultSet = response.decode().map_err(|err| {
+            ReplError::Other(format!("error occured while processing output: {}", err))
+        })?;
 
-                if line.is_empty() {
-                    continue;
-                }
-
-                let response = client.call("pico.sql", &(&line,)).await?;
-                let res: ResultSet = response
-                    .decode()
-                    .expect("Response must have the shape of ResultSet structure");
-                println!("{res}");
-
-                rl.add_history_entry(line.as_str()).ok();
-                rl.save_history(&history_file).ok();
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-            }
-            Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
-                break;
-            }
-            Err(err) => {
-                println!("Error: {:?}", err);
-                break;
-            }
-        }
+        console.write(&res.to_string());
     }
 
     Ok(())
@@ -250,7 +152,8 @@ pub fn main(args: args::Connect) -> ! {
         callback_data: (args,),
         callback_data_type: (args::Connect,),
         callback_body: {
-            ::tarantool::fiber::block_on(sql_repl_main(args))
+            unwrap_or_terminate(sql_repl(args));
+            std::process::exit(0)
         }
     );
     std::process::exit(rc);
