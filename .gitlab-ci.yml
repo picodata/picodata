@@ -388,6 +388,16 @@ build-webui-bundle:
     paths:
       - picodata-webui/dist/bundle.json
 
+build-vm-image:
+  stage: test
+  when: manual
+  variables:
+    BRANCH: $CI_COMMIT_BRANCH
+  trigger:
+    project: picodata/picodata/picodata-fstek-vmbuilder
+    branch: main
+    strategy: depend
+
 .pack:
   stage: pack
   tags:
