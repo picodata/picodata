@@ -20,16 +20,16 @@ Picodata при работе с распределенной СУБД.
 Схемы этих функций на верхнем уровне показаны ниже:
 
 ### **STATEMENT**
-![Statement](../images/ebnf/STATEMENT.svg)
+![Statement](../images/ebnf/statement.svg)
 
 #### **DML** {: #dml }
-![DML](../images/ebnf/DML.svg)
+![DML](../images/ebnf/dml.svg)
 
 #### **DQL** {: #dql }
-![DQL](../images/ebnf/DQL.svg)
+![DQL](../images/ebnf/dql.svg)
 
 #### **DDL** {: #ddl }
-![DDL](../images/ebnf/DDL.svg)
+![DDL](../images/ebnf/ddl.svg)
 
 Ниже приведены особенности синтаксиса команд и дано описание часто используемых
 команд с примерами их выполнения.
@@ -95,19 +95,19 @@ pico.sql([[SELECT * FROM "characters"]]);
 Ниже показаны схемы для создания и удаления пользователей и ролей.
 
 ### **Access control lists** {: #acl }
-![ACL](../images/ebnf/ACL.svg)
+![ACL](../images/ebnf/acl.svg)
 
-### **Create user** {: #CreateUser }
-![Create user](../images/ebnf/CreateUser.svg)
+### **Create user** {: #create_user }
+![Create user](../images/ebnf/create_user.svg)
 
-### **Drop user** {: #DropUser }
-![Drop user](../images/ebnf/DropUser.svg)
+### **Drop user** {: #drop_user }
+![Drop user](../images/ebnf/drop_user.svg)
 
-### **Create role** {: #CreateRole }
-![Create role](../images/ebnf/CreateRole.svg)
+### **Create role** {: #create_role }
+![Create role](../images/ebnf/create_role.svg)
 
-### **Drop role** {: #DropRole }
-![Drop role](../images/ebnf/DropRole.svg)
+### **Drop role** {: #drop_role }
+![Drop role](../images/ebnf/drop_role.svg)
 
 Пример команды для создания пользователя:
 
@@ -124,12 +124,12 @@ DROP USER ANDY;
 
  - [Управление доступом](../tutorial/access_control.md)
 
-### **Alter user** {: #AlterUser }
+### **Alter user** {: #alter_user }
 
 Команда `alter user` предназначена для изменения данных/параметров уже
 существующих в системе пользователей:
 
-![Alter user](../images/ebnf/AlterUser.svg)
+![Alter user](../images/ebnf/alter_user.svg)
 
 Изменение может состоять в:
 
@@ -158,7 +158,7 @@ ALTER USER "andy" WITH NOLOGIN;
 ALTER USER "andy" WITH LOGIN;
 ```
 
-## Управление привилегиями {: #Privileges }
+## Управление привилегиями {: #privileges }
 
 В Picodata применяется ролевая модель, в которой можно назначать
 привилегии как напрямую пользователям, так через роли (группы
@@ -168,15 +168,15 @@ ALTER USER "andy" WITH LOGIN;
 Ниже показаны схемы запросов для назначения (`grant`) и изъятия
 (`revoke`) привилегий.
 
-### **Grant privilege** {: #GrantPrivilege }
+### **Grant privilege** {: #grant_privilege }
 
-![Grant privilege](../images/ebnf/GrantPrivilege.svg)
+![Grant privilege](../images/ebnf/grant_privilege.svg)
 
-### **Revoke privilege** {: #RevokePrivilege }
+### **Revoke privilege** {: #revoke_privilege }
 
-![Revoke privilege](../images/ebnf/RevokePrivilege.svg)
+![Revoke privilege](../images/ebnf/revoke_privilege.svg)
 
-### **Privilege** {: #Privilege }
+### **Privilege** {: #privilege }
 
 Привилегия может представлять собой роль, либо возможность какого-либо
 действия по отношению к конкретному объекту или ко всем объектам указанного
@@ -184,7 +184,7 @@ ALTER USER "andy" WITH LOGIN;
 
 Для того, чтобы выдать кому-либо привилегию, нужно самому ею обладать.
 
-![Privilege](../images/ebnf/Privilege.svg)
+![Privilege](../images/ebnf/privilege.svg)
 
 Пример выдачи права изменять данные пользователя `woody` пользователю `andy`:
 
@@ -209,16 +209,16 @@ REVOKE READ TABLE FROM "woody";
 Схема запроса для создания шардированной таблицы показана ниже.
 
 ### **CreateTable**
-![Create table](../images/ebnf/CreateTable.svg)
+![Create table](../images/ebnf/create_table.svg)
 
 #### **Column**
-![Column](../images/ebnf/Column.svg)
+![Column](../images/ebnf/column.svg)
 
 #### **PrimaryKey**
-![Primary Key](../images/ebnf/PrimaryKey.svg)
+![Primary Key](../images/ebnf/primary_key.svg)
 
 #### **Distribution**
-![Distribution](../images/ebnf/Distribution.svg)
+![Distribution](../images/ebnf/distribution.svg)
 
 Для примера в этом разделе будем использовать две тестовых таблицы для учета
 персонажей из "Истории игрушек":
@@ -250,7 +250,7 @@ CREATE TABLE "characters" (
             "year" INTEGER,
             PRIMARY KEY ("id")
 )
-USING memtx DISTRIBUTED BY ("ID")
+USING MEMTX DISTRIBUTED BY ("ID")
 OPTION (TIMEOUT = 3.0);
 ```
 
@@ -258,8 +258,8 @@ OPTION (TIMEOUT = 3.0);
 
 При создании таблицы также можно выбрать один из доступных движков хранения данных:
 
-  - `memtx` — [движок хранения данных](../overview/glossary.md#db-engine) в ОЗУ (in-memory);
-  - `vinyl` — дисковый движок хранения данных, использующий LSM-деревья
+  - `MEMTX` — [движок хранения данных](../overview/glossary.md#db-engine) в ОЗУ (in-memory);
+  - `VINYL` — дисковый движок хранения данных, использующий LSM-деревья
     (Log Structured Merge Tree).
 
 ## Удаление таблицы {: #drop_table }
@@ -267,7 +267,7 @@ OPTION (TIMEOUT = 3.0);
 Cхема запроса для удаления таблицы показана ниже:
 
 ### **DropTable**
-![Drop table](../images/ebnf/DropTable.svg)
+![Drop table](../images/ebnf/drop_table.svg)
 
 Пример удаления таблицы:
 
@@ -290,7 +290,7 @@ DROP TABLE "characters";
 Cхема возможных распределенных запросов `SELECT` показана ниже.
 
 ### **SELECT** {: #select }
-![Select](../images/ebnf/SELECT.svg)
+![Select](../images/ebnf/select.svg)
 
 ### Примеры запросов {: #select-examples }
 
@@ -419,7 +419,7 @@ characters...` и `create table "CHARACTERS"...` создадут одну и т
 На схеме показана структура использования элемента `VALUES`, который может
 содержать одну или несколько строк ([кортежей](#row)):
 
-![Values](../images/ebnf/VALUES.svg)
+![Values](../images/ebnf/values.svg)
 
 Пример:
 
@@ -482,6 +482,12 @@ ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойств
 Схема использования элемента `expression`:
 
 ![Expression](../images/ebnf/expression.svg)
+
+### Подзапрос {: #subquery }
+
+Схема использования элемента `subquery`:
+
+![Subquery](../images/ebnf/subquery.svg)
 
 ### Ссылка {: #reference }
 
@@ -801,22 +807,22 @@ SELECT CAST("score" AS INT) FROM "scoring";
 Для решения этих задач в DQL- и DML-запросах предусмотрены следующие
 необязательные [опции](#option):
 
-- `sql_vdbe_max_steps`, ограничение на максимальное количество
+- `SQL_VDBE_MAX_STEPS`, ограничение на максимальное количество
   [opcode](https://www.sqlite.org/opcode.html){:target="_blank"} при
   работе [VDBE](https://www.sqlite.org/vdbe.html){:target="_blank"} на
   локальных узлах Picodata;
-- `vtable_max_rows`, ограничение на максимальное число строк в
+- `VTABLE_MAX_ROWS`, ограничение на максимальное число строк в
   результирующей виртуальной таблице, собирающей результаты отдельных
   локальных запросов.
 
 #### Опции {: #options }
-![Options](../images/ebnf/Options.svg)
+![Options](../images/ebnf/options.svg)
 
 
 ### Пример использования {: #tuple-limit-example }
 
 ```sql
-SELECT * FROM "characters" OPTION(sql_vdbe_max_steps = 55, vtable_max_rows = 10);
+SELECT * FROM "characters" OPTION(SQL_VDBE_MAX_STEPS = 55, VTABLE_MAX_ROWS = 10);
 ---
 - metadata:
   - {'name': 'id', 'type': 'integer'}
@@ -839,7 +845,7 @@ SELECT * FROM "characters" OPTION(sql_vdbe_max_steps = 55, vtable_max_rows = 10)
 Если ограничения не позволяют выполнить запрос, то будет возвращена
 ошибка.
 
-При слишком низком значении `sql_vdbe_max_steps`:
+При слишком низком значении `SQL_VDBE_MAX_STEPS`:
 
 ```
 ---
@@ -848,7 +854,7 @@ SELECT * FROM "characters" OPTION(sql_vdbe_max_steps = 55, vtable_max_rows = 10)
 ...
 ```
 
-При слишком низком значении `vtable_max_rows`:
+При слишком низком значении `VTABLE_MAX_ROWS`:
 
 ```
 ---
@@ -864,7 +870,7 @@ SELECT * FROM "characters" OPTION(sql_vdbe_max_steps = 55, vtable_max_rows = 10)
 одной строки в рамках одного запроса.
 
 ### **INSERT** {: #insert }
-![Insert](../images/ebnf/INSERT.svg)
+![Insert](../images/ebnf/insert.svg)
 
 ### Примеры запросов {: #insert-examples }
 Запись строки данных в таблицу командой `INSERT` возможна как в обычном
@@ -996,7 +1002,7 @@ replace`, команда `UPDATE` подойдет для выборочной �
 так и результат подзапроса в конструкции `FROM (SELECT ...)`.
 
 ### **UPDATE** {: #update }
-![Update](../images/ebnf/UPDATE.svg)
+![Update](../images/ebnf/update.svg)
 
 При использовании `UPDATE` следует учитывать следующие ограничения:
 
@@ -1048,7 +1054,7 @@ UPDATE "characters" SET "name" = "item" FROM (SELECT "id" AS i, "name" AS "item"
 Команда `DELETE` используется для удаления данных из таблицы.
 
 ### **DELETE** {: #delete }
-![Delete](../images/ebnf/DELETE.svg)
+![Delete](../images/ebnf/delete.svg)
 
 ### Примеры запросов {: #delete-examples }
 Простой запрос удаляет все данные из указанной таблицы:
@@ -1097,7 +1103,7 @@ DELETE FROM "characters" WHERE "id" IN (1,2,3);
 Схема использования `EXPLAIN` показана ниже.
 
 ### **EXPLAIN** {: #explain}
-![Explain](../images/ebnf/EXPLAIN.svg)
+![Explain](../images/ebnf/explain.svg)
 
 
 ### Простые запросы {: #basic-explain }

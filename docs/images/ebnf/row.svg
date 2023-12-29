@@ -5,7 +5,7 @@
    version="1.1"
    id="svg10"
    sodipodi:docname="row.svg"
-   inkscape:version="1.3.1 (91b66b0783, 2023-11-16)"
+   inkscape:version="1.3 (0e150ed6c4, 2023-07-21)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -14,75 +14,49 @@
   <sodipodi:namedview
      id="namedview10"
      pagecolor="#ffffff"
-     bordercolor="#000000"
-     borderopacity="0.25"
+     bordercolor="#666666"
+     borderopacity="1.0"
      inkscape:showpageshadow="2"
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="4.2489796"
+     inkscape:zoom="2.6571429"
      inkscape:cx="122.5"
-     inkscape:cy="40.597983"
-     inkscape:window-width="1920"
-     inkscape:window-height="1032"
-     inkscape:window-x="0"
-     inkscape:window-y="25"
+     inkscape:cy="40.456989"
+     inkscape:window-width="1854"
+     inkscape:window-height="1011"
+     inkscape:window-x="66"
+     inkscape:window-y="32"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg10" />
   <defs
      id="defs1">
     <style
        type="text/css"
-       id="style1">
-    @namespace &quot;http://www.w3.org/2000/svg&quot;;
-    .line                 {fill: none; stroke: #320000; stroke-width: 1;}
-    .bold-line            {stroke: #FFE0E0; shape-rendering: crispEdges; stroke-width: 2;}
-    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
-    .filled               {fill: #320000; stroke: none;}
-    text.terminal         {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #FFE0E0;
-                            font-weight: bold;
-                          }
-    text.nonterminal      {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #FFE0E0;
-                            font-weight: normal;
-                          }
-    text.regexp           {font-family: HelveticaNeueCyr, Sans-serif;
-                            font-size: 14px;
-                            fill: #1F0000;
-                            font-weight: normal;
-                          }
-    rect, circle, polygon {fill: #320000; stroke: #320000;}
-    rect.terminal         {fill: #FF0000; stroke: #320000; stroke-width: 1;}
-    rect.nonterminal      {fill: #FF3F3F; stroke: #320000; stroke-width: 1;}
-    rect.text             {fill: none; stroke: none;}
-    polygon.regexp        {fill: #FF5E5E; stroke: #320000; stroke-width: 1;}
-  </style>
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }&#10;.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }&#10;.thin-line { stroke: #1F0000; shape-rendering: crispEdges }&#10;.filled { fill: #330000; stroke: none; }&#10;text.terminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #140000;                            font-weight: bold; }&#10;text.nonterminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1A0000;                            font-weight: normal; }&#10;text.regexp { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1F0000;                            font-weight: normal; }&#10;rect, circle, polygon { fill: #330000; stroke: #330000; }&#10;rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }&#10;rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }&#10;rect.text { fill: none; stroke: none; }&#10;polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }&#10;</style>
   </defs>
   <path
      id="polygon1"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="M 9,61 1,57 v 8 z" />
   <path
      id="polygon2"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="M 17,61 9,57 v 8 z" />
   <path
      id="rect2"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="m 41,47 h 6 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 41 C 35.46,79 31,74.54 31,69 V 57 c 0,-5.54 4.46,-10 10,-10 z" />
   <path
      id="rect3"
      class="terminal"
-     style="fill:#ff0000;stroke:#320000"
+     style="fill:#ff4d4d;stroke:#330000"
      d="m 39,45 h 6 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 H 39 C 33.46,77 29,72.54 29,67 V 55 c 0,-5.54 4.46,-10 10,-10 z" />
   <path
-     d="m 43.228,54.878 h -1.652 c -1.232,1.792 -1.834,4.27 -1.834,6.412 0,2.128 0.658,4.438 1.834,6.202 h 1.68 c -0.994,-1.988 -1.582,-4.018 -1.582,-6.244 0,-2.408 0.49,-4.242 1.554,-6.37 z"
+     d="m 43.228,54.878 q -0.812,1.624 -1.19,3.108 -0.364,1.484 -0.364,3.262 0,3.08 1.582,6.244 h -1.68 Q 40.708,66.176 40.218,64.538 39.742,62.9 39.742,61.29 q 0,-1.68 0.462,-3.388 0.476,-1.722 1.372,-3.024 z"
      id="text3"
      class="terminal"
-     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0"
+     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="(" />
   <a
      xlink:href="#value"
@@ -90,49 +64,49 @@
      id="a5">
     <path
        id="rect4"
-       style="fill:#320000;stroke:#320000"
+       style="fill:#330000;stroke:#330000"
        d="m 97,47 h 54 V 79 H 97 Z" />
     <path
        id="rect5"
        class="nonterminal"
-       style="fill:#ff3f3f;stroke:#320000"
+       style="fill:#ff9e9e;stroke:#330000"
        d="m 95,45 h 54 V 77 H 95 Z" />
     <path
-       d="M 105.196,57.776 107.884,65 h 1.274 l 2.646,-7.224 h -1.246 l -1.988,6.062 -2.044,-6.062 z m 14.098,6.272 c -0.126,0.028 -0.182,0.042 -0.294,0.042 -0.364,0 -0.49,-0.182 -0.49,-0.714 0,-1.078 0.056,-2.142 0.056,-3.22 0,-0.644 0.014,-1.386 -0.49,-1.876 -0.476,-0.448 -1.302,-0.7 -2.268,-0.7 -1.862,0 -2.982,0.91 -3.024,2.45 h 1.162 c 0.112,-1.064 0.686,-1.47 1.792,-1.47 1.064,0 1.638,0.42 1.638,1.19 0,0.98 -0.588,0.938 -2.31,1.148 -1.708,0.21 -2.562,0.966 -2.562,2.254 0,1.26 0.882,2.044 2.31,2.044 1.12,0 1.904,-0.35 2.618,-1.148 0.014,0.686 0.378,1.064 1.05,1.064 0.266,0 0.56,-0.042 0.812,-0.14 z m -1.918,-2.8 v 1.316 c 0,0.924 -1.078,1.694 -2.198,1.694 -0.896,0 -1.442,-0.462 -1.442,-1.204 0,-1.162 1.176,-1.26 2.044,-1.372 0.532,-0.07 1.148,-0.098 1.596,-0.434 z m 4.29801,-6.216 h -1.204 V 65 h 1.204 z m 7.84,2.744 h -1.19 v 3.78 c 0,1.484 -0.546,2.604 -2.114,2.604 -1.218,0 -1.512,-0.7 -1.512,-1.736 v -4.648 h -1.19 v 4.97 c 0,1.596 0.896,2.45 2.408,2.45 1.064,0 1.862,-0.42 2.492,-1.33 V 65 h 1.106 z m 7.966,4.942 h -1.162 c -0.336,1.092 -0.91,1.54 -1.946,1.54 -1.4,0 -2.254,-0.924 -2.254,-2.464 l 0.014,-0.084 h 5.432 v -0.168 c 0,-2.086 -0.896,-3.976 -3.276,-3.976 -2.002,0 -3.36,1.582 -3.36,3.92 0,2.352 1.274,3.752 3.402,3.752 1.708,0 2.786,-0.854 3.15,-2.52 z m -1.148,-1.974 h -4.2 c 0.154,-1.358 0.966,-2.198 2.128,-2.198 1.19,0 1.96,0.826 2.072,2.198 z"
+       d="m 105.196,57.776 h 1.33 l 2.044,6.062 1.988,-6.062 h 1.246 L 109.158,65 h -1.274 z m 14.098,6.272 v 0.924 q -0.364,0.14 -0.812,0.14 -1.022,0 -1.05,-1.064 -1.022,1.148 -2.618,1.148 -1.064,0 -1.694,-0.546 -0.616,-0.546 -0.616,-1.498 0,-1.932 2.562,-2.254 1.512,-0.182 1.75,-0.266 0.504,-0.168 0.546,-0.7 0.014,-0.084 0.014,-0.182 0,-1.19 -1.638,-1.19 -0.84,0 -1.274,0.35 -0.434,0.336 -0.518,1.12 h -1.162 q 0.028,-1.162 0.826,-1.806 0.798,-0.644 2.198,-0.644 1.526,0 2.268,0.7 0.238,0.224 0.35,0.588 0.112,0.364 0.126,0.602 0.014,0.224 0.014,0.686 0,0.546 -0.028,1.624 -0.028,1.064 -0.028,1.596 0,0.392 0.098,0.56 0.112,0.154 0.392,0.154 0.112,0 0.294,-0.042 z m -1.918,-2.8 q -0.126,0.098 -0.266,0.168 -0.14,0.07 -0.364,0.112 -0.21,0.042 -0.294,0.07 -0.07,0.014 -0.364,0.056 -0.294,0.028 -0.308,0.028 -0.434,0.056 -0.574,0.084 -0.126,0.014 -0.504,0.112 -0.364,0.098 -0.518,0.224 -0.154,0.126 -0.308,0.378 -0.14,0.238 -0.14,0.574 0,0.56 0.378,0.882 0.392,0.322 1.064,0.322 0.854,0 1.526,-0.504 0.672,-0.504 0.672,-1.19 z m 4.29801,-6.216 V 65 h -1.204 v -9.968 z m 7.84,2.744 V 65 h -1.106 v -1.134 q -0.924,1.33 -2.492,1.33 -1.148,0 -1.778,-0.63 -0.63,-0.63 -0.63,-1.82 v -4.97 h 1.19 v 4.648 q 0,0.854 0.322,1.302 0.336,0.434 1.19,0.434 2.114,0 2.114,-2.604 v -3.78 z m 7.966,4.942 q -0.546,2.52 -3.15,2.52 -1.596,0 -2.506,-0.994 -0.896,-0.994 -0.896,-2.758 0,-1.75 0.924,-2.828 0.938,-1.092 2.436,-1.092 1.666,0 2.464,1.134 0.812,1.12 0.812,2.842 v 0.168 h -5.432 l -0.014,0.084 q 0,1.148 0.602,1.806 0.602,0.658 1.652,0.658 0.784,0 1.232,-0.364 0.462,-0.364 0.714,-1.176 z m -1.148,-1.974 q -0.084,-1.036 -0.63,-1.61 -0.546,-0.588 -1.442,-0.588 -0.868,0 -1.442,0.588 -0.574,0.588 -0.686,1.61 z"
        id="text5"
        class="nonterminal"
-       style="font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0"
+       style="font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#1a0000"
        aria-label="value" />
   </a>
   <path
      id="rect6"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="m 107,3 h 4 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 h -4 C 101.46,35 97,30.54 97,25 V 13 C 97,7.46 101.46,3 107,3 Z" />
   <path
      id="rect7"
      class="terminal"
-     style="fill:#ff0000;stroke:#320000"
+     style="fill:#ff4d4d;stroke:#330000"
      d="m 105,1 h 4 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 h -4 C 99.46,33 95,28.54 95,23 V 11 C 95,5.46 99.46,1 105,1 Z" />
   <path
-     d="M 108.052,18.816 H 105.84 V 21 h 0.994 c -0.042,0.742 -0.336,1.148 -0.994,1.344 v 0.98 c 1.512,-0.238 2.212,-1.106 2.212,-2.73 z"
+     d="m 108.052,18.816 v 1.778 q 0,1.218 -0.546,1.876 -0.532,0.672 -1.666,0.854 v -0.98 q 0.938,-0.28 0.994,-1.344 h -0.994 v -2.184 z"
      id="text7"
      class="terminal"
-     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0"
+     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="," />
   <path
      id="rect8"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="m 201,47 h 6 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 h -6 c -5.54,0 -10,-4.46 -10,-10 V 57 c 0,-5.54 4.46,-10 10,-10 z" />
   <path
      id="rect9"
      class="terminal"
-     style="fill:#ff0000;stroke:#320000"
+     style="fill:#ff4d4d;stroke:#330000"
      d="m 199,45 h 6 c 5.54,0 10,4.46 10,10 v 12 c 0,5.54 -4.46,10 -10,10 h -6 c -5.54,0 -10,-4.46 -10,-10 V 55 c 0,-5.54 4.46,-10 10,-10 z" />
   <path
-     d="m 198.944,54.878 c 1.036,1.862 1.568,4.074 1.568,6.202 0,2.464 -0.462,4.186 -1.554,6.412 h 1.666 c 1.204,-1.596 1.834,-4.424 1.834,-6.384 0,-2.198 -0.658,-4.382 -1.862,-6.23 z"
+     d="m 198.944,54.878 h 1.652 q 1.862,2.856 1.862,6.23 0,1.582 -0.49,3.416 -0.49,1.834 -1.344,2.968 h -1.666 q 0.84,-1.708 1.19,-3.15 0.364,-1.456 0.364,-3.262 0,-3.388 -1.568,-6.202 z"
      id="text9"
      class="terminal"
-     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#ffe0e0"
+     style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label=")" />
   <path
      class="line"
@@ -140,10 +114,10 @@
      id="path9" />
   <path
      id="polygon9"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="m 235,61 8,-4 v 8 z" />
   <path
      id="polygon10"
-     style="fill:#320000;stroke:#320000"
+     style="fill:#330000;stroke:#330000"
      d="m 235,61 -8,-4 v 8 z" />
 </svg>
