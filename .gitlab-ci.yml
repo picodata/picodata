@@ -23,7 +23,7 @@ variables:
   MAIN_BRANCH: &main-branch "23.12"
   CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
-  CACHE_ARCHIVE: /shared-storage/picodata/cache-23.12.tar
+  CACHE_ARCHIVE: /shared-storage/picodata/cache-23.12-v2.tar
   # Helps to tolerate spurious network failures
   GET_SOURCES_ATTEMPTS: 3
   NO_CACHE:
@@ -228,7 +228,8 @@ test-linux:
     reports:
       junit: junit_pytest.xml
 
-test-mac-m1:
+# Do not support mac with dynamic linking
+.test-mac-m1:
   extends: .test
   tags:
     - mac-dev-m1
@@ -243,7 +244,8 @@ test-mac-m1:
 
     - cargo fmt -- -v --check
     - cargo clippy --version
-    - cargo clippy --all-features -- --deny clippy::all --no-deps
+    # Do not use --all-features here because it'll trigger tarantool rebuild with static build
+    - cargo clippy --features "load_test webui error_injection" -- --deny clippy::all --no-deps
     # - |
     #   # Pipenv install
     #   ci-log-section start "pipenv-install" Installing pip dependencies ...
