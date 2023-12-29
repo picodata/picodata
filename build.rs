@@ -16,14 +16,15 @@ fn main() {
     // ├── build.rs                         // you are here
     // ├── src/
     // ├── tarantool-sys
+    // │   ├── CMakeLists.txt // used for dynamic build
     // │   └── static-build
-    // │       └── CMakeLists.txt
+    // │       └── CMakeLists.txt // configures above CMakeLists.txt for static build
     // ├── picodata-webui
     // └── <target-dir>/<build-type>/build  // <- build_root
     //     ├── picodata-<smth>/out          // <- std::env::var("OUT_DIR")
     //     ├── picodata-webui
     //     ├── tarantool-http
-    //     └── tarantool-sys
+    //     └── tarantool-sys/{static,dynamic}
     //         ├── ncurses-prefix
     //         ├── openssl-prefix
     //         ├── readline-prefix
@@ -52,9 +53,16 @@ fn main() {
 
     set_git_describe_env_var();
 
+    // This variable controls the type of the build for whole project.
+    // If it is set we build tarantool using static-build (see tarantool-sys/static-build)
+    // Otherwise build dynamically using root cmake project
+    // For details on how this passed to build.rs see:
+    // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts
+    let use_static_build = std::env::var("CARGO_FEATURE_STATIC_BUILD").is_ok();
+
     generate_export_stubs(&out_dir);
-    build_tarantool(jobserver, build_root);
-    build_http(jobserver, build_root);
+    build_tarantool(jobserver, build_root, use_static_build);
+    build_http(jobserver, build_root, use_static_build);
     #[cfg(feature = "webui")]
     build_webui(build_root);
 
@@ -171,17 +179,25 @@ fn build_webui(build_root: &Path) {
         .run();
 }
 
-fn build_http(jsc: Option<&jobserver::Client>, build_root: &Path) {
+const TARANTOOL_SYS_STATIC: &str = "tarantool-sys/static";
+const TARANTOOL_SYS_DYNAMIC: &str = "tarantool-sys/dynamic";
+
+fn build_http(jsc: Option<&jobserver::Client>, build_root: &Path, use_static_build: bool) {
     let build_dir = build_root.join("tarantool-http");
     let build_dir_str = build_dir.display().to_string();
 
-    let tarantool_dir = build_root.join("tarantool-sys/tarantool-prefix");
-    let tarantool_dir_str = tarantool_dir.display().to_string();
+    let tarantool_dir = if use_static_build {
+        build_root
+            .join(TARANTOOL_SYS_STATIC)
+            .join("tarantool-prefix")
+    } else {
+        build_root.join(TARANTOOL_SYS_DYNAMIC)
+    };
 
     Command::new("cmake")
         .args(["-S", "http"])
         .args(["-B", &build_dir_str])
-        .arg(format!("-DTARANTOOL_DIR={tarantool_dir_str}"))
+        .arg(format!("-DTARANTOOL_DIR={}", tarantool_dir.display()))
         .run();
 
     let mut cmd = Command::new("cmake");
@@ -200,41 +216,67 @@ fn build_http(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_search(build_dir_str);
 }
 
-fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
-    let tarantool_sys = build_root.join("tarantool-sys");
-    let tarantool_build = tarantool_sys.join("tarantool-prefix/src/tarantool-build");
+fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_static_build: bool) {
+    let tarantool_sys = if use_static_build {
+        build_root.join(TARANTOOL_SYS_STATIC)
+    } else {
+        build_root.join(TARANTOOL_SYS_DYNAMIC)
+    };
+
+    let tarantool_build = if use_static_build {
+        tarantool_sys.join("tarantool-prefix/src/tarantool-build")
+    } else {
+        tarantool_sys.clone()
+    };
 
     if !tarantool_build.exists() {
         // Build from scratch
-        Command::new("cmake")
-            .args(["-S", "tarantool-sys/static-build"])
-            .arg("-B")
-            .arg(&tarantool_sys)
-            .arg(concat!(
-                "-DCMAKE_TARANTOOL_ARGS=",
-                "-DCMAKE_BUILD_TYPE=RelWithDebInfo;",
-                "-DBUILD_TESTING=FALSE;",
-                "-DBUILD_DOC=FALSE",
-            ))
-            .run();
-        let mut cmd = Command::new("cmake");
-        cmd.arg("--build").arg(&tarantool_sys);
-        if let Some(jsc) = jsc {
-            jsc.configure(&mut cmd);
+        let mut configure_cmd = Command::new("cmake");
+        configure_cmd.arg("-B").arg(&tarantool_sys);
+
+        let common_args = [
+            "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+            "-DBUILD_TESTING=FALSE",
+            "-DBUILD_DOC=FALSE",
+        ];
+
+        if use_static_build {
+            // static build is a separate project that uses CMAKE_TARANTOOL_ARGS
+            // to forward parameters to tarantool cmake project
+            configure_cmd
+                .args(["-S", "tarantool-sys/static-build"])
+                .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", &common_args.join(";")))
+        } else {
+            // for dynamic build we do not use most of the bundled dependencies
+            configure_cmd
+                .args(["-S", "tarantool-sys"])
+                .args(common_args)
+                .args([
+                    "-DENABLE_BUNDLED_LDAP=OFF",
+                    "-DENABLE_BUNDLED_ZSTD=OFF",
+                    "-DENABLE_BUNDLED_LIBCURL=OFF",
+                    "-DENABLE_BUNDLED_LIBYAML=OFF",
+                ])
+                // for dynamic build we'll also need to install the project, so configure the prefix
+                .arg(format!(
+                    "-DCMAKE_INSTALL_PREFIX={}",
+                    tarantool_sys.display(),
+                ))
         }
-        cmd.run();
-    } else {
-        // static-build/CMakeFiles.txt builds tarantool via the ExternalProject
-        // module, which doesn't rebuild subprojects if their contents changed,
-        // therefore we dive into `tarantool-prefix/src/tarantool-build`
-        // directly and try to rebuild it individually.
-        let mut cmd = Command::new("cmake");
-        cmd.arg("--build").arg(&tarantool_build);
-        if let Some(jsc) = jsc {
-            jsc.configure(&mut cmd);
-        }
-        cmd.run();
+        .run();
     }
+
+    let mut build_cmd = Command::new("cmake");
+    build_cmd.arg("--build").arg(&tarantool_sys);
+
+    if !use_static_build {
+        build_cmd.args(["--", "install"]);
+    }
+
+    if let Some(jsc) = jsc {
+        jsc.configure(&mut build_cmd);
+    }
+    build_cmd.run();
 
     let tarantool_sys = tarantool_sys.display();
     let tarantool_build = tarantool_build.display();
@@ -271,19 +313,26 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_search(format!("{tarantool_build}"));
     rustc::link_search(format!("{tarantool_build}/src"));
     rustc::link_search(format!("{tarantool_build}/src/box"));
-    rustc::link_search(format!("{tarantool_build}/build/libyaml/lib"));
-    rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
     rustc::link_search(format!("{tarantool_build}/third_party/c-dt/build"));
     rustc::link_search(format!("{tarantool_build}/third_party/luajit/src"));
 
+    if use_static_build {
+        rustc::link_search(format!("{tarantool_build}/build/libyaml/lib"));
+        rustc::link_search(format!("{tarantool_build}/build/nghttp2/dest/lib"));
+    }
+
     rustc::link_lib_static("tarantool");
-    rustc::link_lib_static("ev");
+
+    if use_static_build {
+        rustc::link_lib_static("ev")
+    } else {
+        rustc::link_lib_dynamic("ev");
+    }
+
     rustc::link_lib_static("coro");
     rustc::link_lib_static("cdt");
     rustc::link_lib_static("server");
     rustc::link_lib_static("misc");
-    rustc::link_lib_static("nghttp2");
-    rustc::link_lib_static("zstd");
     rustc::link_lib_static("decNumber");
     rustc::link_lib_static("eio");
     rustc::link_lib_static("box");
@@ -299,15 +348,28 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
     rustc::link_lib_static("symbols");
     rustc::link_lib_static("cpu_feature");
     rustc::link_lib_static("luajit");
-    rustc::link_lib_static("yaml_static");
     rustc::link_lib_static("xxhash");
 
+    if use_static_build {
+        rustc::link_lib_static("nghttp2");
+        rustc::link_lib_static("zstd");
+        rustc::link_lib_static("yaml_static");
+    } else {
+        rustc::link_lib_dynamic("yaml");
+        rustc::link_lib_dynamic("zstd");
+    }
+
     // Add LDAP authentication support libraries.
-    rustc::link_search(format!("{tarantool_build}/bundled-ldap-prefix/lib"));
-    rustc::link_lib_static_no_whole_archive("ldap");
-    rustc::link_lib_static_no_whole_archive("lber");
-    rustc::link_search(format!("{tarantool_build}/bundled-sasl-prefix/lib"));
-    rustc::link_lib_static_no_whole_archive("sasl2");
+    if use_static_build {
+        rustc::link_search(format!("{tarantool_build}/bundled-ldap-prefix/lib"));
+        rustc::link_lib_static_no_whole_archive("ldap");
+        rustc::link_lib_static_no_whole_archive("lber");
+        rustc::link_search(format!("{tarantool_build}/bundled-sasl-prefix/lib"));
+        rustc::link_lib_static_no_whole_archive("sasl2");
+    } else {
+        rustc::link_lib_dynamic("sasl2");
+        rustc::link_lib_dynamic("ldap");
+    }
 
     if cfg!(target_os = "macos") {
         // Currently we link against 2 versions of `decNumber` library: one
@@ -330,31 +392,51 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path) {
 
     rustc::link_arg("-lc");
 
-    rustc::link_search(format!("{tarantool_sys}/readline-prefix/lib"));
-    rustc::link_lib_static("readline");
+    if use_static_build {
+        rustc::link_search(format!("{tarantool_sys}/readline-prefix/lib"));
+        rustc::link_lib_static("readline");
 
-    rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
-    rustc::link_lib_static("icudata");
-    rustc::link_lib_static("icui18n");
-    rustc::link_lib_static("icuio");
-    rustc::link_lib_static("icutu");
-    rustc::link_lib_static("icuuc");
+        rustc::link_search(format!("{tarantool_sys}/icu-prefix/lib"));
+        rustc::link_lib_static("icudata");
+        rustc::link_lib_static("icui18n");
+        rustc::link_lib_static("icuio");
+        rustc::link_lib_static("icutu");
+        rustc::link_lib_static("icuuc");
 
-    rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
-    rustc::link_lib_static("z");
+        // "z" is linked with curl on cmake stage in case of a dynamic build
+        rustc::link_search(format!("{tarantool_sys}/zlib-prefix/lib"));
+        rustc::link_lib_static("z");
 
-    rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
-    rustc::link_lib_static("curl");
+        rustc::link_search(format!("{tarantool_build}/build/curl/dest/lib"));
+        rustc::link_lib_static("curl");
 
-    rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
-    rustc::link_lib_static("cares");
+        // c-ares not used with dynamic build because we have curl-openssl-dev
+        rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
+        rustc::link_lib_dynamic("cares");
 
-    rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
-    rustc::link_lib_static("ssl");
-    rustc::link_lib_static("crypto");
+        rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
 
-    rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
-    rustc::link_lib_static("tinfo");
+        rustc::link_lib_static("ssl");
+        rustc::link_lib_static("crypto");
+
+        rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
+        rustc::link_lib_static("tinfo");
+    } else {
+        rustc::link_lib_dynamic("readline");
+
+        rustc::link_lib_dynamic("icudata");
+        rustc::link_lib_dynamic("icui18n");
+        rustc::link_lib_dynamic("icuio");
+        rustc::link_lib_dynamic("icutu");
+        rustc::link_lib_dynamic("icuuc");
+
+        rustc::link_lib_dynamic("curl");
+
+        rustc::link_lib_dynamic("ssl");
+        rustc::link_lib_dynamic("crypto");
+
+        rustc::link_lib_dynamic("tinfo");
+    }
 
     rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {

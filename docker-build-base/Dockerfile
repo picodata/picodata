@@ -9,9 +9,18 @@ RUN set -e; \
         python3 \
         python3-yaml \
         python3-six \
-        python3-gevent \
-        python3-pip && \
-    apt-get clean all
+        python3-gevent \   
+        python3-pip \
+        libzstd-dev \
+        libyaml-dev \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        ncurses-dev \
+        libreadline-dev \
+        libicu-dev \
+        libsasl2-dev \
+        libldap2-dev && \
+        apt-get clean all
 
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
