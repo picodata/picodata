@@ -22,7 +22,7 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="1.8637413"
      inkscape:cx="88.263323"
-     inkscape:cy="301.81227"
+     inkscape:cy="301.27572"
      inkscape:window-width="1854"
      inkscape:window-height="1011"
      inkscape:window-x="66"
@@ -184,7 +184,7 @@
        aria-label="decimal" />
   </a>
   <a
-     xlink:href="../sql_types/#text-string"
+     xlink:href="../sql_types/#string"
      xlink:title="string"
      id="a19">
     <path
