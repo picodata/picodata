@@ -431,13 +431,9 @@ class Connection(tarantool.Connection):  # type: ignore
     def eval(self, expr, *args, on_push=None, on_push_ctx=None):
         return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
 
-    def sql(
-        self,
-        sql: str,
-        *params,
-    ) -> dict:
+    def sql(self, sql: str, *params, options={}) -> dict:
         """Run SQL query and return result"""
-        return self.call("pico.sql", sql, *params)
+        return self.call("pico.sql", sql, params, options)
 
     def sudo_sql(
         self,
@@ -452,7 +448,7 @@ class Connection(tarantool.Connection):  # type: ignore
             return before
             """
         )
-        ret = self.sql(sql, params)
+        ret = self.sql(sql, *params)
         self.eval("box.session.su(...)", old_euid)
         return ret
 
@@ -614,13 +610,14 @@ class Instance:
         self,
         sql: str,
         *params,
+        options={},
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 1,
     ) -> dict:
         """Run SQL query and return result"""
         with self.connect(timeout=timeout, user=user, password=password) as conn:
-            return conn.sql(sql, params)
+            return conn.sql(sql, *params, options=options)
 
     def sudo_sql(
         self,

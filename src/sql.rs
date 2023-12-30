@@ -18,6 +18,8 @@ use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or};
 
+use opentelemetry::sdk::trace::Tracer;
+use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
@@ -35,7 +37,7 @@ use sbroad::ir::operator::Relational;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
-use sbroad::otm::{query_id, query_span, stat_query_span, OTM_CHAR_LIMIT};
+use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
 use serde::Deserialize;
 use tarantool::schema::function::func_next_reserved_id;
 
@@ -51,9 +53,11 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use tarantool::session;
 
+pub mod otm;
 pub mod pgproto;
 pub mod router;
 pub mod storage;
+use otm::TracerKind;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
@@ -175,27 +179,43 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     }
 }
 
+#[inline]
+pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
+    ctx.with_baggage(vec![KeyValue::new(TRACER_KEY, tracer_kind.to_string())])
+}
+
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
 pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
     let mut params = PatternWithParams::try_from(encoded_params).map_err(Error::from)?;
     let id = params.clone_id();
-    let ctx = params.extract_context();
-    let tracer = params.tracer;
+    let mut ctx = params.extract_context();
+    let mut tracer_kind = TracerKind::default();
+
+    if let Some(tracer_kind_str) = params.tracer.as_ref() {
+        tracer_kind =
+            TracerKind::from_str(tracer_kind_str).map_err(|e| Error::Other(Box::new(e)))?;
+        ctx = with_tracer(ctx, tracer_kind);
+    }
+
+    let dispatch = || {
+        let runtime = RouterRuntime::new().map_err(Error::from)?;
+        let build_query =
+            || Query::new(&runtime, &params.pattern, params.params).map_err(Error::from);
+
+        let query = with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
+            build_query()
+        })??;
+        dispatch(query)
+    };
 
     query_span::<Result<Tuple, Error>, _>(
         "\"api.router.dispatch\"",
         &id,
-        &tracer,
+        tracer_kind.get_tracer(),
         &ctx,
         &params.pattern,
-        || {
-            let runtime = RouterRuntime::new().map_err(Error::from)?;
-            let query = with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
-                Query::new(&runtime, &params.pattern, params.params).map_err(Error::from)
-            })??;
-            dispatch(query)
-        },
+        dispatch,
     )
 }
 
@@ -236,16 +256,24 @@ impl<'de> Deserialize<'de> for BindArgs {
     }
 }
 
+// helper function to get `TracerRef`
+fn get_tracer_param(traceable: bool) -> &'static Tracer {
+    let kind = TracerKind::from_traceable(traceable);
+    kind.get_tracer()
+}
+
 #[proc(packed_args)]
 pub fn proc_pg_bind(args: BindArgs) -> traft::Result<()> {
     let (key, params, traceable) = args.take();
     with_portals(key, |portal| {
         let mut plan = std::mem::take(portal.plan_mut());
-        stat_query_span::<traft::Result<()>, _>(
+        let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
+        query_span::<traft::Result<()>, _>(
             "\"api.router.bind\"",
-            portal.sql(),
             portal.id(),
-            traceable,
+            get_tracer_param(traceable),
+            &ctx,
+            portal.sql(),
             || {
                 if !plan.is_ddl()? && !plan.is_acl()? {
                     plan.bind_params(params)?;
@@ -275,11 +303,13 @@ pub fn proc_pg_close(key: Descriptor) -> traft::Result<()> {
 #[proc]
 pub fn proc_pg_describe(key: Descriptor, traceable: bool) -> traft::Result<Describe> {
     with_portals(key, |portal| {
-        let description = stat_query_span::<traft::Result<Describe>, _>(
+        let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
+        let description = query_span::<traft::Result<Describe>, _>(
             "\"api.router.describe\"",
-            portal.sql(),
             portal.id(),
-            traceable,
+            get_tracer_param(traceable),
+            &ctx,
+            portal.sql(),
             || Describe::new(portal.plan()).map_err(Error::from),
         )?;
         Ok(description)
@@ -289,11 +319,13 @@ pub fn proc_pg_describe(key: Descriptor, traceable: bool) -> traft::Result<Descr
 #[proc]
 pub fn proc_pg_execute(key: Descriptor, traceable: bool) -> traft::Result<Tuple> {
     with_portals(key, |portal| {
-        let res = stat_query_span::<traft::Result<Tuple>, _>(
+        let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
+        let res = query_span::<traft::Result<Tuple>, _>(
             "\"api.router.execute\"",
-            portal.sql(),
             portal.id(),
-            traceable,
+            get_tracer_param(traceable),
+            &ctx,
+            portal.sql(),
             || {
                 let runtime = RouterRuntime::new().map_err(Error::from)?;
                 let query = Query::from_parts(
@@ -322,11 +354,13 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
         .char_indices()
         .filter_map(|(i, c)| if i <= OTM_CHAR_LIMIT { Some(c) } else { None })
         .collect::<String>();
-    stat_query_span::<traft::Result<Descriptor>, _>(
+    let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
+    query_span::<traft::Result<Descriptor>, _>(
         "\"api.router.parse\"",
-        &sql.clone(),
         &id.clone(),
-        traceable,
+        get_tracer_param(traceable),
+        &ctx,
+        &sql.clone(),
         || {
             let runtime = RouterRuntime::new().map_err(Error::from)?;
             let mut cache = runtime
@@ -1076,6 +1110,8 @@ fn reenterable_schema_change_request(
     }
 }
 
+const TRACER_KEY: &str = "Tracer";
+
 /// Executes a query sub-plan on the local node.
 #[proc(packed_args)]
 pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
@@ -1083,37 +1119,57 @@ pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
 
     let mut required = RequiredData::try_from(EncodedRequiredData::from(raw_required))?;
 
-    let ctx = required.extract_context();
-    let tracer = required.tracer();
-    let trace_id = required.trace_id().to_string();
-
-    query_span::<Result<Tuple, Error>, _>(
-        "\"api.storage.execute\"",
-        &trace_id,
-        &tracer,
-        &ctx,
-        "",
-        || {
-            let runtime = StorageRuntime::new().map_err(Error::from)?;
-            match runtime.execute_plan(&mut required, &mut raw_optional) {
-                Ok(mut any_tuple) => {
-                    if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                        debug!(
-                            Option::from("execute"),
-                            &format!("Execution result: {tuple:?}"),
-                        );
-                        let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
-                        Ok(tuple)
-                    } else {
-                        Err(Error::from(SbroadError::FailedTo(
-                            Action::Decode,
-                            None,
-                            format!("tuple {any_tuple:?}"),
-                        )))
-                    }
+    let tracing_meta = std::mem::take(&mut required.tracing_meta);
+    let mut exec = || {
+        let runtime = StorageRuntime::new().map_err(Error::from)?;
+        match runtime.execute_plan(&mut required, &mut raw_optional) {
+            Ok(mut any_tuple) => {
+                if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
+                    debug!(
+                        Option::from("execute"),
+                        &format!("Execution result: {tuple:?}"),
+                    );
+                    let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
+                    Ok(tuple)
+                } else {
+                    Err(Error::from(SbroadError::FailedTo(
+                        Action::Decode,
+                        None,
+                        format!("tuple {any_tuple:?}"),
+                    )))
                 }
-                Err(e) => Err(Error::from(e)),
             }
-        },
-    )
+            Err(e) => Err(Error::from(e)),
+        }
+    };
+
+    if let Some(mut meta) = tracing_meta {
+        let ctx: Context = (&mut meta.context).into();
+        let tracer_kind = ctx.baggage().get(TRACER_KEY);
+        let kind = if let Some(value) = tracer_kind {
+            TracerKind::from_str(&value.as_str()).map_err(|_| {
+                Error::from(SbroadError::Invalid(
+                    Entity::RequiredData,
+                    Some(format!("unknown tracer: {}", value.as_str())),
+                ))
+            })?
+        } else {
+            return Err(Error::from(SbroadError::Invalid(
+                Entity::RequiredData,
+                Some("no tracer in context".into()),
+            )));
+        };
+
+        let tracer = kind.get_tracer();
+        query_span::<Result<Tuple, Error>, _>(
+            "\"api.storage.execute\"",
+            &meta.trace_id,
+            tracer,
+            &ctx,
+            "",
+            exec,
+        )
+    } else {
+        exec()
+    }
 }

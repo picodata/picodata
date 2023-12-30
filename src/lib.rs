@@ -15,6 +15,7 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::{fiber, session};
 use rpc::{join, update_instance};
+use sql::otm::SqlStatTables;
 use std::time::Duration;
 use storage::Clusterwide;
 use traft::RaftSpaceAccess;
@@ -558,11 +559,13 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     init_handlers();
 
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
+    // init sbroad statistics tables: they must be created
+    // after global tables, so that they don't use their ids.
+    let _ = SqlStatTables::get_or_init();
     schema::init_user_pico_service();
 
     set_login_check(storage.clone());
     set_on_access_denied_audit_trigger();
-
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
     (storage.clone(), raft_storage)

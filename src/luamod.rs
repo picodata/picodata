@@ -398,7 +398,7 @@ pub(crate) fn setup(args: &args::Run) {
         &l,
         "sql",
         indoc! {r#"
-        pico.sql(query, [params], [traceable])
+        pico.sql(query, [params], [options])
         =========================
 
         Executes a cluster-wide SQL query.
@@ -413,7 +413,8 @@ pub(crate) fn setup(args: &args::Run) {
 
             1. query (string)
             2. params (table), optional
-            3. traceable (boolean), optional
+            3. options (table), optional
+                `{traceable = boolean, query_id = string}`
 
         Returns:
 

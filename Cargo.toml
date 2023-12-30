@@ -8,9 +8,12 @@ rust-version = "1.71.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ahash = "0.7"
 bytes = "1.1"
 clap = {version = "3", features = ["derive", "env"]}
 indoc = "2"
+lazy_static = "1.4"
+opentelemetry = "0.17"
 libc = "0.2.108"
 raft = "0.6.0"
 serde = "1.0"
@@ -48,6 +51,7 @@ features = ["bytes", "with-bytes"]
 [dependencies.sbroad-core]
 version = "0.1"
 path = "sbroad/sbroad-core"
+features = ["tracing"]
 
 [dependencies.slog]
 version = "2.7.0"
