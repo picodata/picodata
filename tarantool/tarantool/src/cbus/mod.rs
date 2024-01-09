@@ -249,7 +249,6 @@ mod tests {
             })
             .start_non_joinable()
             .expect("failed to start the cbus_fiber")
-            .expect("fiber_id should be supported")
     }
 
     #[crate::test(tarantool = "crate")]
