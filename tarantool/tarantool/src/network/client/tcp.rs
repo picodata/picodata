@@ -534,4 +534,37 @@ mod tests {
             });
         }
     }
+
+    #[crate::test(tarantool = "crate")]
+    async fn no_socket_double_close() {
+        let stream = TcpStream::connect("localhost", listen_port())
+            .timeout(_10_SEC)
+            .await
+            .unwrap();
+
+        let fd = stream.fd;
+
+        // Socket is not closed yet
+        assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+
+        // Close the socket
+        stream.close_token().close().unwrap();
+
+        // Socket is closed now
+        assert_eq!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+
+        // Reuse the socket's file descriptor
+        assert_ne!(unsafe { libc::dup2(libc::STDOUT_FILENO, fd) }, -1);
+
+        // The file descriptor is open
+        assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+
+        drop(stream);
+
+        // The now unrelated file descriptor mustn't be closed
+        assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+
+        // Cleanup
+        unsafe { libc::close(fd) };
+    }
 }
