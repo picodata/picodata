@@ -41,6 +41,7 @@ Picodata — это распределенная система промышле
 * [Управление топологией](architecture/topology_management.md)
 * [Raft и отказоустойчивость](architecture/raft_failover.md)
 * [Описание системных таблиц](architecture/system_tables.md)
+<!-- * [Интерфейс Proc API](architecture/proc_api.md) -->
 
 ### Обеспечение безопасности {: #security }
 * [Работа в защищенной ОС](security/os.md)
