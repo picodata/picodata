@@ -338,6 +338,60 @@ impl Drop for TcpStream {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// UnsafeSendSyncTcpStream
+////////////////////////////////////////////////////////////////////////////////
+
+/// A wrapper around [`TcpStream`] which also implements [`Send`] & [`Sync`].
+///
+/// Note that it's actually *not safe* to use this stream outside the thread in
+/// which it was created, because it's implemented on top of the tarantool's
+/// fiber runtime. This wrapper only exists because of the cancerous `Send + Sync`
+/// trait bounds placed on almost all third-party async code. These bounds aren't
+/// necessary when working with our async runtime, which is single threaded.
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct UnsafeSendSyncTcpStream(pub TcpStream);
+
+unsafe impl Send for UnsafeSendSyncTcpStream {}
+unsafe impl Sync for UnsafeSendSyncTcpStream {}
+
+impl AsyncRead for UnsafeSendSyncTcpStream {
+    #[inline(always)]
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        AsyncRead::poll_read(Pin::new(&mut self.0), cx, buf)
+    }
+}
+
+impl AsyncWrite for UnsafeSendSyncTcpStream {
+    #[inline(always)]
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        AsyncWrite::poll_write(Pin::new(&mut self.0), cx, buf)
+    }
+
+    #[inline(always)]
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        AsyncWrite::poll_flush(Pin::new(&mut self.0), cx)
+    }
+
+    #[inline(always)]
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        AsyncWrite::poll_close(Pin::new(&mut self.0), cx)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
+
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::*;

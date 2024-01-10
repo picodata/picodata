@@ -50,6 +50,8 @@
   from tuples.
 - `tuple::KeyDef::validate_tuple` method for checking if tuple contains the index key.
 - `impl TryFrom<&index::Metadata> for tuple::KeyDef`
+- `network::client::tcp::UnsafeSendSyncTcpStream` hack which is necessary to
+  work with third-party async libraries.
 
 ### Changed
 - `define_str_enum` macro now also adds `msgpack::{Encode, Decode}` implementations.
@@ -115,6 +117,10 @@
   them like `Part::path(p.into())`, in which case just remove the `.into()`.
 - `index::Index::extract_key` method is now unsafe, because it is unsafe and may
   cause crashes if called with invalid arguments.
+- `network::client::tcp::TcpStream` no longer implements `Send` & `Sync` traits,
+  because it's not safe to use it outside the thread it was created in.
+- Removed `network::client::tcp::TcpStream::close_token` method &
+  `network::client::tcp::CloseToken` struct using which would invoke undefined behaviour.
 
 ### Added (picodata)
 - struct `read_view::ReadView` for opening read views on selected spaces.

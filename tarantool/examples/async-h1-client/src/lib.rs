@@ -1,6 +1,7 @@
 use http_types::{Method, Request, Url};
 use tarantool::fiber;
 use tarantool::network::client::tcp::TcpStream;
+use tarantool::network::client::tcp::UnsafeSendSyncTcpStream;
 use tarantool::proc;
 
 #[proc]
@@ -17,6 +18,7 @@ fn get(url: &str) -> http_types::Result<()> {
                 let stream = TcpStream::connect(host, 80)
                     .await
                     .map_err(http_types::Error::from_display)?;
+                let stream = UnsafeSendSyncTcpStream(stream);
                 println!("Sending request over http...");
                 async_h1::connect(stream, req).await?
             }
