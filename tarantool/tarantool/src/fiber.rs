@@ -517,7 +517,7 @@ where
         // SAFETY this is safe as long as we only call this from the tx thread.
         if !unsafe { crate::ffi::has_fiber_set_ctx() } {
             #[rustfmt::skip]
-            set_error!(TarantoolErrorCode::Unsupported, "non-joinable fibers via lua implementation are not supported");
+            set_error!(TarantoolErrorCode::Unsupported, "deferred non-joinable fibers are not supported in current tarantool version (fiber_set_ctx API is required)");
             return Err(TarantoolError::last().into());
         }
 
@@ -2435,6 +2435,20 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn defer_non_joinable() {
+        if unsafe { !crate::ffi::has_fiber_set_ctx() } {
+            // When fiber_set_ctx is not supported we don't do deferred non-joinable fibers,
+            // because we would need to implement them via lua, which is too much work
+            // for little pay off.
+            // This is only on tarantool 2.10.x or lower anyway.
+            let e = fiber::Builder::new()
+                .func(|| {})
+                .defer_non_joinable()
+                .unwrap_err();
+            assert_eq!(e.to_string(), "tarantool error: Unsupported: deferred non-joinable fibers are not supported in current tarantool version (fiber_set_ctx API is required)");
+
+            return;
+        }
+
         // Check we can't spawn a non-joinable fiber, which needs to write
         // its return value into the join handle.
         let e = fiber::Builder::new()
