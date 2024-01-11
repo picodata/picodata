@@ -984,6 +984,13 @@ extern "C" {
     pub fn box_tuple_next(it: *mut BoxTupleIterator) -> *const c_char;
 }
 
+// Function
+extern "C" {
+    #[cfg(feature = "picodata")]
+    /// Generate unique id for a function.
+    pub fn box_generate_func_id(new_func_id: *mut u32, use_reserved_range: bool) -> c_int;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // box_key_def_t
 ////////////////////////////////////////////////////////////////////////////////

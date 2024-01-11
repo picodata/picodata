@@ -1,3 +1,5 @@
+#[cfg(feature = "picodata")]
+pub mod function;
 pub mod index;
 pub mod sequence;
 pub mod space;

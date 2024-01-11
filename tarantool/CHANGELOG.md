@@ -40,6 +40,8 @@
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.
+- Expose `box_generate_func_id` to generate function identifiers for reserved
+  and default ranges in `_func` space.
 
 ### Changed (picodata)
 
