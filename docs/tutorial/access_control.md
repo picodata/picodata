@@ -110,6 +110,7 @@ GRANT DROP ROLE TO "admin"
 - запустив инстанс с [интерактивной консолью](../reference/cli.md#interactive) `picodata run -i`
 - подключившись к [консоли администратора](../reference/cli.md#admin-sock) командой [`picodata admin`](../reference/cli.md#admin-command)
 
+<!--
 #### Гость {: #guest }
 
 Встроенный пользователь `guest` по умолчанию обладает минимальным
@@ -118,6 +119,7 @@ GRANT DROP ROLE TO "admin"
 
 - `GRANT "public" TO "guest"`
 - `ALTER USER "guest" LOGIN`
+-->
 
 #### Администратор БД {: #db_admin }
 
