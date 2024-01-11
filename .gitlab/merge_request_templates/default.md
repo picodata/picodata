@@ -1,20 +1,4 @@
-## Задача
 
-{Суть задачи — лаконично и ясно.}
-
-## Решение
-
-{Что было сделано — лаконично и ясно.}
-
-## Коммиты
-
-%{all_commits}
-
-Close #*N*
-
-Staging: https://docs.binary.picodata.io/picodata/branch-%{source_branch}/
-
-## Саморевью
-
-* [ ] Контент отображается корректно
-* [ ] Ссылки в контенте работоспособны и корректны
+---
+- Close #...
+- Staging: https://docs.binary.picodata.io/picodata/branch-%{source_branch}/

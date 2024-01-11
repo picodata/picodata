@@ -1,15 +1,5 @@
-## Описание задачи
+## Picodata follow-up
 
-{Суть задачи — лаконично и ясно}
-
-## Cсылка на соответствующий MR в Picodata
-
-Follow-up for:
-- https://git.picodata.io/picodata/picodata/picodata/-/merge_requests/{...}
-
-## Раздел документации
-
-{В какой раздел сайта документации должно попасть изменение}
-
-https://docs.picodata.io/picodata/{...}
-
+- Follow-up for picodata!...
+- See also picodata#...
+- Doc pages to change: https://docs.picodata.io/picodata/{...}
