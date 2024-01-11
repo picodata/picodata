@@ -811,6 +811,12 @@ where
         f: F,
         _attr: Option<&FiberAttr>,
     ) -> crate::Result<JoinHandle<'f, T>> {
+        if let Some(pos) = name.find('\0') {
+            #[rustfmt::skip]
+            set_error!(TarantoolErrorCode::IllegalParams, "fiber name may not contain nul-bytes: nul byte found in provided data at position: {pos}");
+            return Err(TarantoolError::last().into());
+        }
+
         unsafe {
             let l = ffi::luaT_state();
             lua::lua_getglobal(l, c_ptr!("require"));

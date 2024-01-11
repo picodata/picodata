@@ -60,6 +60,8 @@
   be made non-cancellable, so we explicitly do the same for older versions.
 - `tarantool::{c_str, c_ptr}` macros now check at compile time if the provided
   literal contains a nul byte, and therefore they aren't `unsafe` anymore.
+- When spawning fibers via the `fiber::Builder` api if the fiber name contains
+  a nul-byte an error will be returned instead of panicking.
 
 ### Fixed
 - `define_str_enum` will no longer produce warning "`&` without an explicit
