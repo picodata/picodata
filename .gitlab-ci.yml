@@ -58,22 +58,17 @@ pack-doc:
   script:
     - echo "Pack picodata doc..."
     - VER=$(date +%Y%m%d%H%M%S)
-    - FNAME="picodata-doc-${VER}-${CI_COMMIT_REF_SLUG}.tgz"
+    - FNAME="picodata-doc-${VER}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHA}.tgz"
     - echo "FNAME=$FNAME" | tee .vars
     - mkdocs build -d site --strict
     - pushd site
     - tar -cvzf ../$FNAME ./
     - popd
     - echo "Picodata doc successfully packed."
-  cache:
-    - key: $CI_COMMIT_REF_SLUG-vars
-      paths:
-        - .vars
-      policy: push
-    - key: $CI_COMMIT_REF_SLUG-tgz
-      paths:
-        - picodata-doc-*.tgz
-      policy: push
+  artifacts:
+    paths:
+      - .vars
+      - picodata-doc-*.tgz
 
 upload-doc-to-binary:
   image: curlimages/curl
@@ -84,15 +79,6 @@ upload-doc-to-binary:
     - echo "FNAME=$FNAME"
     - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'
     - echo "Picodata doc successfully uploaded to binary."
-  cache:
-    - key: $CI_COMMIT_REF_SLUG-vars
-      paths:
-        - .vars
-      policy: pull
-    - key: $CI_COMMIT_REF_SLUG-tgz
-      paths:
-        - picodata-doc-*.tgz
-      policy: pull
 
 .deploy:
   variables:
@@ -107,11 +93,6 @@ upload-doc-to-binary:
     - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=$STAGE" -F "variables[PICODATA_DOC]=$FNAME" $EXTRA_ARGS https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
     # https://git.picodata.io/picodata/web-site/infra
     - echo "Picodata doc successfully deployed"
-  cache:
-    - key: $CI_COMMIT_REF_SLUG-vars
-      paths:
-        - .vars
-      policy: pull
 
 deploy-doc-to-test-main:
   extends:
