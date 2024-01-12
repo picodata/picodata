@@ -565,7 +565,7 @@ pub fn clear_error() {
 /// ```
 #[macro_export]
 macro_rules! set_error {
-    ($code:expr, $($msg_args:tt)+) => {
+    ($code:expr, $($msg_args:tt)+) => {{
         let msg = ::std::fmt::format(::std::format_args!($($msg_args)+));
         let msg = ::std::ffi::CString::new(msg).unwrap();
         // `msg` must outlive `msg_ptr`
@@ -575,7 +575,7 @@ macro_rules! set_error {
         unsafe {
             $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, msg_ptr)
         }
-    };
+    }};
 }
 
 /// Set the last tarantool error and return it immediately.
@@ -638,5 +638,23 @@ mod tests {
         let msg = "my message";
         let e = set_and_get_error!(TarantoolErrorCode::Unknown, "{msg}");
         assert_eq!(e.to_string(), "Unknown: my message");
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn set_error_with_no_semicolon() {
+        // Basically you should always put double {{}} in your macros if there's
+        // a let statement in it, otherwise it will suddenly stop compiling in
+        // some weird context. And neither the compiler nor clippy will tell you
+        // anything about this.
+        _ = set_error!(TarantoolErrorCode::Unknown, "idk");
+
+        if true {
+            set_error!(TarantoolErrorCode::Unknown, "idk")
+        } else {
+            unreachable!()
+        }; // <- Look at this beauty
+           // Also never put ; after the if statement (unless it's required
+           // for example if it's nested in a let statement), you should always
+           // put ; inside both branches instead.
     }
 }
