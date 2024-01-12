@@ -11,7 +11,6 @@ use crate::has_grades;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
-use crate::r#loop::FlowControl;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
@@ -68,6 +67,7 @@ use protobuf::Message as _;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 use ApplyEntryResult::*;
@@ -1924,16 +1924,16 @@ impl MainLoop {
         let _ = self.loop_waker.send(());
     }
 
-    async fn iter_fn(state: &mut MainLoopState) -> FlowControl {
+    async fn iter_fn(state: &mut MainLoopState) -> ControlFlow<()> {
         let _ = state.loop_waker.changed().timeout(Self::TICK).await;
         if state.stop_flag.take() {
-            return FlowControl::Break;
+            return ControlFlow::Break(());
         }
 
         // FIXME: potential deadlock - can't use sync mutex in async fn
         let mut node_impl = state.node_impl.lock(); // yields
         if state.stop_flag.take() {
-            return FlowControl::Break;
+            return ControlFlow::Break(());
         }
 
         node_impl.cleanup_notifications();
@@ -1947,7 +1947,7 @@ impl MainLoop {
         let res = node_impl.advance(); // yields
         drop(node_impl);
         if state.stop_flag.take() {
-            return FlowControl::Break;
+            return ControlFlow::Break(());
         }
 
         match res {
@@ -1961,7 +1961,7 @@ impl MainLoop {
             Ok(()) => {}
         }
 
-        FlowControl::Continue
+        ControlFlow::Continue(())
     }
 }
 

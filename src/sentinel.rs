@@ -1,6 +1,5 @@
 use crate::has_grades;
 use crate::instance::GradeVariant::*;
-use crate::r#loop::FlowControl::{self, Break, Continue};
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::storage::Clusterwide;
@@ -11,6 +10,7 @@ use crate::traft::{node, RaftSpaceAccess};
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
+use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -33,11 +33,11 @@ impl Loop {
             status,
             instance_reachability,
         }: &mut State,
-    ) -> FlowControl {
+    ) -> ControlFlow<()> {
         if status.get() == SentinelStatus::Initial || node::global().is_err() {
             tlog!(Info, "waiting until initialized...");
             _ = status.changed().timeout(Self::SENTINEL_LONG_SLEEP).await;
-            return Continue;
+            return ControlFlow::Continue(());
         }
 
         let node = node::global().expect("just checked it's ok");
@@ -53,7 +53,7 @@ impl Loop {
                 // and we truncate _pico_instance (read uncommitted btw).
                 // In this case we also just wait some more.
                 _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
-                return Continue;
+                return ControlFlow::Continue(());
             };
 
             let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
@@ -72,7 +72,7 @@ impl Loop {
                 }
                 .await;
                 match res {
-                    Ok(_) => return Break,
+                    Ok(_) => return ControlFlow::Break(()),
                     Err(e) => {
                         tlog!(Warning,
                             "failed setting own target grade Offline: {e}, retrying ...";
@@ -101,7 +101,7 @@ impl Loop {
             }
             let Some(instance) = instance_to_downgrade else {
                 _ = status.changed().timeout(Self::SENTINEL_LONG_SLEEP).await;
-                return Continue;
+                return ControlFlow::Continue(());
             };
 
             tlog!(Info, "setting target grade Offline"; "instance_id" => %instance.instance_id);
@@ -123,7 +123,7 @@ impl Loop {
             }
 
             _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
-            return Continue;
+            return ControlFlow::Continue(());
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -135,7 +135,7 @@ impl Loop {
             // and we truncate _pico_instance (read uncommitted btw).
             // In this case we also just wait some more.
             _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
-            return Continue;
+            return ControlFlow::Continue(());
         };
 
         if has_grades!(instance, * -> Offline) {
@@ -160,11 +160,11 @@ impl Loop {
             }
 
             _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;
-            return Continue;
+            return ControlFlow::Continue(());
         }
 
         _ = status.changed().timeout(Self::SENTINEL_LONG_SLEEP).await;
-        return Continue;
+        return ControlFlow::Continue(());
     }
 
     pub fn start(

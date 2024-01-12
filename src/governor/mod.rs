@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -8,7 +9,6 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
 use crate::op::Op;
-use crate::r#loop::FlowControl::{self, Continue};
 use crate::rpc;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::storage::Clusterwide;
@@ -45,11 +45,11 @@ impl Loop {
             waker,
             pool,
         }: &mut State,
-    ) -> FlowControl {
+    ) -> ControlFlow<()> {
         if !raft_status.get().raft_state.is_leader() {
             set_status(governor_status, "not a leader");
             raft_status.changed().await.unwrap();
-            return Continue;
+            return ControlFlow::Continue(());
         }
 
         let instances = storage
@@ -126,7 +126,7 @@ impl Loop {
                 tlog!(Warning, "failed constructing an action plan: {e}");
                 waker.mark_seen();
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
-                return Continue;
+                return ControlFlow::Continue(());
             }
         );
 
@@ -143,7 +143,7 @@ impl Loop {
                     tlog!(Warning, ::std::concat!("failed ", $desc, ": {}"), e, $(; $($kv)*)?);
                     waker.mark_seen();
                     _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
-                    return Continue;
+                    return ControlFlow::Continue(());
                 }
             }
         }
@@ -546,7 +546,7 @@ impl Loop {
             }
         }
 
-        Continue
+        ControlFlow::Continue(())
     }
 
     pub fn start(

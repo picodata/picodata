@@ -1,8 +1,3 @@
-pub enum FlowControl {
-    Continue,
-    Break,
-}
-
 /// Creates the fiber and schedules it for execution. Doesn't yield.
 #[macro_export]
 macro_rules! loop_start {
@@ -15,8 +10,8 @@ macro_rules! loop_start {
                     let iter_fn = $fn;
                     loop {
                         match iter_fn(&mut state).await {
-                            $crate::r#loop::FlowControl::Continue => continue,
-                            $crate::r#loop::FlowControl::Break => break,
+                            std::ops::ControlFlow::Continue(()) => continue,
+                            std::ops::ControlFlow::Break(()) => break,
                         };
                     }
                 })
