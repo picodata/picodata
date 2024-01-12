@@ -38,7 +38,7 @@ For deployment check out the deployment notes at the end of this file.
 
 ### Prerequisites
 
-- Tarantool 2.2
+- Tarantool 2.10+
 
 #### Linking issues in macOS
 
@@ -56,7 +56,7 @@ rustflags = [
 Add the following lines to your project's Cargo.toml:
 ```toml
 [dependencies]
-tarantool = "3.0"
+tarantool = "4.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -103,7 +103,7 @@ edition = "2018"
 # author, license, etc
 
 [dependencies]
-tarantool = "3.0"
+tarantool = "4.0"
 serde = "1.0"
 
 [lib]
