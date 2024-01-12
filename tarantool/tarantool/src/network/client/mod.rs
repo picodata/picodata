@@ -50,7 +50,6 @@ use crate::fiber;
 use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::FiberId;
-use crate::fiber::FIBER_ID_INVALID;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 use futures::{AsyncReadExt, AsyncWriteExt};
@@ -127,8 +126,8 @@ struct ClientInner {
     /// The same tcp stream sender & receiver fibers a working with. Only stored
     /// here for closing.
     stream: TcpStream,
-    sender_fiber_id: FiberId,
-    receiver_fiber_id: FiberId,
+    sender_fiber_id: Option<FiberId>,
+    receiver_fiber_id: Option<FiberId>,
     clients_count: usize,
 }
 
@@ -139,8 +138,8 @@ impl ClientInner {
             awaiting_response: HashMap::new(),
             state: State::Alive,
             stream,
-            sender_fiber_id: FIBER_ID_INVALID,
-            receiver_fiber_id: FIBER_ID_INVALID,
+            sender_fiber_id: None,
+            receiver_fiber_id: None,
             clients_count: 1,
         }
     }
@@ -152,8 +151,9 @@ fn maybe_wake_sender(client: &ClientInner) {
         // No point in waking the sender if there's nothing to send
         return;
     }
-    debug_assert!(client.sender_fiber_id != FIBER_ID_INVALID);
-    fiber::wakeup(client.sender_fiber_id);
+    if let Some(id) = client.sender_fiber_id {
+        fiber::wakeup(id);
+    }
 }
 
 /// Actual client that can be used to send and receive messages to tarantool instance.
@@ -208,8 +208,8 @@ impl Client {
 
         {
             let mut client_mut = client.borrow_mut();
-            client_mut.receiver_fiber_id = receiver_fiber_id;
-            client_mut.sender_fiber_id = sender_fiber_id;
+            client_mut.receiver_fiber_id = Some(receiver_fiber_id);
+            client_mut.sender_fiber_id = Some(sender_fiber_id);
         }
 
         Ok(Self(client))
@@ -340,13 +340,15 @@ impl Drop for Client {
             drop(client);
 
             // Cancel the worker fibers and wake them up so they can exit their loops
-            debug_assert!(receiver_fiber_id != FIBER_ID_INVALID);
-            fiber::cancel(receiver_fiber_id);
-            fiber::wakeup(receiver_fiber_id);
+            if let Some(id) = receiver_fiber_id {
+                fiber::cancel(id);
+                fiber::wakeup(id);
+            }
 
-            debug_assert!(sender_fiber_id != FIBER_ID_INVALID);
-            fiber::cancel(sender_fiber_id);
-            fiber::wakeup(sender_fiber_id);
+            if let Some(id) = sender_fiber_id {
+                fiber::cancel(id);
+                fiber::wakeup(id);
+            }
         } else {
             self.0.borrow_mut().clients_count -= 1;
         }
@@ -590,7 +592,7 @@ mod tests {
         // Receiver wakes and closes
         fiber::reschedule();
 
-        let fiber_id = client.0.borrow().sender_fiber_id;
+        let fiber_id = client.0.borrow().sender_fiber_id.unwrap();
         let fiber_exists = fiber::wakeup(fiber_id);
         debug_assert!(fiber_exists);
 
