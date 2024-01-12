@@ -45,8 +45,8 @@ pub struct ConnInner {
     stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
-    send_worker_join_handle: Cell<Option<fiber::JoinHandle<'static, ()>>>,
-    receive_worker_join_handle: Cell<Option<fiber::JoinHandle<'static, ()>>>,
+    send_worker_fiber_id: Cell<Option<fiber::FiberId>>,
+    receive_worker_fiber_id: Cell<Option<fiber::FiberId>>,
     triggers: RefCell<Option<Rc<dyn ConnTriggers>>>,
     error: RefCell<Option<io::Error>>,
 }
@@ -78,8 +78,8 @@ impl ConnInner {
             ),
             recv_queue: RecvQueue::new(options.recv_buffer_size),
 
-            send_worker_join_handle: Cell::new(None),
-            receive_worker_join_handle: Cell::new(None),
+            send_worker_fiber_id: Cell::new(None),
+            receive_worker_fiber_id: Cell::new(None),
 
             triggers: RefCell::new(triggers),
             error: RefCell::new(None),
@@ -89,21 +89,21 @@ impl ConnInner {
 
         // init recv fiber
         let weak_conn = Rc::downgrade(&conn_inner);
-        let jh = fiber::Builder::new()
+        let id = fiber::Builder::new()
             .name("_recv_worker")
             .func(|| recv_worker(weak_conn))
             // This yields but than almost immediately return control back to us.
-            .start()?;
-        conn_inner.receive_worker_join_handle.set(Some(jh));
+            .start_non_joinable()?;
+        conn_inner.receive_worker_fiber_id.set(Some(id));
 
         // init send fiber
         let weak_conn = Rc::downgrade(&conn_inner);
-        let jh = fiber::Builder::new()
+        let id = fiber::Builder::new()
             .name("_send_worker")
             .func(|| send_worker(weak_conn))
             // This yields but than almost immediately return control back to us.
-            .start()?;
-        conn_inner.send_worker_join_handle.set(Some(jh));
+            .start_non_joinable()?;
+        conn_inner.send_worker_fiber_id.set(Some(id));
 
         Ok(conn_inner)
     }
@@ -223,16 +223,16 @@ impl ConnInner {
 
         if !matches!(self.state.get(), ConnState::Closed) {
             self.disconnect();
+        }
 
-            if let Some(jh) = self.send_worker_join_handle.take() {
-                jh.cancel();
-                jh.join();
-            }
+        if let Some(id) = self.send_worker_fiber_id.take() {
+            fiber::cancel(id);
+            fiber::wakeup(id);
+        }
 
-            if let Some(jh) = self.receive_worker_join_handle.take() {
-                jh.cancel();
-                jh.join();
-            }
+        if let Some(id) = self.receive_worker_fiber_id.take() {
+            fiber::cancel(id);
+            fiber::wakeup(id);
         }
     }
 
@@ -390,10 +390,8 @@ impl ConnInner {
         self.update_state(ConnState::Closed);
         if let Some(stream) = self.stream.borrow().as_ref() {
             if stream.is_reader_acquired() {
-                let jh_ptr = self.receive_worker_join_handle.as_ptr();
-                // SAFETY: safe as long as this is only called from tx thread.
-                if let Some(jh) = unsafe { &*jh_ptr } {
-                    jh.wakeup();
+                if let Some(id) = self.receive_worker_fiber_id.get() {
+                    fiber::wakeup(id);
                 }
             }
         }

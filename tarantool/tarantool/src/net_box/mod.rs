@@ -230,3 +230,63 @@ impl Drop for Conn {
         }
     }
 }
+
+#[cfg(feature = "internal_test")]
+mod tests {
+    use super::*;
+    use crate::test::util::listen_port;
+
+    fn test_user_conn() -> Conn {
+        Conn::new(
+            ("localhost", listen_port()),
+            ConnOptions {
+                user: "test_user".into(),
+                password: "password".into(),
+                ..ConnOptions::default()
+            },
+            None,
+        )
+        .unwrap()
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn dont_drop_worker_join_handles() {
+        struct UnexpectedIOError;
+        impl ToTupleBuffer for UnexpectedIOError {
+            fn write_tuple_data(&self, _: &mut impl std::io::Write) -> Result<(), Error> {
+                Err(Error::other("some io error"))
+            }
+        }
+
+        let conn = test_user_conn();
+
+        let e = conn
+            .eval("return ...", &UnexpectedIOError, &Default::default())
+            .unwrap_err();
+        assert_eq!(e.to_string(), "some io error");
+
+        let e = conn
+            .eval("return ...", &[1], &Default::default())
+            .unwrap_err();
+        assert_eq!(e.to_string(), "io error: not connected");
+
+        // At this point we used to panic
+        conn.close();
+    }
+
+    // TODO: this test currently blocks on the second call for some reason
+    // #[crate::test(tarantool = "crate")]
+    // fn two_errors_in_a_row_bug() {
+    //     let conn = test_user_conn();
+    //
+    //     let e = conn
+    //         .eval("error 'oops'", &(), &Default::default())
+    //         .unwrap_err();
+    //     assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
+    //
+    //     let e = conn
+    //         .eval("error 'oops'", &(), &Default::default())
+    //         .unwrap_err();
+    //     assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
+    // }
+}
