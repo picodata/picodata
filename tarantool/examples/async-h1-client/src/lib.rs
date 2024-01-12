@@ -27,6 +27,7 @@ fn get(url: &str) -> http_types::Result<()> {
                 let stream = TcpStream::connect(host, 443)
                     .await
                     .map_err(http_types::Error::from_display)?;
+                let stream = UnsafeSendSyncTcpStream(stream);
                 let stream = async_native_tls::connect(host, stream).await?;
                 println!("Sending request over https...");
                 async_h1::connect(stream, req).await?
