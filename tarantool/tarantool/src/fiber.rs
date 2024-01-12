@@ -436,31 +436,6 @@ where
         Ok(jh)
     }
 
-    /// Spawns a new non-joinable fiber with the given configuration.
-    ///
-    /// Returns the new fiber's id.
-    ///
-    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
-    /// [`exists`], [`csw_of`], etc.
-    ///
-    /// Returns an error if
-    /// - spawning the fiber failed,
-    /// - fiber name contains a nul byte,
-    /// - fiber function returns a non zero-sized value.
-    ///
-    /// The current fiber performs a **yield** and the execution is transfered
-    /// to the new fiber immediately.
-    #[inline(always)]
-    pub fn start_non_joinable(self) -> crate::Result<FiberId> {
-        let (name, f, attr) = self.into_fiber_args();
-
-        let res = Fyber::spawn_and_yield(name, f, false, attr.as_ref())?;
-        let Err(id) = res else {
-            unreachable!("spawn_and_yield returns the fiber id when is_joinable = false");
-        };
-        Ok(id)
-    }
-
     /// Spawns a new deferred joinable fiber with the given configuration.
     ///
     /// **NOTE:** On older versions of tarantool this will create a lua fiber
@@ -491,41 +466,6 @@ where
             unreachable!("spawn_deferred returns the join handle when is_joinable = true");
         };
         Ok(jh)
-    }
-
-    /// Spawns a new deferred non-joinable fiber with the given configuration.
-    ///
-    /// Returns the new fiber's id, if the corresponding api is supported in
-    /// current tarantool executable (i.e. [`has_fiber_id`] returns `true`),
-    /// otherwise returns `None`.
-    ///
-    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
-    /// [`exists`], [`csw_of`], etc.
-    ///
-    /// Returns an error if
-    /// - spawning the fiber failed,
-    /// - fiber function returns a non zero-sized value,
-    /// - fiber name contains a nul byte,
-    /// - the necessary api is not supported on current tarantool version
-    ///   (i.e. [`ffi::has_fiber_set_ctx`] returns `false`).
-    ///
-    /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
-    #[inline(always)]
-    pub fn defer_non_joinable(self) -> crate::Result<Option<FiberId>> {
-        let (name, f, attr) = self.into_fiber_args();
-
-        // SAFETY this is safe as long as we only call this from the tx thread.
-        if !unsafe { crate::ffi::has_fiber_set_ctx() } {
-            #[rustfmt::skip]
-            set_error!(TarantoolErrorCode::Unsupported, "deferred non-joinable fibers are not supported in current tarantool version (fiber_set_ctx API is required)");
-            return Err(TarantoolError::last().into());
-        }
-
-        let res = Fyber::spawn_deferred(name, f, false, attr.as_ref())?;
-        let Err(id) = res else {
-            unreachable!("spawn_deferred returns the fiber id when is_joinable = false");
-        };
-        Ok(id)
     }
 
     /// Spawns a new joinable deferred fiber with the given configuration.
@@ -575,6 +515,93 @@ where
 
         (name, f, attr)
     }
+}
+
+impl<F, T> Builder<F>
+where
+    F: FnOnce() -> T + 'static,
+    T: 'static,
+{
+    /// Spawns a new non-joinable fiber with the given configuration.
+    ///
+    /// Returns the new fiber's id.
+    ///
+    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
+    /// [`exists`], [`csw_of`], etc.
+    ///
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber name contains a nul byte,
+    /// - fiber function returns a non zero-sized value.
+    ///
+    /// The current fiber performs a **yield** and the execution is transfered
+    /// to the new fiber immediately.
+    #[inline(always)]
+    pub fn start_non_joinable(self) -> crate::Result<FiberId> {
+        let (name, f, attr) = self.into_fiber_args();
+
+        let res = Fyber::spawn_and_yield(name, f, false, attr.as_ref())?;
+        let Err(id) = res else {
+            unreachable!("spawn_and_yield returns the fiber id when is_joinable = false");
+        };
+        Ok(id)
+    }
+
+    /// Spawns a new deferred non-joinable fiber with the given configuration.
+    ///
+    /// Returns the new fiber's id, if the corresponding api is supported in
+    /// current tarantool executable (i.e. [`has_fiber_id`] returns `true`),
+    /// otherwise returns `None`.
+    ///
+    /// The fiber id can be used for example with [`wakeup`], [`cancel`],
+    /// [`exists`], [`csw_of`], etc.
+    ///
+    /// Returns an error if
+    /// - spawning the fiber failed,
+    /// - fiber function returns a non zero-sized value,
+    /// - fiber name contains a nul byte,
+    /// - the necessary api is not supported on current tarantool version
+    ///   (i.e. [`ffi::has_fiber_set_ctx`] returns `false`).
+    ///
+    /// [`ffi::has_fiber_set_ctx`]: crate::ffi::has_fiber_set_ctx
+    #[inline(always)]
+    pub fn defer_non_joinable(self) -> crate::Result<Option<FiberId>> {
+        let (name, f, attr) = self.into_fiber_args();
+
+        // SAFETY this is safe as long as we only call this from the tx thread.
+        if !unsafe { crate::ffi::has_fiber_set_ctx() } {
+            #[rustfmt::skip]
+            set_error!(TarantoolErrorCode::Unsupported, "deferred non-joinable fibers are not supported in current tarantool version (fiber_set_ctx API is required)");
+            return Err(TarantoolError::last().into());
+        }
+
+        let res = Fyber::spawn_deferred(name, f, false, attr.as_ref())?;
+        let Err(id) = res else {
+            unreachable!("spawn_deferred returns the fiber id when is_joinable = false");
+        };
+        Ok(id)
+    }
+
+    /// This is just a doc test to check some code doesn't compile. It's not
+    /// in the doc comment of the corresponding functions, because I don't want
+    /// to polute them with ugly test code.
+    ///
+    /// ```compile_fail
+    /// use tarantool::fiber;
+    /// let short_lifetime = String::from("foo");
+    /// fiber::Builder::new()
+    ///     .func(|| dbg!(&short_lifetime))
+    ///     .start_non_joinable();
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use tarantool::fiber;
+    /// let short_lifetime = String::from("foo");
+    /// fiber::Builder::new()
+    ///     .func(|| dbg!(&short_lifetime))
+    ///     .defer_non_joinable();
+    /// ```
+    const _TEST_NON_STATIC_FIBER_FUNCS_DONT_COMPILE: () = ();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2474,9 +2501,10 @@ mod tests {
             assert!(!fiber::exists(id));
 
             // Cancel a non-joinable fiber before it starts
-            let is_cancelled = Cell::new(None);
+            let is_cancelled = Rc::new(Cell::new(None));
+            let is_cancelled_tx = is_cancelled.clone();
             let id = fiber::Builder::new()
-                .func(|| is_cancelled.set(Some(fiber::is_cancelled())))
+                .func(move || is_cancelled_tx.set(Some(fiber::is_cancelled())))
                 .defer_non_joinable()
                 .unwrap()
                 .unwrap();
@@ -2499,12 +2527,13 @@ mod tests {
                 .unwrap()
         } else {
             // This is the best you can do, if `has_fiber_id` returns `false`.
-            let id = Cell::new(None);
+            let id = Rc::new(Cell::new(None));
+            let id_tx = id.clone();
 
             let maybe_id = fiber::Builder::new()
-                .func(|| {
+                .func(move || {
                     // This will do the lua implementation
-                    id.set(Some(fiber::id()));
+                    id_tx.set(Some(fiber::id()));
                     while !fiber::is_cancelled() {
                         fiber::fiber_yield();
                     }
