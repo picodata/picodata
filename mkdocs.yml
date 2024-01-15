@@ -49,6 +49,9 @@ nav:
     - architecture/raft_failover.md
     - architecture/system_tables.md
 
+  - Обеспечение безопасности:
+    - security/runtime.md
+
 # Настройки темы Material
   ## name, custom_dir — https://squidfunk.github.io/mkdocs-material/customization/#setup-and-theme-structure
   ## font — https://squidfunk.github.io/mkdocs-material/setup/changing-the-fonts/#regular-font
