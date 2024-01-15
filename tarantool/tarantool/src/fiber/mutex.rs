@@ -188,7 +188,6 @@ impl<T: ?Sized> Mutex<T> {
     #[inline]
     #[track_caller]
     fn log_lock_location(&self) {
-        use crate::log::{say, SayLevel};
         use std::borrow::Cow;
 
         let caller = Location::caller();
@@ -197,13 +196,7 @@ impl<T: ?Sized> Mutex<T> {
         } else {
             format!("can't lock mutex at {caller}, already locked at unknown location").into()
         };
-        say(
-            SayLevel::Verbose,
-            std::file!(),
-            std::line!() as _,
-            None,
-            &msg,
-        );
+        crate::say_verbose!("{msg}");
     }
 }
 

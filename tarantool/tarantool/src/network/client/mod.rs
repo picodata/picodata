@@ -325,15 +325,7 @@ impl Drop for Client {
             // never wake up, because our async runtime blocks forever until the
             // future is ready.
             if let Err(e) = client.stream.close() {
-                // FIXME: do this instead
-                // crate::say_error!("Client::drop: failed closing tcp stream: {e}");
-                crate::log::say(
-                    crate::log::SayLevel::Error,
-                    file!(),
-                    line!() as _,
-                    None,
-                    &format!("Client::drop: failed closing tcp stream: {e}"),
-                )
+                crate::say_error!("Client::drop: failed closing tcp stream: {e}");
             }
 
             // Drop ref before executing code that switches fibers.
@@ -437,15 +429,7 @@ async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: TcpStream) 
                     .send(Ok(()))
                     .expect("cannot be closed at this point");
             } else {
-                // FIXME: do this instead
-                // crate::say_warn!("received unwaited message for {sync:?}");
-                crate::log::say(
-                    crate::log::SayLevel::Warn,
-                    file!(),
-                    line!() as _,
-                    None,
-                    &format!("received unwaited message for {sync:?}"),
-                )
+                crate::say_warn!("received unwaited message for {sync:?}");
             }
         }
 

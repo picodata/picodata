@@ -118,15 +118,7 @@ impl TcpStream {
         if rc != 0 {
             let e = io::Error::last_os_error();
             if e.raw_os_error() == Some(libc::EBADF) {
-                // FIXME: do this instead
-                // crate::say_error!("close({fd}): Bad file descriptor");
-                crate::log::say(
-                    crate::log::SayLevel::Error,
-                    file!(),
-                    line!() as _,
-                    None,
-                    &format!("close({fd}): Bad file descriptor"),
-                );
+                crate::say_error!("close({fd}): Bad file descriptor");
                 if cfg!(debug_assertions) {
                     panic!("close({}): Bad file descriptor", fd);
                 }
@@ -325,15 +317,7 @@ impl AsyncRead for TcpStream {
 impl Drop for TcpStream {
     fn drop(&mut self) {
         if let Err(e) = self.close() {
-            // FIXME: do this instead
-            // crate::say_error!("TcpStream::drop: closing tcp stream failed: {e}");
-            crate::log::say(
-                crate::log::SayLevel::Error,
-                file!(),
-                line!() as _,
-                None,
-                &format!("TcpStream::drop: closing tcp stream failed: {e}"),
-            );
+            crate::say_error!("TcpStream::drop: closing tcp stream failed: {e}");
         }
     }
 }
