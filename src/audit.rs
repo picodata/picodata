@@ -187,7 +187,7 @@ impl AuditSerializer {
 
 /// Special fmt string to let [`say_format_audit`] know that
 /// the caller has already applied json formatting to inputs.
-const AUDIT_FMT_MAGIC: &std::ffi::CStr = unsafe { tarantool::c_str!("json") };
+const AUDIT_FMT_MAGIC: &std::ffi::CStr = tarantool::c_str!("json");
 
 // We don't need certain fields (e.g. fiber name) in audit log entries,
 // so we have to implement the format logic ourselves.

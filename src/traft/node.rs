@@ -754,7 +754,13 @@ impl NodeImpl {
                             Dml::Update { key, .. } => s.get(key),
                             Dml::Delete { key, .. } => s.get(key),
                             Dml::Replace { tuple, .. } => {
-                                let key = s.primary_key().extract_key(Tuple::from(tuple));
+                                let tuple = Tuple::from(tuple);
+                                let index = s.primary_key();
+                                // Safety: safe as long as `tuple` has the correct format
+                                // for the `index`, which should be checked via cas before
+                                // this log entry is committed.
+                                // TODO: rewrite using the safe `KeyDef::extract_key` alternative
+                                let key = unsafe { index.extract_key(tuple) };
                                 s.get(&key)
                             }
                         }
