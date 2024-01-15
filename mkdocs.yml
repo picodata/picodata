@@ -50,6 +50,7 @@ nav:
     - architecture/system_tables.md
 
   - Обеспечение безопасности:
+    - security/os.md
     - security/runtime.md
 
 # Настройки темы Material
