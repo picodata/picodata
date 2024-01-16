@@ -647,11 +647,11 @@ pub(crate) fn setup(args: &args::Run) {
 
             let node = traft::node::global()?;
             let mut node_impl = node.node_impl();
-            let index = node_impl.propose(op)?;
+            let entry_id = node_impl.propose_async(op)?;
             node.main_loop.wakeup();
             // Release the lock
             drop(node_impl);
-            Ok(index)
+            Ok(entry_id.index)
         }),
     );
 

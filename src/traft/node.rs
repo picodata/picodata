@@ -517,14 +517,24 @@ impl NodeImpl {
     ///
     /// Returns id of the proposed entry, which can be used to await it's
     /// application.
-    /// NOTE: the entry may not actually be committed, and the entry at that
+    ///
+    /// Returns an error if current instance is not a raft leader, because
+    /// followers should propose raft log entries via [`proc_cas`].
+    ///
+    /// NOTE: the proposed entry may still be dropped, and the entry at that
     /// index may be some other one. It's the callers responsibility to verify
     /// which entry got committed.
+    ///
+    /// [`proc_cas`]: crate::cas::proc_cas
     #[inline]
-    pub fn propose_async<T>(&mut self, op: T) -> Result<RaftEntryId, RaftError>
+    pub fn propose_async<T>(&mut self, op: T) -> Result<RaftEntryId, Error>
     where
         T: Into<Op>,
     {
+        if self.raw_node.raft.state != RaftStateRole::Leader {
+            return Err(Error::NotALeader);
+        }
+
         let index_before = self.raw_node.raft.raft_log.last_index();
 
         let ctx = traft::EntryContext::Op(op.into());
@@ -536,17 +546,6 @@ impl NodeImpl {
 
         let entry_id = RaftEntryId { term, index };
         Ok(entry_id)
-    }
-
-    /// Proposes a raft entry to be appended to the log and returns raft index
-    /// at which it is expected to be committed unless it gets rejected.
-    ///
-    /// **Doesn't yield**
-    pub fn propose(&mut self, op: Op) -> Result<RaftIndex, RaftError> {
-        let ctx = traft::EntryContext::Op(op);
-        self.raw_node.propose(ctx.into_raft_ctx(), vec![])?;
-        let index = self.raw_node.raft.raft_log.last_index();
-        Ok(index)
     }
 
     pub fn campaign(&mut self) -> Result<(), RaftError> {

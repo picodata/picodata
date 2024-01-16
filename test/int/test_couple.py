@@ -8,15 +8,6 @@ def cluster2(cluster: Cluster):
     return cluster
 
 
-def test_follower_proposal(cluster2: Cluster):
-    i1, i2 = cluster2.instances
-    i1.promote_or_fail()
-
-    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
-
-    i2.raft_propose_nop()
-
-
 def test_switchover(cluster2: Cluster):
     i1, i2 = cluster2.instances
 
@@ -76,7 +67,6 @@ def test_restart_leader(cluster2: Cluster):
     i1.restart()
     i1.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
-    i1.raft_propose_nop()
 
     i1.restart()
     i1.wait_online()
