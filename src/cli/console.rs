@@ -103,13 +103,20 @@ impl Console {
             .unwrap_or_default()
             .join(Path::new(Self::HISTORY_FILE_NAME));
 
-        editor.load_history(&history_file_path)?;
+        // We're ok with history load failures. E g this is the case
+        // for first launch when history file doesnt exist yet
+        let _ = editor.load_history(&history_file_path);
 
         Ok(Console {
             editor,
             history_file_path,
             prompt: prompt.to_string(),
         })
+    }
+
+    fn update_history(&mut self, line: &str) -> Result<()> {
+        self.editor.add_history_entry(line)?;
+        Ok(self.editor.save_history(&self.history_file_path)?)
     }
 
     /// Reads from stdin. Takes into account treating special symbols.
@@ -123,8 +130,9 @@ impl Console {
                         ControlFlow::Break(line) => line,
                     };
 
-                    self.editor.add_history_entry(line.as_str())?;
-                    self.editor.save_history(&self.history_file_path)?;
+                    if let Err(e) = self.update_history(&line) {
+                        println!("{}: {}", self.history_file_path.display(), e);
+                    }
 
                     return Ok(Some(line));
                 }
