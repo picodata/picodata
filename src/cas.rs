@@ -159,7 +159,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
         });
     }
     if status.leader_id != Some(node.raft_id()) {
-        // Nearly impossible error indicating invalid request.
+        // Invalid request. This node is not a leader at this moment.
         return Err(TraftError::NotALeader);
     }
 
@@ -274,23 +274,31 @@ fn proc_cas_local(req: Request) -> Result<Response> {
         req.predicate.check_entry(entry.index, &op, storage)?;
     }
 
-    if let Op::Dml(dml) = &req.op {
-        // Check if the requested dml is applicable to the local storage.
-        // This will run the required on_replace triggers which will check among
-        // other things conformity to space format, user defined constraints etc.
-        //
-        // FIXME: this works for explicit constraints which would be directly
-        // violated by the operation, but there are still some cases where an
-        // invalid dml operation would be proposed to the raft log, which would
-        // fail to apply, e.g. if there's a number of dml operations in flight
-        // which conflict via the secondary key.
-        // To fix these cases we would need to implement the so-called "limbo".
-        // See https://git.picodata.io/picodata/picodata/picodata/-/issues/368
-        transaction::begin()?;
-        let res = storage.do_dml(dml);
-        transaction::rollback().expect("can't fail");
-        // Return the error if it happened. Ignore the tuple if there was one.
-        _ = res?;
+    // Performs preliminary checks on an operation so that it will not fail when applied.
+    match &req.op {
+        Op::Dml(dml) => {
+            // Check if the requested dml is applicable to the local storage.
+            // This will run the required on_replace triggers which will check among
+            // other things conformity to space format, user defined constraints etc.
+            //
+            // FIXME: this works for explicit constraints which would be directly
+            // violated by the operation, but there are still some cases where an
+            // invalid dml operation would be proposed to the raft log, which would
+            // fail to apply, e.g. if there's a number of dml operations in flight
+            // which conflict via the secondary key.
+            // To fix these cases we would need to implement the so-called "limbo".
+            // See https://git.picodata.io/picodata/picodata/picodata/-/issues/368
+            transaction::begin()?;
+            let res = storage.do_dml(dml);
+            transaction::rollback().expect("can't fail");
+            // Return the error if it happened. Ignore the tuple if there was one.
+            _ = res?;
+        }
+        // We can't use a `do_acl` inside of a transaction here similarly to `do_dml`,
+        // as acl should be applied only on replicaset leader. Raft leader is not always
+        // a replicaset leader.
+        Op::Acl(acl) => acl.validate()?,
+        _ => (),
     }
 
     // Don't wait for the proposal to be accepted, instead return the index

@@ -1,6 +1,9 @@
-use crate::schema::{Distribution, PrivilegeDef, RoleDef, UserDef};
+use crate::schema::{
+    Distribution, PrivilegeDef, RoleDef, UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
+};
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
+use crate::traft::error::Error as TRaftError;
 use ::tarantool::auth::AuthDef;
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
@@ -592,6 +595,40 @@ impl Acl {
             Self::GrantPrivilege { priv_def } => priv_def.schema_version(),
             Self::RevokePrivilege { priv_def, .. } => priv_def.schema_version(),
         }
+    }
+
+    /// Performs preliminary checks on acl so that it will not fail when applied.
+    /// These checks do not include authorization checks, which are done separately in
+    /// [`crate::access_control::access_check_op`].
+    pub fn validate(&self) -> Result<(), TRaftError> {
+        // THOUGHT: should we move access_check_* fns here as it's done in tarantool?
+        match self {
+            Self::ChangeAuth { user_id, .. } => {
+                // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L2925
+                if *user_id == GUEST_ID {
+                    return Err(TRaftError::other(
+                        "altering guest user's password is not allowed",
+                    ));
+                }
+            }
+            Self::DropUser { user_id, .. } => {
+                // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L3080
+                if *user_id == GUEST_ID || *user_id == ADMIN_ID {
+                    return Err(TRaftError::other("dropping system user is not allowed"));
+                }
+                // user_has_data will be successful in any case https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L2846
+                // as box.schema.user.drop(..) deletes all the related spaces/priveleges/etc.
+            }
+
+            Self::DropRole { role_id, .. } => {
+                // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L3080
+                if *role_id == PUBLIC_ID || *role_id == SUPER_ID {
+                    return Err(TRaftError::other("dropping system role is not allowed"));
+                }
+            }
+            _ => (),
+        }
+        Ok(())
     }
 }
 

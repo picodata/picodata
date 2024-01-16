@@ -1053,5 +1053,27 @@ def test_circular_grants_for_role(cluster: Cluster):
     throws_on_grant("Son", "Son")
 
 
+def test_alter_system_user(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    with pytest.raises(
+        ReturnError,
+        match="altering guest user's password is not allowed",
+    ):
+        i1.sql("alter user \"guest\" with password '12345678'")
+
+    with pytest.raises(
+        ReturnError,
+        match="dropping system user is not allowed",
+    ):
+        i1.sql('drop user "guest"')
+
+    with pytest.raises(
+        ReturnError,
+        match="dropping system role is not allowed",
+    ):
+        i1.sql('drop role "public"')
+
+
 # TODO: test acl get denied when there's an unfinished ddl
 # TODO: check various retryable cas outcomes when doing schema change requests
