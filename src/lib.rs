@@ -479,6 +479,10 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     std::fs::create_dir_all(&args.data_dir).unwrap();
     tarantool::set_cfg(cfg);
 
+    if args.shredding {
+        tarantool::xlog_set_remove_file_impl();
+    }
+
     // Load Lua libraries
     preload_vshard();
     preload_http();

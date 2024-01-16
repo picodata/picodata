@@ -1,4 +1,6 @@
+use file_shred::*;
 use std::ffi::CStr;
+use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -262,4 +264,86 @@ pub fn exit(code: i32) -> ! {
     extern "C" {
         fn tarantool_exit(code: i32);
     }
+}
+
+extern "C" {
+    /// This variable need to replace the implemetation of function
+    /// uses by xlog_remove_file() to removes an .xlog and .snap files.
+    /// <https://git.picodata.io/picodata/tarantool/-/blob/2.11.2-picodata/src/box/xlog.c#L2145>
+    ///
+    /// In default implementation:
+    /// On success, set the 'existed' flag to true if the file existed and was
+    /// actually deleted or to false otherwise and returns 0. On failure, sets
+    /// diag and returns -1.
+    ///
+    /// Note that default function didn't treat ENOENT as error and same behavior
+    /// mostly recommended.
+    pub static mut xlog_remove_file_impl: extern "C" fn(
+        filename: *const std::os::raw::c_char,
+        existed: *mut bool,
+    ) -> std::os::raw::c_int;
+}
+
+pub fn xlog_set_remove_file_impl() {
+    unsafe { xlog_remove_file_impl = xlog_remove_cb };
+}
+
+extern "C" fn xlog_remove_cb(
+    filename: *const std::os::raw::c_char,
+    existed: *mut bool,
+) -> std::os::raw::c_int {
+    const OVERWRITE_COUNT: u32 = 6;
+    const RENAME_COUNT: u32 = 4;
+
+    let c_str = unsafe { std::ffi::CStr::from_ptr(filename) };
+    let os_str = std::ffi::OsStr::from_bytes(c_str.to_bytes());
+    let path: &std::path::Path = os_str.as_ref();
+
+    let filename = path.display();
+    crate::tlog!(Info, "shredding started for: {filename}");
+    crate::audit!(
+        message: "shredding started for {filename}",
+        title: "shredding_started",
+        severity: Low,
+        filename: &filename,
+    );
+
+    let path_exists = path.exists();
+    unsafe { *existed = path_exists };
+
+    if !path_exists {
+        return 0;
+    }
+
+    let config = ShredConfig::<std::path::PathBuf>::non_interactive(
+        vec![std::path::PathBuf::from(path)],
+        Verbosity::Debug,
+        crate::error_injection::is_enabled("KEEP_FILES_AFTER_SHREDDING"),
+        OVERWRITE_COUNT,
+        RENAME_COUNT,
+    );
+
+    return match shred(&config) {
+        Ok(_) => {
+            crate::tlog!(Info, "shredding finished for: {filename}");
+            crate::audit!(
+                message: "shredding finished for {filename}",
+                title: "shredding_finished",
+                severity: Low,
+                filename: &filename,
+            );
+            0
+        }
+        Err(err) => {
+            crate::tlog!(Error, "shredding failed due to: {err}");
+            crate::audit!(
+                message: "shredding failed for {filename}",
+                title: "shredding_failed",
+                severity: Low,
+                error: &err,
+                filename: &filename,
+            );
+            -1
+        }
+    };
 }

@@ -413,3 +413,34 @@ def test_proc_runtime_info(instance: Instance):
             governor_loop_status="idle",
         ),
     )
+
+
+def test_file_shredding(cluster: Cluster, tmp_path):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env["PICODATA_SHREDDING"] = "1"
+    i1.start()
+    i1.wait_online()
+
+    i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", True)
+
+    with open(os.path.join(tmp_path, "i1/00000000000000000000.xlog"), "rb") as xlog:
+        xlog_before_shred = xlog.read(100)
+    with open(os.path.join(tmp_path, "i1/00000000000000000000.snap"), "rb") as snap:
+        snap_before_shred = snap.read(100)
+
+    # allow only one snapshot at a time
+    i1.eval("box.cfg{ checkpoint_count = 1 }")
+
+    # make a new snapshot to give the gc a reason to remove the old one immediately
+    # do it twice to remove an old xlog too
+    i1.eval("box.snapshot(); box.snapshot()")
+
+    with open(os.path.join(tmp_path, "i1/00000000000000000000.xlog"), "rb") as xlog:
+        xlog_after_shred = xlog.read(100)
+    with open(os.path.join(tmp_path, "i1/00000000000000000000.snap"), "rb") as snap:
+        snap_after_shred = snap.read(100)
+
+    i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", False)
+
+    assert xlog_before_shred != xlog_after_shred
+    assert snap_before_shred != snap_after_shred

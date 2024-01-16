@@ -174,6 +174,11 @@ pub struct Run {
     /// 3. Write to syslog (e.g. `--audit=syslog:`).
     #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
     pub audit: Option<String>,
+
+    #[clap(long = "shredding", env = "PICODATA_SHREDDING")]
+    /// Shred (not only delete) .xlog and .snap files on rotation
+    /// for the security reasons.
+    pub shredding: bool,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.

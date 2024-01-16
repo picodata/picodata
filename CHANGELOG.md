@@ -117,6 +117,8 @@ with the `YY.0M.MICRO` scheme.
 
 - Block a user after 4 failed login attempts.
 
+- New option `picodata run --shredding` enables secure removing of data files (snap, xlog).
+
 ### Lua API
 
 - Changes in terminology - all appearances of `space` changed to `table`
