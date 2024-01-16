@@ -109,7 +109,7 @@ def test_connection_refused(binary_path: str):
     eprint("")
     cli = pexpect.spawn(
         command=binary_path,
-        args=["connect", ":0", "-u", "testuser"],
+        args=["connect", "127.0.0.1:0", "-u", "testuser"],
         encoding="utf-8",
         timeout=1,
     )
@@ -118,7 +118,7 @@ def test_connection_refused(binary_path: str):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("")
 
-    cli.expect_exact("failed to connect to address 'localhost:0'")
+    cli.expect_exact("failed to connect to address '127.0.0.1:0'")
     cli.expect_exact("Connection refused (os error 111)")
     cli.expect_exact(pexpect.EOF)
 
