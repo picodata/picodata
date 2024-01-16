@@ -36,7 +36,6 @@
 pub mod reconnect;
 pub mod tcp;
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::rc::Rc;
@@ -52,6 +51,7 @@ use crate::fiber;
 use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::FiberId;
+use crate::fiber::NoYieldsRefCell;
 use crate::tuple::{ToTupleBuffer, Tuple};
 use crate::unwrap_ok_or;
 
@@ -173,7 +173,7 @@ fn maybe_wake_sender(client: &ClientInner) {
 /// See [`super::client`] for examples and [`AsClient`] trait for API.
 // WARNING: Attention should be payed not to borrow inner client across await and yield points.
 #[derive(Debug)]
-pub struct Client(Rc<RefCell<ClientInner>>);
+pub struct Client(Rc<NoYieldsRefCell<ClientInner>>);
 
 impl Client {
     /// Creates a new client and tries to establish connection
@@ -202,7 +202,7 @@ impl Client {
             .await
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
-        let client = Rc::new(RefCell::new(client));
+        let client = Rc::new(NoYieldsRefCell::new(client));
 
         let receiver_fiber_id = fiber::Builder::new()
             .func_async(receiver(client.clone(), stream.clone()))
@@ -397,7 +397,7 @@ macro_rules! handle_result {
 }
 
 /// Sender work loop. Yields on each iteration and during awaits.
-async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: TcpStream) {
+async fn sender(client: Rc<NoYieldsRefCell<ClientInner>>, mut writer: TcpStream) {
     loop {
         if client.borrow().state.is_closed() || fiber::is_cancelled() {
             return;
@@ -415,11 +415,11 @@ async fn sender(client: Rc<RefCell<ClientInner>>, mut writer: TcpStream) {
 }
 
 /// Receiver work loop. Yields on each iteration and during awaits.
-// Clippy falsely reports that we're holding a `RefCell` reference across an
+// Clippy falsely reports that we're holding a `NoYieldsRefCell` reference across an
 // `await`, even though we're explicitly dropping the reference right before
 // awaiting. Thank you clippy, very helpful!
 #[allow(clippy::await_holding_refcell_ref)]
-async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: TcpStream) {
+async fn receiver(client_cell: Rc<NoYieldsRefCell<ClientInner>>, mut reader: TcpStream) {
     let mut buf = vec![0_u8; 4096];
     loop {
         let client = client_cell.borrow();
