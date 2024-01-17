@@ -53,6 +53,7 @@ nav:
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
+    - security/audit_log.md
 
 # Настройки темы Material
   ## name, custom_dir — https://squidfunk.github.io/mkdocs-material/customization/#setup-and-theme-structure

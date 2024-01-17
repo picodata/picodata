@@ -114,3 +114,7 @@ tail -f /tmp/audit.log
 ```bash
 journalctl -f _COMM=picodata
 ```
+
+См. также:
+
+- [Журнал аудита в защищенной ОС](../security/audit_log.md)
