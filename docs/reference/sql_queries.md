@@ -236,7 +236,7 @@ CREATE TABLE "characters" (
             "year" INTEGER,
             PRIMARY KEY ("id")
 )
-USING MEMTX DISTRIBUTED BY ("ID")
+USING MEMTX DISTRIBUTED BY ("id")
 OPTION (TIMEOUT = 3.0);
 ```
 
