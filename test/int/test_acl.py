@@ -88,10 +88,6 @@ def test_max_login_attempts(cluster: Cluster):
 def test_acl_lua_api(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    #
-    # pico.create_user
-    #
-
     # No user -> error.
     with pytest.raises(ReturnError, match="user should be a string"):
         i1.call("pico.create_user")
