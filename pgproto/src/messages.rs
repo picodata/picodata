@@ -1,8 +1,12 @@
 use crate::stream::BeMessage;
 use pgwire::error::ErrorInfo;
-use pgwire::messages::data::{DataRow, RowDescription};
+use pgwire::messages::data::{self, DataRow, ParameterDescription, RowDescription};
+use pgwire::messages::extendedquery::{
+    BindComplete, CloseComplete, ParseComplete, PortalSuspended,
+};
 use pgwire::messages::response::SslResponse;
 use pgwire::messages::{response, startup::*};
+use postgres_types::Oid;
 
 /// MD5AuthRequest requests md5 password from the frontend.
 pub fn md5_auth_request(salt: &[u8; 4]) -> BeMessage {
@@ -46,4 +50,28 @@ pub fn data_row(data_row: DataRow) -> BeMessage {
 
 pub fn ssl_refuse() -> BeMessage {
     BeMessage::SslResponse(SslResponse::Refuse)
+}
+
+pub fn parse_complete() -> BeMessage {
+    BeMessage::ParseComplete(ParseComplete::new())
+}
+
+pub fn no_data() -> BeMessage {
+    BeMessage::NoData(data::NoData::new())
+}
+
+pub fn bind_complete() -> BeMessage {
+    BeMessage::BindComplete(BindComplete::new())
+}
+
+pub fn portal_suspended() -> BeMessage {
+    BeMessage::PortalSuspended(PortalSuspended::new())
+}
+
+pub fn close_complete() -> BeMessage {
+    BeMessage::CloseComplete(CloseComplete::new())
+}
+
+pub fn parameter_description(type_ids: Vec<Oid>) -> BeMessage {
+    BeMessage::ParameterDescription(ParameterDescription::new(type_ids))
 }

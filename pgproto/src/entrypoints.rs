@@ -4,7 +4,7 @@ use crate::{
     client::ClientId,
     error::{PgError, PgResult},
     storage::{
-        describe::{Describe, QueryType},
+        describe::{Describe, PortalDescribe, QueryType, StatementDescribe},
         result::ExecuteResult,
         value::PgValue,
     },
@@ -83,7 +83,45 @@ pub struct Entrypoints {
     /// No resources to be free after the call.
     simple_query: Entrypoint,
 
-    /// Close client statements and portals by the given client id.
+    /// Handler for a Parse message.
+    /// Create a statement from a query query and store it in the sbroad storage using the given id and name as a key.
+    /// In case of conflicts the strategy is the same with PG.
+    ///
+    /// The statement lasts until it is explicitly closed.
+    parse: Entrypoint,
+
+    /// Handler for a Bind message.
+    /// Copy the sources statement, create a portal by binding parameters to it and stores the portal in the sbroad storage.
+    /// In case of conflicts the strategy is the same with PG.
+    ///
+    /// The portal lasts until it is explicitly closed or executed.
+    bind: Entrypoint,
+
+    /// Handler for an Execute message.
+    ///
+    /// Remove a portal from the sbroad storage, run it til the end and return the result.
+    execute: Entrypoint,
+
+    /// Handler for a Describe message.
+    /// Get a statement description.
+    describe_statement: Entrypoint,
+
+    /// Handler for a Describe message.
+    /// Get a portal description.
+    describe_portal: Entrypoint,
+
+    /// Handler for a Close message.
+    /// Close a portal. It's not an error to close a nonexistent portal.
+    close_portal: Entrypoint,
+
+    /// Handler for a Close message.
+    /// Close a statement with its portals. It's not an error to close a nonexistent statement.
+    close_statement: Entrypoint,
+
+    /// Close client portals by the given client id.
+    close_client_portals: Entrypoint,
+
+    /// Close client statements with its portals by the given client id.
     close_client_statements: Entrypoint,
 }
 
@@ -150,9 +188,108 @@ impl Entrypoints {
             ",
         )?;
 
+        let parse = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local client_id, name, sql = ...
+            local res, err = pico.pg_parse(client_id, name, sql, {})
+            if res == nil then
+                error(err)
+            end
+            ",
+        )?;
+
+        let bind = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local res, err = pico.pg_bind(...)
+            if res == nil then
+                error(err)
+            end
+            ",
+        )?;
+
+        let execute = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local id, portal = ...
+            local desc, err = pico.pg_describe_portal(id, portal)
+            if desc == nil then
+                error(err)
+            end
+
+            local res, err = pico.pg_execute(id, portal)
+            if res == nil then
+                error(err)
+            end
+
+            return require('json').encode({['describe'] = desc, ['result'] = res})
+            ",
+        )?;
+
+        let describe_portal = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local res, err = pico.pg_describe_portal(...)
+            if res == nil then
+                error(err)
+            end
+            return require('json').encode(res)
+            ",
+        )?;
+
+        let describe_statement = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local res, err = pico.pg_describe_stmt(...)
+            if res == nil then
+                error(err)
+            end
+            return require('json').encode(res)
+            ",
+        )?;
+
+        let close_portal = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local res, err = pico.pg_close_portal(...)
+            if res == nil then
+                error(err)
+            end
+            ",
+        )?;
+
+        let close_statement = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local res, err = pico.pg_close_stmt(...)
+            if res == nil then
+                error(err)
+            end
+            ",
+        )?;
+
+        let close_client_portals = LuaFunction::load(
+            tarantool::lua_state(),
+            "
+            local res, err = pico.pg_close_client_portals(...)
+            if res == nil then
+                error(err)
+            end
+            ",
+        )?;
+
         Ok(Self {
             simple_query,
             close_client_statements,
+            parse,
+            bind,
+            execute,
+            describe_portal,
+            describe_statement,
+            close_portal,
+            close_statement,
+            close_client_portals,
         })
     }
 
@@ -165,9 +302,77 @@ impl Entrypoints {
         execute_result_from_json(&json)
     }
 
+    /// Handler for a Parse message. See self.parse for the details.
+    pub fn parse(&self, client_id: ClientId, name: &str, sql: &str) -> PgResult<()> {
+        self.parse
+            .call_with_args((client_id, name, sql))
+            .map_err(|e| PgError::TarantoolError(e.into()))
+    }
+
+    /// Handler for a Bind message. See self.bind for the details.
+    pub fn bind(&self, id: ClientId, statement: &str, portal: &str) -> PgResult<()> {
+        self.bind
+            .call_with_args((id, statement, portal))
+            .map_err(|e| PgError::TarantoolError(e.into()))
+    }
+
+    /// Handler for an Execute message. See self.execute for the details.
+    pub fn execute(&self, id: ClientId, portal: &str) -> PgResult<ExecuteResult> {
+        let json: String = self
+            .execute
+            .call_with_args((id, portal))
+            .map_err(|e| PgError::TarantoolError(e.into()))?;
+        execute_result_from_json(&json)
+    }
+
+    /// Handler for a Describe message. See self.describe_portal for the details.
+    pub fn describe_portal(&self, client_id: ClientId, portal: &str) -> PgResult<PortalDescribe> {
+        let json: String = self
+            .describe_portal
+            .call_with_args((client_id, portal))
+            .map_err(|e| PgError::TarantoolError(e.into()))?;
+        let describe = serde_json::from_str(&json)?;
+        Ok(describe)
+    }
+
+    /// Handler for a Describe message. See self.describe_statement for the details.
+    pub fn describe_statement(
+        &self,
+        client_id: ClientId,
+        statement: &str,
+    ) -> PgResult<StatementDescribe> {
+        let json: String = self
+            .describe_statement
+            .call_with_args((client_id, statement))
+            .map_err(|e| PgError::TarantoolError(e.into()))?;
+        let describe = serde_json::from_str(&json)?;
+        Ok(describe)
+    }
+
+    /// Handler for a Close message. See self.close_portal for the details.
+    pub fn close_portal(&self, id: ClientId, portal: &str) -> PgResult<()> {
+        self.close_portal
+            .call_with_args((id, portal))
+            .map_err(|e| PgError::TarantoolError(e.into()))
+    }
+
+    /// Handler for a Close message. See self.close_statement for the details.
+    pub fn close_statement(&self, client_id: ClientId, statement: &str) -> PgResult<()> {
+        self.close_statement
+            .call_with_args((client_id, statement))
+            .map_err(|e| PgError::TarantoolError(e.into()))
+    }
+
     /// Close all the client statements and portals. See self.close_client_statements for the details.
     pub fn close_client_statements(&self, client_id: ClientId) -> PgResult<()> {
         self.close_client_statements
+            .call_with_args(client_id)
+            .map_err(|e| PgError::TarantoolError(e.into()))
+    }
+
+    /// Close client statements with its portals.
+    pub fn close_client_portals(&self, client_id: ClientId) -> PgResult<()> {
+        self.close_client_portals
             .call_with_args(client_id)
             .map_err(|e| PgError::TarantoolError(e.into()))
     }

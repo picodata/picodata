@@ -1,6 +1,6 @@
 use crate::{error::PgResult, storage::value};
 use pgwire::messages::data::{FieldDescription, RowDescription};
-use postgres_types::Type;
+use postgres_types::{Oid, Type};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 
@@ -12,6 +12,15 @@ pub struct Describe {
     /// Output columns format.
     metadata: Vec<MetadataColumn>,
 }
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct StatementDescribe {
+    #[serde(flatten)]
+    pub describe: Describe,
+    pub param_oids: Vec<Oid>,
+}
+
+pub type PortalDescribe = Describe;
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub struct MetadataColumn {

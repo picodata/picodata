@@ -43,6 +43,10 @@ impl ExecuteResult {
         self.describe.command_tag()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.values_stream.len() == 0
+    }
+
     pub fn row_description(&self) -> PgResult<Option<RowDescription>> {
         self.describe.row_description()
     }
