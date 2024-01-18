@@ -54,6 +54,8 @@ Picodata 23.06.0-232-ge436159d5
 * `operable`: (_boolean_) признак доступности таблицы на запись.
   Используется в процессе создания и удаления таблиц
 * `engine`: (_string_, `"memtx" | "vinyl"`) [движок хранения](../overview/glossary.md#db-engine)
+* `owner`: (_unsigned_) владелец таблицы (UserId). Создатель таблицы
+  автоматически становится ее владельцем.
 
 Индексы:
 
@@ -174,6 +176,7 @@ Picodata 23.06.0-232-ge436159d5
 
 * `id` (*unsigned*)
 * `name` (*string*)
+* `owner` (*unsigned*)
 * `schema_version` (*unsigned*)
 * `auth `(*array*)
 
@@ -208,6 +211,7 @@ Picodata 23.06.0-232-ge436159d5
 
 * `id` (*unsigned*)
 * `name` (*string*)
+* `owner` (*unsigned*)
 * `schema_version` (*unsigned*)
 
 Индексы:
