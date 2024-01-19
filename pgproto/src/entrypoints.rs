@@ -31,12 +31,10 @@ fn parse_dql(res: Value) -> PgResult<Vec<Row>> {
     }
 
     let res: DqlResult = serde_json::from_value(res)?;
-    let rows = res
-        .rows
+    res.rows
         .into_iter()
-        .map(|row| row.into_iter().map(PgValue::from).collect())
-        .collect();
-    Ok(rows)
+        .map(|row| row.into_iter().map(PgValue::try_from).collect())
+        .collect()
 }
 
 fn parse_dml(res: Value) -> PgResult<usize> {
@@ -51,11 +49,10 @@ fn parse_dml(res: Value) -> PgResult<usize> {
 
 fn parse_explain(res: Value) -> PgResult<Vec<Row>> {
     let res: Vec<Value> = serde_json::from_value(res)?;
-    Ok(res
-        .into_iter()
+    res.into_iter()
         // every row must be a vector
-        .map(|val| vec![PgValue::from(val)])
-        .collect())
+        .map(|val| Ok(vec![PgValue::try_from(val)?]))
+        .collect()
 }
 
 fn execute_result_from_json(json: &str) -> PgResult<ExecuteResult> {
