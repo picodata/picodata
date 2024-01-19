@@ -1,5 +1,9 @@
 use pgwire::error::{ErrorInfo, PgWireError};
+use std::error;
 use std::io;
+use std::num::{ParseFloatError, ParseIntError};
+use std::str::ParseBoolError;
+use std::string::FromUtf8Error;
 use thiserror::Error;
 
 pub type PgResult<T> = Result<T, PgError>;
@@ -20,7 +24,7 @@ pub enum PgError {
     IoError(#[from] io::Error),
 
     #[error("encoding error: {0}")]
-    EncodingError(String),
+    EncodingError(Box<dyn error::Error>),
 
     #[error("pgwire error: {0}")]
     PgWireError(#[from] PgWireError),
@@ -30,6 +34,27 @@ pub enum PgError {
 
     #[error("json error: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    #[error("{0}")]
+    DecodingError(#[from] DecodingError),
+}
+
+#[derive(Error, Debug)]
+pub enum DecodingError {
+    #[error("failed to decode int: {0}")]
+    ParseIntError(#[from] ParseIntError),
+
+    #[error("failed to decode float: {0}")]
+    ParseFloatError(#[from] ParseFloatError),
+
+    #[error("from utf8 error: {0}")]
+    FromUtf8Error(#[from] FromUtf8Error),
+
+    #[error("failed to decode bool: {0}")]
+    ParseBoolError(#[from] ParseBoolError),
+
+    #[error("decoding error: {0}")]
+    Other(Box<dyn error::Error>),
 }
 
 /// Build error info from PgError.

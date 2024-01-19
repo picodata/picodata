@@ -1,3 +1,4 @@
+use crate::storage::value::{Format, PgValue, RawFormat};
 use crate::stream::{BeMessage, FeMessage};
 use crate::{
     error::{PgError, PgResult},
@@ -5,34 +6,91 @@ use crate::{
     storage::StorageManager,
     stream::PgStream,
 };
+use bytes::Bytes;
 use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
-use std::io;
+use postgres_types::Oid;
+use std::iter::zip;
+use std::{io, mem};
+
+fn use_tarantool_parameter_placeholders(sql: &str) -> String {
+    // TODO: delete it after the pg parameters are supported,
+    // related issue https://git.picodata.io/picodata/picodata/pgproto/-/issues/18.
+    sql.replace("$1", "?")
+        .replace("$2", "?")
+        .replace("$3", "?")
+        .replace("$4", "?")
+}
 
 pub fn process_parse_message(
     stream: &mut PgStream<impl io::Write>,
     manager: &StorageManager,
     parse: Parse,
 ) -> PgResult<()> {
-    if !parse.type_oids().is_empty() {
-        return Err(PgError::FeatureNotSupported("parameterized queries".into()));
-    }
-    manager.parse(parse.name().as_deref(), parse.query())?;
+    let query = use_tarantool_parameter_placeholders(parse.query());
+    manager.parse(parse.name().as_deref(), &query, parse.type_oids())?;
     stream.write_message_noflush(messages::parse_complete())?;
     Ok(())
+}
+
+/// Map any encoding format to per-parameter format just like pg does it in
+/// [exec_bind_message](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/postgres.c#L1840-L1845)
+/// or [PortalSetResultFormat](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/pquery.c#L623).
+fn prepare_parameter_encoding_format(
+    formats: &[RawFormat],
+    nparams: usize,
+) -> PgResult<Vec<Format>> {
+    if formats.len() == nparams {
+        // format specified for each column
+        formats.iter().map(|i| Format::try_from(*i)).collect()
+    } else if formats.len() == 1 {
+        // single format specified, use it for each column
+        Ok(vec![Format::try_from(formats[0])?; nparams])
+    } else if formats.is_empty() {
+        // no format specified, use the default for each column
+        Ok(vec![Format::Text; nparams])
+    } else {
+        Err(PgError::ProtocolViolation(format!(
+            "got {} format codes for {} columns",
+            formats.len(),
+            nparams
+        )))
+    }
+}
+
+fn decode_parameter_values(
+    params: Vec<Option<Bytes>>,
+    param_oids: &[Oid],
+    formats: &[RawFormat],
+) -> PgResult<Vec<PgValue>> {
+    let formats = prepare_parameter_encoding_format(formats, params.len())?;
+    if params.len() != param_oids.len() {
+        return Err(PgError::ProtocolViolation(format!(
+            "got {} parameters, {} oids and {} formats",
+            params.len(),
+            param_oids.len(),
+            formats.len()
+        )));
+    }
+
+    zip(zip(params, param_oids), formats)
+        .map(|((bytes, oid), format)| PgValue::decode(bytes, *oid, format))
+        .collect()
 }
 
 pub fn process_bind_message(
     stream: &mut PgStream<impl io::Write>,
     manager: &StorageManager,
-    bind: Bind,
+    mut bind: Bind,
 ) -> PgResult<()> {
-    if !bind.parameters().is_empty() {
-        return Err(PgError::FeatureNotSupported("parameterized queries".into()));
-    }
+    let describe = manager.describe_statement(bind.statement_name().as_deref())?;
+    let params = mem::take(bind.parameters_mut());
+    let formats = bind.parameter_format_codes();
+    let params = decode_parameter_values(params, &describe.param_oids, formats)?;
 
     manager.bind(
         bind.statement_name().as_deref(),
         bind.portal_name().as_deref(),
+        params,
     )?;
     stream.write_message_noflush(messages::bind_complete())?;
     Ok(())

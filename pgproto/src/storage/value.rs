@@ -1,12 +1,14 @@
 use bytes::{BufMut, Bytes, BytesMut};
-use pgwire::api::Type;
 use pgwire::types::ToSqlText;
-use postgres_types::IsNull;
+use postgres_types::FromSql;
+use postgres_types::Type;
+use postgres_types::{IsNull, Oid};
 use serde_json::Value;
 use serde_repr::Deserialize_repr;
 use std::str;
+use tarantool::tlua::{AsLua, Nil, PushInto};
 
-use crate::error::{PgError, PgResult};
+use crate::error::{DecodingError, PgError, PgResult};
 
 pub fn type_from_name(name: &str) -> PgResult<Type> {
     match name {
@@ -21,6 +23,9 @@ pub fn type_from_name(name: &str) -> PgResult<Type> {
     }
 }
 
+/// This type is used to send Format over the wire.
+pub type RawFormat = i16;
+
 #[derive(Debug, Clone, Copy, Deserialize_repr)]
 #[repr(i16)]
 pub enum Format {
@@ -28,9 +33,9 @@ pub enum Format {
     Binary = 1,
 }
 
-impl TryFrom<i16> for Format {
+impl TryFrom<RawFormat> for Format {
     type Error = PgError;
-    fn try_from(value: i16) -> Result<Self, Self::Error> {
+    fn try_from(value: RawFormat) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Format::Text),
             1 => Ok(Format::Binary),
@@ -77,6 +82,18 @@ impl TryFrom<Value> for PgValue {
     }
 }
 
+fn decode_text_as_bool(s: &str) -> PgResult<bool> {
+    // bool has many representations in text format.
+    // NOTE: see `parse_bool_with_len` in pg
+    match s {
+        "t" | "true" | "yes" | "on" | "1" => Ok(true),
+        "f" | "false" | "no" | "off" | "0" => Ok(false),
+        _ => Err(PgError::DecodingError(DecodingError::Other(
+            format!("couldn't decode \'{s}\' as bool").into(),
+        ))),
+    }
+}
+
 impl PgValue {
     pub fn encode(&self, buf: &mut BytesMut) -> PgResult<Option<Bytes>> {
         let do_encode = |buf: &mut BytesMut| match &self {
@@ -97,11 +114,82 @@ impl PgValue {
         };
 
         let len = buf.len();
-        let is_null = do_encode(buf).map_err(|e| PgError::EncodingError(e.to_string()))?;
+        let is_null = do_encode(buf).map_err(|e| PgError::EncodingError(e))?;
         if let IsNull::No = is_null {
             Ok(Some(buf.split_off(len).freeze()))
         } else {
             Ok(None)
+        }
+    }
+
+    fn decode_text(bytes: Option<Bytes>, ty: Type) -> PgResult<Self> {
+        let Some(bytes) = bytes else {
+            return Ok(PgValue::Null);
+        };
+
+        let s = String::from_utf8(bytes.into()).map_err(DecodingError::from)?;
+        Ok(match ty {
+            Type::INT8 | Type::INT4 | Type::INT2 => {
+                PgValue::Integer(s.parse::<i64>().map_err(DecodingError::from)?)
+            }
+            Type::FLOAT8 | Type::FLOAT4 => {
+                PgValue::Float(s.parse::<f64>().map_err(DecodingError::from)?)
+            }
+            Type::TEXT => PgValue::Text(s),
+            Type::BOOL => PgValue::Boolean(decode_text_as_bool(&s.to_lowercase())?),
+            _ => {
+                return Err(PgError::FeatureNotSupported(format!(
+                    "unsupported type {ty}"
+                )))
+            }
+        })
+    }
+
+    fn decode_binary(bytes: Option<Bytes>, ty: Type) -> PgResult<Self> {
+        fn do_decode_binary<'a, T: FromSql<'a>>(ty: &Type, raw: &'a [u8]) -> PgResult<T> {
+            T::from_sql(ty, raw).map_err(|e| PgError::DecodingError(DecodingError::Other(e)))
+        }
+
+        let Some(bytes) = bytes else {
+            return Ok(PgValue::Null);
+        };
+
+        Ok(match ty {
+            Type::INT8 => PgValue::Integer(do_decode_binary::<i64>(&ty, &bytes)?),
+            Type::INT4 => PgValue::Integer(do_decode_binary::<i32>(&ty, &bytes)?.into()),
+            Type::INT2 => PgValue::Integer(do_decode_binary::<i16>(&ty, &bytes)?.into()),
+            Type::FLOAT8 => PgValue::Float(do_decode_binary::<f64>(&ty, &bytes)?),
+            Type::FLOAT4 => PgValue::Float(do_decode_binary::<f32>(&ty, &bytes)?.into()),
+            Type::TEXT => PgValue::Text(do_decode_binary(&ty, &bytes)?),
+            Type::BOOL => PgValue::Boolean(do_decode_binary(&ty, &bytes)?),
+            _ => {
+                return Err(PgError::FeatureNotSupported(format!(
+                    "unsupported type {ty}"
+                )))
+            }
+        })
+    }
+
+    pub fn decode(bytes: Option<Bytes>, oid: Oid, format: Format) -> PgResult<Self> {
+        let ty =
+            Type::from_oid(oid).ok_or(PgError::ProtocolViolation(format!("unknown oid: {oid}")))?;
+        match format {
+            Format::Binary => Self::decode_binary(bytes, ty),
+            Format::Text => Self::decode_text(bytes, ty),
+        }
+    }
+}
+
+impl<L: AsLua> PushInto<L> for PgValue {
+    type Err = tarantool::tlua::Void;
+
+    fn push_into_lua(self, lua: L) -> Result<tarantool::tlua::PushGuard<L>, (Self::Err, L)> {
+        match self {
+            PgValue::Boolean(value) => value.push_into_lua(lua),
+            PgValue::Text(value) => value.push_into_lua(lua),
+            PgValue::Integer(value) => value.push_into_lua(lua),
+            PgValue::Float(value) => value.push_into_lua(lua),
+            PgValue::Null => PushInto::push_into_lua(Nil, lua),
         }
     }
 }

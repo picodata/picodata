@@ -1,9 +1,11 @@
 use self::describe::{PortalDescribe, StatementDescribe};
 use self::result::ExecuteResult;
+use self::value::PgValue;
 use crate::client::ClientId;
 use crate::entrypoints::PG_ENTRYPOINTS;
 use crate::error::PgResult;
 use log::warn;
+use postgres_types::Oid;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub mod describe;
@@ -53,20 +55,26 @@ impl StorageManager {
         })
     }
 
-    pub fn parse(&self, name: Option<&str>, sql: &str) -> PgResult<()> {
+    pub fn parse(&self, name: Option<&str>, sql: &str, param_oids: &[Oid]) -> PgResult<()> {
         PG_ENTRYPOINTS.with(|entrypoints| {
             entrypoints
                 .borrow()
-                .parse(self.client_id, name.unwrap_or(""), sql)
+                .parse(self.client_id, name.unwrap_or(""), sql, param_oids)
         })
     }
 
-    pub fn bind(&self, statement: Option<&str>, portal: Option<&str>) -> PgResult<()> {
+    pub fn bind(
+        &self,
+        statement: Option<&str>,
+        portal: Option<&str>,
+        params: Vec<PgValue>,
+    ) -> PgResult<()> {
         PG_ENTRYPOINTS.with(|entrypoints| {
             entrypoints.borrow().bind(
                 self.client_id,
                 statement.unwrap_or(""),
                 portal.unwrap_or(""),
+                params,
             )
         })
     }

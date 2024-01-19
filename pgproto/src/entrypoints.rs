@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use crate::{
     client::ClientId,
     error::{PgError, PgResult},
@@ -9,8 +7,10 @@ use crate::{
         value::PgValue,
     },
 };
+use postgres_types::Oid;
 use serde::Deserialize;
 use serde_json::Value;
+use std::cell::RefCell;
 use tarantool::tlua::{LuaFunction, LuaThread, PushGuard};
 
 type Row = Vec<PgValue>;
@@ -219,8 +219,7 @@ impl Entrypoints {
         let parse = LuaFunction::load(
             tarantool::lua_state(),
             "
-            local client_id, name, sql = ...
-            local res, err = pico.pg_parse(client_id, name, sql, {})
+            local res, err = pico.pg_parse(...)
             if res == nil then
                 error(err)
             end
@@ -230,8 +229,8 @@ impl Entrypoints {
         let bind = LuaFunction::load(
             tarantool::lua_state(),
             "
-            local client_id, statement, portal = ...
-            local res, err = pico.pg_bind(client_id, statement, portal, {}, {})
+            local client_id, statement, portal, params = ...
+            local res, err = pico.pg_bind(client_id, statement, portal, params, {})
             if res == nil then
                 error(err)
             end
@@ -333,16 +332,28 @@ impl Entrypoints {
     }
 
     /// Handler for a Parse message. See self.parse for the details.
-    pub fn parse(&self, client_id: ClientId, name: &str, sql: &str) -> PgResult<()> {
+    pub fn parse(
+        &self,
+        client_id: ClientId,
+        name: &str,
+        sql: &str,
+        param_oids: &[Oid],
+    ) -> PgResult<()> {
         self.parse
-            .call_with_args((client_id, name, sql))
+            .call_with_args((client_id, name, sql, param_oids))
             .map_err(|e| PgError::TarantoolError(e.into()))
     }
 
     /// Handler for a Bind message. See self.bind for the details.
-    pub fn bind(&self, id: ClientId, statement: &str, portal: &str) -> PgResult<()> {
+    pub fn bind(
+        &self,
+        id: ClientId,
+        statement: &str,
+        portal: &str,
+        params: Vec<PgValue>,
+    ) -> PgResult<()> {
         self.bind
-            .call_with_args((id, statement, portal))
+            .call_with_args((id, statement, portal, params))
             .map_err(|e| PgError::TarantoolError(e.into()))
     }
 
