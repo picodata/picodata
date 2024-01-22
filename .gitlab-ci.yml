@@ -257,7 +257,7 @@ test-mac-m1:
     # - pipenv run lint
     # - |
 
-test-docker:
+test-helm-docker-image:
   stage: test
   tags:
     - shell
@@ -270,8 +270,7 @@ test-docker:
           - helm/picodata-diag.Dockerfile
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       when: on_success
-    - # else
-      when: never
+    - when: manual
   variables:
     GIT_DEPTH: 100
     GIT_STRATEGY: fetch
