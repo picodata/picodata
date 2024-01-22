@@ -3,6 +3,7 @@
 #![allow(clippy::let_and_return)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::unwrap_or_default)]
+#![allow(clippy::redundant_static_lifetimes)]
 use serde::{Deserialize, Serialize};
 
 use ::raft::prelude as raft;
@@ -41,6 +42,7 @@ pub mod discovery;
 pub mod error_injection;
 pub mod failure_domain;
 pub mod governor;
+pub mod info;
 pub mod instance;
 pub mod ipc;
 pub mod kvcell;

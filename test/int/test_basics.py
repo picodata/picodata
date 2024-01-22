@@ -320,3 +320,8 @@ def test_governor_notices_restarts(instance: Instance):
     check_vshard_configured(instance)
 
     assert instance.current_grade() == dict(variant="Online", incarnation=2)
+
+
+def test_proc_version_info(instance: Instance):
+    info = instance.call(".proc_version_info")
+    assert info.keys() == set(["picodata_version", "proc_api_version"])  # type: ignore
