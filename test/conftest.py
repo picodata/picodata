@@ -905,9 +905,7 @@ class Instance:
         op["initiator"] = as_user
 
         eprint(f"CaS:\n  {predicate=}\n  {op=}")
-        return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)[0][
-            "index"
-        ]
+        return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)["index"]
 
     def pico_property(self, key: str):
         tup = self.call("box.space._pico_property:get", key)

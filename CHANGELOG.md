@@ -25,6 +25,9 @@ with the `YY.0M.MICRO` scheme.
 - System table `_pico_replicaset` now has a different format: the field `master_id`
   is replaced with 2 fields `current_master_id` and `target_master_id`.
 
+- All `.proc_*` stored procedures changed their return values. An extra top level
+  array of 1 element is removed.
+
 ### CLI
 
 - New command `picodata admin` to connect to picodata instance via unix socket under the admin account.

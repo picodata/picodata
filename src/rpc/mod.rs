@@ -31,6 +31,15 @@ pub trait RequestArgs: Encode + DecodeOwned {
     type Response: serde::Serialize + DeserializeOwned + Debug + 'static;
 }
 
+#[inline(always)]
+pub fn decode_iproto_return_value<T>(tuple: tarantool::tuple::Tuple) -> tarantool::Result<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let (res,) = tuple.decode()?;
+    Ok(res)
+}
+
 /// Invoke remote procedure call on an instance specified by `address`.
 pub async fn network_call<R>(address: &str, request: &R) -> ::tarantool::Result<R::Response>
 where
@@ -48,7 +57,7 @@ where
     })?;
     let client = Client::connect(address, port).await?;
     let tuple = client.call(R::PROC_NAME, request).await?;
-    tuple.decode().map(|((res,),)| res)
+    decode_iproto_return_value(tuple)
 }
 
 /// Invoke remote procedure call on a Raft leader.

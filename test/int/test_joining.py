@@ -59,7 +59,7 @@ def test_request_follower(cluster2: Cluster):
         instance=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
     )
     # Even though a follower is called new instance is joined successfully
-    assert actual[0]["instance"]["raft_id"] == 3
+    assert actual["instance"]["raft_id"] == 3
 
 
 def test_discovery(cluster3: Cluster):
@@ -78,7 +78,7 @@ def test_discovery(cluster3: Cluster):
 
     # Run discovery against `--instance i1`.
     # It used to be a bootstrap leader, but now it's just a follower.
-    assert req_discover(i1) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
+    assert req_discover(i1) == {"Done": {"NonLeader": {"leader": i2.listen}}}
 
     # add instance
     i4 = cluster3.add_instance(peers=[i1.listen])
@@ -87,7 +87,7 @@ def test_discovery(cluster3: Cluster):
     # Run discovery against `--instance i3`.
     # It has performed a rebootstrap after discovery,
     # and now has the discovery module uninitialized.
-    assert req_discover(i3) == [{"Done": {"NonLeader": {"leader": i2.listen}}}]
+    assert req_discover(i3) == {"Done": {"NonLeader": {"leader": i2.listen}}}
 
     # add instance
     i5 = cluster3.add_instance(peers=[i3.listen])

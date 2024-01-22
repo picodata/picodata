@@ -220,7 +220,7 @@ where
         .call(fn_name, args, &call_opts)?
         .expect("unexpected net_box result Ok(None)");
 
-    tuple.decode().map(|((res,),)| res)
+    crate::rpc::decode_iproto_return_value(tuple)
 }
 
 #[inline]

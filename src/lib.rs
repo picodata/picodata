@@ -486,6 +486,13 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     preload_http();
     init_sbroad();
 
+    tarantool::exec(
+        "require 'compat' {
+            c_func_iproto_multireturn = 'new',
+        }",
+    )
+    .unwrap();
+
     set_console_prompt();
     redirect_interactive_sql();
     init_handlers();

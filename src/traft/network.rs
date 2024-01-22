@@ -343,26 +343,7 @@ impl PoolWorker {
         );
         let convert_result = |bytes: Result<Tuple>| {
             let tuple: Tuple = bytes?;
-            // NOTE: this double layer of single element tuple here is
-            // intentional. The thing is that tarantool wraps all the returned
-            // values from stored procs into an msgpack array. This is true for
-            // both native and lua procs. However in case of lua this outermost
-            // array helps with multiple return values such that if a lua proc
-            // returns 2 values, the messagepack representation would be an
-            // array of 2 elements. But for some reason native procs get a
-            // different treatment: their return values are always wrapped in an
-            // outermost array of one element (!) which contains an array whose
-            // elements are actual values returned by proc. To be exact, each
-            // element of this inner array is a value passed to box_return_mp
-            // therefore there's exactly as many elements as there were calls to
-            // box_return_mp during execution of the proc.
-            // The way #[tarantool::proc] is implemented we always call
-            // box_return_mp exactly once therefore procs defined such way
-            // always have their return values wrapped in 2 layers of one
-            // element arrays.
-            // For that reason we unwrap those 2 layers here and pass to the
-            // user just the value they returned from their #[tarantool::proc].
-            let ((res,),) = tuple.decode()?;
+            let res = crate::rpc::decode_iproto_return_value(tuple)?;
             Ok(res)
         };
         let mut request = Request::with_callback(proc, args, move |res| cb(convert_result(res)));
@@ -636,13 +617,7 @@ mod tests {
         l.exec(
             r#"
             function test_stored_proc(a, b)
-                -- Tarantool always wraps return values from native stored procs
-                -- into an additional array, while it doesn't do that for lua
-                -- procs. Our network module is implemented to expect that
-                -- additional layer of array, so seeing how this test proc is
-                -- intended to emulate one of our rust procs, we explicitly
-                -- add a table layer.
-                return {a + b}
+                return a + b
             end
 
             box.schema.func.create('test_stored_proc')
