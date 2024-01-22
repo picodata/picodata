@@ -65,19 +65,6 @@ dnf install perl automake libtool nodejs yarnpkg
 
 Note that nodejs and yarnpkg packages are needed only for webui.
 
-Additionally one hack is required to successfully link with `libgomp`. We need to ignore its spec file:
-
-`mv /usr/lib/gcc/x86_64-redhat-linux/12/libgomp.spec /usr/lib/gcc/x86_64-redhat-linux/12/libgomp.spec_`
-
-This is needed because static linking of libgomp is not supported.
-
-The problem manifests itself in a following linking error:
-
-```
-/usr/bin/ld: /usr/lib/gcc/x86_64-redhat-linux/12/libgomp.a(parallel.o): relocation R_X86_64_32 against hidden symbol `gomp_global_icv' can not be used when making a PIE object
-  /usr/bin/ld: failed to set dynamic section sizes: bad value
-```
-
 ### Getting and building the source code
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
@@ -86,13 +73,13 @@ git submodule update --init --recursive
 ```
 Compile the project:
 ```bash
-cargo build
+cargo build --features static_build
 ```
 
 This will build the debug version. If you want the release version, try this instead:
 
 ```bash
-cargo build --release
+cargo build --features static_build --release
 ```
 
 If you want to enable Web UI for administration, build with these flags:
@@ -102,7 +89,9 @@ cargo build --features webui
 ```
 When running `picodata` `-http-listen` should be supplied to serve Web UI.
 
-The resulting binaries should appear under the  `target` subdirectory.
+The resulting binaries should appear under the `target` subdirectory.
+
+Note: picodata supports both dynamic and static linking. Instruction above produces statically linked binary. When built without `static_build` feature dynamic linking is used. Dynamic linking requires for additional dependencies to be installed on the system. For full list see [Dockerfile](docker-build-base/Dockerfile)
 
 ## Integration testing with pytest
 The following refers to Ubuntu 20.04 LTS. The mileage with other distributions may vary.
