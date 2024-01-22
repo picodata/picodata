@@ -1,13 +1,52 @@
+use std::cell::RefCell;
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::net::UnixStream;
+use std::rc::Rc;
 use std::str::from_utf8;
 use std::time::Duration;
+
+use rustyline::completion::{extract_word, Completer};
+use rustyline::error::ReadlineError;
+use rustyline::Context;
+use rustyline_derive::{Completer, Helper, Highlighter, Hinter, Validator};
 
 use crate::tarantool_main;
 use crate::util::unwrap_or_terminate;
 
 use super::args;
 use super::console::{Console, ReplError};
+
+pub struct LuaCompleter {
+    client: Rc<RefCell<UnixClient>>,
+}
+
+impl Completer for LuaCompleter {
+    type Candidate = String;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _ctx: &Context<'_>,
+    ) -> std::result::Result<(usize, Vec<Self::Candidate>), ReadlineError> {
+        let is_break_char = |ch: char| ch == ' ' || ch == '(';
+        let (start, to_complete) = extract_word(line, pos, None, is_break_char);
+
+        let completions = self
+            .client
+            .borrow_mut()
+            .complete_input(to_complete, start, pos)
+            .map_err(|_| ReadlineError::Eof)?;
+
+        Ok((start, completions))
+    }
+}
+
+#[derive(Completer, Helper, Validator, Hinter, Highlighter)]
+pub struct LuaHelper {
+    #[rustyline(Completer)]
+    completer: LuaCompleter,
+}
 
 /// Wrapper around unix socket with console-like interface
 /// for communicating with tarantool console.
@@ -111,21 +150,64 @@ impl UnixClient {
 
         return Ok(deserialized);
     }
+
+    fn complete_input(&mut self, line: &str, left: usize, right: usize) -> Result<Vec<String>> {
+        self.write(&format!(
+            "return require(\"console\").completion_handler(\"{}\", {}, {})",
+            line, left, right
+        ))?;
+
+        let response = self.read()?;
+
+        // Completions are returned in the following yaml format:
+        // ---
+        // - null              <-- case when no completion was proposed
+        // ...
+        //
+        // ---
+        // - - $current_line
+        //   - completion_1
+        //   - completion_2    <-- case when at least one completion was proposed
+        //   - completion_3
+        // ...
+        let completions: Option<Vec<Vec<String>>> = serde_yaml::from_str(&response)
+            .map_err(|msg| UnixClientError::DeserializeMessageError(msg.to_string()))?;
+
+        let res = completions
+            .unwrap_or_default()
+            .first()
+            .map(|v| v[1..].to_owned())
+            .unwrap_or_default();
+
+        Ok(res)
+    }
 }
 
 fn admin_repl(args: args::Admin) -> core::result::Result<(), ReplError> {
-    let mut client = UnixClient::new(&args.socket_path).map_err(|err| {
+    let client = UnixClient::new(&args.socket_path).map_err(|err| {
         ReplError::Other(format!(
             "connection via unix socket by path '{}' is not established, reason: {}",
             args.socket_path, err
         ))
     })?;
 
-    let mut console = Console::new("picoadmin :) ")?;
+    // SAFETY: client mutably borrowed in the following "functions":
+    // `console.read()`, REPL (bellow in this function)
+    // It is impossible situation, when REPL "called" from console.read() and vice versa
+    let client = Rc::new(RefCell::new(client));
+
+    let helper = LuaHelper {
+        completer: LuaCompleter {
+            client: client.clone(),
+        },
+    };
+
+    let mut console = Console::with_completer("picoadmin :) ", helper)?;
 
     while let Some(line) = console.read()? {
-        client.write(&line)?;
-        let response = client.read()?;
+        let mut temp_client = client.borrow_mut();
+        temp_client.write(&line)?;
+        let response = temp_client.read()?;
         console.write(&response);
     }
 

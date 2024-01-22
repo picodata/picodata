@@ -6,9 +6,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process;
 
-use rustyline::{error::ReadlineError, history::FileHistory, DefaultEditor, Editor};
+use rustyline::config::Configurer;
+use rustyline::Helper;
+use rustyline::{error::ReadlineError, history::FileHistory, Editor};
 use tarantool::network::client;
 
+use super::admin::LuaHelper;
 use super::admin::UnixClientError;
 
 #[derive(thiserror::Error, Debug)]
@@ -32,13 +35,13 @@ pub enum ReplError {
 pub type Result<T> = std::result::Result<T, ReplError>;
 
 /// Input/output handler
-pub struct Console {
-    editor: Editor<(), FileHistory>,
+pub struct Console<H: Helper> {
+    editor: Editor<H, FileHistory>,
     history_file_path: PathBuf,
     prompt: String,
 }
 
-impl Console {
+impl<T: Helper> Console<T> {
     const HISTORY_FILE_NAME: &str = ".picodata_history";
 
     // Ideally we should have an enum for all commands. For now we have only two options, usual line
@@ -87,33 +90,6 @@ impl Console {
         Ok(ControlFlow::Continue(()))
     }
 
-    pub fn new(prompt: &str) -> Result<Self> {
-        let mut editor = DefaultEditor::new()?;
-
-        // newline by ALT + ENTER
-        editor.bind_sequence(
-            rustyline::KeyEvent(rustyline::KeyCode::Enter, rustyline::Modifiers::ALT),
-            rustyline::EventHandler::Simple(rustyline::Cmd::Newline),
-        );
-
-        // It is deprecated because of unexpected behavior on windows.
-        // We're ok with that.
-        #[allow(deprecated)]
-        let history_file_path = env::home_dir()
-            .unwrap_or_default()
-            .join(Path::new(Self::HISTORY_FILE_NAME));
-
-        // We're ok with history load failures. E g this is the case
-        // for first launch when history file doesnt exist yet
-        let _ = editor.load_history(&history_file_path);
-
-        Ok(Console {
-            editor,
-            history_file_path,
-            prompt: prompt.to_string(),
-        })
-    }
-
     fn update_history(&mut self, line: &str) -> Result<()> {
         self.editor.add_history_entry(line)?;
         Ok(self.editor.save_history(&self.history_file_path)?)
@@ -151,5 +127,56 @@ impl Console {
 
     pub fn write(&self, line: &str) {
         println!("{}", line)
+    }
+
+    fn editor_with_history() -> Result<(Editor<T, FileHistory>, PathBuf)> {
+        let mut editor = Editor::new()?;
+
+        // newline by ALT + ENTER
+        editor.bind_sequence(
+            rustyline::KeyEvent(rustyline::KeyCode::Enter, rustyline::Modifiers::ALT),
+            rustyline::EventHandler::Simple(rustyline::Cmd::Newline),
+        );
+
+        // It is deprecated because of unexpected behavior on windows.
+        // We're ok with that.
+        #[allow(deprecated)]
+        let history_file_path = env::home_dir()
+            .unwrap_or_default()
+            .join(Path::new(Self::HISTORY_FILE_NAME));
+
+        // We're ok with history load failures. E g this is the case
+        // for first launch when history file doesnt exist yet
+        let _ = editor.load_history(&history_file_path);
+
+        Ok((editor, history_file_path))
+    }
+}
+
+impl Console<LuaHelper> {
+    pub fn with_completer(prompt: &str, helper: LuaHelper) -> Result<Self> {
+        let (mut editor, history_file_path) = Self::editor_with_history()?;
+
+        editor.set_helper(Some(helper));
+
+        editor.set_completion_type(rustyline::CompletionType::List);
+
+        Ok(Console {
+            editor,
+            history_file_path,
+            prompt: prompt.to_string(),
+        })
+    }
+}
+
+impl Console<()> {
+    pub fn new(prompt: &str) -> Result<Self> {
+        let (editor, history_file_path) = Self::editor_with_history()?;
+
+        Ok(Console {
+            editor,
+            history_file_path,
+            prompt: prompt.to_string(),
+        })
     }
 }

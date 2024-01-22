@@ -348,3 +348,53 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
     eprint("^D")
     cli.sendcontrol("d")
     cli.expect_exact(pexpect.EOF)
+
+
+def test_lua_completion(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    cli = pexpect.spawn(
+        # For some uninvestigated reason, readline trims the propmt in CI
+        # Instead of
+        #   unix/:/some/path/to/admin.sock>
+        # it prints
+        #   </path/to/admin.sock>
+        #
+        # We were unable to debug it quickly and used cwd as a workaround
+        cwd=i1.data_dir,
+        command=i1.binary_path,
+        args=["admin", "./admin.sock"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("picoadmin :) ")
+
+    # With several possible variants they are shown as list
+    cli.sendline("to\t\t")
+    cli.expect_exact("tostring(    tonumber(    tonumber64(")
+
+    cli.sendline("box.c\t\t")
+    cli.expect_exact("box.ctl      box.cfg      box.commit(")
+
+    cli.sendline("tonumber(to\t\t")
+    cli.expect_exact("tostring(    tonumber(    tonumber64(")
+
+    # With one possible variant it automaticaly completes current word
+    # so we can check that is completed by result of completing this command
+    cli.sendline("hel\t\t")
+    cli.expect_exact(
+        "To get help, see the Tarantool manual at https://tarantool.io/en/doc/"
+    )
+
+    cli.sendline("bred bo\t\t")
+    cli.expect_exact("bred box")
+    cli.sendline(" ")
+
+    eprint("^D")
+    cli.sendcontrol("d")
+    cli.expect_exact("Bye")
+    cli.expect_exact(pexpect.EOF)
