@@ -120,7 +120,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
     };
 
     let mut config = Config::default();
-    config.creds = Some((user, password));
+    config.creds = Some((user.clone(), password));
     config.auth_method = args.auth_method;
 
     let client = ::tarantool::fiber::block_on(Client::connect_with_config(
@@ -133,7 +133,12 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
     // and we want to check whether authentication have succeeded or not
     ::tarantool::fiber::block_on(client.call("box.schema.user.info", &()))?;
 
-    let mut console = Console::new("picosql :) ")?;
+    let mut console = Console::new()?;
+
+    console.greet(&format!(
+        "Connected to interactive console by address \"{}:{}\" under \"{}\" user",
+        address.host, address.port, user
+    ));
 
     while let Some(line) = console.read()? {
         let response = ::tarantool::fiber::block_on(client.call("pico.sql", &(line,)))?;

@@ -82,7 +82,7 @@ impl UnixClient {
 
     /// Creates struct object using `path` for raw unix socket.
     ///
-    /// Setup delimiter and ignore tarantool prompt.
+    /// Setup delimiter, default language and ignore tarantool prompt.
     fn new(path: &str) -> Result<Self> {
         let socket = UnixStream::connect(path)?;
         let mut client = Self::from_stream(socket)?;
@@ -98,6 +98,11 @@ impl UnixClient {
         let prompt = client.read()?;
         debug_assert!(prompt.contains("Tarantool"));
         debug_assert!(prompt.contains("Lua console"));
+
+        // set default language SQL
+        client.write("\\set language sql")?;
+        let response = client.read()?;
+        debug_assert!(response.contains("true"));
 
         Ok(client)
     }
@@ -176,7 +181,7 @@ impl UnixClient {
         let res = completions
             .unwrap_or_default()
             .first()
-            .map(|v| v[1..].to_owned())
+            .map(|v| v[1..].into())
             .unwrap_or_default();
 
         Ok(res)
@@ -202,7 +207,12 @@ fn admin_repl(args: args::Admin) -> core::result::Result<(), ReplError> {
         },
     };
 
-    let mut console = Console::with_completer("picoadmin :) ", helper)?;
+    let mut console = Console::with_completer(helper)?;
+
+    console.greet(&format!(
+        "Connected to admin console by socket path \"{}\"",
+        args.socket_path
+    ));
 
     while let Some(line) = console.read()? {
         let mut temp_client = client.borrow_mut();

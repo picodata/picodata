@@ -34,7 +34,7 @@ def test_connect_testuser(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("testpass")
 
-    cli.expect_exact("picosql :)")
+    cli.expect_exact("picodata> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -53,7 +53,7 @@ def test_connect_user_host_port(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("testpass")
 
-    cli.expect_exact("picosql :)")
+    cli.expect_exact("picodata> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -69,7 +69,7 @@ def test_connect_guest(i1: Instance):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picosql :)")
+    cli.expect_exact("picodata> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -140,7 +140,7 @@ def test_connect_auth_type_ok(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("testpass")
 
-    cli.expect_exact("picosql :)")
+    cli.expect_exact("picodata> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -242,6 +242,10 @@ def configure_ldap_server(username, password, data_dir) -> LDAPServerState:
     )
 
 
+@pytest.mark.xfail(
+    run=False,
+    reason=("need installed glauth"),
+)
 def test_connect_auth_type_ldap(cluster: Cluster):
     username = "ldapuser"
     password = "ldappass"
@@ -384,7 +388,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picoadmin :) ")
+    cli.expect_exact("picodata> ")
 
     # Change language to SQL works
     cli.sendline("\\sql")
@@ -469,7 +473,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picosql :)")
+    cli.expect_exact("picodata> ")
 
     eprint("^D")
     cli.sendcontrol("d")
@@ -497,28 +501,84 @@ def test_lua_completion(cluster: Cluster):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("picoadmin :) ")
+    cli.expect_exact("picodata> ")
+    cli.sendline("\\lua")
 
     # With several possible variants they are shown as list
-    cli.sendline("to\t\t")
+    cli.send("to")
+    cli.send("\t\t")
     cli.expect_exact("tostring(    tonumber(    tonumber64(")
+    cli.sendcontrol("c")
 
-    cli.sendline("box.c\t\t")
+    cli.send("box.c")
+    cli.send("\t\t")
     cli.expect_exact("box.ctl      box.cfg      box.commit(")
+    cli.sendcontrol("c")
 
-    cli.sendline("tonumber(to\t\t")
+    cli.send("tonumber(to")
+    cli.send("\t\t")
     cli.expect_exact("tostring(    tonumber(    tonumber64(")
+    cli.sendcontrol("c")
 
     # With one possible variant it automaticaly completes current word
     # so we can check that is completed by result of completing this command
-    cli.sendline("hel\t\t")
-    cli.expect_exact(
-        "To get help, see the Tarantool manual at https://tarantool.io/en/doc/"
-    )
+    cli.send("hel")
+    cli.send("\t")
+    cli.expect_exact("help")
+    cli.sendcontrol("c")
 
-    cli.sendline("bred bo\t\t")
+    cli.send("bred bo")
+    cli.send("\t")
     cli.expect_exact("bred box")
-    cli.sendline(" ")
+
+
+def test_connect_connection_info_and_help(i1: Instance):
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "chap-sha1"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for testuser: ")
+    cli.sendline("testpass")
+
+    cli.expect_exact(
+        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user'
+    )
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
+
+    eprint("^D")
+    cli.sendcontrol("d")
+    cli.expect_exact(pexpect.EOF)
+
+
+def test_admin_connection_info_and_help(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    cli = pexpect.spawn(
+        # For some uninvestigated reason, readline trims the propmt in CI
+        # Instead of
+        #   unix/:/some/path/to/admin.sock>
+        # it prints
+        #   </path/to/admin.sock>
+        #
+        # We were unable to debug it quickly and used cwd as a workaround
+        cwd=i1.data_dir,
+        command=i1.binary_path,
+        args=["admin", "./admin.sock"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
 
     eprint("^D")
     cli.sendcontrol("d")
