@@ -248,6 +248,55 @@ def test_select_uuid(cluster: Cluster):
     }
 
 
+def test_pg_params(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table t (a int not null, b int, primary key (a))
+        using memtx
+        distributed by (a)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    data = i1.sql("""insert into t values ($1, $1), ($2, $1)""", 1, 2)
+    assert data["row_count"] == 2
+
+    data = i1.sql("""select * from t""")
+    assert data["rows"] == [[1, 1], [2, 1]]
+
+    data = i1.sql(
+        """
+        select b + $1 from t
+        group by b + $1
+        having sum(a) > $1
+    """,
+        1,
+    )
+    assert data["rows"] == [[2]]
+
+    data = i1.sql(
+        """
+        select $3, $2, $1, $2, $3 from t
+        where a = $1
+    """,
+        1,
+        2,
+        3,
+    )
+    assert data["rows"] == [[3, 2, 1, 2, 3]]
+
+    with pytest.raises(ReturnError, match="invalid parameters usage"):
+        i1.sql(
+            """
+            select $1, ? from t
+            """
+        )
+
+
 def test_read_from_global_tables(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
