@@ -275,31 +275,6 @@ pub(crate) fn setup(args: &args::Run) {
         tlua::function0(|| traft::node::global().map(|n| n.status())),
     );
 
-    ///////////////////////////////////////////////////////////////////////////
-    // FIXME: too many statuses
-    luamod_set(
-        &l,
-        "_governor_loop_status",
-        indoc! {"
-        pico._governor_loop_status()
-        ==================
-
-        Returns the governor loop status.
-
-        Returns:
-
-            (string)
-            or
-            (nil, string) in case of an error, if the raft node is
-                not initialized yet
-
-        "},
-        tlua::Function::new(|| -> traft::Result<&'static str> {
-            let node = traft::node::global()?;
-            Ok(node.governor_loop.status.get().governor_loop_status)
-        }),
-    );
-
     luamod_set(
         &l,
         "raft_tick",

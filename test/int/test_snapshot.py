@@ -212,7 +212,8 @@ def test_large_snapshot(cluster: Cluster):
     # Wait for i4 to start receiving the snapshot
     Retriable(10, 60).call(
         lambda: assert_eq(
-            i4.eval("return pico.raft_status().main_loop_status"), "receiving snapshot"
+            i4.call(".proc_runtime_info")["internal"]["main_loop_status"],
+            "receiving snapshot",
         )
     )
 
@@ -230,7 +231,8 @@ def test_large_snapshot(cluster: Cluster):
     # Wait for i5 to start receiving the snapshot
     Retriable(10, 60).call(
         lambda: assert_eq(
-            i5.eval("return pico.raft_status().main_loop_status"), "receiving snapshot"
+            i5.call(".proc_runtime_info")["internal"]["main_loop_status"],
+            "receiving snapshot",
         )
     )
 

@@ -195,7 +195,7 @@ def wait_governor_status(i: Instance, expected_status, timeout=5):
         pass
 
     def impl():
-        actual_status = i.call("pico._governor_loop_status")
+        actual_status = i.call(".proc_runtime_info")["internal"]["governor_loop_status"]
         if actual_status == "not a leader":
             raise NotALeader("not a leader")
 
