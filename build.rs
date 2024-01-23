@@ -422,6 +422,13 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
         rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
         rustc::link_lib_static("tinfo");
     } else {
+        if cfg!(target_os = "macos") {
+            // On macos icu4c and readline are keg-only, which means they were not
+            // symlinked into /usr/local. We should add the search path manually.
+            rustc::link_search("/usr/local/opt/icu4c/lib");
+            rustc::link_search("/usr/local/opt/readline/lib");
+        }
+
         rustc::link_lib_dynamic("readline");
 
         rustc::link_lib_dynamic("icudata");
@@ -434,8 +441,6 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
 
         rustc::link_lib_dynamic("ssl");
         rustc::link_lib_dynamic("crypto");
-
-        rustc::link_lib_dynamic("tinfo");
     }
 
     rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
