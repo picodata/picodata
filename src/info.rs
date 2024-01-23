@@ -4,6 +4,8 @@ use crate::replicaset::ReplicasetId;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::RaftId;
+use crate::traft::RaftIndex;
+use crate::traft::RaftTerm;
 use std::borrow::Cow;
 use tarantool::proc;
 
@@ -179,4 +181,60 @@ pub fn proc_raft_info() -> Result<RaftInfo, Error> {
     let node = node::global()?;
 
     Ok(RaftInfo::get(node))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// InternalInfo
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct InternalInfo<'a> {
+    pub main_loop_status: Cow<'a, str>,
+    pub governor_loop_status: Cow<'a, str>,
+}
+
+impl tarantool::tuple::Encode for InternalInfo<'_> {}
+
+impl InternalInfo<'static> {
+    pub fn get(node: &node::Node) -> Self {
+        InternalInfo {
+            main_loop_status: node.status().main_loop_status.into(),
+            governor_loop_status: node.governor_loop.status.get().governor_loop_status.into(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RuntimeInfo
+////////////////////////////////////////////////////////////////////////////////
+
+/// Info returned from [`.proc_runtime_info`].
+///
+/// [`.proc_runtime_info`]: proc_runtime_info
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct RuntimeInfo<'a> {
+    pub raft: RaftInfo,
+    pub internal: InternalInfo<'a>,
+}
+
+impl tarantool::tuple::Encode for RuntimeInfo<'_> {}
+
+impl RuntimeInfo<'static> {
+    pub fn try_get(node: &node::Node) -> Result<Self, Error> {
+        Ok(RuntimeInfo {
+            raft: RaftInfo::get(node),
+            internal: InternalInfo::get(node),
+        })
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_runtime_info
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+pub fn proc_runtime_info() -> Result<RuntimeInfo<'static>, Error> {
+    let node = node::global()?;
+
+    RuntimeInfo::try_get(node)
 }

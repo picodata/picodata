@@ -390,3 +390,26 @@ def test_proc_raft_info(instance: Instance):
         leader_id=1,
         state="Leader",
     )
+
+
+def test_proc_runtime_info(instance: Instance):
+    info = instance.call(".proc_runtime_info")
+
+    assert isinstance(info["raft"]["applied"], int)
+    # This field is super volatile, don't want to be updating it every time we
+    # add a bootstrap entry.
+    info["raft"]["applied"] = 69
+
+    assert info == dict(
+        raft=dict(
+            id=1,
+            term=2,
+            applied=69,
+            leader_id=1,
+            state="Leader",
+        ),
+        internal=dict(
+            main_loop_status="idle",
+            governor_loop_status="idle",
+        ),
+    )
