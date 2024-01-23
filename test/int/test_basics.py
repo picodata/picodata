@@ -204,7 +204,7 @@ def test_whoami_in_different_tiers(cluster: Cluster):
     }
 
 
-def test_instance_info(instance: Instance):
+def test_pico_instance_info(instance: Instance):
     def instance_info(iid: str | None = None):
         return instance.call("pico.instance_info", iid)
 

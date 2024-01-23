@@ -13,7 +13,8 @@ def test_sharding_reinitializes_on_restart(cluster: Cluster):
 
     assert i1.call("vshard.router.info") is not None
 
-    incarnation = i1.eval("return pico.instance_info().current_grade.incarnation")
+    info = i1.call(".proc_instance_info")
+    incarnation = info["current_grade"]["incarnation"]
 
     # Instance silently dies without it's grade being updated
     i1.kill()
@@ -131,7 +132,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to both replicasets
     reached_instances = set()
     for bucket_id in [1, 3000]:
-        info = i1.call("vshard.router.callro", bucket_id, "pico.instance_info")
+        info = i1.call("vshard.router.callro", bucket_id, ".proc_instance_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 2
 
@@ -154,7 +155,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to all 3 replicasets
     reached_instances = set()
     for bucket_id in [1, 1500, 3000]:
-        info = i1.call("vshard.router.callro", bucket_id, "pico.instance_info")
+        info = i1.call("vshard.router.callro", bucket_id, ".proc_instance_info")
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 3
 

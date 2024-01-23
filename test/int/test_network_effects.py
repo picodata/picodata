@@ -147,7 +147,7 @@ def test_leader_disruption(cluster3: Cluster):
 
 
 def get_instance_grades(peer: Instance, instance_id) -> tuple[str, str]:
-    instance_info = peer.call("pico.instance_info", instance_id)
+    instance_info = peer.call(".proc_instance_info", instance_id)
     return (
         instance_info["current_grade"]["variant"],
         instance_info["target_grade"]["variant"],

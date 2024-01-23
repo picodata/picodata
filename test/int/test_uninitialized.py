@@ -3,6 +3,7 @@ import pytest
 from typing import Any, Callable, Generator
 
 from conftest import (
+    TarantoolError,
     eprint,
     Cluster,
     Instance,
@@ -36,10 +37,10 @@ def test_raft_api(uninitialized_instance: Instance):
         lambda i: i.call("pico.raft_propose_nop"),
         lambda i: i.call("pico.whoami"),
         lambda i: i.call("pico.instance_info", "i1"),
-        lambda i: i.call("pico.instance_info", "i2"),
+        lambda i: i.call(".proc_instance_info", "i2"),
     ]
 
     for f in functions:
-        with pytest.raises(ReturnError) as e:
+        with pytest.raises((ReturnError, TarantoolError)) as e:
             f(uninitialized_instance)
-        assert e.value.args == ("uninitialized yet",)
+        assert "uninitialized yet" in str(e)
