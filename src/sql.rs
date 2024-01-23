@@ -825,29 +825,11 @@ fn reenterable_schema_change_request(
                     }
 
                     AlterOptionParam::Login => {
-                        if check_privilege_already_granted(
-                            node,
-                            grantee_id,
-                            &object_type,
-                            object_id,
-                            &privilege,
-                        )? {
-                            // Login is already granted, no op needed.
-                            return Ok(ConsumerResult { row_count: 0 });
-                        }
+                        // It will be checked at a later stage whether login is already granted
                         Op::Acl(OpAcl::GrantPrivilege { priv_def })
                     }
                     AlterOptionParam::NoLogin => {
-                        if !check_privilege_already_granted(
-                            node,
-                            grantee_id,
-                            &object_type,
-                            object_id,
-                            &privilege,
-                        )? {
-                            // Login is not granted yet, no op needed.
-                            return Ok(ConsumerResult { row_count: 0 });
-                        }
+                        // It will be checked at a later stage whether login was not granted
                         Op::Acl(OpAcl::RevokePrivilege {
                             priv_def,
                             initiator: current_user,

@@ -1478,15 +1478,15 @@ def test_sql_alter_login(cluster: Cluster):
     acl = i1.sudo_sql(f"create user {username} with password '{password}'")
     assert acl["row_count"] == 1
 
-    # Alter user with LOGIN option do nothing.
+    # Alter user with LOGIN option - opertaion is idempotent.
     acl = i1.sudo_sql(f""" alter user {username} with login """)
-    assert acl["row_count"] == 0
+    assert acl["row_count"] == 1
     # * Alter user with NOLOGIN option.
     acl = i1.sudo_sql(f""" alter user {username} with nologin """)
     assert acl["row_count"] == 1
-    # * Alter user with NOLOGIN again do nothing.
+    # * Alter user with NOLOGIN again - operation is idempotent.
     acl = i1.sudo_sql(f""" alter user {username} with nologin """)
-    assert acl["row_count"] == 0
+    assert acl["row_count"] == 1
     # * TODO: Check SESSION privilege is removed.
 
 

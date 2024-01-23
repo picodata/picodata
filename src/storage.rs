@@ -2504,12 +2504,27 @@ impl Privileges {
         Ok(())
     }
 
+    /// If `if_not_exists == true` will skip insertion if this privilege already exists.
     #[inline(always)]
-    pub fn insert(&self, priv_def: &PrivilegeDef) -> tarantool::Result<()> {
+    pub fn insert(&self, priv_def: &PrivilegeDef, if_not_exists: bool) -> tarantool::Result<()> {
+        if if_not_exists
+            && self
+                .space
+                .get(&(
+                    priv_def.grantee_id(),
+                    priv_def.object_type(),
+                    priv_def.object_id_raw(),
+                    priv_def.privilege(),
+                ))?
+                .is_some()
+        {
+            return Ok(());
+        }
         self.space.insert(priv_def)?;
         Ok(())
     }
 
+    /// If `if_exists == true` will skip deletion if this privilege does not exist.
     #[inline(always)]
     pub fn delete(
         &self,
@@ -2517,7 +2532,16 @@ impl Privileges {
         object_type: &str,
         object_id: i64,
         privilege: &str,
+        if_exists: bool,
     ) -> tarantool::Result<()> {
+        if if_exists
+            && self
+                .space
+                .get(&(grantee_id, object_type, object_id, privilege))?
+                .is_none()
+        {
+            return Ok(());
+        }
         self.space
             .delete(&(grantee_id, object_type, object_id, privilege))?;
         Ok(())
@@ -2532,6 +2556,7 @@ impl Privileges {
                 &priv_def.object_type(),
                 priv_def.object_id_raw(),
                 &priv_def.privilege(),
+                false,
             )?;
         }
         Ok(())
@@ -2551,6 +2576,7 @@ impl Privileges {
                     &priv_def.object_type(),
                     priv_def.object_id_raw(),
                     &priv_def.privilege(),
+                    false,
                 )?;
             }
         }
@@ -2571,6 +2597,7 @@ impl Privileges {
                 &priv_def.object_type(),
                 object_id,
                 &priv_def.privilege(),
+                false,
             )?;
         }
         Ok(())
@@ -3029,16 +3056,14 @@ pub mod acl {
         storage: &Clusterwide,
         priv_def: &PrivilegeDef,
     ) -> tarantool::Result<()> {
-        storage.privileges.insert(priv_def)?;
+        storage.privileges.insert(priv_def, true)?;
 
         let privilege = &priv_def.privilege();
         let object = priv_def
             .resolve_object_name(storage)
             .expect("target object should exist");
         let object_type = &priv_def.object_type();
-
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
-
         let initiator_def = user_by_id(priv_def.grantor_id())?;
 
         match (privilege.as_str(), object_type.as_str()) {
@@ -3089,6 +3114,7 @@ pub mod acl {
             &priv_def.object_type(),
             priv_def.object_id_raw(),
             &priv_def.privilege(),
+            true,
         )?;
 
         let privilege = &priv_def.privilege();
@@ -3097,7 +3123,6 @@ pub mod acl {
             .expect("target object should exist");
         let object_type = &priv_def.object_type();
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
-
         let initiator_def = user_by_id(initiator)?;
 
         match (privilege.as_str(), object_type.as_str()) {
@@ -3239,16 +3264,17 @@ pub mod acl {
         Ok(())
     }
 
-    /// Grant a tarantool user some privilege defined by `priv_def`.
+    /// Grant a tarantool user or role the privilege defined by `priv_def`.
+    /// Is idempotent: will not return an error even if the privilege is already granted.
     pub fn on_master_grant_privilege(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
         let lua = ::tarantool::lua_state();
         lua.exec_with(
             "local grantee_id, privilege, object_type, object_id = ...
             local grantee_def = box.space._user:get(grantee_id)
             if grantee_def.type == 'user' then
-                box.schema.user.grant(grantee_id, privilege, object_type, object_id)
+                box.schema.user.grant(grantee_id, privilege, object_type, object_id, {if_not_exists=true})
             else
-                box.schema.role.grant(grantee_id, privilege, object_type, object_id)
+                box.schema.role.grant(grantee_id, privilege, object_type, object_id, {if_not_exists=true})
             end",
             (
                 priv_def.grantee_id(),
@@ -3262,7 +3288,8 @@ pub mod acl {
         Ok(())
     }
 
-    /// Revoke a privilege from a tarantool user.
+    /// Revoke a privilege from a tarantool user or role.
+    /// Is idempotent: will not return an error even if the privilege was not granted.
     pub fn on_master_revoke_privilege(priv_def: &PrivilegeDef) -> tarantool::Result<()> {
         let lua = ::tarantool::lua_state();
         lua.exec_with(
@@ -3273,9 +3300,9 @@ pub mod acl {
                 return
             end
             if grantee_def.type == 'user' then
-                box.schema.user.revoke(grantee_id, privilege, object_type, object_id)
+                box.schema.user.revoke(grantee_id, privilege, object_type, object_id, {if_exists=true})
             else
-                box.schema.role.revoke(grantee_id, privilege, object_type, object_id)
+                box.schema.role.revoke(grantee_id, privilege, object_type, object_id, {if_exists=true})
             end",
             (
                 priv_def.grantee_id(),
