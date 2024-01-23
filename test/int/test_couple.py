@@ -85,7 +85,7 @@ def test_restart_both(cluster2: Cluster):
     i2.terminate()
 
     def check_alive(instance: Instance):
-        assert instance._raft_status().leader_id is None
+        assert instance.call(".proc_raft_info")["leader_id"] == 0
 
     i1.start()
     # This synchronization is necessary for proper test case reproducing.

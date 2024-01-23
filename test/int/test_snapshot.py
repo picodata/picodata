@@ -211,7 +211,9 @@ def test_large_snapshot(cluster: Cluster):
 
     # Wait for i4 to start receiving the snapshot
     Retriable(10, 60).call(
-        lambda: assert_eq(i4._raft_status().main_loop_status, "receiving snapshot")
+        lambda: assert_eq(
+            i4.eval("return pico.raft_status().main_loop_status"), "receiving snapshot"
+        )
     )
 
     # In the middle of snapshot application propose a new entry
@@ -227,7 +229,9 @@ def test_large_snapshot(cluster: Cluster):
 
     # Wait for i5 to start receiving the snapshot
     Retriable(10, 60).call(
-        lambda: assert_eq(i5._raft_status().main_loop_status, "receiving snapshot")
+        lambda: assert_eq(
+            i5.eval("return pico.raft_status().main_loop_status"), "receiving snapshot"
+        )
     )
 
     i1.raft_compact_log()

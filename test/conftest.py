@@ -243,15 +243,6 @@ class KeyDef:
         return """{{ {} }}""".format(parts)
 
 
-@dataclass(frozen=True)
-class RaftStatus:
-    id: int
-    raft_state: str
-    term: int
-    main_loop_status: str
-    leader_id: int | None = None
-
-
 class CasRange:
     key_min = dict(kind="unbounded", key=None)
     key_max = dict(kind="unbounded", key=None)
@@ -797,11 +788,6 @@ class Instance:
     def remove_data(self):
         rmtree(self.data_dir)
 
-    def _raft_status(self) -> RaftStatus:
-        status = self.call("pico.raft_status")
-        assert isinstance(status, dict)
-        return RaftStatus(**status)
-
     def raft_propose_nop(self):
         return self.call("pico.raft_propose_nop")
 
@@ -975,14 +961,14 @@ class Instance:
         return index_fin
 
     def assert_raft_status(self, state, leader_id=None):
-        status = self._raft_status()
+        status = self.call(".proc_raft_info")
 
         if leader_id is None:
-            leader_id = status.leader_id
+            leader_id = status["leader_id"]
 
         assert {
-            "raft_state": status.raft_state,
-            "leader_id": status.leader_id,
+            "raft_state": status["state"],
+            "leader_id": status["leader_id"],
         } == {"raft_state": state, "leader_id": leader_id}
 
     def wait_online(
