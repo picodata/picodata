@@ -1,3 +1,9 @@
+use crate::instance::Grade;
+use crate::instance::InstanceId;
+use crate::replicaset::ReplicasetId;
+use crate::traft::error::Error;
+use crate::traft::node;
+use crate::traft::RaftId;
 use std::borrow::Cow;
 use tarantool::proc;
 
@@ -40,4 +46,97 @@ impl VersionInfo<'static> {
 #[proc]
 pub fn proc_version_info() -> VersionInfo<'static> {
     VersionInfo::current()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// InstanceInfo
+////////////////////////////////////////////////////////////////////////////////
+
+/// Info returned from [`.proc_instance_info`].
+///
+/// [`.proc_instance_info`]: proc_instance_info
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct InstanceInfo {
+    pub raft_id: RaftId,
+    pub advertise_address: String,
+    pub instance_id: InstanceId,
+    pub instance_uuid: String,
+    pub replicaset_id: ReplicasetId,
+    pub replicaset_uuid: String,
+    pub cluster_id: String,
+    pub current_grade: Grade,
+    pub target_grade: Grade,
+    pub tier: String,
+}
+
+impl tarantool::tuple::Encode for InstanceInfo {}
+
+impl InstanceInfo {
+    pub fn try_get(node: &node::Node, instance_id: Option<&InstanceId>) -> Result<Self, Error> {
+        let instance;
+        match instance_id {
+            None => {
+                let instance_id = node.raft_storage.instance_id()?;
+                let instance_id =
+                    instance_id.expect("should be persisted before Node is initialized");
+                instance = node.storage.instances.get(&instance_id)?;
+            }
+            Some(instance_id) => {
+                instance = node.storage.instances.get(instance_id)?;
+            }
+        }
+
+        let peer_address = node
+            .storage
+            .peer_addresses
+            .get(instance.raft_id)?
+            .unwrap_or_else(|| "<unknown>".into());
+
+        let cluster_id = node.raft_storage.cluster_id()?;
+
+        Ok(InstanceInfo {
+            raft_id: instance.raft_id,
+            advertise_address: peer_address,
+            instance_id: instance.instance_id,
+            instance_uuid: instance.instance_uuid,
+            replicaset_id: instance.replicaset_id,
+            replicaset_uuid: instance.replicaset_uuid,
+            cluster_id,
+            current_grade: instance.current_grade,
+            target_grade: instance.target_grade,
+            tier: instance.tier,
+        })
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_instance_info
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc(packed_args)]
+pub fn proc_instance_info(request: InstanceInfoRequest) -> Result<InstanceInfo, Error> {
+    let node = node::global()?;
+
+    let instance_id = match &request {
+        InstanceInfoRequest::CurrentInstance(_) => None,
+        InstanceInfoRequest::ByInstanceId([instance_id]) => Some(instance_id),
+    };
+    InstanceInfo::try_get(node, instance_id)
+}
+
+#[derive(Debug, ::serde::Deserialize, ::serde::Serialize)]
+#[serde(untagged)]
+enum InstanceInfoRequest {
+    // FIXME: this is the simplest way I found to support a single optional
+    // parameter to the stored procedure. We should probably do something about
+    // it in our custom `Encode`/`Decode` traits.
+    CurrentInstance([(); 0]),
+    ByInstanceId([InstanceId; 1]),
+}
+
+impl ::tarantool::tuple::Encode for InstanceInfoRequest {}
+
+impl crate::rpc::RequestArgs for InstanceInfoRequest {
+    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_instance_info);
+    type Response = InstanceInfo;
 }

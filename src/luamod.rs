@@ -152,13 +152,13 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         tlua::function0(|| -> traft::Result<_> {
             let node = traft::node::global()?;
-            let raft_storage = &node.raft_storage;
+            let info = crate::info::InstanceInfo::try_get(node, None)?;
 
             Ok(tlua::AsTable((
-                ("raft_id", raft_storage.raft_id()?),
-                ("cluster_id", raft_storage.cluster_id()?),
-                ("instance_id", raft_storage.instance_id()?),
-                ("tier", raft_storage.tier()?),
+                ("raft_id", info.raft_id),
+                ("cluster_id", info.cluster_id),
+                ("instance_id", info.instance_id),
+                ("tier", info.tier),
             )))
         }),
     );
@@ -219,24 +219,18 @@ pub(crate) fn setup(args: &args::Run) {
         "},
         tlua::function1(|iid: Option<InstanceId>| -> traft::Result<_> {
             let node = traft::node::global()?;
-            let iid = iid.unwrap_or(node.raft_storage.instance_id()?.unwrap());
-            let instance = node.storage.instances.get(&iid)?;
-            let peer_address = node
-                .storage
-                .peer_addresses
-                .get(instance.raft_id)?
-                .unwrap_or_else(|| "<unknown>".into());
+            let info = crate::info::InstanceInfo::try_get(node, iid.as_ref())?;
 
             Ok(tlua::AsTable((
-                ("raft_id", instance.raft_id),
-                ("advertise_address", peer_address),
-                ("instance_id", instance.instance_id.0),
-                ("instance_uuid", instance.instance_uuid),
-                ("replicaset_id", instance.replicaset_id),
-                ("replicaset_uuid", instance.replicaset_uuid),
-                ("current_grade", instance.current_grade),
-                ("target_grade", instance.target_grade),
-                ("tier", instance.tier),
+                ("raft_id", info.raft_id),
+                ("advertise_address", info.advertise_address),
+                ("instance_id", info.instance_id.0),
+                ("instance_uuid", info.instance_uuid),
+                ("replicaset_id", info.replicaset_id),
+                ("replicaset_uuid", info.replicaset_uuid),
+                ("current_grade", info.current_grade),
+                ("target_grade", info.target_grade),
+                ("tier", info.tier),
             )))
         }),
     );

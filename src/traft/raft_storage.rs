@@ -94,6 +94,10 @@ impl RaftSpaceAccess {
         Ok(res)
     }
 
+    /// Returns the persisted `InstanceId` of the current instance.
+    /// This should be persisted before the global [`Node`] is initialized.
+    ///
+    /// [`Node`]: crate::traft::node::Node
     #[inline(always)]
     pub fn instance_id(&self) -> tarantool::Result<Option<InstanceId>> {
         let res = self.try_get_raft_state("instance_id")?;

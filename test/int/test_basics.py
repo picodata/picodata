@@ -325,3 +325,51 @@ def test_governor_notices_restarts(instance: Instance):
 def test_proc_version_info(instance: Instance):
     info = instance.call(".proc_version_info")
     assert info.keys() == set(["picodata_version", "proc_api_version"])  # type: ignore
+
+
+def test_proc_instance_info(cluster: Cluster):
+    cfg = {
+        "tier": {
+            "storage": {"replication_factor": 1},
+            "router": {"replication_factor": 2},
+        }
+    }
+    cluster.set_init_cfg(cfg)
+
+    i1 = cluster.add_instance(tier="storage")
+    i2 = cluster.add_instance(tier="router")
+
+    i1_info = i1.call(".proc_instance_info")
+    assert i1_info == dict(
+        raft_id=1,
+        advertise_address=f"{i1.host}:{i1.port}",
+        instance_id="i1",
+        instance_uuid=i1.instance_uuid(),
+        replicaset_id="r1",
+        replicaset_uuid=i1.replicaset_uuid(),
+        cluster_id=i1.cluster_id,
+        current_grade=dict(variant="Online", incarnation=1),
+        target_grade=dict(variant="Online", incarnation=1),
+        tier="storage",
+    )
+
+    info = i1.call(".proc_instance_info", "i1")
+    assert i1_info == info
+
+    i2_info = i1.call(".proc_instance_info", "i2")
+    assert i2_info == dict(
+        raft_id=2,
+        advertise_address=f"{i2.host}:{i2.port}",
+        instance_id="i2",
+        instance_uuid=i2.instance_uuid(),
+        replicaset_id="r2",
+        replicaset_uuid=i2.replicaset_uuid(),
+        cluster_id=i1.cluster_id,
+        current_grade=dict(variant="Online", incarnation=1),
+        target_grade=dict(variant="Online", incarnation=1),
+        tier="router",
+    )
+
+    with pytest.raises(TarantoolError) as e:
+        i1.call(".proc_instance_info", "i3")
+    assert 'instance with id "i3" not found' in str(e)
