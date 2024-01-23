@@ -3,7 +3,7 @@
 Данный раздел содержит сведения об установке Picodata на локальный
 компьютер.
 
-## Установка готовых пакетов {: #available-packages }
+## Установка готовых пакетов {: #available_packages }
 
 Picodata поставляется для поддерживаемых операционных систем и
 предназначена для архитектуры x86_64 (в случае с macOS также
@@ -15,7 +15,7 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 информация об установке приведена на сайте
 [https://picodata.io/download](https://picodata.io/download/){:target="_blank"}.
 
-## Установка из исходного кода {: #installing-from-sources }
+## Установка из исходного кода {: #installing_from_sources }
 
 ### Необходимые инструменты {: #prerequisites }
 
@@ -27,7 +27,7 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 
 Далее приведены команды для их установки под разные ОС.
 
-#### CentOS 8 {: #centos-8 }
+#### CentOS 8 {: #centos_8 }
 
 ```bash
 sudo dnf config-manager --set-enabled powertools
@@ -44,7 +44,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-#### Ubuntu 22.04 {: #ubuntu-22.04 }
+#### Ubuntu 22.04 {: #ubuntu_22.04 }
 
 ```bash
 sudo apt-get install build-essential git cmake nodejs yarnpkg -y
@@ -52,7 +52,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env
 ```
 
-#### Alt Server p10 {: #alt-server-p10 }
+#### Alt Server p10 {: #alt_server_p10 }
 
 ```bash
 su -
@@ -89,7 +89,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 brew install node yarn
 ```
 
-### Получение исходного кода {: #getting-sources }
+### Получение исходного кода {: #getting_sources }
 
 ```bash
 git clone https://git.picodata.io/picodata/picodata/picodata.git
@@ -112,7 +112,7 @@ cargo build --release --features webui
 
 Исполняемый файл `picodata` появится в директории `target/release`.
 
-### Проверка установки {: #post-install-check }
+### Проверка установки {: #post_install_check }
 
 Когда программное обеспечение Picodata установлено, то можно проверить
 наличие в системе основного исполняемого файла `picodata`, используя

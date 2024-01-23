@@ -108,7 +108,7 @@ GRANT DROP ROLE TO "admin"
 Использовать учетную запись можно двумя способами:
 
 - запустив инстанс с [интерактивной консолью](../reference/cli.md#interactive) `picodata run -i`
-- подключившись к [консоли администратора](../reference/cli.md#admin-sock) командой [`picodata admin`](../reference/cli.md#admin-command)
+- подключившись к [консоли администратора](../reference/cli.md#admin_sock) командой [`picodata admin`](../reference/cli.md#admin_command)
 
 <!--
 #### Гость {: #guest }

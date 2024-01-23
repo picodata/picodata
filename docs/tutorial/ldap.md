@@ -29,9 +29,9 @@ Protocol](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol){:
 удаление и т.д. -->
 
 Для использования протокола LDAP в Picodata следует указать одноименный
-метод аутентификации (`{ auth_type = 'ldap' }`). Примеры см. [ниже](#user-setup).
+метод аутентификации (`{ auth_type = 'ldap' }`). Примеры см. [ниже](#user_setup).
 
-## Особенности работы LDAP {: #ldap-concepts }
+## Особенности работы LDAP {: #ldap_concepts }
 
 * Коммуникация с LDAP-сервером происходит один раз при установке новой
   пользовательской сессии. Если аутентификация пройдена успешно, сессия
@@ -46,7 +46,7 @@ Protocol](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol){:
 
 ## Настройка {: #setup }
 
-### Настройка LDAP на уровне пользователей {: #user-setup }
+### Настройка LDAP на уровне пользователей {: #user_setup }
 
 Как и другие методы аутентификации, LDAP можно указать при создании
 нового пользователя через параметр `auth_type`:
@@ -73,7 +73,7 @@ pico.change_password('username', '', { auth_type = 'ldap' })
 Подробнее о работе с пользователями и привилегиями и см. разделе
 [Публичный API Picodata](../reference/api.md).
 
-### Настройка кластера Picodata {: #cluster-setup }
+### Настройка кластера Picodata {: #cluster_setup }
 
 Для корректной работы метода нужно установить следующие переменные среды
 UNIX:

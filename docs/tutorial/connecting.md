@@ -3,9 +3,9 @@
 В данном разделе приведены сведения, которые помогут подключиться к
 запущенному экземпляру Picodata и начать работу в консоли.
 
-## Методы подключения {: #connection-methods }
+## Методы подключения {: #connection_methods }
 
-### Подключение при запуске Picodata {: #accessing-console }
+### Подключение при запуске Picodata {: #accessing_console }
 
 По умолчанию команда `picodata run` запускает инстанс, но не
 предоставляет доступ к управлению им в консоли. Для подключения к
@@ -17,9 +17,9 @@
 локальной консоли инстанса он не может. Подробнее см. в разделе
 [Управление доступом](access_control.md).
 
-### Подключение к ранее запущенному экземпляру {: #accessing-running-instance }
+### Подключение к ранее запущенному экземпляру {: #accessing_running_instance }
 
-#### Подключение с помощью адреса экземпляра {: #picodata-connect }
+#### Подключение с помощью адреса экземпляра {: #picodata_connect }
 
 С помощью команды `picodata connect` можно подключиться к локальному или
 удаленному экземпляру Picodata:
@@ -28,7 +28,7 @@
 picodata connect localhost:3301
 ```
 
-В таком виде [подключение](../reference/cli.md#connect-command)
+В таком виде [подключение](../reference/cli.md#connect_command)
 производится под пользователем `guest` без пароля. У пользователя
 `guest` имеется единственная привилегия
 [`SESSION`](access_control.md#privileges). Для подключения под определенным пользователем следует указать его после ключа `-u`:
@@ -37,7 +37,7 @@ picodata connect localhost:3301
 picodata connect localhost:3301 -u "alice"
 ```
 
-#### Подключение к консоли администратора {: #picodata-admin-console }
+#### Подключение к консоли администратора {: #picodata_admin_console }
 
 С помощью команды `picodata admin` можно подключиться через юникс-сокет
 к локальному экземпляру Picodata с правами администратора (пользователя
@@ -48,11 +48,11 @@ picodata admin /path/to/admin.sock
 ```
 
 По умолчанию файл юникс-сокета расположен в [директории с данными
-инстанса](../reference/cli.md#data-dir) Picodata. Размещение этого
+инстанса](../reference/cli.md#data_dir) Picodata. Размещение этого
 файла настраивается при запуске инстанса параметром
-[--admin-sock](../reference/cli.md#admin-sock).
+[--admin-sock](../reference/cli.md#admin_sock).
 
-#### Переключение языка консоли {: #switching-console-input-lang }
+#### Переключение языка консоли {: #switching_console_input_lang }
 
 По умолчанию в административной консоли используется язык Lua.
 Для переключения на язык SQL:
@@ -70,7 +70,7 @@ picodata admin /path/to/admin.sock
 _Примечание_: На данный момент через SQL недоступен низкоуровневый Lua
 API для управления кластером.
 
-## Многострочный ввод {: #multiline-input }
+## Многострочный ввод {: #multiline_input }
 
 При подключении к инстансу Picodata посредством команд `picodata
 connect` или `picodata admin` поддерживается многострочный ввод команд.

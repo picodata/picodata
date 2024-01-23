@@ -12,7 +12,7 @@
 предоставляемых ею инструментов.
 
 Picodata поддерживает [запись событий в системный журнал
-ОС](../tutorial/audit_log.md#audit-log-config) с последующим доступом к нему
+ОС](../tutorial/audit_log.md#audit_log_config) с последующим доступом к нему
 через службу `journald` (`picodata run --audit=syslog:`).
 
 Информация по использованию `journald` приведена в [документации ОС Альт 8

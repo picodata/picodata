@@ -2,14 +2,14 @@
 
 Описание публичного интерфейса Picodata состоит из нескольких разделов:
 
-- [Lua API](#lua-api) — интерфейс Lua
+- [Lua API](#lua_api) — интерфейс Lua
 - Proc API — интерфейс хранимых процедур
 
 По функциональности они во многом повторяют друг друга. Выбор
 конкретного интерфейса зависит от протокола, по которому происходит
 подключение.
 
-## Lua API {: #lua-api }
+## Lua API {: #lua_api }
 
 Данный раздел интерфейса больше подходит для использования в
 интерактивной консоли (`picodata run -i` или `picodata connect`).
@@ -45,7 +45,7 @@ picodata> pico.help("help")
 | [pico.grant_privilege()](#pico_grant_privilege) | Назначение привилегии пользователю или роли.
 | [pico.help()](#pico_help) | Доступ к встроенной справочной системе.
 | [pico.instance_info()](#pico_instance_info) | Получение информации об инстансе (идентификаторы, уровни ([grade](../overview/glossary.md#grade)) и прочее).
-| [pico.raft_compact_log()](#pico_raft_compact_log) | [Компактизация](../overview/glossary.md#raft-log-compaction) raft-журнала c удалением указанного числа наиболее старых записей.
+| [pico.raft_compact_log()](#pico_raft_compact_log) | [Компактизация](../overview/glossary.md#raft_log_compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 | [pico.raft_get_index()](#pico_raft_get_index) | Получение текущего примененного индекса raft-журнала.
 | [pico.raft_log()](#pico_raft_log) | Чтение содержимого raft-журнала.
 | [pico.raft_propose_nop()](#pico_raft_propose_nop) | Добавление в raft-журнал запись `Nop` (no operation).
@@ -113,7 +113,7 @@ function abort_ddl(timeout)
 
 ### pico.args {: #pico_args }
 
-Lua-таблица (не функция) с [параметрами запуска](cli.md#run-command) инстанса,
+Lua-таблица (не функция) с [параметрами запуска](cli.md#run_command) инстанса,
 которые были переданы в виде переменных окружения или аргументов
 командной строки.
 
@@ -313,7 +313,7 @@ function create_table(opts)
     - `sharding_fn` (optional _string_), поддерживается пока только функция `murmur3`
     - `engine` (optional _string_), движок хранения данных в БД;
       варианты: `'memtx'` | `'vinyl'`. По умолчанию используется
-      `'memtx'`. См [подробнее](../overview/glossary.md#db-engine).
+      `'memtx'`. См [подробнее](../overview/glossary.md#db_engine).
     - `timeout` (optional _number_), число в секундах. По умолчанию
       используется бесконечное значение.
 

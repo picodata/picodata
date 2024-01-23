@@ -23,7 +23,7 @@ Picodata](install.md).
 
 Для запуска инстанса с веб-сервером следует использовать дополнительный
 параметр `--http-listen` с указанием [хоста и
-порта](../reference/cli.md#http-listen). Пример команды:
+порта](../reference/cli.md#http_listen). Пример команды:
 
 ```bash
 picodata run --http-listen localhost:8080

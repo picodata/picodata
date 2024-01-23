@@ -53,7 +53,7 @@ Picodata 23.06.0-287-ga98dc6919
   обработки шардированных таблиц
 * `operable`: (_boolean_) признак доступности таблицы на запись.
   Используется в процессе создания и удаления таблиц
-* `engine`: (_string_, `"memtx" | "vinyl"`) [движок хранения](../overview/glossary.md#db-engine)
+* `engine`: (_string_, `"memtx" | "vinyl"`) [движок хранения](../overview/glossary.md#db_engine)
 * `owner`: (_unsigned_) создатель таблицы
 
 Индексы:
