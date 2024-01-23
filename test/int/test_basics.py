@@ -373,3 +373,20 @@ def test_proc_instance_info(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_instance_info", "i3")
     assert 'instance with id "i3" not found' in str(e)
+
+
+def test_proc_raft_info(instance: Instance):
+    info = instance.call(".proc_raft_info")
+
+    assert isinstance(info["applied"], int)
+    # This field is super volatile, don't want to be updating it every time we
+    # add a bootstrap entry.
+    info["applied"] = 69
+
+    assert info == dict(
+        id=1,
+        term=2,
+        applied=69,
+        leader_id=1,
+        state="Leader",
+    )

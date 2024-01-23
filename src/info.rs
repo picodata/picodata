@@ -140,3 +140,43 @@ impl crate::rpc::RequestArgs for InstanceInfoRequest {
     const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_instance_info);
     type Response = InstanceInfo;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// RaftInfo
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct RaftInfo {
+    pub id: RaftId,
+    pub term: RaftTerm,
+    pub applied: RaftIndex,
+    pub leader_id: RaftId,
+    pub state: node::RaftState,
+}
+
+impl tarantool::tuple::Encode for RaftInfo {}
+
+impl RaftInfo {
+    #[inline]
+    pub fn get(node: &node::Node) -> Self {
+        let raft_status = node.status();
+        RaftInfo {
+            id: raft_status.id,
+            term: raft_status.term,
+            applied: node.get_index(),
+            leader_id: raft_status.leader_id.unwrap_or(0),
+            state: raft_status.raft_state,
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_raft_info
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+pub fn proc_raft_info() -> Result<RaftInfo, Error> {
+    let node = node::global()?;
+
+    Ok(RaftInfo::get(node))
+}
