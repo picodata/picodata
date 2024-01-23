@@ -1,4 +1,5 @@
 # Авторизация с помощью LDAP
+
 В данном разделе приведены сведения об авторизации и подтверждении
 подлинности в Picodata с помощью протокола LDAP.
 
@@ -28,7 +29,7 @@ Protocol](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol){:
 удаление и т.д. -->
 
 Для использования протокола LDAP в Picodata следует указать одноименный
-метод аутентификации (`{ auth_type = 'ldap' })`). Примеры см. [ниже](#user-setup).
+метод аутентификации (`{ auth_type = 'ldap' }`). Примеры см. [ниже](#user-setup).
 
 ## Особенности работы LDAP {: #ldap-concepts }
 
@@ -45,7 +46,7 @@ Protocol](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol){:
 
 ## Настройка {: #setup }
 
-### Настройка LDAP на уровне пользователей  {: #user-setup }
+### Настройка LDAP на уровне пользователей {: #user-setup }
 
 Как и другие методы аутентификации, LDAP можно указать при создании
 нового пользователя через параметр `auth_type`:
@@ -60,7 +61,7 @@ pico.create_user('username', '', { auth_type = 'ldap' })
 
 ```lua
 -- Поле пароля оставлено пустым
-pico.change_password('username', '', {auth_type = 'ldap'})
+pico.change_password('username', '', { auth_type = 'ldap' })
 ```
 
 Обратите внимание, что при использовании метода LDAP **не требуется**

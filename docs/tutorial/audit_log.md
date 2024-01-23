@@ -21,7 +21,6 @@
 {"auth_type":"md5","id":"1.0.9","message":"created user `PEPPA`","severity":"high","time":"2023-12-01T14:31:24.344+0300","title":"create_user","user":"PEPPA"}
 {"grantee":"PEPPA","grantee_type":"user","id":"1.0.10","message":"granted role `2` to user `PEPPA`","role":"2","severity":"high","time":"2023-12-01T14:31:24.344+0300","title":"grant_role"}
 {"id":"1.0.14","message":"created table `friends_of_peppa`","name":"friends_of_peppa","severity":"medium","time":"2023-12-01T14:31:50.117+0300","title":"create_table"}
-
 ```
 
 Каждая запись журнала включает следующие обязательные элементы:

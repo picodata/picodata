@@ -23,7 +23,7 @@ Proc API используется в следующих сценариях:
 - Йилдит ли
 -->
 
-## Детали реализации
+## Детали реализации {: #implementation_details }
 
 Функции Proc API представляют собой хранимые процедуры Tarantool
 `box.func`. Аргументы функций описаны в системе типов
@@ -220,4 +220,4 @@ fn proc_wait_vclock(target, timeout)
 - (MP_MAP `Vclock`)
 - (MP_NIL, MP_STR) в случае ошибки
 
-### to be continued
+### to be continued {: #TBC }

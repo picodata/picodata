@@ -95,7 +95,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="(" />
   <a
-     xlink:href="#column"
+     xlink:href="#Column"
      xlink:title="column"
      id="a9">
     <path
@@ -130,7 +130,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="," />
   <a
-     xlink:href="#primarykey"
+     xlink:href="#PrimaryKey"
      xlink:title="primary_key"
      id="a13">
     <path
@@ -210,7 +210,7 @@
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="VINYL" />
   <a
-     xlink:href="#distribution"
+     xlink:href="#Distribution"
      xlink:title="distribution"
      id="a23">
     <path

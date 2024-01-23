@@ -178,18 +178,19 @@ GRANT <role name> TO <role name>
 - `owner_id` – идентификатор владельца
 
 #### Встроенные роли {: #builtin_roles }
+
 Помимо создаваемых пользователями ролей, Picodata предоставляет
 следующие системные роли:
 
-##### public
+##### public {: #public }
 
 Роль `public` автоматически назначается всем создаваемым
 пользователям. Наделение роли `publiс` привилегией на какой-либо объект
 делает этот объект общедоступным.
 
-##### super
-Роль `super` имеет все привилегии, доступные пользователю [`admin`](#admin).
+##### super {: #super }
 
+Роль `super` имеет все привилегии, доступные пользователю [`admin`](#admin).
 
 ## Начало работы {: #getting_started }
 
@@ -201,7 +202,7 @@ GRANT <role name> TO <role name>
 ### Создание {: #create_user }
 
 Для создания пользователя используйте SQL-команду [CREATE
-USER](../reference/sql_queries.md#CreateUser):
+USER](../reference/sql_queries.md#create_user):
 
 ```sql
 CREATE USER <user name>
@@ -231,19 +232,19 @@ GRANT CREATE USER TO <grantee>
 ### Изменение {: #alter_user }
 
 Для изменения учетных данных пользователя используйте SQL-команду [ALTER
-USER](../reference/sql_queries.md#AlterUser):
-
+USER](../reference/sql_queries.md#alter_user):
 
 ```sql
 ALTER USER <user name>
     [ WITH ] [ LOGIN ] | [ NOLOGIN ] |
     [ PASSWORD <password> [ USING chap-sha1 | md5 | ldap ] ]
 ```
+
 Возможные действия:
 
-- `LOGIN` / `NOLOGIN` —  включение/выключение привилегии `SESSION`
+- `LOGIN` / `NOLOGIN` — включение/выключение привилегии `SESSION`
 - `WITH PASSWORD` — установка пароля пользователя
-- `USING` —  выбора метода аутентификации
+- `USING` — выбора метода аутентификации
 
 Пример блокировки пользователя (отзыва привилегий `SESSION`):
 
@@ -276,7 +277,7 @@ GRANT ALTER USER TO <grantee>
 ### Удаление {: #drop_user }
 
 Для удаление пользователя используйте SQL-команду [DROP
-USER](../reference/sql_queries.md#DropUser):
+USER](../reference/sql_queries.md#drop_user):
 
 ```sql
 DROP USER <user name>
@@ -299,8 +300,8 @@ GRANT DROP USER TO <grantee>
 
 ### Использование ролей {: #role_management }
 
-Для [создания](../reference/sql_queries.md#CreateRole) и
-[удаления](../reference/sql_queries.md#DropRole) ролей используйте
+Для [создания](../reference/sql_queries.md#create_role) и
+[удаления](../reference/sql_queries.md#drop_role) ролей используйте
 следующие команды:
 
 ```sql
@@ -378,7 +379,6 @@ DROP USER <user name>
 
 CREATE ROLE <role name>
 DROP ROLE <role name>
-
 
 GRANT READ ON TABLE <table name> TO <grantee>
 GRANT READ TABLE TO <grantee>

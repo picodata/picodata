@@ -1,4 +1,5 @@
 # Добро пожаловать на портал документации Picodata
+
 Picodata — это распределенная система промышленного уровня для
 управления базами данных с возможностью расширения функциональности за
 счет плагинов. Исходный код Picodata
@@ -10,12 +11,14 @@ Picodata — это распределенная система промышле
 На этом портале представлена документация по Picodata:
 
 ### Ознакомление с ПО Picodata {: #overview }
+
 * [Общее описание продукта](overview/description.md)
 * [Преимущества использования Picodata](overview/benefits.md)
 * [Глоссарий](overview/glossary.md)
 * [Обратная связь и получение помощи](overview/feedback.md)
 
 ### Инструкции и руководства {: #tutorial }
+
 * [Установка Picodata](tutorial/install.md)
 * [Запуск кластера](tutorial/deploy.md)
 * [Подключение и работа в консоли](tutorial/connecting.md)
@@ -27,6 +30,7 @@ Picodata — это распределенная система промышле
 * [Использование журнала аудита](tutorial/audit_log.md)
 
 ### Справочные материалы {: #reference }
+
 * [Аргументы командной строки](reference/cli.md)
 * [Типы данных SQL](reference/sql_types.md)
 * [Команды SQL](reference/sql_queries.md)
@@ -35,6 +39,7 @@ Picodata — это распределенная система промышле
 * [Регистрируемые события безопасности](reference/audit_events.md)
 
 ### Архитектура {: #architecture }
+
 * [Распределенный SQL](architecture/distributed_sql.md)
 * [Алгоритм discovery](architecture/discovery.md)
 * [Жизненный цикл инстанса](architecture/instance_lifecycle.md)
@@ -44,6 +49,7 @@ Picodata — это распределенная система промышле
 <!-- * [Интерфейс Proc API](architecture/proc_api.md) -->
 
 ### Обеспечение безопасности {: #security }
+
 * [Работа в защищенной ОС](security/os.md)
 * [Ограничение программной среды](security/runtime.md)
 * [Журнал аудита в защищенной ОС](security/audit_log.md)
