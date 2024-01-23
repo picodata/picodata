@@ -39,8 +39,8 @@ apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-d
 ```
 
 ### Prerequisites for MacOs
-Use the following commands to install the required build prerequisites. 
-Note that you'll need recent Rust and Cargo versions installed using the 
+Use the following commands to install the required build prerequisites.
+Note that you'll need recent Rust and Cargo versions installed using the
 recommended way from [rustup.rs](rustup.rs):
 ```shell
 brew install git cmake make curl gcc msgpack
@@ -49,7 +49,7 @@ brew install git cmake make curl gcc msgpack
 brew install node yarn
 ```
 
-### Prerequisites for Fedora 37 (likely 38 as well)
+### Prerequisites for Fedora 37+
 
 ```shell
 dnf install perl automake libtool nodejs yarnpkg
@@ -57,6 +57,11 @@ dnf install perl automake libtool nodejs yarnpkg
 
 Note that nodejs and yarnpkg packages are needed only for webui.
 
+#### Dynamic build
+
+```shell
+dnf install openldap-devel
+```
 
 ### Install Rust
 
@@ -200,7 +205,7 @@ Otherwise, that needs to be fixed. Let's find out the local Homebrew installatio
 ```shell
 brew config
 ```
-The `HOMEBREW_PREFIX` variable should point to the directory where `brew` 
+The `HOMEBREW_PREFIX` variable should point to the directory where `brew`
 installs packages. Let's create a symlink:
 
 ```shell
@@ -208,7 +213,7 @@ ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/python
 ```
 _Note_: Make sure that `/usr/local/bin` is in your `PATH`.
 
-Check `python3` location and version. Now it should be provided by Homebrew: 
+Check `python3` location and version. Now it should be provided by Homebrew:
 
 ```shell
 which python3
