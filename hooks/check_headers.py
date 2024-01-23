@@ -36,12 +36,12 @@ def on_files(files: Files, config: MkDocsConfig):
             # https://python-markdown.github.io/extensions/attr_list/
             match = AttrListTreeprocessor.HEADER_RE.search(line)
             if not match:
-                log.info(f"MISSING ANCHOR @ {file.src_path}: {line}")
+                log.warning(f"MISSING ANCHOR @ {file.src_path}: {line}")
                 continue
 
             attrs = dict(get_attrs(match.group(1)))
             if "id" not in attrs:
-                log.info(f"INVALID ANCHOR @ {file.src_path}: {line}")
+                log.warning(f"INVALID ANCHOR @ {file.src_path}: {line}")
                 continue
 
             anchor = attrs["id"]
@@ -51,7 +51,7 @@ def on_files(files: Files, config: MkDocsConfig):
 
             file_anchors.append(anchor)
 
-        # Drop loaded page in order to suppress mkdocs warning:
-        # A plugin has set File.page to an instance of Page and it got
-        # overwritten. The behavior of this will change in MkDocs 1.6.
+        # Drop loaded page in order to suppress MkDocs DeprecationWarning:
+        # "A plugin has set File.page to an instance of Page and it got overwritten.
+        # The behavior of this will change in MkDocs 1.6."
         file.page = None

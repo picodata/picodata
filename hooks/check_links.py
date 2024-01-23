@@ -35,9 +35,9 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
             target = os.path.normpath(target)
 
         if target not in config["anchors"]:
-            log.info(f"BROKEN LINK @ {page.file.src_path}: {link}")
+            log.warning(f"BROKEN LINK @ {page.file.src_path}: {link}")
             continue
 
         if url.fragment and url.fragment not in config["anchors"][target]:
-            log.info(f"BROKEN LINK ANCHOR @ {page.file.src_path}: {link}")
+            log.warning(f"BROKEN LINK ANCHOR @ {page.file.src_path}: {link}")
             continue
