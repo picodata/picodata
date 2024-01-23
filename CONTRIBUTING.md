@@ -2,6 +2,7 @@
 This document describes contributing to Picodata, primarily the ways you can build and test it.
 
 ## Building Picodata from source
+
 ### Required build tools
 - Rust and Cargo 1.65 or newer
 - Cmake 3.16 or newer
@@ -14,8 +15,6 @@ Use the following commands to install the required build prerequisites. Note tha
 ```bash
 sudo dnf config-manager --set-enabled powertools
 sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
 
 # Optional - to build with Web UI
 sudo dnf module install nodejs:19
@@ -24,7 +23,7 @@ sudo corepack enable
 ### Prerequisites for Ubuntu 22.04
 Use the following command to install the required build prerequisites. Note that Ubuntu 22.04 provides recent Rust and Cargo versions, so it's preferable to install it via `apt-get`:
 ```bash
-sudo apt-get install build-essential cargo git cmake -y
+sudo apt-get install build-essential git cmake -y
 
 # Optional - to build with Web UI
 curl -fsSL https://deb.nodesource.com/setup_19.x | sudo -E bash - &&\
@@ -37,8 +36,6 @@ Use the following commands to install the required build prerequisites. Note tha
 ```bash
 su -
 apt-get install gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static -y && exit
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
 ```
 
 ### Prerequisites for MacOs
@@ -47,8 +44,6 @@ Note that you'll need recent Rust and Cargo versions installed using the
 recommended way from [rustup.rs](rustup.rs):
 ```shell
 brew install git cmake make curl gcc msgpack
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
 
 # Optional - to build with Web UI
 brew install node yarn
@@ -57,13 +52,18 @@ brew install node yarn
 ### Prerequisites for Fedora 37 (likely 38 as well)
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-
 dnf install perl automake libtool nodejs yarnpkg
 ```
 
 Note that nodejs and yarnpkg packages are needed only for webui.
+
+
+### Install Rust
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
 
 ### Getting and building the source code
 ```bash
