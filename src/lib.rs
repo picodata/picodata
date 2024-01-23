@@ -15,8 +15,6 @@ use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::{fiber, session};
 use rpc::{join, update_instance};
-use std::cell::OnceCell;
-use std::collections::HashMap;
 use std::time::Duration;
 use storage::Clusterwide;
 use traft::RaftSpaceAccess;
@@ -186,6 +184,7 @@ fn start_http_server(Address { host, port, .. }: &Address) {
 #[cfg(feature = "webui")]
 fn start_webui() {
     use ::tarantool::tlua::PushInto;
+    use std::collections::HashMap;
 
     /// This structure is used to check that `json` contains valid data
     /// at deserialization.
@@ -299,15 +298,6 @@ fn set_login_attempts_check(storage: Clusterwide) {
     let compute_auth_verdict = move |user: String, status: bool| {
         use std::collections::hash_map::Entry;
 
-        // It's ok to lose this information during restart, so we keep it as a static.
-        static mut LOGIN_ATTEMPTS: OnceCell<HashMap<String, usize>> = OnceCell::new();
-
-        // SAFETY: Accessing `USER_ATTEMPTS` is safe as it is only done from a single thread
-        let attempts = unsafe {
-            LOGIN_ATTEMPTS.get_or_init(HashMap::new);
-            LOGIN_ATTEMPTS.get_mut().expect("is initialized")
-        };
-
         let max_login_attempts = || {
             storage
                 .properties
@@ -328,9 +318,14 @@ fn set_login_attempts_check(storage: Clusterwide) {
             return Verdict::UnknownUser;
         }
 
+        // Borrowing will not panic as there are no yields while it's borrowed
+        let mut attempts = storage.login_attempts.borrow_mut();
         match attempts.entry(user) {
             Entry::Occupied(e) if *e.get() >= max_login_attempts() => {
-                // The account is suspended until restart
+                // The account is suspended until instance is restarted
+                // or user is unlocked with `grant session` operation.
+                //
+                // See [`crate::storage::global_grant_privilege`]
                 Verdict::UserBlocked
             }
             Entry::Occupied(mut e) => {

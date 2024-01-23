@@ -28,7 +28,7 @@ def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
 
 
 def test_max_login_attempts(cluster: Cluster):
-    i1, *_ = cluster.deploy(instance_count=1)
+    i1, i2, _ = cluster.deploy(instance_count=3)
 
     def connect(
         i: Instance, user: str | None = None, password: str | None = None
@@ -83,6 +83,16 @@ def test_max_login_attempts(cluster: Cluster):
     # Next login even with correct password fails as the limit is reached
     with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
         connect(i1, user="foo", password="bar")
+
+    # Unlock user - alter user login is interpreted as grant session
+    # which resets the login attempts counter.
+    # Works from any peer
+    acl = i2.sudo_sql('alter user "foo" with login')
+    assert acl["row_count"] == 1
+
+    # Now user can connect again
+    c = connect(i1, user="foo", password="12345678")
+    assert c
 
 
 def test_acl_lua_api(cluster: Cluster):

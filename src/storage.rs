@@ -1,5 +1,5 @@
 use tarantool::auth::AuthDef;
-use tarantool::error::Error as TntError;
+use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
 use tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use tarantool::msgpack::{ArrayWriter, ValueIter};
@@ -37,7 +37,7 @@ use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 
 use std::borrow::Cow;
-use std::cell::UnsafeCell;
+use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
@@ -229,6 +229,8 @@ define_clusterwide_tables! {
     pub struct Clusterwide {
         pub #space_name_lower: #space_name_upper,
         pub snapshot_cache: Rc<SnapshotCache>,
+        // It's ok to lose this information during restart.
+        pub login_attempts: Rc<RefCell<HashMap<String, usize>>>,
     }
 
     /// An enumeration of builtin cluster-wide tables.
@@ -2504,27 +2506,19 @@ impl Privileges {
         Ok(())
     }
 
-    /// If `if_not_exists == true` will skip insertion if this privilege already exists.
+    /// If `if_not_exists == true` the function will not return an error if this privilege already exists.
     #[inline(always)]
     pub fn insert(&self, priv_def: &PrivilegeDef, if_not_exists: bool) -> tarantool::Result<()> {
-        if if_not_exists
-            && self
-                .space
-                .get(&(
-                    priv_def.grantee_id(),
-                    priv_def.object_type(),
-                    priv_def.object_id_raw(),
-                    priv_def.privilege(),
-                ))?
-                .is_some()
-        {
-            return Ok(());
+        let res = self.space.insert(priv_def).map(|_| ());
+        if if_not_exists {
+            ignore_only_error(res, TntErrorCode::TupleFound)
+        } else {
+            res
         }
-        self.space.insert(priv_def)?;
-        Ok(())
     }
 
-    /// If `if_exists == true` will skip deletion if this privilege does not exist.
+    /// This function will not return an error if this privilege does not exists.
+    /// As deletion in tarantool is idempotent.
     #[inline(always)]
     pub fn delete(
         &self,
@@ -2532,16 +2526,7 @@ impl Privileges {
         object_type: &str,
         object_id: i64,
         privilege: &str,
-        if_exists: bool,
     ) -> tarantool::Result<()> {
-        if if_exists
-            && self
-                .space
-                .get(&(grantee_id, object_type, object_id, privilege))?
-                .is_none()
-        {
-            return Ok(());
-        }
         self.space
             .delete(&(grantee_id, object_type, object_id, privilege))?;
         Ok(())
@@ -2556,7 +2541,6 @@ impl Privileges {
                 &priv_def.object_type(),
                 priv_def.object_id_raw(),
                 &priv_def.privilege(),
-                false,
             )?;
         }
         Ok(())
@@ -2576,7 +2560,6 @@ impl Privileges {
                     &priv_def.object_type(),
                     priv_def.object_id_raw(),
                     &priv_def.privilege(),
-                    false,
                 )?;
             }
         }
@@ -2597,7 +2580,6 @@ impl Privileges {
                 &priv_def.object_type(),
                 object_id,
                 &priv_def.privilege(),
-                false,
             )?;
         }
         Ok(())
@@ -2704,18 +2686,18 @@ trait SchemaDef {
     fn on_delete(key: &Self::Key, storage: &Clusterwide) -> traft::Result<()>;
 }
 
-/// used in `on_insert` of SchemaDef for `RoleDef` and `UserDef` to ignore errors when
-/// inserting builtin tarantool users and roles
-fn ignore_tuple_found_error(res: tarantool::Result<()>) -> traft::Result<()> {
+/// Ignore specific tarantool error.
+/// E.g. if `res` contains an `ignored` error, it will be
+/// transformed to ok instead.
+fn ignore_only_error(res: tarantool::Result<()>, ignored: TntErrorCode) -> tarantool::Result<()> {
     if let Err(err) = res {
         if let TntError::Tarantool(tnt_err) = &err {
-            if tnt_err.error_code() == tarantool::error::TarantoolErrorCode::TupleFound as u32 {
+            if tnt_err.error_code() == ignored as u32 {
                 return Ok(());
             }
         }
-        return Err(traft::error::Error::from(err));
+        return Err(err);
     }
-
     Ok(())
 }
 
@@ -2781,7 +2763,8 @@ impl SchemaDef for UserDef {
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
         let res = acl::on_master_create_user(self);
-        ignore_tuple_found_error(res)
+        ignore_only_error(res, TntErrorCode::TupleFound)?;
+        Ok(())
     }
 
     #[inline(always)]
@@ -2809,7 +2792,8 @@ impl SchemaDef for RoleDef {
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
         let res = acl::on_master_create_role(self);
-        ignore_tuple_found_error(res)
+        ignore_only_error(res, TntErrorCode::TupleFound)?;
+        Ok(())
     }
 
     #[inline(always)]
@@ -3066,6 +3050,13 @@ pub mod acl {
         let (grantee_type, grantee) = priv_def.grantee_type_and_name(storage)?;
         let initiator_def = user_by_id(priv_def.grantor_id())?;
 
+        // Reset login attempts counter for a user on session grant
+        if *privilege == PrivilegeType::Session {
+            // Borrowing will not panic as there are no yields while it's borrowed
+            storage.login_attempts.borrow_mut().remove(&grantee);
+        }
+
+        // Emit audit log
         match (privilege.as_str(), object_type.as_str()) {
             ("execute", "role") => {
                 let object = object.expect("should be set");
@@ -3108,13 +3099,11 @@ pub mod acl {
         priv_def: &PrivilegeDef,
         initiator: UserId,
     ) -> tarantool::Result<()> {
-        // FIXME: currently there's no way to revoke a default privilege
         storage.privileges.delete(
             priv_def.grantee_id(),
             &priv_def.object_type(),
             priv_def.object_id_raw(),
             &priv_def.privilege(),
-            true,
         )?;
 
         let privilege = &priv_def.privilege();
