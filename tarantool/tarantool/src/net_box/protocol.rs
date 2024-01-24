@@ -4,11 +4,10 @@ use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
 
-use sha1::{Digest, Sha1};
-
 use crate::error::Error;
 use crate::index::IteratorType;
 use crate::msgpack;
+use crate::network::protocol::codec::IProtoType;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 const REQUEST_TYPE: u8 = 0x00;
@@ -25,7 +24,6 @@ const INDEX_BASE: u8 = 0x15;
 const KEY: u8 = 0x20;
 const TUPLE: u8 = 0x21;
 const FUNCTION_NAME: u8 = 0x22;
-const USER_NAME: u8 = 0x23;
 const EXPR: u8 = 0x27;
 const OPS: u8 = 0x28;
 
@@ -36,20 +34,6 @@ const SQL_TEXT: u8 = 0x40;
 const SQL_BIND: u8 = 0x41;
 
 pub(crate) type Sync = u64;
-
-pub(crate) enum IProtoType {
-    Select = 1,
-    Insert = 2,
-    Replace = 3,
-    Update = 4,
-    Delete = 5,
-    Auth = 7,
-    Eval = 8,
-    Upsert = 9,
-    Call = 10,
-    Execute = 11,
-    Ping = 64,
-}
 
 pub(crate) trait Request {
     const TYPE: IProtoType;
@@ -156,54 +140,6 @@ fn encode_header(
     rmp::encode::write_pfix(stream, request_type as u8)?;
     rmp::encode::write_pfix(stream, SYNC)?;
     rmp::encode::write_uint(stream, sync)?;
-    Ok(())
-}
-
-pub fn encode_auth(
-    stream: &mut impl Write,
-    user: &str,
-    password: &str,
-    salt: &[u8],
-    sync: u64,
-) -> Result<(), Error> {
-    // prepare 'chap-sha1' scramble:
-    // salt = base64_decode(encoded_salt);
-    // step_1 = sha1(password);
-    // step_2 = sha1(step_1);
-    // step_3 = sha1(first_20_bytes_of_salt, step_2);
-    // scramble = xor(step_1, step_3);
-
-    let mut hasher = Sha1::new();
-    hasher.update(password.as_bytes());
-    let mut step_1_and_scramble = hasher.finalize();
-
-    let mut hasher = Sha1::new();
-    hasher.update(step_1_and_scramble);
-    let step_2 = hasher.finalize();
-
-    let mut hasher = Sha1::new();
-    hasher.update(&salt[0..20]);
-    hasher.update(step_2);
-    let step_3 = hasher.finalize();
-
-    step_1_and_scramble
-        .iter_mut()
-        .zip(step_3.iter())
-        .for_each(|(a, b)| *a ^= *b);
-
-    encode_header(stream, sync, IProtoType::Auth)?;
-    rmp::encode::write_map_len(stream, 2)?;
-
-    // username:
-    rmp::encode::write_pfix(stream, USER_NAME)?;
-    rmp::encode::write_str(stream, user)?;
-
-    // encrypted password:
-    rmp::encode::write_pfix(stream, TUPLE)?;
-    rmp::encode::write_array_len(stream, 2)?;
-    rmp::encode::write_str(stream, "chap-sha1")?;
-    rmp::encode::write_str_len(stream, 20)?;
-    stream.write_all(&step_1_and_scramble)?;
     Ok(())
 }
 

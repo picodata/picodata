@@ -452,6 +452,7 @@ mod tests {
             listen_port(),
             protocol::Config {
                 creds: Some(("test_user".into(), "password".into())),
+                ..Default::default()
             },
         )
         .timeout(Duration::from_secs(3))

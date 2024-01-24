@@ -18,6 +18,13 @@
 ### Deprecated
 
 ### Breaking changes
+- `network::protocol::Config` struct is now marked as `#[non_exhaustive]`,
+  so that we can add fields to it in the future without breaking backwards
+  compatibility. Now it should always be constructed like so
+  `Config { foo, bar, ..Default::default() }`.
+- `network::protocol::codec::encode_auth` now takes an additional `auth_method` parameter.
+- `network::protocol::{Config, api::Auth}` & `net_box::options::ConnOptions`,
+  now have an additional field `auth_method`.
 
 ### Added (picodata)
 

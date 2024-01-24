@@ -6,6 +6,7 @@ use std::str::from_utf8;
 use sha1::{Digest, Sha1};
 
 use super::Error;
+use crate::auth::AuthMethod;
 use crate::index::IteratorType;
 use crate::msgpack;
 use crate::tuple::{ToTupleBuffer, Tuple};
@@ -63,12 +64,7 @@ pub fn encode_header(
     Ok(())
 }
 
-pub fn encode_auth(
-    stream: &mut impl Write,
-    user: &str,
-    password: &str,
-    salt: &[u8],
-) -> Result<(), Error> {
+pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
     // step_1 = sha1(password);
@@ -94,6 +90,36 @@ pub fn encode_auth(
         .zip(step_3.iter())
         .for_each(|(a, b)| *a ^= *b);
 
+    let scramble_bytes = &step_1_and_scramble.as_slice();
+    debug_assert_eq!(scramble_bytes.len(), 20);
+
+    // 5 is the maximum possible MP_STR header size
+    let mut res = Vec::with_capacity(scramble_bytes.len() + 5);
+    rmp::encode::write_str_len(&mut res, scramble_bytes.len() as _).expect("Can't fail for a Vec");
+    res.write_all(scramble_bytes).expect("Can't fail for a Vec");
+    return res;
+}
+
+pub fn encode_auth(
+    stream: &mut impl Write,
+    user: &str,
+    password: &str,
+    salt: &[u8],
+    auth_method: AuthMethod,
+) -> Result<(), Error> {
+    let auth_data;
+    match auth_method {
+        AuthMethod::ChapSha1 => {
+            auth_data = chap_sha1_auth_data(password, salt);
+        }
+        #[cfg(feature = "picodata")]
+        _ => {
+            return Err(Error::Tarantool(Box::new(crate::error::Error::other(
+                format!("auth method '{auth_method}' is not implemented yet"),
+            ))));
+        }
+    }
+
     rmp::encode::write_map_len(stream, 2)?;
 
     // username:
@@ -103,9 +129,8 @@ pub fn encode_auth(
     // encrypted password:
     rmp::encode::write_pfix(stream, TUPLE)?;
     rmp::encode::write_array_len(stream, 2)?;
-    rmp::encode::write_str(stream, "chap-sha1")?;
-    rmp::encode::write_str_len(stream, 20)?;
-    stream.write_all(&step_1_and_scramble)?;
+    rmp::encode::write_str(stream, auth_method.as_str())?;
+    stream.write_all(&auth_data)?;
     Ok(())
 }
 

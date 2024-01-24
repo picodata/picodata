@@ -110,6 +110,7 @@ pub struct Auth<'u, 'p, 's> {
     pub user: &'u str,
     pub pass: &'p str,
     pub salt: &'s [u8],
+    pub method: crate::auth::AuthMethod,
 }
 
 impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
@@ -117,7 +118,7 @@ impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
     type Response = ();
 
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
-        codec::encode_auth(out, self.user, self.pass, self.salt)
+        codec::encode_auth(out, self.user, self.pass, self.salt, self.method)
     }
 
     fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io::{self, Cursor, Read, Seek};
 use std::str::Utf8Error;
 
+use crate::auth::AuthMethod;
 use api::Request;
 
 /// Error returned by [`Protocol`].
@@ -52,7 +53,7 @@ impl From<crate::error::Error> for Error {
 /// Unique identifier of the sent message on this connection.
 /// It is used to retrieve response for the corresponding request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SyncIndex(u64);
+pub struct SyncIndex(pub(crate) u64);
 
 impl SyncIndex {
     pub fn next_index(&mut self) -> Self {
@@ -85,9 +86,12 @@ enum State {
 
 /// Configuration of [`Protocol`].
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct Config {
     /// (user, password)
     pub creds: Option<(String, String)>,
+    /// Authentication method. Only useful in picodata.
+    pub auth_method: AuthMethod,
     // TODO: add buffer limits here
 }
 
@@ -110,6 +114,7 @@ pub struct Protocol {
     incoming: HashMap<SyncIndex, Result<Vec<u8>, ResponseError>>,
     /// (user, password)
     creds: Option<(String, String)>,
+    auth_method: AuthMethod,
 }
 
 impl Default for Protocol {
@@ -126,6 +131,7 @@ impl Protocol {
             sync: SyncIndex(0),
             pending_outgoing: Vec::new(),
             creds: None,
+            auth_method: AuthMethod::default(),
             outgoing: Vec::new(),
             incoming: HashMap::new(),
             // Greeting is exactly 128 bytes
@@ -137,6 +143,7 @@ impl Protocol {
     pub fn with_config(config: Config) -> Self {
         let mut protocol = Self::new();
         protocol.creds = config.creds;
+        protocol.auth_method = config.auth_method;
         protocol
     }
 
@@ -246,6 +253,7 @@ impl Protocol {
                             user,
                             pass,
                             salt: &salt,
+                            method: self.auth_method,
                         },
                     )?;
                 } else {

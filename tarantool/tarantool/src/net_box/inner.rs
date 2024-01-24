@@ -286,13 +286,20 @@ impl ConnInner {
         // send auth request
         let sync = self.send_queue.next_sync();
         send_queue::write_to_buffer(&mut cur, sync, |buf, sync| {
-            protocol::encode_auth(
+            use crate::network::protocol;
+            protocol::codec::encode_header(
+                buf,
+                protocol::SyncIndex(sync),
+                protocol::codec::IProtoType::Auth,
+            )?;
+            protocol::codec::encode_auth(
                 buf,
                 self.options.user.as_str(),
                 self.options.password.as_str(),
                 salt,
-                sync,
-            )
+                self.options.auth_method,
+            )?;
+            Ok(())
         })?;
         stream.write_all(cur.get_ref())?;
 

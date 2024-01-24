@@ -53,6 +53,9 @@ pub struct ConnOptions {
     /// Authentication password.
     pub password: String,
 
+    /// Authentication method. Only useful in picodata.
+    pub auth_method: crate::auth::AuthMethod,
+
     /// If `reconnect_after` is greater than zero, then a [Conn](struct.Conn.html) instance will try to reconnect if a
     /// connection is broken or if a connection attempt fails.
     ///
@@ -95,6 +98,7 @@ impl Default for ConnOptions {
         ConnOptions {
             user: "".to_string(),
             password: "".to_string(),
+            auth_method: crate::auth::AuthMethod::default(),
             reconnect_after: Default::default(),
             connect_timeout: Default::default(),
             send_buffer_flush_interval: Duration::from_millis(10),
