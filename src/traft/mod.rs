@@ -50,7 +50,7 @@ impl Encode for RaftEntryId {}
 impl PartialOrd for RaftEntryId {
     #[inline(always)]
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        (self.term, self.index).partial_cmp(&(other.term, other.index))
+        Some(self.cmp(other))
     }
 }
 

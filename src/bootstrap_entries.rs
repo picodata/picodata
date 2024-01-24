@@ -34,7 +34,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             context,
         };
 
-        init_entries.push(raft::Entry::try_from(e).unwrap());
+        init_entries.push(e.into());
     };
 
     // insert ourselves into global _pico_address and _pico_instance spaces
@@ -217,7 +217,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             context: traft::EntryContext::None,
         };
 
-        raft::Entry::try_from(e).unwrap()
+        e.into()
     });
 
     init_entries

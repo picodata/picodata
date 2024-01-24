@@ -79,26 +79,26 @@ mod tests {
         assert!(kv.is_empty());
 
         kv.insert(1, 101);
-        assert_eq!(kv.is_empty(), false);
+        assert!(!kv.is_empty());
         assert_eq!(kv.take(), Some(101));
-        assert_eq!(kv.is_empty(), true);
+        assert!(kv.is_empty());
         assert_eq!(kv.take(), None);
 
         kv.insert(2, 102);
         assert_eq!(kv.take_or_drop(&2), Some(102));
-        assert_eq!(kv.is_empty(), true);
+        assert!(kv.is_empty());
 
         kv.insert(3, 103);
         assert_eq!(kv.take_or_drop(&0), None);
-        assert_eq!(kv.is_empty(), true);
+        assert!(kv.is_empty());
 
         kv.insert(4, 104);
         assert_eq!(kv.take_or_keep(&4), Some(104));
-        assert_eq!(kv.is_empty(), true);
+        assert!(kv.is_empty());
 
         kv.insert(5, 105);
         assert_eq!(kv.take_or_keep(&0), None);
-        assert_eq!(kv.is_empty(), false);
+        assert!(!kv.is_empty());
 
         let v: &mut u32 = kv.insert(6, 106);
         *v = 666;

@@ -67,8 +67,8 @@ pub enum UnixClientError {
 pub type Result<T> = std::result::Result<T, UnixClientError>;
 
 impl UnixClient {
-    const SERVER_DELIM: &str = "$EOF$\n";
-    const CLIENT_DELIM: &[u8] = b"\n...\n";
+    const SERVER_DELIM: &'static str = "$EOF$\n";
+    const CLIENT_DELIM: &'static [u8] = b"\n...\n";
     const WAIT_TIMEOUT: u64 = 10;
     const INITIAL_BUFFER_SIZE: usize = 1024;
 
@@ -278,7 +278,7 @@ mod tests {
         let delimiter = b"\n...\n";
         let mut big_output = vec![0u8; 1024];
         big_output.extend(delimiter);
-        server.write_bytes(&big_output.as_slice()).unwrap();
+        server.write_bytes(big_output.as_slice()).unwrap();
         let output = client.read();
         assert!(output.is_ok());
         assert!(client.buffer.len() > initial_buf_size);

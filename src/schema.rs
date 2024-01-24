@@ -1362,7 +1362,7 @@ mod test {
         let format = TableDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "TableDef::format");
 
-        assert_eq!(format[TableDef::FIELD_OPERABLE as usize].name, "operable");
+        assert_eq!(format[TableDef::FIELD_OPERABLE].name, "operable");
     }
 
     #[test]
@@ -1373,7 +1373,7 @@ mod test {
         let format = IndexDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "IndexDef::format");
 
-        assert_eq!(format[IndexDef::FIELD_OPERABLE as usize].name, "operable");
+        assert_eq!(format[IndexDef::FIELD_OPERABLE].name, "operable");
     }
 
     #[test]
@@ -1384,7 +1384,7 @@ mod test {
         let format = UserDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "UserDef::format");
 
-        assert_eq!(format[UserDef::FIELD_AUTH as usize].name, "auth");
+        assert_eq!(format[UserDef::FIELD_AUTH].name, "auth");
     }
 
     #[test]

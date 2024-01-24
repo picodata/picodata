@@ -799,13 +799,13 @@ mod tests {
 
         {
             let parsed = parse![Run, "-i"];
-            assert_eq!(parsed.interactive_mode, true);
+            assert!(parsed.interactive_mode);
 
             let parsed = parse![Run, "--interactive"];
-            assert_eq!(parsed.interactive_mode, true);
+            assert!(parsed.interactive_mode);
 
             let parsed = parse![Run,];
-            assert_eq!(parsed.interactive_mode, false);
+            assert!(!parsed.interactive_mode);
         }
 
         {
