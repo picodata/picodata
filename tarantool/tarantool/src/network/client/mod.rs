@@ -133,6 +133,12 @@ struct ClientInner {
 
 impl ClientInner {
     pub fn new(config: protocol::Config, stream: TcpStream) -> Self {
+        #[cfg(feature = "picodata")]
+        if config.auth_method == crate::auth::AuthMethod::Ldap {
+            crate::say_warn!(
+                "You're using the 'ldap' authentication method, which implies sending the password UNENCRYPTED over the TCP connection. TLS is not yet implemented for IPROTO connections so make sure your communication channel is secure by other means."
+            )
+        }
         Self {
             protocol: Protocol::with_config(config),
             awaiting_response: HashMap::new(),

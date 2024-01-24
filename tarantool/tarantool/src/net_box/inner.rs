@@ -64,6 +64,13 @@ impl ConnInner {
         options: ConnOptions,
         triggers: Option<Rc<dyn ConnTriggers>>,
     ) -> Result<Rc<Self>, Error> {
+        #[cfg(feature = "picodata")]
+        if options.auth_method == crate::auth::AuthMethod::Ldap {
+            crate::say_warn!(
+                "You're using the 'ldap' authentication method, which implies sending the password UNENCRYPTED over the TCP connection. TLS is not yet implemented for IPROTO connections so make sure your communication channel is secure by other means."
+            )
+        }
+
         // construct object
         let conn_inner = Rc::new(ConnInner {
             state: Cell::new(ConnState::Init),

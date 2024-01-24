@@ -100,6 +100,16 @@ pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
     return res;
 }
 
+#[cfg(feature = "picodata")]
+#[inline]
+pub fn ldap_auth_data(password: &str) -> Vec<u8> {
+    // 5 is the maximum possible MP_STR header size
+    let mut res = Vec::with_capacity(password.len() + 5);
+    // Hopefully you're using an ssh tunnel or something ¯\_(ツ)_/¯
+    rmp::encode::write_str(&mut res, password).expect("Can't fail for a Vec");
+    return res;
+}
+
 pub fn encode_auth(
     stream: &mut impl Write,
     user: &str,
@@ -111,6 +121,10 @@ pub fn encode_auth(
     match auth_method {
         AuthMethod::ChapSha1 => {
             auth_data = chap_sha1_auth_data(password, salt);
+        }
+        #[cfg(feature = "picodata")]
+        AuthMethod::Ldap => {
+            auth_data = ldap_auth_data(password);
         }
         #[cfg(feature = "picodata")]
         _ => {

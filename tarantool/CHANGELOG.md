@@ -27,6 +27,7 @@
   now have an additional field `auth_method`.
 
 ### Added (picodata)
+- Support for `AuthMethod::Ldap` in `net_box` & `network::client`.
 
 ### Changed (picodata)
 
