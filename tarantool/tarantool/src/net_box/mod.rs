@@ -289,4 +289,91 @@ mod tests {
     //         .unwrap_err();
     //     assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
     // }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn ldap_auth_method() {
+        use crate::auth::AuthMethod;
+
+        let username = "Worry";
+        let password = "B Gone";
+
+        let _guard = crate::unwrap_ok_or!(
+            crate::test::util::setup_ldap_auth(username, password),
+            Err(e) => {
+                println!("{e}, skipping ldap test");
+                return;
+            }
+        );
+
+        // Successfull connection
+        {
+            let conn = Conn::new(
+                ("localhost", listen_port()),
+                ConnOptions {
+                    user: username.into(),
+                    password: password.into(),
+                    auth_method: AuthMethod::Ldap,
+                    ..ConnOptions::default()
+                },
+                None,
+            )
+            .unwrap();
+
+            conn.eval(
+                "print('\\x1b[32mit works!\\x1b[0m')",
+                &(),
+                &Default::default(),
+            )
+            .unwrap();
+        }
+
+        // Wrong password
+        {
+            let conn = Conn::new(
+                ("localhost", listen_port()),
+                ConnOptions {
+                    user: username.into(),
+                    password: "wrong password".into(),
+                    auth_method: AuthMethod::Ldap,
+                    ..ConnOptions::default()
+                },
+                None,
+            )
+            .unwrap();
+
+            let err = conn
+                .eval("return", &(), &Default::default())
+                .unwrap_err()
+                .to_string();
+            assert_eq!(
+                err,
+                "server responded with error: User not found or supplied credentials are invalid"
+            );
+        }
+
+        // Wrong auth method
+        {
+            let conn = Conn::new(
+                ("localhost", listen_port()),
+                ConnOptions {
+                    user: username.into(),
+                    password: "wrong password".into(),
+                    auth_method: AuthMethod::ChapSha1,
+                    ..ConnOptions::default()
+                },
+                None,
+            )
+            .unwrap();
+
+            let err = conn
+                .eval("return", &(), &Default::default())
+                .unwrap_err()
+                .to_string();
+            assert_eq!(
+                err,
+                "server responded with error: User not found or supplied credentials are invalid"
+            );
+        }
+    }
 }

@@ -207,6 +207,167 @@ pub mod util {
     {
         ScopeGuard { cb: Some(cb) }
     }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // setup_ldap_auth
+    ////////////////////////////////////////////////////////////////////////////////
+
+    /// Starts the `glauth` ldap server and configures tarantool to use the 'ldap'
+    /// authentication method. Returns a `guard` object, it should be dropped
+    /// at the end of the test which will stop the server and reset the
+    /// configuration to the default authentication method.
+    ///
+    /// If `glauth` is not found, returns an error message. You can download it
+    /// from <https://github.com/glauth/glauth/releases>.
+    pub fn setup_ldap_auth(username: &str, password: &str) -> Result<impl Drop, String> {
+        use crate::fiber;
+        use std::io::Write;
+        use std::time::Duration;
+        let res = std::process::Command::new("glauth").output();
+
+        match res {
+            Err(e @ std::io::Error { .. }) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err("`glauth` executable not found".into());
+            }
+            _ => {}
+        }
+
+        //
+        // Create ldap configuration file
+        //
+        let tempdir = tempfile::tempdir().unwrap();
+        let ldap_cfg_path = tempdir.path().join("ldap.cfg");
+        let mut ldap_cfg_file = std::fs::File::create(&ldap_cfg_path).unwrap();
+
+        const LDAP_SERVER_PORT: u16 = 1389;
+        const LDAP_SERVER_HOST: &str = "127.0.0.1";
+
+        let password_sha256 = sha256_hex(password);
+
+        ldap_cfg_file
+            .write_all(
+                format!(
+                    r#"
+            [ldap]
+                enabled = true
+                listen = "{LDAP_SERVER_HOST}:{LDAP_SERVER_PORT}"
+
+            [ldaps]
+                enabled = false
+
+            [backend]
+                datastore = "config"
+                baseDN = "dc=example,dc=org"
+
+            [[users]]
+                name = "{username}"
+                uidnumber = 5001
+                primarygroup = 5501
+                passsha256 = "{password_sha256}"
+                    [[users.capabilities]]
+                        action = "search"
+                        object = "*"
+
+            [[groups]]
+                name = "deep down in Louisianna"
+                gidnumber = 5501
+        "#
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        // Close the file
+        drop(ldap_cfg_file);
+
+        //
+        // Start the ldap server
+        //
+        println!();
+        let mut ldap_server_process = std::process::Command::new("glauth")
+            .arg("-c")
+            .arg(&ldap_cfg_path)
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .unwrap();
+
+        // Wait for ldap server to start up
+        let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
+        while fiber::clock() < deadline {
+            let res = std::net::TcpStream::connect((LDAP_SERVER_HOST, LDAP_SERVER_PORT));
+            match res {
+                Ok(_) => {
+                    // Ldap server is ready
+                    break;
+                }
+                Err(_) => {
+                    fiber::sleep(Duration::from_millis(100));
+                }
+            }
+        }
+
+        let guard = on_scope_exit(move || {
+            crate::say_info!("killing ldap server");
+            ldap_server_process.kill().unwrap();
+
+            // Remove the temporary directory with it's contents
+            drop(tempdir);
+        });
+
+        #[allow(dyn_drop)]
+        let mut cleanup: Vec<Box<dyn Drop>> = vec![];
+        cleanup.push(Box::new(guard));
+
+        //
+        // Configure tarantool
+        //
+        std::env::set_var(
+            "TT_LDAP_URL",
+            format!("ldap://{LDAP_SERVER_HOST}:{LDAP_SERVER_PORT}"),
+        );
+        std::env::set_var("TT_LDAP_DN_FMT", "cn=$USER,dc=example,dc=org");
+
+        crate::lua_state()
+            .exec_with(
+                "local username = ...
+                box.cfg { auth_type = 'ldap' }
+                box.schema.user.create(username, { if_not_exists = true })
+                box.schema.user.grant(username, 'super', nil, nil, { if_not_exists = true })",
+                username,
+            )
+            .unwrap();
+
+        let username = username.to_owned();
+        let guard = on_scope_exit(move || {
+            crate::lua_state()
+                // This is the default
+                .exec_with(
+                    "local username = ...
+                    box.cfg { auth_type = 'chap-sha1' }
+                    box.schema.user.drop(username)",
+                    username,
+                )
+                .unwrap();
+        });
+        cleanup.push(Box::new(guard));
+
+        Ok(cleanup)
+    }
+
+    pub fn sha256_hex(s: &str) -> String {
+        use std::io::Write;
+
+        let tlua::AnyLuaString(bytes) = crate::lua_state()
+            .eval_with("return require 'digest'.sha256(...)", s)
+            .unwrap();
+
+        let mut buffer = Vec::new();
+        for b in bytes {
+            write!(&mut buffer, "{b:02x}").unwrap();
+        }
+
+        String::from_utf8(buffer).unwrap()
+    }
 }
 
 #[macro_export]

@@ -672,4 +672,89 @@ mod tests {
             assert_eq!(len, N + 17);
         }
     }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    async fn ldap_auth_method() {
+        use crate::auth::AuthMethod;
+        use std::time::Duration;
+
+        let username = "Johnny";
+        let password = "B. Goode";
+
+        let _guard = crate::unwrap_ok_or!(
+            crate::test::util::setup_ldap_auth(username, password),
+            Err(e) => {
+                println!("{e}, skipping ldap test");
+                return;
+            }
+        );
+
+        // Successfull connection
+        {
+            let client = Client::connect_with_config(
+                "localhost",
+                listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), password.into())),
+                    auth_method: AuthMethod::Ldap,
+                    ..Default::default()
+                },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            client
+                .eval("print('\\x1b[32mit works!\\x1b[0m')", &())
+                .await
+                .unwrap();
+        }
+
+        // Wrong password
+        {
+            let client = Client::connect_with_config(
+                "localhost",
+                listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), "wrong password".into())),
+                    auth_method: AuthMethod::Ldap,
+                    ..Default::default()
+                },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            let err = client.eval("return", &()).await.unwrap_err().to_string();
+            #[rustfmt::skip]
+            assert_eq!(err, "service responded with error: User not found or supplied credentials are invalid");
+        }
+
+        // Wrong auth method
+        {
+            let client = Client::connect_with_config(
+                "localhost",
+                listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), password.into())),
+                    auth_method: AuthMethod::ChapSha1,
+                    ..Default::default()
+                },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            let err = client.eval("return", &()).await.unwrap_err().to_string();
+            #[rustfmt::skip]
+            assert_eq!(err, "service responded with error: User not found or supplied credentials are invalid");
+        }
+    }
 }
