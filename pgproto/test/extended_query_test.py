@@ -164,3 +164,13 @@ def test_parameterized_queries(postgres: Postgres):
     )
     rows = cur.fetchall()
     assert sorted([params1, params2]) == sorted(rows)
+
+    cur = conn.execute(
+        """
+        SELECT * FROM "tall";
+    """,
+        binary=True,
+    )
+
+    rows = cur.fetchall()
+    assert sorted([params1, params2]) == sorted(rows)

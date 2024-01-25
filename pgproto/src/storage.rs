@@ -68,6 +68,7 @@ impl StorageManager {
         statement: Option<&str>,
         portal: Option<&str>,
         params: Vec<PgValue>,
+        result_format: &[i16],
     ) -> PgResult<()> {
         PG_ENTRYPOINTS.with(|entrypoints| {
             entrypoints.borrow().bind(
@@ -75,6 +76,7 @@ impl StorageManager {
                 statement.unwrap_or(""),
                 portal.unwrap_or(""),
                 params,
+                result_format,
             )
         })
     }

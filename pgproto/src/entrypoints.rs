@@ -229,8 +229,7 @@ impl Entrypoints {
         let bind = LuaFunction::load(
             tarantool::lua_state(),
             "
-            local client_id, statement, portal, params = ...
-            local res, err = pico.pg_bind(client_id, statement, portal, params, {})
+            local res, err = pico.pg_bind(...)
             if res == nil then
                 error(err)
             end
@@ -351,9 +350,10 @@ impl Entrypoints {
         statement: &str,
         portal: &str,
         params: Vec<PgValue>,
+        result_format: &[i16],
     ) -> PgResult<()> {
         self.bind
-            .call_with_args((id, statement, portal, params))
+            .call_with_args((id, statement, portal, params, result_format))
             .map_err(|e| PgError::TarantoolError(e.into()))
     }
 

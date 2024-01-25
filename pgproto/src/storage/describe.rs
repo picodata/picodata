@@ -55,6 +55,10 @@ impl PortalDescribe {
     pub fn command_tag(&self) -> &CommandTag {
         self.describe.command_tag()
     }
+
+    pub fn output_format(&self) -> &[Format] {
+        &self.output_format
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]

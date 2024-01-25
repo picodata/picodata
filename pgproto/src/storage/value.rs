@@ -1,10 +1,11 @@
 use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::types::ToSqlText;
-use postgres_types::FromSql;
 use postgres_types::Type;
+use postgres_types::{FromSql, ToSql};
 use postgres_types::{IsNull, Oid};
 use serde_json::Value;
 use serde_repr::Deserialize_repr;
+use std::error::Error;
 use std::str;
 use tarantool::tlua::{AsLua, Nil, PushInto};
 
@@ -94,27 +95,43 @@ fn decode_text_as_bool(s: &str) -> PgResult<bool> {
     }
 }
 
+fn bool_to_sql_text(val: bool, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+    // There are many representations of bool in text, but some connectors do not support all of them,
+    // for instance, pg8000 doesn't recognize "true"/"false" as valid boolean values.
+    // It seems that "t"/"f" variants are likely to be supported, because they are more efficient and
+    // at least they work with psql, psycopg and pg8000.
+    buf.put_u8(if val { b't' } else { b'f' });
+    Ok(IsNull::No)
+}
+
 impl PgValue {
-    pub fn encode(&self, buf: &mut BytesMut) -> PgResult<Option<Bytes>> {
-        let do_encode = |buf: &mut BytesMut| match &self {
-            PgValue::Boolean(val) => {
-                buf.put_u8(if *val { b't' } else { b'f' });
-                Ok(IsNull::No)
-            }
-            PgValue::Integer(number) => {
-                number.to_sql_text(&Type::INT8, buf)?;
-                Ok(IsNull::No)
-            }
-            PgValue::Float(number) => {
-                number.to_sql_text(&Type::FLOAT8, buf)?;
-                Ok(IsNull::No)
-            }
+    fn encode_text(&self, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+        match &self {
+            PgValue::Boolean(val) => bool_to_sql_text(*val, buf),
+            PgValue::Integer(number) => number.to_sql_text(&Type::INT8, buf),
+            PgValue::Float(number) => number.to_sql_text(&Type::FLOAT8, buf),
             PgValue::Text(string) => string.to_sql_text(&Type::TEXT, buf),
             PgValue::Null => Ok(IsNull::Yes),
-        };
+        }
+    }
 
+    fn encode_binary(&self, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+        match &self {
+            PgValue::Boolean(val) => val.to_sql(&Type::BOOL, buf),
+            PgValue::Integer(number) => number.to_sql(&Type::INT8, buf),
+            PgValue::Float(number) => number.to_sql(&Type::FLOAT8, buf),
+            PgValue::Text(string) => string.to_sql(&Type::TEXT, buf),
+            PgValue::Null => Ok(IsNull::Yes),
+        }
+    }
+
+    pub fn encode(&self, format: &Format, buf: &mut BytesMut) -> PgResult<Option<Bytes>> {
         let len = buf.len();
-        let is_null = do_encode(buf).map_err(|e| PgError::EncodingError(e))?;
+        let is_null = match format {
+            Format::Text => self.encode_text(buf),
+            Format::Binary => self.encode_binary(buf),
+        }
+        .map_err(|e| PgError::EncodingError(e))?;
         if let IsNull::No = is_null {
             Ok(Some(buf.split_off(len).freeze()))
         } else {

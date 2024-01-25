@@ -86,11 +86,13 @@ pub fn process_bind_message(
     let params = mem::take(bind.parameters_mut());
     let formats = bind.parameter_format_codes();
     let params = decode_parameter_values(params, &describe.param_oids, formats)?;
+    let result_format = bind.result_column_format_codes();
 
     manager.bind(
         bind.statement_name().as_deref(),
         bind.portal_name().as_deref(),
         params,
+        result_format,
     )?;
     stream.write_message_noflush(messages::bind_complete())?;
     Ok(())

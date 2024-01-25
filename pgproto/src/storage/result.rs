@@ -1,14 +1,17 @@
 use super::{
     describe::{CommandTag, PortalDescribe, QueryType},
-    value::PgValue,
+    value::{Format, PgValue},
 };
 use crate::error::PgResult;
 use bytes::BytesMut;
 use pgwire::messages::data::{DataRow, RowDescription};
+use std::iter::zip;
 use std::vec::IntoIter;
 
-fn encode_row(values: Vec<PgValue>, buf: &mut BytesMut) -> DataRow {
-    let row = values.into_iter().map(|v| v.encode(buf).unwrap()).collect();
+fn encode_row(values: Vec<PgValue>, formats: &[Format], buf: &mut BytesMut) -> DataRow {
+    let row = zip(values, formats)
+        .map(|(v, f)| v.encode(f, buf).unwrap())
+        .collect();
     DataRow::new(row)
 }
 
@@ -71,7 +74,7 @@ impl Iterator for ExecuteResult {
 
     fn next(&mut self) -> Option<DataRow> {
         self.values_stream.next().map(|row| {
-            let row = encode_row(row, &mut self.buf);
+            let row = encode_row(row, self.describe.output_format(), &mut self.buf);
             self.buf.clear();
             self.row_count += 1;
             row
