@@ -322,7 +322,7 @@ impl ConnInner {
 
         let header = protocol::decode_header(&mut cur)?;
         if header.status_code != 0 {
-            return Err(protocol::decode_error(stream)?.into());
+            return Err(protocol::decode_error(&mut cur)?.into());
         }
 
         Ok(())
