@@ -61,3 +61,4 @@ internal_test = ["test", "tlua/test", "pretty_assertions", "tempfile"]
 
 [dev-dependencies]
 time-macros = "=0.2.6"
+pretty_assertions = "1.4"
