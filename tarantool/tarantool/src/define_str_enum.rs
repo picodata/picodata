@@ -530,6 +530,7 @@ macro_rules! define_enum_with_introspection {
 }
 
 #[allow(clippy::assertions_on_constants)]
+#[allow(clippy::redundant_pattern_matching)]
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::*;

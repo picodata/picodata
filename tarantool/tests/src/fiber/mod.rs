@@ -403,6 +403,7 @@ pub fn lua_thread() {
     drop(l2_keep);
 }
 
+#[allow(clippy::useless_vec)]
 pub fn lifetime() {
     {
         let mut v = vec![1, 2, 3];

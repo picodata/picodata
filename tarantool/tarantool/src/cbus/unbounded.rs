@@ -262,6 +262,7 @@ impl<T> EndpointReceiver<T> {
 }
 
 #[cfg(feature = "internal_test")]
+#[allow(clippy::redundant_pattern_matching)]
 mod tests {
     use super::super::tests::run_cbus_endpoint;
     use crate::cbus::{unbounded, RecvError};

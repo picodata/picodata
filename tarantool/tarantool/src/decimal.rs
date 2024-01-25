@@ -410,6 +410,7 @@ fn check_status(status: dec::Status) -> Result<(), Status> {
 /// Cmp
 ////////////////////////////////////////////////////////////////////////////////
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl std::cmp::PartialOrd for Decimal {
     #[inline(always)]
     #[track_caller]
