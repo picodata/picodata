@@ -274,21 +274,18 @@ mod tests {
         conn.close();
     }
 
-    // TODO: this test currently blocks on the second call for some reason
-    // #[crate::test(tarantool = "crate")]
-    // fn two_errors_in_a_row_bug() {
-    //     let conn = test_user_conn();
-    //
-    //     let e = conn
-    //         .eval("error 'oops'", &(), &Default::default())
-    //         .unwrap_err();
-    //     assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
-    //
-    //     let e = conn
-    //         .eval("error 'oops'", &(), &Default::default())
-    //         .unwrap_err();
-    //     assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
-    // }
+    #[crate::test(tarantool = "crate")]
+    fn errors_in_a_row_bug() {
+        let conn = test_user_conn();
+
+        // There was a bug with this, but it's now fixed
+        for _ in 0..5 {
+            let e = conn
+                .eval("error 'oops'", &(), &Default::default())
+                .unwrap_err();
+            assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
+        }
+    }
 
     #[cfg(feature = "picodata")]
     #[crate::test(tarantool = "crate")]

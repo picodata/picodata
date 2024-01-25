@@ -7,7 +7,9 @@ use std::rc::{Rc, Weak};
 use refpool::{Pool, PoolRef};
 use rmp::decode;
 
+use crate::clock;
 use crate::error::Error;
+use crate::fiber;
 use crate::fiber::{Cond, Latch};
 
 use super::options::Options;
@@ -63,33 +65,48 @@ impl RecvQueue {
             self.cond_map.borrow_mut().insert(sync, cond_ref.clone());
         }
 
-        let is_signaled = match options.timeout {
-            None => cond_ref.wait(),
-            Some(timeout) => cond_ref.wait_timeout(timeout),
+        let timeout = options.timeout.unwrap_or(clock::INFINITY);
+        let deadline = fiber::clock().saturating_add(timeout);
+
+        let header = loop {
+            if fiber::clock() > deadline {
+                self.cond_map.borrow_mut().remove(&sync);
+                return Err(io::Error::from(io::ErrorKind::TimedOut).into());
+            }
+
+            cond_ref.wait_deadline(deadline);
+
+            let Some(header) = self.header_recv_result.take() else {
+                // Spurious wakeup
+                continue;
+            };
+
+            let header = crate::unwrap_ok_or!(header,
+                Err(e) => {
+                    // Connection closed
+                    return Err(e);
+                }
+            );
+
+            break header;
         };
 
-        if is_signaled {
-            let result = {
-                let header = self.header_recv_result.replace(None).unwrap();
-
-                match header {
-                    Ok(header) => {
-                        if header.status_code != 0 {
-                            return Err(decode_error(self.buffer.borrow_mut().by_ref())?.into());
-                        }
-
-                        payload_consumer(self.buffer.borrow_mut().by_ref(), &header)
-                            .map(|payload| Response { payload, header })
-                    }
-                    Err(e) => return Err(e),
-                }
-            };
+        if header.status_code != 0 {
+            // Wakeup the recv_worker before returning
             self.read_completed_cond.signal();
-            result
-        } else {
-            self.cond_map.borrow_mut().remove(&sync);
-            Err(io::Error::from(io::ErrorKind::TimedOut).into())
+
+            let mut buf = self.buffer.borrow_mut();
+            let error = decode_error(buf.by_ref())?;
+            return Err(error.into());
         }
+
+        let res = payload_consumer(self.buffer.borrow_mut().by_ref(), &header);
+        // Don't signal until payload_consumer returns, just in case it yields,
+        // which it definetly shouldn't do, but better safe than sorry
+        self.read_completed_cond.signal();
+
+        let payload = res?;
+        return Ok(Response { payload, header });
     }
 
     pub fn add_consumer(&self, sync: Sync, consumer: Weak<dyn Consumer>) {
