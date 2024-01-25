@@ -3,8 +3,9 @@ FROM docker-public.binary.picodata.io/tarantool:${TARANTOOL_TAG}
 ARG RUST_VERSION
 
 RUN set -e; \
-    yum -y install gcc git; \
-    yum clean all;
+    rm -f /etc/yum.repos.d/pg.repo && \
+    yum -y install gcc git && \
+    yum clean all
 
 ENV PATH=/root/.cargo/bin:${PATH}
 RUN set -e; \
