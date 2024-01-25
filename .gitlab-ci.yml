@@ -344,6 +344,8 @@ gamayun-run:
     - eval $TUNNEL
     - ls -la
     - |
+      # TODO consider moving this to the script as well, this may delete some html 
+      # license files which is probably not intended
       find . -type d -name 'test*' -o -name 'doc' -o -name 'docs' | xargs -n1 rm -rvf
       find tarantool-sys/third_party/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
       find tarantool-sys/vendor/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
@@ -353,20 +355,13 @@ gamayun-run:
       find . -type d -name 'docsrc' | xargs -n 1 rm -rvf
       find . -name '*.md' | xargs -n 1 rm -rvf
       find http tarantool-sys vshard -type d -name .github | xargs -n 1 rm -rfv
-    - PATCH_DIR=$(pwd)/certification_patches
     - |
-      (cd tarantool-sys; find ${PATCH_DIR} -name "tarantool-sys_*" | xargs -n 1 git apply)
-      (cd tarantool-sys/third_party/curl; find ${PATCH_DIR} -name "curl_*" | xargs -n 1 git apply)
-      (cd tarantool-sys/third_party/zstd; find ${PATCH_DIR} -name "zstd_*" | xargs -n 1 git apply)
-      (cd tarantool-sys/third_party/luajit; find ${PATCH_DIR} -name "luajit_*" | xargs -n 1 git apply)
-      (cd tarantool-sys/third_party/nghttp2; find ${PATCH_DIR} -name "nghttp2_*" | xargs -n 1 git apply)
-      (cd tarantool-sys/third_party/checks; find ${PATCH_DIR} -name "checks_*" | xargs -n 1 git apply)
-      (cd http; find ${PATCH_DIR} -name "http_*" | xargs -n 1 git apply)
-      (cd vshard; find ${PATCH_DIR} -name "vshard_*" | xargs -n 1 git apply)
+      ./tools/prepare_source_tree_for_stat_analysis.py gamayun
+      ./tools/prepare_source_tree_for_stat_analysis.py svace
     - |
       docker run --rm -t \
         -v $PWD:/tmp/src:rw \
-        -e "SONAR_OPS=-Dsonar.python.version=3 -Dsonar.login=${SONAR} -Dsonar.projectKey=Picodata-CI -Dsonar.exclusions=**/*.mod" \
+        -e "SONAR_OPS=-Dsonar.python.version=3 -Dsonar.login=${SONAR} -Dsonar.projectKey=Picodata-CI -Dsonar.exclusions=**/*.mod,osv-sonar.json" \
         -e "SONAR_SCANNER_OPTS="-Xmx4096m"" \
         -e "CARGO_CLIPPY_FILE=clippy.json" \
         -u $(id -u):$(id -g) --ulimit nofile=100000:100000 --network=host \

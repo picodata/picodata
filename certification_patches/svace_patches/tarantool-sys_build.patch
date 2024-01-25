@@ -1,0 +1,28 @@
+diff --git a/src/box/sql/build.c b/src/box/sql/build.c
+index 6891de805..78428e9f9 100644
+--- a/src/box/sql/build.c
++++ b/src/box/sql/build.c
+@@ -1300,7 +1300,13 @@ vdbe_emit_create_constraints(struct Parse *parse, int reg_space_id)
+ 	 */
+ 	if (is_alter) {
+ 		space = parse->create_column_def.space;
+-		i = space_by_name(space->def->name)->index_count;
++		struct space *space_obj = space_by_name(space->def->name);
++		if (space_obj == NULL) {
++			diag_set(ClientError, ER_NO_SUCH_SPACE, space->def->name);
++			parse->is_aborted = true;
++			return;
++		}
++		i = space_obj->index_count;
+ 	}
+ 	assert(space != NULL);
+ 	for (; i < space->index_count; ++i) {
+@@ -2098,7 +2104,7 @@ sql_create_foreign_key(struct Parse *parse_context)
+ 					 constraint_name) != 0)
+ 				goto exit_create_fk;
+ 		/* In case of ALTER parent table must exist. */
+-		} else if (columnno_by_name(parse_context, child_space,
++		} else if (child_cols && columnno_by_name(parse_context, child_space,
+ 					    child_cols->a[i].zName,
+ 					    &fk_def->links[i].child_field,
+ 					    constraint_name) != 0) {

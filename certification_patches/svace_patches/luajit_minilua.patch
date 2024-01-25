@@ -1,0 +1,13 @@
+diff --git a/src/host/minilua.c b/src/host/minilua.c
+index 79150286..33b5ab51 100644
+--- a/src/host/minilua.c
++++ b/src/host/minilua.c
+@@ -4327,7 +4327,7 @@ if(lh->v.u.s.info==v->u.s.info){
+ conflict=1;
+ lh->v.u.s.info=extra;
+ }
+-if(lh->v.u.s.aux==v->u.s.info){
++if(lh->v.u.s.aux==v->u.s.aux){
+ conflict=1;
+ lh->v.u.s.aux=extra;
+ }

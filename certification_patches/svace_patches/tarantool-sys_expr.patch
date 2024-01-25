@@ -1,0 +1,14 @@
+diff --git a/src/box/sql/expr.c b/src/box/sql/expr.c
+index 3a2426bcd..4865f7865 100644
+--- a/src/box/sql/expr.c
++++ b/src/box/sql/expr.c
+@@ -1879,7 +1879,8 @@ sqlExprListSetName(Parse * pParse,	/* Parsing context */
+ 	} else {
+ 		item->zName = sql_xstrndup(pName->z, pName->n);
+ 	}
+-	sqlCheckIdentifierName(pParse, item->zName);
++	if (sqlCheckIdentifierName(pParse, item->zName) < 0)
++		sql_xfree(item->zName);
+ }
+ 
+ void

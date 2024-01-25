@@ -1,0 +1,13 @@
+diff --git a/src/box/sql/wherecode.c b/src/box/sql/wherecode.c
+index 8cac15123..5f084394f 100644
+--- a/src/box/sql/wherecode.c
++++ b/src/box/sql/wherecode.c
+@@ -458,7 +458,7 @@ codeEqualityTerm(Parse * pParse,	/* The parsing context */
+ 			 * such a vector, some of the subroutines do not handle
+ 			 * this case.
+ 			 */
+-			if (pLhs->nExpr == 1) {
++			if (pLhs && pLhs->nExpr == 1) {
+ 				pX->pLeft = pLhs->a[0].pExpr;
+ 			} else {
+ 				pLeft->x.pList = pLhs;

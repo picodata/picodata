@@ -1,0 +1,35 @@
+diff --git a/third_party/libeio/eio.c b/third_party/libeio/eio.c
+index 7351d5dda..513ac2461 100644
+--- a/third_party/libeio/eio.c
++++ b/third_party/libeio/eio.c
+@@ -1128,7 +1128,7 @@ eio__realpath (struct etp_tmpbuf *tmpbuf, eio_wd wd, const char *path)
+             /* we need to be careful, as rel might point into tmp2 already */
+             memmove (tmp2 + linklen + 1, rel, rellen + 1);
+             tmp2 [linklen] = '/';
+-            memcpy (tmp2, tmp1, linklen);
++            memmove (tmp2, tmp1, linklen);
+ 
+             rel = tmp2;
+           }
+@@ -1408,8 +1408,12 @@ eio__scandir (eio_req *req, etp_worker *self)
+   req->ptr1 = dents = flags ? malloc (dentalloc * sizeof (eio_dirent)) : 0;
+   req->ptr2 = names = malloc (namesalloc);
+ 
+-  if (!names || (flags && !dents))
++  if (!names || (flags && !dents)) {
++#ifndef _WIN32
++    closedir (dirp);
++#endif
+     return;
++  }
+ 
+   for (;;)
+     {
+@@ -2250,6 +2254,7 @@ eio__2path (int type, const char *path, const char *new_path, int pri, eio_cb cb
+   req->ptr2 = strdup (new_path);
+   if (!req->ptr2)
+     {
++      free(req->ptr1);
+       eio_api_destroy (req);
+       return 0;
+     }

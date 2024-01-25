@@ -1,14 +1,14 @@
 diff --git a/src/luajit-gdb.py b/src/luajit-gdb.py
-index 96ee2289..7fd90e88 100644
+index d2070e9b..05351b9f 100644
 --- a/src/luajit-gdb.py
 +++ b/src/luajit-gdb.py
-@@ -279,7 +279,8 @@ def itypemap(o):
-         return LJ_T['NUMX'] if tvisnumber(o) else itype(o)
+@@ -327,7 +327,8 @@ def itypemap(o):
+ 
  
  def funcproto(func):
--    assert(func['ffid'] == 0)
+-    assert func['ffid'] == 0
 +    if not (func['ffid'] == 0):
 +        raise RuntimeError("assert failed")
  
      return cast('GCproto *',
-         mref('char *', func['pc']) - gdb.lookup_type('GCproto').sizeof)
+                 mref('char *', func['pc']) - gdb.lookup_type('GCproto').sizeof)

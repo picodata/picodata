@@ -1,0 +1,19 @@
+diff --git a/third_party/libev/ev_iouring.c b/third_party/libev/ev_iouring.c
+index 23788ea24..e47942e19 100644
+--- a/third_party/libev/ev_iouring.c
++++ b/third_party/libev/ev_iouring.c
+@@ -351,8 +351,12 @@ ecb_cold
+ static int
+ iouring_internal_destroy (EV_P)
+ {
+-  close (iouring_tfd);
+-  close (iouring_fd);
++  if (iouring_tfd > 0) {
++    close (iouring_tfd);
++  }
++  if (iouring_fd > 0) {
++    close (iouring_fd);
++  }
+ 
+   if (iouring_ring != MAP_FAILED) munmap (iouring_ring, iouring_ring_size);
+   if (iouring_sqes != MAP_FAILED) munmap (iouring_sqes, iouring_sqes_size);
