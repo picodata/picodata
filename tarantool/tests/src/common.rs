@@ -51,32 +51,6 @@ impl Drop for DropCounter {
     }
 }
 
-#[derive(Debug)]
-pub struct ScopeGuard<F>
-where
-    F: FnOnce(),
-{
-    cb: Option<F>,
-}
-
-impl<F> Drop for ScopeGuard<F>
-where
-    F: FnOnce(),
-{
-    fn drop(&mut self) {
-        if let Some(cb) = self.cb.take() {
-            cb()
-        }
-    }
-}
-
-pub fn on_scope_exit<F>(cb: F) -> ScopeGuard<F>
-where
-    F: FnOnce(),
-{
-    ScopeGuard { cb: Some(cb) }
-}
-
 pub(crate) fn capture_value<T>(_: &T) {}
 
 pub(crate) struct LuaContextSpoiler {

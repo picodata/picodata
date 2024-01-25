@@ -7,11 +7,11 @@ use tarantool::sequence::Sequence;
 use tarantool::space::UpdateOps;
 use tarantool::space::{self, Field, Space, SystemSpace};
 use tarantool::space::{SpaceCreateOptions, SpaceEngineType, SpaceType};
+use tarantool::test::util::on_scope_exit;
 use tarantool::tuple::Tuple;
 use tarantool::util::Value;
 use tarantool::{update, upsert};
 
-use crate::common::on_scope_exit;
 use crate::common::{QueryOperation, S1Record, S2Key, S2Record};
 
 pub fn space_get_by_name() {

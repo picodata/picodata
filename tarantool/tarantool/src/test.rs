@@ -176,6 +176,37 @@ pub mod util {
             assert_eq!(msg, self.name);
         }
     }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // ScopeGuard
+    ////////////////////////////////////////////////////////////////////////////////
+
+    #[derive(Debug)]
+    #[must_use = "The callback is invoked when the `ScopeGuard` is dropped"]
+    pub struct ScopeGuard<F>
+    where
+        F: FnOnce(),
+    {
+        cb: Option<F>,
+    }
+
+    impl<F> Drop for ScopeGuard<F>
+    where
+        F: FnOnce(),
+    {
+        fn drop(&mut self) {
+            if let Some(cb) = self.cb.take() {
+                cb()
+            }
+        }
+    }
+
+    pub fn on_scope_exit<F>(cb: F) -> ScopeGuard<F>
+    where
+        F: FnOnce(),
+    {
+        ScopeGuard { cb: Some(cb) }
+    }
 }
 
 #[macro_export]
