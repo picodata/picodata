@@ -14,10 +14,6 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "web"
 
 default:
-  image:
-    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.14.0-debug
-    entrypoint: ['']
-    pull_policy: [if-not-present]
   tags:
     - docker
 
@@ -35,6 +31,10 @@ build-base-image:
     PUSH_DOCKER: ""
     GIT_USERNAME: $CI_REGISTRY_USER
     GIT_PASSWORD: $CI_REGISTRY_PASSWORD
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.14.0-debug
+    entrypoint: ['']
+    pull_policy: [if-not-present]
   script:
     - echo "Build picodata doc..."
     - cd docker/static
@@ -67,32 +67,34 @@ pack-doc:
     - echo "Picodata doc successfully packed."
   artifacts:
     paths:
-      - .vars
       - picodata-doc-*.tgz
+    reports:
+      dotenv: .vars
 
 upload-doc-to-binary:
-  image: curlimages/curl
+  image: docker.binary.picodata.io/curlimages/curl
   stage: upload
   script:
     - echo "Upload picodata doc to binary..."
-    - source .vars
     - echo "FNAME=$FNAME"
     - 'curl --fail -H "Authorization: Basic ${WWW_RAW_RW}" --upload-file $FNAME https://binary.picodata.io/repository/www-raw/$FNAME'
     - echo "Picodata doc successfully uploaded to binary."
+  needs:
+    - job: pack-doc
+      artifacts: true
 
 .deploy:
+  stage: deploy
   variables:
     STAGE: TEST
-  image: curlimages/curl
-  stage: deploy
-  script:
-    - echo "Deploying picodata doc with branch $CI_COMMIT_BRANCH on $STAGE..."
-    - source .vars
-    - echo "FNAME=$FNAME"
-    - echo "EXTRA_ARGS=$EXTRA_ARGS"
-    - 'curl -X POST --fail -F token=$PIPELINE_TOKEN -F ref=main -F "variables[STAGE]=$STAGE" -F "variables[PICODATA_DOC]=$FNAME" $EXTRA_ARGS https://git.picodata.io/api/v4/projects/46/trigger/pipeline'
-    # https://git.picodata.io/picodata/web-site/infra
-    - echo "Picodata doc successfully deployed"
+    PICODATA_DOC: $FNAME
+  trigger:
+    project: 'picodata/web-site/infra'
+    branch: 'main'
+    strategy: depend
+  needs:
+    - job: pack-doc
+      artifacts: true
 
 deploy-doc-to-test-main:
   extends:
@@ -108,7 +110,7 @@ deploy-doc-to-test-devbranch:
       when: manual
   allow_failure: true
   variables:
-    EXTRA_ARGS: '-F variables[PICODATA_DOC_SUBDIR]=branch-${CI_COMMIT_BRANCH}'
+    PICODATA_DOC_SUBDIR: 'branch-${CI_COMMIT_BRANCH}'
 
 deploy-doc-to-prod:
   extends:
