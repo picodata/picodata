@@ -1,5 +1,5 @@
 use super::{
-    describe::{CommandTag, Describe, QueryType},
+    describe::{CommandTag, PortalDescribe, QueryType},
     value::PgValue,
 };
 use crate::error::PgResult;
@@ -13,28 +13,35 @@ fn encode_row(values: Vec<PgValue>, buf: &mut BytesMut) -> DataRow {
 }
 
 pub struct ExecuteResult {
-    describe: Describe,
+    describe: PortalDescribe,
     values_stream: IntoIter<Vec<PgValue>>,
     row_count: usize,
+    is_portal_finished: bool,
     buf: BytesMut,
 }
 
 impl ExecuteResult {
-    pub fn new(rows: Vec<Vec<PgValue>>, describe: Describe) -> Self {
+    pub fn new(
+        rows: Vec<Vec<PgValue>>,
+        describe: PortalDescribe,
+        is_portal_finished: bool,
+    ) -> Self {
         let values_stream = rows.into_iter();
         Self {
             values_stream,
             describe,
             row_count: 0,
+            is_portal_finished,
             buf: BytesMut::default(),
         }
     }
 
-    pub fn empty(row_count: usize, describe: Describe) -> Self {
+    pub fn empty(row_count: usize, describe: PortalDescribe) -> Self {
         Self {
             values_stream: Default::default(),
             describe,
             row_count,
+            is_portal_finished: true,
             buf: BytesMut::default(),
         }
     }
@@ -43,8 +50,8 @@ impl ExecuteResult {
         self.describe.command_tag()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.values_stream.len() == 0
+    pub fn is_portal_finished(&self) -> bool {
+        self.is_portal_finished
     }
 
     pub fn row_description(&self) -> PgResult<Option<RowDescription>> {

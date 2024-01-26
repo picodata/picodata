@@ -4,7 +4,7 @@ use crate::{
     client::ClientId,
     error::{PgError, PgResult},
     storage::{
-        describe::{Describe, PortalDescribe, QueryType, StatementDescribe},
+        describe::{PortalDescribe, QueryType, StatementDescribe},
         result::ExecuteResult,
         value::PgValue,
     },
@@ -17,49 +17,78 @@ type Row = Vec<PgValue>;
 
 #[derive(Deserialize)]
 struct RawExecuteResult {
-    describe: Describe,
+    describe: PortalDescribe,
     // tuple in the same format as tuples returned from pico.sql
     result: Value,
 }
 
-fn parse_dql(res: Value) -> PgResult<Vec<Row>> {
+struct DqlResult {
+    rows: Vec<Row>,
+    is_finished: bool,
+}
+
+fn parse_dql(res: Value) -> PgResult<DqlResult> {
     #[derive(Deserialize)]
-    struct DqlResult {
+    struct RawDqlResult {
         rows: Vec<Vec<Value>>,
-        #[serde(rename = "metadata")]
-        _metadata: Value,
+        is_finished: bool,
     }
 
-    let res: DqlResult = serde_json::from_value(res)?;
-    res.rows
+    let res: RawDqlResult = serde_json::from_value(res)?;
+    let rows: PgResult<Vec<Row>> = res
+        .rows
         .into_iter()
         .map(|row| row.into_iter().map(PgValue::try_from).collect())
-        .collect()
+        .collect();
+
+    rows.map(|rows| DqlResult {
+        rows,
+        is_finished: res.is_finished,
+    })
 }
 
 fn parse_dml(res: Value) -> PgResult<usize> {
     #[derive(Deserialize)]
-    struct DmlResult {
+    struct RawDmlResult {
         row_count: usize,
     }
 
-    let res: DmlResult = serde_json::from_value(res)?;
+    let res: RawDmlResult = serde_json::from_value(res)?;
     Ok(res.row_count)
 }
 
-fn parse_explain(res: Value) -> PgResult<Vec<Row>> {
-    let res: Vec<Value> = serde_json::from_value(res)?;
-    res.into_iter()
+fn parse_explain(res: Value) -> PgResult<DqlResult> {
+    #[derive(Deserialize)]
+    struct RawExplainResult {
+        rows: Vec<Value>,
+        is_finished: bool,
+    }
+
+    let res: RawExplainResult = serde_json::from_value(res)?;
+    let rows: PgResult<Vec<Row>> = res
+        .rows
+        .into_iter()
         // every row must be a vector
         .map(|val| Ok(vec![PgValue::try_from(val)?]))
-        .collect()
+        .collect();
+
+    rows.map(|rows| DqlResult {
+        rows,
+        is_finished: res.is_finished,
+    })
 }
 
 fn execute_result_from_json(json: &str) -> PgResult<ExecuteResult> {
     let raw: RawExecuteResult = serde_json::from_str(json)?;
     match raw.describe.query_type() {
-        QueryType::Dql => Ok(ExecuteResult::new(parse_dql(raw.result)?, raw.describe)),
-        QueryType::Explain => Ok(ExecuteResult::new(parse_explain(raw.result)?, raw.describe)),
+        QueryType::Dql => {
+            let res = parse_dql(raw.result)?;
+            Ok(ExecuteResult::new(res.rows, raw.describe, res.is_finished))
+        }
+        QueryType::Explain => {
+            let res = parse_explain(raw.result)?;
+            Ok(ExecuteResult::new(res.rows, raw.describe, res.is_finished))
+        }
         QueryType::Acl | QueryType::Ddl => Ok(ExecuteResult::empty(0, raw.describe)),
         QueryType::Dml => Ok(ExecuteResult::empty(parse_dml(raw.result)?, raw.describe)),
     }
@@ -138,7 +167,8 @@ impl Entrypoints {
                     return nil, err
                 end
 
-                local res, err = pico.pg_bind(client_id, '', '')
+                -- {}, {} => no parameters, default result encoding (text)
+                local res, err = pico.pg_bind(client_id, '', '', {}, {})
                 if res == nil then
                     return nil, err
                 end
@@ -148,7 +178,8 @@ impl Entrypoints {
                     return nil, err
                 end
 
-                local res, err = pico.pg_execute(client_id, '')
+                -- -1 == fetch all
+                local res, err = pico.pg_execute(client_id, '', -1)
                 if res == nil then
                     return nil, err
                 end
@@ -199,7 +230,8 @@ impl Entrypoints {
         let bind = LuaFunction::load(
             tarantool::lua_state(),
             "
-            local res, err = pico.pg_bind(...)
+            local client_id, statement, portal = ...
+            local res, err = pico.pg_bind(client_id, statement, portal, {}, {})
             if res == nil then
                 error(err)
             end
@@ -215,7 +247,8 @@ impl Entrypoints {
                 error(err)
             end
 
-            local res, err = pico.pg_execute(id, portal)
+            -- -1 == fetch all
+            local res, err = pico.pg_execute(id, portal, -1)
             if res == nil then
                 error(err)
             end

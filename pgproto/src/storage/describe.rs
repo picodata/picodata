@@ -1,8 +1,10 @@
+use super::value::Format;
 use crate::{error::PgResult, storage::value};
 use pgwire::messages::data::{FieldDescription, RowDescription};
 use postgres_types::{Oid, Type};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
+use std::iter::zip;
 
 /// Contains a query description.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -20,7 +22,40 @@ pub struct StatementDescribe {
     pub param_oids: Vec<Oid>,
 }
 
-pub type PortalDescribe = Describe;
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PortalDescribe {
+    #[serde(flatten)]
+    describe: Describe,
+    output_format: Vec<Format>,
+}
+
+impl PortalDescribe {
+    pub fn row_description(&self) -> PgResult<Option<RowDescription>> {
+        match self.query_type() {
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml => Ok(None),
+            QueryType::Dql | QueryType::Explain => {
+                let metadata = &self.describe.metadata;
+                let output_format = &self.output_format;
+                let row_description = zip(metadata, output_format)
+                    .map(|(col, format)| {
+                        let type_str = col.r#type.as_str();
+                        value::type_from_name(type_str)
+                            .map(|ty| field_description(col.name.clone(), ty, *format))
+                    })
+                    .collect::<PgResult<_>>()?;
+                Ok(Some(RowDescription::new(row_description)))
+            }
+        }
+    }
+
+    pub fn query_type(&self) -> &QueryType {
+        self.describe.query_type()
+    }
+
+    pub fn command_tag(&self) -> &CommandTag {
+        self.describe.command_tag()
+    }
+}
 
 #[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub struct MetadataColumn {
@@ -88,7 +123,7 @@ impl CommandTag {
     }
 }
 
-fn field_description(name: String, ty: Type) -> FieldDescription {
+fn field_description(name: String, ty: Type, format: Format) -> FieldDescription {
     // ** From postgres sources **
     // resorigtbl/resorigcol identify the source of the column, if it is a
     // simple reference to a column of a base table (or view).  If it is not
@@ -101,14 +136,19 @@ fn field_description(name: String, ty: Type) -> FieldDescription {
     // value will generally be -1 for types that do not need typmod.
     let typemod = -1;
 
-    // encoding format, 0 - text, 1 - binary
-    let format = 0;
-
     let id = ty.oid();
     // TODO: add Type::len()
     let len = 0;
 
-    FieldDescription::new(name, resorigtbl, resorigcol, id, len, typemod, format)
+    FieldDescription::new(
+        name,
+        resorigtbl,
+        resorigcol,
+        id,
+        len,
+        typemod,
+        format as i16,
+    )
 }
 
 impl Describe {
@@ -130,7 +170,7 @@ impl Describe {
                     .map(|col| {
                         let type_str = col.r#type.as_str();
                         value::type_from_name(type_str)
-                            .map(|ty| field_description(col.name.clone(), ty))
+                            .map(|ty| field_description(col.name.clone(), ty, Format::Text))
                     })
                     .collect::<PgResult<_>>()?;
                 Ok(Some(RowDescription::new(row_description)))

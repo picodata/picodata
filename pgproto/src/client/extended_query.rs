@@ -44,22 +44,23 @@ pub fn process_execute_message(
     execute: Execute,
 ) -> PgResult<()> {
     let mut count = *execute.max_rows() as i64;
-    let mut portal = manager.execute(execute.name().as_deref())?;
+    let mut execute_result = manager.execute(execute.name().as_deref())?;
     if count <= 0 {
         count = std::i64::MAX;
     }
 
     for _ in 0..count {
-        if let Some(row) = portal.next() {
+        if let Some(row) = execute_result.next() {
             stream.write_message_noflush(messages::data_row(row))?;
         } else {
             break;
         }
     }
 
-    if portal.is_empty() {
-        let tag = portal.command_tag().as_str();
-        stream.write_message_noflush(messages::command_complete(tag, portal.row_count()))?;
+    if execute_result.is_portal_finished() {
+        let tag = execute_result.command_tag().as_str();
+        stream
+            .write_message_noflush(messages::command_complete(tag, execute_result.row_count()))?;
     } else {
         stream.write_message_noflush(messages::portal_suspended())?;
     }
