@@ -607,7 +607,7 @@ impl Index {
     ///
     /// - `key` - encoded key in MsgPack Array format (`[part1, part2, ...]`).
     ///
-    /// Returns the deleted tuple
+    /// Returns the deleted tuple or `Ok(None)` if tuple was not found.
     #[inline]
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where

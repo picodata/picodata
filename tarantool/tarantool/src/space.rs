@@ -669,7 +669,7 @@ impl Space {
         .map(|t| t.expect("Returned tuple cannot be null"))
     }
 
-    /// Insert a `value` into a space passing.
+    /// Insert a `value` into a space.
     ///
     /// If a tuple with the same primary key already exists, it is replaced
     /// with a new one.
@@ -789,7 +789,7 @@ impl Space {
     /// The `key` must represent a msgpack array consisting of the appropriate
     /// amount of the primary index's parts.
     ///
-    /// Returns the deleted tuple
+    /// Returns the deleted tuple or `Ok(None)` if tuple was not found.
     #[inline(always)]
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
