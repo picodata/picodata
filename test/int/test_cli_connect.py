@@ -1,7 +1,12 @@
 import pexpect  # type: ignore
 import pytest
 import sys
+import subprocess
+import hashlib
+import socket
+import time
 from conftest import Cluster, Instance, eprint
+from dataclasses import dataclass
 
 
 @pytest.fixture
@@ -173,6 +178,111 @@ def test_connect_auth_type_md5(i1: Instance):
     cli.sendline("testpass")
 
     cli.expect_exact("picosql :)")
+
+
+@dataclass
+class LDAPServerState:
+    host: str
+    port: int
+    process: subprocess.Popen
+
+
+def configure_ldap_server(username, password, data_dir) -> LDAPServerState:
+    # Check `glauth` executable is available
+    subprocess.Popen(["glauth", "--version"])
+
+    LDAP_SERVER_HOST = "127.0.0.1"
+    LDAP_SERVER_PORT = 1389
+
+    ldap_cfg_path = f"{data_dir}/ldap.cfg"
+    with open(ldap_cfg_path, "x") as f:
+        password_sha256 = hashlib.sha256(password.encode("utf8")).hexdigest()
+        f.write(
+            f"""
+            [ldap]
+                enabled = true
+                listen = "{LDAP_SERVER_HOST}:{LDAP_SERVER_PORT}"
+
+            [ldaps]
+                enabled = false
+
+            [backend]
+                datastore = "config"
+                baseDN = "dc=example,dc=org"
+
+            [[users]]
+                name = "{username}"
+                uidnumber = 5001
+                primarygroup = 5501
+                passsha256 = "{password_sha256}"
+                    [[users.capabilities]]
+                        action = "search"
+                        object = "*"
+
+            [[groups]]
+                name = "ldapgroup"
+                gidnumber = 5501
+        """
+        )
+
+    process = subprocess.Popen(["glauth", "-c", ldap_cfg_path])
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    deadline = time.time() + 3
+
+    while deadline > time.time():
+        try:
+            sock.connect((LDAP_SERVER_HOST, LDAP_SERVER_PORT))
+            break
+        except ConnectionRefusedError:
+            time.sleep(0.1)
+
+    return LDAPServerState(
+        host=LDAP_SERVER_HOST, port=LDAP_SERVER_PORT, process=process
+    )
+
+
+def test_connect_auth_type_ldap(cluster: Cluster):
+    username = "ldapuser"
+    password = "ldappass"
+
+    ldap_server = configure_ldap_server(username, password, cluster.data_dir)
+    try:
+        #
+        # Configure the instance
+        #
+
+        i1 = cluster.add_instance(wait_online=False)
+        i1.env["TT_LDAP_URL"] = f"ldap://{ldap_server.host}:{ldap_server.port}"
+        i1.env["TT_LDAP_DN_FMT"] = "cn=$USER,dc=example,dc=org"
+        i1.start()
+        i1.wait_online()
+
+        i1.sql(
+            f"""
+                CREATE USER "{username}" PASSWORD '{password}' USING ldap
+            """
+        )
+
+        #
+        # Try connecting
+        #
+
+        cli = pexpect.spawn(
+            command=i1.binary_path,
+            args=["connect", f"{i1.host}:{i1.port}", "-u", username, "-a", "ldap"],
+            encoding="utf-8",
+            timeout=1,
+        )
+        cli.logfile = sys.stdout
+
+        cli.expect_exact(f"Enter password for {username}: ")
+        cli.sendline(password)
+
+        cli.expect_exact("picosql :)")
+
+    finally:
+        ldap_server.process.kill()
 
 
 def test_connect_auth_type_unknown(binary_path: str):

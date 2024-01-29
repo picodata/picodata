@@ -43,3 +43,9 @@ RUN curl -SLO https://deb.nodesource.com/nsolid_setup_deb.sh && \
     apt-get install nodejs && \
     corepack enable && \
     apt-get clean all
+
+# install glauth for ldap tests
+RUN set -e; \
+    cd /bin; \
+    curl -L -o glauth https://github.com/glauth/glauth/releases/download/v2.3.0/glauth-linux-amd64; \
+    chmod +x glauth;

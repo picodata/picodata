@@ -121,6 +121,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 
     let mut config = Config::default();
     config.creds = Some((user, password));
+    config.auth_method = args.auth_method;
 
     let client = ::tarantool::fiber::block_on(Client::connect_with_config(
         &address.host,
