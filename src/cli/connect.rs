@@ -119,12 +119,13 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
             .map_err(|err| ReplError::Other(format!("Failed to prompt for a password: {err}")))?
     };
 
+    let mut config = Config::default();
+    config.creds = Some((user, password));
+
     let client = ::tarantool::fiber::block_on(Client::connect_with_config(
         &address.host,
         address.port.parse().unwrap(),
-        Config {
-            creds: Some((user, password)),
-        },
+        config,
     ))?;
 
     // Check if connection is valid. We need to do it because connect is lazy

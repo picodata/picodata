@@ -55,7 +55,7 @@ features = ["max_level_trace", "release_max_level_trace"]
 
 [dependencies.tarantool]
 path = "./tarantool/tarantool"
-version = "4.0"
+version = "5.0"
 features = ["picodata", "test"]
 
 [dev-dependencies]
