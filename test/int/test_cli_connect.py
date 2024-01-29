@@ -142,17 +142,17 @@ def test_connect_auth_type_ok(i1: Instance):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_auth_type_different(i1: Instance):
+def test_connect_auth_type_wrong(i1: Instance):
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "chap-sha1"],
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "ldap"],
         encoding="utf-8",
         timeout=1,
     )
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("")
+    cli.sendline("testpass")
 
     cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
