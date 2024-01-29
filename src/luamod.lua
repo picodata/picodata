@@ -602,8 +602,12 @@ local supported_priveleges = {
     read = true,
     write = true,
     execute = true,
+
+    -- temporal hack, as lua API is deprecated
+    login = true,
     session = true,
     usage = true,
+
     create = true,
     drop = true,
     alter = true,
@@ -780,8 +784,8 @@ Params:
     1. grantee (string), name of user or role
 
     2. privilege (string), one of
-        'read' | 'write' | 'execute' | 'session' | 'usage' | 'create' | 'drop' |
-        'alter' | 'insert' | 'update' | 'delete'
+        'read' | 'write' | 'execute' | 'login' | 'create' | 'drop' |
+        'alter'
 
     3. object_type (string), one of
         'universe' | 'table' | 'sequence' | 'function' | 'role' | 'user'
@@ -826,7 +830,10 @@ Notice:
 function pico.grant_privilege(grantee, privilege, object_type, object_name, opts)
     local ok, err = pcall(function()
         check_param(grantee, 'grantee', 'string')
-        check_param(privilege, 'privilege', 'string')
+        -- temporal hack, as lua API is deprecated
+        if privilege ~= 'login' then
+            check_param(privilege, 'privilege', 'string')
+        end
         check_param(object_type, 'object_type', 'string')
         object_name = object_name ~= nil and object_name or ''
         -- `object_name` is optional, thus it might contain `opts` instead

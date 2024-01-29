@@ -895,7 +895,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
     index = i1.call("pico.raft_get_index")
     new_index = i1.grant_privilege(
         "Dave",
-        "session",
+        "login",
         "universe",
     )
     assert index == new_index
@@ -964,15 +964,7 @@ def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     # granting default privilege does not raise an error
     new_index = i1.grant_privilege(
         "Dave",
-        "session",
-        "universe",
-    )
-    assert index == new_index
-
-    # granting default privilege does not raise an error
-    new_index = i1.grant_privilege(
-        "Dave",
-        "usage",
+        "login",
         "universe",
     )
     assert index == new_index
@@ -987,12 +979,12 @@ def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     assert index == new_index
 
     # revoke default privilege, so raft_index should change
-    new_index = i1.revoke_privilege("Dave", "usage", "universe")
+    new_index = i1.revoke_privilege("Dave", "login", "universe")
     assert new_index != index
 
     index = new_index
     # already revoked, so it should be idempotent
-    new_index = i1.revoke_privilege("Dave", "usage", "universe")
+    new_index = i1.revoke_privilege("Dave", "login", "universe")
     assert new_index == index
 
 

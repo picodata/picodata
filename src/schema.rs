@@ -373,7 +373,7 @@ tarantool::define_str_enum! {
 }
 
 impl SchemaObjectType {
-    pub fn into_tarantool(&self) -> &str {
+    pub fn as_tarantool(&self) -> &'static str {
         match self {
             SchemaObjectType::Table => "space",
             t => t.as_str(),
@@ -382,23 +382,39 @@ impl SchemaObjectType {
 }
 
 tarantool::define_str_enum! {
+    /// Picodata privilege types. For correspondence with
+    /// tarantool privilege types see [`PrivilegeType::as_tarantool`].
+    ///
+    /// For each variant it is described which SQL queries in picodata
+    /// a user with this privilege can execute.
     pub enum PrivilegeType {
-        /// SELECT
+        /// Allows SQL queries: `SELECT`
         Read = "read",
-        /// INSERT, UPDATE, UPSERT, DELETE, REPLACE
+        /// Allows SQL queries: `INSERT`, `UPDATE`, `DELETE`
         Write = "write",
-        /// CALL
+        /// Allows SQL queries: `CALL`.
+        /// Also can indicate that role is granted to a user
+        /// if object type is role.
         Execute = "execute",
-        /// SESSION
-        Session = "session",
-        /// USAGE
-        Usage = "usage",
-        /// CREATE
+        /// Allows a user to log-in when connecting to picodata instance
+        Login = "login",
+        /// Allows SQL queries: `CREATE`
         Create = "create",
-        /// DROP
+        /// Allows SQL queries: `DROP`
         Drop = "drop",
-        /// ALTER
+        /// Allows SQL queries: `ALTER`
         Alter = "alter",
+    }
+}
+
+impl PrivilegeType {
+    /// Converts picodata privilege to a string that can be passed to
+    /// `box.schema.user.grant` as `privileges`
+    pub fn as_tarantool(&self) -> &'static str {
+        match self {
+            PrivilegeType::Login => "session,usage",
+            t => t.as_str(),
+        }
     }
 }
 
@@ -485,7 +501,7 @@ impl PrivilegeDef {
                 Some(_) => &[Alter, Drop],
                 None => &[Create, Alter, Drop],
             },
-            SchemaObjectType::Universe => &[Session, Usage],
+            SchemaObjectType::Universe => &[Login],
         };
 
         if !valid_privileges.contains(&privilege) {
@@ -572,19 +588,17 @@ impl PrivilegeDef {
         DEFAULT_PRIVILEGES.get_or_init(|| {
             let mut v = Vec::new();
 
-            // SQL: GRANT <'usage', 'session'> ON 'universe' TO 'guest'
-            // SQL: GRANT <'usage', 'session'> ON 'universe' TO 'admin'
+            // SQL: ALTER USER 'guest' WITH LOGIN
+            // SQL: ALTER USER 'admin' WITH LOGIN
             for user in [GUEST_ID, ADMIN_ID] {
-                for privilege in [PrivilegeType::Usage, PrivilegeType::Session] {
-                    v.push(PrivilegeDef {
-                        grantor_id: ADMIN_ID,
-                        grantee_id: user,
-                        object_type: SchemaObjectType::Universe,
-                        object_id: UNIVERSE_ID,
-                        privilege,
-                        schema_version: 0,
-                    });
-                }
+                v.push(PrivilegeDef {
+                    grantor_id: ADMIN_ID,
+                    grantee_id: user,
+                    object_type: SchemaObjectType::Universe,
+                    object_id: UNIVERSE_ID,
+                    privilege: PrivilegeType::Login,
+                    schema_version: 0,
+                });
             }
 
             // SQL: GRANT 'public' TO 'guest'
@@ -605,8 +619,7 @@ impl PrivilegeDef {
         Self::get_default_privileges().contains(self)
             // default user permissions
             || (self.object_id == PUBLIC_ID as i64 && self.privilege == PrivilegeType::Execute)
-            || (self.object_type == SchemaObjectType::Universe && self.privilege == PrivilegeType::Session)
-            || (self.object_type == SchemaObjectType::Universe && self.privilege == PrivilegeType::Usage)
+            || (self.object_type == SchemaObjectType::Universe && self.privilege == PrivilegeType::Login)
             // alter on himself
             || (self.object_type == SchemaObjectType::User && self.privilege == PrivilegeType::Alter && self.grantee_id as i64 == self.object_id)
     }
@@ -1458,7 +1471,7 @@ mod test {
         check_object_privilege(SchemaObjectType::Role, valid, 42);
 
         // universe
-        let valid = &[Session, Usage];
+        let valid = &[Login];
         check_object_privilege(SchemaObjectType::Universe, valid, 0);
     }
 }

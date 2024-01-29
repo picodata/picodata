@@ -366,17 +366,23 @@ pub fn proc_pg_parse(query: String, traceable: bool) -> traft::Result<Descriptor
     )
 }
 
-impl From<&SqlPrivilege> for PrivilegeType {
-    fn from(item: &SqlPrivilege) -> Self {
+impl TryFrom<&SqlPrivilege> for PrivilegeType {
+    type Error = SbroadError;
+
+    fn try_from(item: &SqlPrivilege) -> Result<Self, Self::Error> {
         match item {
-            SqlPrivilege::Read => PrivilegeType::Read,
-            SqlPrivilege::Write => PrivilegeType::Write,
-            SqlPrivilege::Execute => PrivilegeType::Execute,
-            SqlPrivilege::Create => PrivilegeType::Create,
-            SqlPrivilege::Alter => PrivilegeType::Alter,
-            SqlPrivilege::Drop => PrivilegeType::Drop,
-            SqlPrivilege::Session => PrivilegeType::Session,
-            SqlPrivilege::Usage => PrivilegeType::Usage,
+            SqlPrivilege::Read => Ok(PrivilegeType::Read),
+            SqlPrivilege::Write => Ok(PrivilegeType::Write),
+            SqlPrivilege::Execute => Ok(PrivilegeType::Execute),
+            SqlPrivilege::Create => Ok(PrivilegeType::Create),
+            SqlPrivilege::Alter => Ok(PrivilegeType::Alter),
+            SqlPrivilege::Drop => Ok(PrivilegeType::Drop),
+            SqlPrivilege::Session => Ok(PrivilegeType::Login),
+            // Picodata does not allow to grant or revoke usage
+            SqlPrivilege::Usage => Err(SbroadError::Unsupported(
+                Entity::Privilege,
+                Some("usage".into()),
+            )),
         }
     }
 }
@@ -454,14 +460,18 @@ impl TraftNode {
     ) -> traft::Result<(SchemaObjectType, PrivilegeType, i64)> {
         match grant_revoke_type {
             GrantRevokeType::User { privilege } => {
-                Ok((SchemaObjectType::User, privilege.into(), -1))
+                Ok((SchemaObjectType::User, privilege.try_into()?, -1))
             }
             GrantRevokeType::SpecificUser {
                 privilege,
                 user_name,
             } => {
                 if let Some(user_id) = self.get_user_or_role_id(user_name) {
-                    Ok((SchemaObjectType::User, privilege.into(), user_id as i64))
+                    Ok((
+                        SchemaObjectType::User,
+                        privilege.try_into()?,
+                        user_id as i64,
+                    ))
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
@@ -470,14 +480,18 @@ impl TraftNode {
                 }
             }
             GrantRevokeType::Role { privilege } => {
-                Ok((SchemaObjectType::Role, privilege.into(), -1))
+                Ok((SchemaObjectType::Role, privilege.try_into()?, -1))
             }
             GrantRevokeType::SpecificRole {
                 privilege,
                 role_name,
             } => {
                 if let Some(role_id) = self.get_user_or_role_id(role_name) {
-                    Ok((SchemaObjectType::Role, privilege.into(), role_id as i64))
+                    Ok((
+                        SchemaObjectType::Role,
+                        privilege.try_into()?,
+                        role_id as i64,
+                    ))
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
@@ -486,14 +500,18 @@ impl TraftNode {
                 }
             }
             GrantRevokeType::Table { privilege } => {
-                Ok((SchemaObjectType::Table, privilege.into(), -1))
+                Ok((SchemaObjectType::Table, privilege.try_into()?, -1))
             }
             GrantRevokeType::SpecificTable {
                 privilege,
                 table_name,
             } => {
                 if let Some(table_id) = self.get_table_id(table_name) {
-                    Ok((SchemaObjectType::Table, privilege.into(), table_id as i64))
+                    Ok((
+                        SchemaObjectType::Table,
+                        privilege.try_into()?,
+                        table_id as i64,
+                    ))
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
@@ -799,7 +817,7 @@ fn reenterable_schema_change_request(
                 let grantee_id = get_grantee_id(storage, name)?;
                 let object_type = SchemaObjectType::Universe;
                 let object_id = 0;
-                let privilege = PrivilegeType::Session;
+                let privilege = PrivilegeType::Login;
                 let priv_def = PrivilegeDef::new(
                     privilege,
                     object_type,

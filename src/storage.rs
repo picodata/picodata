@@ -2869,7 +2869,7 @@ pub mod acl {
     fn get_default_privileges_for_user(
         user_def: &UserDef,
         grantor_id: UserId,
-    ) -> [PrivilegeDef; 4] {
+    ) -> [PrivilegeDef; 3] {
         [
             // SQL: GRANT 'public' TO <user_name>
             PrivilegeDef::new(
@@ -2881,19 +2881,9 @@ pub mod acl {
                 user_def.schema_version,
             )
             .expect("valid"),
-            // ALTER USER <user_name> LOGIN
+            // SQL: ALTER USER <user_name> WITH LOGIN
             PrivilegeDef::new(
-                PrivilegeType::Session,
-                SchemaObjectType::Universe,
-                UNIVERSE_ID,
-                user_def.id,
-                ADMIN_ID,
-                user_def.schema_version,
-            )
-            .expect("valid"),
-            // ALTER USER <user_name> ENABLE
-            PrivilegeDef::new(
-                PrivilegeType::Usage,
+                PrivilegeType::Login,
                 SchemaObjectType::Universe,
                 UNIVERSE_ID,
                 user_def.id,
@@ -3051,7 +3041,7 @@ pub mod acl {
         let initiator_def = user_by_id(priv_def.grantor_id())?;
 
         // Reset login attempts counter for a user on session grant
-        if *privilege == PrivilegeType::Session {
+        if *privilege == PrivilegeType::Login {
             // Borrowing will not panic as there are no yields while it's borrowed
             storage.login_attempts.borrow_mut().remove(&grantee);
         }
@@ -3267,8 +3257,8 @@ pub mod acl {
             end",
             (
                 priv_def.grantee_id(),
-                &priv_def.privilege(),
-                &priv_def.object_type().into_tarantool(),
+                priv_def.privilege().as_tarantool(),
+                priv_def.object_type().as_tarantool(),
                 priv_def.object_id(),
             ),
         )
@@ -3295,8 +3285,8 @@ pub mod acl {
             end",
             (
                 priv_def.grantee_id(),
-                &priv_def.privilege(),
-                &priv_def.object_type().into_tarantool(),
+                priv_def.privilege().as_tarantool(),
+                priv_def.object_type().as_tarantool(),
                 priv_def.object_id(),
             ),
         )
