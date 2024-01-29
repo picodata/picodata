@@ -159,6 +159,22 @@ def test_connect_auth_type_different(i1: Instance):
     cli.expect_exact(pexpect.EOF)
 
 
+@pytest.mark.xfail(reason="not implemeted yet")
+def test_connect_auth_type_md5(i1: Instance):
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "md5"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for testuser: ")
+    cli.sendline("testpass")
+
+    cli.expect_exact("picosql :)")
+
+
 def test_connect_auth_type_unknown(binary_path: str):
     cli = pexpect.spawn(
         command=binary_path,
