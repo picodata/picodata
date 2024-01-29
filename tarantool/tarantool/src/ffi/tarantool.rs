@@ -612,6 +612,9 @@ extern "C" {
 
     #[link_name = "_say"]
     pub static mut SAY_FN: SayFunc;
+
+    /// Set log level for the default logger. Can be used dynamically.
+    pub fn say_set_log_level(level: c_int) -> c_void;
 }
 
 // Tarantool log object.

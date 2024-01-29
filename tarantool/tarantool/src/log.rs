@@ -53,7 +53,7 @@ impl Log for TarantoolLogger {
     #[inline(always)]
     fn enabled(&self, metadata: &Metadata) -> bool {
         let level = self.convert_level(metadata.level());
-        level <= SayLevel::from_i64(unsafe { ffi::LOG_LEVEL as _ }).unwrap()
+        level <= current_level()
     }
 
     #[inline]
@@ -86,12 +86,23 @@ crate::define_enum_with_introspection! {
     }
 }
 
-impl SayLevel {
-    #[inline(always)]
-    pub fn current() -> Self {
-        let level = Self::from_i64(unsafe { ffi::LOG_LEVEL as _ });
-        debug_assert!(level.is_some());
-        level.unwrap_or(SayLevel::Info)
+/// Get current level of the default tarantool logger.
+///
+/// See also <https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-logging-log-level>.
+#[inline(always)]
+pub fn current_level() -> SayLevel {
+    let level = SayLevel::from_i64(unsafe { ffi::LOG_LEVEL as _ });
+    debug_assert!(level.is_some());
+    level.unwrap_or(SayLevel::Info)
+}
+
+/// Set current level of the default tarantool logger.
+///
+/// See also <https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-logging-log-level>.
+#[inline(always)]
+pub fn set_current_level(level: SayLevel) {
+    unsafe {
+        ffi::say_set_log_level(level as _);
     }
 }
 
@@ -236,7 +247,7 @@ pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message:
 
 #[track_caller]
 pub fn say_format_args(level: SayLevel, args: std::fmt::Arguments) {
-    if SayLevel::current() < level {
+    if current_level() < level {
         return;
     }
     let loc = std::panic::Location::caller();
@@ -474,5 +485,20 @@ mod tests {
         assert_eq!(rc, -1);
         // This will print the os error saying `No such file or directory` or something similar
         say_sys_error!("Hello, {var}! {}", 69);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn set_current_level() {
+        let level_before = super::current_level();
+        let _guard = crate::test::util::on_scope_exit(|| super::set_current_level(level_before));
+
+        super::set_current_level(SayLevel::Info);
+        assert_eq!(super::current_level(), SayLevel::Info);
+
+        super::set_current_level(SayLevel::Verbose);
+        assert_eq!(super::current_level(), SayLevel::Verbose);
+
+        super::set_current_level(SayLevel::Warn);
+        assert_eq!(super::current_level(), SayLevel::Warn);
     }
 }

@@ -7,7 +7,8 @@
   `say_fatal`, `say_sys_error` macros for basic logging into the tarantool's
   default logger. Use these when you need to log messages, but don't have any
   facilities set up for this, e.g. internally in tarantool-module code.
-- `log::SayLevel::current` function for getting current tarantool log level.
+- `log::{current_level, set_current_level}` for setting/getting current log
+  level of the default logger without going through lua.
 - `error::Error::ConnectionClosed` variant which can happen when converting from
   errors returned from `network::client`.
 
