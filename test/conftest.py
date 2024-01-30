@@ -1002,15 +1002,15 @@ class Instance:
             else:
                 raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
 
-            whoami = self.call("pico.whoami")
-            assert isinstance(whoami, dict)
-            assert isinstance(whoami["raft_id"], int)
-            assert isinstance(whoami["instance_id"], str)
-            self.raft_id = whoami["raft_id"]
-            self.instance_id = whoami["instance_id"]
-
-            myself = self.call(".proc_instance_info", self.instance_id)
+            myself = self.call(".proc_instance_info")
             assert isinstance(myself, dict)
+
+            assert isinstance(myself["raft_id"], int)
+            self.raft_id = myself["raft_id"]
+
+            assert isinstance(myself["instance_id"], str)
+            self.instance_id = myself["instance_id"]
+
             assert isinstance(myself["current_grade"], dict)
             return (
                 myself["current_grade"]["variant"],
