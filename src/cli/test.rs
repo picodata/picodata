@@ -141,6 +141,8 @@ fn test_one(test: &TestCase) {
     };
 
     tarantool::set_cfg(&cfg);
+
+    crate::schema::init_user_pico_service();
     tarantool::exec(
         r#"
         box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})

@@ -6,6 +6,7 @@ use tarantool::auth::AuthMethod;
 
 use crate::cli::args;
 use crate::instance::Instance;
+use crate::schema;
 use crate::schema::PrivilegeDef;
 use crate::schema::RoleDef;
 use crate::schema::TableDef;
@@ -163,6 +164,12 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         ADMIN_ID,
     ));
 
+    init_entries_push_op(op::Dml::insert(
+        ClusterwideTable::User,
+        schema::pico_service_user_def(),
+        ADMIN_ID,
+    ));
+
     // equivalent SQL expression: CREATE ROLE 'public'
     init_entries_push_op(op::Dml::insert(
         ClusterwideTable::Role,
@@ -193,6 +200,15 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
     // GRANT <'usage', 'session'> ON 'universe' TO 'guest'
     // GRANT 'public' TO 'guest'
     for priv_def in PrivilegeDef::get_default_privileges() {
+        init_entries_push_op(op::Dml::insert(
+            ClusterwideTable::Privilege,
+            priv_def,
+            ADMIN_ID,
+        ));
+    }
+
+    // Grant all privileges on "universe" to "pico_service".
+    for priv_def in schema::pico_service_privilege_defs() {
         init_entries_push_op(op::Dml::insert(
             ClusterwideTable::Privilege,
             priv_def,

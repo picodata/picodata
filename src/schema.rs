@@ -5,6 +5,7 @@ use std::fmt::Display;
 use std::time::Duration;
 
 use tarantool::auth::AuthDef;
+use tarantool::auth::AuthMethod;
 use tarantool::error::TarantoolError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -26,6 +27,7 @@ use tarantool::{
 use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
+use crate::storage;
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
@@ -376,12 +378,26 @@ pub const ADMIN_ID: UserId = 1;
 /// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const PUBLIC_ID: UserId = 2;
 
+/// User id of the builtin role "replication".
+///
+/// Role "replication" has the following grants:
+/// - Read access to the "universe"
+/// - Write access to the space "_cluster"
+pub const ROLE_REPLICATION_ID: i64 = 3;
+
 /// User id of the builtin role "super".
 ///
 /// Users with this role have access to everything.
 ///
 /// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const SUPER_ID: UserId = 31;
+
+/// User id of the builtin user "pico_service".
+///
+/// A special user for internal communication between instances of picodata.
+/// It is equivalent in it's privileges to "admin". The only difference is that
+/// only the automated rpc calls are performed as "pico_service".
+pub const PICO_SERVICE_ID: UserId = 32;
 
 /// Object id of the special builtin object "universe".
 ///
@@ -676,6 +692,113 @@ impl PrivilegeDef {
         .expect("storage should not fail")
         .ok_or_else(|| Error::other(format!("object with id {id} should exist")))?;
         Ok(Some(name))
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// init_pico_service
+////////////////////////////////////////////////////////////////////////////////
+
+/// Name of the special builtin user for internal communication between
+/// instances. It's id is [`PICO_SERVICE_ID`].
+///
+/// Use this constant instead of literal "pico_service" so that it's easier to
+/// find all the places where we refer to "pico_service".
+pub const PICO_SERVICE_USER_NAME: &'static str = "pico_service";
+
+#[inline]
+pub fn pico_service_user_def() -> &'static UserDef {
+    static PICO_SERVICE_USER_DEF: OnceCell<UserDef> = OnceCell::new();
+    PICO_SERVICE_USER_DEF.get_or_init(|| UserDef {
+        id: PICO_SERVICE_ID,
+        name: PICO_SERVICE_USER_NAME.into(),
+        // This means the local schema is already up to date and main loop doesn't need to do anything
+        schema_version: INITIAL_SCHEMA_VERSION,
+        auth: AuthDef::new(
+            AuthMethod::ChapSha1,
+            tarantool::auth::AuthData::new(&AuthMethod::ChapSha1, PICO_SERVICE_USER_NAME, "")
+                .into_string(),
+        ),
+        owner: ADMIN_ID,
+    })
+}
+
+#[inline]
+pub fn pico_service_privilege_defs() -> &'static [PrivilegeDef] {
+    static PICO_SERVICE_PRIVILEGE_DEFS: OnceCell<Vec<PrivilegeDef>> = OnceCell::new();
+    PICO_SERVICE_PRIVILEGE_DEFS.get_or_init(|| {
+        let mut res = Vec::with_capacity(PrivilegeType::VARIANTS.len());
+
+        for &privilege in PrivilegeType::VARIANTS {
+            res.push(PrivilegeDef {
+                privilege,
+                object_type: SchemaObjectType::Universe,
+                object_id: UNIVERSE_ID,
+                grantee_id: PICO_SERVICE_ID,
+                grantor_id: ADMIN_ID,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            });
+        }
+
+        // TODO: explain
+        res.push(PrivilegeDef {
+            privilege: PrivilegeType::Execute,
+            object_type: SchemaObjectType::Role,
+            object_id: ROLE_REPLICATION_ID,
+            grantee_id: PICO_SERVICE_ID,
+            grantor_id: ADMIN_ID,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+        });
+
+        res
+    })
+}
+
+pub fn init_user_pico_service() {
+    let sys_user = SystemSpace::User.as_space();
+    let sys_priv = SystemSpace::Priv.as_space();
+
+    let t = sys_user
+        .get(&[PICO_SERVICE_ID])
+        .expect("reading from _user shouldn't fail");
+    if t.is_some() {
+        // Already exists (instance restarted)
+        return;
+    }
+
+    let user_def = pico_service_user_def();
+    let res = storage::acl::on_master_create_user(user_def, false);
+    if let Err(e) = res {
+        panic!("failed creating user '{PICO_SERVICE_USER_NAME}': {e}");
+    }
+
+    // Grant ALL privileges to "every object of every type".
+    const PRIVILEGE_ALL: u32 = 0xffff_ffff;
+    let res = sys_priv.insert(&(
+        ADMIN_ID,
+        PICO_SERVICE_ID,
+        "universe",
+        UNIVERSE_ID,
+        PRIVILEGE_ALL,
+    ));
+    if let Err(e) = res {
+        panic!("failed creating user '{PICO_SERVICE_USER_NAME}': {e}");
+    }
+
+    // Also grant role "replication", because all privileges to "every object of
+    // every type" is not enough.
+    const PRIVILEGE_EXECUTE: u32 = 4;
+    let res = sys_priv.insert(&(
+        ADMIN_ID,
+        PICO_SERVICE_ID,
+        "role",
+        ROLE_REPLICATION_ID,
+        PRIVILEGE_EXECUTE,
+    ));
+    if let Err(e) = res {
+        panic!("failed creating user '{PICO_SERVICE_USER_NAME}': {e}");
     }
 }
 

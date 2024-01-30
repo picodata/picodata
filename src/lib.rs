@@ -500,6 +500,8 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     init_handlers();
 
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
+    schema::init_user_pico_service();
+
     set_login_attempts_check(storage.clone());
     set_on_access_denied_audit_trigger();
     let raft_storage =

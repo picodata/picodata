@@ -266,11 +266,20 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0])|
 |  0  | 1  |Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|
 |  0  | 1  |Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1])|
+|  0  | 1  |Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|
 |  0  | 1  |Insert({_pico_role}, [2,"public",0,1])|
 |  0  | 1  |Insert({_pico_role}, [31,"super",0,1])|
 |  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,0,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","role",2,0,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["execute","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["create","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,32,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["execute","role",3,32,1,0])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_index},"_pico_index",["global"],[["table_id","unsigned",false],["id","unsigned",false],["name","string",false],["local","boolean",false],["parts","array",false],["schema_version","unsigned",false],["operable","boolean",false],["unique","boolean",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",["global"],[["raft_id","unsigned",false],["address","string",false]],0,true,"memtx",1])|
@@ -287,8 +296,8 @@ def test_raft_log(instance: Instance):
 |  0  | 2  |Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"])|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"])|
 |  0  | 2  |Update({_pico_replicaset}, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
-|  0  | 2  |Replace({_pico_property}, ["target_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["guest:@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
-|  0  | 2  |Replace({_pico_property}, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["guest:@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
+|  0  | 2  |Replace({_pico_property}, ["target_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service:@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
+|  0  | 2  |Replace({_pico_property}, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service:@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
 |  0  | 2  |Replace({_pico_property}, ["vshard_bootstrapped",true])|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
 +-----+----+--------+
