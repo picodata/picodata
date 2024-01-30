@@ -34,7 +34,8 @@ mod tests {
             let client = ReconnClient::with_config("localhost".into(), listen_port(), config);
 
             let err = client.ping().await.unwrap_err();
-            assert_eq!(err.to_string(), "protocol error: service responded with error: User not found or supplied credentials are invalid");
+            #[rustfmt::skip]
+            assert_eq!(err.to_string(), "service responded with error: User not found or supplied credentials are invalid");
         }
 
         // Wrong password
@@ -44,7 +45,8 @@ mod tests {
             let client = ReconnClient::with_config("localhost".into(), listen_port(), config);
 
             let err = client.ping().await.unwrap_err();
-            assert_eq!(err.to_string(), "protocol error: service responded with error: User not found or supplied credentials are invalid");
+            #[rustfmt::skip]
+            assert_eq!(err.to_string(), "service responded with error: User not found or supplied credentials are invalid");
         }
     }
 }

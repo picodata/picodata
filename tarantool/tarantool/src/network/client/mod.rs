@@ -69,7 +69,7 @@ pub enum Error {
 
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
-    #[error("protocol error: {0}")]
+    #[error("{0}")]
     Protocol(Arc<ProtocolError>),
 }
 
@@ -552,7 +552,8 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        assert_eq!(err, "protocol error: service responded with error: Procedure 'unexistent_proc' is not defined");
+        #[rustfmt::skip]
+        assert_eq!(err, "service responded with error: Procedure 'unexistent_proc' is not defined");
     }
 
     #[crate::test(tarantool = "crate")]
