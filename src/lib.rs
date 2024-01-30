@@ -237,12 +237,16 @@ fn init_handlers() {
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         lua.exec_with(
-            "box.schema.func.create('.' .. ...,
-                { language = 'C', if_not_exists = true }
-            );",
-            proc.name(),
+            "local name, is_public = ...
+            local proc_name = '.' .. name
+            box.schema.func.create(proc_name, {language = 'C', if_not_exists = true})
+            if is_public then
+                box.schema.role.grant('public', 'execute', 'function', proc_name, {if_not_exists = true})
+            end
+            ",
+            (proc.name(), proc.is_public()),
         )
-        .expect("box.schema.func.create should never fail");
+        .expect("this shouldn't fail");
     }
 
     lua.exec(
