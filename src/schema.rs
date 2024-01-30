@@ -33,6 +33,8 @@ use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, node, RaftIndex};
 use crate::util::effective_user_id;
 
+pub const INITIAL_SCHEMA_VERSION: u64 = 0;
+
 ////////////////////////////////////////////////////////////////////////////////
 // TableDef
 ////////////////////////////////////////////////////////////////////////////////
@@ -131,7 +133,8 @@ impl TableDef {
                 name: t.name().into(),
                 distribution: Distribution::Global,
                 format: t.format(),
-                schema_version: 0,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
                 engine: SpaceEngineType::Memtx,
                 owner: ADMIN_ID,
@@ -350,17 +353,41 @@ impl RoleDef {
 // PrivilegeDef
 ////////////////////////////////////////////////////////////////////////////////
 
-// default users
+/// User id of the builtin user "guest".
+///
+/// Default "untrusted" user.
+///
+/// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const GUEST_ID: UserId = 0;
-// Note: Admin user id is used when we need to elevate privileges
-// because current user doesnt have access to system spaces
+
+/// User id of the builtin user "admin".
+///
+/// Note: Admin user id is used when we need to elevate privileges
+/// because current user doesnt have access to system spaces
+///
+/// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const ADMIN_ID: UserId = 1;
 
-// default roles
+/// User id of the builtin role "public".
+///
+/// Pre-defined role, automatically granted to new users.
+/// Granting some privilege to this role is equivalent granting the privilege to everybody.
+///
+/// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const PUBLIC_ID: UserId = 2;
+
+/// User id of the builtin role "super".
+///
+/// Users with this role have access to everything.
+///
+/// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const SUPER_ID: UserId = 31;
 
-// `universe` has object_id 0
+/// Object id of the special builtin object "universe".
+///
+/// Object "universe" is basically an alias to the "whole database".
+/// Granting access to "universe" is equivalent to granting access
+/// to all objects of all types for which the privilege makes sense.
 pub const UNIVERSE_ID: i64 = 0;
 
 tarantool::define_str_enum! {
@@ -597,7 +624,8 @@ impl PrivilegeDef {
                     object_type: SchemaObjectType::Universe,
                     object_id: UNIVERSE_ID,
                     privilege: PrivilegeType::Login,
-                    schema_version: 0,
+                    // This means the local schema is already up to date and main loop doesn't need to do anything
+                    schema_version: INITIAL_SCHEMA_VERSION,
                 });
             }
 
@@ -608,7 +636,8 @@ impl PrivilegeDef {
                 object_type: SchemaObjectType::Role,
                 object_id: PUBLIC_ID as _,
                 privilege: PrivilegeType::Execute,
-                schema_version: 0,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
             });
 
             v

@@ -10,6 +10,7 @@ use crate::schema::PrivilegeDef;
 use crate::schema::RoleDef;
 use crate::schema::TableDef;
 use crate::schema::UserDef;
+use crate::schema::INITIAL_SCHEMA_VERSION;
 use crate::schema::{ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID};
 use crate::sql::pgproto;
 use crate::storage;
@@ -122,6 +123,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
             ADMIN_ID,
         )
     );
+
     // Populate system roles and their privileges to match tarantool ones
     // Note: op::Dml is used instead of op::Acl because with Acl
     // replicas will attempt to apply these records to coresponding
@@ -132,7 +134,8 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         &UserDef {
             id: GUEST_ID,
             name: String::from("guest"),
-            schema_version: 0,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
             auth: AuthDef::new(
                 AuthMethod::ChapSha1,
                 AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
@@ -148,9 +151,10 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         &UserDef {
             id: ADMIN_ID,
             name: String::from("admin"),
-            schema_version: 0,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
             // this is a bit different from vanilla tnt
-            // in vanilla tnt auth def is empty. Here for simplicity give navailable module api
+            // in vanilla tnt auth def is empty. Here for simplicity given available module api
             // we use ChapSha with invalid password
             // (its impossible to get empty string as output of sha1)
             auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
@@ -165,7 +169,8 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         &RoleDef {
             id: PUBLIC_ID,
             name: String::from("public"),
-            schema_version: 0,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
             owner: ADMIN_ID,
         },
         ADMIN_ID,
@@ -177,7 +182,8 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         &RoleDef {
             id: SUPER_ID,
             name: String::from("super"),
-            schema_version: 0,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
             owner: ADMIN_ID,
         },
         ADMIN_ID,
@@ -186,7 +192,6 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
     // equivalent SQL expressions under 'admin' user:
     // GRANT <'usage', 'session'> ON 'universe' TO 'guest'
     // GRANT 'public' TO 'guest'
-    // GRANT 'all privileges' ON 'universe' TO 'admin'
     for priv_def in PrivilegeDef::get_default_privileges() {
         init_entries_push_op(op::Dml::insert(
             ClusterwideTable::Privilege,
@@ -195,6 +200,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         ));
     }
 
+    // Builtin global table definitions
     for table_def in TableDef::system_tables() {
         init_entries_push_op(op::Dml::insert(
             ClusterwideTable::Table,
@@ -203,6 +209,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         ));
     }
 
+    // Initial raft configuration
     init_entries.push({
         let conf_change = raft::ConfChange {
             change_type: raft::ConfChangeType::AddNode,

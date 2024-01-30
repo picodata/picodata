@@ -17,6 +17,7 @@ use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
+use crate::schema::INITIAL_SCHEMA_VERSION;
 use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
 use crate::schema::{PrivilegeDef, RoleDef, UserDef};
@@ -1365,7 +1366,7 @@ impl Properties {
     pub fn global_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
             .get(PropertyName::GlobalSchemaVersion)?
-            .unwrap_or_default();
+            .unwrap_or(INITIAL_SCHEMA_VERSION);
         Ok(res)
     }
 
@@ -3303,7 +3304,7 @@ pub mod acl {
 pub fn local_schema_version() -> tarantool::Result<u64> {
     let space_schema = Space::from(SystemSpace::Schema);
     let tuple = space_schema.get(&["local_schema_version"])?;
-    let mut res = 0;
+    let mut res = INITIAL_SCHEMA_VERSION;
     if let Some(tuple) = tuple {
         if let Some(v) = tuple.field(1)? {
             res = v;
