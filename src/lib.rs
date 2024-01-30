@@ -656,7 +656,18 @@ fn start_boot(args: &args::Run) {
     })
     .unwrap();
 
-    postjoin(args, storage, raft_storage)
+    postjoin(args, storage, raft_storage);
+
+    let db_name = &args.cluster_id;
+    let instance_id = instance.instance_id.as_ref();
+    crate::audit!(
+        message: "a new database `{db_name}` was created",
+        title: "new_database_created",
+        severity: Low,
+        initiator: "admin",
+        instance_id: %instance_id,
+        raft_id: %raft_id,
+    );
 }
 
 fn start_join(args: &args::Run, instance_address: String) {

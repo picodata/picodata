@@ -82,6 +82,8 @@ class Event:
                 return EventAccessDenied(**s)
             case EventAuditRotate.TITLE:
                 return EventAuditRotate(**s)
+            case EventAuditNewDataBase.TITLE:
+                return EventAuditNewDataBase(**s)
             case _:
                 raise ValueError(f"Unknown event type for event: '{s}'")
 
@@ -264,6 +266,14 @@ class EventAuditRotate(Event):
     TITLE: ClassVar[str] = "audit_rotate"
 
 
+@dataclass
+class EventAuditNewDataBase(Event):
+    TITLE: ClassVar[str] = "new_database_created"
+    initiator: str
+    instance_id: str
+    raft_id: str
+
+
 class AuditFile:
     def __init__(self, path):
         self._f = open(path)
@@ -334,6 +344,24 @@ def test_startup(instance: Instance):
     event = take_until_type(iter(events), EventChangeConfig)
     assert event is not None
     assert event.initiator == "admin"
+
+
+def test_new_database_created(cluster: Cluster):
+    (i1, i2) = cluster.deploy(instance_count=2)
+
+    events = list(AuditFile(i1.audit_flag_value).events())
+
+    event = take_until_type(iter(events), EventAuditNewDataBase)
+    assert event is not None
+    assert event.initiator == "admin"
+    assert event.instance_id == "i1"
+    assert event.raft_id == "1"
+
+    events = list(AuditFile(i2.audit_flag_value).events())
+    event = take_until_type(iter(events), EventAuditNewDataBase)
+    assert event is None
+
+    cluster.terminate()
 
 
 def test_create_drop_table(instance: Instance):
