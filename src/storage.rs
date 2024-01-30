@@ -2763,7 +2763,7 @@ impl SchemaDef for UserDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        let res = acl::on_master_create_user(self);
+        let res = acl::on_master_create_user(self, true);
         ignore_only_error(res, TntErrorCode::TupleFound)?;
         Ok(())
     }
@@ -3145,8 +3145,17 @@ pub mod acl {
     // acl in local storage on replicaset leader
     ////////////////////////////////////////////////////////////////////////////
 
-    /// Create a tarantool user. Grant it default privileges.
-    pub fn on_master_create_user(user_def: &UserDef) -> tarantool::Result<()> {
+    /// Create a tarantool user.
+    ///
+    /// If `basic_privileges` is `true` the new user is granted the following:
+    /// - Role "public"
+    /// - Alter self
+    /// - Session access on "universe"
+    /// - Usage access on "universe"
+    pub fn on_master_create_user(
+        user_def: &UserDef,
+        basic_privileges: bool,
+    ) -> tarantool::Result<()> {
         let sys_user = Space::from(SystemSpace::User);
         let user_id = user_def.id;
 
@@ -3165,6 +3174,10 @@ pub mod acl {
             &[(); 0],
             0,
         ))?;
+
+        if !basic_privileges {
+            return Ok(());
+        }
 
         let lua = ::tarantool::lua_state();
         lua.exec_with("box.schema.user.grant(...)", (user_id, "public"))

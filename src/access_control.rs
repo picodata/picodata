@@ -581,7 +581,7 @@ mod tests {
     fn make_user(name: &str, owner: Option<UserId>) -> u32 {
         let id = next_user_id();
         let user_def = dummy_user_def(id, name.to_owned(), owner);
-        on_master_create_user(&user_def).unwrap();
+        on_master_create_user(&user_def, true).unwrap();
         id
     }
 

@@ -1059,7 +1059,7 @@ impl NodeImpl {
                     } else {
                         match &acl {
                             Acl::CreateUser { user_def } => {
-                                acl::on_master_create_user(user_def)
+                                acl::on_master_create_user(user_def, true)
                                     .expect("creating user shouldn't fail");
                             }
                             Acl::ChangeAuth { user_id, auth, .. } => {
