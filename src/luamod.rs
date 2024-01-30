@@ -696,46 +696,6 @@ pub(crate) fn setup(args: &args::Run) {
     );
 
     ///////////////////////////////////////////////////////////////////////////
-    luamod_set(
-        &l,
-        "raft_timeout_now",
-        indoc! {"
-        pico.raft_timeout_now()
-        =======================
-
-        Internal API. Causes this instance to artificially timeout on waiting
-        for a heartbeat from raft leader. The instance then will start a new
-        election and transition to a 'PreCandidate' state.
-
-        This function yields. It returns when the raft node changes it's state.
-
-        Later the instance will likely become a leader, unless there are some
-        impediments, e.g. the loss of quorum or split-vote.
-
-        Example log:
-
-            received MsgTimeoutNow from 3 and starts an election
-                to get leadership., from: 3, term: 4, raft_id: 3
-
-            starting a new election, term: 4, raft_id: 3
-
-            became candidate at term 5, term: 5, raft_id: 3
-
-            broadcasting vote request, to: [4, 1], log_index: 54,
-                log_term: 4, term: 5, type: MsgRequestVote, raft_id: 3
-
-            received votes response, term: 5, type: MsgRequestVoteResponse,
-                approvals: 2, rejections: 0, from: 4, vote: true, raft_id: 3
-
-            became leader at term 5, term: 5, raft_id: 3
-        "},
-        tlua::function0(|| -> traft::Result<()> {
-            traft::node::global()?.timeout_now();
-            Ok(())
-        }),
-    );
-
-    ///////////////////////////////////////////////////////////////////////////
     #[rustfmt::skip]
     luamod_set(
         &l,

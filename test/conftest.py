@@ -1139,7 +1139,7 @@ class Instance:
             eprint(f"{self} is trying to become a leader, {attempt=}")
 
             # 1. Force the node to campaign.
-            self.call("pico.raft_timeout_now")
+            self.call(".proc_raft_promote")
 
             # 2. Wait until the miracle occurs.
             Retriable(timeout, rps).call(self.assert_raft_status, "Leader")

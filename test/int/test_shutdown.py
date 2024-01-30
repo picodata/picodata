@@ -36,7 +36,7 @@ def test_gl119_panic_on_shutdown(cluster2: Cluster):
     # suspend i1 (leader) and force i2 to start a new term
     assert i1.process is not None
     os.killpg(i1.process.pid, signal.SIGSTOP)
-    i2.call("pico.raft_timeout_now")
+    i2.call(".proc_raft_promote")
     # it can't win the election because there is no quorum
     i2.assert_raft_status("Candidate")
 

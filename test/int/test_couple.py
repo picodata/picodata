@@ -97,7 +97,7 @@ def test_restart_both(cluster2: Cluster):
     Retriable(timeout=2, rps=10).call(check_alive, i2)
 
     # Speed up elections
-    i2.call("pico.raft_timeout_now")
+    i2.promote_or_fail()
 
     i1.wait_online()
     assert i1.current_grade() == dict(variant="Online", incarnation=2)
