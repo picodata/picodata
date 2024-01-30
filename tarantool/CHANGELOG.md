@@ -12,6 +12,8 @@
 ### Changed
 
 ### Fixed
+- `network::ReconnClient::with_config` constructor now has `pub` visibility,
+  so it's now possible to use it with non-default credentials.
 
 ### Deprecated
 

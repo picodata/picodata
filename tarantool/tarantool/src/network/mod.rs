@@ -18,3 +18,33 @@ pub use client::reconnect::Client as ReconnClient;
 #[cfg(feature = "network_client")]
 pub use client::{AsClient, Client, Error};
 pub use protocol::Config;
+
+#[cfg(feature = "internal_test")]
+#[cfg(feature = "network_client")]
+mod tests {
+    use super::*;
+    use crate::test::util::listen_port;
+
+    #[crate::test(tarantool = "crate")]
+    async fn wrong_credentials() {
+        // Wrong user
+        {
+            let mut config = Config::default();
+            config.creds = Some(("no such user".into(), "password".into()));
+            let client = ReconnClient::with_config("localhost".into(), listen_port(), config);
+
+            let err = client.ping().await.unwrap_err();
+            assert_eq!(err.to_string(), "protocol error: service responded with error: User not found or supplied credentials are invalid");
+        }
+
+        // Wrong password
+        {
+            let mut config = Config::default();
+            config.creds = Some(("test_user".into(), "wrong password".into()));
+            let client = ReconnClient::with_config("localhost".into(), listen_port(), config);
+
+            let err = client.ping().await.unwrap_err();
+            assert_eq!(err.to_string(), "protocol error: service responded with error: User not found or supplied credentials are invalid");
+        }
+    }
+}

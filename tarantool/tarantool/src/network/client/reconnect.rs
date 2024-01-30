@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use super::AsClient;
 use super::Error;
 use crate::fiber::r#async::Mutex;
 use crate::network::protocol;
@@ -13,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// when the user finds it necessary.
 /// Can be cloned to utilize the same connection from multiple fibers.
 ///
-/// See [`super::AsClient`] for the full API.
+/// See [`AsClient`] for the full API.
 #[derive(Debug, Clone)]
 pub struct Client {
     client: Rc<Mutex<Option<Result<super::Client, Error>>>>,
@@ -80,7 +81,7 @@ impl Client {
     }
 
     /// Creates a new client but does not yet try to establish connection
-    /// to `url:port`. This will happen at the first call through [`super::AsClient`] methods.
+    /// to `url:port`. This will happen at the first call through [`AsClient`] methods.
     pub fn new(url: String, port: u16) -> Self {
         Self::with_config(url, port, Default::default())
     }
@@ -90,7 +91,7 @@ impl Client {
     ///
     /// Takes explicit `config` in comparison to [`Self::new`]
     /// where default values are used.
-    fn with_config(url: String, port: u16, config: protocol::Config) -> Self {
+    pub fn with_config(url: String, port: u16, config: protocol::Config) -> Self {
         Self {
             client: Default::default(),
             url,
@@ -145,7 +146,6 @@ mod tests {
     use super::*;
     use crate::fiber;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
-    use crate::network::AsClient as _;
     use crate::test::util::listen_port;
     use std::time::Duration;
 
