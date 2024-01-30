@@ -54,11 +54,11 @@ fn main() {
     set_git_describe_env_var();
 
     // This variable controls the type of the build for whole project.
-    // If it is set we build tarantool using static-build (see tarantool-sys/static-build)
-    // Otherwise build dynamically using root cmake project
+    // By default static linking is used (see tarantool-sys/static-build)
+    // If feature dynamic_build is set we build tarantool using root cmake project
     // For details on how this passed to build.rs see:
     // https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-build-scripts
-    let use_static_build = std::env::var("CARGO_FEATURE_STATIC_BUILD").is_ok();
+    let use_static_build = std::env::var("CARGO_FEATURE_DYNAMIC_BUILD").is_err();
 
     generate_export_stubs(&out_dir);
     build_tarantool(jobserver, build_root, use_static_build);

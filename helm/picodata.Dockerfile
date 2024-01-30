@@ -12,7 +12,7 @@ ENV PATH=/root/.cargo/bin:${PATH}
 
 WORKDIR /build/picodata
 COPY . .
-RUN cargo build --locked --release --features static_build
+RUN cargo build --locked --release
 
 FROM rockylinux:8
 

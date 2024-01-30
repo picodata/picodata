@@ -73,13 +73,13 @@ git submodule update --init --recursive
 ```
 Compile the project:
 ```bash
-cargo build --features static_build
+cargo build
 ```
 
 This will build the debug version. If you want the release version, try this instead:
 
 ```bash
-cargo build --features static_build --release
+cargo build --release
 ```
 
 If you want to enable Web UI for administration, build with these flags:
@@ -91,7 +91,7 @@ When running `picodata` `-http-listen` should be supplied to serve Web UI.
 
 The resulting binaries should appear under the `target` subdirectory.
 
-Note: picodata supports both dynamic and static linking. Instruction above produces statically linked binary. When built without `static_build` feature dynamic linking is used. Dynamic linking requires for additional dependencies to be installed on the system. For full list see [Dockerfile](docker-build-base/Dockerfile)
+Note: picodata supports both dynamic and static linking. Instruction above produces statically linked binary. When built with `dynamic_build` feature dynamic linking is used. Dynamic linking requires for additional dependencies to be installed on the system. For full list see [Dockerfile](docker-build-base/Dockerfile)
 
 ## Integration testing with pytest
 The following refers to Ubuntu 20.04 LTS. The mileage with other distributions may vary.

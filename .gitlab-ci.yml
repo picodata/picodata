@@ -229,9 +229,6 @@ test-linux:
     reports:
       junit: junit_pytest.xml
 
-# Note: on mac we use static_build feature. This has two benefits:
-# 1) static_build gets actually checked in CI
-# 2) its simpler to not have more dependencies on mac
 test-mac-m1:
   extends: .test
   tags:
@@ -239,15 +236,15 @@ test-mac-m1:
   script:
     - export CARGO_HOME=$HOME/.cargo
     - cargo -V
-    - cargo build --features static_build --locked
-    - cargo build --features "static_build webui" --locked
+    - cargo build --locked
+    - cargo build --features webui --locked
     # There are no Rust tests for `webui` feature.
     # It will be checked during integration tests.
-    - cargo test --features static_build --locked
+    - cargo test --locked
 
     - cargo fmt -- -v --check
     - cargo clippy --version
-    - cargo clippy --features "static_build load_test webui error_injection" -- --deny clippy::all --no-deps
+    - cargo clippy --features "load_test webui error_injection" -- --deny clippy::all --no-deps
     # - |
     #   # Pipenv install
     #   ci-log-section start "pipenv-install" Installing pip dependencies ...
