@@ -2,8 +2,10 @@
 
 use ::tarantool::network::AsClient as _;
 use ::tarantool::network::Client;
+use ::tarantool::network::Config;
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
+use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::Result;
@@ -55,7 +57,11 @@ where
     let port: u16 = port.parse().map_err(|err| {
         ::tarantool::error::Error::IO(io::Error::new(io::ErrorKind::InvalidInput, err))
     })?;
-    let client = Client::connect(address, port).await?;
+
+    let mut config = Config::default();
+    config.creds = Some((PICO_SERVICE_USER_NAME.into(), "".into()));
+    let client = Client::connect_with_config(address, port, config).await?;
+
     let tuple = client.call(R::PROC_NAME, request).await?;
     decode_iproto_return_value(tuple)
 }

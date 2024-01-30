@@ -546,6 +546,9 @@ class Instance:
     def connect(
         self, timeout: int | float, user: str | None = None, password: str | None = None
     ):
+        if user is None:
+            user = "pico_service"
+
         c = Connection(
             self.host,
             self.port,

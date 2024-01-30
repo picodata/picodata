@@ -386,14 +386,14 @@ def test_create_drop_table(instance: Instance):
     assert create_table.name == "foo"
     assert create_table.message == "created table `foo`"
     assert create_table.severity == Severity.Medium
-    assert create_table.initiator == "guest"
+    assert create_table.initiator == "pico_service"
 
     drop_table = take_until_type(events, EventDropTable)
     assert drop_table is not None
     assert drop_table.name == "foo"
     assert drop_table.message == "dropped table `foo`"
     assert drop_table.severity == Severity.Medium
-    assert drop_table.initiator == "guest"
+    assert drop_table.initiator == "pico_service"
 
 
 def test_user(instance: Instance):
@@ -425,7 +425,7 @@ def test_user(instance: Instance):
     assert create_user.auth_type == "chap-sha1"
     assert create_user.message == f"created user `{create_user.user}`"
     assert create_user.severity == Severity.High
-    assert create_user.initiator == "guest"
+    assert create_user.initiator == "pico_service"
 
     change_password = take_until_type(events, EventChangePassword)
     assert change_password is not None
@@ -443,7 +443,7 @@ def test_user(instance: Instance):
     assert drop_user.user == "ymir"
     assert drop_user.message == f"dropped user `{drop_user.user}`"
     assert drop_user.severity == Severity.Medium
-    assert drop_user.initiator == "guest"
+    assert drop_user.initiator == "pico_service"
 
 
 def test_role(instance: Instance):

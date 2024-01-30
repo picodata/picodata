@@ -228,13 +228,6 @@ fn start_webui() {
 /// Those are used for inter-instance communication
 /// (discovery, rpc, public proc api).
 fn init_handlers() {
-    tarantool::exec(
-        r#"
-        box.schema.user.grant('guest', 'super', nil, nil, {if_not_exists = true})
-        "#,
-    )
-    .expect("box.schema.user.grant should never fail");
-
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         lua.exec_with(

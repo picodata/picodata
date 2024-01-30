@@ -3,6 +3,7 @@ use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
 use crate::replicaset::Weight;
+use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::RaftId;
 use ::tarantool::tlua;
 use std::collections::HashMap;
@@ -88,7 +89,7 @@ impl VshardConfig {
             replicaset.replicas.insert(
                 peer.instance_uuid.clone(),
                 ReplicaSpec {
-                    uri: format!("guest:@{address}"),
+                    uri: format!("{PICO_SERVICE_USER_NAME}:@{address}"),
                     master: r.current_master_id == peer.instance_id,
                     name: peer.instance_id.to_string(),
                 },

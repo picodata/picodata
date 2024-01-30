@@ -80,6 +80,7 @@ def test_ddl_lua_api(cluster: Cluster):
         )
     )
     space_id = 1027
+    initiator_id = 32 # pico_service
     pico_space_def = [
         space_id,
         "space 2",
@@ -88,7 +89,7 @@ def test_ddl_lua_api(cluster: Cluster):
         2,
         True,
         "memtx",
-        0,
+        initiator_id,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -111,7 +112,7 @@ def test_ddl_lua_api(cluster: Cluster):
         3,
         True,
         "memtx",
-        0,
+        initiator_id,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -131,7 +132,7 @@ def test_ddl_lua_api(cluster: Cluster):
         4,
         True,
         "vinyl",
-        0,
+        initiator_id,
     ]
     cluster.create_table(
         dict(

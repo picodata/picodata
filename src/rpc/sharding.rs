@@ -33,8 +33,6 @@ crate::define_rpc_request! {
             }
         }
 
-        // TODO: fix user's permissions
-        lua.exec("box.session.su('admin')")?;
         // TODO: only done on instances with corresponding roles
         lua.exec_with(
             "vshard = require('vshard')

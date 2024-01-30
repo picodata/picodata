@@ -3,6 +3,7 @@ use crate::instance::InstanceId;
 use crate::mailbox::Mailbox;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
+use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::storage::{Clusterwide, Instances, PeerAddresses};
 use crate::tlog;
 use crate::traft;
@@ -19,6 +20,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::network;
 use ::tarantool::network::AsClient as _;
+use ::tarantool::network::Config;
 use ::tarantool::network::Error as NetError;
 use ::tarantool::network::ReconnClient;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
@@ -187,7 +189,10 @@ impl PoolWorker {
         max_concurrent_fut: usize,
         instance_reachability: InstanceReachabilityManagerRef,
     ) {
-        let client = ReconnClient::new(address.clone(), port);
+        let mut config = Config::default();
+        config.creds = Some((PICO_SERVICE_USER_NAME.into(), "".into()));
+        let client = ReconnClient::with_config(address.clone(), port, config);
+
         let mut client_ver: usize = 0;
         let mut futures = VecDeque::new();
         loop {
