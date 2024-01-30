@@ -120,7 +120,7 @@ impl Client {
 }
 
 #[async_trait::async_trait(?Send)]
-impl super::AsClient for Client {
+impl AsClient for Client {
     async fn send<R: protocol::api::Request>(&self, request: &R) -> Result<R::Response, Error> {
         let client = self.client().await?;
 
