@@ -20,6 +20,7 @@ use storage::Clusterwide;
 use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
+use crate::access_control::user_by_name;
 use crate::cli::args;
 use crate::cli::args::Address;
 use crate::cli::init_cfg::InitCfg;
@@ -299,26 +300,27 @@ fn set_login_attempts_check(storage: Clusterwide) {
     }
 
     // Determines the outcome of an authentication attempt.
-    let compute_auth_verdict = move |user: String, status: bool| {
+    let compute_auth_verdict = move |user: String, successful_authentication: bool| {
         use std::collections::hash_map::Entry;
 
         let max_login_attempts = || {
-            storage
-                .properties
-                .max_login_attempts()
-                .expect("accessing storage should not fail")
+            session::with_su(ADMIN_ID, || {
+                storage
+                    .properties
+                    .max_login_attempts()
+                    .expect("accessing storage should not fail")
+            })
+            .expect("switching user to admin shouldn't fail")
         };
 
-        let user_exists = storage
-            .users
-            .by_name(&user)
-            .expect("accessing storage should not fail")
-            .is_some();
+        let user_exists = session::with_su(ADMIN_ID, || user_by_name(&user).is_ok())
+            .expect("switching user to admin shouldn't fail");
 
         // Prevent DOS attacks by first checking whether the user exists.
         // If it doesn't, we shouldn't even bother tracking its attempts.
         // Too many hashmap records will cause a global OOM event.
         if !user_exists {
+            debug_assert!(!successful_authentication);
             return Verdict::UnknownUser;
         }
 
@@ -333,7 +335,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                 Verdict::UserBlocked
             }
             Entry::Occupied(mut e) => {
-                if status {
+                if successful_authentication {
                     // Forget about previous failures
                     e.remove();
                     Verdict::AuthOk
@@ -343,7 +345,7 @@ fn set_login_attempts_check(storage: Clusterwide) {
                 }
             }
             Entry::Vacant(e) => {
-                if status {
+                if successful_authentication {
                     Verdict::AuthOk
                 } else {
                     // Remember the failure, but don't raise an error yet

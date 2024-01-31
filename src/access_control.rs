@@ -31,6 +31,7 @@ use std::{
     fmt::Display,
 };
 
+use tarantool::index::Index;
 use tarantool::{
     access_control::{
         box_access_check_ddl, box_access_check_space, PrivType,
@@ -115,6 +116,23 @@ pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
             return Err(tarantool::error::TarantoolError::last().into());
         }
     }
+}
+
+pub fn user_by_name(name: &str) -> tarantool::Result<UserMetadata> {
+    const USER_INDEX_NAME: u32 = 2;
+    // SAFETY: check `box.space._user.index.name.id == 2`
+    let index_user_by_name =
+        unsafe { Index::from_ids_unchecked(SystemSpace::User as _, USER_INDEX_NAME) };
+
+    let Some(tuple) = index_user_by_name.get(&(name,))? else {
+        tarantool::set_error!(
+            tarantool::error::TarantoolErrorCode::NoSuchUser,
+            "no such user '{name}'",
+        );
+        return Err(tarantool::error::TarantoolError::last().into());
+    };
+
+    tuple.decode()
 }
 
 /// There are no cases when box_access_check_ddl is called several times
