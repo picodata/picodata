@@ -2034,3 +2034,90 @@ def test_user_changes_password(cluster: Cluster):
     )
     # ensure we can authenticate with new password
     i1.sql("SELECT * FROM (VALUES (1))", user=user_name, password=new_password)
+
+
+def test_create_procedure(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    data = i1.sql(
+        """
+        create table t (a int not null, b int, primary key (a))
+        using memtx
+        distributed by (b)
+        """
+    )
+    assert data["row_count"] == 1
+
+    # Check that the procedure would be created with the expected id.
+    next_func_id = i1.eval("return box.internal.generate_func_id(true)")
+    data = i2.sql(
+        """
+        create procedure proc1(int)
+        language SQL
+        as $$insert into t values(?, ?)$$
+        """
+    )
+    assert data["row_count"] == 1
+    data = i1.sql(
+        """
+        select "id" from "_pico_routine" where "name" = 'PROC1'
+        """,
+    )
+    assert data["rows"] == [[next_func_id]]
+
+    # Check that recreation of the same procedure is idempotent.
+    data = i2.sql(
+        """
+        create procedure proc1(int)
+        language SQL
+        as $$insert into t values(?, ?)$$
+        """
+    )
+    assert data["row_count"] == 0
+
+    # Check that we can't create a procedure with the same name but different
+    # signature.
+    with pytest.raises(
+        ReturnError, match="routine PROC1 already exists with different parameters"
+    ):
+        i2.sql(
+            """
+            create procedure proc1(int, text)
+            language SQL
+            as $$insert into t values(?, ?)$$
+            """
+        )
+    with pytest.raises(
+        ReturnError, match="routine PROC1 already exists with a different body"
+    ):
+        i2.sql(
+            """
+            create procedure proc1(int)
+            language SQL
+            as $$insert into t values(1, 2)$$
+            """
+        )
+
+    # Check the routine creation abortion on _func space id conflict.
+    i2.eval(
+        """
+        box.schema.func.create(
+            'sum1',
+            {
+                body = [[function(a, b) return a + b end]],
+                id = box.internal.generate_func_id(true)
+            }
+        )
+        """
+    )
+    with pytest.raises(ReturnError, match="ddl operation was aborted"):
+        i1.sql(
+            """
+            create procedure proc2()
+            as $$insert into t values(1, 2)$$
+            """
+        )
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
+    assert data["rows"] == []
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
+    assert data["rows"] == []

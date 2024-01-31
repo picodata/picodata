@@ -1,8 +1,9 @@
 //! Clusterwide SQL query execution.
 
 use crate::schema::{
-    wait_for_ddl_commit, CreateTableParams, DistributionParam, Field, PrivilegeDef, PrivilegeType,
-    RoleDef, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
+    wait_for_ddl_commit, CreateProcParams, CreateTableParams, DistributionParam, Field,
+    PrivilegeDef, PrivilegeType, RoleDef, RoutineLanguage, RoutineParamDef, RoutineParams,
+    RoutineSecurity, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -36,6 +37,7 @@ use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span, stat_query_span, OTM_CHAR_LIMIT};
 use serde::Deserialize;
+use tarantool::schema::function::func_next_reserved_id;
 
 use crate::storage::Clusterwide;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
@@ -623,6 +625,35 @@ fn reenterable_schema_change_request(
 
     // Check parameters
     let params = match ir_node {
+        IrNode::Ddl(Ddl::CreateProc {
+            name,
+            params: args,
+            body,
+            language,
+            ..
+        }) => {
+            let args: RoutineParams = args
+                .into_iter()
+                .map(|p| {
+                    let field_type = FieldType::from(&p.data_type);
+                    RoutineParamDef::default().with_type(field_type)
+                })
+                .collect();
+            let language = RoutineLanguage::from(language);
+            let security = RoutineSecurity::default();
+
+            let params = CreateProcParams {
+                name,
+                params: args,
+                language,
+                body,
+                security,
+                owner: current_user,
+            };
+            params.validate(storage)?;
+            Params::CreateProcedure(params)
+        }
+
         IrNode::Ddl(Ddl::CreateTable {
             name,
             format,
@@ -749,6 +780,26 @@ fn reenterable_schema_change_request(
 
         // Check for conflicts and make the op
         let op = match &params {
+            Params::CreateProcedure(params) => {
+                if params.func_exists() {
+                    // Function already exists, no op needed.
+                    return Ok(ConsumerResult { row_count: 0 });
+                }
+                let id = func_next_reserved_id()?;
+                let ddl = OpDdl::CreateProcedure {
+                    id,
+                    name: params.name.clone(),
+                    params: params.params.clone(),
+                    language: params.language.clone(),
+                    body: params.body.clone(),
+                    security: params.security.clone(),
+                    owner: params.owner,
+                };
+                Op::DdlPrepare {
+                    schema_version,
+                    ddl,
+                }
+            }
             Params::CreateTable(params) => {
                 if params.space_exists()? {
                     // Space already exists, no op needed
@@ -1021,6 +1072,7 @@ fn reenterable_schema_change_request(
         DropRole(String),
         GrantPrivilege(GrantRevokeType, String),
         RevokePrivilege(GrantRevokeType, String),
+        CreateProcedure(CreateProcParams),
     }
 }
 

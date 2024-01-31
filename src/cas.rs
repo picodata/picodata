@@ -37,6 +37,7 @@ const PROHIBITED_SPACES: &[ClusterwideTable] = &[
     ClusterwideTable::User,
     ClusterwideTable::Role,
     ClusterwideTable::Privilege,
+    ClusterwideTable::Routine,
 ];
 
 // FIXME: cas::Error will be returned as a string when rpc is called
@@ -732,6 +733,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
         Ddl::DropTable { id, .. } => *id == space,
         Ddl::CreateIndex { .. } => false,
         Ddl::DropIndex { .. } => false,
+        Ddl::CreateProcedure { .. } => false,
     };
     match op {
         Op::DdlPrepare { ddl, .. } => ddl_modifies(ddl),

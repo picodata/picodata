@@ -43,7 +43,7 @@ use tarantool::{
 
 use crate::{
     schema::{PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID},
-    storage::{space_by_id, Clusterwide, ToEntryIter},
+    storage::{make_routine_not_found, space_by_id, Clusterwide, ToEntryIter},
     traft::op::{self, Op},
 };
 
@@ -206,6 +206,16 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
                 as_user,
             )
         }
+        op::Ddl::CreateProcedure {
+            id, name, owner, ..
+        } => box_access_check_ddl_as_user(
+            name,
+            *id,
+            *owner,
+            TntSchemaObjectType::Function,
+            PrivType::Create,
+            as_user,
+        ),
     }
 }
 
@@ -392,6 +402,32 @@ fn access_check_grant_revoke(
                 target_sys_user.id,
                 grantor_id,
                 TntSchemaObjectType::User,
+                access,
+                grantor_id,
+            );
+        }
+
+        PicoSchemaObjectType::Routine => {
+            let routine = storage
+                .routines
+                .by_id(object_id)?
+                .ok_or_else(|| make_routine_not_found(object_id))?;
+
+            // Only owner or admin can grant on routine.
+            if routine.owner != grantor_id && grantor_id != ADMIN_ID {
+                return Err(make_access_denied(
+                    access_name,
+                    PicoSchemaObjectType::Routine,
+                    &routine.name,
+                    grantor.name,
+                ));
+            }
+
+            return box_access_check_ddl_as_user(
+                &routine.name,
+                routine.id,
+                grantor_id,
+                TntSchemaObjectType::Function,
                 access,
                 grantor_id,
             );

@@ -20,7 +20,7 @@ use crate::replicaset::Replicaset;
 use crate::schema::INITIAL_SCHEMA_VERSION;
 use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
-use crate::schema::{PrivilegeDef, RoleDef, UserDef};
+use crate::schema::{PrivilegeDef, RoleDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::sql::pgproto::DEFAULT_MAX_PG_PORTALS;
 use crate::tier::Tier;
@@ -346,6 +346,17 @@ define_clusterwide_tables! {
             pub struct Tiers {
                 space: Space,
                 #[primary]
+                index_name: Index => "name",
+            }
+        }
+        Routine = 524, "_pico_routine" => {
+            Clusterwide::routines;
+
+            /// A struct for accessing info of all the user-defined routines.
+            pub struct Routines {
+                space: Space,
+                #[primary]
+                index_id: Index => "id",
                 index_name: Index => "name",
             }
         }
@@ -2098,6 +2109,7 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let sys_space = Space::from(SystemSpace::Space);
     let sys_index = Space::from(SystemSpace::Index);
+    let sys_func = Space::from(SystemSpace::Func);
 
     match *ddl {
         Ddl::CreateTable { id, .. } => {
@@ -2111,11 +2123,42 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
             // Actual drop happens only on commit, so there's nothing to abort.
         }
 
+        Ddl::CreateProcedure { id, .. } => {
+            sys_func.delete(&[id])?;
+            set_local_schema_version(version)?;
+        }
+
         _ => {
             todo!();
         }
     }
 
+    Ok(())
+}
+
+/// Create tarantool function which throws an error if it's called.
+/// Tarantool function is created with `if_not_exists = true`, so it's
+/// safe to call this rust function multiple times.
+pub fn ddl_create_function_on_master(func_id: u32, func_name: &str) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(
+        r#"
+        local func_id, func_name = ...
+        local def = {
+            language = 'LUA',
+            body = string.format(
+                [[function() error("function %s is used internally by picodata") end]],
+                func_name
+            ),
+            id = func_id,
+            if_not_exists = true,
+        }
+        box.schema.func.create(func_name, def)
+    "#,
+        (func_id, func_name),
+    )
+    .map_err(LuaError::from)?;
     Ok(())
 }
 
@@ -2643,6 +2686,94 @@ impl ToEntryIter for Tiers {
     fn index_iter(&self) -> tarantool::Result<IndexIterator> {
         self.space.select(IteratorType::All, &())
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Routines
+////////////////////////////////////////////////////////////////////////////////
+impl Routines {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_id = space
+            .index_builder("id")
+            .unique(true)
+            .part("id")
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_id,
+            index_name,
+        })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        RoutineDef::format()
+    }
+
+    #[inline(always)]
+    pub fn by_name(&self, routine_name: &str) -> tarantool::Result<Option<RoutineDef>> {
+        let tuple = self.index_name.get(&[routine_name])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn by_id(&self, routine_id: u32) -> tarantool::Result<Option<RoutineDef>> {
+        let tuple = self.space.get(&[routine_id])?;
+        tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn put(&self, routine: &RoutineDef) -> tarantool::Result<()> {
+        self.space.replace(routine)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, routine_id: u32) -> tarantool::Result<()> {
+        self.space.delete(&[routine_id])?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn update_operable(&self, routine_id: u32, operable: bool) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(RoutineDef::FIELD_OPERABLE, operable)?;
+        self.space.update(&[routine_id], ops)?;
+        Ok(())
+    }
+}
+
+impl ToEntryIter for Routines {
+    type Entry = RoutineDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
+pub fn make_routine_not_found(routine_id: u32) -> tarantool::error::TarantoolError {
+    tarantool::set_error!(
+        tarantool::error::TarantoolErrorCode::TupleNotFound,
+        "routine with id {routine_id} not found",
+    );
+    tarantool::error::TarantoolError::last()
 }
 
 ////////////////////////////////////////////////////////////////////////////////

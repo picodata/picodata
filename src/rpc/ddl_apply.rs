@@ -1,6 +1,8 @@
 use crate::op::Ddl;
 use crate::storage::Clusterwide;
-use crate::storage::{ddl_create_space_on_master, ddl_drop_space_on_master};
+use crate::storage::{
+    ddl_create_function_on_master, ddl_create_space_on_master, ddl_drop_space_on_master,
+};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
@@ -131,6 +133,12 @@ pub fn apply_schema_change(
 
             let abort_reason = ddl_drop_space_on_master(id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
+                return Err(Error::Aborted(e.to_string()));
+            }
+        }
+
+        Ddl::CreateProcedure { id, ref name, .. } => {
+            if let Err(e) = ddl_create_function_on_master(id, name) {
                 return Err(Error::Aborted(e.to_string()));
             }
         }

@@ -20,6 +20,10 @@ with the `YY.0M.MICRO` scheme.
 - New option `--tier` for `picodata run` allows to specify whether an
   instance belongs to a tier.
 
+- Introduce a new _pico_routine system table for the SQL procedures.
+
+- Clusterwide SQL supports procedure creation.
+
 ### Compatibility
 
 - System table `_pico_replicaset` now has a different format: the field `master_id`

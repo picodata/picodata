@@ -290,6 +290,7 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",["global"],[["privilege","string",false],["object_type","string",false],["object_id","integer",false],["grantee_id","unsigned",false],["grantor_id","unsigned",false],["schema_version","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_role},"_pico_role",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_tier},"_pico_tier",["global"],[["name","string",false],["replication_factor","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
@@ -307,6 +308,7 @@ def test_raft_log(instance: Instance):
         _pico_peer_address=space_id("_pico_peer_address"),
         _pico_property=space_id("_pico_property"),
         _pico_replicaset=space_id("_pico_replicaset"),
+        _pico_routine=space_id("_pico_routine"),
         _pico_instance=space_id("_pico_instance"),
         _pico_tier=space_id("_pico_tier"),
         _pico_privilege=space_id("_pico_privilege"),

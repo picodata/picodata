@@ -242,6 +242,7 @@ pub enum QueryType {
 #[repr(u8)]
 pub enum CommandTag {
     AlterRole = 0,
+    CreateProcedure = 14,
     CreateRole = 1,
     CreateTable = 2,
     DropRole = 3,
@@ -268,7 +269,9 @@ impl From<CommandTag> for QueryType {
             | CommandTag::GrantRole
             | CommandTag::Revoke
             | CommandTag::RevokeRole => QueryType::Acl,
-            CommandTag::DropTable | CommandTag::CreateTable => QueryType::Ddl,
+            CommandTag::DropTable | CommandTag::CreateTable | CommandTag::CreateProcedure => {
+                QueryType::Ddl
+            }
             CommandTag::Delete | CommandTag::Insert | CommandTag::Update => QueryType::Dml,
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
@@ -297,6 +300,7 @@ impl TryFrom<&Node> for CommandTag {
             Node::Ddl(ddl) => match ddl {
                 Ddl::DropTable { .. } => Ok(CommandTag::DropTable),
                 Ddl::CreateTable { .. } => Ok(CommandTag::CreateTable),
+                Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),
             },
             Node::Relational(rel) => match rel {
                 Relational::Delete { .. } => Ok(CommandTag::Delete),

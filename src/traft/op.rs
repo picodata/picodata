@@ -1,5 +1,6 @@
 use crate::schema::{
-    Distribution, PrivilegeDef, RoleDef, UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
+    Distribution, PrivilegeDef, RoleDef, RoutineLanguage, RoutineParams, RoutineSecurity, UserDef,
+    ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
 };
 use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
@@ -102,6 +103,15 @@ impl std::fmt::Display for Op {
                 write!(
                     f,
                     "DdlPrepare({schema_version}, DropIndex({space_id}, {index_id}))"
+                )
+            }
+            Self::DdlPrepare {
+                schema_version,
+                ddl: Ddl::CreateProcedure { id, name, .. },
+            } => {
+                write!(
+                    f,
+                    "DdlPrepare({schema_version}, CreateProcedure({id}, {name}))"
                 )
             }
             Self::DdlCommit => write!(f, "DdlCommit"),
@@ -500,6 +510,15 @@ pub enum Ddl {
     DropIndex {
         space_id: SpaceId,
         index_id: IndexId,
+    },
+    CreateProcedure {
+        id: UserId,
+        name: String,
+        params: RoutineParams,
+        language: RoutineLanguage,
+        body: String,
+        security: RoutineSecurity,
+        owner: UserId,
     },
 }
 

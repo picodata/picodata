@@ -1,4 +1,5 @@
 use once_cell::sync::OnceCell;
+use sbroad::ir::ddl::Language;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
@@ -23,6 +24,8 @@ use tarantool::{
     tuple::Encode,
     util::Value,
 };
+
+use sbroad::ir::value::Value as IrValue;
 
 use serde::{Deserialize, Serialize};
 
@@ -410,6 +413,7 @@ tarantool::define_str_enum! {
     pub enum SchemaObjectType {
         Table = "table",
         Role = "role",
+        Routine = "routine",
         User = "user",
         Universe = "universe",
     }
@@ -545,6 +549,10 @@ impl PrivilegeDef {
                 None => &[Create, Alter, Drop],
             },
             SchemaObjectType::Universe => &[Login],
+            SchemaObjectType::Routine => match privilege_def.object_id() {
+                Some(_) => &[Execute, Drop],
+                None => &[Create, Drop],
+            },
         };
 
         if !valid_privileges.contains(&privilege) {
@@ -688,6 +696,7 @@ impl PrivilegeDef {
                 debug_assert_eq!(self.object_id, 0);
                 return Ok(None);
             }
+            SchemaObjectType::Routine => storage.routines.by_id(id).map(|t| t.map(|t| t.name)),
         }
         .expect("storage should not fail")
         .ok_or_else(|| Error::other(format!("object with id {id} should exist")))?;
@@ -803,6 +812,175 @@ pub fn init_user_pico_service() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// RoutineDef
+////////////////////////////////////////////////////////////////////////////////
+
+/// Routine kind.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoutineKind {
+    #[default]
+    Procedure,
+}
+
+impl Display for RoutineKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoutineKind::Procedure => write!(f, "procedure"),
+        }
+    }
+}
+
+/// Parameter mode.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoutineParamMode {
+    #[default]
+    In,
+}
+
+impl Display for RoutineParamMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RoutineParamMode::In => write!(f, "in"),
+        }
+    }
+}
+
+/// Routine parameter definition.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoutineParamDef {
+    #[serde(default)]
+    pub mode: RoutineParamMode,
+    pub r#type: FieldType,
+    #[serde(default)]
+    pub default: Option<IrValue>,
+}
+
+impl Display for RoutineParamDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "mode: {}, type: {}", self.mode, self.r#type)?;
+        if let Some(default) = &self.default {
+            write!(f, ", default: {}", default)?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for RoutineParamDef {
+    fn default() -> Self {
+        Self {
+            mode: RoutineParamMode::default(),
+            r#type: FieldType::Scalar,
+            default: None,
+        }
+    }
+}
+
+impl RoutineParamDef {
+    pub fn with_type(self, r#type: FieldType) -> Self {
+        Self { r#type, ..self }
+    }
+}
+
+pub type RoutineParams = Vec<RoutineParamDef>;
+
+pub type RoutineReturns = Vec<IrValue>;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoutineLanguage {
+    #[default]
+    SQL,
+}
+
+impl From<Language> for RoutineLanguage {
+    fn from(language: Language) -> Self {
+        match language {
+            Language::SQL => Self::SQL,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoutineSecurity {
+    #[default]
+    Invoker,
+}
+
+/// Routine definition.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RoutineDef {
+    pub id: u32,
+    pub name: String,
+    pub kind: RoutineKind,
+    pub params: RoutineParams,
+    pub returns: RoutineReturns,
+    pub language: RoutineLanguage,
+    pub body: String,
+    pub security: RoutineSecurity,
+    pub operable: bool,
+    pub schema_version: u64,
+    pub owner: UserId,
+}
+
+impl Encode for RoutineDef {}
+
+impl RoutineDef {
+    /// Index (0-based) of field "operable" in _pico_routine table format.
+    pub const FIELD_OPERABLE: usize = 8;
+
+    /// Format of the _pico_routine global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("id", FieldType::Unsigned)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("kind", FieldType::String)),
+            Field::from(("params", FieldType::Array)),
+            Field::from(("returns", FieldType::Array)),
+            Field::from(("language", FieldType::String)),
+            Field::from(("body", FieldType::String)),
+            Field::from(("security", FieldType::String)),
+            Field::from(("operable", FieldType::Boolean)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("owner", FieldType::Unsigned)),
+        ]
+    }
+
+    /// A dummy instance of the type for use in tests.
+    #[inline(always)]
+    pub fn for_tests() -> Self {
+        Self {
+            id: 16005,
+            name: "proc".into(),
+            kind: RoutineKind::Procedure,
+            params: vec![
+                RoutineParamDef {
+                    mode: RoutineParamMode::In,
+                    r#type: FieldType::String,
+                    default: Some(IrValue::String("hello".into())),
+                },
+                RoutineParamDef {
+                    mode: RoutineParamMode::In,
+                    r#type: FieldType::Unsigned,
+                    default: None,
+                },
+            ],
+            returns: vec![],
+            language: RoutineLanguage::SQL,
+            body: "values (?), (?)".into(),
+            security: RoutineSecurity::Invoker,
+            operable: true,
+            schema_version: 421,
+            owner: 42,
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ...
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -840,6 +1018,8 @@ pub enum DdlError {
     Aborted,
     #[error("there is no pending ddl operation")]
     NoPendingDdl,
+    #[error("{0}")]
+    CreateRoutine(#[from] CreateRoutineError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -868,6 +1048,28 @@ impl From<CreateTableError> for Error {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum CreateRoutineError {
+    #[error("routine {name} already exists with a different kind")]
+    ExistsWithDifferentKind { name: String },
+    #[error("routine {name} already exists with different parameters")]
+    ExistsWithDifferentParams { name: String },
+    #[error("routine {name} already exists with a different language")]
+    ExistsWithDifferentLanguage { name: String },
+    #[error("routine {name} already exists with a different body")]
+    ExistsWithDifferentBody { name: String },
+    #[error("routine {name} already exists with a different security")]
+    ExistsWithDifferentSecurity { name: String },
+    #[error("routine {name} already exists with a different owner")]
+    ExistsWithDifferentOwner { name: String },
+}
+
+impl From<CreateRoutineError> for Error {
+    fn from(err: CreateRoutineError) -> Self {
+        DdlError::CreateRoutine(err).into()
+    }
+}
+
 // TODO: Add `LuaRead` to tarantool::space::Field and use it
 #[derive(Clone, Debug, LuaRead)]
 pub struct Field {
@@ -892,6 +1094,55 @@ impl From<Field> for tarantool::space::Field {
         #[default]
         Global = "global",
         Sharded = "sharded",
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateProcParams {
+    pub name: String,
+    pub params: RoutineParams,
+    pub language: RoutineLanguage,
+    pub body: String,
+    pub security: RoutineSecurity,
+    pub owner: UserId,
+}
+
+impl CreateProcParams {
+    pub fn func_exists(&self) -> bool {
+        let func_space = Space::from(SystemSpace::Func);
+
+        let name_idx = func_space
+            .index_cached("name")
+            .expect("_function should have an index by name");
+        let t = name_idx
+            .get(&[&self.name])
+            .expect("reading from _function shouldn't fail");
+        t.is_some()
+    }
+
+    pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {
+        let routine = storage.routines.by_name(&self.name)?;
+        if let Some(def) = routine {
+            if def.kind != RoutineKind::Procedure {
+                return Err(CreateRoutineError::ExistsWithDifferentKind { name: def.name })?;
+            }
+            if def.params != self.params {
+                return Err(CreateRoutineError::ExistsWithDifferentParams { name: def.name })?;
+            }
+            if def.language != self.language {
+                return Err(CreateRoutineError::ExistsWithDifferentLanguage { name: def.name })?;
+            }
+            if def.body != self.body {
+                return Err(CreateRoutineError::ExistsWithDifferentBody { name: def.name })?;
+            }
+            if def.security != self.security {
+                return Err(CreateRoutineError::ExistsWithDifferentSecurity { name: def.name })?;
+            }
+            if def.owner != self.owner {
+                return Err(CreateRoutineError::ExistsWithDifferentOwner { name: def.name })?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1625,5 +1876,13 @@ mod test {
         // universe
         let valid = &[Login];
         check_object_privilege(SchemaObjectType::Universe, valid, 0);
+    }
+
+    #[test]
+    fn routine_def_matches_format() {
+        let i = RoutineDef::for_tests();
+        let tuple_data = i.to_tuple_buffer().unwrap();
+        let format = RoutineDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "RoutineDef::format");
     }
 }

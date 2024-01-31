@@ -14,6 +14,9 @@ use crate::loop_start;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
+use crate::schema::RoutineDef;
+use crate::schema::RoutineKind;
+use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, TableDef};
 use crate::sentinel;
 use crate::storage::acl;
@@ -987,6 +990,25 @@ impl NodeImpl {
                         );
                     }
 
+                    Ddl::CreateProcedure {
+                        id, name, owner, ..
+                    } => {
+                        self.storage
+                            .routines
+                            .update_operable(id, true)
+                            .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(owner).expect("user must exist");
+
+                        crate::audit!(
+                            message: "created procedure `{name}`",
+                            title: "create_procedure",
+                            severity: Medium,
+                            name: &name,
+                            initiator: initiator_def.name,
+                        );
+                    }
+
                     _ => {
                         todo!()
                     }
@@ -1033,6 +1055,17 @@ impl NodeImpl {
 
                     Ddl::DropTable { id, .. } => {
                         ddl_meta_space_update_operable(&self.storage, id, true)
+                            .expect("storage shouldn't fail");
+                    }
+
+                    Ddl::CreateProcedure { id, .. } => {
+                        self.storage
+                            .privileges
+                            .delete_all_by_object(SchemaObjectType::Routine, id.into())
+                            .expect("storage shouldn't fail");
+                        self.storage
+                            .routines
+                            .delete(id)
                             .expect("storage shouldn't fail");
                     }
 
@@ -1320,6 +1353,34 @@ impl NodeImpl {
             Ddl::DropIndex { index_id, space_id } => {
                 let _ = (index_id, space_id);
                 todo!();
+            }
+
+            Ddl::CreateProcedure {
+                id,
+                name,
+                params,
+                language,
+                body,
+                security,
+                owner,
+            } => {
+                let proc_def = RoutineDef {
+                    id,
+                    name,
+                    kind: RoutineKind::Procedure,
+                    params,
+                    returns: vec![],
+                    language,
+                    body,
+                    operable: false,
+                    security,
+                    schema_version,
+                    owner,
+                };
+                self.storage
+                    .routines
+                    .put(&proc_def)
+                    .expect("storage shouldn't fail");
             }
         }
 
