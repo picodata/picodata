@@ -34,6 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
   specified via the new `--service-password-file` option (under `picodata run`
   command).
 
+- Clusterwide SQL supports procedure calling.
+
 -->
 
 ## [24.1.1] - 2024-02-09

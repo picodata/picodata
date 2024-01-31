@@ -6,6 +6,7 @@ use crate::util::effective_user_id;
 use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::result::MetadataColumn;
 use sbroad::ir::acl::{Acl, GrantRevokeType};
+use sbroad::ir::block::Block;
 use sbroad::ir::ddl::Ddl;
 use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
@@ -242,6 +243,7 @@ pub enum QueryType {
 #[repr(u8)]
 pub enum CommandTag {
     AlterRole = 0,
+    CallProcedure = 16,
     CreateProcedure = 14,
     CreateRole = 1,
     CreateTable = 2,
@@ -274,7 +276,10 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CreateTable
             | CommandTag::CreateProcedure
             | CommandTag::DropProcedure => QueryType::Ddl,
-            CommandTag::Delete | CommandTag::Insert | CommandTag::Update => QueryType::Dml,
+            CommandTag::Delete
+            | CommandTag::Insert
+            | CommandTag::Update
+            | CommandTag::CallProcedure => QueryType::Dml,
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
         }
@@ -298,6 +303,9 @@ impl TryFrom<&Node> for CommandTag {
                     GrantRevokeType::RolePass { .. } => Ok(CommandTag::RevokeRole),
                     _ => Ok(CommandTag::Revoke),
                 },
+            },
+            Node::Block(block) => match block {
+                Block::Procedure { .. } => Ok(CommandTag::CallProcedure),
             },
             Node::Ddl(ddl) => match ddl {
                 Ddl::DropTable { .. } => Ok(CommandTag::DropTable),

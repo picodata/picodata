@@ -2458,3 +2458,79 @@ def test_sql_user_password_checks(cluster: Cluster):
         """
     )
     assert acl["row_count"] == 1
+
+
+def test_call_procedure(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    data = i1.sql(
+        """
+        create table t (a int not null, b int, primary key (a))
+        using memtx
+        distributed by (b)
+        """
+    )
+    assert data["row_count"] == 1
+
+    # Check that the procedure is called successfully.
+    data = i2.sql(
+        """
+        create procedure "proc1"(int, int)
+        language SQL
+        as $$insert into t values(?, ?) on conflict do nothing$$
+        """
+    )
+    assert data["row_count"] == 1
+    data = i2.sql(""" call "proc1"(1, 1) """)
+    assert data["row_count"] == 1
+    data = i2.sql(""" call "proc1"(1, 1) """)
+    assert data["row_count"] == 0
+    data = i2.sql(""" call "proc1"(2, 2) """)
+    assert data["row_count"] == 1
+
+    data = i1.sql(
+        """
+        create procedure "proc2"(int)
+        language SQL
+        as $$insert into t values(?, 42) on conflict do fail$$
+        """
+    )
+    assert data["row_count"] == 1
+
+    # Check that procedure returns an error when called with wrong number of arguments.
+    with pytest.raises(ReturnError, match=r"""expected 1 parameter\(s\), got 0"""):
+        i2.sql(""" call "proc2"() """)
+    with pytest.raises(ReturnError, match=r"""expected 1 parameter\(s\), got 2"""):
+        i2.sql(""" call "proc2"(3, 3) """)
+    # Check that procedure returns an error when called with the wrong argument type.
+    error_msg = "expected integer for parameter on position 0, got string"
+    with pytest.raises(ReturnError, match=error_msg):
+        i2.sql(""" call "proc2"('hello') """)
+
+    # Check internal statement errors are propagated.
+    with pytest.raises(ReturnError, match="Duplicate key exists in unique index"):
+        i2.sql(""" call "proc2"(1) """)
+
+    # Check parameters are passed correctly.
+    data = i1.sql(""" call "proc2"(?) """, 4)
+    assert data["row_count"] == 1
+    data = i1.sql(
+        """ call "proc2"($1) option(sql_vdbe_max_steps = $1, vtable_max_rows = $1)""",
+        5,
+    )
+    assert data["row_count"] == 1
+
+    # Check call permissions.
+    username = "alice"
+    alice_pwd = "Passw0rd"
+    acl = i1.sql(
+        f"""
+        create user "{username}" with password '{alice_pwd}'
+        using chap-sha1 option (timeout = 3)
+    """
+    )
+    assert acl["row_count"] == 1
+    with pytest.raises(
+        ReturnError, match="AccessDenied: Execute access to function 'proc1' is denied"
+    ):
+        i1.sql(""" call "proc1"(3, 3) """, user=username, password=alice_pwd)

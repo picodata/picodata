@@ -32,13 +32,17 @@ use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
 use sbroad::frontend::Ast;
 use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
+use sbroad::ir::block::Block;
 use sbroad::ir::ddl::{Ddl, ParamDef};
+use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
+use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
 use serde::Deserialize;
+use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
 
 use crate::storage::Clusterwide;
@@ -121,7 +125,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
             };
             let space_name = normalize_name_for_space_api(relation);
             let space = space_by_name(&space_name).map_err(Error::from)?;
-            space_privs.push((space.id(), privileges));
+            space_privs.push((space.id(), privileges))
         }
         Ok(())
     })??;
@@ -142,6 +146,44 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
     Ok(())
 }
 
+fn routine_by_name(name: &str) -> traft::Result<RoutineDef> {
+    // Switch to admin to get procedure definition.
+    with_su(ADMIN_ID, || -> traft::Result<RoutineDef> {
+        let storage = &node::global()?.storage;
+        let routine = storage
+            .routines
+            .by_name(name)
+            .map_err(Error::from)?
+            .ok_or_else(|| {
+                Error::Sbroad(SbroadError::Invalid(
+                    Entity::Routine,
+                    Some(format!("routine {name} not found")),
+                ))
+            })?;
+        Ok(routine)
+    })?
+}
+
+fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
+    // At the moment we don't support nested procedure calls, so we can safely
+    // assume that the top node is the only procedure in the plan.
+    let top_id = plan.get_top().map_err(Error::from)?;
+    let Ok(Block::Procedure { name, .. }) = plan.get_block_node(top_id) else {
+        // There are no procedures in the plan tree: nothing to check.
+        return Ok(());
+    };
+
+    let routine = routine_by_name(name)?;
+    box_access_check_ddl(
+        name,
+        routine.id,
+        routine.owner,
+        TntSchemaObjectType::Function,
+        PrivType::Execute,
+    )?;
+    Ok(())
+}
+
 fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
@@ -154,6 +196,72 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         let node = node::global()?;
         let result = reenterable_schema_change_request(node, ir_node)?;
         Tuple::new(&(result,)).map_err(Error::from)
+    } else if query.is_block().map_err(Error::from)? {
+        check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
+        let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
+        let top_id = ir_plan.get_top().map_err(Error::from)?;
+        let code_block = ir_plan.get_mut_block_node(top_id).map_err(Error::from)?;
+        let code_block = std::mem::take(code_block);
+        match code_block {
+            Block::Procedure { name, values } => {
+                let routine = routine_by_name(&name)?;
+                // Check that the amount of passed values is correct.
+                if routine.params.len() != values.len() {
+                    return Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Routine,
+                        Some(format!(
+                            "expected {} parameter(s), got {}",
+                            routine.params.len(),
+                            values.len(),
+                        )),
+                    )));
+                }
+                // XXX: at the moment we don't support multiple SQL statements in a block.
+                // So, we can safely assume that the procedure body contains only one statement
+                // and call it directly.
+                let pattern = routine.body;
+                let mut params: Vec<Value> = Vec::with_capacity(values.len());
+                for (pos, value_id) in values.into_iter().enumerate() {
+                    let constant_node = ir_plan.get_mut_node(value_id).map_err(Error::from)?;
+                    let constant_node = std::mem::replace(constant_node, IrNode::Parameter);
+                    let value = match constant_node {
+                        IrNode::Expression(Expression::Constant { value, .. }) => value,
+                        _ => {
+                            return Err(Error::Sbroad(SbroadError::Invalid(
+                                Entity::Expression,
+                                Some(format!("expected constant, got {constant_node:?}")),
+                            )))
+                        }
+                    };
+                    // We have already checked the amount of passed values, so we can
+                    // safely assume that the parameter exists at the given position.
+                    let param_def = &routine.params[pos];
+                    let param_type = Type::try_from(param_def.r#type).map_err(Error::from)?;
+                    // Check that the value has a correct type.
+                    if !value.get_type().is_castable_to(&param_type) {
+                        return Err(Error::Sbroad(SbroadError::Invalid(
+                            Entity::Routine,
+                            Some(format!(
+                                "expected {} for parameter on position {pos}, got {}",
+                                param_def.r#type,
+                                value.get_type(),
+                            )),
+                        )));
+                    }
+                    params.push(value);
+                }
+                let runtime = RouterRuntime::new().map_err(Error::from)?;
+                let mut stmt_query =
+                    with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
+                        Query::new(&runtime, &pattern, params).map_err(Error::from)
+                    })??;
+                // Take options from the original query.
+                let options = std::mem::take(&mut ir_plan.raw_options);
+                let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
+                stmt_ir_plan.raw_options = options;
+                dispatch(stmt_query)
+            }
+        }
     } else {
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
