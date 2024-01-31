@@ -30,6 +30,10 @@ def set_min_password_len(cluster: Cluster, i1: Instance, min_password_len: int):
 def test_max_login_attempts(cluster: Cluster):
     i1, i2, _ = cluster.deploy(instance_count=3)
 
+    i1.sql(
+        """ CREATE USER "foo" WITH PASSWORD '12345678' USING chap-sha1 OPTION (timeout = 3) """
+    )
+
     def connect(
         i: Instance, user: str | None = None, password: str | None = None
     ) -> Connection:
@@ -41,16 +45,6 @@ def test_max_login_attempts(cluster: Cluster):
             connect_now=True,
             reconnect_max_attempts=0,
         )
-
-    c = connect(i1)
-    c.eval(
-        """
-        box.session.su(1)
-        pico.create_user('foo', '12345678')
-        pico.grant_privilege('foo', 'execute', 'universe')
-        """
-    )
-    c.close()
 
     # First login is successful
     c = connect(i1, user="foo", password="12345678")

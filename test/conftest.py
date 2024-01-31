@@ -456,13 +456,6 @@ class Connection(tarantool.Connection):  # type: ignore
         self.eval("box.session.su(...)", old_euid)
         return ret
 
-    def create_user(self, name: str, password: str):
-        self.sql(
-            f"""
-            CREATE USER "{name}" WITH PASSWORD '{password}' USING chap-sha1
-            """
-        )
-
 
 @dataclass
 class Instance:
@@ -641,8 +634,14 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 1,
     ):
-        with self.connect(timeout, user=user, password=password) as conn:
-            conn.create_user(name=with_name, password=with_password)
+        self.sql(
+            f"""
+            CREATE USER "{with_name}" WITH PASSWORD '{with_password}' USING chap-sha1
+            """,
+            user=user,
+            password=password,
+            timeout=timeout,
+        )
 
     def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""

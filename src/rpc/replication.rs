@@ -1,3 +1,4 @@
+use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -21,10 +22,15 @@ crate::define_rpc_request! {
         // requestee. And if the new request has index less then the one in our
         // _schema, then we ignore it.
 
+        let mut replication_cfg = Vec::with_capacity(req.replicaset_peers.len());
+        for address in &req.replicaset_peers {
+            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:@{address}"))
+        }
+
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
-        set_cfg_field("replication", &req.replicaset_peers)?;
-        tlog!(Debug, "replication: {:?}", &req.replicaset_peers);
+        set_cfg_field("replication", &replication_cfg)?;
+        tlog!(Debug, "replication: {:?}", &replication_cfg);
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
 
         // We do this everytime because firstly it helps when waking up.

@@ -29,6 +29,7 @@ use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::plugin::*;
 use crate::schema::ADMIN_ID;
+use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::op;
 use crate::util::{effective_user_id, listen_admin_console, unwrap_or_terminate};
@@ -718,12 +719,17 @@ fn start_join(args: &args::Run, instance_address: String) {
     luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 
+    let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
+    for address in &resp.box_replication {
+        replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:@{address}"))
+    }
+
     let cfg = tarantool::Cfg {
         listen: Some(format!("{}:{}", args.listen.host, args.listen.port)),
         read_only: resp.box_replication.len() > 1,
         instance_uuid: Some(resp.instance.instance_uuid.clone()),
         replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
-        replication: resp.box_replication.clone(),
+        replication: replication_cfg,
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
         vinyl_dir: args.data_dir.clone(),

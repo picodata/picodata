@@ -80,7 +80,7 @@ def test_ddl_lua_api(cluster: Cluster):
         )
     )
     space_id = 1027
-    initiator_id = 32 # pico_service
+    initiator_id = 32  # pico_service
     pico_space_def = [
         space_id,
         "space 2",
@@ -277,6 +277,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     assert i4.next_schema_version() == 3
 
     # Space was created and is operable
+    initiator_id = 32  # pico_service
     pico_space_def = [
         space_id,
         "stuff",
@@ -285,7 +286,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         2,
         True,
         "memtx",
-        0,
+        initiator_id,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -294,7 +295,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
 
     tt_space_def = [
         space_id,
-        0,
+        initiator_id,
         "stuff",
         "memtx",
         0,
@@ -387,6 +388,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
     ############################################################################
     # Space was created and is operable
+    initiator_id = 32  # pico_service
     pico_space_def = [
         space_id,
         "stuff",
@@ -401,14 +403,14 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         schema_version,
         True,
         "memtx",
-        0,
+        initiator_id,
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
 
     tt_space_def = [
         space_id,
-        0,
+        initiator_id,
         "stuff",
         "memtx",
         0,
@@ -730,9 +732,10 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
         ),
     )
 
+    initiator_id = 32  # pico_service,
     tt_space_def = [
         space_id,
-        0,
+        initiator_id,
         "stuff",
         "memtx",
         0,
@@ -813,9 +816,10 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
 
+    initiator_id = 32  # pico_service
     tt_space_def = [
         space_id,
-        0,
+        initiator_id,
         "stuff",
         "memtx",
         0,

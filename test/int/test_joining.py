@@ -123,7 +123,7 @@ def test_replication(cluster: Cluster):
     def check_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set(
-            (f"guest:@{addr}" for addr in [i1.listen, i2.listen])
+            (f"pico_service:@{addr}" for addr in [i1.listen, i2.listen])
         ), instance
 
     for instance in cluster.instances:
