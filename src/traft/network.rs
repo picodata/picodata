@@ -18,7 +18,6 @@ use ::tarantool::fiber::r#async::oneshot;
 use ::tarantool::fiber::r#async::timeout::Error as TOError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
-use ::tarantool::network;
 use ::tarantool::network::AsClient as _;
 use ::tarantool::network::Config;
 use ::tarantool::network::Error as NetError;
@@ -34,7 +33,6 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::Poll;
 use std::time::Duration;
-use tarantool::fiber::r#async::timeout;
 
 pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(3);
 pub const DEFAULT_CUNCURRENT_FUTURES: usize = 10;
@@ -234,10 +232,22 @@ impl PoolWorker {
                     let poll_result = Future::poll(futures[cursor].2.as_mut(), cx);
                     if let Poll::Ready(result) = poll_result {
                         let (client_ver, on_result, _) = futures.remove(cursor).unwrap();
-                        if let Err(timeout::Error::Failed(network::Error::Protocol(_))) | Ok(_) =
-                            result
-                        {
-                        } else {
+
+                        let is_connected;
+                        match result {
+                            Ok(_)
+                            | Err(TOError::Failed(NetError::ErrorResponse(_)))
+                            | Err(TOError::Failed(NetError::RequestEncode(_)))
+                            | Err(TOError::Failed(NetError::ResponseDecode(_))) => {
+                                is_connected = true;
+                            }
+                            Err(TOError::Failed(NetError::ConnectionClosed(_)))
+                            | Err(TOError::Expired) => {
+                                is_connected = false;
+                            }
+                        }
+
+                        if !is_connected {
                             match highest_client_ver {
                                 Some(ref mut ver) => {
                                     if client_ver > *ver {
@@ -247,26 +257,20 @@ impl PoolWorker {
                                 None => highest_client_ver = Some(client_ver),
                             }
                         }
+
                         match on_result {
                             OnRequestResult::Callback(cb) => {
                                 cb(result.map_err(Error::from));
                             }
                             OnRequestResult::ReportUnreachable => {
-                                let mut success = true;
                                 if let Err(e) = result {
                                     tlog!(Warning, "error when sending message to peer: {e}";
                                         "raft_id" => raft_id,
                                     );
-                                    success = !matches!(
-                                        e,
-                                        TOError::Expired
-                                            | TOError::Failed(NetError::Tcp(_))
-                                            | TOError::Failed(NetError::Io(_))
-                                    );
                                 }
                                 instance_reachability
                                     .borrow_mut()
-                                    .report_result(raft_id, success);
+                                    .report_result(raft_id, is_connected);
                             }
                         }
                         has_ready = true;

@@ -698,7 +698,7 @@ fn start_join(args: &args::Run, instance_address: String) {
             Ok(resp) => {
                 break resp;
             }
-            Err(TntError::Tcp(e)) => {
+            Err(TntError::ConnectionClosed(e)) => {
                 tlog!(Warning, "join request failed: {e}, retrying...");
                 fiber::sleep(timeout.saturating_sub(now.elapsed()));
                 continue;
