@@ -1269,11 +1269,6 @@ def test_sql_acl_users_roles(cluster: Cluster):
     upper_username = "USER"
     rolename = "Role"
     upper_rolename = "ROLE"
-    default_users = [
-        [0, "guest", 0, ["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="], 1],
-        [1, "admin", 0, ["chap-sha1", ""], 1],
-    ]
-    default_roles = [[2, "public", 0, 1], [31, "super", 0, 1]]
     acl = i1.sql(
         f"""
         create user "{username}" with password '{password}'
@@ -1281,6 +1276,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     """
     )
     assert acl["row_count"] == 1
+    assert i1.call("box.space._pico_user.index.name:get", username) is not None
 
     # Dropping user that doesn't exist should return 0.
     acl = i1.sql(f"drop user {upper_username}")
@@ -1289,7 +1285,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Dropping user that does exist should return 1.
     acl = i1.sql(f'drop user "{username}"')
     assert acl["row_count"] == 1
-    assert i1.call("box.space._pico_user:select") == default_users
+    assert i1.call("box.space._pico_user.index.name:get", username) is None
 
     # All the usernames below should match the same user.
     # * Upcasted username in double parentheses shouldn't change.
@@ -1393,30 +1389,32 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
-    users_auth_was = i1.call("box.space._pico_user:select")[2][3]
+    users_auth_was = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
     # * Password and method aren't changed -> update nothing.
     acl = i1.sql(f"alter user {username} with password '{password}' using md5")
     assert acl["row_count"] == 0
-    users_auth_became = i1.call("box.space._pico_user:select")[2][3]
+    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
     assert users_auth_was == users_auth_became
+
     # * Password is changed -> update hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using md5")
     assert acl["row_count"] == 1
-    users_auth_became = i1.call("box.space._pico_user:select")[2][3]
+    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
     assert users_auth_was[0] == users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
+
     # * Password and method are changed -> update method and hash.
     acl = i1.sql(
         f"alter user {username} with password '{another_password}' using chap-sha1"
     )
     assert acl["row_count"] == 1
-    users_auth_became = i1.call("box.space._pico_user:select")[2][3]
+    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
     # * LDAP should ignore password -> update method and hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using ldap")
     assert acl["row_count"] == 1
-    users_auth_became = i1.call("box.space._pico_user:select")[2][3]
+    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_became[1] == ""
     acl = i1.sql(f"drop user {username}")
@@ -1447,11 +1445,12 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Creation of the role that already exists shouldn't do anything.
     acl = i1.sql(f'create role "{rolename}"')
     assert acl["row_count"] == 0
+    assert i1.call("box.space._pico_role.index.name:get", rolename) is not None
 
     # Dropping role that does exist should return 1.
     acl = i1.sql(f'drop role "{rolename}"')
     assert acl["row_count"] == 1
-    assert i1.call("box.space._pico_role:select") == default_roles
+    assert i1.call("box.space._pico_role.index.name:get", rolename) is None
 
     # All the rolenames below should match the same role.
     acl = i1.sql(f'create role "{upper_rolename}"')
