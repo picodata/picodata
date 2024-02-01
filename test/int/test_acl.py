@@ -1067,5 +1067,38 @@ def test_alter_system_user(cluster: Cluster):
         i1.sql('drop role "public"')
 
 
+def test_submit_sql_after_revoke_login(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    acl = i1.sudo_sql("create user \"alice\" with password '12345678'")
+    assert acl["row_count"] == 1
+
+    acl = i1.sudo_sql('grant create table to "alice"')
+    assert acl["row_count"] == 1
+
+    with i1.connect(timeout=2, user="alice", password="12345678") as conn:
+        ddl = conn.sql(
+            """
+            create table t (a int not null, primary key (a)) distributed by (a)
+            """,
+        )
+        assert ddl["row_count"] == 1
+
+        # alice is the owner thus has all privileges on t
+        dml = conn.sql("insert into t values(1);")
+        assert dml["row_count"] == 1
+
+        # admin revokes login privilege
+        acl = i1.sudo_sql('alter user "alice" with nologin')
+        assert acl["row_count"] == 1
+
+        # alice on the same connection should receive error that access is denied
+        with pytest.raises(
+            Exception,
+            match="Create access to space 'T' is denied for user 'Dave'",
+        ):
+            conn.sql("insert into t values(2);")
+
+
 # TODO: test acl get denied when there's an unfinished ddl
 # TODO: check various retryable cas outcomes when doing schema change requests
