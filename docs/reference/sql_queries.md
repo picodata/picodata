@@ -328,7 +328,8 @@ SELECT * FROM "characters";
 ...
 ```
 
-_Примечание_: строки в выводе идут в том порядке, в каком их отдают узлы
+NOTE: **Примечание**
+Строки в выводе идут в том порядке, в каком их отдают узлы
 хранения Picodata.
 
 ### Параметризированные запросы {: #parametric_queries }
@@ -692,14 +693,14 @@ SELECT SUM(CAST("score" AS INT)) AS "_Total_score_1" FROM "scoring";
 Это можно сделать с использованием подзапроса:
 
 ```sql
-select 
+select
     "id",
     "name",
     "stock",
     "year"
 from "characters"
 join (
-  select 
+  select
       "id" as "number",
       "stock" from "assets"
 ) as stock

@@ -132,8 +132,14 @@ plugins:
   ## Используется для кастомизации якорей в формате {: #anchor }. Двоеточие и пробелы можно убирать
   ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#attribute-lists
   ## https://python-markdown.github.io/extensions/attr_list/
+  ## > callouts
+  ## Добавляет синтаксис для оформления выносок — более простой, чем в расширении `admonition`
+  ## https://oprypin.github.io/markdown-callouts/
+  ## Описание типов выносок:
+  ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#supported-types
 markdown_extensions:
   - attr_list
+  - callouts
 
 # Валидация ссылок
 # https://www.mkdocs.org/user-guide/configuration/#validation
