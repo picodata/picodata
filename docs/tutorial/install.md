@@ -25,41 +25,87 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 - libstdc++-static
 - NodeJS и Yarn (для сборки с веб-интерфейсом)
 
-Далее приведены команды для их установки под разные ОС.
-
-#### CentOS 8 {: #centos_8 }
+Установка Rust и Cargo универсальна для всех поддерживаемых ОС:
 
 ```bash
-sudo dnf config-manager --set-enabled powertools
-sudo dnf in -y gcc gcc-c++ make cmake git patch nodejs:19 yarnpkg libstdc++-static
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 ```
 
-#### Fedora 37-39 {: #fedora }
+Далее приведены команды для установки остальных зависимостей под разные ОС.
+
+#### CentOS 8, Fedora 37-39 {: #centos_fedora }
+
+Только для CentOS 8:
 
 ```bash
-sudo dnf in -y perl automake libtool libstdc++-static
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
+sudo dnf config-manager --set-enabled powertools
+```
+
+Установка общих зависимостей для сборки:
+
+```bash
+sudo dnf in -y gcc gcc-c++ make perl automake libtool cmake git patch libstdc++-static
+```
+
+Установка NodeJS и Yarn (для веб-интерфейса):
+
+```bash
+curl -sL https://rpm.nodesource.com/setup_lts.x | sudo bash -
+curl -sL https://dl.yarnpkg.com/rpm/yarn.repo | sudo tee /etc/yum.repos.d/yarn.repo
+sudo dnf install yarn nodejs
 ```
 
 #### Ubuntu 22.04 {: #ubuntu_22.04 }
 
+Установка общих зависимостей для сборки:
+
 ```bash
-sudo apt-get install build-essential git cmake nodejs yarnpkg -y
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env
+sudo apt-get install build-essential git cmake -y
+```
+
+Установка NodeJS и Yarn (для веб-интерфейса):
+
+```bash
+curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+sudo apt install yarn npm -y
+sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
 ```
 
 #### Alt Server p10 {: #alt_server_p10 }
 
+Установка общих зависимостей для сборки:
+
 ```bash
 su -
-apt-get install -y gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static node yarn
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
+apt-get install -y gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static
 ```
+
+
+Установка NodeJS и Yarn (для веб-интерфейса):
+
+```bash
+su -
+apt-get install -y node yarn
+```
+<!--
+```bash
+cargo build --features dynamic_build
+```
+
+Зависимости:
+
+- libcurl
+- libgomp
+- libldap
+- libsasl
+- libyaml
+- libzstd
+- ncurses
+- openssl
+- readline
+-->
 
 #### macOS {: #macos }
 
@@ -67,11 +113,7 @@ source "$HOME/.cargo/env"
 macOS 10.15 Catalina, либо более новая версия (11+).
 
 Для начала следует установить актуальные версии [Rust и
-Cargo](https://rustup.rs){:target="_blank"}:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+Cargo](https://rustup.rs){:target="_blank"}.
 
 Если планируется сборка Picodata c веб-интерфейсом, то нужно будет
 установить дополнительно NodeJS и Yarn при помощи пакетного менеджера
