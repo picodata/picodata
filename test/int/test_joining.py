@@ -127,11 +127,10 @@ def test_replication(cluster: Cluster):
         ), instance
 
     for instance in cluster.instances:
-        with instance.connect(1) as conn:
-            raft_instance = conn.eval(
-                "return box.space._pico_instance:get(...):tomap()", instance.instance_id
-            )
-            space_cluster = conn.call("box.space._cluster:select")
+        raft_instance = instance.eval(
+            "return box.space._pico_instance:get(...):tomap()", instance.instance_id
+        )
+        space_cluster = instance.call("box.space._cluster:select")
 
         expected = {
             "instance_id": instance.instance_id,
