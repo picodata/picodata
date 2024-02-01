@@ -617,7 +617,7 @@ def test_auth(instance: Instance):
     assert auth_fail.message == "failed to authenticate user `ymir`"
     assert auth_fail.severity == Severity.High
     assert auth_fail.verdict == (
-        "Maximum number of login attempts exceeded; user will be blocked indefinitely"
+        "Maximum number of login attempts exceeded; user blocked"
     )
     assert auth_fail.user == "ymir"
     assert auth_fail.initiator == "ymir"

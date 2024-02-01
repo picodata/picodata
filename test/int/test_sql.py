@@ -1485,13 +1485,18 @@ def test_sql_alter_login(cluster: Cluster):
     # Alter user with LOGIN option - opertaion is idempotent.
     acl = i1.sudo_sql(f""" alter user {username} with login """)
     assert acl["row_count"] == 1
-    # * Alter user with NOLOGIN option.
+    # Alter user with NOLOGIN option.
     acl = i1.sudo_sql(f""" alter user {username} with nologin """)
     assert acl["row_count"] == 1
-    # * Alter user with NOLOGIN again - operation is idempotent.
+    # Alter user with NOLOGIN again - operation is idempotent.
     acl = i1.sudo_sql(f""" alter user {username} with nologin """)
     assert acl["row_count"] == 1
-    # * TODO: Check SESSION privilege is removed.
+    # Login privilege is removed
+    with pytest.raises(
+        Exception,
+        match="User does not have login privilege",
+    ):
+        i1.sql("insert into t values(2);", user=username, password=password)
 
 
 def test_sql_acl_privileges(cluster: Cluster):

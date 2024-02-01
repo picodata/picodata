@@ -377,8 +377,13 @@ impl TryFrom<&SqlPrivilege> for PrivilegeType {
             SqlPrivilege::Create => Ok(PrivilegeType::Create),
             SqlPrivilege::Alter => Ok(PrivilegeType::Alter),
             SqlPrivilege::Drop => Ok(PrivilegeType::Drop),
-            SqlPrivilege::Session => Ok(PrivilegeType::Login),
-            // Picodata does not allow to grant or revoke usage
+
+            // Picodata does not allow to grant or revoke session or usage
+            // Instead this should be done through alter user with login/nologin
+            SqlPrivilege::Session => Err(SbroadError::Unsupported(
+                Entity::Privilege,
+                Some("session".into()),
+            )),
             SqlPrivilege::Usage => Err(SbroadError::Unsupported(
                 Entity::Privilege,
                 Some("usage".into()),
@@ -726,7 +731,7 @@ fn reenterable_schema_change_request(
         }
     };
 
-    let _su = session::su(ADMIN_ID).expect("cant fail because session is available");
+    let _su = session::su(ADMIN_ID).expect("cant fail because admin should always have session");
 
     'retry: loop {
         if Instant::now() > deadline {

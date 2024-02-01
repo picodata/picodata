@@ -20,7 +20,6 @@ use storage::Clusterwide;
 use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
-use crate::access_control::user_by_name;
 use crate::cli::args;
 use crate::cli::args::Address;
 use crate::cli::init_cfg::InitCfg;
@@ -283,50 +282,61 @@ fn redirect_interactive_sql() {
     .expect("overriding sql executor shouldn't fail")
 }
 
-/// Sets a check for user exceeding maximum number of login attempts through `picodata connect`.
+/// Sets a check that will performed when a user is logging ini
+/// Checks for user exceeding maximum number of login attempts and if user was blocked.
+///
 /// Also see [`storage::PropertyName::MaxLoginAttempts`].
-fn set_login_attempts_check(storage: Clusterwide) {
+fn set_login_check(storage: Clusterwide) {
+    const MAX_ATTEMPTS_EXCEEDED: &str = "Maximum number of login attempts exceeded";
+    const NO_LOGIN_PRIVILEGE: &str = "User does not have login privilege";
+
     enum Verdict {
         AuthOk,
         AuthFail,
         UnknownUser,
-        UserBlocked,
+        UserBlocked(&'static str),
     }
 
     // Determines the outcome of an authentication attempt.
-    let compute_auth_verdict = move |user: String, successful_authentication: bool| {
+    let compute_auth_verdict = move |user_name: String, successful_authentication: bool| {
         use std::collections::hash_map::Entry;
 
-        let max_login_attempts = || {
-            session::with_su(ADMIN_ID, || {
-                storage
-                    .properties
-                    .max_login_attempts()
-                    .expect("accessing storage should not fail")
-            })
-            .expect("switching user to admin shouldn't fail")
-        };
-
-        let user_exists = session::with_su(ADMIN_ID, || user_by_name(&user).is_ok())
-            .expect("switching user to admin shouldn't fail");
-
-        // Prevent DOS attacks by first checking whether the user exists.
-        // If it doesn't, we shouldn't even bother tracking its attempts.
-        // Too many hashmap records will cause a global OOM event.
-        if !user_exists {
+        // Switch to admin to access system spaces.
+        let admin_guard = session::su(ADMIN_ID).expect("switching to admin should not fail");
+        let max_login_attempts = storage
+            .properties
+            .max_login_attempts()
+            .expect("accessing storage should not fail");
+        let Some(user) = storage
+            .users
+            .by_name(&user_name)
+            .expect("accessing storage should not fail") else {
+            // Prevent DOS attacks by first checking whether the user exists.
+            // If it doesn't, we shouldn't even bother tracking its attempts.
+            // Too many hashmap records will cause a global OOM event.
             debug_assert!(!successful_authentication);
             return Verdict::UnknownUser;
+        };
+        if storage
+            .privileges
+            .get(user.id, "universe", 0, "login")
+            .expect("storage should not fail")
+            .is_none()
+        {
+            // User does not have login privilege so should not be allowed to connect.
+            return Verdict::UserBlocked(NO_LOGIN_PRIVILEGE);
         }
+        drop(admin_guard);
 
         // Borrowing will not panic as there are no yields while it's borrowed
         let mut attempts = storage.login_attempts.borrow_mut();
-        match attempts.entry(user) {
-            Entry::Occupied(e) if *e.get() >= max_login_attempts() => {
+        match attempts.entry(user_name) {
+            Entry::Occupied(e) if *e.get() >= max_login_attempts => {
                 // The account is suspended until instance is restarted
                 // or user is unlocked with `grant session` operation.
                 //
                 // See [`crate::storage::global_grant_privilege`]
-                Verdict::UserBlocked
+                Verdict::UserBlocked(MAX_ATTEMPTS_EXCEEDED)
             }
             Entry::Occupied(mut e) => {
                 if successful_authentication {
@@ -354,8 +364,6 @@ fn set_login_attempts_check(storage: Clusterwide) {
     lua.exec_with(
         "box.session.on_auth(...)",
         tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
-            const ERROR: &str = "Maximum number of login attempts exceeded";
-
             match compute_auth_verdict(user.clone(), status) {
                 Verdict::AuthOk => {
                     crate::audit!(
@@ -387,20 +395,20 @@ fn set_login_attempts_check(storage: Clusterwide) {
                         verdict: "user is not blocked",
                     );
                 }
-                Verdict::UserBlocked => {
+                Verdict::UserBlocked(err) => {
                     crate::audit!(
                         message: "failed to authenticate user `{user}`",
                         title: "auth_fail",
                         severity: High,
                         user: &user,
                         initiator: &user,
-                        verdict: format_args!("{ERROR}; user will be blocked indefinitely"),
+                        verdict: format_args!("{err}; user blocked"),
                     );
 
                     // Raises an error instead of returning it as a function result.
                     // This is the behavior required by `on_auth` trigger to drop the connection.
                     // All the drop implementations are called, no need to clean anything up.
-                    tlua::error!(lua, "{}", ERROR);
+                    tlua::error!(lua, "{}", err);
                 }
             }
         }),
@@ -502,8 +510,9 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
     schema::init_user_pico_service();
 
-    set_login_attempts_check(storage.clone());
+    set_login_check(storage.clone());
     set_on_access_denied_audit_trigger();
+
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
     (storage.clone(), raft_storage)

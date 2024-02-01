@@ -455,7 +455,7 @@ impl PrivilegeType {
     /// `box.schema.user.grant` as `privileges`
     pub fn as_tarantool(&self) -> &'static str {
         match self {
-            PrivilegeType::Login => "session,usage",
+            PrivilegeType::Login => "usage",
             t => t.as_str(),
         }
     }

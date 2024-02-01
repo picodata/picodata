@@ -1070,13 +1070,15 @@ def test_alter_system_user(cluster: Cluster):
 def test_submit_sql_after_revoke_login(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    acl = i1.sudo_sql("create user \"alice\" with password '12345678'")
+    password = "12345678"
+
+    acl = i1.sudo_sql(f"create user \"alice\" with password '{password}'")
     assert acl["row_count"] == 1
 
     acl = i1.sudo_sql('grant create table to "alice"')
     assert acl["row_count"] == 1
 
-    with i1.connect(timeout=2, user="alice", password="12345678") as conn:
+    with i1.connect(timeout=2, user="alice", password=password) as conn:
         ddl = conn.sql(
             """
             create table t (a int not null, primary key (a)) distributed by (a)
@@ -1095,9 +1097,16 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
         # alice on the same connection should receive error that access is denied
         with pytest.raises(
             Exception,
-            match="Create access to space 'T' is denied for user 'Dave'",
+            match="Execute access to function 'pico.sql' is denied for user 'alice'",
         ):
             conn.sql("insert into t values(2);")
+
+    # alice on a new connection should not ba able to login
+    with pytest.raises(
+        Exception,
+        match="User does not have login privilege",
+    ):
+        i1.sql("insert into t values(2);", user="alice", password=password)
 
 
 # TODO: test acl get denied when there's an unfinished ddl
