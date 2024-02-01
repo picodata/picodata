@@ -1389,17 +1389,20 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
-    users_auth_was = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
+    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    users_auth_was = user_def[3]
     # * Password and method aren't changed -> update nothing.
     acl = i1.sql(f"alter user {username} with password '{password}' using md5")
     assert acl["row_count"] == 0
-    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
+    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    users_auth_became = user_def[3]
     assert users_auth_was == users_auth_became
 
     # * Password is changed -> update hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using md5")
     assert acl["row_count"] == 1
-    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
+    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    users_auth_became = user_def[3]
     assert users_auth_was[0] == users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
 
@@ -1408,13 +1411,15 @@ def test_sql_acl_users_roles(cluster: Cluster):
         f"alter user {username} with password '{another_password}' using chap-sha1"
     )
     assert acl["row_count"] == 1
-    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
+    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
     # * LDAP should ignore password -> update method and hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using ldap")
     assert acl["row_count"] == 1
-    users_auth_became = i1.call("box.space._pico_user.index.name:get", upper_username)[3]
+    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_became[1] == ""
     acl = i1.sql(f"drop user {username}")
