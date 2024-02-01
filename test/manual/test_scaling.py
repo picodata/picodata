@@ -90,9 +90,9 @@ def test_cas_conflicts(binary_path, tmpdir_factory, cluster_ids, port_range):
         start = time.time()
         cluster.deploy(instance_count=1)
 
-        def count_conflicts(line: str):
+        def count_conflicts(line: bytes):
             nonlocal cas_conflicts
-            if line.find("compare-and-swap: ConflictFound") != -1:
+            if line.find(b"compare-and-swap: ConflictFound") != -1:
                 cas_conflicts += 1
 
         cluster[0].on_output_line(count_conflicts)

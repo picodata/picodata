@@ -478,7 +478,7 @@ class Instance:
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
-    _on_output_callbacks: list[Callable[[str], None]] = field(default_factory=list)
+    _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
 
     @property
     def listen(self):
@@ -662,22 +662,28 @@ class Instance:
         finally:
             self.kill()
 
-    def _process_output(self, src, out):
+    def _process_output(self, src, out: io.TextIOWrapper):
         id = self.instance_id or f":{self.port}"
         prefix = f"{id:<3} | "
 
         if sys.stdout.isatty():
             prefix = self.color(prefix)
 
-        for line in io.TextIOWrapper(src, line_buffering=True):
+        prefix_bytes = prefix.encode("utf-8")
+
+        # `iter(callable, sentinel)` form: calls callable until it returns sentinel
+        for line in iter(src.readline, b""):
             with OUT_LOCK:
-                out.write(prefix)
-                out.write(line)
+                out.buffer.write(prefix_bytes)
+                out.buffer.write(line)
                 out.flush()
                 for cb in self._on_output_callbacks:
                     cb(line)
 
-    def on_output_line(self, cb: Callable[[str], None]):
+        # Close the stream, because `Instance.fail_to_start` is waiting for it
+        src.close()
+
+    def on_output_line(self, cb: Callable[[bytes], None]):
         self._on_output_callbacks.append(cb)
 
     def start(self, peers=[]):
