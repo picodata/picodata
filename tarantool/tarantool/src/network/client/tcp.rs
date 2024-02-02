@@ -39,6 +39,7 @@ use crate::fiber::r#async::context::ContextExt;
 use crate::fiber::{self, r#async};
 
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum Error {
     #[error("failed to resolve domain name '{0}'")]
     ResolveAddress(String),

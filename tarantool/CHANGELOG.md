@@ -27,6 +27,8 @@
 - `network::protocol::codec::encode_auth` now takes an additional `auth_method` parameter.
 - `network::protocol::{Config, api::Auth}` & `net_box::options::ConnOptions`,
   now have an additional field `auth_method`.
+- `error::{Error, TarantoolErrorCode}` & `network::client::tcp::Error`
+  enums are now marked as `#[non_exhaustive]` for future compatibility.
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.

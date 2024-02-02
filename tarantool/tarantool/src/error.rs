@@ -34,6 +34,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("tarantool error: {0}")]
     Tarantool(TarantoolError),
@@ -276,6 +277,7 @@ where
 crate::define_enum_with_introspection! {
     /// Codes of Tarantool errors
     #[repr(u32)]
+    #[non_exhaustive]
     pub enum TarantoolErrorCode {
         Unknown = 0,
         IllegalParams = 1,
