@@ -313,24 +313,50 @@ pub trait Consumer {
     fn consume(&self, header: &protocol::Header, body: &[u8]) {
         let consume_impl = || {
             let mut cursor = Cursor::new(body);
+
+            let mut data = None;
+            let mut error: Option<TarantoolError> = None;
+
             let map_len = rmp::decode::read_map_len(&mut cursor)?;
             for _ in 0..map_len {
                 let key = rmp::decode::read_pfix(&mut cursor)?;
-                let mut value = value_slice(&mut cursor)?;
+
+                let value_start = cursor.position() as usize;
+                crate::msgpack::skip_value(&mut cursor)?;
+                let value_end = cursor.position() as usize;
+                let mut value = &body[value_start..value_end];
+
                 // dbg!((IProtoKey::try_from(key), rmp_serde::from_slice::<rmpv::Value>(value)));
                 match key {
-                    protocol::iproto_key::DATA => self.consume_data(value),
+                    protocol::iproto_key::DATA => {
+                        if data.is_some() {
+                            crate::say_verbose!("duplicate IPROTO_DATA key in repsonse");
+                        }
+                        data = Some(value);
+                    }
                     protocol::iproto_key::ERROR => {
-                        let mut error = TarantoolError::default();
+                        let error = error.get_or_insert_with(Default::default);
                         let message = protocol::decode_string(&mut value)?;
                         error.message = Some(message.into());
                         error.code = header.error_code;
-                        self.handle_error(Error::Remote(error));
                     }
-                    // TODO: IPROTO_ERROR (0x52)
+                    protocol::iproto_key::ERROR_EXT => {
+                        if let Some(e) = protocol::decode_extended_error(&mut value)? {
+                            error = Some(e);
+                        }
+                    }
                     other => self.consume_other(other, value),
                 }
             }
+
+            if let Some(data) = data {
+                self.consume_data(data);
+            }
+
+            if let Some(error) = error {
+                self.handle_error(Error::Remote(error));
+            }
+
             Ok(())
         };
 
@@ -372,11 +398,4 @@ pub trait Consumer {
     ///
     /// **Must not yield**
     fn consume_data(&self, data: &[u8]);
-}
-
-#[inline(always)]
-pub fn value_slice(cursor: &mut Cursor<impl AsRef<[u8]>>) -> crate::Result<&[u8]> {
-    let start = cursor.position() as usize;
-    crate::msgpack::skip_value(cursor)?;
-    Ok(&cursor.get_ref().as_ref()[start..(cursor.position() as usize)])
 }

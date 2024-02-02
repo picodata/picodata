@@ -13,6 +13,8 @@
   errors returned from `network::client`.
 - `tlua::as_table` macro for more straight-forward creation of lua tables
   compared to naked `tlua::AsTable`.
+- `TarantoolError::{file, line, errno, cause, fields}` methods for getting the
+  corresponding info from the tarantool error (currently only work for remote errors).
 
 ### Changed
 - `network::client::{Client, ReconnClient}::send` now returns one of the new

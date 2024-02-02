@@ -16,6 +16,7 @@
 //! the current value and returning -1 to Tarantool from your
 //! stored procedure.
 
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::fmt::{self, Display, Formatter};
 use std::io;
@@ -240,6 +241,11 @@ pub struct TarantoolError {
     pub(crate) code: u32,
     pub(crate) message: Option<Box<str>>,
     pub(crate) error_type: Option<Box<str>>,
+    pub(crate) errno: Option<u32>,
+    pub(crate) file: Option<Box<str>>,
+    pub(crate) line: Option<u32>,
+    pub(crate) fields: HashMap<Box<str>, rmpv::Value>,
+    pub(crate) cause: Option<Box<TarantoolError>>,
 }
 
 impl TarantoolError {
@@ -272,10 +278,23 @@ impl TarantoolError {
         let error_type = CStr::from_ptr(ffi::box_error_type(error_ptr.as_ptr()));
         let error_type = error_type.to_string_lossy().into_owned().into_boxed_str();
 
+        // TODO: extract file, line from error_ptr.
+        // We can do this safely, because tarantool uses `struct error` from lua
+        // via ffi, which means there's luajit-ffi type info for this struct.
+        // So we can do a one-time on demand check that our rust struct
+        // definition matches the one lua-ffi knows about.
+        // If they don't match, we just fallback to not extracting the source
+        // location.
+
         TarantoolError {
             code,
             message: Some(message),
             error_type: Some(error_type),
+            errno: None,
+            file: None,
+            line: None,
+            fields: HashMap::default(),
+            cause: None,
         }
     }
 
@@ -303,6 +322,42 @@ impl TarantoolError {
         self.message
             .as_deref()
             .unwrap_or("<error message is missing>")
+    }
+
+    /// Return the name of the source file where the error was created,
+    /// if it's available.
+    #[inline(always)]
+    pub fn file(&self) -> Option<&str> {
+        self.file.as_deref()
+    }
+
+    /// Return the source line number where the error was created,
+    /// if it's available.
+    #[inline(always)]
+    pub fn line(&self) -> Option<u32> {
+        self.line
+    }
+
+    /// Return the system `errno` value of the cause of this error,
+    /// if it's available.
+    ///
+    /// You can use [`std::io::Error::from_raw_os_error`] to get more details
+    /// for the returned error code.
+    #[inline(always)]
+    pub fn errno(&self) -> Option<u32> {
+        self.errno
+    }
+
+    /// Return the error which caused this one, if it's available.
+    #[inline(always)]
+    pub fn cause(&self) -> Option<&Self> {
+        self.cause.as_deref()
+    }
+
+    /// Return the map of additional fields.
+    #[inline(always)]
+    pub fn fields(&self) -> &HashMap<Box<str>, rmpv::Value> {
+        &self.fields
     }
 }
 

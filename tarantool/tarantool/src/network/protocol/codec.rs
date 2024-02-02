@@ -44,6 +44,8 @@ pub(crate) mod iproto_key {
     pub const SQL_TEXT: u8 = 0x40;
     pub const SQL_BIND: u8 = 0x41;
     // ...
+    pub const ERROR_EXT: u8 = 0x52;
+    // ...
 }
 use iproto_key::*;
 
@@ -392,15 +394,71 @@ pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
     })
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// error decoding
+////////////////////////////////////////////////////////////////////////////////
+
+/// Constant definitions for keys of the extended error info. Currently there's
+/// only one possible key - error stack, and the value associated with it is an
+/// array of error info maps. These error info maps have fields from the
+/// [`error_field`] module defined below.
+///
+/// See enum MP_ERROR_* \<tarantool>/src/box/mp_error.cc
+mod extended_error_keys {
+    /// Stack of error infos.
+    pub const STACK: u8 = 0;
+}
+
+/// Constant definitions for extended error info fields.
+///
+/// See enum MP_ERROR_* \<tarantool>/src/box/mp_error.cc
+mod error_field {
+    /// Error type.
+    pub const TYPE: u8 = 0x00;
+
+    /// File name from trace.
+    pub const FILE: u8 = 0x01;
+
+    /// Line from trace.
+    pub const LINE: u8 = 0x02;
+
+    /// Error message.
+    pub const MESSAGE: u8 = 0x03;
+
+    /// Errno at the moment of error creation.
+    pub const ERRNO: u8 = 0x04;
+
+    /// Error code.
+    pub const CODE: u8 = 0x05;
+
+    /// Type-specific fields stored as a map
+    /// {string key = value}.
+    pub const FIELDS: u8 = 0x06;
+}
+
+/// Reads a IPROTO packet from the `stream` (i.e. a msgpack map with integer keys)
 pub fn decode_error(stream: &mut impl Read, header: &Header) -> Result<TarantoolError, Error> {
     let mut error = TarantoolError::default();
 
     let map_len = rmp::decode::read_map_len(stream)?;
     for _ in 0..map_len {
-        if rmp::decode::read_pfix(stream)? == ERROR {
-            let message = decode_string(stream)?;
-            error.message = Some(message.into());
-            error.code = header.error_code;
+        let key = rmp::decode::read_pfix(stream)?;
+        match key {
+            ERROR => {
+                let message = decode_string(stream)?;
+                error.message = Some(message.into());
+                error.code = header.error_code;
+            }
+            ERROR_EXT => {
+                if let Some(e) = decode_extended_error(stream)? {
+                    error = e;
+                } else {
+                    crate::say_verbose!("empty ERROR_EXT field");
+                }
+            }
+            _ => {
+                crate::say_verbose!("unhandled iproto key {key} when decoding error");
+            }
         }
     }
 
@@ -413,6 +471,93 @@ pub fn decode_error(stream: &mut impl Read, header: &Header) -> Result<Tarantool
     }
 
     Ok(error)
+}
+
+pub fn decode_extended_error(stream: &mut impl Read) -> Result<Option<TarantoolError>, Error> {
+    let extended_error_n_fields = rmp::decode::read_map_len(stream)? as usize;
+    if extended_error_n_fields == 0 {
+        return Ok(None);
+    }
+
+    let mut error_info = None;
+
+    for _ in 0..extended_error_n_fields {
+        let key = rmp::decode::read_pfix(stream)?;
+        match key {
+            extended_error_keys::STACK => {
+                if error_info.is_some() {
+                    crate::say_verbose!("duplicate error stack in response");
+                }
+
+                let error_stack_len = rmp::decode::read_array_len(stream)? as usize;
+                if error_stack_len == 0 {
+                    continue;
+                }
+
+                let mut stack_nodes = Vec::with_capacity(error_stack_len);
+                for _ in 0..error_stack_len {
+                    stack_nodes.push(decode_error_stack_node(stream)?);
+                }
+
+                for mut node in stack_nodes.into_iter().rev() {
+                    if let Some(next_node) = error_info {
+                        node.cause = Some(Box::new(next_node));
+                    }
+                    error_info = Some(node);
+                }
+            }
+            _ => {
+                crate::say_verbose!("unknown extended error key {key}");
+            }
+        }
+    }
+
+    Ok(error_info)
+}
+
+pub fn decode_error_stack_node(mut stream: &mut impl Read) -> Result<TarantoolError, Error> {
+    let mut res = TarantoolError::default();
+
+    let map_len = rmp::decode::read_map_len(stream)? as usize;
+    for _ in 0..map_len {
+        let key = rmp::decode::read_pfix(stream)?;
+        match key {
+            error_field::TYPE => {
+                res.error_type = Some(decode_string(stream)?.into_boxed_str());
+            }
+            error_field::FILE => {
+                res.file = Some(decode_string(stream)?.into_boxed_str());
+            }
+            error_field::LINE => {
+                res.line = Some(rmp::decode::read_int(stream)?);
+            }
+            error_field::MESSAGE => {
+                res.message = Some(decode_string(stream)?.into_boxed_str());
+            }
+            error_field::ERRNO => {
+                let n = rmp::decode::read_int(stream)?;
+                if n != 0 {
+                    res.errno = Some(n);
+                }
+            }
+            error_field::CODE => {
+                res.code = rmp::decode::read_int(stream)?;
+            }
+            error_field::FIELDS => match rmp_serde::from_read(&mut stream) {
+                Ok(f) => {
+                    res.fields = f;
+                }
+                Err(e) => {
+                    crate::say_verbose!("failed decoding error fields: {e}");
+                }
+            },
+            _ => {
+                crate::say_verbose!("unexpected error field {key}");
+            }
+        }
+    }
+
+    Ok(res)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

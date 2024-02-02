@@ -797,4 +797,55 @@ mod tests {
             assert_eq!(err, "service responded with error: User not found or supplied credentials are invalid");
         }
     }
+
+    #[crate::test(tarantool = "crate")]
+    async fn extended_error_info() {
+        let client = test_client().await;
+
+        let res = client
+            .eval(
+                "error1 = box.error.new(box.error.UNSUPPORTED, 'this', 'that')
+                error2 = box.error.new('MyCode', 'my message')
+                error3 = box.error.new('MyOtherCode', 'my other message')
+                error2:set_prev(error3)
+                error1:set_prev(error2)
+                error1:raise()",
+                &(),
+            )
+            .timeout(Duration::from_secs(3))
+            .await;
+
+        let error::Error::Remote(e) = error::Error::from(res.unwrap_err()) else {
+            panic!();
+        };
+
+        assert_eq!(e.error_code(), TarantoolErrorCode::Unsupported as u32);
+        assert_eq!(e.message(), "this does not support that");
+        assert_eq!(e.error_type(), "ClientError");
+        assert_eq!(e.file(), Some("eval"));
+        assert_eq!(e.line(), Some(1));
+        assert_eq!(e.fields().len(), 0);
+
+        let e = e.cause().unwrap();
+
+        assert_eq!(e.error_code(), 0);
+        assert_eq!(e.message(), "my message");
+        assert_eq!(e.error_type(), "CustomError");
+        assert_eq!(e.file(), Some("eval"));
+        assert_eq!(e.line(), Some(2));
+        assert_eq!(e.fields().len(), 1);
+        assert_eq!(e.fields()["custom_type"], rmpv::Value::from("MyCode"));
+
+        let e = e.cause().unwrap();
+
+        assert_eq!(e.error_code(), 0);
+        assert_eq!(e.message(), "my other message");
+        assert_eq!(e.error_type(), "CustomError");
+        assert_eq!(e.file(), Some("eval"));
+        assert_eq!(e.line(), Some(3));
+        assert_eq!(e.fields().len(), 1);
+        assert_eq!(e.fields()["custom_type"], rmpv::Value::from("MyOtherCode"));
+
+        assert!(e.cause().is_none());
+    }
 }
