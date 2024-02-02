@@ -78,8 +78,13 @@ fn set_git_describe_env_var() {
     }
 
     let output = Command::new("git").arg("describe").output().unwrap();
-    assert!(output.status.success());
-    let git_describe = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        output.status.success(),
+        "stdout: {} stderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let git_describe = std::str::from_utf8(&output.stdout).unwrap();
     println!("cargo:rustc-env=GIT_DESCRIBE={git_describe}");
 }
 
