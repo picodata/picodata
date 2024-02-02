@@ -11,6 +11,9 @@ site_description: Picodata documentation site
 repo_url: https://git.picodata.io/picodata/picodata/docs
 edit_uri: -/blob/main/docs/
 
+# https://squidfunk.github.io/mkdocs-material/setup/setting-up-versioning/#stay-on-the-same-page-when-switching-versions
+site_url: https://docs.picodata.io/picodata/
+
 # Исключения из навигации
 # https://www.mkdocs.org/user-guide/configuration/#not_in_nav
 not_in_nav: |
@@ -83,8 +86,12 @@ theme:
     - content.action.edit
 
 # Дополнительные настройки темы Material
-  ## homepage — https://squidfunk.github.io/mkdocs-material/setup/changing-the-logo-and-icons/#logo
   ## analytics — https://squidfunk.github.io/mkdocs-material/setup/setting-up-site-analytics/#setting-up-site-analytics
+  ## version — https://squidfunk.github.io/mkdocs-material/setup/setting-up-versioning/#configuration
+  ## > version: provider: mike
+  ## Активирует селектор версий `class="md-version"`.
+  ## Список селектора `md-version__list` формируется из файла `versions.json`
+  ## https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/assets/javascripts/bundle.ts#L156
 extra:
   analytics:
     provider: google
@@ -104,6 +111,8 @@ extra:
             Благодарим за отзыв! <a href="https://t.me/picodataru"
             target="_blank" rel="noopener">Напишите</a>, что бы вы хотели
             улучшить на этой странице или в целом на сайте документации.
+  version:
+    provider: mike
 
 # Кастомизация CSS
 # https://www.mkdocs.org/user-guide/configuration/#extra_css

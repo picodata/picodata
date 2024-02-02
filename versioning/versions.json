@@ -1,0 +1,12 @@
+[
+  {
+    "version": "devel",
+    "title": "devel",
+    "aliases": []
+  },
+  {
+    "version": "23.12",
+    "title": "23.12 (latest)",
+    "aliases": ["latest"]
+  }
+]

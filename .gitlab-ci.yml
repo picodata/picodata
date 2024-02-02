@@ -1,4 +1,5 @@
 variables:
+  MAIN_BRANCH: &main-branch main
   BASE_IMAGE_NAME: $CI_REGISTRY_IMAGE
   BASE_IMAGE_TAG: $CI_COMMIT_SHA
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
@@ -55,15 +56,25 @@ lint:
 pack-doc:
   image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
   stage: pack-doc
+  before_script:
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
+        PICODATA_DOC_VER="devel"
+      elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
+        PICODATA_DOC_VER="$MAIN_BRANCH"
+      else
+        PICODATA_DOC_VER="branch-$CI_COMMIT_REF_SLUG"
+      fi
   script:
     - echo "Pack picodata doc..."
-    - VER=$(date +%Y%m%d%H%M%S)
-    - FNAME="picodata-doc-${VER}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHA}.tgz"
+    - DATE=$(date +%Y%m%d%H%M%S)
+    - FNAME="picodata-doc-${DATE}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHA}.tgz"
     - echo "FNAME=$FNAME" | tee .vars
-    - mkdocs build -d site --strict
-    - pushd site
-    - tar -cvzf ../$FNAME ./
+    - mkdocs build -d build --strict
+    - pushd build
+    - tar -cvzf ../$FNAME .
     - popd
+    - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee -a .vars
     - echo "Picodata doc successfully packed."
   artifacts:
     paths:
@@ -88,6 +99,7 @@ upload-doc-to-binary:
   variables:
     STAGE: TEST
     PICODATA_DOC: $FNAME
+    PICODATA_DOC_SUBDIR: $PICODATA_DOC_VER
   trigger:
     project: 'picodata/web-site/infra'
     branch: 'main'
@@ -96,26 +108,14 @@ upload-doc-to-binary:
     - job: pack-doc
       artifacts: true
 
-deploy-doc-to-test-main:
+deploy-staging:
   extends:
     - .deploy
-  rules:
-    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
 
-deploy-doc-to-test-devbranch:
+deploy-prod:
   extends:
     - .deploy
   rules:
-    - if: $CI_COMMIT_BRANCH !=  $CI_DEFAULT_BRANCH
-      when: manual
-  allow_failure: true
-  variables:
-    PICODATA_DOC_SUBDIR: 'branch-${CI_COMMIT_BRANCH}'
-
-deploy-doc-to-prod:
-  extends:
-    - .deploy
-  rules:
-    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
   variables:
     STAGE: PROD
