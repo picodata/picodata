@@ -208,6 +208,14 @@ impl InternalInfo<'static> {
 // RuntimeInfo
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+pub struct HttpServerInfo {
+    pub host: String,
+    pub port: u16,
+}
+
+impl tarantool::tuple::Encode for HttpServerInfo {}
+
 /// Info returned from [`.proc_runtime_info`].
 ///
 /// [`.proc_runtime_info`]: proc_runtime_info
@@ -215,15 +223,34 @@ impl InternalInfo<'static> {
 pub struct RuntimeInfo<'a> {
     pub raft: RaftInfo,
     pub internal: InternalInfo<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub http: Option<HttpServerInfo>,
+    pub version_info: VersionInfo<'a>,
 }
 
 impl tarantool::tuple::Encode for RuntimeInfo<'_> {}
 
 impl RuntimeInfo<'static> {
     pub fn try_get(node: &node::Node) -> Result<Self, Error> {
+        let lua = tarantool::lua_state();
+        let host_port: Option<(String, String)> = lua.eval(
+            "if pico.httpd ~= nil then
+                return pico.httpd.host, pico.httpd.port
+            else
+                return nil
+            end",
+        )?;
+        let mut http = None;
+        if let Some((host, port)) = host_port {
+            let port = port.parse::<u16>().map_err(Error::other)?;
+            http = Some(HttpServerInfo { host, port });
+        }
+
         Ok(RuntimeInfo {
             raft: RaftInfo::get(node),
             internal: InternalInfo::get(node),
+            http,
+            version_info: VersionInfo::current(),
         })
     }
 }

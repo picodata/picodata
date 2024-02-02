@@ -137,22 +137,13 @@ local function create_instance(instance, cluster_state)
     }
 
     local c = net.connect(instance_dto.binaryAddress, { fetch_schema = false })
-    local result = c:eval([[
-        return {
-            httpd = pico and pico.httpd and {
-                host = pico.httpd.host,
-                port = pico.httpd.port
-            },
-            version = pico.PICODATA_VERSION
-        }
-    ]])
+    local result = c:call('.proc_runtime_info')
 
     if result then
-        local httpAddress = result.httpd
-        if httpAddress then
-            instance_dto.httpAddress = string.format('%s:%d', httpAddress.host, httpAddress.port)
+        if result.http then
+            instance_dto.httpAddress = string.format('%s:%d', result.http.host, result.http.port)
         end
-        instance_dto.version = result.version
+        instance_dto.version = result.version_info.picodata_version
     end
 
     return instance_dto
