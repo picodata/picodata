@@ -211,16 +211,23 @@ mod tests {
     // More of an example of how this client can be used than a test
     #[crate::test(tarantool = "crate")]
     fn reconnect_on_network_error() {
-        use std::io::{Error, ErrorKind};
+        use std::io::{Error as IOError, ErrorKind};
+        use std::sync::Arc;
         fiber::block_on(async {
             let client = test_client();
 
-            client.inject_error(Error::from(ErrorKind::ConnectionAborted).into());
+            let err = Error::ConnectionClosed(Arc::new(
+                IOError::from(ErrorKind::ConnectionAborted).into(),
+            ));
+            client.inject_error(err);
             client.ping().timeout(_3_SEC).await.unwrap_err();
             client.reconnect_now().await.unwrap();
             assert_eq!(client.reconnect_count(), 1);
 
-            client.inject_error(Error::from(ErrorKind::ConnectionAborted).into());
+            let err = Error::ConnectionClosed(Arc::new(
+                IOError::from(ErrorKind::ConnectionAborted).into(),
+            ));
+            client.inject_error(err);
             client.ping().timeout(_3_SEC).await.unwrap_err();
             client.reconnect_now().await.unwrap();
             assert_eq!(client.reconnect_count(), 2);

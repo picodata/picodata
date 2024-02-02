@@ -38,11 +38,11 @@ pub mod tcp;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{self, Cursor};
+use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use self::tcp::{Error as TcpError, TcpStream};
+use self::tcp::TcpStream;
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
 use super::protocol::{self, Error as ProtocolError, Protocol, SyncIndex};
@@ -51,53 +51,51 @@ use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::FiberId;
 use crate::tuple::{ToTupleBuffer, Tuple};
+use crate::unwrap_ok_or;
 
 use futures::{AsyncReadExt, AsyncWriteExt};
 
 /// Error returned by [`Client`].
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum Error {
+    /// The connection was closed because of this error.
+    ///
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    Tcp(Arc<TcpError>),
+    ConnectionClosed(Arc<crate::error::Error>),
 
+    /// Error happened during encoding of the request.
+    ///
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    Io(Arc<io::Error>),
+    RequestEncode(Arc<ProtocolError>),
 
+    /// Error happened during decoding of the response.
+    ///
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    Protocol(Arc<ProtocolError>),
+    ResponseDecode(Arc<ProtocolError>),
+
+    /// Service responded with an error.
+    ///
+    /// The error is wrapped in a [`Arc`], because some libraries require
+    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
+    #[error("{0}")]
+    ErrorResponse(Arc<ProtocolError>),
 }
 
 impl From<Error> for crate::error::Error {
+    #[inline(always)]
     fn from(err: Error) -> Self {
         match err {
-            Error::Tcp(err) => crate::error::Error::Tcp(err),
-            Error::Io(err) => crate::error::Error::IO(err.kind().into()),
-            Error::Protocol(err) => crate::error::Error::Protocol(err),
+            Error::ConnectionClosed(err) => crate::error::Error::ConnectionClosed(err),
+            Error::RequestEncode(err) => crate::error::Error::Protocol(err),
+            Error::ResponseDecode(err) => crate::error::Error::Protocol(err),
+            Error::ErrorResponse(err) => crate::error::Error::Protocol(err),
         }
-    }
-}
-
-impl From<TcpError> for Error {
-    fn from(err: TcpError) -> Self {
-        Error::Tcp(Arc::new(err))
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::Io(Arc::new(err))
-    }
-}
-
-impl From<ProtocolError> for Error {
-    fn from(err: ProtocolError) -> Self {
-        Error::Protocol(Arc::new(err))
     }
 }
 
@@ -105,6 +103,7 @@ impl From<ProtocolError> for Error {
 enum State {
     Alive,
     ClosedManually,
+    /// This can only be [`Error::ConnectionClosed`].
     ClosedWithError(Error),
 }
 
@@ -196,7 +195,9 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, Error> {
-        let stream = TcpStream::connect(url, port).await?;
+        let stream = TcpStream::connect(url, port)
+            .await
+            .map_err(|e| Error::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(RefCell::new(client));
 
@@ -222,10 +223,10 @@ impl Client {
     }
 
     fn check_state(&self) -> Result<(), Error> {
-        match self.0.borrow().state.clone() {
+        match &self.0.borrow().state {
             State::Alive => Ok(()),
             State::ClosedManually => unreachable!("All client handles are dropped at this point"),
-            State::ClosedWithError(err) => Err(err),
+            State::ClosedWithError(err) => Err(err.clone()),
         }
     }
 }
@@ -294,8 +295,16 @@ pub trait AsClient {
 #[async_trait::async_trait(?Send)]
 impl AsClient for Client {
     async fn send<R: Request>(&self, request: &R) -> Result<R::Response, Error> {
+        // This `?` can return a `Error::ConnectionClosed`.
         self.check_state()?;
-        let sync = self.0.borrow_mut().protocol.send_request(request)?;
+
+        let res = self.0.borrow_mut().protocol.send_request(request);
+        let sync = unwrap_ok_or!(res,
+            Err(e) => {
+                return Err(Error::RequestEncode(e.into()));
+            }
+        );
+
         let (tx, rx) = oneshot::channel();
         self.0.borrow_mut().awaiting_response.insert(sync, tx);
         maybe_wake_sender(&self.0.borrow());
@@ -306,13 +315,24 @@ impl AsClient for Client {
             let _ = self.0.borrow_mut().awaiting_response.remove(&sync);
         })
         .await
+        // This `?` can return a `Error::ConnectionClosed`.
         .expect("Channel should be open")?;
-        Ok(self
+
+        let res = self
             .0
             .borrow_mut()
             .protocol
             .take_response(sync, request)
-            .expect("Is present at this point")?)
+            .expect("Is present at this point");
+        let response = unwrap_ok_or!(res,
+            Err(e @ protocol::Error::Response(_)) => {
+                return Err(Error::ErrorResponse(e.into()));
+            }
+            Err(e) => {
+                return Err(Error::ResponseDecode(e.into()));
+            }
+        );
+        Ok(response)
     }
 }
 
@@ -365,14 +385,14 @@ macro_rules! handle_result {
         match $e {
             Ok(value) => value,
             Err(err) => {
-                let err: Error = err.into();
-                $client.state = State::ClosedWithError(err.clone());
+                let err = Error::ConnectionClosed(Arc::new(err.into()));
                 // Notify all subscribers on closing
                 let subscriptions: HashMap<_, _> = $client.awaiting_response.drain().collect();
                 for (_, subscription) in subscriptions {
                     // We don't care about errors at this point
                     let _ = subscription.send(Err(err.clone()));
                 }
+                $client.state = State::ClosedWithError(err);
                 return;
             }
         }
@@ -475,7 +495,7 @@ mod tests {
     async fn connect_failure() {
         // Can be any other unused port
         let err = Client::connect("localhost", 0).await.unwrap_err();
-        assert!(matches!(dbg!(err), Error::Tcp(_)))
+        assert!(matches!(dbg!(err), Error::ConnectionClosed(_)))
     }
 
     #[crate::test(tarantool = "crate")]

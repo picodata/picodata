@@ -8,8 +8,13 @@
   default logger. Use these when you need to log messages, but don't have any
   facilities set up for this, e.g. internally in tarantool-module code.
 - `log::SayLevel::current` function for getting current tarantool log level.
+- `error::Error::ConnectionClosed` variant which can happen when converting from
+  errors returned from `network::client`.
 
 ### Changed
+- `network::client::{Client, ReconnClient}::send` now returns one of the new
+  error variants: `ConnectionClosed`, `RequestEncode`, `ResponseDecode` or
+  `ErrorResponse`.
 
 ### Fixed
 - `network::ReconnClient::with_config` constructor now has `pub` visibility,
@@ -29,6 +34,9 @@
   now have an additional field `auth_method`.
 - `error::{Error, TarantoolErrorCode}` & `network::client::tcp::Error`
   enums are now marked as `#[non_exhaustive]` for future compatibility.
+- Removed `network::client::Error::{Tcp, Io, Protocol}` variants as they were
+  confusing to work with.
+- Removed `impl From<{TcpError, io::Error, ProtocolError}> for network::client::Error`.
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.

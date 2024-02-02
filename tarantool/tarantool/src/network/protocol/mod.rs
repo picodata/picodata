@@ -168,6 +168,11 @@ impl Protocol {
         let mut buf = Cursor::new(&mut self.pending_outgoing);
         buf.set_position(end as u64);
         // TODO: limit the pending vec size
+        // FIXME: Theoretically an error can happen in `Request::encode`.
+        // This shouldn't ever happen in practice, as we're just writing into a memory buffer,
+        // but our interfaces allow for this. So in case this happens here we will likely end
+        // up with corrupted data in `self.pending_outgoing`.
+        // It's pretty easy to fix, so we probably should...
         write_to_buffer(&mut buf, self.sync, request)?;
         self.process_pending_data();
         Ok(self.sync.next_index())

@@ -75,7 +75,7 @@ pub enum Error {
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     ///
     /// [`Rc`]: std::rc::Rc
-    #[error("network error: {0}")]
+    #[error("{0}")]
     Protocol(Arc<crate::network::protocol::Error>),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
@@ -83,7 +83,7 @@ pub enum Error {
     ///
     /// [`Rc`]: std::rc::Rc
     #[cfg(feature = "network_client")]
-    #[error("tcp error: {0}")]
+    #[error("{0}")]
     Tcp(Arc<crate::network::client::tcp::Error>),
 
     #[error("lua error: {0}")]
@@ -97,6 +97,10 @@ pub enum Error {
 
     #[error("msgpack decode error: {0}")]
     MsgpackDecode(#[from] crate::msgpack::DecodeError),
+
+    /// A network connection was closed for the given reason.
+    #[error("{0}")]
+    ConnectionClosed(Arc<Error>),
 
     /// This should only be used if the error doesn't fall into one of the above
     /// categories.
@@ -149,6 +153,7 @@ impl Error {
             Self::MetaNotFound => "MetaNotFound",
             Self::MsgpackEncode(_) => "MsgpackEncode",
             Self::MsgpackDecode(_) => "MsgpackDecode",
+            Self::ConnectionClosed(_) => "ConnectionClosed",
             Self::Other(_) => "Other",
         }
     }
