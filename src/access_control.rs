@@ -47,7 +47,10 @@ use crate::{
         PICO_SERVICE_ID, PICO_SERVICE_USER_NAME,
     },
     storage::{make_routine_not_found, space_by_id, Clusterwide, ToEntryIter},
-    traft::op::{self, Op},
+    traft::{
+        self,
+        op::{self, Op},
+    },
 };
 
 tarantool::define_str_enum! {
@@ -219,6 +222,26 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
             PrivType::Create,
             as_user,
         ),
+        op::Ddl::DropProcedure { id, .. } => {
+            let node = traft::node::global().expect("node must be already initialized");
+            let Some(routine) = node.storage.routines.by_id(*id)? else {
+                tarantool::set_error!(
+                    tarantool::error::TarantoolErrorCode::NoSuchProc,
+                    "no such procedure #{}",
+                    id
+                );
+                return Err(tarantool::error::TarantoolError::last().into());
+            };
+
+            box_access_check_ddl_as_user(
+                &routine.name,
+                *id,
+                routine.owner,
+                TntSchemaObjectType::Function,
+                PrivType::Drop,
+                as_user,
+            )
+        }
     }
 }
 

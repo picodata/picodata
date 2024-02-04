@@ -2,8 +2,8 @@
 
 use crate::schema::{
     wait_for_ddl_commit, CreateProcParams, CreateTableParams, DistributionParam, Field,
-    PrivilegeDef, PrivilegeType, RoleDef, RoutineLanguage, RoutineParamDef, RoutineParams,
-    RoutineSecurity, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
+    PrivilegeDef, PrivilegeType, RoleDef, RoutineDef, RoutineLanguage, RoutineParamDef,
+    RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -32,7 +32,7 @@ use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
 use sbroad::frontend::Ast;
 use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
-use sbroad::ir::ddl::Ddl;
+use sbroad::ir::ddl::{Ddl, ParamDef};
 use sbroad::ir::operator::Relational;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
@@ -151,7 +151,6 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         // XXX: add Node::take_node method to simplify the following 2 lines
         let ir_node = ir_plan_mut.get_mut_node(top_id).map_err(Error::from)?;
         let ir_node = std::mem::replace(ir_node, IrNode::Parameter);
-
         let node = node::global()?;
         let result = reenterable_schema_change_request(node, ir_node)?;
         Tuple::new(&(result,)).map_err(Error::from)
@@ -680,6 +679,39 @@ fn check_privilege_already_granted(
         .is_some())
 }
 
+fn ensure_parameters_match(routine: &RoutineDef, params: &[ParamDef]) -> traft::Result<()> {
+    if routine.params.len() == params.len() {
+        let parameters_matched = routine
+            .params
+            .iter()
+            .zip(params)
+            .all(|(param_def, param)| param_def.r#type == FieldType::from(&param.data_type));
+
+        if parameters_matched {
+            return Ok(());
+        }
+    };
+
+    let actual_signature = format!(
+        "{}({})",
+        routine.name,
+        routine
+            .params
+            .iter()
+            .map(|def| def.r#type.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    Err(Error::Other(
+        format!(
+            "routine exists but with a different signature: {}",
+            actual_signature
+        )
+        .into(),
+    ))
+}
+
 fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: IrNode,
@@ -765,6 +797,10 @@ fn reenterable_schema_change_request(
             };
             params.validate()?;
             Params::CreateTable(params)
+        }
+        IrNode::Ddl(Ddl::DropProc { name, params, .. }) => {
+            // Nothing to check
+            Params::DropProcedure(name, params)
         }
         IrNode::Ddl(Ddl::DropTable { name, .. }) => {
             // Nothing to check
@@ -869,6 +905,26 @@ fn reenterable_schema_change_request(
                     body: params.body.clone(),
                     security: params.security.clone(),
                     owner: params.owner,
+                };
+                Op::DdlPrepare {
+                    schema_version,
+                    ddl,
+                }
+            }
+            Params::DropProcedure(name, params) => {
+                let Some(routine) = &storage.routines.by_name(name)? else {
+                    // Procedure doesn't exist yet, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                };
+
+                // drop by name if no parameters are specified
+                if !params.is_empty() {
+                    ensure_parameters_match(routine, params)?;
+                }
+
+                let ddl = OpDdl::DropProcedure {
+                    id: routine.id,
+                    initiator: current_user,
                 };
                 Op::DdlPrepare {
                     schema_version,
@@ -1148,6 +1204,7 @@ fn reenterable_schema_change_request(
         GrantPrivilege(GrantRevokeType, String),
         RevokePrivilege(GrantRevokeType, String),
         CreateProcedure(CreateProcParams),
+        DropProcedure(String, Vec<ParamDef>),
     }
 }
 

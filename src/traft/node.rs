@@ -20,6 +20,7 @@ use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, TableDef};
 use crate::sentinel;
 use crate::storage::acl;
+use crate::storage::ddl_meta_drop_routine;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::space_by_id;
 use crate::storage::SnapshotData;
@@ -1010,6 +1011,22 @@ impl NodeImpl {
                         );
                     }
 
+                    Ddl::DropProcedure { id, initiator } => {
+                        let routine = self.storage.routines.by_id(id);
+                        let routine = routine.ok().flatten().expect("routine must exist");
+                        ddl_meta_drop_routine(&self.storage, id).expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(initiator).expect("user must exist");
+
+                        let name = &routine.name;
+                        crate::audit!(
+                            message: "dropped procedure `{name}`",
+                            title: "drop_procedure",
+                            severity: Medium,
+                            name: &name,
+                            initiator: initiator_def.name,
+                        );
+                    }
                     _ => {
                         todo!()
                     }
@@ -1067,6 +1084,12 @@ impl NodeImpl {
                         self.storage
                             .routines
                             .delete(id)
+                            .expect("storage shouldn't fail");
+                    }
+                    Ddl::DropProcedure { id, .. } => {
+                        self.storage
+                            .routines
+                            .update_operable(id, true)
                             .expect("storage shouldn't fail");
                     }
 
@@ -1381,6 +1404,12 @@ impl NodeImpl {
                 self.storage
                     .routines
                     .put(&proc_def)
+                    .expect("storage shouldn't fail");
+            }
+            Ddl::DropProcedure { id, .. } => {
+                self.storage
+                    .routines
+                    .update_operable(id, false)
                     .expect("storage shouldn't fail");
             }
         }

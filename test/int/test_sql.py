@@ -2170,6 +2170,30 @@ def test_sql_privileges(cluster: Cluster):
             password=alice_pwd,
         )
 
+    ddl = i1.sudo_sql(
+        f"""
+        create procedure proc(int)
+        language SQL
+        as $$insert into "{table_name}" values(?, ?)$$
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Check that a non-owner user without drop privilege can't drop a function.
+    with pytest.raises(
+        ReturnError,
+        match=f"AccessDenied: Drop access to function 'PROC' is denied for user '{username}'",
+    ):
+        i1.sql(
+            """ drop procedure proc(int) """,
+            user=username,
+            password=alice_pwd,
+        )
+
+    # Check that the owner can drop a function.
+    ddl = i1.sudo_sql(""" drop procedure proc(int) """)
+    assert ddl["row_count"] == 1
+
 
 def test_user_changes_password(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
@@ -2190,7 +2214,7 @@ def test_user_changes_password(cluster: Cluster):
     i1.sql("SELECT * FROM (VALUES (1))", user=user_name, password=new_password)
 
 
-def test_create_procedure(cluster: Cluster):
+def test_create_drop_procedure(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
     data = i1.sql(
@@ -2275,6 +2299,78 @@ def test_create_procedure(cluster: Cluster):
     assert data["rows"] == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
     assert data["rows"] == []
+
+    # Check that PROC1 is actually dropped
+    i1.sql(""" drop procedure proc1 """)
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    assert data["rows"] == []
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    assert data["rows"] == []
+
+    # Check that dropping of the same procedure is idempotent.
+    i1.sql(""" drop procedure proc1 """)
+    i2.sql(""" drop procedure proc1 """)
+
+    # Create proc for dropping.
+    data = i2.sql(
+        """
+        create procedure proc1(int)
+        language SQL
+        as $$insert into t values(?, ?)$$
+        """
+    )
+    assert data["row_count"] == 1
+
+    data = i1.sql(
+        """
+        select "id" from "_pico_routine" where "name" = 'PROC1'
+        """,
+    )
+    assert data["rows"] != []
+    routine_id = data["rows"][0][0]
+
+    # Check that dropping raises an error in case of parameters mismatch.
+    with pytest.raises(
+        ReturnError,
+        match=r"routine exists but with a different signature: PROC1\(integer\)",
+    ):
+        data = i2.sql(""" drop procedure proc1(decimal) """)
+
+    # Check that dropping raises an error in case of parameters mismatch.
+    with pytest.raises(
+        ReturnError,
+        match=r"routine exists but with a different signature: PROC1\(integer\)",
+    ):
+        data = i2.sql(""" drop procedure proc1(integer, integer) """)
+
+    # Routine mustn't be dropped at the moment.
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    assert data["rows"] != []
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    assert data["rows"] != []
+
+    # Check drop with matching parameters.
+    i2.sql(""" drop procedure proc1(integer) """)
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    assert data["rows"] == []
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    assert data["rows"] == []
+
+    # Check that recreated routine has the same id with the recently dropped one.
+    i2.sql(
+        """
+        create procedure proc1(int)
+        language SQL
+        as $$insert into t values(?, ?)$$
+        """
+    )
+    data = i1.sql(
+        """
+        select "id" from "_pico_routine" where "name" = 'PROC1'
+        """,
+    )
+    assert data["rows"] != []
+    assert routine_id == data["rows"][0][0]
 
 
 def test_sql_user_password_checks(cluster: Cluster):

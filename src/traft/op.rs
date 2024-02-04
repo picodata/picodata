@@ -114,6 +114,12 @@ impl std::fmt::Display for Op {
                     "DdlPrepare({schema_version}, CreateProcedure({id}, {name}))"
                 )
             }
+            Self::DdlPrepare {
+                schema_version,
+                ddl: Ddl::DropProcedure { id, .. },
+            } => {
+                write!(f, "DdlPrepare({schema_version}, DropProcedure({id}))")
+            }
             Self::DdlCommit => write!(f, "DdlCommit"),
             Self::DdlAbort => write!(f, "DdlAbort"),
             Self::Acl(Acl::CreateUser { user_def }) => {
@@ -524,6 +530,10 @@ pub enum Ddl {
         body: String,
         security: RoutineSecurity,
         owner: UserId,
+    },
+    DropProcedure {
+        id: RoutineId,
+        initiator: UserId,
     },
 }
 

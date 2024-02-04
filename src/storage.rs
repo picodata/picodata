@@ -2316,6 +2316,15 @@ pub fn ddl_meta_drop_space(storage: &Clusterwide, space_id: SpaceId) -> traft::R
     Ok(())
 }
 
+/// Deletes the picodata internal metadata for a routine with id `routine_id`.
+pub fn ddl_meta_drop_routine(storage: &Clusterwide, routine_id: RoutineId) -> traft::Result<()> {
+    storage
+        .privileges
+        .delete_all_by_object(SchemaObjectType::Routine, routine_id.into())?;
+    storage.routines.delete(routine_id)?;
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ddl
 ////////////////////////////////////////////////////////////////////////////////
@@ -2341,6 +2350,10 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
         Ddl::CreateProcedure { id, .. } => {
             sys_func.delete(&[id])?;
             set_local_schema_version(version)?;
+        }
+
+        Ddl::DropProcedure { .. } => {
+            // Actual drop happens only on commit, so there's nothing to abort.
         }
 
         _ => {
@@ -2375,6 +2388,42 @@ pub fn ddl_create_function_on_master(func_id: u32, func_name: &str) -> traft::Re
     )
     .map_err(LuaError::from)?;
     Ok(())
+}
+
+/// Drop tarantool function created by ddl_create_function_on_master and it's privileges.
+/// Dropping a non-existent function is not an error.
+///
+// FIXME: this function returns 2 kinds of errors: retryable and non-retryable.
+// Currently this is impelemnted by returning one kind of errors as Err(e) and
+// the other as Ok(Some(e)). This was the simplest solution at the time this
+// function was implemented, as it requires the least amount of boilerplate and
+// error forwarding code. But this signature is not intuitive, so maybe there's
+// room for improvement.
+pub fn ddl_drop_function_on_master(func_id: u32) -> traft::Result<Option<TntError>> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let sys_func = Space::from(SystemSpace::Func);
+    let sys_priv = Space::from(SystemSpace::Priv);
+
+    let priv_idx: Index = sys_priv
+        .index("object")
+        .expect("index 'object' not found in space '_priv'");
+    let iter = priv_idx.select(IteratorType::Eq, &("function", func_id))?;
+    let mut priv_ids = Vec::new();
+    for tuple in iter {
+        let grantee: u32 = tuple
+            .field(1)?
+            .expect("decoding metadata should never fail");
+        priv_ids.push((grantee, "function", func_id));
+    }
+
+    let res = (|| -> tarantool::Result<()> {
+        for pk_tuple in priv_ids.iter().rev() {
+            sys_priv.delete(pk_tuple)?;
+        }
+        sys_func.delete(&[func_id])?;
+        Ok(())
+    })();
+    Ok(res.err())
 }
 
 /// Create tarantool space and any required indexes. Currently it creates a
