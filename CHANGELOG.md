@@ -4,10 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Calendar Versioning](https://calver.org/#scheme)
-with the `YY.0M.MICRO` scheme.
+with the `YY.MINOR.MICRO` scheme.
 
-<img src="https://img.shields.io/badge/calver-YY.0M.MICRO-22bfda.svg">
+<img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+<!--
 ## Unreleased
 
 ### Features
@@ -24,6 +25,54 @@ with the `YY.0M.MICRO` scheme.
 
 - Clusterwide SQL supports procedure creation.
 
+- Make Proc API the main picodata API. Lua API is considered deprecated.
+-->
+
+## [24.1.1] - 2024-02-09
+
+- Slightly change calendar versioning semantics, it's `YY.MINOR` now
+  instead of `YY.0M`.
+
+### CLI
+
+- New `picodata admin` command connects to an instance via unix socket
+  under the admin account, see [Tutorial — Connecting — Admin console].
+
+- New `picodata connect` implementation provides a console interface to
+  the distributed SQL, see [Tutorial — Connecting — Distributed SQL
+  console]
+
+- New option `picodata run --admin-sock` replaces `--console-sock` which
+  is removed. The default value is `<data_dir>/admin.sock`.
+
+- New option `picodata run --shredding` enables secure removing of data
+  files (snap, xlog).
+
+[Tutorial — Connecting — Admin console]:
+  https://docs.picodata.io/picodata/24.1/tutorial/connecting/#admin_console
+
+[Tutorial — Connecting — Distributed SQL console]:
+  https://docs.picodata.io/picodata/devel/tutorial/connecting/#user_console
+
+### SQL
+
+- Global tables now can be used in the following queries:
+
+  ```
+  SELECT
+  SELECT ... EXCEPT
+  SELECT ... UNION ALL
+  SELECT ... WHERE ... IN (SELECT ...)
+  SELECT ... JOIN
+  SELECT ... GROUP BY
+  ```
+
+### Fixes
+
+- Revoke excess privileges from `guest`
+- Fix panic after `ALTER USER "alice" WITH NOLOGIN`
+- Repair `picodata connect --auth-type=ldap`
+
 ### Compatibility
 
 - System table `_pico_replicaset` now has a different format: the field `master_id`
@@ -32,14 +81,16 @@ with the `YY.0M.MICRO` scheme.
 - All `.proc_*` stored procedures changed their return values. An extra top level
   array of 1 element is removed.
 
-### CLI
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots.
 
-- New command `picodata admin` to connect to picodata instance via unix socket under the admin account.
+## [23.12.1] - 2023-12-21
 
-- SQL by default in `picodata connect`. Lua language is deprecated in `picodata connect`.
+### Fixes
 
-- Rename `picodata run --console-sock` option to `--admin-sock` and
-  provide a default value `<data_dir>/admin.sock`.
+- Correct `picodata -V`
+- Web UI appeared to be broken in 23.12.0
+- And `picodata connect --unix` too
 
 ## [23.12.0] - 2023-12-08
 
@@ -120,8 +171,6 @@ with the `YY.0M.MICRO` scheme.
   console communication occurs in plain text and always operates under the admin account.
 
 - Block a user after 4 failed login attempts.
-
-- New option `picodata run --shredding` enables secure removing of data files (snap, xlog).
 
 ### Lua API
 
