@@ -4,6 +4,7 @@ import pytest
 import json
 
 
+@pytest.mark.webui
 def test_http_routes(instance: Instance):
     instance.eval(
         """
