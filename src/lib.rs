@@ -301,6 +301,21 @@ fn set_login_check(storage: Clusterwide) {
     let compute_auth_verdict = move |user_name: String, successful_authentication: bool| {
         use std::collections::hash_map::Entry;
 
+        // If the user is pico service (used for internal communication) we don't perform any additional checks.
+        // Map result to print audit message, tarantool handles auth automatically.
+        //
+        // The reason for not performaing checks is twofold:
+        // 1. We might not have the user or required privileges in _pico_* spaces yet.
+        // 2. We should never block pico service user or instances would loose ability to communicate
+        // with each other.
+        if user_name == PICO_SERVICE_USER_NAME {
+            if successful_authentication {
+                return Verdict::AuthOk;
+            } else {
+                return Verdict::AuthFail;
+            }
+        }
+
         // Switch to admin to access system spaces.
         let admin_guard = session::su(ADMIN_ID).expect("switching to admin should not fail");
         let max_login_attempts = storage
@@ -406,7 +421,9 @@ fn set_login_check(storage: Clusterwide) {
                     );
 
                     // Raises an error instead of returning it as a function result.
-                    // This is the behavior required by `on_auth` trigger to drop the connection.
+                    // This is the behavior required by `on_auth` trigger to drop the connection
+                    // even if auth was successful. If auth failed the connection will be dropped automatically.
+                    //
                     // All the drop implementations are called, no need to clean anything up.
                     tlua::error!(lua, "{}", err);
                 }
