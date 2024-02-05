@@ -1,16 +1,7 @@
-from conftest import Cluster, Instance
+from conftest import Instance
 from urllib.request import urlopen
 import pytest
 import json
-
-
-@pytest.fixture
-def instance(cluster: Cluster):
-    instance = cluster.add_instance(wait_online=False)
-    instance.env["PICODATA_HTTP_LISTEN"] = f"{cluster.base_host}:{cluster.base_port+80}"
-    instance.start()
-    instance.wait_online()
-    return instance
 
 
 def test_http_routes(instance: Instance):

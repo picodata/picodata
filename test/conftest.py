@@ -1567,10 +1567,19 @@ def cluster(
 
 
 @pytest.fixture
-def instance(cluster: Cluster) -> Generator[Instance, None, None]:
+def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
     """Returns a deployed instance forming a single-node cluster."""
-    cluster.deploy(instance_count=1)
-    yield cluster[0]
+    instance = cluster.add_instance(wait_online=False)
+
+    has_webui = bool(pytestconfig.getoption("--with-webui"))
+    if has_webui:
+        instance.env[
+            "PICODATA_HTTP_LISTEN"
+        ] = f"{cluster.base_host}:{cluster.base_port+80}"
+
+    instance.start()
+    instance.wait_online()
+    yield instance
 
 
 @pytest.fixture

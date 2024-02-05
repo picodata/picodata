@@ -412,6 +412,7 @@ def test_proc_raft_info(instance: Instance):
     )
 
 
+@pytest.mark.webui
 def test_proc_runtime_info(instance: Instance):
     info = instance.call(".proc_runtime_info")
 
@@ -419,6 +420,12 @@ def test_proc_runtime_info(instance: Instance):
     # This field is super volatile, don't want to be updating it every time we
     # add a bootstrap entry.
     info["raft"]["applied"] = 69
+
+    version_info = instance.call(".proc_version_info")
+
+    host_port = instance.env["PICODATA_HTTP_LISTEN"]
+    host, port = host_port.split(":")
+    port = int(port)  # type: ignore
 
     assert info == dict(
         raft=dict(
@@ -432,6 +439,11 @@ def test_proc_runtime_info(instance: Instance):
             main_loop_status="idle",
             governor_loop_status="idle",
         ),
+        http=dict(
+            host=host,
+            port=port,
+        ),
+        version_info=version_info,
     )
 
 
