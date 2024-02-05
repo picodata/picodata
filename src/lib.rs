@@ -318,10 +318,6 @@ fn set_login_check(storage: Clusterwide) {
 
         // Switch to admin to access system spaces.
         let admin_guard = session::su(ADMIN_ID).expect("switching to admin should not fail");
-        let max_login_attempts = storage
-            .properties
-            .max_login_attempts()
-            .expect("accessing storage should not fail");
         let Some(user) = storage
             .users
             .by_name(&user_name)
@@ -332,6 +328,10 @@ fn set_login_check(storage: Clusterwide) {
             debug_assert!(!successful_authentication);
             return Verdict::UnknownUser;
         };
+        let max_login_attempts = storage
+            .properties
+            .max_login_attempts()
+            .expect("accessing storage should not fail");
         if storage
             .privileges
             .get(user.id, "universe", 0, "login")
