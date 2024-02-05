@@ -209,16 +209,31 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     let last_persisted = raft::Storage::last_index(raft_storage)?;
     assert!(last_persisted <= last);
 
-    // Check if ranges in predicate contain prohibited spaces.
-    for range in &req.predicate.ranges {
-        let Ok(table) = ClusterwideTable::try_from(range.table) else {
-            continue;
-        };
-        if PROHIBITED_SPACES.contains(&table) {
-            return Err(Error::SpaceNotAllowed {
-                space: table.name().into(),
+    // Check if this dml operation does not modify PROHIBITED_SPACES
+    {
+        let check_dml_prohibited = |dml: &Dml| -> traft::Result<()> {
+            let space = dml.space();
+            let Ok(table) = &ClusterwideTable::try_from(space) else {
+                return Ok(());
+            };
+            if PROHIBITED_SPACES.contains(table) {
+                return Err(Error::SpaceNotAllowed {
+                    space: table.name().into(),
+                }
+                .into());
             }
-            .into());
+            Ok(())
+        };
+        match &req.op {
+            Op::Dml(dml) => {
+                check_dml_prohibited(dml)?;
+            }
+            Op::BatchDml { ops: dmls } => {
+                for dml in dmls {
+                    check_dml_prohibited(dml)?;
+                }
+            }
+            _ => {}
         }
     }
 
