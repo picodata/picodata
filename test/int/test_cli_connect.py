@@ -12,13 +12,8 @@ from dataclasses import dataclass
 @pytest.fixture
 def i1(cluster: Cluster) -> Instance:
     [i1] = cluster.deploy(instance_count=1)
-    i1.eval(
-        """
-        box.session.su("admin")
-        box.schema.user.create('testuser', { password = 'testpass' })
-        box.schema.user.grant('testuser', 'read,execute', 'universe')
-        """
-    )
+    acl = i1.sudo_sql("create user \"testuser\" with password 'testpass'")
+    assert acl["row_count"] == 1
     return i1
 
 
