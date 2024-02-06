@@ -42,6 +42,7 @@ pub mod discovery;
 pub mod error_injection;
 pub mod failure_domain;
 pub mod governor;
+pub mod http_server;
 pub mod info;
 pub mod instance;
 pub mod ipc;
@@ -178,7 +179,7 @@ fn preload_http() {
 fn start_http_server(Address { host, port, .. }: &Address) {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
-    lua.exec_with(include_str!("http_server.lua"), (host, port))
+    lua.exec_with(include_str!("http_server/http_server.lua"), (host, port))
         .expect("failed to start http server")
 }
 
