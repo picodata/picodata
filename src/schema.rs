@@ -727,15 +727,19 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             auth: AuthDef::new(AuthMethod::ChapSha1, "".into()),
             owner: initiator,
         };
-        let priv_defs = vec![PrivilegeDef {
-            grantee_id: user_def.id,
-            privilege: PrivilegeType::Login,
-            object_type: SchemaObjectType::Universe,
-            object_id: UNIVERSE_ID,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            grantor_id: initiator,
-        }];
+        let mut priv_defs = Vec::with_capacity(PrivilegeType::VARIANTS.len());
+        // Grant all privileges on "universe" to "admin".
+        for &privilege in PrivilegeType::VARIANTS {
+            priv_defs.push(PrivilegeDef {
+                grantee_id: user_def.id,
+                privilege,
+                object_type: SchemaObjectType::Universe,
+                object_id: UNIVERSE_ID,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                grantor_id: initiator,
+            });
+        }
         result.push((user_def, priv_defs));
     }
 
