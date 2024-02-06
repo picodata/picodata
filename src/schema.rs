@@ -1,10 +1,10 @@
-use once_cell::sync::OnceCell;
 use sbroad::ir::ddl::Language;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::time::Duration;
 
+use tarantool::auth::AuthData;
 use tarantool::auth::AuthDef;
 use tarantool::auth::AuthMethod;
 use tarantool::error::TarantoolError;
@@ -634,40 +634,6 @@ impl PrivilegeDef {
         }
     }
 
-    pub fn get_default_privileges() -> &'static Vec<PrivilegeDef> {
-        static DEFAULT_PRIVILEGES: OnceCell<Vec<PrivilegeDef>> = OnceCell::new();
-        DEFAULT_PRIVILEGES.get_or_init(|| {
-            let mut v = Vec::new();
-
-            // SQL: ALTER USER 'guest' WITH LOGIN
-            // SQL: ALTER USER 'admin' WITH LOGIN
-            for user in [GUEST_ID, ADMIN_ID] {
-                v.push(PrivilegeDef {
-                    grantor_id: ADMIN_ID,
-                    grantee_id: user,
-                    object_type: SchemaObjectType::Universe,
-                    object_id: UNIVERSE_ID,
-                    privilege: PrivilegeType::Login,
-                    // This means the local schema is already up to date and main loop doesn't need to do anything
-                    schema_version: INITIAL_SCHEMA_VERSION,
-                });
-            }
-
-            // SQL: GRANT 'public' TO 'guest'
-            v.push(PrivilegeDef {
-                grantor_id: ADMIN_ID,
-                grantee_id: GUEST_ID,
-                object_type: SchemaObjectType::Role,
-                object_id: PUBLIC_ID as _,
-                privilege: PrivilegeType::Execute,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            });
-
-            v
-        })
-    }
-
     /// Retrieves object_name from system spaces based on `object_id` and `object_type`.
     /// Returns `Ok(None)` in the case when the privilege has no target object (e.g. `object_id == -1`)
     /// or when target object is universe.
@@ -696,6 +662,163 @@ impl PrivilegeDef {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// system_user_definitions
+////////////////////////////////////////////////////////////////////////////////
+
+/// Definitions of builtin users & their respective privileges.
+/// These should be inserted into "_pico_user" & "_pico_privilege" at cluster bootstrap.
+pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
+    let mut result = vec![];
+
+    let initiator = ADMIN_ID;
+
+    //
+    // User "guest"
+    //
+    // equivalent SQL expression: CREATE USER 'guest' WITH PASSWORD '' USING chap-sha1
+    {
+        let user_def = UserDef {
+            id: GUEST_ID,
+            name: "guest".into(),
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            auth: AuthDef::new(
+                AuthMethod::ChapSha1,
+                AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
+            ),
+            owner: initiator,
+        };
+        let priv_defs = vec![
+            PrivilegeDef {
+                grantee_id: user_def.id,
+                privilege: PrivilegeType::Login,
+                object_type: SchemaObjectType::Universe,
+                object_id: UNIVERSE_ID,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                grantor_id: initiator,
+            },
+            PrivilegeDef {
+                grantee_id: user_def.id,
+                privilege: PrivilegeType::Execute,
+                object_type: SchemaObjectType::Role,
+                object_id: PUBLIC_ID as _,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                grantor_id: initiator,
+            },
+        ];
+        result.push((user_def, priv_defs));
+    }
+
+    //
+    // User "admin"
+    //
+    {
+        let user_def = UserDef {
+            id: ADMIN_ID,
+            name: "admin".into(),
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            // this is a bit different from vanilla tnt
+            // in vanilla tnt auth def is empty. Here for simplicity given available module api
+            // we use ChapSha with invalid password
+            // (its impossible to get empty string as output of sha1)
+            auth: AuthDef::new(AuthMethod::ChapSha1, "".into()),
+            owner: initiator,
+        };
+        let priv_defs = vec![PrivilegeDef {
+            grantee_id: user_def.id,
+            privilege: PrivilegeType::Login,
+            object_type: SchemaObjectType::Universe,
+            object_id: UNIVERSE_ID,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            grantor_id: initiator,
+        }];
+        result.push((user_def, priv_defs));
+    }
+
+    {
+        let user_def = UserDef {
+            id: PICO_SERVICE_ID,
+            name: PICO_SERVICE_USER_NAME.into(),
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            auth: AuthDef::new(
+                AuthMethod::ChapSha1,
+                tarantool::auth::AuthData::new(&AuthMethod::ChapSha1, PICO_SERVICE_USER_NAME, "")
+                    .into_string(),
+            ),
+            owner: initiator,
+        };
+        let mut priv_defs = Vec::with_capacity(PrivilegeType::VARIANTS.len() + 1);
+        // Grant all privileges on "universe" to "pico_service".
+        for &privilege in PrivilegeType::VARIANTS {
+            priv_defs.push(PrivilegeDef {
+                grantee_id: user_def.id,
+                privilege,
+                object_type: SchemaObjectType::Universe,
+                object_id: UNIVERSE_ID,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                grantor_id: initiator,
+            });
+        }
+        // Role "replication" is needed explicitly
+        priv_defs.push(PrivilegeDef {
+            grantee_id: user_def.id,
+            privilege: PrivilegeType::Execute,
+            object_type: SchemaObjectType::Role,
+            object_id: ROLE_REPLICATION_ID,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            grantor_id: initiator,
+        });
+        result.push((user_def, priv_defs));
+    }
+
+    result
+}
+
+/// Definitions of builtin roles & their respective privileges.
+/// These should be inserted into "_pico_role" & "_pico_privilege" at cluster bootstrap.
+// TODO: maybe this "_pico_role" should be merged with "_pico_user"
+pub fn system_role_definitions() -> Vec<(RoleDef, Vec<PrivilegeDef>)> {
+    let mut result = vec![];
+
+    let public_def = RoleDef {
+        id: PUBLIC_ID,
+        name: "public".into(),
+        // This means the local schema is already up to date and main loop doesn't need to do anything
+        schema_version: INITIAL_SCHEMA_VERSION,
+        owner: ADMIN_ID,
+    };
+    let public_privs = vec![
+        // TODO:
+        // - we grant "execute" access to a bunch of stored procs
+        // - vanilla tarantool grants "read" access to a bunch of system spaces
+    ];
+    result.push((public_def, public_privs));
+
+    let super_def = RoleDef {
+        id: SUPER_ID,
+        name: "super".into(),
+        // This means the local schema is already up to date and main loop doesn't need to do anything
+        schema_version: INITIAL_SCHEMA_VERSION,
+        owner: ADMIN_ID,
+    };
+    let super_privs = vec![
+        // Special role, it's privileges are implicit
+    ];
+    result.push((super_def, super_privs));
+
+    // There's also a "replication" builtin role, but we don't care about it?
+
+    result
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // init_pico_service
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -705,56 +828,6 @@ impl PrivilegeDef {
 /// Use this constant instead of literal "pico_service" so that it's easier to
 /// find all the places where we refer to "pico_service".
 pub const PICO_SERVICE_USER_NAME: &'static str = "pico_service";
-
-#[inline]
-pub fn pico_service_user_def() -> &'static UserDef {
-    static PICO_SERVICE_USER_DEF: OnceCell<UserDef> = OnceCell::new();
-    PICO_SERVICE_USER_DEF.get_or_init(|| UserDef {
-        id: PICO_SERVICE_ID,
-        name: PICO_SERVICE_USER_NAME.into(),
-        // This means the local schema is already up to date and main loop doesn't need to do anything
-        schema_version: INITIAL_SCHEMA_VERSION,
-        auth: AuthDef::new(
-            AuthMethod::ChapSha1,
-            tarantool::auth::AuthData::new(&AuthMethod::ChapSha1, PICO_SERVICE_USER_NAME, "")
-                .into_string(),
-        ),
-        owner: ADMIN_ID,
-    })
-}
-
-#[inline]
-pub fn pico_service_privilege_defs() -> &'static [PrivilegeDef] {
-    static PICO_SERVICE_PRIVILEGE_DEFS: OnceCell<Vec<PrivilegeDef>> = OnceCell::new();
-    PICO_SERVICE_PRIVILEGE_DEFS.get_or_init(|| {
-        let mut res = Vec::with_capacity(PrivilegeType::VARIANTS.len());
-
-        for &privilege in PrivilegeType::VARIANTS {
-            res.push(PrivilegeDef {
-                privilege,
-                object_type: SchemaObjectType::Universe,
-                object_id: UNIVERSE_ID,
-                grantee_id: PICO_SERVICE_ID,
-                grantor_id: ADMIN_ID,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-            });
-        }
-
-        // TODO: explain
-        res.push(PrivilegeDef {
-            privilege: PrivilegeType::Execute,
-            object_type: SchemaObjectType::Role,
-            object_id: ROLE_REPLICATION_ID,
-            grantee_id: PICO_SERVICE_ID,
-            grantor_id: ADMIN_ID,
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-        });
-
-        res
-    })
-}
 
 pub fn init_user_pico_service() {
     let sys_user = SystemSpace::User.as_space();
@@ -768,7 +841,13 @@ pub fn init_user_pico_service() {
         return;
     }
 
-    let user_def = pico_service_user_def();
+    let found = system_user_definitions()
+        .into_iter()
+        .find(|(user_def, _)| user_def.id == PICO_SERVICE_ID);
+    let Some((user_def, _)) = &found else {
+        panic!("Couldn't find definition for '{PICO_SERVICE_USER_NAME}' system user");
+    };
+
     let res = storage::acl::on_master_create_user(user_def, false);
     if let Err(e) = res {
         panic!("failed creating user '{PICO_SERVICE_USER_NAME}': {e}");
