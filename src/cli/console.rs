@@ -48,8 +48,8 @@ pub struct Console<H: Helper> {
 }
 
 impl<T: Helper> Console<T> {
-    const HISTORY_FILE_NAME: &str = ".picodata_history";
-    const PROMPT: &str = "picodata> ";
+    const HISTORY_FILE_NAME: &'static str = ".picodata_history";
+    const PROMPT: &'static str = "picodata> ";
 
     // Ideally we should have an enum for all commands. For now we have only two options, usual line
     // and only one special command. To not overengineer things at this point just handle this as ifs.
