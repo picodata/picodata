@@ -287,16 +287,35 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_role}, [2,"public",0,1])|
 |  0  | 1  |Insert({_pico_role}, [31,"super",0,1])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_table},0,"id",true,[["id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_table},1,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_index},"_pico_index",["global"],[["table_id","unsigned",false],["id","unsigned",false],["name","string",false],["local","boolean",false],["parts","array",false],["schema_version","unsigned",false],["operable","boolean",false],["unique","boolean",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_index},0,"id",true,[["table_id",null,null,null,null],["id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_index},1,"name",true,[["table_id",null,null,null,null],["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",["global"],[["raft_id","unsigned",false],["address","string",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_peer_address},0,"raft_id",true,[["raft_id",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_instance},"_pico_instance",["global"],[["instance_id","string",false],["instance_uuid","string",false],["raft_id","unsigned",false],["replicaset_id","string",false],["replicaset_uuid","string",false],["current_grade","array",false],["target_grade","array",false],["failure_domain","map",false],["tier","string",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_instance},0,"instance_id",true,[["instance_id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_instance},1,"raft_id",true,[["raft_id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_instance},2,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,false])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_property},"_pico_property",["global"],[["key","string",false],["value","any",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_property},0,"key",true,[["key",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_replicaset},"_pico_replicaset",["global"],[["replicaset_id","string",false],["replicaset_uuid","string",false],["current_master_id","string",false],["target_master_id","string",false],["tier","string",false],["weight","number",false],["weight_origin","string",false],["state","string",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_replicaset},0,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_user},"_pico_user",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["auth","array",false],["owner","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_user},0,"id",true,[["id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_user},1,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",["global"],[["privilege","string",false],["object_type","string",false],["object_id","integer",false],["grantee_id","unsigned",false],["grantor_id","unsigned",false],["schema_version","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_privilege},0,"primary",true,[["grantee_id",null,null,null,null],["object_type",null,null,null,null],["object_id",null,null,null,null],["privilege",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_privilege},1,"object",true,[["object_type",null,null,null,null],["object_id",null,null,null,null]],0,true,false])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_role},"_pico_role",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_role},0,"id",true,[["id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_role},1,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_tier},"_pico_tier",["global"],[["name","string",false],["replication_factor","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_tier},0,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_routine},0,"id",true,[["id",null,null,null,null]],0,true,true])|
+|  0  | 1  |Insert({_pico_index}, [{_pico_routine},1,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
