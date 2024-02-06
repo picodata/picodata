@@ -261,6 +261,10 @@ picodata> pico.cas({
 ```
 -->
 
+Cм. также:
+
+- [Пользовательская консоль](../tutorial/connecting.md#user_console)
+
 ## Команда `admin` {: #admin_command }
 
 Подключается к консоли администратора.
@@ -281,6 +285,11 @@ picodata admin <Аргументы>
 ```console
 picodata admin i1/admin.sock
 ```
+
+Cм. также:
+
+- [Консоль администратора](../tutorial/connecting.md#admin_console)
+
 
 ## Команда `tarantool` {: #tarantool_command }
 
