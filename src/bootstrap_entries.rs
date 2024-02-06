@@ -4,7 +4,6 @@ use protobuf::Message;
 use crate::cli::args;
 use crate::instance::Instance;
 use crate::schema;
-use crate::schema::TableDef;
 use crate::schema::ADMIN_ID;
 use crate::sql::pgproto;
 use crate::storage;
@@ -157,13 +156,22 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         }
     }
 
-    // Builtin global table definitions
-    for table_def in TableDef::system_tables() {
+    //
+    // Populate "_pico_table" & "_pico_index" with defintions of builtins
+    //
+    for (table_def, index_defs) in schema::system_table_definitions() {
         init_entries_push_op(op::Dml::insert(
             ClusterwideTable::Table,
             &table_def,
             ADMIN_ID,
         ));
+        for index_def in index_defs {
+            init_entries_push_op(op::Dml::insert(
+                ClusterwideTable::Index,
+                &index_def,
+                ADMIN_ID,
+            ));
+        }
     }
 
     //
