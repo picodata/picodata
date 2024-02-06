@@ -6,7 +6,7 @@
   },
   {
     "version": "23.12",
-    "title": "23.12 (latest)",
-    "aliases": ["latest"]
+    "title": "23.12 (stable)",
+    "aliases": ["stable"]
   }
 ]
