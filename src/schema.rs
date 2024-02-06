@@ -38,6 +38,11 @@ use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, node, RaftIndex};
 use crate::util::effective_user_id;
 
+/// The initial local schema version. Immediately after the cluster is bootted
+/// it has this schema version.
+///
+/// If a schema definition is marked with this version, it means the schema
+/// defintion is builtin and is applied by default on all instances.
 pub const INITIAL_SCHEMA_VERSION: u64 = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,19 +102,7 @@ impl TableDef {
     }
 
     pub fn to_space_metadata(&self) -> traft::Result<SpaceMetadata> {
-        // FIXME: this is copy pasted from tarantool::schema::space::create_space
-        let format = self
-            .format
-            .iter()
-            .map(|f| {
-                IntoIterator::into_iter([
-                    ("name".into(), Value::Str(f.name.as_str().into())),
-                    ("type".into(), Value::Str(f.field_type.as_str().into())),
-                    ("is_nullable".into(), Value::Bool(f.is_nullable)),
-                ])
-                .collect()
-            })
-            .collect();
+        let format = fields_to_format(&self.format);
 
         let mut flags = BTreeMap::new();
         if matches!(self.distribution, Distribution::Global) {
@@ -128,24 +121,48 @@ impl TableDef {
 
         Ok(space_def)
     }
+}
 
-    /// Initial entries that should be put into system table [Tables](crate::storage::Tables) at bootstrap.
-    pub fn system_tables() -> Vec<Self> {
-        ClusterwideTable::all_tables()
-            .iter()
-            .map(|t| Self {
-                id: t.id(),
-                name: t.name().into(),
-                distribution: Distribution::Global,
-                format: t.format(),
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-                operable: true,
-                engine: SpaceEngineType::Memtx,
-                owner: ADMIN_ID,
-            })
-            .collect()
+/// Definitions of builtin tables & their respective indexes.
+/// These should be inserted into "_pico_table" & "_pico_index" at cluster bootstrap.
+pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
+    let mut result = Vec::with_capacity(ClusterwideTable::all_tables().len());
+    for sys_table in ClusterwideTable::all_tables() {
+        let table_def = TableDef {
+            id: sys_table.id(),
+            name: sys_table.name().into(),
+            distribution: Distribution::Global,
+            format: sys_table.format(),
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            engine: SpaceEngineType::Memtx,
+            owner: ADMIN_ID,
+        };
+
+        let index_defs = sys_table.index_definitions();
+        result.push((table_def, index_defs));
     }
+
+    // TODO: there's also "_raft_log" & "_raft_state" spaces, but we don't treat
+    // them the same as others for some reason?
+
+    result
+}
+
+// FIXME: move this to tarantool-module
+pub fn fields_to_format(
+    fields: &[tarantool::space::Field],
+) -> Vec<BTreeMap<Cow<'static, str>, Value<'_>>> {
+    let mut result = Vec::with_capacity(fields.len());
+    for field in fields {
+        let mut field_map = BTreeMap::new();
+        field_map.insert("name".into(), Value::Str(field.name.as_str().into()));
+        field_map.insert("type".into(), Value::Str(field.field_type.as_str().into()));
+        field_map.insert("is_nullable".into(), Value::Bool(field.is_nullable));
+        result.push(field_map);
+    }
+    result
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -204,6 +221,7 @@ pub struct IndexDef {
     pub table_id: SpaceId,
     pub id: IndexId,
     pub name: String,
+    // TODO: document this field's meaning, for now it seems it's always `true`
     pub local: bool,
     pub parts: Vec<Part>,
     pub schema_version: u64,

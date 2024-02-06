@@ -1,6 +1,7 @@
 use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
+use tarantool::index::Part;
 use tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
 use tarantool::msgpack::{ArrayWriter, ValueIter};
 use tarantool::read_view::ReadView;
@@ -92,6 +93,12 @@ macro_rules! define_clusterwide_tables {
             pub fn format(&self) -> Vec<tarantool::space::Field> {
                 match self {
                     $( Self::$cw_space_var => $space_struct::format(), )+
+                }
+            }
+
+            pub fn index_definitions(&self) -> Vec<$crate::schema::IndexDef> {
+                match self {
+                    $( Self::$cw_space_var => $space_struct::index_definitions(), )+
                 }
             }
         }
@@ -404,8 +411,11 @@ impl Clusterwide {
         let storage = Self::initialize().unwrap();
 
         // Add system tables
-        for table in TableDef::system_tables() {
+        for (table, index_defs) in crate::schema::system_table_definitions() {
             storage.tables.put(&table).unwrap();
+            for index in index_defs {
+                storage.indexes.put(&index).unwrap();
+            }
         }
 
         storage
@@ -1265,6 +1275,22 @@ impl Properties {
         ]
     }
 
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "key".into(),
+            parts: vec![Part::from("key")],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
+    }
+
     /// Callback which is called when data in _pico_property is updated.
     pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
         match (old, new) {
@@ -1453,6 +1479,22 @@ impl Replicasets {
         Replicaset::format()
     }
 
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "replicaset_id".into(),
+            parts: vec![Part::from("replicaset_id")],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
+    }
+
     #[allow(unused)]
     #[inline]
     pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {
@@ -1500,6 +1542,22 @@ impl PeerAddresses {
             Field::from(("raft_id", FieldType::Unsigned)),
             Field::from(("address", FieldType::String)),
         ]
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "raft_id".into(),
+            parts: vec![Part::from("raft_id")],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
     }
 
     #[inline]
@@ -1592,6 +1650,46 @@ impl Instances {
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         Instance::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "instance_id".into(),
+                parts: vec![Part::from("instance_id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "raft_id".into(),
+                parts: vec![Part::from("raft_id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 2,
+                name: "replicaset_id".into(),
+                parts: vec![Part::from("replicaset_id")],
+                unique: false,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
     }
 
     #[inline]
@@ -1924,6 +2022,35 @@ impl Tables {
     }
 
     #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "id".into(),
+                parts: vec![Part::from("id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "name".into(),
+                parts: vec![Part::from("name")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
+    }
+
+    #[inline]
     pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
         let tuple = self.space.get(&[id])?;
         tuple.as_ref().map(Tuple::decode).transpose()
@@ -2009,6 +2136,35 @@ impl Indexes {
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         IndexDef::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "id".into(),
+                parts: vec![Part::from("table_id"), Part::from("id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "name".into(),
+                parts: vec![Part::from("table_id"), Part::from("name")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
     }
 
     #[inline]
@@ -2336,6 +2492,35 @@ impl Users {
     }
 
     #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "id".into(),
+                parts: vec![Part::from("id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "name".into(),
+                parts: vec![Part::from("name")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
+    }
+
+    #[inline]
     pub fn by_id(&self, user_id: UserId) -> tarantool::Result<Option<UserDef>> {
         let tuple = self.space.get(&[user_id])?;
         tuple.as_ref().map(Tuple::decode).transpose()
@@ -2431,6 +2616,35 @@ impl Roles {
     }
 
     #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "id".into(),
+                parts: vec![Part::from("id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "name".into(),
+                parts: vec![Part::from("name")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
+    }
+
+    #[inline]
     pub fn by_id(&self, role_id: UserId) -> tarantool::Result<Option<RoleDef>> {
         let tuple = self.space.get(&[role_id])?;
         tuple.as_ref().map(Tuple::decode).transpose()
@@ -2516,6 +2730,40 @@ impl Privileges {
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         PrivilegeDef::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "primary".into(),
+                parts: vec![
+                    Part::from("grantee_id"),
+                    Part::from("object_type"),
+                    Part::from("object_id"),
+                    Part::from("privilege"),
+                ],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "object".into(),
+                parts: vec![Part::from("object_type"), Part::from("object_id")],
+                unique: false,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
     }
 
     #[inline(always)]
@@ -2672,6 +2920,22 @@ impl Tiers {
         Tier::format()
     }
 
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "name".into(),
+            parts: vec![Part::from("name")],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
+    }
+
     #[inline(always)]
     pub fn by_name(&self, tier_name: &str) -> tarantool::Result<Option<Tier>> {
         let tuple = self.index_name.get(&[tier_name])?;
@@ -2730,6 +2994,35 @@ impl Routines {
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         RoutineDef::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "id".into(),
+                parts: vec![Part::from("id")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "name".into(),
+                parts: vec![Part::from("name")],
+                unique: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+                operable: true,
+                local: true,
+            },
+        ]
     }
 
     #[inline(always)]
@@ -3511,6 +3804,9 @@ mod tests {
     use crate::tier::DEFAULT_TIER;
 
     use super::*;
+    use crate::schema::fields_to_format;
+    use tarantool::index::Metadata as IndexMetadata;
+    use tarantool::space::Metadata as SpaceMetadata;
     use tarantool::transaction::transaction;
 
     #[rustfmt::skip]
@@ -3802,5 +4098,142 @@ mod tests {
         let mut sorted = all_tables.clone();
         sorted.sort_unstable();
         assert_eq!(all_tables, sorted);
+    }
+
+    #[track_caller]
+    fn get_field_index(part: &Part, space_fields: &[tarantool::space::Field]) -> usize {
+        use tarantool::util::NumOrStr;
+
+        match &part.field {
+            NumOrStr::Num(index) => {
+                return *index as _;
+            }
+            NumOrStr::Str(name) => {
+                let found = space_fields
+                    .iter()
+                    .zip(0..)
+                    .find(|(field, _)| &field.name == name);
+
+                let Some((_, index)) = found else {
+                    panic!(
+                        "index part `{name}` doesn't correspond to any field in {space_fields:?}"
+                    );
+                };
+
+                return index;
+            }
+        }
+    }
+
+    #[track_caller]
+    fn check_index_parts_match(
+        picodata_index_parts: &[Part],
+        tarantool_index_parts: &[Part],
+        space_fields: &[tarantool::space::Field],
+    ) {
+        assert_eq!(picodata_index_parts.len(), tarantool_index_parts.len());
+
+        for (pd_part, tt_part) in picodata_index_parts.iter().zip(tarantool_index_parts) {
+            if let (Some(pd_type), Some(tt_type)) = (pd_part.r#type, tt_part.r#type) {
+                assert_eq!(pd_type, tt_type);
+            } else {
+                // Ignore
+            }
+
+            assert_eq!(pd_part.collation, tt_part.collation);
+            assert_eq!(pd_part.is_nullable, tt_part.is_nullable);
+            assert_eq!(pd_part.path, tt_part.path);
+
+            let pd_field_index = get_field_index(pd_part, space_fields);
+            let tt_field_index = get_field_index(tt_part, space_fields);
+            assert_eq!(pd_field_index, tt_field_index);
+        }
+    }
+
+    #[track_caller]
+    fn get_number_of_indexes_defined_for_space(space_id: SpaceId) -> usize {
+        let sys_index = SystemSpace::Index.as_space();
+        let iter = sys_index.select(IteratorType::Eq, &[space_id]).unwrap();
+        return iter.count();
+    }
+
+    #[::tarantool::test]
+    fn builtin_clusterwide_schema() {
+        // Make sure storage is initialized
+        let storage = Clusterwide::for_tests();
+
+        let sys_space = SystemSpace::Space.as_space();
+        let sys_index = SystemSpace::Index.as_space();
+
+        for sys_table in ClusterwideTable::all_tables() {
+            //
+            // box.space._space
+            //
+
+            // Check space metadata is in tarantool's "_space"
+            let tuple = sys_space.get(&[sys_table.id()]).unwrap().unwrap();
+            let tt_space_def: SpaceMetadata = tuple.decode().unwrap();
+
+            // This check is a bit redundant, but better safe than sorry
+            assert_eq!(tt_space_def.id, sys_table.id());
+            assert_eq!(tt_space_def.name, sys_table.name());
+
+            // Check "_space" agrees with `ClusterwideTable.format`
+            assert_eq!(tt_space_def.format, fields_to_format(&sys_table.format()));
+
+            //
+            // box.space._pico_table
+            //
+
+            // Check table definition is in picodata's "_pico_table"
+            let pico_table_def = storage.tables.get(sys_table.id()).unwrap().unwrap();
+
+            // Check picodata & tarantool agree on the definition
+            assert_eq!(pico_table_def.to_space_metadata().unwrap(), tt_space_def);
+
+            let index_definitions = sys_table.index_definitions();
+            assert_eq!(
+                index_definitions.len(),
+                get_number_of_indexes_defined_for_space(sys_table.id()),
+                "Mismatched number of indexes defined for table '{}'",
+                sys_table.name(),
+            );
+            for mut index_def in index_definitions {
+                assert_eq!(index_def.table_id, sys_table.id());
+
+                //
+                // box.space._pico_index
+                //
+
+                // Check index definition is in picodata's "_pico_index"
+                #[rustfmt::skip]
+                let pico_index_def = storage.indexes.get(index_def.table_id, index_def.id).unwrap().unwrap();
+
+                // Check "_pico_index" agrees with `ClusterwideTable.index_definitions`
+                assert_eq!(pico_index_def, index_def);
+
+                //
+                // box.space._index
+                //
+
+                // Check index metadata is in tarantool's "_index"
+                #[rustfmt::skip]
+                let tuple = sys_index.get(&[index_def.table_id, index_def.id]).unwrap().unwrap();
+                let mut tt_index_def: IndexMetadata = tuple.decode().unwrap();
+
+                // Check parts separately from other fields
+                let parts_as_known_by_picodata = std::mem::take(&mut index_def.parts);
+                let parts_as_known_by_tarantool = std::mem::take(&mut tt_index_def.parts);
+
+                check_index_parts_match(
+                    &parts_as_known_by_picodata,
+                    &parts_as_known_by_tarantool,
+                    &sys_table.format(),
+                );
+
+                // Check "_index" agrees with `ClusterwideTable.index_definitions`
+                assert_eq!(index_def.to_index_metadata(), tt_index_def);
+            }
+        }
     }
 }
