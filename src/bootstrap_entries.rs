@@ -1,18 +1,11 @@
 use ::raft::prelude as raft;
 use protobuf::Message;
-use tarantool::auth::AuthData;
-use tarantool::auth::AuthDef;
-use tarantool::auth::AuthMethod;
 
 use crate::cli::args;
 use crate::instance::Instance;
 use crate::schema;
-use crate::schema::PrivilegeDef;
-use crate::schema::RoleDef;
 use crate::schema::TableDef;
-use crate::schema::UserDef;
-use crate::schema::INITIAL_SCHEMA_VERSION;
-use crate::schema::{ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID};
+use crate::schema::ADMIN_ID;
 use crate::sql::pgproto;
 use crate::storage;
 use crate::storage::ClusterwideTable;
@@ -39,7 +32,9 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         init_entries.push(e.into());
     };
 
-    // insert ourselves into global _pico_address and _pico_instance spaces
+    //
+    // Populate "_pico_address" and "_pico_instance" with info about the first instance
+    //
     init_entries_push_op(op::Dml::insert(
         ClusterwideTable::Address,
         &traft::PeerAddress {
@@ -54,12 +49,16 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         ADMIN_ID,
     ));
 
+    //
+    // Populate "_pico_tier" with initial tiers
+    //
     for tier in tiers {
         init_entries_push_op(op::Dml::insert(ClusterwideTable::Tier, &tier, ADMIN_ID));
     }
 
-    // populate initial values for cluster-wide properties
-    // stored in _pico_property
+    //
+    // Populate "_pico_property" with initial values for cluster-wide properties
+    //
     init_entries_push_op(op::Dml::insert(
         ClusterwideTable::Property,
         &(PropertyName::GlobalSchemaVersion, 0),
@@ -125,95 +124,37 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         )
     );
 
-    // Populate system roles and their privileges to match tarantool ones
+    //
+    // Populate "_pico_user" and "_pico_priv" to match tarantool ones
+    //
     // Note: op::Dml is used instead of op::Acl because with Acl
     // replicas will attempt to apply these records to coresponding
     // tarantool spaces which is not needed
-    // equivalent SQL expression: CREATE USER 'guest' WITH PASSWORD '' USING chap-sha1
-    init_entries_push_op(op::Dml::insert(
-        ClusterwideTable::User,
-        &UserDef {
-            id: GUEST_ID,
-            name: String::from("guest"),
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            auth: AuthDef::new(
-                AuthMethod::ChapSha1,
-                AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
-            ),
-            owner: ADMIN_ID,
-        },
-        ADMIN_ID,
-    ));
+    for (user_def, privilege_defs) in &schema::system_user_definitions() {
+        init_entries_push_op(op::Dml::insert(ClusterwideTable::User, user_def, ADMIN_ID));
 
-    // equivalent SQL expression: CREATE USER 'admin' with PASSWORD 'no password, see below for more details' USING chap-sha1
-    init_entries_push_op(op::Dml::insert(
-        ClusterwideTable::User,
-        &UserDef {
-            id: ADMIN_ID,
-            name: String::from("admin"),
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            // this is a bit different from vanilla tnt
-            // in vanilla tnt auth def is empty. Here for simplicity given available module api
-            // we use ChapSha with invalid password
-            // (its impossible to get empty string as output of sha1)
-            auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
-            owner: ADMIN_ID,
-        },
-        ADMIN_ID,
-    ));
-
-    init_entries_push_op(op::Dml::insert(
-        ClusterwideTable::User,
-        schema::pico_service_user_def(),
-        ADMIN_ID,
-    ));
-
-    // equivalent SQL expression: CREATE ROLE 'public'
-    init_entries_push_op(op::Dml::insert(
-        ClusterwideTable::Role,
-        &RoleDef {
-            id: PUBLIC_ID,
-            name: String::from("public"),
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            owner: ADMIN_ID,
-        },
-        ADMIN_ID,
-    ));
-
-    // equivalent SQL expression: CREATE ROLE 'super'
-    init_entries_push_op(op::Dml::insert(
-        ClusterwideTable::Role,
-        &RoleDef {
-            id: SUPER_ID,
-            name: String::from("super"),
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
-            owner: ADMIN_ID,
-        },
-        ADMIN_ID,
-    ));
-
-    // equivalent SQL expressions under 'admin' user:
-    // GRANT <'usage', 'session'> ON 'universe' TO 'guest'
-    // GRANT 'public' TO 'guest'
-    for priv_def in PrivilegeDef::get_default_privileges() {
-        init_entries_push_op(op::Dml::insert(
-            ClusterwideTable::Privilege,
-            priv_def,
-            ADMIN_ID,
-        ));
+        for priv_def in privilege_defs {
+            init_entries_push_op(op::Dml::insert(
+                ClusterwideTable::Privilege,
+                priv_def,
+                ADMIN_ID,
+            ));
+        }
     }
 
-    // Grant all privileges on "universe" to "pico_service".
-    for priv_def in schema::pico_service_privilege_defs() {
-        init_entries_push_op(op::Dml::insert(
-            ClusterwideTable::Privilege,
-            priv_def,
-            ADMIN_ID,
-        ));
+    //
+    // Populate "_pico_role" and "_pico_priv" to match tarantool ones
+    //
+    for (role_def, privilege_defs) in &schema::system_role_definitions() {
+        init_entries_push_op(op::Dml::insert(ClusterwideTable::Role, &role_def, ADMIN_ID));
+
+        for priv_def in privilege_defs {
+            init_entries_push_op(op::Dml::insert(
+                ClusterwideTable::Privilege,
+                priv_def,
+                ADMIN_ID,
+            ));
+        }
     }
 
     // Builtin global table definitions
@@ -225,7 +166,9 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         ));
     }
 
+    //
     // Initial raft configuration
+    //
     init_entries.push({
         let conf_change = raft::ConfChange {
             change_type: raft::ConfChangeType::AddNode,
