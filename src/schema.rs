@@ -668,15 +668,6 @@ impl PrivilegeDef {
         })
     }
 
-    pub fn is_default_privilege(&self) -> bool {
-        Self::get_default_privileges().contains(self)
-            // default user permissions
-            || (self.object_id == PUBLIC_ID as i64 && self.privilege == PrivilegeType::Execute)
-            || (self.object_type == SchemaObjectType::Universe && self.privilege == PrivilegeType::Login)
-            // alter on himself
-            || (self.object_type == SchemaObjectType::User && self.privilege == PrivilegeType::Alter && self.grantee_id as i64 == self.object_id)
-    }
-
     /// Retrieves object_name from system spaces based on `object_id` and `object_type`.
     /// Returns `Ok(None)` in the case when the privilege has no target object (e.g. `object_id == -1`)
     /// or when target object is universe.
