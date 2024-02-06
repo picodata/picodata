@@ -121,7 +121,7 @@ build-base-image-fork-on-trigger:
     BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
     PUSH_DOCKER: ""
     EXTRA_BUILD_ARGS: >
-      --build-arg TARANTOOL_TAG=latest
+      --build-arg TARANTOOL_TAG=${TARANTOOL_TAG}
     DOCKERFILE: ./docker/picodata.Dockerfile
 
 .test:
@@ -224,7 +224,7 @@ test-fork-on-trigger:
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
-    BASE_IMAGE_TAG: ${TARANTOOL_VERSION}
+    BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
     CARGO_FEATURES: picodata,tokio_components
 
 pages:
