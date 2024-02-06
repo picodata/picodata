@@ -42,7 +42,10 @@ use tarantool::{
 };
 
 use crate::{
-    schema::{PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID},
+    schema::{
+        PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID,
+        PICO_SERVICE_ID, PICO_SERVICE_USER_NAME,
+    },
     storage::{make_routine_not_found, space_by_id, Clusterwide, ToEntryIter},
     traft::op::{self, Op},
 };
@@ -322,6 +325,18 @@ fn access_check_grant_revoke(
                     "",
                     grantor.name,
                 ));
+            }
+
+            // Even admin should not be able to revoke privileges from pico_service
+            // As it would break the cluster permanently.
+            if access == PrivType::Revoke && priv_def.grantee_id() == PICO_SERVICE_ID {
+                tarantool::set_error!(
+                    tarantool::error::TarantoolErrorCode::AccessDenied,
+                    "Revoke '{}' from '{}' is denied for all users",
+                    PrivilegeType::Login,
+                    PICO_SERVICE_USER_NAME,
+                );
+                return Err(tarantool::error::TarantoolError::last().into());
             }
         }
         PicoSchemaObjectType::Table => {
