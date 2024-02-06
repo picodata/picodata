@@ -1017,13 +1017,14 @@ NOTE: **Примечание**
   узла-маршрутизатора.
 
 ```lua
-function sql(query[, params])
+function sql(query[, params], [traceable])
 ```
 
 Параметры:
 
 - `query` (_string_)
-- `opts`: (optional _table_), список параметров
+- `params`: (optional _table_), список параметров
+- `traceable` (optional _boolean_), признак явной трассировки запроса
 
 Возвращаемое значение:
 
