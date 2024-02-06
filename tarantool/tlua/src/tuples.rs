@@ -567,6 +567,8 @@ impl_tuple_push_error! {A B C D E F G H I J K L M}
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A wrapper type for pushing and reading rust tuples as lua tables.
 ///
+/// Can also be constructed more comfortably using the [`as_table!`] macro.
+///
 /// Useful when working heterogeneous lua tables.
 /// ```no_run
 /// use tlua::{Lua, AsTable, AnyLuaValue::{LuaNumber, LuaString, LuaBoolean}};
@@ -580,6 +582,7 @@ impl_tuple_push_error! {A B C D E F G H I J K L M}
 /// );
 /// assert_eq!(lua.get("x"), Some(AsTable((true, "two".to_string(), 3))));
 /// ```
+/// [`as_table!`]: crate::as_table
 pub struct AsTable<T>(pub T);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -686,4 +689,84 @@ where
         },
     }
     Ok(())
+}
+
+/// A helper macro for creating [`AsTable`] wrappers.
+/// Use this to pass ad-hoc lua tables into lua.
+///
+/// # Example
+/// ```no_run
+/// # fn extra_key() {}
+/// # fn extra_value() {}
+/// use tlua::as_table;
+/// let lua = tlua::Lua::new();
+///
+/// lua.exec_with(
+///     "set_configuration(...)",
+///     as_table! {
+///         "log" => "my-log-file.txt",
+///         "fruit" => as_table! { "apple", "banana", "orange" },
+///         extra_key() => extra_value(),
+///         420 => "secret-number-field",
+///     }
+/// )
+/// .unwrap();
+///
+/// lua.exec_with(
+///     "set_http_request_handler",
+///     tlua::Function::new(|| -> _ {
+///         as_table! {
+///             "status" => 200,
+///             "headers" => as_table! {
+///                 "content-type" => "application/json",
+///             },
+///             "body" => r#"{"error":"request-failed"}"#
+///         }
+///     })
+/// )
+/// .unwrap();
+/// ```
+#[macro_export]
+macro_rules! as_table {
+    ($( $key:expr => $value:expr ),* $(,)?) => {
+        $crate::AsTable( ( $( ($key, $value), )* ) )
+    };
+    ($( $item:expr ),* $(,)?) => {
+        $crate::AsTable( ( $( $item, )* ) )
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod test {
+    #[crate::test]
+    fn as_table_macro() {
+        let key = "KEY";
+        let value = [1, 2, 3];
+        let t = as_table! {
+            "foo" => "bar",
+            key => value,
+            "sequence-table" => as_table! { 1, "two", 3.0 },
+        };
+
+        let lua = crate::Lua::new();
+        let table: crate::LuaTable<_> = lua.eval_with("return ...", t).unwrap();
+
+        let v: String = table.get("foo").unwrap();
+        assert_eq!(v, "bar");
+
+        let v: [u32; 3] = table.get("KEY").unwrap();
+        assert_eq!(v, [1, 2, 3]);
+
+        {
+            let t: crate::LuaTable<_> = table.get("sequence-table").unwrap();
+            let v: u32 = t.get(1).unwrap();
+            assert_eq!(v, 1);
+
+            let v: String = t.get(2).unwrap();
+            assert_eq!(v, "two");
+
+            let v: f32 = t.get(3).unwrap();
+            assert_eq!(v, 3.0);
+        }
+    }
 }

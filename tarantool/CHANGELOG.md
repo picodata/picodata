@@ -11,6 +11,8 @@
   level of the default logger without going through lua.
 - `error::Error::ConnectionClosed` variant which can happen when converting from
   errors returned from `network::client`.
+- `tlua::as_table` macro for more straight-forward creation of lua tables
+  compared to naked `tlua::AsTable`.
 
 ### Changed
 - `network::client::{Client, ReconnClient}::send` now returns one of the new
