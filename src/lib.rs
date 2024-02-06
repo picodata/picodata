@@ -321,7 +321,8 @@ fn set_login_check(storage: Clusterwide) {
         let Some(user) = storage
             .users
             .by_name(&user_name)
-            .expect("accessing storage should not fail") else {
+            .expect("accessing storage should not fail")
+        else {
             // Prevent DOS attacks by first checking whether the user exists.
             // If it doesn't, we shouldn't even bother tracking its attempts.
             // Too many hashmap records will cause a global OOM event.
