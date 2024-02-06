@@ -207,8 +207,6 @@ test-linux:
       PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
       ci-log-section end "pipenv-install"
 
-    - make lint
-
     # There are no Rust tests for `webui` feature, it's checked in pytest
     - cargo build --locked
     - cargo test --locked
@@ -221,6 +219,8 @@ test-linux:
       --numprocesses auto
       --junitxml=junit_pytest.xml
       --with-webui
+
+    - make lint
 
   artifacts:
     when: always
