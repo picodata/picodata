@@ -268,7 +268,13 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,0,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","role",2,0,1,0])|
 |  0  | 1  |Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1])|
+|  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,1,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,1,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["execute","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,1,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["create","universe",0,1,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,1,1,0])|
+|  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|
 |  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,32,1,0])|
