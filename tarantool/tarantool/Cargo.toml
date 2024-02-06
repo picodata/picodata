@@ -57,7 +57,7 @@ tokio_components = ["picodata", "tokio"]
 network_client = []
 test = ["tester"]
 all = ["default", "test"]
-internal_test = ["test", "tlua/test", "pretty_assertions", "tempfile"]
+internal_test = ["test", "tlua/internal_test", "pretty_assertions", "tempfile"]
 
 [dev-dependencies]
 time-macros = "=0.2.6"

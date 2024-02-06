@@ -166,7 +166,7 @@ mod lua_tables;
 mod macros;
 mod object;
 mod rust_tables;
-#[cfg(feature = "test")]
+#[cfg(feature = "internal_test")]
 pub mod test;
 mod tuples;
 mod userdata;
