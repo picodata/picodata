@@ -579,7 +579,8 @@ def test_ddl_create_table_abort(cluster: Cluster):
                 res[i] = t.name
             end
             return res
-        """
+        """,
+            space_id,
         )
 
     assert i1.call("box.space._space:get", space_id) is not None
