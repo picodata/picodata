@@ -25,6 +25,25 @@
 picodata admin ./admin.sock
 ```
 
+В таком виде [подключение](../reference/cli.md#connect_command) производится под
+пользователем `guest` без пароля. У пользователя `guest` имеется единственная
+привилегия [`SESSION`](access_control.md#privileges). Для подключения под
+определенным пользователем следует указать его после ключа `-u`:
+
+```
+picodata connect localhost:3301 -u "alice"
+```
+
+### Подключение к консоли администратора {: #picodata_admin_console }
+
+С помощью команды `picodata admin` можно подключиться через unix-сокет
+к локальному экземпляру Picodata с правами администратора (пользователя
+`admin`):
+
+```
+picodata admin /path/to/admin.sock
+```
+
 По умолчанию файл unix-сокета расположен в [директории с данными
 инстанса](../reference/cli.md#data_dir) Picodata. Размещение этого
 файла настраивается при запуске инстанса параметром
