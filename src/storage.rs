@@ -870,8 +870,14 @@ impl Clusterwide {
         // Now create any new schema entities, or replace ones that changed.
         for def in &new_defs {
             let key = def.key();
+            let v_new = def.schema_version();
+
+            if v_new == INITIAL_SCHEMA_VERSION {
+                // Schema entity is already up to date (created on boot).
+                continue;
+            }
+
             if let Some(&v_old) = old_versions.get(&key) {
-                let v_new = def.schema_version();
                 assert!(v_old <= v_new);
 
                 if v_old == v_new {
@@ -2854,10 +2860,6 @@ impl SchemaDef for TableDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         let space_id = self.id;
-        // If it's a built-in system table - skip creating.
-        if ClusterwideTable::try_from(space_id).is_ok() {
-            return Ok(());
-        }
         if let Some(abort_reason) = ddl_create_space_on_master(storage, space_id)? {
             return Err(Error::other(format!(
                 "failed to create table {space_id}: {abort_reason}"
@@ -2952,10 +2954,6 @@ impl SchemaDef for PrivilegeDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        if self.is_default_privilege() {
-            return Ok(());
-        }
-
         acl::on_master_grant_privilege(self)?;
         Ok(())
     }
