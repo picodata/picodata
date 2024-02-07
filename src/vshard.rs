@@ -14,6 +14,13 @@ use std::collections::HashMap;
 pub struct VshardConfig {
     sharding: HashMap<String, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
+
+    /// This field is not stored in the global storage, instead
+    /// it is set right before the config is passed into vshard.*.cfg,
+    /// otherwise vshard will override it with an incorrect value.
+    #[serde(skip_serializing_if="Option::is_none")]
+    #[serde(default)]
+    pub listen: Option<String>,
 }
 
 #[rustfmt::skip]
@@ -110,6 +117,7 @@ impl VshardConfig {
         }
 
         Self {
+            listen: None,
             sharding,
             discovery_mode: DiscoveryMode::On,
         }

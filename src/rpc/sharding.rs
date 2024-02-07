@@ -22,10 +22,11 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let cfg = node.storage.properties.target_vshard_config()?;
-        crate::tlog!(Debug, "vshard config: {cfg:?}");
-
         let lua = ::tarantool::lua_state();
+
+        let mut cfg = node.storage.properties.target_vshard_config()?;
+        cfg.listen = Some(lua.eval("return box.info.listen")?);
+        crate::tlog!(Debug, "vshard config: {cfg:?}");
 
         if !req.do_reconfigure {
             if let Some(tlua::True) = lua.eval("return pico._vshard_is_configured")? {
