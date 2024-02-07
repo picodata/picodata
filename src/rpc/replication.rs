@@ -1,3 +1,4 @@
+use crate::pico_service::pico_service_password;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
@@ -23,14 +24,14 @@ crate::define_rpc_request! {
         // _schema, then we ignore it.
 
         let mut replication_cfg = Vec::with_capacity(req.replicaset_peers.len());
+        let password = pico_service_password();
         for address in &req.replicaset_peers {
-            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:@{address}"))
+            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"))
         }
 
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
         set_cfg_field("replication", &replication_cfg)?;
-        tlog!(Debug, "replication: {:?}", &replication_cfg);
         let lsn = crate::tarantool::eval("return box.info.lsn")?;
 
         // We do this everytime because firstly it helps when waking up.

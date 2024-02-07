@@ -1,6 +1,7 @@
 use crate::instance::Instance;
 use crate::instance::InstanceId;
 use crate::mailbox::Mailbox;
+use crate::pico_service::pico_service_password;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::schema::PICO_SERVICE_USER_NAME;
@@ -188,7 +189,10 @@ impl PoolWorker {
         instance_reachability: InstanceReachabilityManagerRef,
     ) {
         let mut config = Config::default();
-        config.creds = Some((PICO_SERVICE_USER_NAME.into(), "".into()));
+        config.creds = Some((
+            PICO_SERVICE_USER_NAME.into(),
+            pico_service_password().into(),
+        ));
         let client = ReconnClient::with_config(address.clone(), port, config);
 
         let mut client_ver: usize = 0;

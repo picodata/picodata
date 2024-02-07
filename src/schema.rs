@@ -30,6 +30,7 @@ use sbroad::ir::value::Value as IrValue;
 use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
+use crate::pico_service::pico_service_password;
 use crate::storage;
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -762,6 +763,9 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
         result.push((user_def, priv_defs));
     }
 
+    //
+    // User "pico_service"
+    //
     {
         let user_def = UserDef {
             id: PICO_SERVICE_ID,
@@ -770,8 +774,12 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             schema_version: INITIAL_SCHEMA_VERSION,
             auth: AuthDef::new(
                 AuthMethod::ChapSha1,
-                tarantool::auth::AuthData::new(&AuthMethod::ChapSha1, PICO_SERVICE_USER_NAME, "")
-                    .into_string(),
+                tarantool::auth::AuthData::new(
+                    &AuthMethod::ChapSha1,
+                    PICO_SERVICE_USER_NAME,
+                    pico_service_password(),
+                )
+                .into_string(),
             ),
             owner: initiator,
         };

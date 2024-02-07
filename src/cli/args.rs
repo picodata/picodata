@@ -215,6 +215,16 @@ pub struct Run {
     )]
     /// The amount of memory in bytes to allocate for the database engine.
     pub memtx_memory: u64,
+
+    /// Path to a plain-text file with a password for the system user "pico_service".
+    /// This password will be used for internal communication among instances of
+    /// picodata, so it must be the same on all instances.
+    #[clap(
+        long = "service-password-file",
+        value_name = "PATH",
+        env = "PICODATA_SERVICE_PASSWORD_FILE"
+    )]
+    pub service_password_file: Option<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.

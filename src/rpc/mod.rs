@@ -5,6 +5,7 @@ use ::tarantool::network::Client;
 use ::tarantool::network::Config;
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
+use crate::pico_service::pico_service_password;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -59,7 +60,10 @@ where
     })?;
 
     let mut config = Config::default();
-    config.creds = Some((PICO_SERVICE_USER_NAME.into(), "".into()));
+    config.creds = Some((
+        PICO_SERVICE_USER_NAME.into(),
+        pico_service_password().into(),
+    ));
     let client = Client::connect_with_config(address, port, config).await?;
 
     let tuple = client.call(R::PROC_NAME, request).await?;

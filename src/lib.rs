@@ -51,6 +51,7 @@ pub mod r#loop;
 mod luamod;
 pub mod mailbox;
 pub mod on_shutdown;
+mod pico_service;
 pub mod plugin;
 pub mod reachability;
 pub mod replicaset;
@@ -502,6 +503,14 @@ pub enum Entrypoint {
 
 impl Entrypoint {
     pub fn exec(self, args: cli::args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
+        if let Some(filename) = &args.service_password_file {
+            let res = pico_service::read_pico_service_password_from_file(filename);
+            if let Err(e) = res {
+                tlog!(Error, "{e}");
+                std::process::exit(-1);
+            }
+        }
+
         match self {
             Self::StartDiscover => start_discover(&args, to_supervisor),
             Self::StartBoot => start_boot(&args),

@@ -1,5 +1,6 @@
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
+use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
 use crate::replicaset::Weight;
@@ -93,10 +94,11 @@ impl VshardConfig {
                     ..Default::default()
                 });
 
+            let password = pico_service_password();
             replicaset.replicas.insert(
                 peer.instance_uuid.clone(),
                 ReplicaSpec {
-                    uri: format!("{PICO_SERVICE_USER_NAME}:@{address}"),
+                    uri: format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"),
                     master: r.current_master_id == peer.instance_id,
                     name: peer.instance_id.to_string(),
                 },

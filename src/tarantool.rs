@@ -4,6 +4,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::pico_service::pico_service_password;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
@@ -211,6 +212,7 @@ where
 
     let conn_opts = net_box::ConnOptions {
         user: PICO_SERVICE_USER_NAME.into(),
+        password: pico_service_password().into(),
         connect_timeout: timeout,
         ..Default::default()
     };
