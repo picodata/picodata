@@ -19,11 +19,11 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
-  BASE_IMAGE_LATEST: latest
-  MAIN_BRANCH: &main-branch master
+  BASE_IMAGE_LATEST: "24.1"
+  MAIN_BRANCH: &main-branch "24.1"
   CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
-  CACHE_ARCHIVE: /shared-storage/picodata/cache-v2.tar
+  CACHE_ARCHIVE: /shared-storage/picodata/cache-24.1.tar
   # Helps to tolerate spurious network failures
   GET_SOURCES_ATTEMPTS: 3
   NO_CACHE:
@@ -344,7 +344,7 @@ gamayun-run:
     - eval $TUNNEL
     - ls -la
     - |
-      # TODO consider moving this to the script as well, this may delete some html 
+      # TODO consider moving this to the script as well, this may delete some html
       # license files which is probably not intended
       find . -type d -name 'test*' -o -name 'doc' -o -name 'docs' | xargs -n1 rm -rvf
       find tarantool-sys/third_party/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
