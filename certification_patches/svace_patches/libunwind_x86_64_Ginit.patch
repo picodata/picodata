@@ -1,0 +1,15 @@
+diff --git a/src/x86_64/Ginit.c b/src/x86_64/Ginit.c
+index 0b121bc9..b92d418b 100644
+--- a/src/x86_64/Ginit.c
++++ b/src/x86_64/Ginit.c
+@@ -82,7 +82,9 @@ static int mem_validate_pipe[2] = {-1, -1};
+ static inline void
+ do_pipe2 (int pipefd[2])
+ {
+-  pipe2 (pipefd, O_CLOEXEC | O_NONBLOCK);
++  if (pipe2 (pipefd, O_CLOEXEC | O_NONBLOCK) != 0)
++	Debug(1, "pipe2 failed\n");
++
+ }
+ #else
+ static inline void

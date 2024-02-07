@@ -1,0 +1,16 @@
+diff --git a/src/box/session.c b/src/box/session.c
+index 6d3c0ab03..040274606 100644
+--- a/src/box/session.c
++++ b/src/box/session.c
+@@ -100,7 +100,10 @@ session_on_stop(struct trigger *trigger, void *event)
+ 	 */
+ 	trigger_clear(trigger);
+ 	/* Destroy the session */
+-	session_delete(fiber_get_session(fiber()));
++	struct session *session = fiber_get_session(fiber());
++	if (session == NULL)
++		return 0;
++	session_delete(session);
+ 	return 0;
+ }
+ 

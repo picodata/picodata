@@ -1,0 +1,13 @@
+diff --git a/src/lj_vmevent.c b/src/lj_vmevent.c
+index 86640804..5d4c4a20 100644
+--- a/src/lj_vmevent.c
++++ b/src/lj_vmevent.c
+@@ -21,7 +21,7 @@ ptrdiff_t lj_vmevent_prepare(lua_State *L, VMEvent ev)
+   global_State *g = G(L);
+   GCstr *s = lj_str_newlit(L, LJ_VMEVENTS_REGKEY);
+   cTValue *tv = lj_tab_getstr(tabV(registry(L)), s);
+-  if (tvistab(tv)) {
++  if (tv && tvistab(tv)) {
+     int hash = VMEVENT_HASH(ev);
+     tv = lj_tab_getint(tabV(tv), hash);
+     if (tv && tvisfunc(tv)) {

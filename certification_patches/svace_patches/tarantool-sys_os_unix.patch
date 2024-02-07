@@ -1,0 +1,31 @@
+diff --git a/src/box/sql/os_unix.c b/src/box/sql/os_unix.c
+index 83cec1a0b..0a7032b7d 100644
+--- a/src/box/sql/os_unix.c
++++ b/src/box/sql/os_unix.c
+@@ -170,11 +170,16 @@ robust_open(const char *z, int f, mode_t m)
+ 	}
+ 	if (fd >= 0) {
+ 		if (m != 0) {
++			int res = 0;
+ 			struct stat statbuf;
+ 			if (fstat(fd, &statbuf) == 0 &&
+ 			    statbuf.st_size == 0 &&
+ 			    (statbuf.st_mode & 0777) != m)
+-				fchmod(fd, m);
++				res = fchmod(fd, m);
++			if (res != 0) { /* fix for svace */
++				close(fd);
++				fd = -1;
++			}
+ 		}
+ 	}
+ 	return fd;
+@@ -1756,7 +1761,7 @@ unixOpen(sql_vfs * pVfs,	/* The VFS for which this is the xOpen method */
+ 			rc = -1;
+ 			goto open_finished;
+ 		}
+-		
++
+ 	}
+ 	assert(fd >= 0);
+ 	if (pOutFlags) {

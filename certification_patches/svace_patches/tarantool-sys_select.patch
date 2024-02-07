@@ -1,0 +1,26 @@
+diff --git a/src/box/sql/select.c b/src/box/sql/select.c
+index e5e7c9a99..915282eff 100644
+--- a/src/box/sql/select.c
++++ b/src/box/sql/select.c
+@@ -2107,14 +2107,19 @@ sqlColumnsFromExprList(Parse * parse, ExprList * expr_list,
+ 		} else {
+ 			name = sql_xstrdup(name);
+ 		}
+-		size_t len = strlen(name);
++		size_t len = 0;
++		if (name != NULL) /* svace comment */
++			len = strlen(name);
++		else // assert
++			panic("name == NULL in %s:%d", __FILE__, __LINE__);
+
+ 		/* Make sure the column name is unique.  If the name is not unique,
+ 		 * append an integer to the name so that it becomes unique.
+ 		 */
+ 		size_t cnt = 0;
+ 		while (sqlHashFind(&ht, name) != 0) {
+-			assert(len > 0);
++			if (len <= 0) // assert
++				panic("len <= 0 in %s:%d", __FILE__, __LINE__);
+ 			size_t j = len - 1;
+ 			for (; j > 0 && sqlIsdigit(name[j]); j--) {
+ 			};

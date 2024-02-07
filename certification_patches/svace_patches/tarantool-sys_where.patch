@@ -1,0 +1,60 @@
+diff --git a/src/box/sql/where.c b/src/box/sql/where.c
+index 53b20dc88..a036bd568 100644
+--- a/src/box/sql/where.c
++++ b/src/box/sql/where.c
+@@ -1248,9 +1248,9 @@ whereRangeSkipScanEst(Parse * pParse,		/* Parsing & code generating context */
+ 		int nDiff;
+ 		uint32_t sample_count = index->def->opts.stat->sample_count;
+ 		for (i = 0; i < (int)sample_count; i++) {
+-			if (p1 != NULL && mem_cmp_scalar(p1, pVal, coll) >= 0)
++			if (p1 != NULL && pVal && mem_cmp_scalar(p1, pVal, coll) >= 0)
+ 				nLower++;
+-			if (p2 != NULL && mem_cmp_scalar(p2, pVal, coll) >= 0)
++			if (p2 != NULL && pVal && mem_cmp_scalar(p2, pVal, coll) >= 0)
+ 				nUpper++;
+ 		}
+ 		nDiff = (nUpper - nLower);
+@@ -2370,7 +2370,7 @@ whereLoopAddBtreeIndex(WhereLoopBuilder * pBuilder,	/* The WhereLoop factory */
+ 		int nRecValid = pBuilder->nRecValid;
+ 		uint32_t j = probe->key_def->parts[saved_nEq].fieldno;
+ 		if ((eOp == WO_ISNULL || (pTerm->wtFlags & TERM_VNULL) != 0) &&
+-		    !space->def->fields[j].is_nullable) {
++		    space && !space->def->fields[j].is_nullable) {
+ 			/*
+ 			 * Ignore IS [NOT] NULL constraints on NOT
+ 			 * NULL columns.
+@@ -2915,8 +2915,6 @@ whereLoopAddBtree(WhereLoopBuilder * pBuilder,	/* WHERE clause information */
+ 			whereLoopOutputAdjust(pWC, pNew, rSize);
+ 			rc = whereLoopInsert(pBuilder, pNew);
+ 			pNew->nOut = rSize;
+-			if (rc)
+-				break;
+ 		}
+ 
+ 		rc = whereLoopAddBtreeIndex(pBuilder, pSrc, probe, 0);
+@@ -3136,7 +3134,6 @@ wherePathSatisfiesOrderBy(WhereInfo * pWInfo,	/* The WHERE clause */
+ 	u8 rev;			/* Composite sort order */
+ 	u8 revIdx;		/* Index sort order */
+ 	u8 isOrderDistinct;	/* All prior WhereLoops are order-distinct */
+-	u8 distinctColumns;	/* True if the loop has UNIQUE NOT NULL columns */
+ 	u8 isMatch;		/* iColumn matches a term of the ORDER BY clause */
+ 	u16 eqOpMask;		/* Allowed equality operators */
+ 	u16 nColumn;		/* Total number of ordered columns in the index */
+@@ -3268,7 +3265,6 @@ wherePathSatisfiesOrderBy(WhereInfo * pWInfo,	/* The WHERE clause */
+ 			 * that are not constrained by == or IN.
+ 			 */
+ 			rev = revSet = 0;
+-			distinctColumns = 0;
+ 			for (j = 0; j < nColumn; j++) {
+ 				u8 bOnce = 1;	/* True to run the ORDER BY search loop */
+ 
+@@ -3406,9 +3402,6 @@ wherePathSatisfiesOrderBy(WhereInfo * pWInfo,	/* The WHERE clause */
+ 					break;
+ 				}
+ 			}	/* end Loop over all index columns */
+-			if (distinctColumns) {
+-				isOrderDistinct = 1;
+-			}
+ 		}
+ 
+ 		/* end-if not one-row */

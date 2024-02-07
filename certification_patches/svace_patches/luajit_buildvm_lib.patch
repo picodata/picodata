@@ -1,0 +1,15 @@
+diff --git a/src/host/buildvm_lib.c b/src/host/buildvm_lib.c
+index 2956fdb6..b0de5678 100644
+--- a/src/host/buildvm_lib.c
++++ b/src/host/buildvm_lib.c
+@@ -408,6 +408,10 @@ void emit_lib(BuildCtx *ctx)
+ 	    if (!p[n]) break;
+ 	    p[n] = '\0';
+ 	    ldh->func(ctx, p, ldh->arg);
++	    if (n == SIZE_MAX) {
++		fprintf(stderr, "Error: integer overflow\n");
++		exit(1); // check overflow
++	    }
+ 	    p += n+1;
+ 	    break;
+ 	  }

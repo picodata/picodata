@@ -1,0 +1,33 @@
+diff --git a/src/box/tuple_compare.cc b/src/box/tuple_compare.cc
+index e62d8c1b4..ec3732cf9 100644
+--- a/src/box/tuple_compare.cc
++++ b/src/box/tuple_compare.cc
+@@ -1917,10 +1917,12 @@ field_hint_uuid(const char *field)
+ static inline hint_t
+ field_hint_datetime(const char *field)
+ {
+-	assert(mp_typeof(*field) == MP_EXT);
++	if (mp_typeof(*field) != MP_EXT) // assert
++		panic("mp_typeof(*field) != MP_EXT in %s:%d", __FILE__, __LINE__);
+ 	int8_t ext_type;
+ 	uint32_t len = mp_decode_extl(&field, &ext_type);
+-	assert(ext_type == MP_DATETIME);
++	if (ext_type != MP_DATETIME) // assert
++		panic("ext_type != MP_DATETIME in %s:%d", __FILE__, __LINE__);
+ 	struct datetime date;
+ 	return hint_datetime(datetime_unpack(&field, len, &date));
+ }
+@@ -1979,7 +1981,12 @@ field_hint_scalar(const char *field, struct coll *coll)
+ 		case MP_DATETIME:
+ 		{
+ 			struct datetime date;
+-			return hint_datetime(datetime_unpack(&field, len, &date));
++			struct datetime *res = datetime_unpack(&field, len, &date);
++			if (res != NULL) {
++				return hint_datetime(res);
++			}
++			return HINT_NONE;
++
+ 		}
+ 		default:
+ 			unreachable();

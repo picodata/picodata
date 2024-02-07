@@ -1,0 +1,14 @@
+diff --git a/src/box/sql/util.c b/src/box/sql/util.c
+index 7e6826976..383ce3430 100644
+--- a/src/box/sql/util.c
++++ b/src/box/sql/util.c
+@@ -148,7 +148,8 @@ sql_normalized_name_new(const char *name, int len)
+ 	size = rc;
+ 	res = sql_xrealloc(res, size);
+ 	rc = sql_normalize_name(res, size, name, len);
+-	assert(rc <= size);
++	if (rc > size) // assert
++		panic("rc > size in %s:%d", __FILE__, __LINE__);
+ 	return res;
+ }
+ 

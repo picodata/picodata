@@ -1,0 +1,14 @@
+diff --git a/src/lib/swim/swim_io.c b/src/lib/swim/swim_io.c
+index 0002472fa..93f206b9a 100644
+--- a/src/lib/swim/swim_io.c
++++ b/src/lib/swim/swim_io.c
+@@ -128,7 +128,8 @@ swim_packet_build_meta(struct swim_packet *packet,
+ 		return;
+ 	struct swim_meta_header_bin header;
+ 	swim_meta_header_bin_create(&header, src, route_dst != NULL);
+-	assert(meta + sizeof(header) <= end);
++	if (!(meta + sizeof(header) <= end)) // assert
++		panic("!(meta + sizeof(header) <= end) in %s:%d", __FILE__, __LINE__);
+ 	memcpy(meta, &header, sizeof(header));
+ 	meta += sizeof(header);
+ 	if (route_dst != NULL) {

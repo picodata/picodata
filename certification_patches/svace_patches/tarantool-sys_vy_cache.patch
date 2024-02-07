@@ -1,0 +1,24 @@
+diff --git a/src/box/vy_cache.c b/src/box/vy_cache.c
+index 0f752eff2..3682c6539 100644
+--- a/src/box/vy_cache.c
++++ b/src/box/vy_cache.c
+@@ -444,7 +444,8 @@ vy_cache_on_write(struct vy_cache *cache, struct vy_entry entry,
+ 	itr = vy_cache_tree_lower_bound(&cache->cache_tree, entry, &exact);
+ 	struct vy_cache_node **node =
+ 		vy_cache_tree_iterator_get_elem(&cache->cache_tree, &itr);
+-	assert(!exact || node != NULL);
++	if (!(!exact || node != NULL)) // assert
++		panic("!(!exact || node != NULL) in %s:%d", __FILE__, __LINE__);
+ 	/*
+ 	 * There are three cases possible
+ 	 * (1) there's a value in cache that is equal to entry.
+@@ -495,7 +496,8 @@ vy_cache_on_write(struct vy_cache *cache, struct vy_entry entry,
+ 	}
+ 
+ 	if (exact) {
+-		assert(node != NULL);
++		if (node == NULL) // assert
++			panic("node == NULL in %s:%d", __FILE__, __LINE__);
+ 		cache->version++;
+ 		struct vy_cache_node *to_delete = *node;
+ 		assert(vy_stmt_type(to_delete->entry.stmt) == IPROTO_INSERT ||

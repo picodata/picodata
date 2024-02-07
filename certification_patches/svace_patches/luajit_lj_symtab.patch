@@ -1,0 +1,14 @@
+diff --git a/src/lj_symtab.c b/src/lj_symtab.c
+index 38b5e9e1..18959a7b 100644
+--- a/src/lj_symtab.c
++++ b/src/lj_symtab.c
+@@ -200,6 +200,9 @@ static int dump_sht_symtab(const char *elf_name, struct lj_wbuf *buf,
+   for (header_index = 0; header_index < shnum; ++header_index) {
+     if (section_headers[header_index].sh_type == SHT_SYMTAB) {
+       ElfW(Shdr) sym_hdr = section_headers[header_index];
++      if (sym_hdr.sh_entsize == 0)
++	goto error;
++
+       ElfW(Shdr) strtab_hdr = section_headers[sym_hdr.sh_link];
+       size_t symtab_size = sym_hdr.sh_size;
+ 

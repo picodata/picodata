@@ -1,0 +1,35 @@
+diff --git a/src/box/memtx_tree.cc b/src/box/memtx_tree.cc
+index 4674e1bcc..2bfb9641c 100644
+--- a/src/box/memtx_tree.cc
++++ b/src/box/memtx_tree.cc
+@@ -335,7 +335,9 @@ static inline void
+ tree_iterator_set_last(struct tree_iterator<USE_HINT> *it,
+ 		       struct memtx_tree_data<USE_HINT> *last)
+ {
+-	assert(last != NULL && last->tuple != NULL);
++	if (!(last != NULL && last->tuple != NULL)) // assert
++		panic("!(last != NULL && last->tuple != NULL) in %s:%d",
++			__FILE__, __LINE__);
+ 	tree_iterator_set_last_tuple(it, last->tuple);
+ 	tree_iterator_set_last_hint(it, last->hint);
+ }
+@@ -831,6 +833,10 @@ memtx_tree_index_gc_run(struct memtx_gc_task *task, bool *done)
+ 		struct memtx_tree_data<USE_HINT> *res =
+ 			memtx_tree_iterator_get_elem(tree, itr);
+ 		memtx_tree_iterator_next(tree, itr);
++		if (res == NULL) {
++			*done = false;
++			return;
++		}
+ 		tuple_unref(res->tuple);
+ 		if (++loops >= YIELD_LOOPS) {
+ 			*done = false;
+@@ -1071,6 +1077,8 @@ tree_iterator_position_func(struct iterator *it, const char **pos,
+ 	uint32_t pk_size;
+ 	const char *pk_key = tuple_extract_key(tree_it->last.tuple, pk_def,
+ 					       MULTIKEY_NONE, &pk_size);
++	if (pk_key == NULL)
++		return -1;
+ 	uint32_t pk_key_len = mp_decode_array(&pk_key);
+ 	/* Calculate allocation size and allocate buffer. */
+ 	func_key_size -= mp_sizeof_array(func_key_len);

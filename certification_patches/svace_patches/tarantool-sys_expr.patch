@@ -1,8 +1,44 @@
 diff --git a/src/box/sql/expr.c b/src/box/sql/expr.c
-index 3a2426bcd..4865f7865 100644
+index d1fc7f267..24137743a 100644
 --- a/src/box/sql/expr.c
 +++ b/src/box/sql/expr.c
-@@ -1879,7 +1879,8 @@ sqlExprListSetName(Parse * pParse,	/* Parsing context */
+@@ -111,9 +111,9 @@ sql_expr_type(struct Expr *pExpr)
+ 	case TK_LSHIFT:
+ 	case TK_RSHIFT:
+ 		assert(pExpr->pRight != NULL && pExpr->pLeft != NULL);
+-		enum field_type lhs_type = sql_expr_type(pExpr->pLeft);
+-		enum field_type rhs_type = sql_expr_type(pExpr->pRight);
+-		return sql_type_result(rhs_type, lhs_type);
++		enum field_type rhs_type = sql_expr_type(pExpr->pLeft);
++		enum field_type lhs_type = sql_expr_type(pExpr->pRight);
++		return sql_type_result(lhs_type, rhs_type);
+ 	case TK_GETITEM:
+ 		return FIELD_TYPE_ANY;
+ 	case TK_CONCAT:
+@@ -466,9 +466,9 @@ expr_cmp_mutual_type(struct Expr *pExpr)
+ static u8
+ binaryCompareP5(Expr * pExpr1, Expr * pExpr2, int jumpIfNull)
+ {
+-	enum field_type lhs = sql_expr_type(pExpr2);
+-	enum field_type rhs = sql_expr_type(pExpr1);
+-	u8 type_mask = sql_type_result(rhs, lhs) | (u8) jumpIfNull;
++	enum field_type lhs = sql_expr_type(pExpr1);
++	enum field_type rhs = sql_expr_type(pExpr2);
++	u8 type_mask = sql_type_result(lhs, rhs) | (u8) jumpIfNull;
+ 	return type_mask;
+ }
+ 
+@@ -1146,7 +1146,8 @@ exprAlwaysFalse(Expr * p)
+ struct Expr *
+ sql_and_expr_new(struct Expr *left_expr, struct Expr *right_expr)
+ {
+-	assert(left_expr != NULL || right_expr != NULL);
++	if (left_expr == NULL && right_expr == NULL)
++		exit(1); // assert
+ 	if (left_expr == NULL) {
+ 		return right_expr;
+ 	} else if (right_expr == NULL) {
+@@ -1879,7 +1880,8 @@ sqlExprListSetName(Parse * pParse,	/* Parsing context */
  	} else {
  		item->zName = sql_xstrndup(pName->z, pName->n);
  	}
@@ -12,3 +48,26 @@ index 3a2426bcd..4865f7865 100644
  }
  
  void
+@@ -2573,13 +2575,13 @@ expr_in_type(struct Expr *pExpr)
+ 	enum field_type *zRet = sql_xmalloc0(sz);
+ 	for (int i = 0; i < nVal; i++) {
+ 		Expr *pA = sqlVectorFieldSubexpr(pLeft, i);
+-		enum field_type lhs = sql_expr_type(pA);
++		enum field_type rhs = sql_expr_type(pA);
+ 		if (pSelect != NULL) {
+ 			struct Expr *e = pSelect->pEList->a[i].pExpr;
+-			enum field_type rhs = sql_expr_type(e);
+-			zRet[i] = sql_type_result(rhs, lhs);
++			enum field_type lhs = sql_expr_type(e);
++			zRet[i] = sql_type_result(lhs, rhs);
+ 		} else {
+-			zRet[i] = lhs;
++			zRet[i] = rhs;
+ 		}
+ 	}
+ 	zRet[nVal] = field_type_MAX;
+@@ -5452,4 +5454,3 @@ sqlClearTempRegCache(Parse * pParse)
+ 	pParse->nTempReg = 0;
+ 	pParse->nRangeReg = 0;
+ }
+-
