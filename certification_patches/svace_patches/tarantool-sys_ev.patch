@@ -1,22 +1,30 @@
 diff --git a/third_party/libev/ev.c b/third_party/libev/ev.c
-index 04119bf98..b46a8f324 100644
+index 04119bf98..b2eb50982 100644
 --- a/third_party/libev/ev.c
 +++ b/third_party/libev/ev.c
-@@ -2264,10 +2264,12 @@ array_nextsize (int elem, int cur, int cnt)
-     ncur <<= 1;
+@@ -2251,7 +2251,7 @@ ev_sleep (ev_tstamp delay) EV_NOEXCEPT
+ 
+ /*****************************************************************************/
+ 
+-#define MALLOC_ROUND 4096 /* prefer to allocate in chunks of this size, must be 2**n and >> 4 longs */
++#define MALLOC_ROUND ((unsigned long long)4096) /* prefer to allocate in chunks of this size, must be 2**n and >> 4 longs */
+ 
+ /* find a suitable new size for the given array, */
+ /* hopefully by rounding to a nice-to-malloc size */
+@@ -2265,10 +2265,10 @@ array_nextsize (int elem, int cur, int cnt)
    while (cnt > ncur);
  
-+  assert((unsigned long)elem * (unsigned long)ncur <= INT_MAX);
    /* if size is large, round to MALLOC_ROUND - 4 * longs to accommodate malloc overhead */
 -  if (elem * ncur > MALLOC_ROUND - sizeof (void *) * 4)
 +  if ((unsigned long)elem * (unsigned long)ncur > MALLOC_ROUND - sizeof (void *) * 4)
      {
        ncur *= elem;
-+      assert(((unsigned long)ncur + (unsigned long)elem + ((unsigned long)(MALLOC_ROUND - 1)) + sizeof (void *) * 4) <= INT_MAX);
-       ncur = (ncur + elem + (MALLOC_ROUND - 1) + sizeof (void *) * 4) & ~(MALLOC_ROUND - 1);
+-      ncur = (ncur + elem + (MALLOC_ROUND - 1) + sizeof (void *) * 4) & ~(MALLOC_ROUND - 1);
++      ncur = (((unsigned long)ncur + (unsigned long)elem + ((unsigned long)(MALLOC_ROUND - 1))) + sizeof (void *) * 4) & ~(MALLOC_ROUND - 1);
        ncur = ncur - sizeof (void *) * 4;
        ncur /= elem;
-@@ -2281,7 +2283,7 @@ static void *
+     }
+@@ -2281,7 +2281,7 @@ static void *
  array_realloc (int elem, void *base, int *cur, int cnt)
  {
    *cur = array_nextsize (elem, *cur, cnt);
@@ -25,7 +33,7 @@ index 04119bf98..b46a8f324 100644
  }
  
  #define array_needsize_noinit(base,offset,count)
-@@ -2852,7 +2854,13 @@ pipecb (EV_P_ ev_io *iow, int revents)
+@@ -2852,7 +2852,13 @@ pipecb (EV_P_ ev_io *iow, int revents)
        if (evpipe [0] < 0)
          {
            uint64_t counter;
@@ -40,7 +48,7 @@ index 04119bf98..b46a8f324 100644
          }
        else
  #endif
-@@ -2866,7 +2874,13 @@ pipecb (EV_P_ ev_io *iow, int revents)
+@@ -2866,7 +2872,13 @@ pipecb (EV_P_ ev_io *iow, int revents)
            buf.len = sizeof (dummy);
            WSARecv (EV_FD_TO_WIN32_HANDLE (evpipe [0]), &buf, 1, &recvd, &flags, 0, 0);
  #else
@@ -55,7 +63,7 @@ index 04119bf98..b46a8f324 100644
  #endif
          }
      }
-@@ -3299,10 +3313,12 @@ loop_init (EV_P_ unsigned int flags) EV_NOEXCEPT
+@@ -3299,10 +3311,12 @@ loop_init (EV_P_ unsigned int flags) EV_NOEXCEPT
          curpid = getpid ();
  #endif
  

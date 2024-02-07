@@ -1,0 +1,14 @@
+diff --git a/src/box/lua/key_def.c b/src/box/lua/key_def.c
+index a95431de2..e234415f8 100644
+--- a/src/box/lua/key_def.c
++++ b/src/box/lua/key_def.c
+@@ -272,7 +272,8 @@ static int
+ lbox_key_def_gc(struct lua_State *L)
+ {
+ 	struct key_def *key_def = luaT_check_key_def(L, 1);
+-	assert(key_def != NULL);
++	if (key_def == NULL) // assert
++		panic("key_def == NULL in %s:%d", __FILE__, __LINE__);
+ 	key_def_delete(key_def);
+ 	return 0;
+ }

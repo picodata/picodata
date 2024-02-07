@@ -1,12 +1,16 @@
 diff --git a/src/lib/core/say.c b/src/lib/core/say.c
-index a80880724..2ab3d5478 100644
+index 715bf373b..e2b210721 100644
 --- a/src/lib/core/say.c
 +++ b/src/lib/core/say.c
-@@ -655,6 +655,7 @@ log_syslog_init(struct log *log, const char *init_str)
+@@ -655,7 +655,10 @@ log_syslog_init(struct log *log, const char *init_str)
  	else
  		log->syslog_ident = strdup(opts.identity);
  	if (log->syslog_ident == NULL) {
-+		assert(opts.identity != NULL);
- 		diag_set(OutOfMemory, strlen(opts.identity), "malloc",
+-		diag_set(OutOfMemory, strlen(opts.identity), "malloc",
++		int len = 0;
++		if (opts.identity != NULL)
++			len = strlen(opts.identity);
++		diag_set(OutOfMemory, len, "malloc",
  		         "log->syslog_ident");
  		return -1;
+ 	}

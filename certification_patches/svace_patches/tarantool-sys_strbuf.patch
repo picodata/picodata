@@ -1,8 +1,8 @@
 diff --git a/third_party/lua-cjson/strbuf.c b/third_party/lua-cjson/strbuf.c
-index 69057ffb3..5a0272be1 100644
+index 69057ffb3..3fe654842 100644
 --- a/third_party/lua-cjson/strbuf.c
 +++ b/third_party/lua-cjson/strbuf.c
-@@ -106,7 +106,7 @@ static int calculate_new_size(strbuf_t *s, int len)
+@@ -106,9 +106,11 @@ static int calculate_new_size(strbuf_t *s, int len)
          /* Exponential sizing */
          while (newsize < reqsize)
              newsize *= -s->increment;
@@ -10,4 +10,8 @@ index 69057ffb3..5a0272be1 100644
 +    } else if (s->increment > 0) {
          /* Linear sizing */
          newsize = ((newsize + s->increment - 1) / s->increment) * s->increment;
++    } else {
++	die("BUG: strbuf increment is equal 0");
      }
+ 
+     return newsize;

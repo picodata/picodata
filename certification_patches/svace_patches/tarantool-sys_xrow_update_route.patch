@@ -1,0 +1,14 @@
+diff --git a/src/box/xrow_update_route.c b/src/box/xrow_update_route.c
+index 23a56fa05..55d417326 100644
+--- a/src/box/xrow_update_route.c
++++ b/src/box/xrow_update_route.c
+@@ -203,7 +203,8 @@ xrow_update_route_branch(struct xrow_update_field *field,
+ 		saved_old_offset = old_path_lexer.offset;
+ 		int rc = json_lexer_next_token(&old_path_lexer, &old_token);
+ 		/* Old path is already validated. */
+-		assert(rc == 0);
++		if (rc != 0) // assert
++			panic("rc != 0 in %s:%d", __FILE__, __LINE__);
+ 		rc = json_lexer_next_token(&new_op->lexer, &new_token);
+ 		if (rc != 0) {
+ 			xrow_update_err_bad_json(new_op, rc);

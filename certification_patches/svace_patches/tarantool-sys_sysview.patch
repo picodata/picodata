@@ -1,0 +1,14 @@
+diff --git a/src/box/sysview.c b/src/box/sysview.c
+index 77190f97b..9d77ab3a5 100644
+--- a/src/box/sysview.c
++++ b/src/box/sysview.c
+@@ -374,7 +374,8 @@ vfunc_filter(struct space *source, struct tuple *tuple)
+ 	if (name == NULL)
+ 		return false;
+ 	struct func *func = func_by_name(name, name_len);
+-	assert(func != NULL);
++	if (func == NULL) // assert
++		panic("func == NULL in %s:%d", __FILE__, __LINE__);
+ 	box_user_access_mask_t effective =
+ 		func->access[cr->auth_token].effective;
+ 	return func->def->uid == cr->uid ||

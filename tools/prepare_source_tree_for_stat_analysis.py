@@ -44,6 +44,10 @@ DEAD_LIST = [
     "tarantool-sys/third_party/libev/ltmain.sh",
     "tarantool-sys/tools/gen-release-notes",
     "sbroad/docker-compose.yml",
+    # further
+    "tarantool-sys/third_party/luajit/src/luajit_lldb.py",
+    "tarantool-sys/perf/lua/1mops_write.lua",
+    "tarantool-sys/third_party/metrics/rpm/prebuild.sh",
 ]
 
 
@@ -56,19 +60,36 @@ def cd(target: Path):
 
 
 def apply(patch: Path):
+    # todo: https://git.picodata.io/picodata/picodata/picodata/-/issues/577
+    with open(patch) as f:
+        line = f.readline()
+        # here we parse something like "diff --git a/src/box/alter.cc b/src/box/alter.cc"
+        # and want to get "src/box/alter.cc"
+        # so, get second elt and skip "a/"
+        file_to_patch = line.split(" ", maxsplit=4)[2][2:]
+        if not Path(file_to_patch).exists:
+            return
+
     subprocess.check_call(["git", "apply", str(patch)])  # nosec
 
 
 def apply_from_dir(path: Path):
     for patch in path.iterdir():
+        if not path.exists:
+            continue
+
         patch = patch.resolve()
         print("Applying:", patch)
 
         libname = patch.stem.split("_", maxsplit=1)[0]
 
         if libname == "tarantool-sys":
-            with cd(TARANTOOL_SYS):
-                apply(patch)
+            if patch.stem.split("_", maxsplit=2)[1] == "small":
+                with cd(TARANTOOL_SYS / "src" / "lib" / "small"):
+                    apply(patch)
+            else:
+                with cd(TARANTOOL_SYS):
+                    apply(patch)
         elif libname in ("http", "vshard"):
             with cd(libname):
                 apply(patch)
@@ -91,6 +112,13 @@ def prepare_for_svace():
     apply_from_dir(SVACE_PATCHES)
 
 
+def restore():
+    subprocess.check_call(
+        "git submodule foreach --recursive git restore .",
+        shell=True,
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         "Apply various certification induced transformations to source tree"
@@ -98,8 +126,16 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("gamayun", help="Prepare for gamayun analysis")
     subparsers.add_parser("svace", help="Prepare for svace analysis")
+    subparsers.add_parser(
+        "restore",
+        help="Restore all changes applied by 'svace' or(and) 'gamayun' commands",
+    )
 
-    commands = {"gamayun": prepare_for_gamayun, "svace": prepare_for_svace}
+    commands = {
+        "gamayun": prepare_for_gamayun,
+        "svace": prepare_for_svace,
+        "restore": restore,
+    }
 
     args = parser.parse_args()
     command = commands.get(args.command)

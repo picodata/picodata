@@ -1,8 +1,18 @@
 diff --git a/src/box/sql/wherecode.c b/src/box/sql/wherecode.c
-index 8cac15123..5f084394f 100644
+index 8cac15123..6bef5a8a8 100644
 --- a/src/box/sql/wherecode.c
 +++ b/src/box/sql/wherecode.c
-@@ -458,7 +458,7 @@ codeEqualityTerm(Parse * pParse,	/* The parsing context */
+@@ -124,7 +124,8 @@ explainIndexRange(StrAccum * pStr, WhereLoop * pLoop)
+ 	u16 nSkip = pLoop->nSkip;
+ 	int i, j;
+ 
+-	assert(def != NULL);
++	if (def == NULL)
++		panic("def == NULL in %s:%d", __FILE__, __LINE__);
+ 
+ 	if (nEq == 0
+ 	    && (pLoop->wsFlags & (WHERE_BTM_LIMIT | WHERE_TOP_LIMIT)) == 0)
+@@ -458,7 +459,7 @@ codeEqualityTerm(Parse * pParse,	/* The parsing context */
  			 * such a vector, some of the subroutines do not handle
  			 * this case.
  			 */
@@ -11,3 +21,20 @@ index 8cac15123..5f084394f 100644
  				pX->pLeft = pLhs->a[0].pExpr;
  			} else {
  				pLeft->x.pList = pLhs;
+@@ -1317,7 +1318,6 @@ sqlWhereCodeOneLoopStart(WhereInfo * pWInfo,	/* Complete information about the W
+ 	 */
+ 	for (pTerm = pWC->a, j = pWC->nTerm; j > 0; j--, pTerm++) {
+ 		Expr *pE;
+-		int skipLikeAddr = 0;
+ 		if (pTerm->wtFlags & (TERM_VIRTUAL | TERM_CODED))
+ 			continue;
+ 		if ((pTerm->prereqAll & pLevel->notReady) != 0) {
+@@ -1339,8 +1339,6 @@ sqlWhereCodeOneLoopStart(WhereInfo * pWInfo,	/* Complete information about the W
+ 			continue;
+ 		}
+ 		sqlExprIfFalse(pParse, pE, addrCont, SQL_JUMPIFNULL);
+-		if (skipLikeAddr)
+-			sqlVdbeJumpHere(v, skipLikeAddr);
+ 		pTerm->wtFlags |= TERM_CODED;
+ 	}
+ 

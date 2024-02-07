@@ -1,0 +1,13 @@
+diff --git a/test/small_alloc.c b/test/small_alloc.c
+index fc9f9d4..b44ad6c 100644
+--- a/test/small_alloc.c
++++ b/test/small_alloc.c
+@@ -63,7 +63,7 @@ small_is_unused_cb(const void *stats, void *arg)
+ 	const struct mempool_stats *mempool_stats =
+ 		(const struct mempool_stats *)stats;
+ 	unsigned long *slab_total = arg;
+-	*slab_total += mempool_stats->slabsize * mempool_stats->slabcount;
++	*slab_total += (unsigned long long)mempool_stats->slabsize * (unsigned long long)mempool_stats->slabcount;
+ 	(void)stats;
+ 	(void)arg;
+ 	return 0;

@@ -1,0 +1,15 @@
+diff --git a/src/box/space_cache.c b/src/box/space_cache.c
+index c05179fbe..d83bf59d1 100644
+--- a/src/box/space_cache.c
++++ b/src/box/space_cache.c
+@@ -163,7 +163,9 @@ space_cache_repin_pinned(struct space *old_space, struct space *new_space)
+ void
+ space_cache_replace(struct space *old_space, struct space *new_space)
+ {
+-	assert(new_space != NULL || old_space != NULL);
++	if (!(new_space != NULL || old_space != NULL)) // assert
++		panic("!(new_space != NULL || old_space != NULL) in %s:%d",
++			__FILE__, __LINE__);
+ 	if (new_space != NULL) {
+ 		/*
+ 		 * If the replaced space has a different name, we

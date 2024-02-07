@@ -19,7 +19,7 @@ variables:
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
   BASE_IMAGE_LATEST: "24.2"
   MAIN_BRANCH: &main-branch "24.2"
-  CARGO_HOME: /shared-storage/picodata/.cargo
+  CARGO_HOME: /data/shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
   CACHE_ARCHIVE: /data/shared-storage/picodata/cache-24.2.tar
   # Helps to tolerate spurious network failures
@@ -325,8 +325,8 @@ gamayun-run:
   tags:
     - picodata-shell
   script:
-    - CACHE_ARCHIVE="/data/gitlab-runner/${CACHE_ARCHIVE}_clippy"
-    - ls -la ${CACHE_ARCHIVE}
+    - CACHE_ARCHIVE="${CACHE_ARCHIVE}_clippy"
+    - ls -la ${CACHE_ARCHIVE} || true
     - |
       # Restore cache
       if [ -f "${CACHE_ARCHIVE}" ]; then
@@ -342,7 +342,12 @@ gamayun-run:
     - eval $TUNNEL
     - ls -la
     - |
-      # TODO consider moving this to the script as well, this may delete some html 
+      # svace patches is more iportant than gamayun and order of applying is important
+      # first - svace, second - gamayun
+      ./tools/prepare_source_tree_for_stat_analysis.py svace
+      ./tools/prepare_source_tree_for_stat_analysis.py gamayun
+    - |
+      # TODO consider moving this to the script as well, this may delete some html
       # license files which is probably not intended
       find . -type d -name 'test*' -o -name 'doc' -o -name 'docs' | xargs -n1 rm -rvf
       find tarantool-sys/third_party/ -type f -name '*.htm*' | xargs -n 1 rm -rfv
@@ -353,9 +358,6 @@ gamayun-run:
       find . -type d -name 'docsrc' | xargs -n 1 rm -rvf
       find . -name '*.md' | xargs -n 1 rm -rvf
       find http tarantool-sys vshard -type d -name .github | xargs -n 1 rm -rfv
-    - |
-      ./tools/prepare_source_tree_for_stat_analysis.py gamayun
-      ./tools/prepare_source_tree_for_stat_analysis.py svace
     - |
       docker run --rm -t \
         -v $PWD:/tmp/src:rw \
@@ -368,6 +370,8 @@ gamayun-run:
 build-vm-image:
   stage: test
   when: manual
+  inherit:
+    variables: false
   variables:
     BRANCH: $CI_COMMIT_BRANCH
   trigger:

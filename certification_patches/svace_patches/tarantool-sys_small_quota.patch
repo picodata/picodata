@@ -1,0 +1,13 @@
+diff --git a/test/quota.cc b/test/quota.cc
+index 838aa51..64f3061 100644
+--- a/test/quota.cc
++++ b/test/quota.cc
+@@ -46,6 +46,8 @@ void *thread_routine(void *vparam)
+ 			data->use_change_success++;
+ 			sched_yield();
+ 		} else {
++			if (max == 0)
++				max = 1;
+ 			allocated_size = rand() % max + 1;
+ 			allocated_size = quota_use(&quota, allocated_size);
+ 			if (allocated_size > 0) {

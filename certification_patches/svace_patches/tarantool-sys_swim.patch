@@ -1,0 +1,15 @@
+diff --git a/src/lib/swim/swim.c b/src/lib/swim/swim.c
+index 6053abd52..459859af5 100644
+--- a/src/lib/swim/swim.c
++++ b/src/lib/swim/swim.c
+@@ -1149,6 +1149,10 @@ swim_encode_msg(struct swim *swim, struct swim_packet *packet,
+ 	map_size += swim_encode_anti_entropy(swim, packet);
+ 
+ 	assert(mp_sizeof_map(map_size) == 1 && map_size >= 2);
++	if (header == NULL) { /* svace fix */
++		diag_set(SwimError, "header is NULL");
++		return;
++	}
+ 	mp_encode_map(header, map_size);
+ }
+ 

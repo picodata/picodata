@@ -1,8 +1,37 @@
 diff --git a/src/box/sql/build.c b/src/box/sql/build.c
-index 6891de805..78428e9f9 100644
+index 38c7e08cb..c462f0a7e 100644
 --- a/src/box/sql/build.c
 +++ b/src/box/sql/build.c
-@@ -1300,7 +1300,13 @@ vdbe_emit_create_constraints(struct Parse *parse, int reg_space_id)
+@@ -744,7 +744,8 @@ sql_create_check_contraint(struct Parse *parser, bool is_field_ck)
+ 	rlist_create(&ck_parse->link);
+ 
+ 	if (is_field_ck) {
+-		assert(space != NULL);
++		if (space == NULL) // assert
++			panic("space == NULL in %s:%d", __FILE__, __LINE__);
+ 		ck_def->is_field_ck = true;
+ 		ck_def->fieldno = space->def->field_count - 1;
+ 	} else {
+@@ -842,7 +843,8 @@ vdbe_emit_open_cursor(struct Parse *parse_context, int cursor, int index_id,
+ {
+ 	assert(space != NULL);
+ 	struct index *idx = index_find(space, index_id);
+-	assert(idx != NULL);
++	if (idx == NULL) // assert
++		panic("idx == NULL in %s:%d", __FILE__, __LINE__);
+ 	if (idx->def->type != TREE) {
+ 		diag_set(ClientError, ER_UNSUPPORTED, "SQL",
+ 			 "using non-TREE index type. Please, use " \
+@@ -1047,7 +1049,7 @@ emitNewSysSpaceSequenceRecord(Parse *pParse, int reg_space_id, int reg_seq_id)
+ 
+ 	/* 1. Space id  */
+ 	sqlVdbeAddOp2(v, OP_SCopy, reg_space_id, first_col + 1);
+-	
++
+ 	/* 2. Sequence id  */
+ 	sqlVdbeAddOp2(v, OP_SCopy, reg_seq_id, first_col + 2);
+ 
+@@ -1256,7 +1258,13 @@ vdbe_emit_create_constraints(struct Parse *parse, int reg_space_id)
  	 */
  	if (is_alter) {
  		space = parse->create_column_def.space;
@@ -17,12 +46,13 @@ index 6891de805..78428e9f9 100644
  	}
  	assert(space != NULL);
  	for (; i < space->index_count; ++i) {
-@@ -2098,7 +2104,7 @@ sql_create_foreign_key(struct Parse *parse_context)
+@@ -2043,7 +2051,8 @@ sql_create_foreign_key(struct Parse *parse_context)
  					 constraint_name) != 0)
  				goto exit_create_fk;
  		/* In case of ALTER parent table must exist. */
 -		} else if (columnno_by_name(parse_context, child_space,
-+		} else if (child_cols && columnno_by_name(parse_context, child_space,
++		} else if (child_cols && columnno_by_name(parse_context,
++					    child_space,
  					    child_cols->a[i].zName,
  					    &fk_def->links[i].child_field,
  					    constraint_name) != 0) {

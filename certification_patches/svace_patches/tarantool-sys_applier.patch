@@ -1,0 +1,75 @@
+diff --git a/src/box/applier.cc b/src/box/applier.cc
+index a501ad781..a22cef5fd 100644
+--- a/src/box/applier.cc
++++ b/src/box/applier.cc
+@@ -736,7 +736,8 @@ applier_connect(struct applier *applier)
+ 	const struct auth_method *method = method_name != NULL ?
+ 		auth_method_by_name(method_name, strlen(method_name)) :
+ 		method_default;
+-	assert(method != NULL);
++	if (method == NULL) // assert
++		panic("method == NULL in %s:%d", __FILE__, __LINE__); //exit(1);
+ 	if (auth_method_check_io(method, io) != 0)
+ 		diag_raise();
+ 	const char *auth_request, *auth_request_end;
+@@ -991,9 +992,14 @@ applier_wait_register(struct applier *applier, uint64_t row_count)
+ 					     next_log_cnt / 1e6);
+ 			next_log_cnt += ROWS_PER_LOG;
+ 		}
+-		struct xrow_header *first_row =
+-			&stailq_first_entry(&rows, struct applier_tx_row,
+-					    next)->row;
++		struct applier_tx_row *tx_row =
++			stailq_first_entry(&rows,
++					    struct applier_tx_row,
++					    next);
++		if (tx_row == NULL)
++			return -1; /* using if instead of assert for svace */
++
++		struct xrow_header *first_row = &tx_row->row;
+ 		if (first_row->type == IPROTO_OK) {
+ 			/* Current vclock. This is not used now, ignore. */
+ 			assert(first_row ==
+@@ -1486,6 +1492,8 @@ apply_final_join_tx(uint32_t replica_id, struct stailq *rows)
+ {
+ 	struct applier_tx_row *txr =
+ 		stailq_first_entry(rows, struct applier_tx_row, next);
++	if (txr == NULL)
++		return -1; /* using if instead of assert for svace */
+
+ 	struct xrow_header *last_row =
+ 		&stailq_last_entry(rows, struct applier_tx_row, next)->row;
+@@ -1645,6 +1653,8 @@ applier_apply_tx(struct applier *applier, struct stailq *rows)
+ 	struct applier_tx_row *txr = stailq_first_entry(rows,
+ 							struct applier_tx_row,
+ 							next);
++	if (txr == NULL)
++		return -1; /* using if instead of assert for svace */
+ 	struct xrow_header *first_row = &txr->row;
+ 	struct xrow_header *last_row;
+ 	last_row = &stailq_last_entry(rows, struct applier_tx_row, next)->row;
+@@ -1671,9 +1681,13 @@ applier_apply_tx(struct applier *applier, struct stailq *rows)
+ 		 */
+ 		struct xrow_header *tmp;
+ 		while (true) {
+-			tmp = &stailq_first_entry(rows,
+-						  struct applier_tx_row,
+-						  next)->row;
++			struct applier_tx_row *tx_row =
++				stailq_first_entry(rows,
++						   struct applier_tx_row,
++						   next);
++			if (tx_row == NULL)
++				return -1; /* using if instead of assert for svace */
++			tmp = &tx_row->row;
+ 			if (tmp->lsn <= vclock_get(&replicaset.applier.vclock,
+ 						   tmp->replica_id)) {
+ 				stailq_shift(rows);
+@@ -2072,6 +2086,7 @@ applier_thread_reader_f(va_list ap)
+ 		} catch (FiberIsCancelled *) {
+ 			return 0;
+ 		} catch (Exception *e) {
++			(void)e;
+ 			goto exit_notify;
+ 		}
+ 		struct applier_data_msg *msg;

@@ -1,0 +1,13 @@
+diff --git a/small/slab_cache.c b/small/slab_cache.c
+index 5ac33ad..acf448f 100644
+--- a/small/slab_cache.c
++++ b/small/slab_cache.c
+@@ -146,6 +146,8 @@ slab_split(struct slab_cache *cache, struct slab *slab)
+ 	slab_create(slab, new_order, new_size);
+ 
+ 	struct slab *buddy = slab_buddy(cache, slab);
++	if (buddy == NULL) /* svace fix */
++		return NULL;
+ 	VALGRIND_MAKE_MEM_UNDEFINED(buddy, sizeof(*buddy));
+ 	slab_create(buddy, new_order, new_size);
+ 	slab_list_add(&cache->orders[buddy->order], buddy, next_in_list);

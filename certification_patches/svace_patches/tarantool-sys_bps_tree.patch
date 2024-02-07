@@ -1,12 +1,13 @@
 diff --git a/src/lib/salad/bps_tree.h b/src/lib/salad/bps_tree.h
-index e340588cb..7cdeb9770 100644
+index 72f59de86..70e002a2c 100644
 --- a/src/lib/salad/bps_tree.h
 +++ b/src/lib/salad/bps_tree.h
-@@ -1585,6 +1585,7 @@ bps_tree_random(const struct bps_tree *t, size_t rnd)
+@@ -1585,6 +1585,8 @@ bps_tree_random(const struct bps_tree *t, size_t rnd)
  	for (bps_tree_block_id_t i = 0; i < tree->depth - 1; i++) {
  		struct bps_inner *inner = (struct bps_inner *)block;
  		bps_tree_pos_t pos = rnd % inner->header.size;
-+		assert(pos < BPS_TREE_MAX_COUNT_IN_INNER);
++		if (pos >= BPS_TREE_MAX_COUNT_IN_INNER)
++			return NULL; /* using if instead of assert for svace */
  		rnd /= inner->header.size;
  		block = bps_tree_restore_block(tree, inner->child_ids[pos]);
  	}

@@ -1,0 +1,16 @@
+diff --git a/src/box/sql/printf.c b/src/box/sql/printf.c
+index 67e41665e..c9acf7601 100644
+--- a/src/box/sql/printf.c
++++ b/src/box/sql/printf.c
+@@ -424,8 +424,9 @@ sqlVXPrintf(StrAccum * pAccum,	/* Accumulate results here */
+ 			}
+ 			if (longvalue == 0)
+ 				flag_alternateform = 0;
+-			if (flag_zeropad && precision < width - (prefix != 0)) {
+-				precision = width - (prefix != 0);
++			if (flag_zeropad &&
++				precision < (int64_t)width - (int64_t)(prefix != 0)) {
++				precision = (int64_t)width - (int64_t)(prefix != 0);
+ 			}
+ 			if (precision < etBUFSIZE - 10) {
+ 				nOut = etBUFSIZE;

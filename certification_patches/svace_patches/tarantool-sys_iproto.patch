@@ -1,0 +1,16 @@
+diff --git a/src/box/iproto.cc b/src/box/iproto.cc
+index 6b9585b0e..99280a9e6 100644
+--- a/src/box/iproto.cc
++++ b/src/box/iproto.cc
+@@ -1072,7 +1072,10 @@ iproto_connection_input_buffer(struct iproto_connection *con)
+ 	if (con->parse_size != 0) {
+ 		/* Move the cached request prefix to the new buffer. */
+ 		void *wpos = ibuf_alloc(new_ibuf, con->parse_size);
+-		assert(wpos != NULL);
++		if (wpos == NULL) {
++			diag_set(OutOfMemory, con->parse_size, "ibuf", "alloc");
++			return NULL;
++		}
+ 		memcpy(wpos, old_ibuf->wpos - con->parse_size, con->parse_size);
+ 		/*
+ 		 * Discard unparsed data in the old buffer, otherwise it

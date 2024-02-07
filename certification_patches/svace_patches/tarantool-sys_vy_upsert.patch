@@ -1,0 +1,13 @@
+diff --git a/src/box/vy_upsert.c b/src/box/vy_upsert.c
+index fdae931f6..6420aa1b9 100644
+--- a/src/box/vy_upsert.c
++++ b/src/box/vy_upsert.c
+@@ -50,6 +50,8 @@ vy_apply_result_does_cross_pk(struct tuple *old_stmt, const char *result,
+ 		struct tuple *tuple =
+ 			vy_stmt_new_replace(tuple_format(old_stmt), result,
+ 					    result_end);
++		if (tuple == NULL)
++			return false;
+ 		int cmp_res = vy_stmt_compare(old_stmt, HINT_NONE, tuple,
+ 					      HINT_NONE, cmp_def);
+ 		tuple_unref(tuple);

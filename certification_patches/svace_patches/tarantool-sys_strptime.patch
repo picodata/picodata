@@ -1,0 +1,13 @@
+diff --git a/src/lib/tzcode/strptime.c b/src/lib/tzcode/strptime.c
+index 6d1b7f24d..185a248d1 100644
+--- a/src/lib/tzcode/strptime.c
++++ b/src/lib/tzcode/strptime.c
+@@ -601,7 +601,7 @@ tnt_strptime(const char *__restrict buf, const char *__restrict fmt,
+ 			    (i % 100) >= 60)
+ 				return NULL;
+ 			tm->tm_gmtoff =
+-				sign * ((i / 100) * 3600 + i % 100 * 60);
++				(long int)sign * (((long int)i / 100) * 3600 + (long int)i % 100 * 60);
+ 		} break;
+ 
+ 		case 'n':

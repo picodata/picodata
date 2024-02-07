@@ -1,0 +1,17 @@
+diff --git a/src/box/sql/update.c b/src/box/sql/update.c
+index bc5596c4c..7052182e0 100644
+--- a/src/box/sql/update.c
++++ b/src/box/sql/update.c
+@@ -199,6 +199,12 @@ sqlUpdate(Parse * pParse,		/* The parser context */
+ 	} else {
+ 		assert(space != NULL);
+ 		vdbe_emit_open_cursor(pParse, pk_cursor, 0, space);
++		if (pPk == NULL) { /* svace comment */
++			diag_set(OutOfMemory, sizeof(struct index *),
++				 "vdbe_emit_open_cursor", "sqlUpdate");
++			pParse->is_aborted = true;
++			goto update_cleanup;
++		}
+ 		pk_part_count = pPk->def->key_def->part_count;
+ 	}
+ 

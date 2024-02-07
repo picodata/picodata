@@ -1,0 +1,18 @@
+diff --git a/src/lib/salad/light.h b/src/lib/salad/light.h
+index 3db42b31d..0035f88e7 100644
+--- a/src/lib/salad/light.h
++++ b/src/lib/salad/light.h
+@@ -927,6 +927,8 @@ LIGHT(grow)(struct LIGHT(common) *ht)
+ 
+ 		struct LIGHT(record) *last_empty_record =
+ 			LIGHT(touch_record)(ht, last_empty_slot);
++		if (last_empty_record == NULL)
++			return -1; /* mem fail */
+ 		LIGHT(enqueue_empty)(ht, last_empty_slot, last_empty_record);
+ 	}
+ 	return 0;
+@@ -1343,4 +1345,3 @@ LIGHT(selfcheck)(const struct LIGHT(core) *htab)
+ 	}
+ 	return res;
+ }
+-

@@ -1,0 +1,14 @@
+diff --git a/src/box/memtx_allocator.cc b/src/box/memtx_allocator.cc
+index feb0c8a1d..57378e8f3 100644
+--- a/src/box/memtx_allocator.cc
++++ b/src/box/memtx_allocator.cc
+@@ -101,7 +101,8 @@ memtx_tuple_rv_delete(struct memtx_tuple_rv *rv, struct rlist *list,
+ 			 * view was opened. Move them to the previous read
+ 			 * view's list.
+ 			 */
+-			assert(prev_rv != nullptr);
++			if (prev_rv == nullptr) // assert
++				panic("prev_rv == nullptr in %s:%d", __FILE__, __LINE__);
+ 			assert(j < prev_rv->count);
+ 			struct memtx_tuple_rv_list *dst = &prev_rv->lists[j];
+ 			/*

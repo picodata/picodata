@@ -1,0 +1,14 @@
+diff --git a/src/box/relay.cc b/src/box/relay.cc
+index 7450fa79c..ae3229205 100644
+--- a/src/box/relay.cc
++++ b/src/box/relay.cc
+@@ -1269,7 +1269,8 @@ relay_send_row(struct xstream *stream, struct xrow_header *packet)
+ 		}
+ 		if (iproto_type_is_promote_request(packet->type)) {
+ 			struct synchro_request req;
+-			xrow_decode_synchro(packet, &req, NULL);
++			if (xrow_decode_synchro(packet, &req, NULL) != 0)
++				diag_raise();
+ 			/*
+ 			 * PROMOTE/DEMOTE should be sent only after
+ 			 * corresponding RAFT term was already sent.

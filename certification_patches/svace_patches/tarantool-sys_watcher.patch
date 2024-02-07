@@ -1,0 +1,15 @@
+diff --git a/src/box/watcher.c b/src/box/watcher.c
+index d415842d2..55cc1cef8 100644
+--- a/src/box/watcher.c
++++ b/src/box/watcher.c
+@@ -265,6 +265,10 @@ static void
+ watcher_do_run(struct watcher *watcher)
+ {
+ 	struct watchable_node *node = watcher->node;
++	if (node == NULL) { /* svace fix */
++		say_debug("watcher node is null in %s", __func__);
++		return;
++	}
+ 	watcher->version = node->version;
+ 	watcher->n_running++;
+ 	watcher->run(watcher);

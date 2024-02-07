@@ -1,7 +1,16 @@
 diff --git a/src/host/minilua.c b/src/host/minilua.c
-index 79150286..33b5ab51 100644
+index 79150286..0bf3777c 100644
 --- a/src/host/minilua.c
 +++ b/src/host/minilua.c
+@@ -3915,7 +3915,7 @@ f->sizelocvars=fs->nlocvars;
+ luaM_reallocvector(L,f->upvalues,f->sizeupvalues,f->nups,TString*);
+ f->sizeupvalues=f->nups;
+ ls->fs=fs->prev;
+-if(fs)anchor_token(ls);
++anchor_token(ls);
+ L->top-=2;
+ }
+ static Proto*luaY_parser(lua_State*L,ZIO*z,Mbuffer*buff,const char*name){
 @@ -4327,7 +4327,7 @@ if(lh->v.u.s.info==v->u.s.info){
  conflict=1;
  lh->v.u.s.info=extra;
