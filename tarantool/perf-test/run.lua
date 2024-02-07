@@ -60,15 +60,27 @@ box.schema.func.create('libperf_test.l_n_iters', {language = 'C'})
 function bench_lua_netbox()
     local clock = require('clock')
     local net_box = require("net.box")
-    local conn = net_box:connect(box.info.listen)
-    conn:wait_connected()
+
+    local connect_deadline = clock.monotonic() + 3 -- seconds
+    local conn
+    repeat
+        conn = net_box:connect(box.info.listen)
+        local ok = conn:wait_connected(clock.monotonic() - connect_deadline)
+        if clock.monotonic() > connect_deadline then
+            error(string.format('Failed to establish a connection to port %s', box.info.listen))
+        end
+    until ok or clock.monotonic() > connect_deadline
+
     local samples = {}
     local n = box.func['libperf_test.l_n_iters']:call()
+
+    -- benchmarking loop
     for i = 1, n do
         local start = clock.monotonic64()
         local res = conn:call('test_stored_proc', {1, 2})
         samples[i] = clock.monotonic64() - start
     end
+
     conn:close()
     box.func['libperf_test.l_print_stats']:call{"lua_netbox", samples}
 end
