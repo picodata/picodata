@@ -373,7 +373,6 @@ fn get_replicasets_info(
     Ok(res.values().cloned().collect())
 }
 
-//#[proc]
 pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     let version = String::from(VersionInfo::current().picodata_version);
 
