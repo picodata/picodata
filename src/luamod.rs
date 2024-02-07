@@ -62,11 +62,11 @@ pub(crate) fn setup(args: &args::Run) {
 
             picodata> pico.PICODATA_VERSION
             ---
-            - 23.12.0
+            - 24.2.0
             ...
         "},
         {
-            const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "23.12.0"));
+            const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "24.2.0"));
             crate::info::PICODATA_VERSION
         },
     );
