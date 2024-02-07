@@ -182,24 +182,27 @@ impl<T: Helper> Console<T> {
 
     fn print_help(&self) {
         let switch_language_info: &'static str = "
-        \\lua          -- switch current language to Lua
-        \\sql          -- switch current language to SQL";
+        \\sql          Switch console language to SQL (default)
+        \\lua          Switch console language to Lua (deprecated)";
 
         let lang_info = match self.console_type {
             ConsoleType::Admin => switch_language_info,
             ConsoleType::User => "",
         };
 
-        let help = format!("
+        let help = format!(
+            "
     Available backslash commands:
-        \\e            -- open text editor. Path to editor should be set via EDITOR environment variable
-        \\help         -- show this screen{lang_info}
+        \\e            Open the editor specified by the EDITOR environment variable
+        \\help         Show this screen{lang_info}
 
-    Available special commands:
-        Alt  + Enter  -- move the carriage to newline
-        Ctrl + C      -- discard current input
-        Ctrl + D      -- quit interactive console
-        ");
+    Available hotkeys:
+        Enter         Submit the request
+        Alt  + Enter  Insert a newline character
+        Ctrl + C      Discard current input
+        Ctrl + D      Quit interactive console
+        "
+        );
 
         self.write(&help);
     }
