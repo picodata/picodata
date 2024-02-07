@@ -3085,7 +3085,7 @@ impl Routines {
     }
 
     #[inline]
-    pub fn by_id(&self, routine_id: u32) -> tarantool::Result<Option<RoutineDef>> {
+    pub fn by_id(&self, routine_id: RoutineId) -> tarantool::Result<Option<RoutineDef>> {
         let tuple = self.space.get(&[routine_id])?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
@@ -3097,13 +3097,13 @@ impl Routines {
     }
 
     #[inline]
-    pub fn delete(&self, routine_id: u32) -> tarantool::Result<()> {
+    pub fn delete(&self, routine_id: RoutineId) -> tarantool::Result<()> {
         self.space.delete(&[routine_id])?;
         Ok(())
     }
 
     #[inline]
-    pub fn update_operable(&self, routine_id: u32, operable: bool) -> tarantool::Result<()> {
+    pub fn update_operable(&self, routine_id: RoutineId, operable: bool) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(RoutineDef::FIELD_OPERABLE, operable)?;
         self.space.update(&[routine_id], ops)?;
@@ -3120,13 +3120,15 @@ impl ToEntryIter for Routines {
     }
 }
 
-pub fn make_routine_not_found(routine_id: u32) -> tarantool::error::TarantoolError {
+pub fn make_routine_not_found(routine_id: RoutineId) -> tarantool::error::TarantoolError {
     tarantool::set_error!(
         tarantool::error::TarantoolErrorCode::TupleNotFound,
         "routine with id {routine_id} not found",
     );
     tarantool::error::TarantoolError::last()
 }
+
+pub type RoutineId = u32;
 
 ////////////////////////////////////////////////////////////////////////////////
 // SchemaDef

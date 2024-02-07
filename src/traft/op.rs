@@ -2,8 +2,8 @@ use crate::schema::{
     Distribution, PrivilegeDef, RoleDef, RoutineLanguage, RoutineParams, RoutineSecurity, UserDef,
     ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
 };
-use crate::storage::space_by_name;
 use crate::storage::Clusterwide;
+use crate::storage::{space_by_name, RoutineId};
 use crate::traft::error::Error as TRaftError;
 use ::tarantool::auth::AuthDef;
 use ::tarantool::index::{IndexId, Part};
@@ -517,7 +517,7 @@ pub enum Ddl {
         index_id: IndexId,
     },
     CreateProcedure {
-        id: UserId,
+        id: RoutineId,
         name: String,
         params: RoutineParams,
         language: RoutineLanguage,

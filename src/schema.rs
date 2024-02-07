@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cas::{self, compare_and_swap};
 use crate::pico_service::pico_service_password;
-use crate::storage;
+use crate::storage::{self, RoutineId};
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
@@ -1013,7 +1013,7 @@ pub enum RoutineSecurity {
 /// Routine definition.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RoutineDef {
-    pub id: u32,
+    pub id: RoutineId,
     pub name: String,
     pub kind: RoutineKind,
     pub params: RoutineParams,
