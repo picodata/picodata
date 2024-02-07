@@ -74,6 +74,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Revoke excess privileges from `guest`
 - Fix panic after `ALTER USER "alice" WITH NOLOGIN`
 - Repair `picodata connect --auth-type=ldap`
+- Picodata instances will no longer ingore raft entries which failed to apply.
+  Instead now the raft loop will keep retrying the operation forever, so that
+  admin has an opportunity to fix the error manually. Raft entries should never
+  fail to apply, so if this happens please report a bug to us.
 
 ### Compatibility
 

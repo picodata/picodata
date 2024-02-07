@@ -789,7 +789,8 @@ impl NodeImpl {
 
                 match &res {
                     Err(e) => {
-                        tlog!(Error, "clusterwide dml failed: {e}");
+                        tlog!(Error, "clusterwide dml {op:#?} failed: {e}");
+                        return SleepAndRetry;
                     }
                     // Handle delete from _pico_property
                     Ok((Some(old), None)) if space == Ok(ClusterwideTable::Property) => {
