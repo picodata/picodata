@@ -253,7 +253,7 @@ def test_raft_log(instance: Instance):
 +-----+----+--------+
 |index|term|contents|
 +-----+----+--------+
-|  0  | 1  |Insert({_pico_peer_address}, [1,"127.0.0.1:{p}"])|
+|  0  | 1  |Replace({_pico_peer_address}, [1,"127.0.0.1:{p}"])|
 |  0  | 1  |Insert({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"])|
 |  0  | 1  |Insert({_pico_tier}, ["default",1])|
 |  0  | 1  |Insert({_pico_property}, ["global_schema_version",0])|

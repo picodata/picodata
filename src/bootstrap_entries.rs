@@ -34,7 +34,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
     //
     // Populate "_pico_address" and "_pico_instance" with info about the first instance
     //
-    init_entries_push_op(op::Dml::insert(
+    init_entries_push_op(op::Dml::replace(
         ClusterwideTable::Address,
         &traft::PeerAddress {
             raft_id: instance.raft_id,
