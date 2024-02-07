@@ -15,6 +15,7 @@ use tarantool::tlua;
 #[clap(name = "picodata", version = env!("GIT_DESCRIBE"))]
 pub enum Picodata {
     Run(Box<Run>),
+    #[clap(hide = true)]
     Tarantool(Tarantool),
     Expel(Expel),
     Test(Test),
@@ -132,7 +133,7 @@ pub struct Run {
     pub http_listen: Option<Address>,
 
     #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
-    /// Enable interactive console
+    /// Enable interactive console. Deprecated in 24.1.
     pub interactive_mode: bool,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_ADMIN_SOCK")]
@@ -352,24 +353,17 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Parser)]
-#[clap(about = "Connect to a Picodata instance and start interactive SQL console")]
-#[clap(
-    long_about = "Connect to a Picodata instance and start interactive SQL console
+#[clap(about = "Connect to the Distributed SQL console")]
+#[clap(after_help = "SPECIAL COMMANDS:
+    \\e            Open the editor specified by the EDITOR environment variable
+    \\help         Show this screen
 
-In addition to running sql queries picodata connect supports simple meta commands.
-
-Anything you enter in picodata sql that begins with an unquoted backslash is a
-meta-command that is processed by the cli itself. These commands make cli more
-useful for administration or scripting.
-
-Currently there is only one such command, but other ones are expected to appear.
-
-\\e (edit)
-    Opens a temporary file and passes it to binary specified in EDITOR environment
-    variable. When the editor is closed if the exit code is zero then the file
-    content is treated as a SQL query and attempted to be executed.
-"
-)]
+HOTKEYS:
+    Enter         Submit the request
+    Alt  + Enter  Insert a newline character
+    Ctrl + C      Discard current input
+    Ctrl + D      Quit interactive console
+")]
 pub struct Connect {
     #[clap(
         short = 'u',
@@ -409,10 +403,22 @@ impl Connect {
 }
 
 #[derive(Debug, Parser)]
-#[clap(about = "Connect to admin console of a Picodata instance")]
+#[clap(about = "Connect to the Admin console of a Picodata instance")]
+#[clap(after_help = "SPECIAL COMMANDS:
+    \\e            Open the editor specified by the EDITOR environment variable
+    \\help         Show this screen
+    \\sql          Switch console language to SQL (default)
+    \\lua          Switch console language to Lua (deprecated)
+
+HOTKEYS:
+    Enter         Submit the request
+    Alt  + Enter  Insert a newline character
+    Ctrl + C      Discard current input
+    Ctrl + D      Quit interactive console
+")]
 pub struct Admin {
     #[clap(value_name = "PATH")]
-    /// Picodata instance admin socket path to connect.
+    /// Unix socket path to connect.
     pub socket_path: String,
 }
 
