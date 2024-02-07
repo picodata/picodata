@@ -179,8 +179,30 @@ fn preload_http() {
 fn start_http_server(Address { host, port, .. }: &Address) {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
-    lua.exec_with(include_str!("http_server/http_server.lua"), (host, port))
-        .expect("failed to start http server")
+    lua.exec_with(
+        r#"
+        local host, port = ...;
+        local httpd = require('http.server').new(host, port);
+        httpd:start();
+        _G.pico.httpd = httpd
+        "#,
+        (host, port),
+    )
+    .expect("failed to start http server");
+    lua.exec_with(
+        "pico.httpd:route({method = 'GET', path = 'api/v1/tiers' }, ...)",
+        tlua::Function::new(|| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_tiers())
+        }),
+    )
+    .expect("failed to add route api/v1/tiers to http server");
+    lua.exec_with(
+        "pico.httpd:route({method = 'GET', path = 'api/v1/cluster' }, ...)",
+        tlua::Function::new(|| -> _ {
+            http_server::wrap_api_result!(http_server::http_api_cluster())
+        }),
+    )
+    .expect("failed to add route api/v1/cluster to http server")
 }
 
 #[cfg(feature = "webui")]

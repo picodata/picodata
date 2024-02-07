@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error, fmt};
 
-use tarantool::net_box::{Conn, ConnOptions, Options};
-use tarantool::proc;
-use tarantool::tuple::Tuple;
+use ::tarantool::net_box::{Conn, ConnOptions, Options};
+use ::tarantool::tuple::Tuple;
 
 use crate::info::VersionInfo;
 use crate::instance::{GradeVariant, Instance, InstanceId};
@@ -143,7 +142,7 @@ struct ReplicasetInfo {
 //
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TierInfo {
+pub(crate) struct TierInfo {
     replicasets: Vec<ReplicasetInfo>,
     replicaset_count: usize,
     rf: u8,
@@ -173,7 +172,7 @@ struct TierInfo {
 //
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ClusterInfo {
+pub(crate) struct ClusterInfo {
     capacity_usage: f64,
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
     current_instance_version: String,
@@ -374,8 +373,8 @@ fn get_replicasets_info(
     Ok(res.values().cloned().collect())
 }
 
-#[proc]
-fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
+//#[proc]
+pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     let version = String::from(VersionInfo::current().picodata_version);
 
     let storage = Clusterwide::get();
@@ -417,8 +416,7 @@ fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     Ok(res)
 }
 
-#[proc]
-fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
+pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
     let storage = Clusterwide::get();
     let replicasets = get_replicasets_info(storage, false)?;
     let tiers = get_tiers(storage)?;
@@ -452,3 +450,34 @@ fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
 
     Ok(res.values().cloned().collect())
 }
+
+
+macro_rules! wrap_api_result {
+    ($api_result:expr) => {{
+        let mut status = 200;
+        let mut content_type = "application/json";
+        let content: String;
+        match $api_result {
+            Ok(res) => match serde_json::to_string(&res) {
+                Ok(value) => content = value,
+                Err(err) => {
+                    content = err.to_string();
+                    content_type = "plain/text";
+                    status = 500
+                }
+            },
+            Err(err) => {
+                content = err.to_string();
+                content_type = "plain/text";
+                status = 500
+            }
+        }
+        tlua::AsTable((
+            ("status", status),
+            ("body", content),
+            ("headers", tlua::AsTable((("content-type", content_type),))),
+        ))
+    }};
+}
+
+pub(crate) use wrap_api_result;
