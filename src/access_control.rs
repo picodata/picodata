@@ -333,7 +333,7 @@ fn access_check_grant_revoke(
                 tarantool::set_error!(
                     tarantool::error::TarantoolErrorCode::AccessDenied,
                     "Revoke '{}' from '{}' is denied for all users",
-                    PrivilegeType::Login,
+                    priv_def.privilege(),
                     PICO_SERVICE_USER_NAME,
                 );
                 return Err(tarantool::error::TarantoolError::last().into());
