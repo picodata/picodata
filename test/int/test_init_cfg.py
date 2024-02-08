@@ -1,5 +1,4 @@
-from conftest import Cluster
-from test_shutdown import log_crawler
+from conftest import Cluster, log_crawler
 
 
 def test_run_init_cfg_enoent(cluster: Cluster):

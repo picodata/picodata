@@ -1624,3 +1624,14 @@ def pgrep_tree(pid):
         return [pid, *subps]
     except subprocess.SubprocessError:
         return [pid]
+
+
+class log_crawler:
+    def __init__(self, instance: Instance, search_str: str) -> None:
+        self.matched = False
+        self.search_str = search_str.encode("utf-8")
+        instance.on_output_line(self._cb)
+
+    def _cb(self, line: bytes):
+        if self.search_str in line:
+            self.matched = True

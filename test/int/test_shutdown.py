@@ -1,7 +1,7 @@
 import os
 import pytest
 import signal
-from conftest import Cluster, Instance
+from conftest import Cluster, Instance, log_crawler
 
 ON_SHUTDOWN_TIMEOUT = "on_shutdown triggers failed"
 
@@ -16,17 +16,6 @@ def cluster2(cluster: Cluster):
 def cluster3(cluster: Cluster):
     cluster.deploy(instance_count=3)
     return cluster
-
-
-class log_crawler:
-    def __init__(self, instance: Instance, search_str: str) -> None:
-        self.matched = False
-        self.search_str = search_str.encode("utf-8")
-        instance.on_output_line(self._cb)
-
-    def _cb(self, line: bytes):
-        if self.search_str in line:
-            self.matched = True
 
 
 def test_gl119_panic_on_shutdown(cluster2: Cluster):
