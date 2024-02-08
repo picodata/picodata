@@ -53,7 +53,7 @@ variables:
 #
 .rules:
   - &if-build-base-changes-on-master-branch
-    if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE != "pipeline")
     changes:
       # implies compare_to HEAD~1
       paths: &build-base-changes-paths
@@ -61,7 +61,7 @@ variables:
         - .gitlab-ci.yml
 
   - &if-build-base-changes-on-dev-branch
-    if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    if: ($CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH) && ($CI_PIPELINE_SOURCE != "pipeline")
     changes:
       compare_to: master
       paths: *build-base-changes-paths
