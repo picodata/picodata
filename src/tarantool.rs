@@ -82,6 +82,7 @@ mod tests {
 pub struct Cfg {
     pub listen: Option<String>,
     pub read_only: bool,
+    pub log: Option<String>,
 
     pub instance_uuid: Option<String>,
     pub replicaset_uuid: Option<String>,
@@ -111,6 +112,7 @@ impl Default for Cfg {
         Self {
             listen: Some("3301".into()),
             read_only: true,
+            log: None,
 
             instance_uuid: None,
             replicaset_uuid: None,
