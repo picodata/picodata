@@ -1,4 +1,7 @@
-use ::tarantool::fiber::{mutex::MutexGuard, sleep, Mutex};
+use ::tarantool::fiber;
+use ::tarantool::fiber::r#async::sleep;
+use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
+use ::tarantool::fiber::{mutex::MutexGuard, Mutex};
 use ::tarantool::proc;
 use ::tarantool::uuid::Uuid;
 use serde::{Deserialize, Serialize};
@@ -7,7 +10,6 @@ use std::error::Error as StdError;
 use std::time::{Duration, Instant};
 
 use crate::stringify_cfunc;
-use crate::tarantool;
 use crate::traft;
 use crate::util::Either::{self, Left, Right};
 
@@ -167,7 +169,12 @@ pub fn init_global(peers: impl IntoIterator<Item = impl Into<Address>>) {
     unsafe { DISCOVERY = Some(Box::new(Mutex::new(d))) }
 }
 
+#[inline(always)]
 pub fn wait_global() -> Role {
+    fiber::block_on(wait_global_async())
+}
+
+pub async fn wait_global_async() -> Role {
     loop {
         let d = discovery().expect("discovery uninitialized");
         let (request, curr_peers) = match d.next_or_role() {
@@ -177,18 +184,27 @@ pub fn wait_global() -> Role {
         drop(d); // release the lock before doing i/o
         let round_start = Instant::now();
         for address in curr_peers {
-            if let Some(response) = tarantool::net_box_call_or_log(
+            let res = crate::rpc::network_call_raw(
                 &address,
                 stringify_cfunc!(proc_discover),
-                (&request, &address),
-                Duration::from_secs(2),
-            ) {
-                discovery()
+                &(&request, &address),
+            )
+            .timeout(Duration::from_secs(2))
+            .await;
+            match res {
+                Ok(response) => discovery()
                     .expect("discovery deinitialized")
-                    .handle_response(address, response)
+                    .handle_response(address, response),
+                Err(e) => {
+                    crate::tlog!(
+                        Warning,
+                        "calling .proc_discover failed to '{address}' failed: {e}"
+                    );
+                }
             }
         }
-        sleep(Duration::from_millis(200).saturating_sub(round_start.elapsed()))
+        let time_left_to_sleep = Duration::from_millis(200).saturating_sub(round_start.elapsed());
+        sleep(time_left_to_sleep).await;
     }
 }
 

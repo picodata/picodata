@@ -1,17 +1,11 @@
 use file_shred::*;
 use std::ffi::CStr;
 use std::os::unix::ffi::OsStrExt;
-use std::time::Duration;
-use std::time::Instant;
 
-use crate::pico_service::pico_service_password;
-use crate::schema::PICO_SERVICE_USER_NAME;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
-use ::tarantool::net_box;
 use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThread, PushGuard};
 pub use ::tarantool::trigger::on_shutdown;
-use ::tarantool::tuple::ToTupleBuffer;
 
 #[macro_export]
 macro_rules! stringify_last_token {
@@ -194,65 +188,6 @@ where
 {
     let l = lua_state();
     l.eval(code)
-}
-
-// fn net_box_repeat_call_until_succeed<Args, Res, Addr>(
-pub fn net_box_call<Args, Res, Addr>(
-    address: Addr,
-    fn_name: &str,
-    args: &Args,
-    timeout: Duration,
-) -> Result<Res, ::tarantool::error::Error>
-where
-    Args: ToTupleBuffer,
-    Addr: std::net::ToSocketAddrs + std::fmt::Display,
-    Res: serde::de::DeserializeOwned,
-{
-    let now = Instant::now();
-
-    let conn_opts = net_box::ConnOptions {
-        user: PICO_SERVICE_USER_NAME.into(),
-        password: pico_service_password().into(),
-        connect_timeout: timeout,
-        ..Default::default()
-    };
-
-    let conn = net_box::Conn::new(&address, conn_opts, None)?;
-
-    let call_opts = net_box::Options {
-        timeout: Some(timeout.saturating_sub(now.elapsed())),
-        ..Default::default()
-    };
-
-    let tuple = conn
-        .call(fn_name, args, &call_opts)?
-        .expect("unexpected net_box result Ok(None)");
-
-    crate::rpc::decode_iproto_return_value(tuple)
-}
-
-#[inline]
-pub fn net_box_call_or_log<Args, Res, Addr>(
-    address: Addr,
-    fn_name: &str,
-    args: Args,
-    timeout: Duration,
-) -> Option<Res>
-where
-    Args: ToTupleBuffer,
-    Addr: std::net::ToSocketAddrs + std::fmt::Display + slog::Value,
-    Res: serde::de::DeserializeOwned,
-{
-    match net_box_call(&address, fn_name, &args, timeout) {
-        Ok(res) => Some(res),
-        Err(e) => {
-            crate::tlog!(Warning, "net_box_call failed: {e}";
-                "peer" => &address,
-                "fn" => fn_name,
-            );
-            None
-        }
-    }
 }
 
 /// Analogue of tarantool's `os.exit(code)`. Use this function if tarantool's

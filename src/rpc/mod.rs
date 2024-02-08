@@ -43,10 +43,26 @@ where
     Ok(res)
 }
 
-/// Invoke remote procedure call on an instance specified by `address`.
+/// Create a one-time iproto connection and send a remote procedure call `request`
+/// to the instance specified by `address`.
+#[inline(always)]
 pub async fn network_call<R>(address: &str, request: &R) -> ::tarantool::Result<R::Response>
 where
     R: RequestArgs,
+{
+    network_call_raw(address, R::PROC_NAME, request).await
+}
+
+/// Create a one-time iproto connection and send a request to execute stored
+/// procedure `proc` with provided `args` on the instance specified by `address`.
+pub async fn network_call_raw<A, R>(
+    address: &str,
+    proc: &'static str,
+    args: &A,
+) -> ::tarantool::Result<R>
+where
+    A: tarantool::tuple::ToTupleBuffer,
+    R: serde::de::DeserializeOwned + 'static,
 {
     // TODO: move address parsing into client
     let (address, port) = address.rsplit_once(':').ok_or_else(|| {
@@ -66,11 +82,12 @@ where
     ));
     let client = Client::connect_with_config(address, port, config).await?;
 
-    let tuple = client.call(R::PROC_NAME, request).await?;
+    let tuple = client.call(proc, args).await?;
     decode_iproto_return_value(tuple)
 }
 
-/// Invoke remote procedure call on a Raft leader.
+/// Create a one-time iproto connection and send a remote procedure call `request`
+/// to the current raft leader.
 pub async fn network_call_to_leader<R>(request: &R) -> Result<R::Response>
 where
     R: RequestArgs,
