@@ -263,7 +263,7 @@ picodata> pico.cas({
 
 Cм. также:
 
-- [Пользовательская консоль](../tutorial/connecting.md#user_console)
+- [SQL-консоль](../tutorial/connecting.md#sql_console)
 
 ## Команда `admin` {: #admin_command }
 
