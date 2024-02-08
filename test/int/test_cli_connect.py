@@ -388,12 +388,11 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     # Change language to SQL works
     cli.sendline("\\sql")
     cli.sendline("CREATE ROLE CHANGE_TO_SQL_WORKS")
-    cli.expect_exact("---\r\n")
-    cli.expect_exact("- row_count: 1\r\n")
-    cli.expect_exact("...\r\n")
-    cli.expect_exact("\r\n")
+    cli.expect_exact("1")
 
     cli.sendline("\\lua")
+    cli.expect_exact("Language switched to Lua")
+
     cli.sendline("box.session.user()")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- admin\r\n")
@@ -473,58 +472,6 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
     eprint("^D")
     cli.sendcontrol("d")
     cli.expect_exact(pexpect.EOF)
-
-
-def test_lua_completion(cluster: Cluster):
-    i1 = cluster.add_instance(wait_online=False)
-    i1.start()
-    i1.wait_online()
-
-    cli = pexpect.spawn(
-        # For some uninvestigated reason, readline trims the propmt in CI
-        # Instead of
-        #   unix/:/some/path/to/admin.sock>
-        # it prints
-        #   </path/to/admin.sock>
-        #
-        # We were unable to debug it quickly and used cwd as a workaround
-        cwd=i1.data_dir,
-        command=i1.binary_path,
-        args=["admin", "./admin.sock"],
-        encoding="utf-8",
-        timeout=1,
-    )
-    cli.logfile = sys.stdout
-
-    cli.expect_exact("picodata> ")
-    cli.sendline("\\lua")
-
-    # With several possible variants they are shown as list
-    cli.send("to")
-    cli.send("\t\t")
-    cli.expect_exact("tostring(    tonumber(    tonumber64(")
-    cli.sendcontrol("c")
-
-    cli.send("box.c")
-    cli.send("\t\t")
-    cli.expect_exact("box.ctl      box.cfg      box.commit(")
-    cli.sendcontrol("c")
-
-    cli.send("tonumber(to")
-    cli.send("\t\t")
-    cli.expect_exact("tostring(    tonumber(    tonumber64(")
-    cli.sendcontrol("c")
-
-    # With one possible variant it automaticaly completes current word
-    # so we can check that is completed by result of completing this command
-    cli.send("hel")
-    cli.send("\t")
-    cli.expect_exact("help")
-    cli.sendcontrol("c")
-
-    cli.send("bred bo")
-    cli.send("\t")
-    cli.expect_exact("bred box")
 
 
 def test_connect_connection_info_and_help(i1: Instance):

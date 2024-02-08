@@ -14,7 +14,8 @@ use crate::tarantool_main;
 use crate::util::unwrap_or_terminate;
 
 use super::args;
-use super::console::{Console, ReplError};
+use super::connect::ResultSet;
+use super::console::{Command, Console, ReplError, SpecialCommand};
 
 pub struct LuaCompleter {
     client: Rc<RefCell<UnixClient>>,
@@ -32,11 +33,18 @@ impl Completer for LuaCompleter {
         let is_break_char = |ch: char| ch == ' ' || ch == '(';
         let (start, to_complete) = extract_word(line, pos, None, is_break_char);
 
-        let completions = self
+        let res = self
             .client
             .borrow_mut()
-            .complete_input(to_complete, start, pos)
-            .map_err(|_| ReadlineError::Eof)?;
+            .complete_input(to_complete, start, pos);
+
+        let completions = match res {
+            Ok(completions) => completions,
+            Err(e) => {
+                crate::tlog!(Warning, "getting completions failed: {e}");
+                Vec::new()
+            }
+        };
 
         Ok((start, completions))
     }
@@ -48,10 +56,17 @@ pub struct LuaHelper {
     completer: LuaCompleter,
 }
 
+#[derive(PartialEq)]
+enum ConsoleLanguage {
+    Lua,
+    Sql,
+}
+
 /// Wrapper around unix socket with console-like interface
 /// for communicating with tarantool console.
 pub struct UnixClient {
     socket: UnixStream,
+    current_language: ConsoleLanguage,
     buffer: Vec<u8>,
 }
 
@@ -76,6 +91,7 @@ impl UnixClient {
         socket.set_read_timeout(Some(Duration::from_secs(Self::WAIT_TIMEOUT)))?;
         Ok(UnixClient {
             socket,
+            current_language: ConsoleLanguage::Lua,
             buffer: vec![0; Self::INITIAL_BUFFER_SIZE],
         })
     }
@@ -103,6 +119,7 @@ impl UnixClient {
         client.write("\\set language sql")?;
         let response = client.read()?;
         debug_assert!(response.contains("true"));
+        client.current_language = ConsoleLanguage::Sql;
 
         Ok(client)
     }
@@ -157,6 +174,11 @@ impl UnixClient {
     }
 
     fn complete_input(&mut self, line: &str, left: usize, right: usize) -> Result<Vec<String>> {
+        // Completions are available only for Lua
+        if self.current_language != ConsoleLanguage::Lua {
+            return Ok(Vec::new());
+        }
+
         self.write(&format!(
             "return require(\"console\").completion_handler(\"{}\", {}, {})",
             line, left, right
@@ -214,11 +236,59 @@ fn admin_repl(args: args::Admin) -> core::result::Result<(), ReplError> {
         args.socket_path
     ));
 
-    while let Some(line) = console.read()? {
+    const HELP_MESSAGE: &'static str = "
+    Available backslash commands:
+        \\e            Open the editor specified by the EDITOR environment variable
+        \\help         Show this screen
+        \\sql          Switch console language to SQL (default)
+        \\lua          Switch console language to Lua (deprecated)
+
+    Available hotkeys:
+        Enter         Submit the request
+        Alt  + Enter  Insert a newline character
+        Ctrl + C      Discard current input
+        Ctrl + D      Quit interactive console";
+
+    while let Some(command) = console.read()? {
         let mut temp_client = client.borrow_mut();
-        temp_client.write(&line)?;
-        let response = temp_client.read()?;
-        console.write(&response);
+        match command {
+            Command::Control(command) => match command {
+                SpecialCommand::SwitchLanguageToLua => {
+                    temp_client.write("\\set language lua")?;
+                    temp_client.read()?;
+                    temp_client.current_language = ConsoleLanguage::Lua;
+                    console.write("Language switched to Lua");
+                }
+
+                SpecialCommand::SwitchLanguageToSql => {
+                    temp_client.write("\\set language sql")?;
+                    temp_client.read()?;
+                    temp_client.current_language = ConsoleLanguage::Sql;
+                    console.write("Language switched to SQL");
+                }
+
+                SpecialCommand::PrintHelp => {
+                    console.write(HELP_MESSAGE);
+                }
+            },
+            Command::Expression(line) => {
+                temp_client.write(&line)?;
+                let raw_response = temp_client.read()?;
+                let formatted = match temp_client.current_language {
+                    ConsoleLanguage::Lua => raw_response,
+                    ConsoleLanguage::Sql => serde_yaml::from_str::<ResultSet>(&raw_response)
+                        .map_err(|err| {
+                            ReplError::Other(format!(
+                                "error occured while processing output: {}",
+                                err
+                            ))
+                        })?
+                        .to_string(),
+                };
+
+                console.write(&formatted);
+            }
+        };
     }
 
     Ok(())
