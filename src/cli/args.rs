@@ -167,12 +167,21 @@ pub struct Run {
     )]
     pub init_cfg: Option<String>,
 
-    /// Configuration for the audit log (currently just a string).
-    /// Tarantool's log machinery (say) will parse and validate it independently.
+    /// Configuration for the audit log.
     /// Valid options:
-    /// 1. Write to file (e.g. `--audit=/tmp/audit.log`);
-    /// 2. Send to subprocess via stdin (e.g. `--audit='|/bin/capture-from-stdin'`);
-    /// 3. Write to syslog (e.g. `--audit=syslog:`).
+    ///
+    /// 1. `file:<file>` or simply `<file>` — write to a file, e.g:
+    ///
+    ///    picodata run --audit '/tmp/audit.log'
+    ///
+    /// 2. `pipe:<command>` or `| <command>` — redirect to a subprocess, e.g:
+    ///
+    ///    picodata run --audit '| /bin/capture-from-stdin'
+    ///
+    /// 3. `syslog:` — write to the syslog, e.g:
+    ///
+    ///    picodata run --audit 'syslog:'
+    ///
     #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
     pub audit: Option<String>,
 
@@ -180,6 +189,32 @@ pub struct Run {
     /// Shred (not only delete) .xlog and .snap files on rotation
     /// for the security reasons.
     pub shredding: bool,
+
+    #[clap(long = "log", value_name = "PATH", env = "PICODATA_LOG")]
+    /// Configuration for the picodata diagnostic log.
+    /// Valid options:
+    ///
+    /// 1. `file:<file>` or simply `<file>` — write to a file, e.g.:
+    ///
+    ///    picodata run --log '/tmp/picodata.log'
+    ///
+    /// 2. `pipe:<command>` or `| <command>` — redirect to a subprocess, e.g:
+    ///
+    ///    picodata run --log '| /dev/capture-from-stdin'
+    ///
+    /// 3. `syslog:` — write to the syslog, e.g:
+    ///
+    ///    picodata run --log 'syslog:'
+    ///
+    pub log: Option<String>,
+
+    #[clap(
+        long = "memtx-memory",
+        env = "PICODATA_MEMTX_MEMORY",
+        default_value = "67108864"
+    )]
+    /// The amount of memory in bytes to allocate for the database engine.
+    pub memtx_memory: u64,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.

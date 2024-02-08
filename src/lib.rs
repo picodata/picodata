@@ -548,10 +548,12 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
     let mut cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
+        log: args.log.clone(),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
         vinyl_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
+        memtx_memory: args.memtx_memory,
         ..Default::default()
     };
 
@@ -647,12 +649,14 @@ fn start_boot(args: &args::Run) {
     let cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
+        log: args.log.clone(),
         instance_uuid: Some(instance.instance_uuid.clone()),
         replicaset_uuid: Some(instance.replicaset_uuid.clone()),
         wal_dir: args.data_dir.clone(),
         memtx_dir: args.data_dir.clone(),
         vinyl_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
+        memtx_memory: args.memtx_memory,
         ..Default::default()
     };
 
@@ -754,6 +758,7 @@ fn start_join(args: &args::Run, instance_address: String) {
     let cfg = tarantool::Cfg {
         listen: Some(format!("{}:{}", args.listen.host, args.listen.port)),
         read_only: resp.box_replication.len() > 1,
+        log: args.log.clone(),
         instance_uuid: Some(resp.instance.instance_uuid.clone()),
         replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
         replication: replication_cfg,
@@ -761,6 +766,7 @@ fn start_join(args: &args::Run, instance_address: String) {
         memtx_dir: args.data_dir.clone(),
         vinyl_dir: args.data_dir.clone(),
         log_level: args.log_level() as u8,
+        memtx_memory: args.memtx_memory,
         ..Default::default()
     };
 
