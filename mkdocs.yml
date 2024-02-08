@@ -4,15 +4,14 @@
 # Общие настройки
 # site_name — https://www.mkdocs.org/user-guide/configuration/#site_name
 # site_description — https://www.mkdocs.org/user-guide/configuration/#site_description
+# site_url — https://squidfunk.github.io/mkdocs-material/setup/setting-up-versioning/#stay-on-the-same-page-when-switching-versions
 # repo_url — https://www.mkdocs.org/user-guide/configuration/#repo_url
 # edit_uri — https://www.mkdocs.org/user-guide/configuration/#edit_uri
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
+site_url: https://docs.picodata.io/picodata/
 repo_url: https://git.picodata.io/picodata/picodata/docs
 edit_uri: -/blob/main/docs/
-
-# https://squidfunk.github.io/mkdocs-material/setup/setting-up-versioning/#stay-on-the-same-page-when-switching-versions
-site_url: https://docs.picodata.io/picodata/
 
 # Исключения из навигации
 # https://www.mkdocs.org/user-guide/configuration/#not_in_nav
@@ -53,7 +52,6 @@ nav:
     - architecture/raft_failover.md
     - architecture/system_tables.md
     # - architecture/proc_api.md
-
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
@@ -76,8 +74,8 @@ theme:
   custom_dir: overrides
   font:
     text: Inter
-  logo: assets/logo-full.svg
-  logo_mobile: assets/logo.svg
+  logo: assets/logo.svg
+  icon: assets/icon.svg  # Custom setting
   favicon: assets/favicon.png
   language: ru
   features:

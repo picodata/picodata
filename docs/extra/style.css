@@ -281,15 +281,15 @@ body {
 .md-logo img {
     height: 36px !important;
 }
-.md-logo__mobile {
+.md-icon__mobile {
     display: none;
 }
-.md-logo__mobile img {
+.md-icon__mobile img {
     height: 24px;
     width: 24px;
 }
 @media screen and (max-width: 76.1875em) {
-    .md-logo__mobile {
+    .md-icon__mobile {
         display: block;
     }
 }
@@ -338,7 +338,7 @@ h6 {
     background: white;
 }
 
-.main-site-icon {
+.picodata-link {
     max-width: 5.9rem !important;
 }
 

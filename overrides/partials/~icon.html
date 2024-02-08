@@ -1,0 +1,10 @@
+<!-- Icon mobile -->
+{% if config.theme.icon %}
+<a
+  href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}"
+  title="{{ config.site_name | e }}"
+  class="md-icon__mobile"
+>
+  <img src="{{ config.theme.icon | url }}" alt="icon" />
+</a>
+{% endif %}

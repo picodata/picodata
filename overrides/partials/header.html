@@ -1,5 +1,5 @@
 <!--
-  Copyright (c) 2016-2023 Martin Donath <martin.donath@squidfunk.com>
+  Copyright (c) 2016-2024 Martin Donath <martin.donath@squidfunk.com>
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to
@@ -51,13 +51,9 @@
       {% set icon = config.theme.icon.menu or "material/menu" %}
       {% include ".icons/" ~ icon ~ ".svg" %}
     </label>
-      <a
-        href="{{ config.extra.homepage | d(nav.homepage.url, true) | url }}"
-        title="{{ config.site_name | e }}"
-        class="md-logo__mobile"
-      >
-        {% include "partials/logo-mobile.html" %}
-      </a>
+
+    <!-- Header title -->
+    {% include "partials/~icon.html" %}
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
@@ -115,6 +111,11 @@
       {% endif %}
     {% endif %}
 
+    <!-- User preference: color palette -->
+    {% if not config.theme.palette is mapping %}
+      {% include "partials/javascripts/palette.html" %}
+    {% endif %}
+
     <!-- Site language selector -->
     {% if config.extra.alternate %}
       {% include "partials/alternate.html" %}
@@ -163,8 +164,10 @@
         {% include "partials/source.html" %}
       </div>
     {% endif %}
-    <div class="md-header__source main-site-icon">
-      {% include "partials/main-site-item.html" %}
+
+    <!-- Link to Picodata site -->
+    <div class="md-header__source picodata-link">
+      {% include "partials/~picodata-link.html" %}
     </div>
   </nav>
 
