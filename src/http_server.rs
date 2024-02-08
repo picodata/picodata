@@ -344,7 +344,7 @@ fn get_replicasets_info(
             grade: instance_info.current_grade,
             instance_count: 0,
             uuid: replicaset.replicaset_uuid.clone(),
-            capacity_usage: 0.0,
+            capacity_usage: 0_f64,
             instances: Vec::new(),
             memory: MemoryInfo { usable: 0, used: 0 },
             id: replicaset_id.clone(),
@@ -353,7 +353,7 @@ fn get_replicasets_info(
 
         if instance.instance_id == replicaset.current_master_id {
             replica.capacity_usage = if mem_usable == 0 {
-                0.0
+                0_f64
             } else {
                 ((mem_used as f64) / (mem_usable as f64) * 10000_f64).round() / 100_f64
             };
@@ -361,7 +361,7 @@ fn get_replicasets_info(
             replica.memory.used = mem_used;
         }
         replica.instances.push(instance_info);
-        replica.instance_count += replica.instance_count;
+        replica.instance_count += 1;
 
         res.insert(replicaset_id, replica);
     }
@@ -381,7 +381,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     let mut mem_info = MemoryInfo { usable: 0, used: 0 };
 
     for replicaset in replicasets {
-        replicasets_count += replicasets_count;
+        replicasets_count += 1;
         instances += replicaset.instance_count;
         mem_info.usable += replicaset.memory.usable;
         mem_info.used += replicaset.memory.used;
@@ -396,7 +396,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
 
     let res = ClusterInfo {
         capacity_usage: if mem_info.usable == 0 {
-            0.0
+            0_f64
         } else {
             ((mem_info.used as f64) / (mem_info.usable as f64) * 10000_f64).round() / 100_f64
         },
