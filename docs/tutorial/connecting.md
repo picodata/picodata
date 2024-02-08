@@ -4,7 +4,7 @@
 шаги в консоли.
 
 По умолчанию, консоль, в которой происходит
-[запуск](../reference/cli.md#run_command) инстанса Picodata, служит для
+[запуск](../reference/cli.md#run) инстанса Picodata, служит для
 вывода диагностических сообщений инстанса. Для ввода команд следует
 подключиться к Picodata из другой консоли. При этом, возможны два типа
 подключения:
@@ -27,9 +27,9 @@ picodata admin ./admin.sock
 ```
 
 По умолчанию файл unix-сокета расположен в [директории с данными
-инстанса](../reference/cli.md#data_dir) Picodata. Размещение этого
+инстанса](../reference/cli.md#run_data_dir) Picodata. Размещение этого
 файла настраивается при запуске инстанса параметром
-[picodata run --admin-sock](../reference/cli.md#admin_sock).
+[picodata run --admin-sock](../reference/cli.md#run_admin_sock).
 
 При успешном подключении отобразится приглашение:
 

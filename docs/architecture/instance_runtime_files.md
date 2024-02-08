@@ -1,6 +1,6 @@
 # Рабочие файлы инстанса {: #instance_runtime_files }
 
-В [директории с данными инстанса](../reference/cli.md#data_dir) автоматически появляются следующие файлы:
+В [директории с данными инстанса](../reference/cli.md#run_data_dir) автоматически появляются следующие файлы:
 
 - `*.snap` — файлы [снапшотов](../overview/glossary.md#snapshot) БД
 - `*.xlog` — файлы журнала упреждающей записи (Write-ahead log, WAL) c
