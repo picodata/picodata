@@ -46,17 +46,16 @@ Picodata является распределенной СУБД, и управл
 В Picodata определены следующие виды привилегий:
 
 - привилегии для работы с пользователями (`CREATE USER`, `ALTER USER`,
-  `DROP USER`, `SESSION`)
+  `DROP USER`)
 - привилегии для работы с ролями (`CREATE ROLE`, `DROP ROLE`)
 - привилегии для работы с таблицами (`CREATE TABLE`, `ALTER TABLE`,
   `DROP TABLE`, `READ TABLE`, `WRITE TABLE`)
+- `LOGIN` — право подключаться к инстансу. Автоматически выдается
+  новым пользователям при создании.
 
 NOTE: **Примечание**
-`SESSION` — право подключаться по сети при помощи команды `picodata
-connect`. Автоматически выдается новым пользователям
-при создании, но по умолчанию отключена для [Администратора СУБД](#admin)
-(`admin`). В отличие от других привилегий, для выдачи или отзыва
-привилегии `SESSION` [используется](#alter_user) SQL-синтаксис `ALTER <user name> {
+В отличие от других привилегий, для выдачи или отзыва
+привилегии `LOGIN` [используется](#alter_user) SQL-синтаксис `ALTER USER <user name> WITH {
 LOGIN / NOLOGIN }`
 
 Информация о привилегиях хранится в системной таблице [_pico_privilege](../architecture/system_tables.md#_pico_privilege).
@@ -237,17 +236,17 @@ USER](../reference/sql_queries.md#alter_user):
 
 ```sql
 ALTER USER <user name>
-    [ WITH ] [ LOGIN ] | [ NOLOGIN ] |
+    [ WITH LOGIN | NOLOGIN ] |
     [ PASSWORD <password> [ USING chap-sha1 | md5 | ldap ] ]
 ```
 
 Возможные действия:
 
-- `LOGIN` / `NOLOGIN` — включение/выключение привилегии `SESSION`
+- `LOGIN` / `NOLOGIN` — выдача/отзыв привилегии `LOGIN`
 - `WITH PASSWORD` — установка пароля пользователя
 - `USING` — выбора метода аутентификации
 
-Пример блокировки пользователя (отзыва привилегий `SESSION`):
+Пример блокировки пользователя (отзыва привилегий `LOGIN`):
 
 ```sql
 ALTER USER "alice" WITH NOLOGIN
