@@ -25,7 +25,7 @@ Picodata — это распределенная система промышле
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
 * [Управление доступом](tutorial/access_control.md)
-* [Авторизация с помощью LDAP](tutorial/ldap.md)
+* [Аутентификация с помощью LDAP](tutorial/ldap.md)
 * [Мониторинг кластера](tutorial/monitoring.md)
 * [Использование журнала аудита](tutorial/audit_log.md)
 
