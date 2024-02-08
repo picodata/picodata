@@ -7,7 +7,7 @@ use crate::tarantool_main;
 use crate::util::{prompt_password, unwrap_or_terminate};
 
 use super::args::{self, Address, DEFAULT_USERNAME};
-use super::console::{Console, ReplError};
+use super::console::{Command, Console, ReplError, SpecialCommand};
 use comfy_table::{ContentArrangement, Table};
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +43,7 @@ impl Display for ColumnDesc {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct RowSet {
+pub struct RowSet {
     metadata: Vec<ColumnDesc>,
     rows: Vec<Vec<rmpv::Value>>,
 }
@@ -64,7 +64,7 @@ impl Display for RowSet {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct RowCount {
+pub struct RowCount {
     row_count: usize,
 }
 
@@ -76,7 +76,7 @@ impl Display for RowCount {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-enum ResultSet {
+pub enum ResultSet {
     RowSet(Vec<RowSet>),
     RowCount(Vec<RowCount>),
     // Option<()> here is for ignoring tarantool redundant "null"
@@ -140,14 +140,38 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         address.host, address.port, user
     ));
 
-    while let Some(line) = console.read()? {
-        let response = ::tarantool::fiber::block_on(client.call("pico.sql", &(line,)))?;
+    const HELP_MESSAGE: &'static str = "
+    Available backslash commands:
+        \\e            Open the editor specified by the EDITOR environment variable
+        \\help         Show this screen
 
-        let res: ResultSet = response.decode().map_err(|err| {
-            ReplError::Other(format!("error occured while processing output: {}", err))
-        })?;
+    Available hotkeys:
+        Enter         Submit the request
+        Alt  + Enter  Insert a newline character
+        Ctrl + C      Discard current input
+        Ctrl + D      Quit interactive console";
 
-        console.write(&res.to_string());
+    while let Some(command) = console.read()? {
+        match command {
+            Command::Control(command) => {
+                match command {
+                    SpecialCommand::PrintHelp => console.write(HELP_MESSAGE),
+                    SpecialCommand::SwitchLanguageToLua | SpecialCommand::SwitchLanguageToSql => {
+                        // picodata connect doesn't know about language switching
+                        console.write("Unknown special sequence")
+                    }
+                }
+            }
+            Command::Expression(line) => {
+                let response = ::tarantool::fiber::block_on(client.call("pico.sql", &(line,)))?;
+
+                let res: ResultSet = response.decode().map_err(|err| {
+                    ReplError::Other(format!("error occured while processing output: {}", err))
+                })?;
+
+                console.write(&res.to_string());
+            }
+        };
     }
 
     Ok(())

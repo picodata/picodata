@@ -34,17 +34,23 @@ pub enum ReplError {
 
 pub type Result<T> = std::result::Result<T, ReplError>;
 
-/// Shows user of console
-pub enum ConsoleType {
-    Admin,
-    User,
+pub enum SpecialCommand {
+    SwitchLanguageToLua,
+    SwitchLanguageToSql,
+    PrintHelp,
+}
+
+pub enum Command {
+    // A builtin REPL command
+    Control(SpecialCommand),
+    // Either lua or sql expression
+    Expression(String),
 }
 
 /// Input/output handler
 pub struct Console<H: Helper> {
     editor: Editor<H, FileHistory>,
     history_file_path: PathBuf,
-    console_type: ConsoleType,
 }
 
 impl<T: Helper> Console<T> {
@@ -55,13 +61,13 @@ impl<T: Helper> Console<T> {
     // and only one special command. To not overengineer things at this point just handle this as ifs.
     // When the set of commands grows it makes total sense to transform this to clear parse/execute pipeline
     // and separate enum variants for each command variant.
-    fn process_line(&self, line: String) -> Result<ControlFlow<String>> {
+    fn process_line(&self, line: &str) -> Result<ControlFlow<Command>> {
         if line.is_empty() {
             return Ok(ControlFlow::Continue(()));
         }
 
         if !line.starts_with('\\') {
-            return Ok(ControlFlow::Break(line));
+            return Ok(ControlFlow::Break(Command::Expression(line.into())));
         }
 
         if line == "\\e" {
@@ -87,30 +93,34 @@ impl<T: Helper> Console<T> {
             // we don't check content intentionally
             let line = read_to_string(temp.path()).map_err(ReplError::Io)?;
 
-            return Ok(ControlFlow::Break(line));
-        } else if line == "\\help" {
-            self.print_help();
-            return Ok(ControlFlow::Continue(()));
+            return Ok(ControlFlow::Break(Command::Expression(line)));
+        } else if ["\\help", "\\h"].contains(&line) {
+            return Ok(ControlFlow::Break(Command::Control(
+                SpecialCommand::PrintHelp,
+            )));
+        } else if line == "\\lua" {
+            return Ok(ControlFlow::Break(Command::Control(
+                SpecialCommand::SwitchLanguageToLua,
+            )));
+        } else if line == "\\sql" {
+            return Ok(ControlFlow::Break(Command::Control(
+                SpecialCommand::SwitchLanguageToSql,
+            )));
         }
 
-        // all language switching is availiable only for admin console
-        match self.console_type {
-            ConsoleType::User => (),
-            ConsoleType::Admin => {
-                if line == "\\lua" {
-                    return Ok(ControlFlow::Break("\\set language lua".into()));
-                } else if line == "\\sql" {
-                    return Ok(ControlFlow::Break("\\set language sql".into()));
-                }
-
-                let splitted = line.split_whitespace().collect::<Vec<_>>();
-                if splitted.len() > 2
-                    && (splitted[0] == "\\s" || splitted[0] == "\\set")
-                    && (splitted[1] == "language" || splitted[1] == "l" || splitted[1] == "lang")
-                    && (splitted[2] == "lua" || splitted[2] == "sql")
-                {
-                    return Ok(ControlFlow::Break(line));
-                }
+        let splitted = line.split_whitespace().collect::<Vec<_>>();
+        if splitted.len() > 2
+            && (splitted[0] == "\\s" || splitted[0] == "\\set")
+            && (splitted[1] == "language" || splitted[1] == "l" || splitted[1] == "lang")
+        {
+            if splitted[2] == "lua" {
+                return Ok(ControlFlow::Break(Command::Control(
+                    SpecialCommand::SwitchLanguageToLua,
+                )));
+            } else if splitted[2] == "sql" {
+                return Ok(ControlFlow::Break(Command::Control(
+                    SpecialCommand::SwitchLanguageToSql,
+                )));
             }
         }
 
@@ -124,21 +134,21 @@ impl<T: Helper> Console<T> {
     }
 
     /// Reads from stdin. Takes into account treating special symbols.
-    pub fn read(&mut self) -> Result<Option<String>> {
+    pub fn read(&mut self) -> Result<Option<Command>> {
         loop {
             let readline = self.editor.readline(Self::PROMPT);
             match readline {
                 Ok(line) => {
-                    let line = match self.process_line(line)? {
+                    let command = match self.process_line(&line)? {
                         ControlFlow::Continue(_) => continue,
-                        ControlFlow::Break(line) => line,
+                        ControlFlow::Break(command) => command,
                     };
 
                     if let Err(e) = self.update_history(&line) {
                         println!("{}: {}", self.history_file_path.display(), e);
                     }
 
-                    return Ok(Some(line));
+                    return Ok(Some(command));
                 }
                 Err(ReadlineError::Interrupted) => {
                     self.write("CTRL+C");
@@ -180,33 +190,6 @@ impl<T: Helper> Console<T> {
         Ok((editor, history_file_path))
     }
 
-    fn print_help(&self) {
-        let switch_language_info: &'static str = "
-        \\sql          Switch console language to SQL (default)
-        \\lua          Switch console language to Lua (deprecated)";
-
-        let lang_info = match self.console_type {
-            ConsoleType::Admin => switch_language_info,
-            ConsoleType::User => "",
-        };
-
-        let help = format!(
-            "
-    Available backslash commands:
-        \\e            Open the editor specified by the EDITOR environment variable
-        \\help         Show this screen{lang_info}
-
-    Available hotkeys:
-        Enter         Submit the request
-        Alt  + Enter  Insert a newline character
-        Ctrl + C      Discard current input
-        Ctrl + D      Quit interactive console
-        "
-        );
-
-        self.write(&help);
-    }
-
     /// Prints information about connection and help hint
     pub fn greet(&self, connection_info: &str) {
         self.write(connection_info);
@@ -225,7 +208,6 @@ impl Console<LuaHelper> {
         Ok(Console {
             editor,
             history_file_path,
-            console_type: ConsoleType::Admin,
         })
     }
 }
@@ -237,7 +219,6 @@ impl Console<()> {
         Ok(Console {
             editor,
             history_file_path,
-            console_type: ConsoleType::User,
         })
     }
 }
