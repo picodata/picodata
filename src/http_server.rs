@@ -370,7 +370,7 @@ fn get_replicasets_info(
         res.insert(replicaset_id, replica);
     }
 
-    Ok(res.values().cloned().collect())
+    Ok(res.into_values().collect())
 }
 
 pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
@@ -447,9 +447,8 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
         res.insert(tier_name, tier);
     }
 
-    Ok(res.values().cloned().collect())
+    Ok(res.into_values().collect())
 }
-
 
 macro_rules! wrap_api_result {
     ($api_result:expr) => {{
