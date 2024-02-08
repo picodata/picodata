@@ -1,6 +1,7 @@
 # Тестовый портал документации продукта Picodata
 
-Здесь живёт проект Mkdocs, с помощью которого генерируется статичный сайт документации для Picodata. Содержимое репозитория попадает на сайт [docs.binary.picodata.io/picodata](docs.binary.picodata.io/picodata).
+Здесь живёт проект Mkdocs, с помощью которого генерируется статичный сайт документации для Picodata.
+Содержимое репозитория попадает на сайт [docs.binary.picodata.io/picodata](http://docs.binary.picodata.io/picodata).
 При сборке через `make` все операции происходят в отдельном окружении, созданном `pipenv`.
 
 ## Cборка проекта
@@ -24,7 +25,8 @@ make lint
 
 ## Сборка в Docker
 
-В данном репозитории имееется [Dockerfile](docker/static/Dockerfile), с помощью которого можно собрать и запустить сайт внутри контейнера. Я использую следующие команды:
+В данном репозитории имееется [Dockerfile](docker/static/Dockerfile), с помощью которого можно собрать и запустить сайт внутри контейнера.
+Можно использовать следующие команды:
 ```
 docker build -f docker/static/Dockerfile -t test-project-mkdocs --no-cache .
 docker run -p 8080:8080 test-project-mkdocs:latest
