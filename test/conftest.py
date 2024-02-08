@@ -475,6 +475,7 @@ class Instance:
     instance_id: str | None = None
     replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
+    service_password_file: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
@@ -512,6 +513,7 @@ class Instance:
     @property
     def command(self):
         audit = self.audit_flag_value
+        service_password = self.service_password_file
 
         # fmt: off
         return [
@@ -529,6 +531,7 @@ class Instance:
               if self.init_cfg_path is not None else []),
             *(["--tier", self.tier] if self.tier is not None else []),
             *(["--audit", audit] if audit else []),
+            *(["--service-password-file", service_password] if service_password else []),
         ]
         # fmt: on
 
@@ -541,6 +544,11 @@ class Instance:
     ):
         if user is None:
             user = "pico_service"
+            if password is None and self.service_password_file is not None:
+                with open(self.service_password_file, "r") as f:
+                    password = f.readline()
+                    if password.endswith("\n"):
+                        password = password[:-1]
 
         c = Connection(
             self.host,

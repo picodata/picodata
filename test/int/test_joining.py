@@ -1,11 +1,13 @@
 import re
 import pytest
+import time
 
 from conftest import (
     Cluster,
     Instance,
     Retriable,
     TarantoolError,
+    log_crawler,
 )
 
 
@@ -344,3 +346,38 @@ def test_fail_to_join(cluster: Cluster):
     """
     )
     assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}
+
+
+def test_pico_service_invalid_password(cluster: Cluster):
+    password_file = f"{cluster.data_dir}/service-password.txt"
+    with open(password_file, "w") as f:
+        print("secret", file=f)
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.service_password_file = password_file
+    i1.start()
+    i1.wait_online()
+
+    i2 = cluster.add_instance(wait_online=False)
+    lc = log_crawler(i2, "User not found or supplied credentials are invalid")
+    i2.start()
+    # i2 blocks on the "discovery" stage, because only pico_service is allowed
+    # to call .proc_discover, but i2 doesn't know the password.
+    #
+    # And we don't exit from "discovery" stage on error
+    time.sleep(1)
+    assert lc.matched
+    i2.terminate()
+
+    # Now i2 knows the password so it successfully joins
+    i2.service_password_file = password_file
+    i2.start()
+    i2.wait_online()
+    i2.terminate()
+
+    # i2 forgets the password again, and now it does exit with error,
+    # because self activation fails
+    i2.service_password_file = None
+    lc.matched = False
+    i2.fail_to_start()
+    assert lc.matched

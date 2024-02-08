@@ -10,6 +10,7 @@ from conftest import (
     TarantoolError,
     ReturnError,
     MalformedAPI,
+    log_crawler,
 )
 
 
@@ -503,3 +504,28 @@ def test_file_shredding(cluster: Cluster, tmp_path):
 
     assert xlog_before_shred != xlog_after_shred
     assert snap_before_shred != snap_after_shred
+
+
+def test_pico_service_password_security_warning(cluster: Cluster):
+    password_file = f"{cluster.data_dir}/service-password.txt"
+    with open(password_file, "w") as f:
+        print("secret", file=f)
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.service_password_file = password_file
+
+    message = "service password file's permissions are too open, this is a security risk"  # noqa: E501
+    lc = log_crawler(i1, message)
+    i1.start()
+    i1.wait_online()
+    assert lc.matched
+
+    i1.terminate()
+    i1.remove_data()
+
+    os.chmod(password_file, 0o600)
+
+    lc.matched = False
+    i1.start()
+    i1.wait_online()
+    assert not lc.matched
