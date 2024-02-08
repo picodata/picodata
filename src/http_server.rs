@@ -204,7 +204,7 @@ fn get_tiers(storage: &Clusterwide) -> Result<Vec<Tier>, Box<dyn Error>> {
 fn get_peer_addresses(
     storage: &Clusterwide,
     replicasets: &HashMap<ReplicasetId, Replicaset>,
-    instances: &Vec<Instance>,
+    instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
 ) -> Result<HashMap<u64, String>, Box<dyn Error>> {
     let leaders: HashMap<u64, bool> = instances
@@ -250,19 +250,17 @@ fn get_instance_data(full_address: &String) -> InstanceDataResponse {
                 },
             ) {
                 Ok(info_res) => {
-                    if let Ok(info_data) = info_res
+                    if let Ok(Some((ri,))) = info_res
                         .as_ref()
                         .map(Tuple::decode::<(crate::info::RuntimeInfo,)>)
                         .transpose()
                     {
-                        if let Some((ri,)) = info_data {
-                            if let Some(http) = ri.http {
-                                res.httpd_address.push_str(&http.host);
-                                res.httpd_address.push_str(&String::from(":"));
-                                res.httpd_address.push_str(&http.port.to_string());
-                            }
-                            res.version = ri.version_info.picodata_version.to_string();
+                        if let Some(http) = ri.http {
+                            res.httpd_address.push_str(&http.host);
+                            res.httpd_address.push_str(&String::from(":"));
+                            res.httpd_address.push_str(&http.port.to_string());
                         }
+                        res.version = ri.version_info.picodata_version.to_string();
                     }
                 }
                 Err(e) => tlog!(
@@ -279,15 +277,13 @@ fn get_instance_data(full_address: &String) -> InstanceDataResponse {
                 },
             ) {
                 Ok(slab_res) => {
-                    if let Ok(slab_data) = slab_res
+                    if let Ok(Some((si,))) = slab_res
                         .as_ref()
                         .map(Tuple::decode::<(SlabInfo,)>)
                         .transpose()
                     {
-                        if let Some((si,)) = slab_data {
-                            res.mem_usable = si.quota_size;
-                            res.mem_used = si.quota_used;
-                        }
+                        res.mem_usable = si.quota_size;
+                        res.mem_used = si.quota_used;
                     };
                 }
                 Err(e) => tlog!(
@@ -312,7 +308,7 @@ fn get_replicasets_info(
     let addresses = get_peer_addresses(storage, &replicasets, &instances, only_leaders)?;
     let instances_props: HashMap<u64, InstanceDataResponse> = addresses
         .iter()
-        .map(|(raft_id, full_address)| (raft_id.clone(), get_instance_data(full_address)))
+        .map(|(raft_id, full_address)| (*raft_id, get_instance_data(full_address)))
         .collect();
 
     let mut res: HashMap<ReplicasetId, ReplicasetInfo> = HashMap::with_capacity(replicasets.len());
@@ -355,7 +351,7 @@ fn get_replicasets_info(
             tier: replicaset.tier.to_string(),
         });
 
-        if &instance.instance_id == &replicaset.current_master_id {
+        if instance.instance_id == replicaset.current_master_id {
             replica.capacity_usage = if mem_usable == 0 {
                 0.0
             } else {
@@ -365,7 +361,7 @@ fn get_replicasets_info(
             replica.memory.used = mem_used;
         }
         replica.instances.push(instance_info);
-        replica.instance_count = replica.instance_count + 1;
+        replica.instance_count += replica.instance_count;
 
         res.insert(replicaset_id, replica);
     }
@@ -385,18 +381,17 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     let mut mem_info = MemoryInfo { usable: 0, used: 0 };
 
     for replicaset in replicasets {
-        replicasets_count = replicasets_count + 1;
-        instances = instances + replicaset.instance_count;
-        mem_info.usable = mem_info.usable + replicaset.memory.usable;
-        mem_info.used = mem_info.used + replicaset.memory.used;
-        _ = replicaset.instances.iter().for_each(|i| {
-            instances_online = instances_online
-                + if i.current_grade == GradeVariant::Online {
-                    1
-                } else {
-                    0
-                }
-        })
+        replicasets_count += replicasets_count;
+        instances += replicaset.instance_count;
+        mem_info.usable += replicaset.memory.usable;
+        mem_info.used += replicaset.memory.used;
+        replicaset.instances.iter().for_each(|i| {
+            instances_online += if i.current_grade == GradeVariant::Online {
+                1
+            } else {
+                0
+            }
+        });
     }
 
     let res = ClusterInfo {
@@ -406,7 +401,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
             ((mem_info.used as f64) / (mem_info.usable as f64) * 10000_f64).round() / 100_f64
         },
         current_instance_version: version,
-        replicasets_count: replicasets_count,
+        replicasets_count,
         instances_current_grade_offline: (instances - instances_online),
         memory: mem_info,
         instances_current_grade_online: instances_online,
@@ -441,8 +436,8 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
     for replicaset in replicasets {
         let tier_name = replicaset.tier.clone();
         let mut tier = res.get(&replicaset.tier).cloned().unwrap();
-        tier.replicaset_count = tier.replicaset_count + 1;
-        tier.instance_count = tier.instance_count + replicaset.instances.len();
+        tier.replicaset_count += 1;
+        tier.instance_count += replicaset.instances.len();
         tier.replicasets.push(replicaset);
         res.insert(tier_name, tier);
     }
