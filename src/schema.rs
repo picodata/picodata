@@ -720,10 +720,11 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             name: "admin".into(),
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
-            // this is a bit different from vanilla tnt
-            // in vanilla tnt auth def is empty. Here for simplicity given available module api
-            // we use ChapSha with invalid password
-            // (its impossible to get empty string as output of sha1)
+            // This place slightly differs from the tarantool
+            // implementation. In vanilla tarantool the auth_def is an empty
+            // MP_MAP. Here for simplicity given available module api we
+            // use ChapSha with invalid password (its impossible to get
+            // empty string as output of sha1)
             auth: AuthDef::new(AuthMethod::ChapSha1, "".into()),
             owner: initiator,
         };
