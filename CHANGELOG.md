@@ -39,8 +39,7 @@ with the `YY.MINOR.MICRO` scheme.
   under the admin account, see [Tutorial — Connecting — Admin console].
 
 - New `picodata connect` implementation provides a console interface to
-  the distributed SQL, see [Tutorial — Connecting — Distributed SQL
-  console]
+  the distributed SQL, see [Tutorial — Connecting — SQL console]
 
 - New option `picodata run --admin-sock` replaces `--console-sock` which
   is removed. The default value is `<data_dir>/admin.sock`.
@@ -48,11 +47,16 @@ with the `YY.MINOR.MICRO` scheme.
 - New option `picodata run --shredding` enables secure removing of data
   files (snap, xlog).
 
+- New option `picodata run --log` configures the diagnotic log.
+
+- New option `picodata run --memtx-memory` controls the amount of memory
+  allocated for the database engine.
+
 [Tutorial — Connecting — Admin console]:
   https://docs.picodata.io/picodata/24.1/tutorial/connecting/#admin_console
 
-[Tutorial — Connecting — Distributed SQL console]:
-  https://docs.picodata.io/picodata/devel/tutorial/connecting/#user_console
+[Tutorial — Connecting — SQL console]:
+  https://docs.picodata.io/picodata/24.1/tutorial/connecting/#sql_console
 
 ### SQL
 
