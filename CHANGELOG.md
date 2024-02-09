@@ -26,6 +26,12 @@ with the `YY.MINOR.MICRO` scheme.
 - Clusterwide SQL supports procedure creation.
 
 - Make Proc API the main picodata API. Lua API is considered deprecated.
+
+- New "pico_service" builtin user is used for all inter-instance system
+  communications. A path to a file containing the password for this user can be
+  specified via the new `--service-password-file` option (under `picodata run`
+  command).
+
 -->
 
 ## [24.1.1] - 2024-02-09
