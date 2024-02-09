@@ -1,4 +1,4 @@
-use sbroad::ir::ddl::Language;
+use sbroad::ir::ddl::{Language, ParamDef};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
@@ -1031,6 +1031,8 @@ impl Encode for RoutineDef {}
 impl RoutineDef {
     /// Index (0-based) of field "operable" in _pico_routine table format.
     pub const FIELD_OPERABLE: usize = 8;
+    /// Index (0-based) of field "name" in _pico_routine table format.
+    pub const FIELD_NAME: usize = 1;
 
     /// Format of the _pico_routine global table.
     #[inline(always)]
@@ -1199,6 +1201,23 @@ impl From<Field> for tarantool::space::Field {
 }
 
 #[derive(Clone, Debug)]
+pub struct RenameRoutineParams {
+    pub new_name: String,
+    pub old_name: String,
+    pub params: Option<Vec<ParamDef>>,
+}
+
+impl RenameRoutineParams {
+    pub fn func_exists(&self) -> bool {
+        func_exists(&self.old_name)
+    }
+
+    pub fn new_name_occupied(&self) -> bool {
+        func_exists(&self.new_name)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct CreateProcParams {
     pub name: String,
     pub params: RoutineParams,
@@ -1208,17 +1227,21 @@ pub struct CreateProcParams {
     pub owner: UserId,
 }
 
+fn func_exists(name: &str) -> bool {
+    let func_space = Space::from(SystemSpace::Func);
+
+    let name_idx = func_space
+        .index_cached("name")
+        .expect("_function should have an index by name");
+    let t = name_idx
+        .get(&[name])
+        .expect("reading from _function shouldn't fail");
+    t.is_some()
+}
+
 impl CreateProcParams {
     pub fn func_exists(&self) -> bool {
-        let func_space = Space::from(SystemSpace::Func);
-
-        let name_idx = func_space
-            .index_cached("name")
-            .expect("_function should have an index by name");
-        let t = name_idx
-            .get(&[&self.name])
-            .expect("reading from _function shouldn't fail");
-        t.is_some()
+        func_exists(&self.name)
     }
 
     pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {

@@ -255,6 +255,7 @@ pub enum CommandTag {
     Grant = 7,
     GrantRole = 8,
     Insert = 9,
+    RenameRoutine = 17,
     Revoke = 10,
     RevokeRole = 11,
     #[default]
@@ -275,6 +276,7 @@ impl From<CommandTag> for QueryType {
             CommandTag::DropTable
             | CommandTag::CreateTable
             | CommandTag::CreateProcedure
+            | CommandTag::RenameRoutine
             | CommandTag::DropProcedure => QueryType::Ddl,
             CommandTag::Delete
             | CommandTag::Insert
@@ -312,6 +314,7 @@ impl TryFrom<&Node> for CommandTag {
                 Ddl::CreateTable { .. } => Ok(CommandTag::CreateTable),
                 Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),
                 Ddl::DropProc { .. } => Ok(CommandTag::DropProcedure),
+                Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
             },
             Node::Relational(rel) => match rel {
                 Relational::Delete { .. } => Ok(CommandTag::Delete),

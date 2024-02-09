@@ -242,6 +242,19 @@ fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
                 as_user,
             )
         }
+        op::Ddl::RenameProcedure {
+            routine_id,
+            old_name,
+            owner_id,
+            ..
+        } => box_access_check_ddl_as_user(
+            old_name,
+            *routine_id,
+            *owner_id,
+            TntSchemaObjectType::Function,
+            PrivType::Alter,
+            as_user,
+        ),
     }
 }
 

@@ -1027,6 +1027,26 @@ impl NodeImpl {
                             initiator: initiator_def.name,
                         );
                     }
+                    Ddl::RenameProcedure {
+                        routine_id,
+                        old_name,
+                        new_name,
+                        initiator_id,
+                        ..
+                    } => {
+                        self.storage
+                            .routines
+                            .update_operable(routine_id, true)
+                            .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(initiator_id).expect("user must exist");
+                        crate::audit!(
+                            message: "renamed routine {routine_id} from {old_name} to {new_name}",
+                            title: "rename routine",
+                            severity: Medium,
+                            initiator: initiator_def.name,
+                        );
+                    }
                     _ => {
                         todo!()
                     }
@@ -1090,6 +1110,21 @@ impl NodeImpl {
                         self.storage
                             .routines
                             .update_operable(id, true)
+                            .expect("storage shouldn't fail");
+                    }
+
+                    Ddl::RenameProcedure {
+                        routine_id,
+                        old_name,
+                        ..
+                    } => {
+                        self.storage
+                            .routines
+                            .rename(routine_id, old_name.as_str())
+                            .expect("storage shouldn't fail");
+                        self.storage
+                            .routines
+                            .update_operable(routine_id, true)
                             .expect("storage shouldn't fail");
                     }
 
@@ -1410,6 +1445,21 @@ impl NodeImpl {
                 self.storage
                     .routines
                     .update_operable(id, false)
+                    .expect("storage shouldn't fail");
+            }
+            Ddl::RenameProcedure {
+                routine_id,
+                new_name,
+                ..
+            } => {
+                self.storage
+                    .routines
+                    .rename(routine_id, new_name.as_str())?
+                    .expect("routine existence must have been checked before commit");
+
+                self.storage
+                    .routines
+                    .update_operable(routine_id, false)
                     .expect("storage shouldn't fail");
             }
         }

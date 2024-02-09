@@ -2297,6 +2297,7 @@ def test_create_drop_procedure(cluster: Cluster):
             create procedure proc1(int, text)
             language SQL
             as $$insert into t values(?, ?)$$
+            option(timeout=3)
             """
         )
     with pytest.raises(
@@ -2568,3 +2569,134 @@ def test_call_procedure(cluster: Cluster):
         ReturnError, match="AccessDenied: Execute access to function 'proc1' is denied"
     ):
         i1.sql(""" call "proc1"(3, 3) """, user=username, password=alice_pwd)
+
+
+def test_rename_procedure(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    data = i1.sql(
+        """
+        create table t (a int not null, b int, primary key (a))
+        using memtx
+        distributed by (b)
+        """
+    )
+    assert data["row_count"] == 1
+
+    data = i2.sql(
+        """
+        create procedure foo(int)
+        language SQL
+        as $$insert into t values(?, ?)$$
+        """
+    )
+    assert data["row_count"] == 1
+
+    data = i1.sql(
+        """
+        alter procedure foo
+        rename to bar
+        option ( timeout = 4 )
+        """
+    )
+    assert data["row_count"] == 1
+
+    data = i2.sql(
+        """
+        select "name" from "_pico_routine"
+        where "name" = 'BAR' or "name" = 'FOO'
+        """
+    )
+    assert data["rows"] == [["BAR"]]
+
+    # procedure foo doesn't exist
+    data = i1.sql(
+        """
+        alter procedure foo
+        rename to bar
+        """
+    )
+    assert data["row_count"] == 0
+
+    # rename back, use syntax with parameters
+    data = i1.sql(
+        """
+        alter procedure "BAR"(int)
+        rename to "FOO"
+        """
+    )
+    assert data["row_count"] == 1
+
+    data = i2.sql(
+        """
+        select "name" from "_pico_routine"
+        where "name" = 'BAR' or "name" = 'FOO'
+        """
+    )
+    assert data["rows"] == [["FOO"]]
+
+    data = i2.sql(
+        """
+        create procedure bar()
+        language SQL
+        as $$insert into t values(200, 200)$$
+        """
+    )
+    assert data["row_count"] == 1
+
+    with pytest.raises(ReturnError, match="Name 'FOO' is already taken"):
+        data = i1.sql(
+            """
+            alter procedure bar()
+            rename to foo
+            """
+        )
+
+    with pytest.raises(
+        ReturnError, match="routine exists but with a different signature: BAR()"
+    ):
+        data = i1.sql(
+            """
+            alter procedure bar(int)
+            rename to buzz
+            """
+        )
+
+    username = "alice"
+    alice_pwd = "Passw0rd"
+    acl = i1.sql(
+        f"""
+        create user "{username}" with password '{alice_pwd}'
+        using chap-sha1 option (timeout = 3)
+    """
+    )
+    assert acl["row_count"] == 1
+    with pytest.raises(
+        ReturnError, match="Alter access to function 'BAR' is denied for user 'alice'"
+    ):
+        i1.sql(
+            """alter procedure bar rename to buzz""", user=username, password=alice_pwd
+        )
+
+    i2.eval(
+        """
+        box.schema.func.create(
+            'foobar',
+            {
+                body = [[function(question) return 42 end]],
+                id = box.internal.generate_func_id(true)
+            }
+        )
+        """
+    )
+    with pytest.raises(ReturnError, match="ddl operation was aborted"):
+        i1.sql(
+            """
+            alter procEdurE foo rENaME tO "foobar"
+            """
+        )
+
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'foobar' """)
+    assert data["rows"] == []
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'foobar' """)
+    assert data["rows"] == []

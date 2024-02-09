@@ -2356,6 +2356,27 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
             // Actual drop happens only on commit, so there's nothing to abort.
         }
 
+        Ddl::RenameProcedure {
+            routine_id,
+            ref old_name,
+            ref new_name,
+            ..
+        } => {
+            let lua = ::tarantool::lua_state();
+            lua.exec_with(
+                "local new_name = ...
+                box.schema.func.drop(new_name, {if_exists = true})
+                ",
+                (new_name,),
+            )
+            .map_err(LuaError::from)?;
+
+            lua.exec_with(LUA_CREATE_PROC_SCRIPT, (routine_id, old_name, true))
+                .map_err(LuaError::from)?;
+
+            set_local_schema_version(version)?;
+        }
+
         _ => {
             todo!();
         }
@@ -2364,29 +2385,50 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
     Ok(())
 }
 
+// This script is reused between create and rename procedure,
+// when applying changes on master.
+const LUA_CREATE_PROC_SCRIPT: &str = r#"
+    local func_id, func_name, not_exists = ...
+    local def = {
+        language = 'LUA',
+        body = string.format(
+            [[function() error("function %s is used internally by picodata") end]],
+            func_name
+        ),
+        id = func_id,
+        if_not_exists = not_exists,
+    }
+    box.schema.func.create(func_name, def)"#;
+
 /// Create tarantool function which throws an error if it's called.
 /// Tarantool function is created with `if_not_exists = true`, so it's
 /// safe to call this rust function multiple times.
 pub fn ddl_create_function_on_master(func_id: u32, func_name: &str) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let lua = ::tarantool::lua_state();
+    lua.exec_with(LUA_CREATE_PROC_SCRIPT, (func_id, func_name, true))
+        .map_err(LuaError::from)?;
+    Ok(())
+}
+
+pub fn ddl_rename_function_on_master(id: u32, old_name: &str, new_name: &str) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+    // We can't do update/replace on _func space, so in order to rename
+    // our dummy lua function we need to drop it and create it with a
+    // new name.
+    let lua = ::tarantool::lua_state();
     lua.exec_with(
-        r#"
-        local func_id, func_name = ...
-        local def = {
-            language = 'LUA',
-            body = string.format(
-                [[function() error("function %s is used internally by picodata") end]],
-                func_name
-            ),
-            id = func_id,
-            if_not_exists = true,
-        }
-        box.schema.func.create(func_name, def)
-    "#,
-        (func_id, func_name),
+        "local func_name = ...
+        box.schema.func.drop(func_name, {if_exists = true})
+        ",
+        (old_name,),
     )
     .map_err(LuaError::from)?;
+
+    lua.exec_with(LUA_CREATE_PROC_SCRIPT, (id, new_name, false))
+        .map_err(LuaError::from)?;
+
     Ok(())
 }
 
@@ -3125,6 +3167,14 @@ impl Routines {
                 local: true,
             },
         ]
+    }
+
+    #[inline(always)]
+    pub fn rename(&self, id: u32, new_name: &str) -> tarantool::Result<Option<RoutineDef>> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(RoutineDef::FIELD_NAME, new_name)?;
+        let tuple = self.space.update(&[id], ops)?;
+        tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline(always)]

@@ -2,8 +2,9 @@
 
 use crate::schema::{
     wait_for_ddl_commit, CreateProcParams, CreateTableParams, DistributionParam, Field,
-    PrivilegeDef, PrivilegeType, RoleDef, RoutineDef, RoutineLanguage, RoutineParamDef,
-    RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
+    PrivilegeDef, PrivilegeType, RenameRoutineParams, RoleDef, RoutineDef, RoutineLanguage,
+    RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn, UserDef,
+    ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals, BoxedPortal, Describe, Descriptor, UserDescriptors, PG_PORTALS,
@@ -914,6 +915,19 @@ fn reenterable_schema_change_request(
             // Nothing to check
             Params::DropTable(name)
         }
+        IrNode::Ddl(Ddl::RenameRoutine {
+            old_name,
+            new_name,
+            params,
+            ..
+        }) => {
+            let params = RenameRoutineParams {
+                new_name,
+                old_name,
+                params,
+            };
+            Params::RenameRoutine(params)
+        }
         IrNode::Acl(Acl::DropUser { name, .. }) => {
             // Nothing to check
             Params::DropUser(name)
@@ -1037,6 +1051,42 @@ fn reenterable_schema_change_request(
                 Op::DdlPrepare {
                     schema_version,
                     ddl,
+                }
+            }
+            Params::RenameRoutine(params) => {
+                if !params.func_exists() {
+                    // Procedure does not exist, nothing to rename
+                    return Ok(ConsumerResult { row_count: 0 });
+                }
+
+                if params.new_name_occupied() {
+                    return Err(Error::Other(
+                        format!("Name '{}' is already taken", params.new_name).into(),
+                    ));
+                }
+
+                let routine_def = node
+                    .storage
+                    .routines
+                    .by_name(&params.old_name)?
+                    .expect("if routine ddl is correct, routine must exist");
+
+                if let Some(params) = params.params.as_ref() {
+                    ensure_parameters_match(&routine_def, params)?;
+                }
+
+                let ddl = OpDdl::RenameProcedure {
+                    routine_id: routine_def.id,
+                    new_name: params.new_name.clone(),
+                    old_name: params.old_name.clone(),
+                    initiator_id: current_user,
+                    owner_id: routine_def.owner,
+                    schema_version,
+                };
+
+                Op::DdlPrepare {
+                    ddl,
+                    schema_version,
                 }
             }
             Params::CreateTable(params) => {
@@ -1311,6 +1361,7 @@ fn reenterable_schema_change_request(
         DropRole(String),
         GrantPrivilege(GrantRevokeType, String),
         RevokePrivilege(GrantRevokeType, String),
+        RenameRoutine(RenameRoutineParams),
         CreateProcedure(CreateProcParams),
         DropProcedure(String, Vec<ParamDef>),
     }

@@ -1,9 +1,9 @@
 use crate::op::Ddl;
-use crate::storage::Clusterwide;
 use crate::storage::{
     ddl_create_function_on_master, ddl_create_space_on_master, ddl_drop_function_on_master,
     ddl_drop_space_on_master,
 };
+use crate::storage::{ddl_rename_function_on_master, Clusterwide};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
@@ -151,6 +151,17 @@ pub fn apply_schema_change(
 
             let abort_reason = ddl_drop_function_on_master(id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
+                return Err(Error::Aborted(e.to_string()));
+            }
+        }
+
+        Ddl::RenameProcedure {
+            routine_id,
+            ref old_name,
+            ref new_name,
+            ..
+        } => {
+            if let Err(e) = ddl_rename_function_on_master(routine_id, old_name, new_name) {
                 return Err(Error::Aborted(e.to_string()));
             }
         }

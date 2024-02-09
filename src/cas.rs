@@ -735,6 +735,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
         Ddl::DropIndex { .. } => false,
         Ddl::CreateProcedure { .. } => false,
         Ddl::DropProcedure { .. } => false,
+        Ddl::RenameProcedure { .. } => false,
     };
     match op {
         Op::DdlPrepare { ddl, .. } => ddl_modifies(ddl),
