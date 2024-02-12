@@ -153,6 +153,28 @@ fn proc_instance_info(instance_id)
     - `tier`: (MP_STR)
 
 ---
+### .proc_runtime_info {: #proc_runtime_info }
+
+```rust
+fn proc_runtime_info()
+```
+
+Возвращает служебную информацию.
+
+Возвращаемое значение:
+
+- (MP_MAP `RuntimeInfo`)
+    - `raft`: (MP_MAP [RaftInfo](#proc_raft_info))
+    - `version_info`: (MP_MAP [VersionInfo](#proc_version_info))
+    - `internal`: (MP_MAP)
+      <br>формат: `MP_MAP { main_loop_status = MP_STR,
+      governor_loop_status = MP_STR}`
+    - `http`: (optional MP_MAP `HttpInfo`)
+      <br>формат: `MP_MAP { host = MP_STR, port = MP_UINT}`
+      <br>поле отсутствует в ответе если инстанс запущен без параметра
+      [picodata run --http-listen](../reference/cli.md#run_http_listen)
+
+---
 ### .proc_get_index {: #proc_get_index }
 
 ```rust
