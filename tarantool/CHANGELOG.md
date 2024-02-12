@@ -31,6 +31,7 @@
 - `error::IntoBoxError` trait. Implement this for your error types to return
   structured error info from stored procedures defined with `#[tarantool::proc]`,
   or just use `BoxError` directly.
+- `network::client::tcp::TcpStream::connect_timeout` method.
 
 ### Changed
 - `tarantool::error::TarantoolError` is renamed `BoxError`. The old name is
@@ -92,6 +93,7 @@
   instead of `network::ProtocolError`.
 - Remove parameter `limit` from method `network::client::AsClient::execute`,
   which was never used correctly.
+- Make `network::client::tcp::TcpStream::connect` non blocking and sync.
 - `msgpack::encode` no longer returns `Result` as it should not fail.
 - Stored procedures defined with `#[tarantool::proc]` no longer compile with some
   error return types. Previously error type required only trait `std::fmt::Display`,

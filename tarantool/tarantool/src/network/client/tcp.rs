@@ -7,7 +7,6 @@
 //! use tarantool::network::client::tcp::TcpStream;
 //!
 //! let mut stream = TcpStream::connect("localhost", 8080)
-//!     .await
 //!     .unwrap();
 //! let mut buf = vec![];
 //! let read_size = stream
@@ -21,12 +20,11 @@ use std::cell::Cell;
 use std::ffi::{CString, NulError};
 use std::future::Future;
 use std::mem::{self, MaybeUninit};
-use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::unix::io::RawFd;
-use std::os::unix::prelude::IntoRawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use std::{io, ptr};
 
 #[cfg(feature = "async-std")]
@@ -36,6 +34,7 @@ use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
 use crate::fiber::r#async::context::ContextExt;
+use crate::fiber::r#async::timeout::IntoTimeout;
 use crate::fiber::{self, r#async};
 
 #[derive(thiserror::Error, Debug)]
@@ -47,12 +46,12 @@ pub enum Error {
     ConstructCString(NulError),
     #[error("failed to connect to address '{address}': {error}")]
     Connect { error: io::Error, address: String },
-    #[error("failed to set socket to nonblocking mode: {0}")]
-    SetNonBlock(io::Error),
     #[error("unknown address family: {0}")]
     UnknownAddressFamily(u16),
     #[error("write half of the stream is closed")]
     WriteClosed,
+    #[error("connect timeout")]
+    Timeout,
 }
 
 /// Async TcpStream based on fibers and coio.
@@ -81,28 +80,88 @@ pub struct TcpStream {
 }
 
 impl TcpStream {
-    /// Creates a [`TcpStream`] to `url`.
-    /// `resolve_timeout` - address resolution timeout.
+    /// Creates a [`TcpStream`] to `url` and `port`.
+    ///
+    /// - `host` - url, i.e. "localhost"
+    /// - `port` - port, i.e. 8080
     ///
     /// This functions makes the fiber **yield**.
-    pub async fn connect(url: &str, port: u16) -> Result<TcpStream, Error> {
-        let addrs = unsafe {
-            let addr_info = get_address_info(url).await?;
-            let addrs = get_addrs_from_info(addr_info, port);
-            libc::freeaddrinfo(addr_info);
-            // Try IPv4 addresses first when connecting
-            ipv4_first(addrs?)
+    pub fn connect(url: &str, port: u16) -> Result<Self, Error> {
+        Self::connect_timeout(url, port, Duration::MAX)
+    }
+
+    /// Creates a [`TcpStream`] to `url` and `port` with provided `timeout`.
+    ///
+    /// - `host` - url, i.e. "localhost"
+    /// - `port` - port, i.e. 8080
+    /// - `timeout` - timeout
+    ///
+    /// This functions makes the fiber **yield**.
+    pub fn connect_timeout(url: &str, port: u16, timeout: Duration) -> Result<Self, Error> {
+        let deadline = fiber::clock().saturating_add(timeout);
+
+        // SAFETY: it is just simple sys call
+        let (v4_addrs, v6_addrs) = unsafe { resolve_addr(url, port, timeout.as_secs_f64())? };
+
+        let timeout = deadline.duration_since(fiber::clock());
+
+        // Take the first address, prefer ipv4
+        let (addr, addr_len) = if let Some(v4) = v4_addrs.first() {
+            (
+                v4 as *const _ as *const libc::sockaddr,
+                mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+            )
+        } else if let Some(v6) = v6_addrs.first() {
+            (
+                v6 as *const _ as *const libc::sockaddr,
+                mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+            )
+        } else {
+            return Err(Error::ResolveAddress(url.into()));
         };
-        // FIXME: we're blocking the whole tx thread over here
-        let stream = crate::unwrap_ok_or!(std::net::TcpStream::connect(addrs.as_slice()),
-            Err(e) => {
-                return Err(Error::Connect { error: e, address: format!("{url}:{port}") });
+
+        // SAFETY: it is just sequential sys calls, so it's safe
+        let fd = unsafe { nonblocking_socket() }.map_err(|e| Error::Connect {
+            error: e,
+            address: format!("{url}:{port}"),
+        })?;
+
+        // SAFETY: it is just simple sys call
+        let mut io_error = match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
+            Ok(_) => {
+                return Ok(Self {
+                    fd: Rc::new(Cell::new(Some(fd))),
+                })
             }
-        );
-        stream.set_nonblocking(true).map_err(Error::SetNonBlock)?;
-        let fd = stream.into_raw_fd();
-        Ok(Self {
-            fd: Rc::new(Cell::new(Some(fd))),
+            Err(e) => e,
+        };
+
+        if io_error.raw_os_error() != Some(libc::EINPROGRESS) {
+            return Err(Error::Connect {
+                error: io_error,
+                address: format!("{url}:{port}"),
+            });
+        }
+
+        io_error = match crate::coio::coio_wait(fd, ffi::CoIOFlags::WRITE, timeout.as_secs_f64()) {
+            Ok(_) => match unsafe { check_socket_error(fd) } {
+                Ok(_) => {
+                    return Ok(Self {
+                        fd: Rc::new(Cell::new(Some(fd))),
+                    })
+                }
+                Err(e) => e,
+            },
+            Err(e) => e,
+        };
+
+        if let io::ErrorKind::TimedOut = io_error.kind() {
+            return Err(Error::Timeout);
+        }
+
+        Err(Error::Connect {
+            error: io_error,
+            address: format!("{url}:{port}"),
         })
     }
 
@@ -130,24 +189,116 @@ impl TcpStream {
     }
 }
 
-/// Sorts the supplied `addrs` so that IPv4 addresses are first.
-fn ipv4_first(addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
-    let (mut ipv4, mut ipv6): (Vec<_>, Vec<_>) = addrs.into_iter().partition(|addr| addr.is_ipv4());
-    ipv4.append(&mut ipv6);
-    ipv4
+fn cvt(t: libc::c_int) -> io::Result<libc::c_int> {
+    if t == -1 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(t)
+    }
 }
 
-unsafe fn get_addrs_from_info(
-    addrs: *const libc::addrinfo,
-    port: u16,
-) -> Result<Vec<SocketAddr>, Error> {
-    let mut addr = addrs;
-    let mut out_addrs = Vec::new();
-    while !addr.is_null() {
-        out_addrs.push(to_rs_sockaddr((*addr).ai_addr, port)?);
-        addr = (*addr).ai_next;
+unsafe fn nonblocking_socket() -> io::Result<RawFd> {
+    #[cfg(target_os = "linux")]
+    let fd: RawFd = cvt(libc::socket(
+        libc::AF_INET,
+        libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+        0,
+    ))?;
+    #[cfg(target_os = "macos")]
+    let fd: RawFd = {
+        let fd = cvt(libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0))?;
+        cvt(libc::ioctl(fd, libc::FIOCLEX))?;
+        cvt(libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_NOSIGPIPE,
+            &1 as *const libc::c_int as *const _,
+            mem::size_of::<libc::c_int>() as libc::socklen_t,
+        ))?;
+        cvt(libc::ioctl(fd, libc::FIONBIO, &mut 1))?;
+        fd
+    };
+    Ok(fd)
+}
+
+unsafe fn check_socket_error(fd: RawFd) -> io::Result<()> {
+    let mut val: libc::c_int = mem::zeroed();
+    let mut val_len = mem::size_of::<libc::c_int>() as libc::socklen_t;
+    cvt(libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_ERROR,
+        &mut val as *mut libc::c_int as *mut _,
+        &mut val_len,
+    ))?;
+    match val {
+        0 => Ok(()),
+        v => Err(io::Error::from_raw_os_error(v as i32)),
     }
-    Ok(out_addrs)
+}
+
+unsafe fn resolve_addr(
+    url: &str,
+    port: u16,
+    timeout: f64,
+) -> Result<(Vec<libc::sockaddr_in>, Vec<libc::sockaddr_in6>), Error> {
+    let mut hints = MaybeUninit::<libc::addrinfo>::zeroed().assume_init();
+    hints.ai_family = libc::AF_UNSPEC;
+    hints.ai_socktype = libc::SOCK_STREAM;
+
+    let host = CString::new(url).map_err(Error::ConstructCString)?;
+    let addrinfo = match crate::coio::getaddrinfo(&host, None, &hints, timeout) {
+        Ok(v) => v,
+        Err(e) => {
+            match e {
+                crate::error::Error::IO(ref ee) => {
+                    if let io::ErrorKind::TimedOut = ee.kind() {
+                        return Err(Error::Timeout);
+                    }
+                }
+                crate::error::Error::Tarantool(ref ee) => {
+                    if let Some(ref kind) = ee.error_type {
+                        let kind: &str = kind;
+                        if kind == "TimedOut" {
+                            return Err(Error::Timeout);
+                        }
+                    }
+                }
+                _ => (),
+            }
+            crate::say_error!("coio_getaddrinfo failed: {e}");
+            return Err(Error::ResolveAddress(url.into()));
+        }
+    };
+
+    let mut ipv4_addresses = Vec::with_capacity(2);
+    let mut ipv6_addresses = Vec::with_capacity(2);
+    let mut current = addrinfo;
+
+    while !current.is_null() {
+        let ai = *current;
+        match ai.ai_family {
+            libc::AF_INET => {
+                let mut sockaddr = *(ai.ai_addr as *mut libc::sockaddr_in);
+                sockaddr.sin_port = port.to_be();
+                ipv4_addresses.push(sockaddr);
+            }
+            libc::AF_INET6 => {
+                let mut sockaddr = *(ai.ai_addr as *mut libc::sockaddr_in6);
+                sockaddr.sin6_port = port.to_be();
+                ipv6_addresses.push(sockaddr);
+            }
+            af => {
+                libc::freeaddrinfo(addrinfo);
+                return Err(Error::UnknownAddressFamily(af as u16));
+            }
+        }
+        current = ai.ai_next;
+    }
+
+    libc::freeaddrinfo(addrinfo);
+
+    Ok((ipv4_addresses, ipv6_addresses))
 }
 
 async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error> {
@@ -183,31 +334,6 @@ async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error
     })
     .await
     .map_err(|()| Error::ResolveAddress(url.into()))
-}
-
-unsafe fn to_rs_sockaddr(addr: *const libc::sockaddr, port: u16) -> Result<SocketAddr, Error> {
-    match (*addr).sa_family as libc::c_int {
-        libc::AF_INET => {
-            let addr: *mut libc::sockaddr_in = mem::transmute(addr);
-            (*addr).sin_port = port;
-            let octets: [u8; 4] = (*addr).sin_addr.s_addr.to_ne_bytes();
-            Ok(SocketAddr::V4(SocketAddrV4::new(octets.into(), port)))
-        }
-        libc::AF_INET6 => {
-            let addr: *mut libc::sockaddr_in6 = mem::transmute(addr);
-            (*addr).sin6_port = port;
-            let octets = (*addr).sin6_addr.s6_addr;
-            let flow_info = (*addr).sin6_flowinfo;
-            let scope_id = (*addr).sin6_scope_id;
-            Ok(SocketAddr::V6(SocketAddrV6::new(
-                octets.into(),
-                port,
-                flow_info,
-                scope_id,
-            )))
-        }
-        af => Err(Error::UnknownAddressFamily(af as u16)),
-    }
 }
 
 impl AsyncWrite for TcpStream {
@@ -382,12 +508,11 @@ mod tests {
     use super::*;
 
     use crate::fiber;
-    use crate::fiber::r#async::timeout::{self, IntoTimeout};
+    use crate::fiber::r#async::timeout::{self};
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
-    use std::collections::HashSet;
-    use std::net::{TcpListener, ToSocketAddrs};
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, ToSocketAddrs};
     use std::thread;
     use std::time::Duration;
 
@@ -404,23 +529,40 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
-    async fn resolve_same_as_std() {
-        let addrs_1: HashSet<_> = unsafe {
-            get_addrs_from_info(
-                get_address_info("example.org")
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap(),
-                80,
-            )
+    async fn get_libc_addrs() {
+        let (addrs_v4, addrs_v6) =
+            unsafe { resolve_addr("example.org", 80, _10_SEC.as_secs_f64()).unwrap() };
+
+        assert_eq!(addrs_v4.len(), 1);
+        assert_eq!(addrs_v6.len(), 1);
+
+        let expected_addr = match ToSocketAddrs::to_socket_addrs("example.org:80")
             .unwrap()
-            .into_iter()
-            .collect()
+            .collect::<Vec<_>>()
+            .first()
+            .unwrap()
+            .to_owned()
+        {
+            SocketAddr::V4(v) => v,
+            other => panic!("Expected v4 addr, got {:?}", other),
         };
-        let addrs_2: HashSet<_> = ToSocketAddrs::to_socket_addrs("example.org:80")
-            .unwrap()
-            .collect();
-        assert_eq!(addrs_1, addrs_2);
+        let received_addr = SocketAddrV4::new(
+            Ipv4Addr::from(u32::from_be(addrs_v4[0].sin_addr.s_addr)),
+            u16::from_be(addrs_v4[0].sin_port),
+        );
+
+        assert_eq!(expected_addr, received_addr);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn get_libc_addrs_error() {
+        let err = unsafe {
+            resolve_addr("invalid domain name", 80, _10_SEC.as_secs_f64())
+                .unwrap_err()
+                .to_string()
+        };
+
+        assert_eq!(err, "failed to resolve domain name 'invalid domain name'");
     }
 
     #[crate::test(tarantool = "crate")]
@@ -429,22 +571,33 @@ mod tests {
             let err = fiber::block_on(get_address_info("invalid domain name").timeout(_10_SEC))
                 .unwrap_err()
                 .to_string();
-            assert_eq!(err, "failed to resolve domain name 'invalid domain name'")
+            assert_eq!(err, "failed to resolve domain name 'invalid domain name'");
         }
     }
 
     #[crate::test(tarantool = "crate")]
     fn connect() {
-        let _ = fiber::block_on(TcpStream::connect("localhost", listen_port()).timeout(_10_SEC))
-            .unwrap();
+        let _ = TcpStream::connect("localhost", listen_port()).unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn connect_timeout() {
+        let _ = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn connect_zero_timeout() {
+        assert!(matches!(
+            TcpStream::connect_timeout("localhost", listen_port(), _0_SEC)
+                .err()
+                .unwrap(),
+            Error::Timeout
+        ));
     }
 
     #[crate::test(tarantool = "crate")]
     async fn read() {
-        let mut stream = TcpStream::connect("localhost", listen_port())
-            .timeout(_10_SEC)
-            .await
-            .unwrap();
+        let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
         // Read greeting
         let mut buf = vec![0; 128];
         stream.read_exact(&mut buf).timeout(_10_SEC).await.unwrap();
@@ -452,10 +605,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn read_timeout() {
-        let mut stream = TcpStream::connect("localhost", listen_port())
-            .timeout(_10_SEC)
-            .await
-            .unwrap();
+        let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
         // Read greeting
         let mut buf = vec![0; 128];
         assert_eq!(
@@ -485,10 +635,7 @@ mod tests {
         // Send data
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", 3302)
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap();
+                let mut stream = TcpStream::connect_timeout("localhost", 3302, _10_SEC).unwrap();
                 timeout::timeout(_10_SEC, stream.write_all(&[1, 2, 3]))
                     .await
                     .unwrap();
@@ -518,8 +665,7 @@ mod tests {
         });
         // Send and read data
         {
-            let stream =
-                fiber::block_on(TcpStream::connect("localhost", 3303).timeout(_10_SEC)).unwrap();
+            let stream = TcpStream::connect_timeout("localhost", 3303, _10_SEC).unwrap();
             let (mut reader, mut writer) = stream.split();
             let reader_handle = fiber::start_async(async move {
                 let mut buf = vec![0; 5];
@@ -547,10 +693,8 @@ mod tests {
     fn join_correct_timeout() {
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", listen_port())
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap();
+                let mut stream =
+                    TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
                 let (is_err, is_ok) = futures::join!(
@@ -564,10 +708,8 @@ mod tests {
         // Testing with different order in join
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", listen_port())
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap();
+                let mut stream =
+                    TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
                 let (is_ok, is_err) = futures::join!(
@@ -584,10 +726,8 @@ mod tests {
     fn select_correct_timeout() {
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", listen_port())
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap();
+                let mut stream =
+                    TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
                 let f1 = timeout::timeout(_0_SEC, always_pending()).fuse();
@@ -604,10 +744,8 @@ mod tests {
         // Testing with different future timeouting first
         {
             fiber::block_on(async {
-                let mut stream = TcpStream::connect("localhost", listen_port())
-                    .timeout(_10_SEC)
-                    .await
-                    .unwrap();
+                let mut stream =
+                    TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
                 // Read greeting
                 let mut buf = vec![0; 128];
                 let f1 = timeout::timeout(Duration::from_secs(15), always_pending()).fuse();
@@ -625,10 +763,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     async fn no_socket_double_close() {
-        let mut stream = TcpStream::connect("localhost", listen_port())
-            .timeout(_10_SEC)
-            .await
-            .unwrap();
+        let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
 
         let fd = stream.fd.get().unwrap();
 

@@ -9,7 +9,6 @@ use std::ffi::c_void;
 use std::io::{self, Read, Write};
 use std::mem::forget;
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
-use std::os::raw::c_char;
 use std::os::unix::io::{AsRawFd, IntoRawFd, RawFd};
 use std::rc::Rc;
 use std::time::Duration;
@@ -208,26 +207,28 @@ where
 /// - `port` - service name, i.e. "80" or "http"
 /// - `hints` - hints, see `getaddrinfo(3)`
 /// - `timeout` - timeout
-pub fn getaddrinfo(
-    host: &str,
-    port: &str,
+///
+/// # Returns
+/// A pointer to a dynamically allocated linked list of [`libc::addrinfo`].
+///
+/// # Safety
+/// To avoid memory leaks the caller must call [`libc::freeaddrinfo`] on it.
+pub unsafe fn getaddrinfo(
+    host: &std::ffi::CStr,
+    port: Option<&std::ffi::CStr>,
     hints: &libc::addrinfo,
     timeout: f64,
-) -> Result<libc::addrinfo, Error> {
-    let mut result: *mut libc::addrinfo = null_mut();
-    if unsafe {
-        ffi::coio_getaddrinfo(
-            host.as_ptr() as *const c_char,
-            port.as_ptr() as *const c_char,
-            hints,
-            &mut result,
-            timeout,
-        )
-    } < 0
-    {
+) -> Result<*mut libc::addrinfo, Error> {
+    let mut result = null_mut();
+    let port = if let Some(p) = port {
+        p.as_ptr()
+    } else {
+        null_mut()
+    };
+    if unsafe { ffi::coio_getaddrinfo(host.as_ptr(), port, hints, &mut result, timeout) } < 0 {
         Err(TarantoolError::last().into())
     } else {
-        Ok(unsafe { result.read() })
+        Ok(result)
     }
 }
 

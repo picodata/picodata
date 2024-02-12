@@ -199,7 +199,6 @@ impl Client {
         config: protocol::Config,
     ) -> Result<Self, ClientError> {
         let stream = TcpStream::connect(url, port)
-            .await
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(NoYieldsRefCell::new(client));

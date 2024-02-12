@@ -16,14 +16,14 @@ fn get(url: &str) -> Result<(), Error> {
         let req = Request::new(Method::Get, url.clone());
         let mut res = match url.scheme() {
             "http" => {
-                let stream = TcpStream::connect(host, 80).await.map_err(Error::other)?;
+                let stream = TcpStream::connect(host, 80).map_err(Error::other)?;
                 let stream = UnsafeSendSyncTcpStream(stream);
                 println!("Sending request over http...");
                 async_h1::connect(stream, req).await.map_err(Error::other)?
             }
             #[cfg(feature = "tls")]
             "https" => {
-                let stream = TcpStream::connect(host, 443).await.map_err(Error::other)?;
+                let stream = TcpStream::connect(host, 443).map_err(Error::other)?;
                 let stream = UnsafeSendSyncTcpStream(stream);
                 let stream = async_native_tls::connect(host, stream)
                     .await
