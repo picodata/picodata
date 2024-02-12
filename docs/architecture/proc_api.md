@@ -53,7 +53,7 @@ fn proc_version_info()
 
 Возвращаемое значение:
 
-- (MP_MAP)
+- (MP_MAP `VersionInfo`)
 
     - `picodata_version`: (MP_STR) версия Picodata
       <!-- TODO ссылка на политику версионирования -->
@@ -111,15 +111,15 @@ fn proc_raft_info()
 
 Возвращаемое значение:
 
-- (MP_MAP)
+- (MP_MAP `RaftInfo`)
 
     - `id`: (MP_INT) `raft_id` текущего узла
     - `term`: (MP_INT) текущий [терм](../overview/glossary.md#term)
     - `applied`: (MP_INT) текущий примененный индекс raft-журнала
     - `leader_id`: (MP_INT) `raft_id` лидера или `0` если в текущем
       терме его нет
-    - `raft_state` (MP_STR), варианты: `'Follower'` | `'Candidate'` |
-      `'Leader'` | `'PreCandidate'`
+    - `raft_state` (MP_STR)
+      <br>возможные значения: `Follower`, `Candidate`, `Leader`, `PreCandidate`
 
 ---
 ### .proc_get_index {: #proc_get_index }
