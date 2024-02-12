@@ -2155,6 +2155,21 @@ def test_sql_privileges(cluster: Cluster):
     dml = i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
     assert dml["row_count"] == 2
 
+    # Check that a user can't create a procedure without permition.
+    with pytest.raises(
+        ReturnError,
+        match=f"AccessDenied: Create access to function 'PROC' is denied for user '{username}'",
+    ):
+        i1.sql(
+            f"""
+            create procedure proc(int)
+            language SQL
+            as $$insert into "{table_name}" values(?, ?)$$
+            """,
+            user=username,
+            password=alice_pwd,
+        )
+
 
 def test_user_changes_password(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)

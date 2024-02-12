@@ -10,7 +10,7 @@ use tarantool::auth::AuthMethod;
 use tarantool::error::TarantoolError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
-use tarantool::session::UserId;
+use tarantool::session::{with_su, UserId};
 use tarantool::set_error;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
@@ -1222,7 +1222,7 @@ impl CreateProcParams {
     }
 
     pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {
-        let routine = storage.routines.by_name(&self.name)?;
+        let routine = with_su(ADMIN_ID, || storage.routines.by_name(&self.name))??;
         if let Some(def) = routine {
             if def.kind != RoutineKind::Procedure {
                 return Err(CreateRoutineError::ExistsWithDifferentKind { name: def.name })?;
