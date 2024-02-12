@@ -56,6 +56,8 @@
   instead of `network::ProtocolError`.
 - Functions in `network::protocol::codec` now return `tarantool::error::Error`
   instead of `network::ProtocolError`.
+- Remove parameter `limit` from method `network::client::AsClient::execute`,
+  which was never used correctly.
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.

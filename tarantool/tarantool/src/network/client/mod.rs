@@ -277,21 +277,11 @@ pub trait AsClient {
     }
 
     /// Execute sql query remotely.
-    async fn execute<T>(
-        &self,
-        sql: &str,
-        bind_params: &T,
-        limit: Option<usize>,
-    ) -> Result<Vec<Tuple>, ClientError>
+    async fn execute<T>(&self, sql: &str, bind_params: &T) -> Result<Vec<Tuple>, ClientError>
     where
         T: ToTupleBuffer + ?Sized,
     {
-        self.send(&Execute {
-            sql,
-            bind_params,
-            limit,
-        })
-        .await
+        self.send(&Execute { sql, bind_params }).await
     }
 }
 
@@ -545,14 +535,14 @@ mod tests {
         _ = lua.exec("require'compat'.sql_seq_scan_default = 'old'");
 
         let result = client
-            .execute(r#"SELECT * FROM "test_s1""#, &(), None)
+            .execute(r#"SELECT * FROM "test_s1""#, &())
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
         assert!(result.len() >= 2);
 
         let result = client
-            .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,), None)
+            .execute(r#"SELECT * FROM "test_s1" WHERE "id" = ?"#, &(6002,))
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();

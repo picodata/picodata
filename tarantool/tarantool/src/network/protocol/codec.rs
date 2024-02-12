@@ -1,4 +1,3 @@
-use std::cmp::min;
 use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 use std::str::from_utf8;
@@ -411,7 +410,6 @@ pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
 
 pub fn decode_multiple_rows(
     buffer: &mut Cursor<Vec<u8>>,
-    limit: Option<usize>,
 ) -> Result<Vec<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
@@ -419,11 +417,6 @@ pub fn decode_multiple_rows(
         match key {
             DATA => {
                 let items_count = rmp::decode::read_array_len(buffer)? as usize;
-                let items_count = match limit {
-                    None => items_count,
-                    Some(limit) => min(limit, items_count),
-                };
-
                 let mut result = Vec::with_capacity(items_count);
                 for _ in 0..items_count {
                     result.push(decode_tuple(buffer)?);

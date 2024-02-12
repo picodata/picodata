@@ -87,7 +87,6 @@ where
 pub struct Execute<'a, 'b, T: ?Sized> {
     pub sql: &'a str,
     pub bind_params: &'b T,
-    pub limit: Option<usize>,
 }
 
 impl<'a, 'b, T> Request for Execute<'a, 'b, T>
@@ -102,7 +101,7 @@ where
     }
 
     fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
-        codec::decode_multiple_rows(r#in, self.limit)
+        codec::decode_multiple_rows(r#in)
     }
 }
 
