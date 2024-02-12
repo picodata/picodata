@@ -9,45 +9,26 @@
 pub mod api;
 pub mod codec;
 
-use std::collections::HashMap;
-use std::io::{self, Cursor, Read, Seek};
-use std::str::Utf8Error;
-
 use crate::auth::AuthMethod;
+use crate::error;
 use api::Request;
+use std::collections::HashMap;
+use std::io::{Cursor, Read, Seek};
 
-/// Error returned by [`Protocol`].
+#[deprecated = "use `ProtocolError` instead"]
+pub type Error = ProtocolError;
+
+/// IProto protocol violation.
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("utf8 error: {0}")]
-    Utf8(#[from] Utf8Error),
-    #[error("failed to encode: {0}")]
-    Encode(#[from] rmp::encode::ValueWriteError),
-    #[error("failed to decode: {0}")]
-    Decode(#[from] rmp::decode::ValueReadError),
-    #[error("failed to decode: {0}")]
-    DecodeNum(#[from] rmp::decode::NumValueReadError),
-    #[error("service responded with error: {0}")]
-    Response(#[from] ResponseError),
-    #[error("io error: {0}")]
-    Io(#[from] io::Error),
+pub enum ProtocolError {
     #[error("message size hint is 0")]
     ZeroSizeHint,
+
     #[error("DATA not found in response body but is required for call/eval")]
     ResponseDataNotFound,
-    /// This type of error is only present in codec
-    /// due to ToTupleBuffer implementation using generic Tarantool Error.
-    /// So should be related to encode/decode.
-    // TODO: remove this variant when ToTupleBuffer switches to more specific errors
-    #[error("encode/decode error: {0}")]
-    Tarantool(Box<crate::error::Error>),
-}
 
-// TODO: remove this conversion when ToTupleBuffer switches to more specific errors
-impl From<crate::error::Error> for Error {
-    fn from(err: crate::error::Error) -> Self {
-        Error::Tarantool(Box::new(err))
-    }
+    #[error("{0} is not implemented yet")]
+    Unimplemented(String),
 }
 
 /// Unique identifier of the sent message on this connection.
@@ -163,7 +144,7 @@ impl Protocol {
     /// Data can be sent independently of whether the protocol [`Self::is_ready`].
     /// If the protocol is not ready data will be queued and eventually processed
     /// after auth is done.
-    pub fn send_request(&mut self, request: &impl Request) -> Result<SyncIndex, Error> {
+    pub fn send_request(&mut self, request: &impl Request) -> Result<SyncIndex, error::Error> {
         let end = self.pending_outgoing.len();
         let mut buf = Cursor::new(&mut self.pending_outgoing);
         buf.set_position(end as u64);
@@ -183,10 +164,10 @@ impl Protocol {
         &mut self,
         sync: SyncIndex,
         request: &R,
-    ) -> Option<Result<R::Response, Error>> {
+    ) -> Option<Result<R::Response, error::Error>> {
         let response = match self.incoming.remove(&sync)? {
             Ok(response) => response,
-            Err(err) => return Some(Err(err.into())),
+            Err(err) => return Some(Err(error::Error::Remote(err))),
         };
         Some(request.decode_body(&mut Cursor::new(response)))
     }
@@ -220,7 +201,7 @@ impl Protocol {
     pub fn process_incoming<R: Read + Seek>(
         &mut self,
         chunk: &mut R,
-    ) -> Result<Option<SyncIndex>, Error> {
+    ) -> Result<Option<SyncIndex>, error::Error> {
         if self.msg_size_hint.is_some() {
             // Message size hint was already read at previous call - now processing message
             self.msg_size_hint = None;
@@ -232,7 +213,7 @@ impl Protocol {
                 self.msg_size_hint = Some(hint as usize);
                 Ok(None)
             } else {
-                Err(Error::ZeroSizeHint)
+                Err(ProtocolError::ZeroSizeHint.into())
             }
         }
     }
@@ -240,7 +221,7 @@ impl Protocol {
     fn process_message<R: Read + Seek>(
         &mut self,
         message: &mut R,
-    ) -> Result<Option<SyncIndex>, Error> {
+    ) -> Result<Option<SyncIndex>, error::Error> {
         let sync = match self.state {
             State::Init => {
                 let salt = codec::decode_greeting(message)?;
@@ -318,7 +299,7 @@ fn write_to_buffer(
     buffer: &mut Cursor<&mut Vec<u8>>,
     sync: SyncIndex,
     request: &impl Request,
-) -> Result<(), Error> {
+) -> Result<(), error::Error> {
     // write MSG_SIZE placeholder
     let msg_start_offset = buffer.position();
     rmp::encode::write_u32(buffer, 0)?;

@@ -68,16 +68,15 @@ pub enum Error {
     #[error("msgpack write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
 
-    #[cfg(feature = "net_box")]
     #[error("server responded with error: {0}")]
-    Remote(#[from] crate::net_box::ResponseError),
+    Remote(#[from] crate::network::protocol::ResponseError),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     ///
     /// [`Rc`]: std::rc::Rc
     #[error("{0}")]
-    Protocol(Arc<crate::network::protocol::Error>),
+    Protocol(#[from] crate::network::protocol::ProtocolError),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
@@ -145,7 +144,6 @@ impl Error {
             Self::NumValueRead(_) => "NumValueRead",
             Self::ValueRead(_) => "ValueRead",
             Self::ValueWrite(_) => "ValueWrite",
-            #[cfg(feature = "net_box")]
             Self::Remote(_) => "Remote",
             Self::Protocol(_) => "Protocol",
             #[cfg(feature = "network_client")]
@@ -170,12 +168,6 @@ impl From<rmp_serde::encode::Error> for Error {
 impl From<crate::network::client::tcp::Error> for Error {
     fn from(err: crate::network::client::tcp::Error) -> Self {
         Error::Tcp(Arc::new(err))
-    }
-}
-
-impl From<crate::network::protocol::Error> for Error {
-    fn from(err: crate::network::protocol::Error) -> Self {
-        Error::Protocol(Arc::new(err))
     }
 }
 

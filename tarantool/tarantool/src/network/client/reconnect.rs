@@ -1,12 +1,15 @@
-use std::rc::Rc;
-
 use super::AsClient;
-use super::Error;
+use crate::error::Error;
 use crate::fiber::r#async::Mutex;
+use crate::network::client::ClientError;
 use crate::network::protocol;
+use std::rc::Rc;
+use std::sync::Arc;
 
 #[cfg(feature = "internal_test")]
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+type ClientOrConnectionClosedError = Result<super::Client, Arc<Error>>;
 
 /// A reconnecting version of [`super::Client`].
 ///
@@ -17,14 +20,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// See [`AsClient`] for the full API.
 #[derive(Debug, Clone)]
 pub struct Client {
-    client: Rc<Mutex<Option<Result<super::Client, Error>>>>,
+    client: Rc<Mutex<Option<ClientOrConnectionClosedError>>>,
     url: String,
     port: u16,
     protocol_config: protocol::Config,
 
     // Testing related code
     #[cfg(feature = "internal_test")]
-    inject_error: Rc<std::cell::RefCell<Option<super::Error>>>,
+    inject_error: Rc<std::cell::RefCell<Option<ClientError>>>,
     #[cfg(feature = "internal_test")]
     reconnect_count: Rc<AtomicUsize>,
 }
@@ -32,20 +35,39 @@ pub struct Client {
 impl Client {
     /// Provides an access to the underlying client behind mutex.
     /// If it is `None` - reconnects implicitly and returns a new client.
-    async fn client(&self) -> Result<super::Client, Error> {
+    async fn client(&self) -> Result<super::Client, ClientError> {
         let mut client = self.client.lock().await;
-        if let Some(ref client) = *client {
-            return client.clone();
+        match &*client {
+            Some(Ok(client)) => {
+                return Ok(client.clone());
+            }
+            Some(Err(e)) => {
+                return Err(ClientError::ConnectionClosed(e.clone()));
+            }
+            None => {}
         }
+
         #[cfg(feature = "internal_test")]
         {
             self.reconnect_count.fetch_add(1, Ordering::Relaxed);
         }
-        let new_client =
+
+        let res =
             super::Client::connect_with_config(&self.url, self.port, self.protocol_config.clone())
                 .await;
-        *client = Some(new_client.clone());
-        new_client
+        match res {
+            Ok(new_client) => {
+                *client = Some(Ok(new_client.clone()));
+                return Ok(new_client);
+            }
+            Err(ClientError::ConnectionClosed(e)) => {
+                *client = Some(Err(e.clone()));
+                return Err(ClientError::ConnectionClosed(e));
+            }
+            Err(_) => unreachable!(
+                "Client::connect_with_config should only return `ConnectionClosed` errors"
+            ),
+        }
     }
 
     /// Request client to reconnect before executing next operation.
@@ -106,11 +128,6 @@ impl Client {
     }
 
     #[cfg(feature = "internal_test")]
-    pub fn inject_error(&self, error: super::Error) {
-        *self.inject_error.borrow_mut() = Some(error);
-    }
-
-    #[cfg(feature = "internal_test")]
     pub fn reconnect_count(&self) -> usize {
         // Don't count initial connection
         self.reconnect_count
@@ -121,7 +138,10 @@ impl Client {
 
 #[async_trait::async_trait(?Send)]
 impl AsClient for Client {
-    async fn send<R: protocol::api::Request>(&self, request: &R) -> Result<R::Response, Error> {
+    async fn send<R: protocol::api::Request>(
+        &self,
+        request: &R,
+    ) -> Result<R::Response, ClientError> {
         let client = self.client().await?;
 
         #[cfg(not(feature = "internal_test"))]
@@ -216,18 +236,18 @@ mod tests {
         fiber::block_on(async {
             let client = test_client();
 
-            let err = Error::ConnectionClosed(Arc::new(
+            let err = ClientError::ConnectionClosed(Arc::new(
                 IOError::from(ErrorKind::ConnectionAborted).into(),
             ));
-            client.inject_error(err);
+            *client.inject_error.borrow_mut() = Some(err);
             client.ping().timeout(_3_SEC).await.unwrap_err();
             client.reconnect_now().await.unwrap();
             assert_eq!(client.reconnect_count(), 1);
 
-            let err = Error::ConnectionClosed(Arc::new(
+            let err = ClientError::ConnectionClosed(Arc::new(
                 IOError::from(ErrorKind::ConnectionAborted).into(),
             ));
-            client.inject_error(err);
+            *client.inject_error.borrow_mut() = Some(err);
             client.ping().timeout(_3_SEC).await.unwrap_err();
             client.reconnect_now().await.unwrap();
             assert_eq!(client.reconnect_count(), 2);

@@ -13,11 +13,17 @@
 pub mod client;
 pub mod protocol;
 
+pub use protocol::ProtocolError;
+
 #[cfg(feature = "network_client")]
 pub use client::reconnect::Client as ReconnClient;
 #[cfg(feature = "network_client")]
-pub use client::{AsClient, Client, Error};
+pub use client::{AsClient, Client, ClientError};
 pub use protocol::Config;
+
+#[cfg(feature = "network_client")]
+#[deprecated = "use `ClientError` instead"]
+pub type Error = client::ClientError;
 
 #[cfg(feature = "internal_test")]
 #[cfg(feature = "network_client")]
@@ -35,7 +41,7 @@ mod tests {
 
             let err = client.ping().await.unwrap_err();
             #[rustfmt::skip]
-            assert_eq!(err.to_string(), "service responded with error: User not found or supplied credentials are invalid");
+            assert_eq!(err.to_string(), "server responded with error: User not found or supplied credentials are invalid");
         }
 
         // Wrong password
@@ -46,7 +52,7 @@ mod tests {
 
             let err = client.ping().await.unwrap_err();
             #[rustfmt::skip]
-            assert_eq!(err.to_string(), "service responded with error: User not found or supplied credentials are invalid");
+            assert_eq!(err.to_string(), "server responded with error: User not found or supplied credentials are invalid");
         }
     }
 }

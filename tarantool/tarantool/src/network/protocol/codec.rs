@@ -5,10 +5,11 @@ use std::str::from_utf8;
 
 use sha1::{Digest, Sha1};
 
-use super::Error;
 use crate::auth::AuthMethod;
+use crate::error::Error;
 use crate::index::IteratorType;
 use crate::msgpack;
+use crate::network::protocol::ProtocolError;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::{ResponseError, SyncIndex};
@@ -148,9 +149,9 @@ pub fn encode_auth(
         }
         #[cfg(feature = "picodata")]
         _ => {
-            return Err(Error::Tarantool(Box::new(crate::error::Error::other(
-                format!("auth method '{auth_method}' is not implemented yet"),
-            ))));
+            return Err(
+                ProtocolError::Unimplemented(format!("auth method '{auth_method}'")).into(),
+            );
         }
     }
 
@@ -405,7 +406,7 @@ pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
             }
         };
     }
-    Err(Error::ResponseDataNotFound)
+    Err(ProtocolError::ResponseDataNotFound.into())
 }
 
 pub fn decode_multiple_rows(

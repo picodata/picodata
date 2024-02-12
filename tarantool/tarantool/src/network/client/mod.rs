@@ -45,7 +45,9 @@ use std::sync::Arc;
 use self::tcp::TcpStream;
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
-use super::protocol::{self, Error as ProtocolError, Protocol, SyncIndex};
+use super::protocol::ResponseError;
+use super::protocol::{self, Protocol, SyncIndex};
+use crate::error;
 use crate::fiber;
 use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
@@ -55,9 +57,12 @@ use crate::unwrap_ok_or;
 
 use futures::{AsyncReadExt, AsyncWriteExt};
 
+#[deprecated = "use `ClientError` instead"]
+pub type Error = ClientError;
+
 /// Error returned by [`Client`].
-#[derive(thiserror::Error, Debug, Clone)]
-pub enum Error {
+#[derive(thiserror::Error, Debug)]
+pub enum ClientError {
     /// The connection was closed because of this error.
     ///
     /// The error is wrapped in a [`Arc`], because some libraries require
@@ -70,31 +75,31 @@ pub enum Error {
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    RequestEncode(Arc<ProtocolError>),
+    RequestEncode(crate::error::Error),
 
     /// Error happened during decoding of the response.
     ///
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    ResponseDecode(Arc<ProtocolError>),
+    ResponseDecode(crate::error::Error),
 
     /// Service responded with an error.
     ///
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    ErrorResponse(Arc<ProtocolError>),
+    ErrorResponse(ResponseError),
 }
 
-impl From<Error> for crate::error::Error {
+impl From<ClientError> for crate::error::Error {
     #[inline(always)]
-    fn from(err: Error) -> Self {
+    fn from(err: ClientError) -> Self {
         match err {
-            Error::ConnectionClosed(err) => crate::error::Error::ConnectionClosed(err),
-            Error::RequestEncode(err) => crate::error::Error::Protocol(err),
-            Error::ResponseDecode(err) => crate::error::Error::Protocol(err),
-            Error::ErrorResponse(err) => crate::error::Error::Protocol(err),
+            ClientError::ConnectionClosed(err) => crate::error::Error::ConnectionClosed(err),
+            ClientError::RequestEncode(err) => err,
+            ClientError::ResponseDecode(err) => err,
+            ClientError::ErrorResponse(err) => crate::error::Error::Remote(err),
         }
     }
 }
@@ -104,7 +109,7 @@ enum State {
     Alive,
     ClosedManually,
     /// This can only be [`Error::ConnectionClosed`].
-    ClosedWithError(Error),
+    ClosedWithError(Arc<error::Error>),
 }
 
 impl State {
@@ -120,7 +125,7 @@ impl State {
 #[derive(Debug)]
 struct ClientInner {
     protocol: Protocol,
-    awaiting_response: HashMap<SyncIndex, oneshot::Sender<Result<(), Error>>>,
+    awaiting_response: HashMap<SyncIndex, oneshot::Sender<Result<(), Arc<error::Error>>>>,
     state: State,
     /// The same tcp stream sender & receiver fibers a working with. Only stored
     /// here for closing.
@@ -176,8 +181,7 @@ impl Client {
     ///
     /// # Errors
     /// Error is returned if an attempt to connect failed.
-    /// See [`Error`].
-    pub async fn connect(url: &str, port: u16) -> Result<Self, Error> {
+    pub async fn connect(url: &str, port: u16) -> Result<Self, ClientError> {
         Self::connect_with_config(url, port, Default::default()).await
     }
 
@@ -189,15 +193,14 @@ impl Client {
     ///
     /// # Errors
     /// Error is returned if an attempt to connect failed.
-    /// See [`Error`].
     pub async fn connect_with_config(
         url: &str,
         port: u16,
         config: protocol::Config,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ClientError> {
         let stream = TcpStream::connect(url, port)
             .await
-            .map_err(|e| Error::ConnectionClosed(Arc::new(e.into())))?;
+            .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(RefCell::new(client));
 
@@ -222,7 +225,7 @@ impl Client {
         Ok(Self(client))
     }
 
-    fn check_state(&self) -> Result<(), Error> {
+    fn check_state(&self) -> Result<(), Arc<error::Error>> {
         match &self.0.borrow().state {
             State::Alive => Ok(()),
             State::ClosedManually => unreachable!("All client handles are dropped at this point"),
@@ -240,10 +243,10 @@ pub trait AsClient {
     /// # Errors
     /// In case of `ClosedWithErr` it is suggested to recreate the connection.
     /// Other errors are self-descriptive.
-    async fn send<R: Request>(&self, request: &R) -> Result<R::Response, Error>;
+    async fn send<R: Request>(&self, request: &R) -> Result<R::Response, ClientError>;
 
     /// Execute a PING command.
-    async fn ping(&self) -> Result<(), Error> {
+    async fn ping(&self) -> Result<(), ClientError> {
         self.send(&Ping).await
     }
 
@@ -252,7 +255,7 @@ pub trait AsClient {
     /// `conn.call("func", &("1", "2", "3"))` is the remote-call equivalent of `func('1', '2', '3')`.
     /// That is, `conn.call` is a remote stored-procedure call.
     /// The return from `conn.call` is whatever the function returns.
-    async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Tuple, Error>
+    async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Tuple, ClientError>
     where
         T: ToTupleBuffer + ?Sized,
     {
@@ -266,7 +269,7 @@ pub trait AsClient {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    async fn eval<T>(&self, expr: &str, args: &T) -> Result<Tuple, Error>
+    async fn eval<T>(&self, expr: &str, args: &T) -> Result<Tuple, ClientError>
     where
         T: ToTupleBuffer + ?Sized,
     {
@@ -279,7 +282,7 @@ pub trait AsClient {
         sql: &str,
         bind_params: &T,
         limit: Option<usize>,
-    ) -> Result<Vec<Tuple>, Error>
+    ) -> Result<Vec<Tuple>, ClientError>
     where
         T: ToTupleBuffer + ?Sized,
     {
@@ -294,14 +297,15 @@ pub trait AsClient {
 
 #[async_trait::async_trait(?Send)]
 impl AsClient for Client {
-    async fn send<R: Request>(&self, request: &R) -> Result<R::Response, Error> {
-        // This `?` can return a `Error::ConnectionClosed`.
-        self.check_state()?;
+    async fn send<R: Request>(&self, request: &R) -> Result<R::Response, ClientError> {
+        if let Err(e) = self.check_state() {
+            return Err(ClientError::ConnectionClosed(e));
+        }
 
         let res = self.0.borrow_mut().protocol.send_request(request);
         let sync = unwrap_ok_or!(res,
             Err(e) => {
-                return Err(Error::RequestEncode(e.into()));
+                return Err(ClientError::RequestEncode(e));
             }
         );
 
@@ -311,12 +315,15 @@ impl AsClient for Client {
         // Cleanup `awaiting_response` entry in case of `send` future cancelation
         // at this `.await`.
         // `send` can be canceled for example with `Timeout`.
-        rx.on_drop(|| {
-            let _ = self.0.borrow_mut().awaiting_response.remove(&sync);
-        })
-        .await
-        // This `?` can return a `Error::ConnectionClosed`.
-        .expect("Channel should be open")?;
+        let res = rx
+            .on_drop(|| {
+                let _ = self.0.borrow_mut().awaiting_response.remove(&sync);
+            })
+            .await
+            .expect("Channel should be open");
+        if let Err(e) = res {
+            return Err(ClientError::ConnectionClosed(e));
+        }
 
         let res = self
             .0
@@ -325,11 +332,11 @@ impl AsClient for Client {
             .take_response(sync, request)
             .expect("Is present at this point");
         let response = unwrap_ok_or!(res,
-            Err(e @ protocol::Error::Response(_)) => {
-                return Err(Error::ErrorResponse(e.into()));
+            Err(error::Error::Remote(response)) => {
+                return Err(ClientError::ErrorResponse(response));
             }
             Err(e) => {
-                return Err(Error::ResponseDecode(e.into()));
+                return Err(ClientError::ResponseDecode(e));
             }
         );
         Ok(response)
@@ -385,7 +392,7 @@ macro_rules! handle_result {
         match $e {
             Ok(value) => value,
             Err(err) => {
-                let err = Error::ConnectionClosed(Arc::new(err.into()));
+                let err = Arc::new(error::Error::from(err));
                 // Notify all subscribers on closing
                 let subscriptions: HashMap<_, _> = $client.awaiting_response.drain().collect();
                 for (_, subscription) in subscriptions {
@@ -495,7 +502,7 @@ mod tests {
     async fn connect_failure() {
         // Can be any other unused port
         let err = Client::connect("localhost", 0).await.unwrap_err();
-        assert!(matches!(dbg!(err), Error::ConnectionClosed(_)))
+        assert!(matches!(dbg!(err), ClientError::ConnectionClosed(_)))
     }
 
     #[crate::test(tarantool = "crate")]
@@ -580,7 +587,7 @@ mod tests {
             .unwrap_err()
             .to_string();
         #[rustfmt::skip]
-        assert_eq!(err, "service responded with error: Procedure 'unexistent_proc' is not defined");
+        assert_eq!(err, "Procedure 'unexistent_proc' is not defined");
     }
 
     #[crate::test(tarantool = "crate")]

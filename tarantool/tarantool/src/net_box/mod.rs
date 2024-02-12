@@ -47,7 +47,6 @@ pub use index::{RemoteIndex, RemoteIndexIterator};
 use inner::ConnInner;
 pub use options::{ConnOptions, ConnTriggers, Options};
 use promise::Promise;
-pub(crate) use protocol::ResponseError;
 pub use space::RemoteSpace;
 
 use crate::error::Error;

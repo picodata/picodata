@@ -1,6 +1,6 @@
 use std::io::{Cursor, Write};
 
-use super::Error;
+use crate::error::Error;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::codec::IProtoType;

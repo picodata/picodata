@@ -18,6 +18,8 @@
 - `network::client::{Client, ReconnClient}::send` now returns one of the new
   error variants: `ConnectionClosed`, `RequestEncode`, `ResponseDecode` or
   `ErrorResponse`.
+- `tarantool::error::Error::Remote` variant is no longer disabled without the
+  `net_box` feature.
 
 ### Fixed
 - `network::ReconnClient::with_config` constructor now has `pub` visibility,
@@ -29,6 +31,8 @@
 - Use after free when calling `TarantoolError::error_type` in some cases.
 
 ### Deprecated
+- `network::client::Error` is now a deprecated alias for `network::ClientError`
+- `network::protocol::Error` is now a deprecated alias for `network::ProtocolError`
 
 ### Breaking changes
 - `TarantoolError::error_type` now returns a `&str` instead of `String`.
@@ -44,6 +48,14 @@
 - Removed `network::client::Error::{Tcp, Io, Protocol}` variants as they were
   confusing to work with.
 - Removed `impl From<{TcpError, io::Error, ProtocolError}> for network::client::Error`.
+- Most of the variants from `network::ProtocolError` were removed, because they
+  are duplicated with ones in `tarantool::error::Error`, only the unique ones are left.
+- `tarantool::error::Error::Protocol` now contains a `ProtocolError` which is
+  no longer wrapped in an `Arc`.
+- Methods of `network::protocol::Protocol` now return `tarantool::error::Error`
+  instead of `network::ProtocolError`.
+- Functions in `network::protocol::codec` now return `tarantool::error::Error`
+  instead of `network::ProtocolError`.
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.
