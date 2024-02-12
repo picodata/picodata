@@ -13,42 +13,62 @@ use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::{ResponseError, SyncIndex};
 
-const REQUEST_TYPE: u8 = 0x00;
-const SYNC: u8 = 0x01;
-const SCHEMA_VERSION: u8 = 0x05;
+/// Keys of the HEADER and BODY maps in the iproto packets.
+///
+/// See `enum iproto_key` in \<tarantool>/src/box/iproto_constants.h for source
+/// of truth.
+mod iproto_key {
+    pub const REQUEST_TYPE: u8 = 0x00;
+    pub const SYNC: u8 = 0x01;
+    // ...
+    pub const SCHEMA_VERSION: u8 = 0x05;
+    // ...
+    pub const SPACE_ID: u8 = 0x10;
+    pub const INDEX_ID: u8 = 0x11;
+    pub const LIMIT: u8 = 0x12;
+    pub const OFFSET: u8 = 0x13;
+    pub const ITERATOR: u8 = 0x14;
+    pub const INDEX_BASE: u8 = 0x15;
+    // ...
+    pub const KEY: u8 = 0x20;
+    pub const TUPLE: u8 = 0x21;
+    pub const FUNCTION_NAME: u8 = 0x22;
+    pub const USER_NAME: u8 = 0x23;
+    // ...
+    pub const EXPR: u8 = 0x27;
+    pub const OPS: u8 = 0x28;
+    // ...
+    pub const DATA: u8 = 0x30;
+    pub const ERROR: u8 = 0x31;
+    // ...
+    pub const SQL_TEXT: u8 = 0x40;
+    pub const SQL_BIND: u8 = 0x41;
+    // ...
+}
+use iproto_key::*;
 
-const SPACE_ID: u8 = 0x10;
-const INDEX_ID: u8 = 0x11;
-const LIMIT: u8 = 0x12;
-const OFFSET: u8 = 0x13;
-const ITERATOR: u8 = 0x14;
-const INDEX_BASE: u8 = 0x15;
-
-const KEY: u8 = 0x20;
-const TUPLE: u8 = 0x21;
-const FUNCTION_NAME: u8 = 0x22;
-const USER_NAME: u8 = 0x23;
-const EXPR: u8 = 0x27;
-const OPS: u8 = 0x28;
-
-const DATA: u8 = 0x30;
-const ERROR: u8 = 0x31;
-
-const SQL_TEXT: u8 = 0x40;
-const SQL_BIND: u8 = 0x41;
-
+/// Iproto packet type.
+///
+/// See `enum iproto_type` in \<tarantool>/src/box/iproto_constants.h for source
+/// of truth.
+#[non_exhaustive]
 pub enum IProtoType {
+    /// This packet is a response with status success.
+    Ok = 0,
     Select = 1,
     Insert = 2,
     Replace = 3,
     Update = 4,
     Delete = 5,
+    // LegacyCall = 6,
     Auth = 7,
     Eval = 8,
     Upsert = 9,
     Call = 10,
     Execute = 11,
+    // ...
     Ping = 64,
+    // ...
 }
 
 pub fn encode_header(
