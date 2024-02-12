@@ -10,6 +10,7 @@ pub trait Request {
     const TYPE: IProtoType;
     type Response: Sized;
 
+    #[inline(always)]
     fn encode_header(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
         codec::encode_header(out, sync, Self::TYPE)
     }
@@ -22,7 +23,7 @@ pub trait Request {
         Ok(())
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error>;
+    fn decode_response_body(r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error>;
 }
 
 // TODO: Implement `Request` for other types in `IProtoType`
@@ -33,11 +34,13 @@ impl Request for Ping {
     const TYPE: IProtoType = IProtoType::Ping;
     type Response = ();
 
+    #[inline(always)]
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_ping(out)
     }
 
-    fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    #[inline(always)]
+    fn decode_response_body(_in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         Ok(())
     }
 }
@@ -54,11 +57,13 @@ where
     const TYPE: IProtoType = IProtoType::Call;
     type Response = Tuple;
 
+    #[inline(always)]
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_call(out, self.fn_name, self.args)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    #[inline(always)]
+    fn decode_response_body(r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         codec::decode_call(r#in)
     }
 }
@@ -75,11 +80,13 @@ where
     const TYPE: IProtoType = IProtoType::Eval;
     type Response = Tuple;
 
+    #[inline(always)]
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_eval(out, self.expr, self.args)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    #[inline(always)]
+    fn decode_response_body(r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         codec::decode_call(r#in)
     }
 }
@@ -96,11 +103,13 @@ where
     const TYPE: IProtoType = IProtoType::Execute;
     type Response = Vec<Tuple>;
 
+    #[inline(always)]
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_execute(out, self.sql, self.bind_params)
     }
 
-    fn decode_body(&self, r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    #[inline(always)]
+    fn decode_response_body(r#in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         codec::decode_multiple_rows(r#in)
     }
 }
@@ -116,11 +125,13 @@ impl<'u, 'p, 's> Request for Auth<'u, 'p, 's> {
     const TYPE: IProtoType = IProtoType::Auth;
     type Response = ();
 
+    #[inline(always)]
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error> {
         codec::encode_auth(out, self.user, self.pass, self.salt, self.method)
     }
 
-    fn decode_body(&self, _in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
+    #[inline(always)]
+    fn decode_response_body(_in: &mut Cursor<Vec<u8>>) -> Result<Self::Response, Error> {
         Ok(())
     }
 }

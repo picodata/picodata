@@ -163,13 +163,12 @@ impl Protocol {
     pub fn take_response<R: Request>(
         &mut self,
         sync: SyncIndex,
-        request: &R,
     ) -> Option<Result<R::Response, error::Error>> {
         let response = match self.incoming.remove(&sync)? {
             Ok(response) => response,
             Err(err) => return Some(Err(error::Error::Remote(err))),
         };
-        Some(request.decode_body(&mut Cursor::new(response)))
+        Some(R::decode_response_body(&mut Cursor::new(response)))
     }
 
     /// Drop response by [`SyncIndex`] if it exists. If not - does nothing.

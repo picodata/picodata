@@ -319,7 +319,7 @@ impl AsClient for Client {
             .0
             .borrow_mut()
             .protocol
-            .take_response(sync, request)
+            .take_response::<R>(sync)
             .expect("Is present at this point");
         let response = unwrap_ok_or!(res,
             Err(error::Error::Remote(response)) => {
