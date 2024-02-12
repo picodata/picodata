@@ -33,6 +33,12 @@ use crate::transaction::TransactionError;
 /// A specialized [`Result`] type for the crate
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub type TimeoutError<E> = crate::fiber::r#async::timeout::Error<E>;
+
+////////////////////////////////////////////////////////////////////////////////
+// Error
+////////////////////////////////////////////////////////////////////////////////
+
 /// Represents all error cases for all routines of crate (including Tarantool errors)
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -177,6 +183,44 @@ impl From<MarkerReadError> for Error {
     }
 }
 
+impl<E> From<TransactionError<E>> for Error
+where
+    Error: From<E>,
+{
+    #[inline]
+    fn from(e: TransactionError<E>) -> Self {
+        match e {
+            TransactionError::FailedToCommit(e) => e.into(),
+            TransactionError::FailedToRollback(e) => e.into(),
+            TransactionError::RolledBack(e) => e.into(),
+            TransactionError::AlreadyStarted => crate::set_and_get_error!(
+                TarantoolErrorCode::ActiveTransaction,
+                "transaction has already been started"
+            )
+            .into(),
+        }
+    }
+}
+
+impl<E> From<TimeoutError<E>> for Error
+where
+    Error: From<E>,
+{
+    #[inline]
+    fn from(e: TimeoutError<E>) -> Self {
+        match e {
+            TimeoutError::Expired => {
+                crate::set_and_get_error!(TarantoolErrorCode::Timeout, "timeout").into()
+            }
+            TimeoutError::Failed(e) => e.into(),
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TarantoolError
+////////////////////////////////////////////////////////////////////////////////
+
 /// Settable by Tarantool error type
 #[derive(Debug, Clone, Default)]
 pub struct TarantoolError {
@@ -264,24 +308,9 @@ impl From<TarantoolError> for Error {
     }
 }
 
-impl<E> From<TransactionError<E>> for Error
-where
-    Error: From<E>,
-{
-    #[inline]
-    fn from(e: TransactionError<E>) -> Self {
-        match e {
-            TransactionError::FailedToCommit(e) => e.into(),
-            TransactionError::FailedToRollback(e) => e.into(),
-            TransactionError::RolledBack(e) => e.into(),
-            TransactionError::AlreadyStarted => crate::set_and_get_error!(
-                TarantoolErrorCode::ActiveTransaction,
-                "transaction has already been started"
-            )
-            .into(),
-        }
-    }
-}
+////////////////////////////////////////////////////////////////////////////////
+// TarantoolErrorCode
+////////////////////////////////////////////////////////////////////////////////
 
 crate::define_enum_with_introspection! {
     /// Codes of Tarantool errors
@@ -558,6 +587,10 @@ impl TarantoolErrorCode {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
+
 /// Clear the last error.
 pub fn clear_error() {
     unsafe { ffi::box_error_clear() }
@@ -608,6 +641,10 @@ macro_rules! set_and_get_error {
     }};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Encode
+////////////////////////////////////////////////////////////////////////////////
+
 /// Error that can happen when serializing a tuple
 #[derive(Debug, thiserror::Error)]
 pub enum Encode {
@@ -629,6 +666,10 @@ impl std::fmt::Debug for DebugAsMPValue<'_> {
         }
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
 
 #[test]
 fn tarantool_error_doesnt_depend_on_link_error() {
