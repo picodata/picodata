@@ -7,6 +7,7 @@ use std::{
 };
 
 use super::inner::ConnInner;
+use crate::error::TarantoolError;
 use crate::network::protocol;
 use crate::{clock::INFINITY, error::Error, fiber::Cond, time::Instant, tuple::Decode, Result};
 
@@ -310,19 +311,21 @@ pub trait Consumer {
     /// [`consume_data`]: Self::consume_data
     /// [`handle_error`]: Self::handle_error
     fn consume(&self, header: &protocol::Header, body: &[u8]) {
-        let _ = header;
         let consume_impl = || {
             let mut cursor = Cursor::new(body);
             let map_len = rmp::decode::read_map_len(&mut cursor)?;
             for _ in 0..map_len {
                 let key = rmp::decode::read_pfix(&mut cursor)?;
-                let value = value_slice(&mut cursor)?;
+                let mut value = value_slice(&mut cursor)?;
                 // dbg!((IProtoKey::try_from(key), rmp_serde::from_slice::<rmpv::Value>(value)));
                 match key {
                     protocol::iproto_key::DATA => self.consume_data(value),
                     protocol::iproto_key::ERROR => {
-                        let message = rmp_serde::from_slice(value)?;
-                        self.handle_error(protocol::ResponseError { message }.into());
+                        let mut error = TarantoolError::default();
+                        let message = protocol::decode_string(&mut value)?;
+                        error.message = Some(message.into());
+                        error.code = header.error_code;
+                        self.handle_error(Error::Remote(error));
                     }
                     // TODO: IPROTO_ERROR (0x52)
                     other => self.consume_other(other, value),

@@ -13,6 +13,7 @@ pub use codec::*;
 
 use crate::auth::AuthMethod;
 use crate::error;
+use crate::error::TarantoolError;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek};
 
@@ -20,13 +21,17 @@ use std::io::{Cursor, Read, Seek};
 pub type Error = ProtocolError;
 
 /// IProto protocol violation.
+#[non_exhaustive]
 #[derive(thiserror::Error, Debug)]
 pub enum ProtocolError {
     #[error("message size hint is 0")]
     ZeroSizeHint,
 
-    #[error("DATA not found in response body but is required for call/eval")]
-    ResponseDataNotFound,
+    #[error("{key} not found in iproto response body, {context}")]
+    ResponseFieldNotFound {
+        key: &'static str,
+        context: &'static str,
+    },
 
     #[error("{0} is not implemented yet")]
     Unimplemented(String),
@@ -45,16 +50,8 @@ impl SyncIndex {
     }
 }
 
-/// Error returned from the Tarantool server.
-///
-/// It represents an error with which Tarantool server
-/// answers to the client in case of faulty request or an error
-/// during request execution on the server side.
-#[derive(Debug, thiserror::Error, Clone)]
-#[error("{message}")]
-pub struct ResponseError {
-    pub(crate) message: String,
-}
+#[deprecated = "use `TarantoolError` instead"]
+pub type ResponseError = TarantoolError;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum State {
@@ -93,7 +90,7 @@ pub struct Protocol {
     pending_outgoing: Vec<u8>,
     sync: SyncIndex,
     // TODO: limit incoming size
-    incoming: HashMap<SyncIndex, Result<Vec<u8>, ResponseError>>,
+    incoming: HashMap<SyncIndex, Result<Vec<u8>, TarantoolError>>,
     /// (user, password)
     creds: Option<(String, String)>,
     auth_method: AuthMethod,
@@ -250,20 +247,23 @@ impl Protocol {
             }
             State::Auth => {
                 let header = codec::decode_header(message)?;
-                if header.status_code != 0 {
-                    return Err(codec::decode_error(message)?.into());
+                if header.iproto_type == IProtoType::Error as u32 {
+                    let error = codec::decode_error(message, &header)?;
+                    return Err(error::Error::Remote(error));
                 }
                 self.state = State::Ready;
                 None
             }
             State::Ready => {
                 let header = codec::decode_header(message)?;
-                let response = if header.status_code != 0 {
-                    Err(codec::decode_error(message)?)
+                let response;
+                if header.iproto_type == IProtoType::Error as u32 {
+                    response = Err(codec::decode_error(message, &header)?);
                 } else {
+                    // FIXME: we know the exact size of the body at this point
                     let mut buf = Vec::new();
                     message.read_to_end(&mut buf)?;
-                    Ok(buf)
+                    response = Ok(buf);
                 };
                 self.incoming.insert(header.sync, response);
                 Some(header.sync)

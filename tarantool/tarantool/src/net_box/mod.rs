@@ -63,7 +63,8 @@ mod send_queue;
 mod space;
 mod stream;
 
-pub type ResponseError = crate::network::protocol::ResponseError;
+#[deprecated = "use `TarantoolError` instead"]
+pub type ResponseError = crate::error::TarantoolError;
 
 /// Connection to remote Tarantool server
 pub struct Conn {
@@ -277,7 +278,8 @@ mod tests {
             let e = conn
                 .eval("error 'oops'", &(), &Default::default())
                 .unwrap_err();
-            assert_eq!(e.to_string(), "server responded with error: eval:1: oops");
+            #[rustfmt::skip]
+            assert_eq!(e.to_string(), "server responded with error: ProcLua: eval:1: oops");
         }
     }
 

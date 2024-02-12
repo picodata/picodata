@@ -93,13 +93,13 @@ impl RecvQueue {
             break header;
         };
 
-        if header.status_code != 0 {
+        if header.iproto_type == protocol::IProtoType::Error as u32 {
             // Wakeup the recv_worker before returning
             self.read_completed_cond.signal();
 
             let mut buf = self.buffer.borrow_mut();
-            let error = protocol::decode_error(buf.by_ref())?;
-            return Err(error.into());
+            let error = protocol::decode_error(buf.by_ref(), &header)?;
+            return Err(Error::Remote(error));
         }
 
         let res = R::decode_response_body(self.buffer.borrow_mut().by_ref());

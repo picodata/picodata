@@ -33,6 +33,7 @@
 ### Deprecated
 - `network::client::Error` is now a deprecated alias for `network::ClientError`
 - `network::protocol::Error` is now a deprecated alias for `network::ProtocolError`
+- `network::protocol::ResponseError` is now a deprecated alias for `error::TarantoolError`
 - `error::Encode` is now a deprecated alias for `error::EncodeError`
 
 ### Breaking changes

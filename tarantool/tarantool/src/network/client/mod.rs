@@ -45,9 +45,9 @@ use std::sync::Arc;
 use self::tcp::TcpStream;
 
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
-use super::protocol::ResponseError;
 use super::protocol::{self, Protocol, SyncIndex};
 use crate::error;
+use crate::error::TarantoolError;
 use crate::fiber;
 use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
@@ -89,7 +89,7 @@ pub enum ClientError {
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    ErrorResponse(ResponseError),
+    ErrorResponse(TarantoolError),
 }
 
 impl From<ClientError> for crate::error::Error {
@@ -464,6 +464,7 @@ async fn receiver(client_cell: Rc<RefCell<ClientInner>>, mut reader: TcpStream) 
 #[cfg(feature = "internal_test")]
 mod tests {
     use super::*;
+    use crate::error::TarantoolErrorCode;
     use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::space::Space;
     use crate::test::util::listen_port;
@@ -574,22 +575,44 @@ mod tests {
             .call("unexistent_proc", &())
             .timeout(Duration::from_secs(3))
             .await
-            .unwrap_err()
-            .to_string();
+            .unwrap_err();
+
+        let err = error::Error::from(err);
+        let error::Error::Remote(err) = err else {
+            panic!()
+        };
+
+        assert_eq!(err.error_code(), TarantoolErrorCode::NoSuchProc as u32);
+
         #[rustfmt::skip]
-        assert_eq!(err, "Procedure 'unexistent_proc' is not defined");
+        assert_eq!(err.to_string(), "NoSuchProc: Procedure 'unexistent_proc' is not defined");
     }
 
     #[crate::test(tarantool = "crate")]
     async fn eval() {
         let client = test_client().await;
 
+        // Ok result
         let result = client
             .eval("return ...", &(1, 2))
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
         assert_eq!(result.decode::<(i32, i32)>().unwrap(), (1, 2));
+
+        // Error result
+        let err = client
+            .eval("box.error(420)", &())
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap_err();
+
+        let err = error::Error::from(err);
+        let error::Error::Remote(err) = err else {
+            panic!()
+        };
+
+        assert_eq!(err.error_code(), 420);
     }
 
     /// A regression test for https://git.picodata.io/picodata/picodata/tarantool-module/-/merge_requests/302

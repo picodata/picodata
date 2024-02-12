@@ -142,7 +142,7 @@ pub fn call_async_error() {
         .unwrap();
     assert_eq!(
         p.wait().unwrap_err().to_string(),
-        "server responded with error: Procedure 'Procedure is not defined' is not defined"
+        "server responded with error: NoSuchProc: Procedure 'Procedure is not defined' is not defined"
     );
 
     let mut p = conn

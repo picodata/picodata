@@ -41,7 +41,7 @@ mod tests {
 
             let err = client.ping().await.unwrap_err();
             #[rustfmt::skip]
-            assert_eq!(err.to_string(), "server responded with error: User not found or supplied credentials are invalid");
+            assert_eq!(err.to_string(), "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
         }
 
         // Wrong password
@@ -52,7 +52,7 @@ mod tests {
 
             let err = client.ping().await.unwrap_err();
             #[rustfmt::skip]
-            assert_eq!(err.to_string(), "server responded with error: User not found or supplied credentials are invalid");
+            assert_eq!(err.to_string(), "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
         }
     }
 }

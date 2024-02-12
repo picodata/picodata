@@ -1,17 +1,17 @@
 use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
-use std::str::from_utf8;
 
 use sha1::{Digest, Sha1};
 
 use crate::auth::AuthMethod;
 use crate::error::Error;
+use crate::error::TarantoolError;
 use crate::index::IteratorType;
 use crate::msgpack;
 use crate::network::protocol::ProtocolError;
 use crate::tuple::{ToTupleBuffer, Tuple};
 
-use super::{ResponseError, SyncIndex};
+use super::SyncIndex;
 
 /// Keys of the HEADER and BODY maps in the iproto packets.
 ///
@@ -51,6 +51,7 @@ use iproto_key::*;
 ///
 /// See `enum iproto_type` in \<tarantool>/src/box/iproto_constants.h for source
 /// of truth.
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum IProtoType {
     /// This packet is a response with status success.
@@ -69,6 +70,9 @@ pub enum IProtoType {
     // ...
     Ping = 64,
     // ...
+    /// Error marker. This value will be combined with the error code in the
+    /// actual iproto response: `(IProtoType::Error | error_code)`.
+    Error = 1 << 15,
 }
 
 pub fn encode_header(
@@ -331,7 +335,16 @@ where
 #[derive(Debug)]
 pub struct Header {
     pub sync: SyncIndex,
-    pub status_code: u32,
+    /// Type of the iproto packet.
+    ///
+    /// If the packet is an error response (see [`IProtoType::Error`]) then the
+    /// error code is removed from it and assigned to [`Header::error_code`].
+    ///
+    /// This should be a value from `enum iproto_type` from tarantool sources,
+    /// but it's practically impossible to keep our `IProtoType` up to date with
+    /// the latest version of tarantool, so we just store it as a plain integer.
+    pub iproto_type: u32,
+    pub error_code: u32,
     pub schema_version: u64,
 }
 
@@ -342,47 +355,76 @@ pub struct Response<T> {
 
 pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
     let mut sync: Option<u64> = None;
-    let mut status_code: Option<u32> = None;
+    let mut iproto_type: Option<u32> = None;
+    let mut error_code: u32 = 0;
     let mut schema_version: Option<u64> = None;
 
     let map_len = rmp::decode::read_map_len(stream)?;
     for _ in 0..map_len {
         let key = rmp::decode::read_pfix(stream)?;
         match key {
-            0 => status_code = Some(rmp::decode::read_int(stream)?),
+            REQUEST_TYPE => {
+                let r#type: u32 = rmp::decode::read_int(stream)?;
+
+                const IPROTO_TYPE_ERROR: u32 = IProtoType::Error as _;
+                if (r#type & IPROTO_TYPE_ERROR) != 0 {
+                    iproto_type = Some(IPROTO_TYPE_ERROR);
+                    error_code = r#type & !IPROTO_TYPE_ERROR;
+                } else {
+                    iproto_type = Some(r#type);
+                }
+            }
             SYNC => sync = Some(rmp::decode::read_int(stream)?),
             SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(stream)?),
             _ => msgpack::skip_value(stream)?,
         }
     }
 
-    if sync.is_none() || status_code.is_none() || schema_version.is_none() {
+    if sync.is_none() || iproto_type.is_none() || schema_version.is_none() {
         return Err(io::Error::from(io::ErrorKind::InvalidData).into());
     }
 
     Ok(Header {
         sync: SyncIndex(sync.unwrap()),
-        status_code: status_code.unwrap(),
+        iproto_type: iproto_type.unwrap(),
+        error_code,
         schema_version: schema_version.unwrap(),
     })
 }
 
-pub fn decode_error(stream: &mut impl Read) -> Result<ResponseError, Error> {
-    let mut message: Option<String> = None;
+pub fn decode_error(stream: &mut impl Read, header: &Header) -> Result<TarantoolError, Error> {
+    let mut error = TarantoolError::default();
 
     let map_len = rmp::decode::read_map_len(stream)?;
     for _ in 0..map_len {
         if rmp::decode::read_pfix(stream)? == ERROR {
-            let str_len = rmp::decode::read_str_len(stream)? as usize;
-            let mut str_buf = vec![0u8; str_len];
-            stream.read_exact(&mut str_buf)?;
-            message = Some(from_utf8(&str_buf)?.to_string());
+            let message = decode_string(stream)?;
+            error.message = Some(message.into());
+            error.code = header.error_code;
         }
     }
 
-    Ok(ResponseError {
-        message: message.ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?,
-    })
+    if error.message.is_none() {
+        return Err(ProtocolError::ResponseFieldNotFound {
+            key: "ERROR",
+            context: "required for error responses",
+        }
+        .into());
+    }
+
+    Ok(error)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ...
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn decode_string(stream: &mut impl Read) -> Result<String, Error> {
+    let len = rmp::decode::read_str_len(stream)? as usize;
+    let mut str_buf = vec![0u8; len];
+    stream.read_exact(&mut str_buf)?;
+    let res = String::from_utf8(str_buf)?;
+    Ok(res)
 }
 
 pub fn decode_greeting(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
@@ -405,12 +447,14 @@ pub fn decode_call(buffer: &mut Cursor<Vec<u8>>) -> Result<Tuple, Error> {
             }
         };
     }
-    Err(ProtocolError::ResponseDataNotFound.into())
+    Err(ProtocolError::ResponseFieldNotFound {
+        key: "DATA",
+        context: "required for CALL/EVAL responses",
+    }
+    .into())
 }
 
-pub fn decode_multiple_rows(
-    buffer: &mut Cursor<Vec<u8>>,
-) -> Result<Vec<Tuple>, Error> {
+pub fn decode_multiple_rows(buffer: &mut Cursor<Vec<u8>>) -> Result<Vec<Tuple>, Error> {
     let payload_len = rmp::decode::read_map_len(buffer)?;
     for _ in 0..payload_len {
         let key = rmp::decode::read_pfix(buffer)?;

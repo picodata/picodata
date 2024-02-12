@@ -74,8 +74,13 @@ pub enum Error {
     #[error("msgpack write error: {0}")]
     ValueWrite(#[from] ValueWriteError),
 
+    /// Error returned from the Tarantool server.
+    ///
+    /// It represents an error with which Tarantool server
+    /// answers to the client in case of faulty request or an error
+    /// during request execution on the server side.
     #[error("server responded with error: {0}")]
-    Remote(#[from] crate::network::protocol::ResponseError),
+    Remote(TarantoolError),
 
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
@@ -214,6 +219,14 @@ where
             }
             TimeoutError::Failed(e) => e.into(),
         }
+    }
+}
+
+impl From<std::string::FromUtf8Error> for Error {
+    #[inline(always)]
+    fn from(error: std::string::FromUtf8Error) -> Self {
+        // FIXME: we loose the data here
+        error.utf8_error().into()
     }
 }
 
