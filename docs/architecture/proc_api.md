@@ -118,7 +118,7 @@ fn proc_raft_info()
     - `applied`: (MP_INT) текущий примененный индекс raft-журнала
     - `leader_id`: (MP_INT) `raft_id` лидера или `0` если в текущем
       терме его нет
-    - `raft_state` (MP_STR)
+    - `state` (MP_STR)
       <br>возможные значения: `Follower`, `Candidate`, `Leader`, `PreCandidate`
 
 ---
