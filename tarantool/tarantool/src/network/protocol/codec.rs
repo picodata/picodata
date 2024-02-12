@@ -17,7 +17,7 @@ use super::{ResponseError, SyncIndex};
 ///
 /// See `enum iproto_key` in \<tarantool>/src/box/iproto_constants.h for source
 /// of truth.
-mod iproto_key {
+pub(crate) mod iproto_key {
     pub const REQUEST_TYPE: u8 = 0x00;
     pub const SYNC: u8 = 0x01;
     // ...

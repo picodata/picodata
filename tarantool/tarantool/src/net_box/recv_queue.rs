@@ -13,15 +13,18 @@ use crate::fiber;
 use crate::fiber::{Cond, Latch};
 
 use super::options::Options;
-use super::protocol::{decode_error, decode_header, Consumer, Header, Response, Sync};
+use super::promise::Consumer;
+use crate::network::protocol;
+use crate::network::protocol::SyncIndex;
+use crate::network::protocol::{Header, Response};
 
-type Consumers = HashMap<Sync, Weak<dyn Consumer>>;
+type Consumers = HashMap<SyncIndex, Weak<dyn Consumer>>;
 
 pub struct RecvQueue {
     is_active: Cell<bool>,
     buffer: RefCell<Cursor<Vec<u8>>>,
     chunks: RefCell<Vec<Range<usize>>>,
-    cond_map: RefCell<HashMap<Sync, PoolRef<Cond>>>,
+    cond_map: RefCell<HashMap<SyncIndex, PoolRef<Cond>>>,
     cond_pool: Pool<Cond>,
     async_consumers: UnsafeCell<Consumers>,
     read_offset: Cell<usize>,
@@ -47,14 +50,13 @@ impl RecvQueue {
         }
     }
 
-    pub fn recv<F, R>(
+    pub fn recv<R>(
         &self,
-        sync: u64,
-        payload_consumer: F,
+        sync: SyncIndex,
         options: &Options,
-    ) -> Result<Response<R>, Error>
+    ) -> Result<Response<R::Response>, Error>
     where
-        F: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+        R: protocol::Request,
     {
         if !self.is_active.get() {
             return Err(io::Error::from(io::ErrorKind::ConnectionAborted).into());
@@ -96,11 +98,11 @@ impl RecvQueue {
             self.read_completed_cond.signal();
 
             let mut buf = self.buffer.borrow_mut();
-            let error = decode_error(buf.by_ref())?;
+            let error = protocol::decode_error(buf.by_ref())?;
             return Err(error.into());
         }
 
-        let res = payload_consumer(self.buffer.borrow_mut().by_ref(), &header);
+        let res = R::decode_response_body(self.buffer.borrow_mut().by_ref());
         // Don't signal until payload_consumer returns, just in case it yields,
         // which it definetly shouldn't do, but better safe than sorry
         self.read_completed_cond.signal();
@@ -109,17 +111,17 @@ impl RecvQueue {
         return Ok(Response { payload, header });
     }
 
-    pub fn add_consumer(&self, sync: Sync, consumer: Weak<dyn Consumer>) {
+    pub fn add_consumer(&self, sync: SyncIndex, consumer: Weak<dyn Consumer>) {
         unsafe { (*self.async_consumers.get()).insert(sync, consumer) };
     }
 
-    pub fn get_consumer(&self, sync: Sync) -> Option<Rc<dyn Consumer>> {
+    pub fn get_consumer(&self, sync: SyncIndex) -> Option<Rc<dyn Consumer>> {
         unsafe { &mut *self.async_consumers.get() }
             .remove(&sync)
             .and_then(|c| c.upgrade())
     }
 
-    pub fn iter_consumers(&self) -> HashMapIter<Sync, Weak<dyn Consumer>> {
+    pub fn iter_consumers(&self) -> HashMapIter<SyncIndex, Weak<dyn Consumer>> {
         unsafe { &*self.async_consumers.get() }.iter()
     }
 
@@ -167,7 +169,7 @@ impl RecvQueue {
                 let header = {
                     let mut buffer = self.buffer.borrow_mut();
                     buffer.set_position(start as _);
-                    decode_header(buffer.by_ref())?
+                    protocol::decode_header(buffer.by_ref())?
                 };
 
                 let sync = header.sync;

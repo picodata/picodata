@@ -50,18 +50,20 @@ use promise::Promise;
 pub use space::RemoteSpace;
 
 use crate::error::Error;
+use crate::network::protocol;
 use crate::tuple::{Decode, ToTupleBuffer, Tuple};
 
 mod index;
 mod inner;
 mod options;
 pub mod promise;
-mod protocol;
 mod recv_queue;
 mod schema;
 mod send_queue;
 mod space;
 mod stream;
+
+pub type ResponseError = crate::network::protocol::ResponseError;
 
 /// Connection to remote Tarantool server
 pub struct Conn {
@@ -121,8 +123,7 @@ impl Conn {
     ///
     /// - `options` – the supported option is `timeout`
     pub fn ping(&self, options: &Options) -> Result<(), Error> {
-        self.inner
-            .request(protocol::encode_ping, |_, _| Ok(()), options)?;
+        self.inner.request(&protocol::Ping, options)?;
         Ok(())
     }
 
@@ -133,7 +134,7 @@ impl Conn {
     /// The return from `conn.call` is whatever the function returns.
     pub fn call<T>(
         &self,
-        function_name: &str,
+        fn_name: &str,
         args: &T,
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
@@ -141,23 +142,25 @@ impl Conn {
         T: ToTupleBuffer,
         T: ?Sized,
     {
-        self.inner.request(
-            |buf, sync| protocol::encode_call(buf, sync, function_name, args),
-            protocol::decode_call,
-            options,
-        )
+        let res = self
+            .inner
+            .request(&protocol::Call { fn_name, args }, options)?;
+        Ok(Some(res))
     }
 
     /// Call a remote stored procedure without yielding.
     ///
     /// If enqueuing a request succeeded a [`Promise`] is returned which will be
     /// kept once a response is received.
-    pub fn call_async<A, R>(&self, func: &str, args: A) -> crate::Result<Promise<R>>
+    pub fn call_async<A, R>(&self, fn_name: &str, args: A) -> crate::Result<Promise<R>>
     where
         A: ToTupleBuffer,
         R: for<'de> Decode<'de> + 'static,
     {
-        self.inner.request_async(protocol::Call(func, args))
+        self.inner.request_async(&protocol::Call {
+            fn_name,
+            args: &args,
+        })
     }
 
     /// Evaluates and executes the expression in Lua-string, which may be any statement or series of statements.
@@ -167,21 +170,15 @@ impl Conn {
     ///
     /// To ensure that the return from `eval` is whatever the Lua expression returns, begin the Lua-string with the
     /// word `return`.
-    pub fn eval<T>(
-        &self,
-        expression: &str,
-        args: &T,
-        options: &Options,
-    ) -> Result<Option<Tuple>, Error>
+    pub fn eval<T>(&self, expr: &str, args: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
         T: ToTupleBuffer,
         T: ?Sized,
     {
-        self.inner.request(
-            |buf, sync| protocol::encode_eval(buf, sync, expression, args),
-            protocol::decode_call,
-            options,
-        )
+        let res = self
+            .inner
+            .request(&protocol::Eval { expr, args }, options)?;
+        Ok(Some(res))
     }
 
     /// Executes a series of lua statements on a remote host without yielding.
@@ -193,7 +190,8 @@ impl Conn {
         A: ToTupleBuffer,
         R: for<'de> Decode<'de> + 'static,
     {
-        self.inner.request_async(protocol::Eval(expr, args))
+        self.inner
+            .request_async(&protocol::Eval { expr, args: &args })
     }
 
     /// Search space by name on remote server
@@ -214,11 +212,8 @@ impl Conn {
     where
         P: ToTupleBuffer + ?Sized,
     {
-        self.inner.request(
-            |buf, sync| protocol::encode_execute(buf, sync, sql, bind_params),
-            |buf, _| protocol::decode_multiple_rows(buf, None),
-            options,
-        )
+        self.inner
+            .request(&protocol::Execute { sql, bind_params }, options)
     }
 }
 

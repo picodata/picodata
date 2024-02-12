@@ -7,11 +7,12 @@
 //! See [`super::client`] if you need a fully functional Tarantool client.
 
 pub mod api;
+pub use api::*;
 pub mod codec;
+pub use codec::*;
 
 use crate::auth::AuthMethod;
 use crate::error;
-use api::Request;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek};
 
@@ -294,7 +295,7 @@ impl Protocol {
     }
 }
 
-fn write_to_buffer(
+pub(crate) fn write_to_buffer(
     buffer: &mut Cursor<&mut Vec<u8>>,
     sync: SyncIndex,
     request: &impl Request,

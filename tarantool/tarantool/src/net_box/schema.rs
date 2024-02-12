@@ -8,12 +8,12 @@ use std::rc::Rc;
 use crate::error::Error;
 use crate::fiber::{Latch, LatchGuard};
 use crate::index::IteratorType;
+use crate::network::protocol;
 use crate::space::{SystemSpace, SYSTEM_ID_MAX};
 use crate::tuple::Tuple;
 
 use super::inner::ConnInner;
 use super::options::Options;
-use super::protocol::{decode_multiple_rows, encode_select};
 
 pub struct ConnSchema {
     version: Cell<Option<u64>>,
@@ -116,41 +116,37 @@ impl ConnSchema {
         }
     }
 
+    #[inline(always)]
     fn fetch_schema_spaces(&self, conn_inner: &Rc<ConnInner>) -> Result<(Vec<Tuple>, u64), Error> {
-        conn_inner.request(
-            |buf, sync| {
-                encode_select(
-                    buf,
-                    sync,
-                    SystemSpace::VSpace as u32,
-                    0,
-                    u32::max_value(),
-                    0,
-                    IteratorType::GT,
-                    &(SYSTEM_ID_MAX,),
-                )
+        let rows = conn_inner.request(
+            &protocol::Select {
+                space_id: SystemSpace::VSpace as u32,
+                index_id: 0,
+                limit: u32::MAX,
+                offset: 0,
+                iterator_type: IteratorType::GT,
+                key: &(SYSTEM_ID_MAX,),
             },
-            |buf, header| Ok((decode_multiple_rows(buf, None)?, header.schema_version)),
             &Options::default(),
-        )
+        )?;
+        let schema_version = conn_inner
+            .schema_version
+            .get()
+            .expect("should be present after we received a response");
+        Ok((rows, schema_version))
     }
 
+    #[inline(always)]
     fn fetch_schema_indexes(&self, conn_inner: &Rc<ConnInner>) -> Result<Vec<Tuple>, Error> {
-        let empty_array: [(); 0] = [];
         conn_inner.request(
-            |buf, sync| {
-                encode_select(
-                    buf,
-                    sync,
-                    SystemSpace::VIndex as u32,
-                    0,
-                    u32::max_value(),
-                    0,
-                    IteratorType::All,
-                    &empty_array,
-                )
+            &protocol::Select {
+                space_id: SystemSpace::VIndex as u32,
+                index_id: 0,
+                limit: u32::MAX,
+                offset: 0,
+                iterator_type: IteratorType::All,
+                key: &(),
             },
-            |buf, _| decode_multiple_rows(buf, None),
             &Options::default(),
         )
     }

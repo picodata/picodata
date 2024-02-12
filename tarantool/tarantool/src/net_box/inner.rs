@@ -12,16 +12,16 @@ use crate::fiber;
 use crate::fiber::is_cancelled;
 use crate::fiber::Cond;
 use crate::net_box::stream::ConnStream;
+use crate::network::protocol;
 use crate::time::Instant;
 use crate::tuple::Decode;
 use crate::unwrap_or;
 
 use super::options::{ConnOptions, ConnTriggers, Options};
 use super::promise::Promise;
-use super::protocol::{self, Header, Request};
 use super::recv_queue::RecvQueue;
 use super::schema::ConnSchema;
-use super::send_queue::{self, SendQueue};
+use super::send_queue::SendQueue;
 use super::Conn;
 
 #[derive(Debug, Copy, Clone)]
@@ -41,7 +41,7 @@ pub struct ConnInner {
     state: Cell<ConnState>,
     state_change_cond: Cond,
     schema: Rc<ConnSchema>,
-    schema_version: Cell<Option<u64>>,
+    pub(crate) schema_version: Cell<Option<u64>>,
     stream: RefCell<Option<ConnStream>>,
     send_queue: SendQueue,
     recv_queue: RecvQueue,
@@ -139,15 +139,9 @@ impl ConnInner {
         }
     }
 
-    pub fn request<Fp, Fc, R>(
-        self: &Rc<Self>,
-        request_producer: Fp,
-        response_consumer: Fc,
-        options: &Options,
-    ) -> Result<R, Error>
+    pub fn request<R>(self: &Rc<Self>, request: &R, options: &Options) -> Result<R::Response, Error>
     where
-        Fp: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
-        Fc: FnOnce(&mut Cursor<Vec<u8>>, &Header) -> Result<R, Error>,
+        R: protocol::Request,
     {
         loop {
             let state = self.state.get();
@@ -156,15 +150,12 @@ impl ConnInner {
                     self.init()?;
                 }
                 ConnState::Active => {
-                    return match self.send_queue.send(request_producer) {
+                    return match self.send_queue.send(request) {
                         Ok(sync) => {
-                            self.recv_queue
-                                .recv(sync, response_consumer, options)
-                                .map(|response| {
-                                    self.schema_version
-                                        .set(Some(response.header.schema_version));
-                                    response.payload
-                                })
+                            let response = self.recv_queue.recv::<R>(sync, options)?;
+                            self.schema_version
+                                .set(Some(response.header.schema_version));
+                            return Ok(response.payload);
                         }
                         Err(err) => Err(self.handle_error(err).err().unwrap()),
                     };
@@ -181,9 +172,9 @@ impl ConnInner {
         }
     }
 
-    pub(crate) fn request_async<I, O>(self: &Rc<Self>, request: I) -> crate::Result<Promise<O>>
+    pub(crate) fn request_async<I, O>(self: &Rc<Self>, request: &I) -> crate::Result<Promise<O>>
     where
-        I: Request,
+        I: protocol::Request,
         O: for<'de> Decode<'de> + 'static,
     {
         loop {
@@ -194,7 +185,7 @@ impl ConnInner {
                 ConnState::Active => {
                     let sync = self
                         .send_queue
-                        .send(protocol::request_producer(request))
+                        .send(request)
                         .map_err(|err| self.handle_error(err).err().unwrap())?;
                     let promise = Promise::new(Rc::downgrade(self));
                     self.recv_queue.add_consumer(sync, promise.downgrade());
@@ -287,27 +278,22 @@ impl ConnInner {
     }
 
     fn auth(&self, stream: &mut CoIOStream, salt: &[u8]) -> Result<(), Error> {
-        let buf = Vec::new();
-        let mut cur = Cursor::new(buf);
+        // TODO: check the average auth request size
+        let mut buf = Vec::new();
+        let mut cur = Cursor::new(&mut buf);
 
         // send auth request
         let sync = self.send_queue.next_sync();
-        send_queue::write_to_buffer(&mut cur, sync, |buf, sync| {
-            use crate::network::protocol;
-            protocol::codec::encode_header(
-                buf,
-                protocol::SyncIndex(sync),
-                protocol::codec::IProtoType::Auth,
-            )?;
-            protocol::codec::encode_auth(
-                buf,
-                self.options.user.as_str(),
-                self.options.password.as_str(),
+        protocol::write_to_buffer(
+            &mut cur,
+            sync,
+            &protocol::Auth {
+                user: self.options.user.as_str(),
+                pass: self.options.password.as_str(),
                 salt,
-                self.options.auth_method,
-            )?;
-            Ok(())
-        })?;
+                method: self.options.auth_method,
+            },
+        )?;
         stream.write_all(cur.get_ref())?;
 
         // handle response

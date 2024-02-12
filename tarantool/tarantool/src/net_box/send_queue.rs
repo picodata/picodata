@@ -4,10 +4,12 @@ use std::time::{Duration, SystemTime};
 
 use crate::error::Error;
 use crate::fiber::{reschedule, Cond};
+use crate::network::protocol;
+use crate::network::protocol::SyncIndex;
 
 pub struct SendQueue {
     is_active: Cell<bool>,
-    sync: Cell<u64>,
+    sync: Cell<SyncIndex>,
     front_buffer: RefCell<Cursor<Vec<u8>>>,
     back_buffer: RefCell<Cursor<Vec<u8>>>,
     swap_cond: Cond,
@@ -19,7 +21,7 @@ impl SendQueue {
     pub fn new(buffer_size: usize, buffer_limit: usize, flush_interval: Duration) -> Self {
         SendQueue {
             is_active: Cell::new(true),
-            sync: Cell::new(0),
+            sync: Cell::new(SyncIndex(0)),
             front_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             back_buffer: RefCell::new(Cursor::new(Vec::with_capacity(buffer_size))),
             swap_cond: Cond::new(),
@@ -28,9 +30,9 @@ impl SendQueue {
         }
     }
 
-    pub fn send<F>(&self, payload_producer: F) -> Result<u64, Error>
+    pub fn send<R>(&self, request: &R) -> Result<SyncIndex, Error>
     where
-        F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
+        R: protocol::Request,
     {
         let sync = self.next_sync();
 
@@ -38,31 +40,30 @@ impl SendQueue {
             self.swap_cond.signal();
         }
 
-        let offset = {
-            let buffer = &mut *self.back_buffer.borrow_mut();
+        let mut buffer = self.back_buffer.borrow_mut();
+        // Convert cursor type `Cursor<Vec<u8>>` -> `Cursor<&mut Vec<u8>>`
+        let msg_start_offset = buffer.position();
+        let mut adapted_buffer = Cursor::new(buffer.get_mut());
+        adapted_buffer.set_position(msg_start_offset);
 
-            let offset = buffer.position();
-            match write_to_buffer(buffer, sync, payload_producer) {
-                Err(err) => {
-                    // rollback buffer position on error
-                    buffer.set_position(offset);
-                    return Err(err);
-                }
-                Ok(_) => offset,
-            }
-        };
+        protocol::write_to_buffer(&mut adapted_buffer, sync, request)?;
+
+        // Advance the shared cursor's position,
+        // because now only the adapted one knows the correct position
+        let new_offset = adapted_buffer.position();
+        buffer.set_position(new_offset);
 
         // trigger swap condition if buffer was empty before
-        if offset == 0 {
+        if msg_start_offset == 0 {
             self.swap_cond.signal();
         }
 
         Ok(sync)
     }
 
-    pub fn next_sync(&self) -> u64 {
-        let sync = self.sync.get() + 1;
-        self.sync.set(sync);
+    pub fn next_sync(&self) -> SyncIndex {
+        let sync = self.sync.get();
+        self.sync.set(SyncIndex(sync.0 + 1));
         sync
     }
 
@@ -106,29 +107,4 @@ impl SendQueue {
         self.is_active.set(false);
         self.swap_cond.signal();
     }
-}
-
-pub fn write_to_buffer<F>(
-    buffer: &mut Cursor<Vec<u8>>,
-    sync: u64,
-    payload_producer: F,
-) -> Result<(), Error>
-where
-    F: FnOnce(&mut Cursor<Vec<u8>>, u64) -> Result<(), Error>,
-{
-    // write MSG_SIZE placeholder
-    let msg_start_offset = buffer.position();
-    rmp::encode::write_u32(buffer, 0)?;
-
-    // write message payload
-    let payload_start_offset = buffer.position();
-    payload_producer(buffer, sync)?;
-    let payload_end_offset = buffer.position();
-
-    // calculate and write MSG_SIZE
-    buffer.set_position(msg_start_offset);
-    rmp::encode::write_u32(buffer, (payload_end_offset - payload_start_offset) as u32)?;
-    buffer.set_position(payload_end_offset);
-
-    Ok(())
 }

@@ -3,10 +3,10 @@ use std::vec::IntoIter;
 
 use crate::error::Error;
 use crate::index::IteratorType;
+use crate::network::protocol;
 use crate::tuple::{Encode, ToTupleBuffer, Tuple};
 
 use super::inner::ConnInner;
-use super::protocol;
 use super::Options;
 
 /// Remote index (a group of key values and pointers)
@@ -27,6 +27,7 @@ impl RemoteIndex {
 
     /// The remote-call equivalent of the local call `Index::get(...)`
     /// (see [details](../index/struct.Index.html#method.get)).
+    #[inline(always)]
     pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
         K: ToTupleBuffer + ?Sized,
@@ -46,6 +47,7 @@ impl RemoteIndex {
 
     /// The remote-call equivalent of the local call `Index::select(...)`
     /// (see [details](../index/struct.Index.html#method.select)).
+    #[inline(always)]
     pub fn select<K>(
         &self,
         iterator_type: IteratorType,
@@ -55,30 +57,25 @@ impl RemoteIndex {
     where
         K: ToTupleBuffer + ?Sized,
     {
-        self.conn_inner.request(
-            |buf, sync| {
-                protocol::encode_select(
-                    buf,
-                    sync,
-                    self.space_id,
-                    self.index_id,
-                    options.limit.unwrap_or(u32::max_value()),
-                    options.offset,
-                    iterator_type,
-                    key,
-                )
-            },
-            |buf, _| {
-                protocol::decode_multiple_rows(buf, None).map(|result| RemoteIndexIterator {
-                    inner: result.into_iter(),
-                })
+        let rows = self.conn_inner.request(
+            &protocol::Select {
+                space_id: self.space_id,
+                index_id: self.index_id,
+                limit: options.limit.unwrap_or(u32::MAX),
+                offset: options.offset,
+                iterator_type,
+                key,
             },
             options,
-        )
+        )?;
+        Ok(RemoteIndexIterator {
+            inner: rows.into_iter(),
+        })
     }
 
     /// The remote-call equivalent of the local call `Space::update(...)`
     /// (see [details](../index/struct.Index.html#method.update)).
+    #[inline(always)]
     pub fn update<K, Op>(
         &self,
         key: &K,
@@ -90,14 +87,19 @@ impl RemoteIndex {
         Op: Encode,
     {
         self.conn_inner.request(
-            |buf, sync| protocol::encode_update(buf, sync, self.space_id, self.index_id, key, ops),
-            protocol::decode_single_row,
+            &protocol::Update {
+                space_id: self.space_id,
+                index_id: self.index_id,
+                key,
+                ops,
+            },
             options,
         )
     }
 
     /// The remote-call equivalent of the local call `Space::upsert(...)`
     /// (see [details](../index/struct.Index.html#method.upsert)).
+    #[inline(always)]
     pub fn upsert<T, Op>(
         &self,
         value: &T,
@@ -109,10 +111,12 @@ impl RemoteIndex {
         Op: Encode,
     {
         self.conn_inner.request(
-            |buf, sync| {
-                protocol::encode_upsert(buf, sync, self.space_id, self.index_id, value, ops)
+            &protocol::Upsert {
+                space_id: self.space_id,
+                index_id: self.index_id,
+                value,
+                ops,
             },
-            protocol::decode_single_row,
             options,
         )
     }
@@ -124,8 +128,11 @@ impl RemoteIndex {
         K: ToTupleBuffer + ?Sized,
     {
         self.conn_inner.request(
-            |buf, sync| protocol::encode_delete(buf, sync, self.space_id, self.index_id, key),
-            protocol::decode_single_row,
+            &protocol::Delete {
+                space_id: self.space_id,
+                index_id: self.index_id,
+                key,
+            },
             options,
         )
     }
