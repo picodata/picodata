@@ -1,13 +1,11 @@
-FROM python:3.10
+FROM python:3.12
 
-ENV SITE_SRC '/site/src'
+ARG IMAGE_DIR=/builds
+WORKDIR $IMAGE_DIR
 
-# Generate static content
-COPY . ${SITE_SRC}
+COPY . $WORKDIR
 
-RUN pip install -r ${SITE_SRC}/requirements.txt && \
-    pip install -r ${SITE_SRC}/ci/ci-requirements.txt
+RUN pip install pipenv
+RUN pipenv sync -d
 
-EXPOSE 8080
-WORKDIR ${SITE_SRC}
-CMD ["mkdocs", "serve"]
+CMD ["pipenv", "run", "mkdocs", "serve", "--dev-addr", "0.0.0.0:8000"]

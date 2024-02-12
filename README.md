@@ -1,54 +1,128 @@
-# Тестовый портал документации продукта Picodata
+# Документация Picodata
 
-Здесь живёт проект Mkdocs, с помощью которого генерируется статичный сайт документации для Picodata.
-Содержимое репозитория попадает на сайт [docs.binary.picodata.io/picodata](http://docs.binary.picodata.io/picodata).
-При сборке через `make` все операции происходят в отдельном окружении, созданном `pipenv`.
+В репозитории расположены исходные файлы проекта [MkDocs](https://www.mkdocs.org/), с помощью которого генерируется статический сайт документации Picodata — [https://docs.picodata.io/picodata/](https://docs.picodata.io/picodata/)
 
-## Cборка проекта
-```
-make build
-```
+# Содержание
 
-## Локальный запуск
-```
-make run
-```
+* [Тестирование документации Picodata](#тестирование-документации-picodata)
+    * [Установка Pipenv](#установка-pipenv)
+    * [Клонирование репозитория](#клонирование-репозитория)
+    * [Запуск локального сервера MkDocs](#запуск-локального-сервера-mkdocs)
+    * [Cборка документации](#cборка-документации)
+    * [Линтинг скриптов Python](#линтинг-скриптов-python)
+    * [Форматирование скриптов Python](#форматирование-скриптов-python)
+    * [Активация виртуального окружения Pipenv](#активация-виртуального-окружения-pipenv)
+* [Запуск документации Picodata в Docker](#запуск-документации-picodata-в-docker)
 
-## Проверка корректности
-```
-make lint
-```
+# Тестирование документации Picodata
 
-По умолчанию сайт будет доступен по адресу [http://127.0.0.1:8000](http://127.0.0.1:8000/).
+## Установка Pipenv
 
-Для выхода из временного окружения Python нажмите _Ctrl+D_.
+Откройте терминал, введите команду:
 
-## Сборка в Docker
-
-В данном репозитории имееется [Dockerfile](docker/static/Dockerfile), с помощью которого можно собрать и запустить сайт внутри контейнера.
-Можно использовать следующие команды:
-```
-docker build -f docker/static/Dockerfile -t test-project-mkdocs --no-cache .
-docker run -p 8080:8080 test-project-mkdocs:latest
+``` shell
+pip install pipenv
 ```
 
-<!-- ## Загрузка в Heroku
-Я сделал небольшую обёртку в PHP для того чтобы статическую версию сайта можно было деплоить в Heroku. После генерации сайта следует запустить скрипт `./phpize.sh`
+Для установки Pipenv потребуются Python не ниже версии 3.7 и актуальный `pip`
 
+Подробнее — [Pipenv Installation](https://pipenv.pypa.io/en/latest/installation.html)
 
-#### Настройка и деплой в первый раз[^1]:
+## Клонирование репозитория
+
+Откройте терминал, последовательно введите команды:
+
+``` shell
+git clone https://git.picodata.io/picodata/picodata/docs.git
+cd docs
 ```
-cd site 
-heroku create
-heroku config:set NPM_CONFIG_PRODUCTION=false
-heroku config:set HOST=0.0.0.0
-heroku config:set NPM_CONFIG_PRODUCTION=false -a peaceful-brook-74799
-heroku config:set HOST=0.0.0.0 -a peaceful-brook-74799
-heroku config:set NODE_ENV=production -a peaceful-brook-74799
-git init
-git add .
-git commit -m "First Heroku commit"
-git remote add origin https://git.heroku.com/peaceful-brook-74799.git
-git push -u origin master
+
+## Запуск локального сервера MkDocs
+
+Введите команду:
+
+``` shell
+pipenv run serve
 ```
-[^1]:Примечание: имя приложения будет отличаться (см. `heroku apps`) -->
+
+Локальный сайт документации Picodata будет доступен по адресу [http://127.0.0.1:8000](http://127.0.0.1:8000/)
+
+Для остановки локального сервера MkDocs нажмите `Ctrl + Z`
+
+## Cборка документации
+
+Введите команду:
+
+``` shell
+pipenv run build
+```
+
+С помощью этой команды сайт документации будет собран [в «строгом» режиме](https://www.mkdocs.org/user-guide/cli/#mkdocs-build) — с флагом `-s` / `--strict`
+
+Полученную сборку можно запустить, например, с помощью модуля [http.server](https://docs.python.org/3/library/http.server.html). Введите команду:
+
+``` shell
+python -m http.server -d site --bind 127.0.0.1
+```
+
+## Линтинг скриптов Python
+
+Введите команду:
+
+``` shell
+pipenv run lint
+```
+
+Скрипт `ci/validation.py` будет последовательно проверен с помощью следующих модулей:
+
+* [`flake8`](https://github.com/pycqa/flake8/)
+* [`black`](https://github.com/psf/black)
+* [`mypy`](https://github.com/python/mypy)
+
+Далее, скрипт `ci/validation.py` будет запущен
+
+## Форматирование скриптов Python
+
+Введите команду:
+
+``` shell
+pipenv run fmt
+```
+
+Форматирование скрипта `ci/validation.py` будет скорректировано форматтером `black`
+
+## Активация виртуального окружения Pipenv
+
+Введите команду:
+
+``` shell
+pipenv shell
+```
+
+Активированное виртуальное окружение Pipenv позволит использовать напрямую команды MkDocs и остальных установленных модулей
+
+Для выхода из виртуального окружения Pipenv введите `exit` или нажмите `Ctrl + D`
+
+# Запуск документации Picodata в Docker
+
+С помощью [Dockerfile](docker/static/Dockerfile) можно собрать сайт документации Picodata внутри образа [Docker](https://docs.docker.com/), затем запустить образ в контейнере
+
+Создание образа `picodocs`:
+
+``` shell
+docker build -f docker/static/Dockerfile -t picodocs --no-cache .
+```
+
+Запуск образа `picodocs` в контейнере `picodocs`:
+
+``` shell
+docker run --name picodocs -p 127.0.0.1:8000:8000 picodocs
+```
+
+Запущенный в контейнере `picodocs` сайт документации Picodata будет доступен по адресу [http://127.0.0.1:8000](http://127.0.0.1:8000/)
+
+Удаление контейнера `picodocs`:
+
+``` shell
+docker rm -f picodocs
+```

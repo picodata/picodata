@@ -41,6 +41,7 @@ build-base-image:
     - cd docker/static
     - >
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
+      --build-arg IMAGE_DIR=$CI_PROJECT_DIR
       --build-arg COMMIT_HASH=${CI_COMMIT_SHA} ${PUSH_DOCKER}
       --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
       --destination ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
@@ -50,7 +51,7 @@ lint:
   stage: lint
   script:
     - echo "Checking picodata doc..."
-    - make lint
+    - pipenv run lint
     - echo "Picodata doc successfully checked"
 
 pack-doc:
@@ -70,7 +71,7 @@ pack-doc:
     - DATE=$(date +%Y%m%d%H%M%S)
     - FNAME="picodata-doc-${DATE}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHA}.tgz"
     - echo "FNAME=$FNAME" | tee .vars
-    - mkdocs build -d build --strict
+    - pipenv run mkdocs build -sd build
     - pushd build
     - tar -cvzf ../$FNAME .
     - popd

@@ -1,0 +1,31 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+mkdocs = "==1.5.3"
+mkdocs-material = "==9.4.8"
+mkdocs-plugin-inline-svg = "==0.1.0"
+markdown-callouts = "==0.4.0"
+
+[dev-packages]
+flake8 = "*"
+black = "*"
+mypy = "*"
+
+[requires]
+python_version = "3.12"
+
+[scripts]
+serve = "mkdocs serve"
+build = "mkdocs build -s"
+lint = """
+  bash -c "
+    flake8 ci --max-line-length 99
+    black ci --check --diff
+    mypy ci
+    python ci/validation.py
+  "
+"""
+fmt = "black ci"
