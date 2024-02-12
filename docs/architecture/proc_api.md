@@ -122,6 +122,37 @@ fn proc_raft_info()
       <br>возможные значения: `Follower`, `Candidate`, `Leader`, `PreCandidate`
 
 ---
+### .proc_instance_info {: #proc_instance_info }
+
+```rust
+fn proc_instance_info(instance_id)
+```
+
+Возвращает информацию о запрашиваемом инстансе из кластера.
+
+При вызове без параметров возвращает информацию о текущем инстансе.
+
+Аргументы:
+
+- `instance_id`: (optional MP_STR)
+
+Возвращаемое значение:
+
+- (MP_MAP `InstanceInfo`)
+    - `raft_id`: (MP_UINT)
+    - `advertise_address`: (MP_STR)
+    - `instance_id`: (MP_STR)
+    - `instance_uuid`: (MP_STR)
+    - `replicaset_id`: (MP_STR)
+    - `replicaset_uuid`: (MP_STR)
+    - `cluster_id`: (MP_STR)
+    - `current_grade`: (MP_MAP `Grade`), текущее состояние инстанса
+      <br>формат: `MP_MAP { variant = MP_STR, incarnation = MP_UINT}`
+      <br>возможные значения `variant`: `Offline`, `Replicated`, `Online`, `Expelled`
+    - `target_grade`: (MP_MAP `Grade`), целевое состояние инстанса
+    - `tier`: (MP_STR)
+
+---
 ### .proc_get_index {: #proc_get_index }
 
 ```rust
