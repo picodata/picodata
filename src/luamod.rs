@@ -1126,6 +1126,42 @@ pub(crate) fn setup(config: &PicodataConfig) {
             },
         ),
     );
+
+    luamod_set(
+        &l,
+        "batch_cas",
+        indoc! {"
+        pico.batch_cas(ops[, predicate])
+        ======================
+            The same as pico.cas, but allows multiple dml operations.
+        "},
+        tlua::function2(
+            |arg: op::BatchDmlInLua,
+             predicate: Option<cas::PredicateInLua>|
+             -> traft::Result<RaftIndex> {
+                // su is needed here because for cas execution we need to consult with system spaces like `_raft_state`
+                // and the user executing cas request may not (even shouldnt) have access to these spaces
+                let su = session::su(ADMIN_ID)?;
+
+                let mut dmls = Vec::with_capacity(arg.ops.len());
+                for op in arg.ops {
+                    dmls.push(
+                        op::Dml::from_lua_args(op, su.original_user_id)
+                            .map_err(traft::error::Error::other)?,
+                    )
+                }
+                let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
+                let (index, _) = compare_and_swap(
+                    Op::BatchDml { ops: dmls },
+                    predicate,
+                    su.original_user_id,
+                    Duration::from_secs(3),
+                )?;
+                Ok(index)
+            },
+        ),
+    );
+
     luamod_set_help_only(
         &l,
         "table CasRange",

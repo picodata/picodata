@@ -1,3 +1,5 @@
+use std::io;
+use std::io::Write;
 use std::time::Duration;
 
 use crate::access_control;
@@ -8,6 +10,7 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
+use crate::traft::op::BatchRef;
 use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::EntryContext;
 use crate::traft::Result;
@@ -18,6 +21,7 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 
+use serde::Serialize;
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
 use tarantool::fiber::r#async::sleep;
@@ -55,6 +59,13 @@ pub async fn compare_and_swap_async(
     as_user: UserId,
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
+
+    if let Op::BatchDml { ops } = &op {
+        if ops.is_empty() {
+            return Err(Error::EmptyBatch.into());
+        }
+    }
+
     let request = Request {
         cluster_id: node.raft_storage.cluster_id()?,
         predicate,
@@ -138,7 +149,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     // Other operation types are not used with CaS
     if !matches!(
         req.op,
-        Op::Acl(..) | Op::Dml(..) | Op::DdlPrepare { .. } | Op::DdlAbort
+        Op::Acl(..) | Op::Dml(..) | Op::DdlPrepare { .. } | Op::DdlAbort | Op::BatchDml { .. }
     ) {
         return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(req.op))));
     }
@@ -309,6 +320,18 @@ fn proc_cas_local(req: Request) -> Result<Response> {
             // Return the error if it happened. Ignore the tuple if there was one.
             _ = res?;
         }
+        Op::BatchDml { ops, .. } => {
+            let mut res = Ok(None);
+            transaction::begin()?;
+            for op in ops {
+                res = storage.do_dml(op);
+                if res.is_err() {
+                    break;
+                }
+            }
+            transaction::rollback().expect("can't fail");
+            _ = res?;
+        }
         // We can't use a `do_acl` inside of a transaction here similarly to `do_dml`,
         // as acl should be applied only on replicaset leader. Raft leader is not always
         // a replicaset leader.
@@ -319,14 +342,91 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     // Don't wait for the proposal to be accepted, instead return the index
     // to the requestor, so that they can wait for it.
 
-    let entry_id = node_impl.propose_async(req.op)?;
+    let entry_id = match req.op {
+        Op::BatchDml { ops } => {
+            let entries = prepare_entries_for_batch(ops)?;
+            node_impl.propose_multiple_async(entries)?
+        }
+        op => node_impl.propose_async(op)?,
+    };
     let index = entry_id.index;
     let term = entry_id.term;
-    assert_eq!(index, last + 1);
+    // TODO: return number of raft entries and check this
+    // assert_eq!(index, last + 1);
     assert_eq!(term, requested_term);
     drop(node_impl); // unlock the mutex
 
     Ok(Response { index, term })
+}
+
+fn prepare_entries_for_batch(ops: Vec<Dml>) -> Result<Vec<raft::Entry>> {
+    // TODO: check that each instance in cluster
+    // satisfies this limit.
+    let max_batch_size = {
+        let lua = tarantool::lua_state();
+        let tuple_max_size: u64 = lua
+            .eval("return box.cfg.memtx_max_tuple_size")
+            .map_err(traft::error::Error::Lua)?;
+        let suggested = Clusterwide::get().properties.cas_batch_max_size()?;
+        tuple_max_size.min(suggested)
+    };
+
+    // determine boundaries for splitting
+    let bounds = {
+        struct ByteCount(u64);
+
+        impl Write for ByteCount {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.0 += buf.len() as u64;
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut s = rmp_serde::Serializer::new(ByteCount(0));
+        let mut bounds = Vec::new();
+        let mut prev = 0;
+        for (idx, op) in ops.iter().enumerate() {
+            op.serialize(&mut s)
+                .expect("can't fail serialize with no allocation");
+            let op_ser_sz = s.get_ref().0;
+            if op_ser_sz >= max_batch_size {
+                if prev == idx {
+                    return Err(crate::cas::Error::TooBigOp {
+                        op: Box::new(op.clone()),
+                        op_size: op_ser_sz,
+                        tuple_max_size: max_batch_size,
+                    }
+                    .into());
+                }
+                bounds.push((prev, idx));
+                prev = idx;
+                s.get_mut().0 = 0;
+            }
+        }
+        bounds.push((prev, ops.len()));
+
+        bounds
+    };
+
+    let mut entries = Vec::with_capacity(bounds.len());
+
+    for (start, end) in bounds {
+        let op = BatchRef::BatchDml {
+            ops: &ops[start..end],
+        };
+        let e = raft::Entry {
+            data: vec![].into(),
+            context: rmp_serde::to_vec_named(&op)
+                .expect("serialize may fail only due to oom")
+                .into(),
+            ..Default::default()
+        };
+        entries.push(e);
+    }
+
+    Ok(entries)
 }
 
 crate::define_rpc_request! {
@@ -411,6 +511,20 @@ pub enum Error {
     /// See <https://rust-lang.github.io/rust-clippy/master/index.html#/result_large_err> for more context
     #[error("InvalidOpKind: Expected one of Acl, Dml, DdlPrepare or DdlAbort, got {0}")]
     InvalidOpKind(Box<Op>),
+
+    /// Dml command is too big to fit in raft log tuple.
+    /// Assuming reasonable raft_entry_max_size property, this should never happen.
+    #[error(
+        "TooBigOp: op size ({op_size}) exceeds raft entry max size ({tuple_max_size}), op: {op:?}"
+    )]
+    TooBigOp {
+        op: Box<Dml>,
+        op_size: u64,
+        tuple_max_size: u64,
+    },
+
+    #[error("InvalidOp: empty batch")]
+    EmptyBatch,
 }
 
 /// Represents a lua table describing a [`Predicate`].
@@ -475,34 +589,52 @@ impl Predicate {
         let error = || Error::ConflictFound {
             conflict_index: entry_index,
         };
+        let check_dml =
+            |op: &Dml, space_id: u32, range: &Range| -> std::result::Result<(), Error> {
+                match op {
+                    Dml::Update { key, .. } | Dml::Delete { key, .. } => {
+                        let key = Tuple::new(key)?;
+                        let key_def = storage.key_def_for_key(space_id, 0)?;
+                        if range.contains(&key_def, &key) {
+                            return Err(error());
+                        }
+                    }
+                    Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => {
+                        let tuple = Tuple::new(tuple)?;
+                        let key_def = storage.key_def(space_id, 0)?;
+                        if range.contains(&key_def, &tuple) {
+                            return Err(error());
+                        }
+                    }
+                }
+                Ok(())
+            };
         for range in &self.ranges {
             if modifies_operable(entry_op, range.table, storage) {
                 return Err(error());
             }
-            let Some(space) = space(entry_op) else {
-                continue;
-            };
-            // TODO: check `space` exists
-            if space != range.table {
-                continue;
-            }
 
+            // TODO: check operation's space exists
             match entry_op {
-                Op::Dml(Dml::Update { key, .. } | Dml::Delete { key, .. }) => {
-                    let key = Tuple::new(key)?;
-                    let key_def = storage.key_def_for_key(space, 0)?;
-                    if range.contains(&key_def, &key) {
-                        return Err(error());
+                Op::BatchDml { ops } => {
+                    // TODO: remove O(n*n) complexity,
+                    // use a hashtable for dml/range lookup?
+                    for dml in ops {
+                        if dml.space() == range.table {
+                            check_dml(dml, dml.space(), range)?;
+                        }
                     }
                 }
-                Op::Dml(Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. }) => {
-                    let tuple = Tuple::new(tuple)?;
-                    let key_def = storage.key_def(space, 0)?;
-                    if range.contains(&key_def, &tuple) {
-                        return Err(error());
+                Op::Dml(dml) => {
+                    if dml.space() == range.table {
+                        check_dml(dml, dml.space(), range)?
                     }
                 }
                 Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
+                    let space = ClusterwideTable::Property.id();
+                    if space != range.table {
+                        continue;
+                    }
                     let key_def = storage.key_def_for_key(space, 0)?;
                     for key in schema_related_property_keys() {
                         if range.contains(&key_def, key) {
@@ -726,17 +858,6 @@ impl Bound {
         Excluded = "excluded",
         #[default]
         Unbounded = "unbounded",
-    }
-}
-
-/// Get space that the operation touches.
-fn space(op: &Op) -> Option<SpaceId> {
-    match op {
-        Op::Dml(dml) => Some(dml.space()),
-        Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
-            Some(ClusterwideTable::Property.id())
-        }
-        Op::Nop => None,
     }
 }
 

@@ -197,6 +197,129 @@ def test_cas_predicate(instance: Instance):
     assert instance.pico_property("flower") == "tulip"
 
 
+def test_cas_batch(cluster: Cluster):
+    def value(s: str, k: str):
+        return cluster.instances[0].eval(
+            f"""
+            local tuple = box.space.{s}:get(...)
+            return tuple and tuple.value
+            """,
+            k,
+        )
+
+    cluster.deploy(instance_count=2)
+
+    cluster.create_table(
+        dict(
+            id=1026,
+            name="some_space",
+            format=[
+                dict(name="key", type="string", is_nullable=False),
+                dict(name="value", type="string", is_nullable=False),
+            ],
+            primary_key=["key"],
+            distribution="global",
+        )
+    )
+    i1 = cluster.instances[0]
+    read_index = i1.raft_read_index(_3_SEC)
+
+    ret1 = cluster.batch_cas(
+        [
+            dict(
+                table="some_space",
+                kind="insert",
+                tuple=["car", "bike"],
+            ),
+            dict(
+                table="some_space",
+                kind="insert",
+                tuple=["tree", "pine"],
+            ),
+            dict(
+                table="some_space",
+                kind="insert",
+                tuple=["stone", "diamond"],
+            ),
+            dict(
+                table="_pico_property",
+                kind="replace",
+                tuple=["raft_entry_max_size", 50],
+            ),
+        ]
+    )
+    assert ret1 == read_index + 1
+    cluster.raft_wait_index(ret1, _3_SEC)
+    assert cluster.instances[0].raft_read_index(_3_SEC) == ret1
+    assert value("some_space", "car") == "bike"
+    assert value("some_space", "tree") == "pine"
+    assert value("some_space", "stone") == "diamond"
+    assert value("_pico_property", "raft_entry_max_size") == 50
+
+    ret = cluster.batch_cas(
+        [
+            dict(
+                table="some_space",
+                kind="delete",
+                key=["car"],
+            ),
+            dict(
+                table="some_space",
+                kind="delete",
+                key=["tree"],
+            ),
+            dict(
+                table="some_space",
+                kind="delete",
+                key=["stone"],
+            ),
+            dict(
+                table="_pico_property",
+                kind="update",
+                key=["raft_entry_max_size"],
+                ops=[["+", 1, 100]],
+            ),
+        ]
+    )
+    assert ret > read_index + 1
+    cluster.raft_wait_index(ret, _3_SEC)
+    assert cluster.instances[0].raft_read_index(_3_SEC) == ret
+    assert (
+        cluster.instances[0].eval(
+            'return box.execute([[select * from "some_space"]]).rows'
+        )
+        == []
+    )
+    assert value("_pico_property", "raft_entry_max_size") == 150
+
+    with pytest.raises(ReturnError) as err:
+        cluster.batch_cas(
+            [
+                dict(
+                    table="some_space",
+                    kind="insert",
+                    tuple=["beverage", "wine"],
+                ),
+                dict(
+                    table="some_space",
+                    kind="delete",
+                    key=["car"],
+                ),
+                dict(
+                    table="some_space",
+                    kind="insert",
+                    tuple=["sport", "run"],
+                ),
+            ],
+            index=ret1,
+            ranges=[CasRange(table="some_space", eq="car")],
+        )
+    assert err.value.args == (
+        "compare-and-swap: ConflictFound: "
+        + f"found a conflicting entry at index {ret1+1}",
+    )
+
+
 # Previous tests use stored procedure `.proc_cas`, this one uses `pico.cas` lua api instead
 def test_cas_lua_api(cluster: Cluster):
     def value(k: str):

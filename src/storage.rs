@@ -1130,6 +1130,12 @@ impl From<ClusterwideTable> for SpaceId {
         /// greater than this.
         SnapshotChunkMaxSize = "snapshot_chunk_max_size",
 
+        /// Max size for batch cas operation in bytes. When using batch CAS,
+        /// we put multiple dml operations in one raft entry (tuple).
+        /// The user must guarantee that this value <= memtx_max_tuple_size
+        /// for all nodes in cluster.
+        BatchCasMaxSize = "raft_entry_max_size",
+
         /// Snapshot read views with live reference counts will be forcefully
         /// closed after this number of seconds. This is necessary if followers
         /// do not properly finalize the snapshot application.
@@ -1200,6 +1206,7 @@ impl PropertyName {
             | Self::MaxLoginAttempts
             | Self::MaxPgPortals
             | Self::MaxPgStatements
+            | Self::BatchCasMaxSize
             | Self::SnapshotChunkMaxSize => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
@@ -1254,6 +1261,7 @@ pub const DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS: bool = false;
 pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
 pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
 pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
+pub const DEFAULT_CAS_BATCH_MAX_SIZE: u64 = 1_000_000;
 pub const DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT: f64 = (24 * 3600) as _;
 pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 4;
 
@@ -1479,6 +1487,15 @@ impl Properties {
             .get(PropertyName::SnapshotChunkMaxSize)?
             // Just in case user deletes this property.
             .unwrap_or(DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn cas_batch_max_size(&self) -> tarantool::Result<u64> {
+        let res = self
+            .get(PropertyName::BatchCasMaxSize)?
+            // Just in case user deletes this property.
+            .unwrap_or(DEFAULT_CAS_BATCH_MAX_SIZE);
         Ok(res)
     }
 

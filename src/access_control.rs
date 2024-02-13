@@ -583,6 +583,12 @@ pub(super) fn access_check_op(
     match op {
         Op::Nop => Ok(()),
         Op::Dml(dml) => access_check_dml(dml, as_user),
+        Op::BatchDml { ops } => {
+            for op in ops {
+                access_check_dml(op, as_user)?;
+            }
+            Ok(())
+        }
         Op::DdlPrepare { ddl, .. } => access_check_ddl(ddl, as_user),
         Op::DdlCommit | Op::DdlAbort => {
             if as_user != ADMIN_ID {

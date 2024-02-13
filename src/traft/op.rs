@@ -25,6 +25,11 @@ pub enum Op {
     /// Cluster-wide data modification operation.
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(Dml),
+    /// Batch cluster-wide data modification operation.
+    /// TODO: use batch not only for dml operations, currently
+    /// we can't do ACL together with DML because ACL requires
+    /// to be checked on tarantool replicaset leader.
+    BatchDml { ops: Vec<Dml> },
     /// Start cluster-wide data schema definition operation.
     /// Should be used to manipulate the cluster-wide schema.
     ///
@@ -43,10 +48,66 @@ pub enum Op {
     Acl(Acl),
 }
 
+/// Helper struct for serializing subarray of dml
+/// commands to avoid copying. It must serialize
+/// to the same stuff as `BatchDml`.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "kind")]
+pub enum BatchRef<'ops> {
+    BatchDml { ops: &'ops [Dml] },
+}
+
+#[cfg(test)]
+#[test]
+fn check_batch_dml_serialize() {
+    // check BatchDml and BatchRef are serialized the same way
+    let dmls = vec![
+        Dml::insert(0u32, &[0, 1], 1u32).unwrap(),
+        Dml::insert(0u32, &[0, 1], 0u32).unwrap(),
+    ];
+    let reffed = BatchRef::BatchDml {
+        ops: &dmls[0..dmls.len()],
+    };
+    let ser_actual = rmp_serde::to_vec_named(&reffed).unwrap();
+    let owned = Op::BatchDml { ops: dmls.clone() };
+    let ser_expected = rmp_serde::to_vec_named(&owned).unwrap();
+    assert_eq!(ser_expected, ser_actual);
+
+    let deser_actual: Op = rmp_serde::from_slice(&ser_actual).unwrap();
+    assert!(matches!(deser_actual, Op::BatchDml { .. }));
+    if let Op::BatchDml { ops } = deser_actual {
+        assert_eq!(ops, dmls);
+    }
+}
+
 impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {
             Self::Nop => f.write_str("Nop"),
+            Self::BatchDml { ops } => {
+                for op in ops {
+                    match op {
+                        Dml::Insert { table, tuple, .. } => {
+                            writeln!(f, "Insert({table}, {})", DisplayAsJson(tuple))?;
+                        }
+                        Dml::Replace { table, tuple, .. } => {
+                            writeln!(f, "Replace({table}, {})", DisplayAsJson(tuple))?;
+                        }
+                        Dml::Update {
+                            table, key, ops, ..
+                        } => {
+                            let key = DisplayAsJson(key);
+                            let ops = DisplayAsJson(&**ops);
+                            writeln!(f, "Update({table}, {key}, {ops})")?;
+                        }
+                        Dml::Delete { table, key, .. } => {
+                            writeln!(f, "Delete({table}, {})", DisplayAsJson(key))?;
+                        }
+                    }
+                }
+                Ok(())
+            }
             Self::Dml(Dml::Insert { table, tuple, .. }) => {
                 write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
             }
@@ -292,7 +353,9 @@ impl Op {
     #[inline]
     pub fn is_schema_change(&self) -> bool {
         match self {
-            Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit => false,
+            Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit | Self::BatchDml { .. } => {
+                false
+            }
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
         }
     }
@@ -500,6 +563,11 @@ pub struct DmlInLua {
     pub tuple: Option<TupleBuffer>,
     pub key: Option<TupleBuffer>,
     pub ops: Option<Vec<TupleBuffer>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, tlua::LuaRead)]
+pub struct BatchDmlInLua {
+    pub ops: Vec<DmlInLua>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////

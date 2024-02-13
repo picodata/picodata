@@ -552,6 +552,37 @@ impl NodeImpl {
         Ok(entry_id)
     }
 
+    /// Propose multiple raft entries in one message.
+    #[inline]
+    pub fn propose_multiple_async(
+        &mut self,
+        entries: Vec<raft::Entry>,
+    ) -> Result<RaftEntryId, Error> {
+        if self.raw_node.raft.state != RaftStateRole::Leader {
+            return Err(Error::NotALeader);
+        }
+
+        let index_before = self.raw_node.raft.raft_log.last_index();
+
+        let entries_cnt = entries.len();
+        let message = {
+            let mut m = raft::Message::default();
+            m.set_msg_type(raft::MessageType::MsgPropose);
+            m.from = self.raw_node.raft.id;
+            m.set_entries(entries.into());
+            m
+        };
+
+        self.raw_node.raft.step(message)?;
+
+        let term = self.raw_node.raft.term;
+        let index = self.raw_node.raft.raft_log.last_index();
+        debug_assert!(index == index_before + entries_cnt as u64);
+
+        let entry_id = RaftEntryId { term, index };
+        Ok(entry_id)
+    }
+
     pub fn campaign(&mut self) -> Result<(), RaftError> {
         self.raw_node.campaign()
     }
@@ -763,7 +794,7 @@ impl NodeImpl {
 
         // Perform DML and combine both tuple versions into a pair.
         let res = old.and_then(|old| {
-            let new = self.storage.do_dml(&op)?;
+            let new = self.storage.do_dml(op)?;
             Ok((old, new))
         });
 
@@ -911,6 +942,11 @@ impl NodeImpl {
         // apply the operation
         match op {
             Op::Nop => {}
+            Op::BatchDml { ref ops } => {
+                for op in ops {
+                    self.handle_dml_entry(op, expelled);
+                }
+            }
             Op::Dml(op) => {
                 self.handle_dml_entry(&op, expelled);
             }

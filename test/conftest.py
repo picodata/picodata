@@ -248,6 +248,7 @@ class CasRange:
     key_max = dict(kind="unbounded", key=None)
     repr_min = "unbounded"
     repr_max = "unbounded"
+    table = None
 
     @property
     def key_min_packed(self) -> dict:
@@ -264,7 +265,7 @@ class CasRange:
     def __repr__(self):
         return f"CasRange({self.repr_min}, {self.repr_max})"
 
-    def __init__(self, gt=None, ge=None, lt=None, le=None, eq=None):
+    def __init__(self, table=None, gt=None, ge=None, lt=None, le=None, eq=None):
         """
         Creates a CasRange from the specified bounds.
 
@@ -281,6 +282,7 @@ class CasRange:
         If only one lower or upper bound is specified, the other bound will be assumed `unbounded`.
         Example: `CasRange(ge=1) # [1, +infinity)`
         """
+        self.table = table
         if gt is not None:
             self.key_min = dict(kind="excluded", key=(gt,))
             self.repr_min = f'gt="{gt}"'
@@ -1435,6 +1437,41 @@ class Cluster:
         """
         index = self.instances[0].abort_ddl(timeout)
         self.raft_wait_index(index, timeout)
+
+    def batch_cas(
+        self,
+        ops: List,
+        index: int | None = None,
+        term: int | None = None,
+        ranges: List[CasRange] | None = None,
+        instance: Instance | None = None,
+        user: str | None = None,
+        password: str | None = None,
+    ) -> int:
+        if instance is None:
+            instance = self.instances[0]
+
+        predicate_ranges = []
+        if ranges is not None:
+            for range in ranges:
+                predicate_ranges.append(
+                    dict(
+                        table=range.table,
+                        key_min=range.key_min,
+                        key_max=range.key_max,
+                    )
+                )
+
+        predicate = dict(
+            index=index,
+            term=term,
+            ranges=predicate_ranges,
+        )
+
+        eprint(f"batch CaS:\n  {predicate=}\n  {ops=}")
+        return instance.call(
+            "pico.batch_cas", dict(ops=ops), predicate, user=user, password=password
+        )
 
     def cas(
         self,
