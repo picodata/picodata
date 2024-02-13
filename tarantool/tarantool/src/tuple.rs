@@ -1227,7 +1227,7 @@ where
     let mut slice = data.as_ref();
     let m = rmp::decode::read_marker(&mut slice)?;
     if !matches!(m, Marker::FixArray(_) | Marker::Array16 | Marker::Array32) {
-        return Err(error::Encode::InvalidMP(data.into()).into());
+        return Err(error::EncodeError::InvalidMP(data.into()).into());
     }
     Ok(data)
 }

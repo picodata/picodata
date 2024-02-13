@@ -50,7 +50,7 @@ pub enum Error {
     IO(#[from] io::Error),
 
     #[error("failed to encode tuple: {0}")]
-    Encode(#[from] Encode),
+    Encode(#[from] EncodeError),
 
     #[error("failed to decode tuple: {error} when decoding msgpack {} into rust type {expected_type}", crate::util::DisplayAsHexBytes(.actual_msgpack))]
     Decode {
@@ -166,7 +166,7 @@ impl Error {
 
 impl From<rmp_serde::encode::Error> for Error {
     fn from(error: rmp_serde::encode::Error) -> Self {
-        Encode::from(error).into()
+        EncodeError::from(error).into()
     }
 }
 
@@ -642,29 +642,20 @@ macro_rules! set_and_get_error {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Encode
+// EncodeError
 ////////////////////////////////////////////////////////////////////////////////
+
+#[deprecated = "use `EncodeError` instead"]
+pub type Encode = EncodeError;
 
 /// Error that can happen when serializing a tuple
 #[derive(Debug, thiserror::Error)]
-pub enum Encode {
+pub enum EncodeError {
     #[error("{0}")]
     Rmp(#[from] rmp_serde::encode::Error),
 
-    #[error("invalid msgpack value (epxected array, found {:?})", DebugAsMPValue(.0))]
+    #[error("invalid msgpack value (epxected array, found {:?})", crate::util::DebugAsMPValue(.0))]
     InvalidMP(Vec<u8>),
-}
-
-struct DebugAsMPValue<'a>(&'a [u8]);
-
-impl std::fmt::Debug for DebugAsMPValue<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut read = self.0;
-        match rmp_serde::from_read::<_, rmpv::Value>(&mut read) {
-            Ok(v) => write!(f, "{:?}", v),
-            Err(_) => write!(f, "{:?}", self.0),
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
