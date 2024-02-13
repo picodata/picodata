@@ -19,6 +19,7 @@
 use std::ffi::CStr;
 use std::fmt::{self, Display, Formatter};
 use std::io;
+use std::ptr::NonNull;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
@@ -185,72 +186,83 @@ impl From<MarkerReadError> for Error {
 }
 
 /// Settable by Tarantool error type
+#[derive(Debug, Clone, Default)]
 pub struct TarantoolError {
-    code: u32,
-    message: String,
-    error_ptr: Box<ffi::BoxError>,
-}
-
-impl std::fmt::Debug for TarantoolError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TarantoolError")
-            .field("code", &self.code)
-            .field("message", &self.message)
-            .finish_non_exhaustive()
-    }
+    pub(crate) code: u32,
+    pub(crate) message: Option<Box<str>>,
+    pub(crate) error_type: Option<Box<str>>,
 }
 
 impl TarantoolError {
     /// Tries to get the information about the last API call error. If error was not set
     /// returns `Ok(())`
+    #[inline]
     pub fn maybe_last() -> std::result::Result<(), Self> {
+        // This is safe as long as tarantool runtime is initialized
         let error_ptr = unsafe { ffi::box_error_last() };
-        if error_ptr.is_null() {
+        let Some(error_ptr) = NonNull::new(error_ptr) else {
             return Ok(());
-        }
+        };
 
-        let code = unsafe { ffi::box_error_code(error_ptr) };
+        // This is safe, because box_error_last returns a valid pointer
+        Err(unsafe { Self::from_ptr(error_ptr) })
+    }
 
-        let message = unsafe { CStr::from_ptr(ffi::box_error_message(error_ptr)) };
-        let message = message.to_string_lossy().into_owned();
+    /// Create a `TarantoolError` from a poniter to the underlying struct.
+    ///
+    /// Use [`Self::maybe_last`] to automatically get the last error set by tarantool.
+    ///
+    /// # Safety
+    /// The pointer must point to a valid struct of type `BoxError`.
+    pub unsafe fn from_ptr(error_ptr: NonNull<ffi::BoxError>) -> Self {
+        let code = ffi::box_error_code(error_ptr.as_ptr());
 
-        Err(TarantoolError {
+        let message = CStr::from_ptr(ffi::box_error_message(error_ptr.as_ptr()));
+        let message = message.to_string_lossy().into_owned().into_boxed_str();
+
+        let error_type = CStr::from_ptr(ffi::box_error_type(error_ptr.as_ptr()));
+        let error_type = error_type.to_string_lossy().into_owned().into_boxed_str();
+
+        TarantoolError {
             code,
-            message,
-            error_ptr: unsafe { Box::from_raw(error_ptr) },
-        })
+            message: Some(message),
+            error_type: Some(error_type),
+        }
     }
 
     /// Get the information about the last API call error.
+    #[inline(always)]
     pub fn last() -> Self {
         TarantoolError::maybe_last().err().unwrap()
     }
 
     /// Return IPROTO error code
+    #[inline(always)]
     pub fn error_code(&self) -> u32 {
         self.code
     }
 
     /// Return the error type, e.g. "ClientError", "SocketError", etc.
-    pub fn error_type(&self) -> String {
-        let result = unsafe { ffi::box_error_type(&*self.error_ptr) };
-        unsafe { CStr::from_ptr(result) }
-            .to_string_lossy()
-            .to_string()
+    #[inline(always)]
+    pub fn error_type(&self) -> &str {
+        self.error_type.as_deref().unwrap_or("Unknown")
     }
 
     /// Return the error message
+    #[inline(always)]
     pub fn message(&self) -> &str {
-        &self.message
+        self.message
+            .as_deref()
+            .unwrap_or("<error message is missing>")
     }
 }
 
 impl Display for TarantoolError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(code) = TarantoolErrorCode::from_i64(self.code as _) {
-            return write!(f, "{:?}: {}", code, self.message);
+            return write!(f, "{:?}: {}", code, self.message());
         }
-        write!(f, "tarantool error #{}: {}", self.code, self.message)
+        write!(f, "tarantool error #{}: {}", self.code, self.message())
     }
 }
 
@@ -663,5 +675,14 @@ mod tests {
            // Also never put ; after the if statement (unless it's required
            // for example if it's nested in a let statement), you should always
            // put ; inside both branches instead.
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn tarantool_error_use_after_free() {
+        let e = set_and_get_error!(TarantoolErrorCode::Unknown, "foo");
+        assert_eq!(e.error_type(), "ClientError");
+        clear_error();
+        // This used to crash before the fix
+        assert_eq!(e.error_type(), "ClientError");
     }
 }

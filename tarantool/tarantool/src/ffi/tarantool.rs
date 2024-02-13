@@ -707,6 +707,29 @@ extern "C" {
         format: *const c_char,
         ...
     ) -> c_int;
+
+    /// Increase reference counter of `error`.
+    ///
+    /// Note that technically this function takes a pointer to `struct error`
+    /// while the other `box_error_*` functions take a `box_error_t`. Internally
+    /// `box_error_t` is defined as an alias to `struct error *` so this should
+    /// be correct and there's no reason for this to change. But technically
+    /// it's possible that tarantool's developers will break this compatibility
+    /// and make `box_error_t` be something else, so it will no longer be safe
+    /// to call this function with a pointer to `BoxError`.
+    pub fn error_ref(error: *mut BoxError);
+
+    /// Decrease reference counter of `error`.
+    /// If it reaches `0`, the error is destroyed.
+    ///
+    /// Note that technically this function takes a pointer to `struct error`
+    /// while the other `box_error_*` functions take a `box_error_t`. Internally
+    /// `box_error_t` is defined as an alias to `struct error *` so this should
+    /// be correct and there's no reason for this to change. But technically
+    /// it's possible that tarantool's developers will break this compatibility
+    /// and make `box_error_t` be something else, so it will no longer be safe
+    /// to call this function with a pointer to `BoxError`.
+    pub fn error_unref(error: *mut BoxError);
 }
 
 // Session.

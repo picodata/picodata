@@ -26,10 +26,12 @@
   error during authentication.
 - Bug in legacy `net_box` client which resulted in a deadlock when sending
   requests after receiving a previous error response.
+- Use after free when calling `TarantoolError::error_type` in some cases.
 
 ### Deprecated
 
 ### Breaking changes
+- `TarantoolError::error_type` now returns a `&str` instead of `String`.
 - `network::protocol::Config` struct is now marked as `#[non_exhaustive]`,
   so that we can add fields to it in the future without breaking backwards
   compatibility. Now it should always be constructed like so
