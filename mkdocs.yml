@@ -159,4 +159,5 @@ validation:
 hooks:
   - ./hooks/filter_logs.py
   - ./hooks/check_headers.py
+  - ./hooks/check_svg_attrs.py
   - ./hooks/check_links.py
