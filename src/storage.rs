@@ -1,6 +1,6 @@
 use tarantool::auth::AuthDef;
 use tarantool::decimal::Decimal;
-use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
+use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
 use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
 use tarantool::index::{IndexOptions, Part};
@@ -450,9 +450,13 @@ impl Clusterwide {
     }
 
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
+        use ::tarantool::msgpack;
+
         let mut space_indexes = Vec::with_capacity(32);
 
-        for space_def in self.tables.iter()? {
+        for space_def in self.tables.index_iter()? {
+            let space_def: TableDef =
+                msgpack::decode(&space_def.to_vec()).map_err(TntError::from)?;
             if !matches!(space_def.distribution, Distribution::Global) {
                 continue;
             }
@@ -696,6 +700,8 @@ impl Clusterwide {
     #[allow(rustdoc::private_intra_doc_links)]
     /// [`NodeImpl::advance`]: crate::traft::node::NodeImpl::advance
     pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
+        use ::tarantool::msgpack;
+
         debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });
 
         // These need to be saved before we truncate the corresponding spaces.
@@ -703,7 +709,8 @@ impl Clusterwide {
         let mut old_user_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
 
-        for def in self.tables.iter()? {
+        for def in self.tables.index_iter()? {
+            let def: TableDef = msgpack::decode(&def.to_vec()).map_err(TntError::from)?;
             old_table_versions.insert(def.id, def.schema_version);
         }
         for def in self.users.iter()? {
@@ -767,7 +774,11 @@ impl Clusterwide {
         if is_master && v_local < v_snapshot {
             let t0 = std::time::Instant::now();
 
-            self.apply_schema_changes_on_master(self.tables.iter()?, &old_table_versions)?;
+            let tables = self.tables.index_iter()?.map(|tuple| {
+                msgpack::decode::<TableDef>(&tuple.to_vec())
+                    .expect("entry should be decoded correctly")
+            });
+            self.apply_schema_changes_on_master(tables, &old_table_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
@@ -2182,19 +2193,31 @@ impl Tables {
 
     #[inline]
     pub fn get(&self, id: SpaceId) -> tarantool::Result<Option<TableDef>> {
-        let tuple = self.space.get(&[id])?;
-        tuple.as_ref().map(Tuple::decode).transpose()
+        use ::tarantool::msgpack;
+
+        let Some(tuple) = self.space.get(&[id])? else {
+            return Ok(None);
+        };
+        let buf = tuple.to_vec();
+        let table_def = msgpack::decode(&buf)?;
+        Ok(Some(table_def))
     }
 
     #[inline]
-    pub fn put(&self, space_def: &TableDef) -> tarantool::Result<()> {
-        self.space.replace(space_def)?;
+    pub fn put(&self, table_def: &TableDef) -> tarantool::Result<()> {
+        use ::tarantool::msgpack;
+
+        self.space
+            .replace(RawBytes::new(&msgpack::encode(table_def)))?;
         Ok(())
     }
 
     #[inline]
-    pub fn insert(&self, space_def: &TableDef) -> tarantool::Result<()> {
-        self.space.insert(space_def)?;
+    pub fn insert(&self, table_def: &TableDef) -> tarantool::Result<()> {
+        use ::tarantool::msgpack;
+
+        self.space
+            .insert(RawBytes::new(&msgpack::encode(table_def)))?;
         Ok(())
     }
 
@@ -2213,8 +2236,15 @@ impl Tables {
 
     #[inline]
     pub fn by_name(&self, name: &str) -> tarantool::Result<Option<TableDef>> {
+        use ::tarantool::msgpack;
+
         let tuple = self.index_name.get(&[name])?;
-        tuple.as_ref().map(Tuple::decode).transpose()
+        if let Some(tuple) = tuple {
+            let table_def = msgpack::decode(&tuple.to_vec())?;
+            Ok(Some(table_def))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -2652,7 +2682,7 @@ pub fn ddl_create_space_on_master(
 
     let res = (|| -> tarantool::Result<()> {
         if tt_pk_def.parts.is_empty() {
-            return Err(tarantool::error::BoxError::new(
+            return Err(BoxError::new(
                 tarantool::error::TarantoolErrorCode::ModifyIndex,
                 format!(
                     "can't create index '{}' in space '{}': parts list cannot be empty",

@@ -1,6 +1,8 @@
 use ::raft::prelude as raft;
 use protobuf::Message;
 
+use ::tarantool::msgpack;
+
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
@@ -270,8 +272,12 @@ pub(super) fn prepare(
     let mut ops = vec![];
     for (table_def, index_defs) in schema::system_table_definitions() {
         ops.push(
-            op::Dml::insert(ClusterwideTable::Table, &table_def, ADMIN_ID)
-                .expect("serialization cannot fail"),
+            op::Dml::insert_raw(
+                ClusterwideTable::Table,
+                msgpack::encode(&table_def),
+                ADMIN_ID,
+            )
+            .expect("serialization cannot fail"),
         );
         for index_def in index_defs {
             ops.push(

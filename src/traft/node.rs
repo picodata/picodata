@@ -1672,7 +1672,7 @@ impl NodeImpl {
                     }
                 }
 
-                let space_def = TableDef {
+                let table_def = TableDef {
                     id,
                     name,
                     distribution,
@@ -1682,10 +1682,10 @@ impl NodeImpl {
                     engine,
                     owner,
                 };
-                let res = self.storage.tables.insert(&space_def);
+                let res = self.storage.tables.insert(&table_def);
                 if let Err(e) = res {
                     // Ignore the error for now, let governor deal with it.
-                    tlog!(Warning, "failed creating space '{}': {e}", space_def.name);
+                    tlog!(Warning, "failed creating table '{}': {e}", table_def.name);
                 }
             }
 

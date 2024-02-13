@@ -512,6 +512,20 @@ impl Dml {
         Ok(res)
     }
 
+    #[inline(always)]
+    pub fn insert_raw(
+        space: impl Into<SpaceId>,
+        tuple: Vec<u8>,
+        initiator: UserId,
+    ) -> tarantool::Result<Self> {
+        let res = Self::Insert {
+            table: space.into(),
+            tuple: TupleBuffer::try_from_vec(tuple)?,
+            initiator,
+        };
+        Ok(res)
+    }
+
     /// Serializes `tuple` and returns an [`Dml::Replace`] in case of success.
     #[inline(always)]
     pub fn replace(

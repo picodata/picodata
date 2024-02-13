@@ -36,6 +36,7 @@ use tarantool::{
         box_access_check_ddl, box_access_check_space, PrivType,
         SchemaObjectType as TntSchemaObjectType,
     },
+    error::BoxError,
     session::{self, UserId},
     space::{Space, SystemSpace},
     tuple::Encode,
@@ -312,11 +313,11 @@ fn detect_role_grant_cycles(
     }
 
     if visited.contains(&(granted_role.id as i64)) {
-        let err = tarantool::error::BoxError::new(
+        let err = BoxError::new(
             tarantool::error::TarantoolErrorCode::RoleLoop,
             format!(
                 "Granting role {} to role {} would create a loop",
-                granted_role.name, grantee_name
+                granted_role.name, grantee_name,
             ),
         );
         return Err(err.into());

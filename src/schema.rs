@@ -14,6 +14,7 @@ use tarantool::auth::AuthMethod;
 use tarantool::error::TarantoolError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::msgpack;
 use tarantool::session::{with_su, UserId};
 use tarantool::set_error;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
@@ -59,7 +60,7 @@ pub const INITIAL_SCHEMA_VERSION: u64 = 0;
 /// Database table definition.
 ///
 /// Describes a user-defined table.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, msgpack::Encode, msgpack::Decode, PartialEq, Eq)]
 pub struct TableDef {
     pub id: SpaceId,
     pub name: String,
@@ -70,8 +71,6 @@ pub struct TableDef {
     pub engine: SpaceEngineType,
     pub owner: UserId,
 }
-
-impl Encode for TableDef {}
 
 impl TableDef {
     /// Index (0-based) of field "operable" in the _pico_table table format.
@@ -84,7 +83,7 @@ impl TableDef {
         vec![
             Field::from(("id", FieldType::Unsigned)),
             Field::from(("name", FieldType::String)),
-            Field::from(("distribution", FieldType::Array)),
+            Field::from(("distribution", FieldType::Map)),
             Field::from(("format", FieldType::Array)),
             Field::from(("schema_version", FieldType::Unsigned)),
             Field::from(("operable", FieldType::Boolean)),
@@ -100,7 +99,11 @@ impl TableDef {
             id: 10569,
             name: "stuff".into(),
             distribution: Distribution::Global,
-            format: vec![],
+            format: vec![tarantool::space::Field {
+                name: "field_1".into(),
+                field_type: tarantool::space::FieldType::Unsigned,
+                is_nullable: false,
+            }],
             schema_version: 420,
             operable: true,
             engine: SpaceEngineType::Blackhole,
@@ -177,7 +180,9 @@ pub fn fields_to_format(
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Defines how to distribute tuples in a table across replicasets.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, LuaRead)]
+#[derive(
+    Clone, Debug, Serialize, Deserialize, PartialEq, Eq, LuaRead, msgpack::Encode, msgpack::Decode,
+)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
 pub enum Distribution {
@@ -2478,8 +2483,10 @@ mod test {
     #[test]
     #[rustfmt::skip]
     fn space_def_matches_format() {
+        use ::tarantool::msgpack;
+        
         let i = TableDef::for_tests();
-        let tuple_data = i.to_tuple_buffer().unwrap();
+        let tuple_data = msgpack::encode(&i);
         let format = TableDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "TableDef::format");
 

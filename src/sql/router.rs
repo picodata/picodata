@@ -42,9 +42,11 @@ use std::borrow::Cow;
 
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
-use tarantool::space::Space;
-use tarantool::tuple::{KeyDef, Tuple};
-use tarantool::util::Value as TarantoolValue;
+
+use ::tarantool::msgpack;
+use ::tarantool::space::Space;
+use ::tarantool::tuple::{KeyDef, Tuple};
+use ::tarantool::util::Value as TarantoolValue;
 
 pub type VersionMap = HashMap<SmolStr, u64>;
 
@@ -462,14 +464,14 @@ impl RouterMetadata {
         })?;
         let tuple =
             tuple.ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_smolstr()))?;
-        let space_def: TableDef = tuple.decode().map_err(|e| {
+        let table_def: TableDef = msgpack::decode(&tuple.to_vec()).map_err(|e| {
             SbroadError::FailedTo(
                 Action::Deserialize,
                 Some(Entity::SpaceMetadata),
                 format_smolstr!("serde error: {e}"),
             )
         })?;
-        let shard_cols: Vec<SmolStr> = match &space_def.distribution {
+        let shard_cols: Vec<SmolStr> = match &table_def.distribution {
             Distribution::Global => {
                 vec![]
             }

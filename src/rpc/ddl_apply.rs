@@ -10,7 +10,7 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
-use tarantool::error::TarantoolErrorCode;
+use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::transaction::{transaction, TransactionError};
 
 crate::define_rpc_request! {
@@ -41,7 +41,7 @@ crate::define_rpc_request! {
         }
 
         if crate::tarantool::eval("return box.info.ro")? {
-            let e = tarantool::error::BoxError::new(
+            let e = BoxError::new(
                 TarantoolErrorCode::Readonly,
                 "cannot apply schema change on a read only instance"
             );
