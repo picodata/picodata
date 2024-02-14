@@ -772,7 +772,7 @@ mod tests {
             // first request
             let err = client.eval("return", &()).await.unwrap_err().to_string();
             #[rustfmt::skip]
-            assert_eq!(err, "service responded with error: User not found or supplied credentials are invalid");
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
         }
 
         // Wrong auth method
@@ -794,7 +794,7 @@ mod tests {
             // first request
             let err = client.eval("return", &()).await.unwrap_err().to_string();
             #[rustfmt::skip]
-            assert_eq!(err, "service responded with error: User not found or supplied credentials are invalid");
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
         }
     }
 
