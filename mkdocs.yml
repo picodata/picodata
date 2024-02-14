@@ -26,6 +26,7 @@ nav:
     - overview/benefits.md
     - overview/glossary.md
     - overview/feedback.md
+    - overview/versioning.md
   - Инструкции и руководства:
     - tutorial/install.md
     - tutorial/deploy.md
