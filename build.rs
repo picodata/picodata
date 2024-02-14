@@ -96,9 +96,6 @@ fn generate_export_stubs(out_dir: &str) {
     let exports = std::fs::read_to_string("tarantool-sys/extra/exports_libcurl").unwrap();
     read_symbols_into(&exports, &mut symbols);
 
-    let exports = std::fs::read_to_string("src/sql/exports").unwrap();
-    read_symbols_into(&exports, &mut symbols);
-
     let mut code = Vec::with_capacity(2048);
     writeln!(code, "pub fn export_symbols() {{").unwrap();
     writeln!(code, "    extern \"C\" {{").unwrap();
