@@ -485,6 +485,11 @@ pub struct DmlInLua {
 // Ddl
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Represents Ddl operations performed on the cluster.
+///
+/// Note: for the purpose of audit log in some variants we keep initiator field.
+/// For Create<...> operations initiator and owner are the same,
+/// so owner is used to avoid duplication.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
