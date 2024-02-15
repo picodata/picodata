@@ -90,25 +90,25 @@ pico.sql([[SELECT * FROM "characters"]]);
 
 Ниже показаны схемы для создания и удаления пользователей и ролей.
 
-### **Access control lists** {: #acl }
+### **ACL (Access Control Lists)** {: #acl }
 
 ![ACL](../images/ebnf/acl.svg)
 
-### **Create user** {: #create_user }
+### **CREATE USER** {: #create_user }
 
-![Create user](../images/ebnf/create_user.svg)
+![CREATE USER](../images/ebnf/create_user.svg)
 
-### **Drop user** {: #drop_user }
+### **DROP USER** {: #drop_user }
 
-![Drop user](../images/ebnf/drop_user.svg)
+![DROP USER](../images/ebnf/drop_user.svg)
 
-### **Create role** {: #create_role }
+### **CREATE ROLE** {: #create_role }
 
-![Create role](../images/ebnf/create_role.svg)
+![CREATE ROLE](../images/ebnf/create_role.svg)
 
-### **Drop role** {: #drop_role }
+### **DROP ROLE** {: #drop_role }
 
-![Drop role](../images/ebnf/drop_role.svg)
+![DROP ROLE](../images/ebnf/drop_role.svg)
 
 Пример команды для создания пользователя:
 
@@ -126,12 +126,12 @@ DROP USER ANDY;
 
  - [Управление доступом](../tutorial/access_control.md)
 
-### **Alter user** {: #alter_user }
+### **ALTER USER** {: #alter_user }
 
-Команда `alter user` предназначена для изменения данных/параметров уже
+Команда `ALTER USER` предназначена для изменения данных/параметров уже
 существующих в системе пользователей:
 
-![Alter user](../images/ebnf/alter_user.svg)
+![ALTER USER](../images/ebnf/alter_user.svg)
 
 Изменение может состоять в:
 
@@ -173,18 +173,18 @@ ALTER USER "andy" WITH LOGIN;
 привилегий). Более подробно это описано в руководстве [Управление
 доступом](../tutorial/access_control.md/).
 
-Ниже показаны схемы запросов для назначения (`grant`) и изъятия
-(`revoke`) привилегий.
+Ниже показаны схемы запросов для назначения (`GRANT`) и изъятия
+(`REVOKE`) привилегий.
 
-### **Grant privilege** {: #grant_privilege }
+### **GRANT privilege** {: #grant_privilege }
 
-![Grant privilege](../images/ebnf/grant_privilege.svg)
+![GRANT privilege](../images/ebnf/grant_privilege.svg)
 
-### **Revoke privilege** {: #revoke_privilege }
+### **REVOKE privilege** {: #revoke_privilege }
 
-![Revoke privilege](../images/ebnf/revoke_privilege.svg)
+![REVOKE privilege](../images/ebnf/revoke_privilege.svg)
 
-### **Privilege** {: #privilege }
+### **privilege** {: #privilege }
 
 Привилегия может представлять собой роль, либо возможность какого-либо
 действия по отношению к конкретному объекту или ко всем объектам указанного
@@ -216,19 +216,19 @@ REVOKE READ TABLE FROM "woody";
 
 Схема запроса для создания шардированной таблицы показана ниже.
 
-### **CreateTable** {: #CreateTable }
+### **CREATE TABLE** {: #CreateTable }
 
 ![Create table](../images/ebnf/create_table.svg)
 
-#### **Column** {: #Column }
+#### **column** {: #Column }
 
 ![Column](../images/ebnf/column.svg)
 
-#### **PrimaryKey** {: #PrimaryKey }
+#### **primary_key** {: #PrimaryKey }
 
 ![Primary Key](../images/ebnf/primary_key.svg)
 
-#### **Distribution** {: #Distribution }
+#### **distribution** {: #Distribution }
 
 ![Distribution](../images/ebnf/distribution.svg)
 
@@ -278,9 +278,9 @@ OPTION (TIMEOUT = 3.0);
 
 Cхема запроса для удаления таблицы показана ниже:
 
-### **DropTable** {: #DropTable }
+### **DROP TABLE** {: #DropTable }
 
-![Drop table](../images/ebnf/drop_table.svg)
+![DROP TABLE](../images/ebnf/drop_table.svg)
 
 Пример удаления таблицы:
 
@@ -433,12 +433,12 @@ characters...` и `create table "CHARACTERS"...` создадут одну и т
 Команда `VALUES` представляет собой конструктор строки значений для
 использования в запросе `SELECT`.
 
-#### Values {: #values }
+#### VALUES {: #values }
 
 На схеме показана структура использования элемента `VALUES`, который может
 содержать одну или несколько строк ([кортежей](#row)):
 
-![Values](../images/ebnf/values.svg)
+![VALUES](../images/ebnf/values.svg)
 
 Пример:
 
@@ -468,12 +468,12 @@ SELECT "name" FROM "assets" WHERE ("stock") IN (VALUES (2561));
 ...
 ```
 
-#### Кортеж {: #row }
+#### Кортеж (row) {: #row }
 
 Каждый кортеж (`row`) может содержать одно или несколько значений в виде
 перечисления через запятую:
 
-![Row](../images/ebnf/row.svg)
+![row](../images/ebnf/row.svg)
 
 Пример:
 
