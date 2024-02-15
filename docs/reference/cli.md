@@ -191,6 +191,16 @@ admin](#admin). Данный способ использует обычный т
 
 Аналогичная переменная окружения: `PICODATA_SCRIPT`
 
+### --service-password-file {: #run_service_password_file }
+
+`--service-password-file <PATH>`
+
+Путь к файлу с паролем для системного пользователя `pico_service`. Этот
+пароль будет использован для внутреннего взаимодействия внутри
+кластера, поэтому он должен быть одинаковым у всех инстансов.
+
+Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`
+
 ### --tier {: #run_tier }
 
 `--tier <tier>`
