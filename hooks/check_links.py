@@ -12,7 +12,7 @@ log = get_plugin_logger(os.path.basename(__file__))
 
 # https://www.mkdocs.org/dev-guide/plugins/#events
 def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Files):
-    markdown: str = re.sub("<!--.*?-->", "", markdown, flags=re.DOTALL)
+    markdown = re.sub("<!--.*?-->", "", markdown, flags=re.DOTALL)
 
     for match in re.finditer(r"(!?)\[([^\[\]]*?)\]\((.+?)\)", markdown, flags=re.DOTALL):
         link = match[0].replace("\n", " ")

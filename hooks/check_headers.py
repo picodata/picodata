@@ -13,13 +13,13 @@ log = get_plugin_logger(os.path.basename(__file__))
 # https://www.mkdocs.org/dev-guide/plugins/#events
 # https://github.com/mkdocs/mkdocs/blob/1.5.3/mkdocs/commands/build.py#L258
 def on_files(files: Files, config: MkDocsConfig):
-    anchors = dict()
+    anchors: dict[str, list[str]] = dict()
     config["anchors"] = anchors
 
     for file in files.documentation_pages():
         log.debug(file.src_path)
 
-        Page(None,  file, config)
+        Page(None, file, config)
         assert file.page is not None
 
         file.page.read_source(config)
@@ -27,9 +27,9 @@ def on_files(files: Files, config: MkDocsConfig):
 
         markdown: str = file.page.markdown
         lines: list[str] = re.sub("<!--.*?-->", "", markdown, flags=re.DOTALL).split("\n")
-        headers: list[str] = filter(lambda line: re.match("^##+ ", line), lines)
+        headers: list[str] = list(filter(lambda line: re.match("^##+ ", line), lines))
 
-        file_anchors = list()
+        file_anchors: list[str] = list()
         anchors[file.src_path] = file_anchors
 
         for line in headers:
