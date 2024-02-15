@@ -158,6 +158,7 @@ validation:
 
 # https://www.mkdocs.org/user-guide/configuration/#hooks
 hooks:
+  - ./hooks/exclude_sitemap.py
   - ./hooks/filter_logs.py
   - ./hooks/check_headers.py
   - ./hooks/check_svg_attrs.py
