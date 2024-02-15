@@ -13,6 +13,7 @@ markdown-callouts = "==0.4.0"
 flake8 = "*"
 black = "*"
 mypy = "*"
+types-markdown = "*"
 
 [requires]
 python_version = "3.12"
@@ -22,10 +23,9 @@ serve = "mkdocs serve"
 build = "mkdocs build -s"
 lint = """
   bash -c "
-    flake8 ci --max-line-length 99
-    black ci --check --diff
-    mypy ci
-    python ci/validation.py
+    flake8 hooks --max-line-length 99
+    black hooks --check --diff --line-length 99
+    mypy hooks
   "
 """
-fmt = "black ci"
+fmt = "black hooks --line-length 99"
