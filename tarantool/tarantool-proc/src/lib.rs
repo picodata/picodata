@@ -485,7 +485,7 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
     // Add a bound to every type parameter.
     let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let encode_fields = msgpack::decode_fields(
+    let decode_fields = msgpack::decode_fields(
         &input.data,
         &tarantool_crate,
         // Use a closure as the function might be costly, but is only used for errors
@@ -500,7 +500,7 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
                 -> std::result::Result<Self, #tarantool_crate::msgpack::DecodeError>
             {
                 use #tarantool_crate::msgpack::StructStyle;
-                #encode_fields
+                #decode_fields
             }
         }
     };

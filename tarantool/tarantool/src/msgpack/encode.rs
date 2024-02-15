@@ -829,6 +829,56 @@ mod tests {
         assert_eq!(got, v);
     }
 
+    /// Previously str enums did not advance the slice after decoding
+    /// a value from it, which lead to errors when str enums were used
+    /// as types of fields of structs.
+    #[test]
+    fn define_str_enum_regression() {
+        crate::define_str_enum! {
+            enum E {
+                A = "a",
+                B = "b",
+            }
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test {
+            a: String,
+            e: E,
+            b: bool,
+        }
+
+        // Try (de)encoding as part of a struct
+        let test = Test {
+            a: "abc".into(),
+            e: E::A,
+            b: true,
+        };
+        let bytes = encode(&test).unwrap();
+        let test_dec: Test = decode(bytes.as_slice()).unwrap();
+        assert_eq!(test_dec, test);
+
+        // Try (de)encoding as part of a struct as map
+        let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
+        let mut bytes = vec![];
+        test.encode(&mut bytes, &ctx_as_map).unwrap();
+        let test_dec = Test::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
+        assert_eq!(test_dec, test);
+
+        // Try (de)encoding as part of vec
+        let test = vec![E::A, E::B, E::A];
+        let bytes = encode(&test).unwrap();
+        let test_dec: Vec<E> = decode(bytes.as_slice()).unwrap();
+        assert_eq!(test_dec, test);
+
+        // Try (de)encoding as part of map
+        let test: HashMap<E, E> = vec![(E::A, E::B), (E::B, E::A)].into_iter().collect();
+        let bytes = encode(&test).unwrap();
+        let test_dec: HashMap<E, E> = decode(bytes.as_slice()).unwrap();
+        assert_eq!(test_dec, test);
+    }
+
     #[test]
     fn encode_struct() {
         #[derive(Clone, Encode, Decode, PartialEq, Debug)]

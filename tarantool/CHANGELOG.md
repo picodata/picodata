@@ -31,6 +31,8 @@
 - Bug in legacy `net_box` client which resulted in a deadlock when sending
   requests after receiving a previous error response.
 - Use after free when calling `TarantoolError::error_type` in some cases.
+- Bug in `define_str_enum` in `Decode` implementation - the slice reference was not modified
+  after decoding.
 
 ### Deprecated
 - `network::client::Error` is now a deprecated alias for `network::ClientError`

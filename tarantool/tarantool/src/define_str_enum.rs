@@ -300,7 +300,7 @@ macro_rules! define_str_enum {
                     .ok_or_else(|| $crate::msgpack::DecodeError::new::<Self>("not enough data"))?;
                 let decoded_variant_str = std::str::from_utf8(decoded_variant)
                     .map_err(|err| $crate::msgpack::DecodeError::new::<Self>(err))?;
-                match decoded_variant_str {
+                let res = match decoded_variant_str {
                     $(
                         $display => Ok(Self::$variant),
                     )+
@@ -309,7 +309,10 @@ macro_rules! define_str_enum {
                             format!("unknown enum variant `{}`, expected on of {:?}", v, Self::values())
                         )
                     }),
-                }
+                };
+                // consume string, so that further decoding continues after it
+                *r = &r[len as usize..];
+                res
             }
         }
     };
