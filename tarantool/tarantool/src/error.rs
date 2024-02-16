@@ -681,11 +681,11 @@ macro_rules! set_error {
         let msg = ::std::fmt::format(::std::format_args!($($msg_args)+));
         let msg = ::std::ffi::CString::new(msg).unwrap();
         // `msg` must outlive `msg_ptr`
-        let msg_ptr = msg.as_ptr().cast();
+        let msg_ptr = msg.as_ptr().cast::<::std::ffi::c_char>();
         let file = $crate::c_ptr!(::std::file!());
         #[allow(unused_unsafe)]
         unsafe {
-            $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, msg_ptr)
+            $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, $crate::c_ptr!("%s"), msg_ptr)
         }
     }};
 }
@@ -749,6 +749,15 @@ mod tests {
         let msg = "my message";
         let e = set_and_get_error!(TarantoolErrorCode::Unknown, "{msg}");
         assert_eq!(e.to_string(), "Unknown: my message");
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn set_error_format_sequences() {
+        for c in b'a'..=b'z' {
+            let c = c as char;
+            let e = set_and_get_error!(TarantoolErrorCode::Unknown, "%{c}");
+            assert_eq!(e.to_string(), format!("Unknown: %{c}"));
+        }
     }
 
     #[crate::test(tarantool = "crate")]

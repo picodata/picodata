@@ -33,6 +33,8 @@
 - Use after free when calling `TarantoolError::error_type` in some cases.
 - Bug in `define_str_enum` in `Decode` implementation - the slice reference was not modified
   after decoding.
+- `tarantool::set_error` used to do undefined behaviour when the message
+  contained formatting sequences of %n sort.
 
 ### Deprecated
 - `network::client::Error` is now a deprecated alias for `network::ClientError`
