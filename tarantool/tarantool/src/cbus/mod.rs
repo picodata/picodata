@@ -68,6 +68,8 @@ pub enum RecvError {
     Disconnected,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("receiving half of a channel is disconnected")]
 pub struct SendError<T>(pub T);
 
 #[derive(Debug, thiserror::Error)]
