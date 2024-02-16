@@ -267,8 +267,8 @@ impl<T> From<SendError<T>> for TrySendError<T> {
 pub trait RecvTimeout<T> {
     /// Receive a message from the channel.
     ///
-    /// In case the channel was closed or the current fiber was cancelled the
-    /// function returns `None`.
+    /// In case the channel was closed, the current fiber was cancelled
+    /// or timeout is reached, the function returns [`RecvError`].
     ///
     /// This function may perform a **yield** in case there is no message ready.
     fn recv_maybe_timeout(&self, timeout: Option<Duration>) -> Result<T, RecvError>;
