@@ -3,6 +3,7 @@ import cn from "classnames";
 
 import { LinkSystemIcon } from "shared/icons/LinkSystemIcon";
 import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
+import { useTranslation } from "shared/intl";
 
 import styles from "./IpAddressLabel.module.scss";
 
@@ -14,7 +15,10 @@ type IpAddressLabelProps = {
 export const IpAddressLabel: React.FC<IpAddressLabelProps> = (props) => {
   const { className, address } = props;
 
-  if (!address) return <InfoNoData />;
+  const { translation } = useTranslation();
+
+  if (!address)
+    return <InfoNoData text={translation.components.infoNoData.label} />;
 
   return (
     <div className={cn(styles.container, className)}>

@@ -3,7 +3,8 @@ import React, { FC } from "react";
 
 import { LeaderIcon } from "shared/icons/LeaderIcon";
 import { InstanceType } from "shared/entity/instance";
-import { TextInFrame } from "shared/ui/typography/TextInFrame/TextInFrame";
+import { useTranslation } from "shared/intl";
+import { NetworkState } from "shared/components/NetworkState/NetworkState";
 
 import { FailureDomainLabel } from "./FailureDomainLabel/FailureDomainLabel";
 import { IpAddressLabel } from "./IpAddressLabel/IpAddressLabel";
@@ -23,6 +24,9 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
     //   setIsOpenModal(false);
     // }, []);
 
+    const { translation } = useTranslation();
+    const instanceTranslations = translation.pages.instances.list.instanceCard;
+
     return (
       <>
         <div
@@ -38,46 +42,60 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
         >
           <div className={styles.content}>
             <div className={cn(styles.infoColumn, styles.nameColumn)}>
-              <div className={styles.label}>Instance name</div>
+              <div className={styles.label}>
+                {instanceTranslations.name.label}
+              </div>
               <div className={cn(styles.value, styles.nameValue)}>
                 {instance.name}
                 {instance.isLeader && <LeaderIcon />}
               </div>
             </div>
             <div className={cn(styles.infoColumn, styles.failureDomainColumn)}>
-              <div className={styles.label}>Failure domain</div>
+              <div className={styles.label}>
+                {instanceTranslations.failureDomain.label}
+              </div>
               <div className={cn(styles.value, styles.domainValue)}>
                 <FailureDomainLabel failureDomain={instance.failureDomain} />
               </div>
             </div>
             <div className={cn(styles.infoColumn, styles.targetGradeColumn)}>
-              <div className={styles.label}>Target grade</div>
+              <div className={styles.label}>
+                {instanceTranslations.targetGrade.label}
+              </div>
               <div className={cn(styles.value, styles.targetGradeValue)}>
-                <TextInFrame>{instance.targetGrade}</TextInFrame>
+                <NetworkState state={instance.targetGrade} />
               </div>
             </div>
             <div className={cn(styles.infoColumn, styles.currentGradeColumn)}>
-              <div className={styles.label}>Current grade</div>
+              <div className={styles.label}>
+                {instanceTranslations.currentGrade.label}
+              </div>
               <div className={cn(styles.value, styles.currentGradeValue)}>
-                <TextInFrame>{instance.currentGrade}</TextInFrame>
+                <NetworkState state={instance.currentGrade} />
               </div>
             </div>
             <div className={cn(styles.infoColumn, styles.binaryAddressColumn)}>
-              <div className={styles.label}>Binary address</div>
+              <div className={styles.label}>
+                {instanceTranslations.binaryAddress.label}
+              </div>
               <IpAddressLabel
                 className={styles.value}
                 address={instance.binaryAddress}
               />
             </div>
             <div className={cn(styles.infoColumn)}>
-              <div className={styles.label}>HTTP address</div>
+              <div className={styles.label}>
+                {instanceTranslations.httpAddress.label}
+              </div>
               <IpAddressLabel
                 className={styles.value}
                 address={instance.httpAddress ?? ""}
               />
             </div>
             <div className={cn(styles.infoColumn, styles.versionColumn)}>
-              <div className={styles.label}>Version</div>
+              <div className={styles.label}>
+                {instanceTranslations.version.label}
+              </div>
               <div className={styles.value}>{instance.version}</div>
             </div>
           </div>

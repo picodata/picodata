@@ -3,8 +3,8 @@ import React, { useState } from "react";
 import { useTiers } from "shared/entity/tier";
 import { Modal } from "shared/ui/Modal/Modal";
 import { CloseIcon } from "shared/icons/CloseIcon";
-import { FunnelIcon } from "shared/icons/FunnelIcon";
-import { Button } from "shared/ui/Button/Button";
+import { FilterByButton } from "shared/components/buttons/FilterByButton/FilterByButton";
+import { useTranslation } from "shared/intl";
 
 import { TFilterByValue } from "./config";
 import { FilterByModal } from "./FilterByModal/FilterByModal";
@@ -24,6 +24,9 @@ export const FilterBy: React.FC<FilterByProps> = (props) => {
 
   const { domains } = useInstancesFiltersData(data?.instances ?? []);
 
+  const { translation } = useTranslation();
+  const filterByTranslation = translation.pages.instances.filterBy;
+
   const renderModal = () => {
     if (!isOpen) {
       return null;
@@ -33,7 +36,9 @@ export const FilterBy: React.FC<FilterByProps> = (props) => {
       <Modal bodyClassName={styles.body}>
         <>
           <div className={styles.titleWrapper}>
-            <span className={styles.titleText}>Filter</span>
+            <span className={styles.titleText}>
+              {filterByTranslation.modal.title}
+            </span>
             <div
               className={styles.close}
               onClick={(event) => {
@@ -63,13 +68,7 @@ export const FilterBy: React.FC<FilterByProps> = (props) => {
 
   return (
     <>
-      <Button
-        size="normal"
-        rightIcon={<FunnelIcon />}
-        onClick={() => setIsOpen(true)}
-      >
-        Filter by
-      </Button>
+      <FilterByButton onClick={() => setIsOpen(true)} />
       {renderModal()}
     </>
   );

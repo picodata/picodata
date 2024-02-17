@@ -2,8 +2,8 @@ import { Override } from "../../../utils/tsUtils";
 
 export type ServerInstanceType = {
   name: string;
-  targetGrade: string;
-  currentGrade: string;
+  targetGrade: "Online" | "Offline";
+  currentGrade: "Online" | "Offline";
   failureDomain: Record<string, string>;
   version: string;
   isLeader: boolean;

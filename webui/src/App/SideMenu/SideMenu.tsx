@@ -8,6 +8,7 @@ import { useOutsideClickEvent } from "shared/react/hooks/useOutsideClickEvent";
 import { NodesIcon } from "shared/icons/navLinks/NodesIcon";
 import { URL_CONFIG } from "shared/router/config";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
+import { useTranslation } from "shared/intl";
 
 import styles from "./SideMenu.module.scss";
 
@@ -23,6 +24,9 @@ export const SideMenu = () => {
   useOutsideClickEvent(containerRef, () => {
     setIsOpen(false);
   });
+
+  const { translation } = useTranslation();
+  const sideMenuTranslations = translation.sideMenu;
 
   return (
     <div
@@ -42,9 +46,19 @@ export const SideMenu = () => {
           }}
         >
           <NodesIcon />
-          <span className={styles.navLinkText}>Nodes</span>
+          <span className={styles.navLinkText}>
+            {sideMenuTranslations.navLinks.instances.label}
+          </span>
         </NavLink>
       </div>
+      {/* Пример смены языка
+      <div
+        onClick={() =>
+          setLocale(locale === IntlLocale.EN ? IntlLocale.RU : IntlLocale.EN)
+        }
+      >
+        Change Locale
+      </div> */}
     </div>
   );
 };

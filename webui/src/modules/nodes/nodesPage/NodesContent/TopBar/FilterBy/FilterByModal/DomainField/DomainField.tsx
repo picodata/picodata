@@ -4,6 +4,7 @@ import cn from "classnames";
 import { Select } from "shared/ui/Select/Select";
 import { isArrayContainsOtherArray } from "shared/utils/array/isArrayContainsOtherArray";
 import { TrashIcon } from "shared/icons/TrashIcon";
+import { useTranslation } from "shared/intl";
 
 import { TKeyValueFilter } from "./types";
 import { useKeysValuesData } from "./hooks";
@@ -25,6 +26,10 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
   const { className, filter, domains, updateKeyValueFilter, onDelete } = props;
 
   const { keys, values } = useKeysValuesData(domains, filter);
+
+  const { translation } = useTranslation();
+  const fieldTranslation =
+    translation.pages.instances.filterBy.modal.failureDomainField;
 
   useEffect(() => {
     if (
@@ -57,7 +62,7 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
           options={keys.map((key) => ({ label: key, value: key }))}
           classNames={{ container: () => styles.valueSelect }}
           isMulti={false}
-          placeholder="Key"
+          placeholder={fieldTranslation.keyController.placeholder}
           value={
             filter.key ? { label: filter.key, value: filter.key } : undefined
           }
@@ -80,7 +85,7 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
           options={domainValuesOptions}
           classNames={{ container: () => styles.valueSelect }}
           isMulti
-          placeholder="Value"
+          placeholder={fieldTranslation.valueController.placeholder}
           value={domainValuesValue}
           onChange={(newOptions) => {
             if (!newOptions || !Array.isArray(newOptions)) return;

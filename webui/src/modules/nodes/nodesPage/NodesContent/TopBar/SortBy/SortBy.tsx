@@ -1,9 +1,9 @@
 import React from "react";
 
-import { ButtonSelect } from "shared/ui/ButtonSelect/ButtonSelect";
-import { ArrowsUpDown } from "shared/icons/ArrowsUpDown";
+import { SortByButton } from "shared/components/buttons/SortByButton/SortByButton";
+import { useTranslation } from "shared/intl";
 
-import { DEFAULT_SORT_ORDER, TSortValue, sortByOptions } from "./config";
+import { DEFAULT_SORT_ORDER, TSortByValue, TSortValue } from "./config";
 
 export type SortByProps = {
   sortByValue?: TSortValue;
@@ -13,23 +13,22 @@ export type SortByProps = {
 export const SortBy: React.FC<SortByProps> = (props) => {
   const { sortByValue, setSortByValue } = props;
 
+  const { translation } = useTranslation();
+  const sortByTranslation = translation.pages.instances.sortBy;
+
+  const sortByOptions: Array<{ label: string; value: TSortByValue }> = [
+    {
+      label: sortByTranslation.options.name,
+      value: "NAME" as const,
+    },
+    {
+      label: sortByTranslation.options.failureDomain,
+      value: "FAILURE_DOMAIN" as const,
+    },
+  ];
+
   return (
-    <ButtonSelect
-      size="normal"
-      rightIcon={
-        <ArrowsUpDown
-          onClick={(event) => {
-            event.stopPropagation();
-
-            if (!sortByValue) return;
-
-            setSortByValue({
-              by: sortByValue.by,
-              order: sortByValue.order === "ASC" ? "DESC" : "ASC",
-            });
-          }}
-        />
-      }
+    <SortByButton
       items={sortByOptions}
       value={sortByValue?.by}
       onChange={(newValue) =>
@@ -38,8 +37,14 @@ export const SortBy: React.FC<SortByProps> = (props) => {
           order: sortByValue?.order ?? DEFAULT_SORT_ORDER,
         })
       }
-    >
-      Sort by
-    </ButtonSelect>
+      onIconClick={() => {
+        if (!sortByValue) return;
+
+        setSortByValue({
+          by: sortByValue.by,
+          order: sortByValue.order === "ASC" ? "DESC" : "ASC",
+        });
+      }}
+    />
   );
 };

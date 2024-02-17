@@ -4,6 +4,7 @@ import { Button } from "shared/ui/Button/Button";
 import { PlusIcon } from "shared/icons/PlusIcon";
 import { truthy } from "shared/utils/tsUtils";
 import { getUniqueArrayBy } from "shared/utils/array/getUniqueArrayBy";
+import { useTranslation } from "shared/intl";
 
 import { TKeyValueFilter } from "./DomainField/types";
 import { useKeyValues } from "./hooks";
@@ -30,6 +31,9 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
     updateKeyValueFilter,
     deleteFilter,
   ] = useKeyValues(values.domainValuesFilters);
+
+  const { translation } = useTranslation();
+  const modalTranslations = translation.pages.instances.filterBy.modal;
 
   const onApplyClick = useCallback(() => {
     const domainValuesFilters = keyValueFilters
@@ -62,7 +66,9 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
   return (
     <>
       <div className={styles.field}>
-        <div className={styles.label}>Failure domain</div>
+        <div className={styles.label}>
+          {modalTranslations.failureDomainField.label}
+        </div>
         <div className={styles.scroll}>
           {keyValueFilters.map((filter, i) => {
             return (
@@ -88,7 +94,7 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
       </div>
       <div className={styles.footer}>
         <Button className={styles.apply} onClick={onApplyClick}>
-          Apply
+          {modalTranslations.ok}
         </Button>
         <Button
           className={styles.clear}
@@ -99,7 +105,7 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
             })
           }
         >
-          Clear all
+          {modalTranslations.clear}
         </Button>
       </div>
     </>

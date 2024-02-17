@@ -4,7 +4,7 @@ import { z } from "zod";
 export const useLsState = <T extends z.ZodSchema>(args: {
   key: string;
   schema: T;
-  defaultValue?: z.infer<T>;
+  defaultValue: z.infer<T>;
 }) => {
   const [value, setValue] = useState(() => {
     try {

@@ -6,7 +6,7 @@ export type ServerReplicasetType = {
   instanceCount: number;
   instances: ServerInstanceType[];
   version: string;
-  grade: string;
+  grade: "Online" | "Offline";
   capacityUsage: number;
   memory: {
     usable: number;

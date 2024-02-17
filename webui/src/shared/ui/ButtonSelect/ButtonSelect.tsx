@@ -5,7 +5,7 @@ import { Dropdown, DropdownProps } from "../Dropdown/Dropdown";
 
 import styles from "./ButtonSelect.module.scss";
 
-type ButtonSelectProps<T extends string | number> = Omit<
+export type ButtonSelectProps<T extends string | number> = Omit<
   ButtonProps,
   "onChange"
 > &

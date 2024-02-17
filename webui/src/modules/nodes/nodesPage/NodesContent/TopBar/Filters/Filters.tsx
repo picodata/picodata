@@ -3,6 +3,7 @@ import cn from "classnames";
 
 import { Button } from "shared/ui/Button/Button";
 import { Tag } from "shared/ui/Tag/Tag";
+import { useTranslation } from "shared/intl";
 
 import { TFilterByValue } from "../FilterBy/config";
 import { formatFailDomain } from "../../utils";
@@ -17,6 +18,9 @@ type FiltersProps = {
 
 export const Filters: React.FC<FiltersProps> = (props) => {
   const { filterByValue, className, setFilterByValue } = props;
+
+  const { translation } = useTranslation();
+  const filtersTranslations = translation.pages.instances.filters;
 
   const deleteItem = (filterForDelete: { key: string; value: string[] }) => {
     setFilterByValue({
@@ -40,7 +44,7 @@ export const Filters: React.FC<FiltersProps> = (props) => {
         size="extraSmall"
         onClick={() => setFilterByValue()}
       >
-        Clear All
+        {filtersTranslations.clearAll}
       </Button>
       {filterByValue.domain.map((domain) => {
         const label = formatFailDomain(domain);

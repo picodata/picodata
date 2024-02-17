@@ -3,8 +3,9 @@ import cn from "classnames";
 
 import { ChevronDown } from "shared/icons/ChevronDown";
 import { InstanceType } from "shared/entity/instance";
-import { TextInFrame } from "shared/ui/typography/TextInFrame/TextInFrame";
 import { Collapse } from "shared/ui/Collapse/Collapse";
+import { useTranslation } from "shared/intl";
+import { NetworkState } from "shared/components/NetworkState/NetworkState";
 
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
@@ -17,7 +18,7 @@ export type TReplicaset = {
   instanceCount: number;
   instances: InstanceType[];
   version: string;
-  grade: string;
+  grade: "Online" | "Offline";
   capacityUsage: number;
   memory: {
     usable: number;
@@ -34,6 +35,10 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
   ({ replicaset, theme = "primary" }) => {
     const [isOpen, setIsOpen] = useState<boolean>(false);
 
+    const { translation } = useTranslation();
+    const replicasetTranslations =
+      translation.pages.instances.list.replicasetCard;
+
     const onClick = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
       event.stopPropagation();
       setIsOpen(!isOpen);
@@ -43,17 +48,23 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
       <div className={cn(styles.cardWrapper, styles[theme])} onClick={onClick}>
         <div className={styles.content}>
           <div className={cn(styles.infoColumn, styles.nameColumn)}>
-            <div className={styles.label}>Name</div>
+            <div className={styles.label}>
+              {replicasetTranslations.name.label}
+            </div>
             <div className={styles.infoValue}>{replicaset.id}</div>
           </div>
           <div className={styles.infoColumn}>
-            <div className={styles.label}>Instances</div>
+            <div className={styles.label}>
+              {replicasetTranslations.instances.label}
+            </div>
             <div className={styles.infoValue}>{replicaset.instanceCount}</div>
           </div>
           <div className={styles.infoColumn}>
-            <div className={styles.label}>Grade</div>
+            <div className={styles.label}>
+              {replicasetTranslations.grade.label}
+            </div>
             <div className={cn(styles.infoValue, styles.gradeValue)}>
-              <TextInFrame>{replicaset.grade}</TextInFrame>
+              <NetworkState state={replicaset.grade} />
             </div>
           </div>
           <div className={cn(styles.infoColumn, styles.capacityColumn)}>
