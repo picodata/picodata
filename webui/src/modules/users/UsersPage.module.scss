@@ -1,0 +1,17 @@
+@import 'styles/vars';
+
+.container {
+  padding: 16px 24px;
+}
+
+.items {
+  margin-top: 20px;
+}
+
+.item {
+  margin-top: 16px;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}

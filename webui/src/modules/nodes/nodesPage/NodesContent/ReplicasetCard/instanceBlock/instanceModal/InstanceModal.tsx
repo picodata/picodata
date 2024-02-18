@@ -35,7 +35,7 @@ export const InstanceModal: FC<InstanceModalProps> = ({
                 <span>
                   <p className={styles.titleText}>{key}</p>
                 </span>
-                <p>{instance[key as keyof InstanceType].toString()}</p>
+                <p>{instance[key as keyof InstanceType]?.toString()}</p>
               </div>
             );
           }

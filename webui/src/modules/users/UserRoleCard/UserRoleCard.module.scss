@@ -1,0 +1,97 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+$card-vertical-padding: 12px;
+$card-horizontal-padding: 24px;
+$column-gap: 16px;
+$column-item-vertical-padding: 2px;
+$column-item-horizontal-padding: 8px;
+
+$default-column-flex: 1;
+$name-column-flex: 1.07;
+$can-voter-column-flex: 0.44;
+$chevron-column-flex: 0.2;
+
+.cardWrapper {
+  border-radius: 4px;
+  background-color: $colorBgTableLine;
+  box-shadow: $elevation1;
+
+  cursor: pointer;
+
+  @include animate(background-color);
+
+  &:hover {
+    background-color: darken($colorBgTableLine, 3);
+  }
+}
+
+.content {
+  display: flex;
+  justify-content: space-between;
+  column-gap: $column-gap;
+  padding: $card-vertical-padding $card-horizontal-padding;
+}
+
+%column {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  align-items: center;
+}
+
+.nameColumn {
+  @extend %column;
+  align-items: flex-start;
+
+  width: 18%;
+}
+
+.roleColumn {
+  @extend %column;
+  
+  width: 16%;
+}
+
+.privilegesForUsers {
+  @extend %column;
+  
+  width: 22%;
+}
+
+.privilegesForRoles {
+  @extend %column;
+  
+  width: 22%;
+}
+
+.privilegesForTables {
+  @extend %column;
+  
+  width: 22%;
+}
+
+.label {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.infoValue {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+  max-width: 100%;
+
+  @include ellipsis;
+}
+
+.text {
+  height: 18px;
+}

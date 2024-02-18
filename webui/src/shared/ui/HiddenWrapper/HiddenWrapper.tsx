@@ -1,6 +1,6 @@
 import React, { useRef, ReactNode, useId } from "react";
 import cn from "classnames";
-import { Tooltip } from "react-tooltip";
+import { PlacesType, Tooltip } from "react-tooltip";
 
 import { useHiddenRefs } from "shared/hooks/useHiddenRefs";
 
@@ -10,6 +10,7 @@ export type HiddenWrapperProps = {
   children: ReactNode;
   className?: string;
   twoLine?: boolean;
+  place?: PlacesType;
   onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
   onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
   style?: React.CSSProperties;
@@ -18,6 +19,7 @@ export type HiddenWrapperProps = {
 export const HiddenWrapper = ({
   children,
   className,
+  place,
   onMouseEnter,
   onMouseLeave,
   style = {},
@@ -47,7 +49,7 @@ export const HiddenWrapper = ({
         id={id}
         clickable
         className={styles.tooltip}
-        place="bottom"
+        place={place ?? "bottom"}
         noArrow
         offset={0}
       >

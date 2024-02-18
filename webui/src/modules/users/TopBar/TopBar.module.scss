@@ -1,0 +1,25 @@
+@import 'styles/vars';
+
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
+.controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.right {
+  display: flex;
+  gap: 24px;
+}
+
+.searchInput {
+  width: 460px;
+}
+
+.searchIcon {
+  color: $colorButtonText;
+}

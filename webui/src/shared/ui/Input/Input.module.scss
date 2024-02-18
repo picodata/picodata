@@ -1,0 +1,53 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  display: flex;
+  position: relative;
+  border: 1px solid $colorFieldStrokeNormal;
+  border-radius: 4px;
+  height: 48px;
+
+  @include animate(border-color);
+
+  &:hover {
+    border-color: $colorFieldTextMain;
+  }
+}
+
+.activeContainer {
+  border-color: $colorFieldTextMain;
+}
+
+.input {
+  outline: none;
+  border: none;
+  padding: 0;
+  padding: 16px 20px;
+  border-radius: 4px;
+  color: $colorFieldTextMain;
+  width: 100%;
+
+  ::placeholder {
+    color: $colorFieldTextNormal;
+  }
+}
+
+.inputWithIcon {
+  padding-right: 50px;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.rightIcon {
+  display: flex;
+  align-items: center;
+}
