@@ -16,7 +16,7 @@ export const GroupByButton = <T extends string | number>(
   const { translation } = useTranslation();
 
   return (
-    <ButtonSelect size="normal" rightIcon={<ListDashesIcon />} {...props}>
+    <ButtonSelect size="small" rightIcon={<ListDashesIcon />} {...props}>
       {translation.components.buttons.groupBy.label}
     </ButtonSelect>
   );

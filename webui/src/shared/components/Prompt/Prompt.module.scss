@@ -1,0 +1,31 @@
+@import 'styles/colors';
+@import 'styles/mixins';
+
+.iconContainer {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.tooltip {
+  border-radius: 4px;
+  padding: 6px 8px !important;
+  background-color: #ffffff !important;
+  box-shadow: $elevation1;
+}
+
+.content {
+  color: #060606;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  max-width: 295px;
+  white-space: initial;
+  word-wrap: break-word;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.arrow {
+  box-shadow: 0px 2px 4px 0px rgba(63, 65, 68, 0.12);
+}

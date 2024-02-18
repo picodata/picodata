@@ -38,6 +38,8 @@ export const instances: TPages["instances"] = {
       title: "Фильтр",
       failureDomainField: {
         label: "Домен отказа",
+        promptText:
+          "Каждый параметр должен быть в формате КЛЮЧ-ЗНАЧЕНИЕ. Один ключ может иметь несколько значений",
         keyController: {
           placeholder: "Ключ",
         },
@@ -85,6 +87,9 @@ export const instances: TPages["instances"] = {
       },
     },
     instanceCard: {
+      leader: {
+        label: "Лидер",
+      },
       name: {
         label: "Название инстанса",
       },
@@ -107,5 +112,8 @@ export const instances: TPages["instances"] = {
         label: "Версия",
       },
     },
+  },
+  noData: {
+    text: "Нет данных",
   },
 };

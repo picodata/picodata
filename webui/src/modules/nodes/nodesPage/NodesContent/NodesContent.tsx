@@ -1,6 +1,7 @@
 import { Content } from "shared/ui/layout/Content/Content";
 import { NoData } from "shared/ui/NoData/NoData";
 import { useTiers } from "shared/entity/tier";
+import { useTranslation } from "shared/intl";
 
 import { ReplicasetCard } from "./ReplicasetCard/ReplicasetCard";
 import { InstanceCard } from "./ReplicasetCard/instanceBlock/InstanceCard";
@@ -20,6 +21,9 @@ export const NodesContent = () => {
   const [sortByValue, setSortByValue] = useSortBy();
   const [filterByValue, setFilterByValue] = useFilterBy();
 
+  const { translation } = useTranslation();
+  const instancesTranslations = translation.pages.instances;
+
   const filteredInstances = useFilteredInstances(
     data?.instances,
     filterByValue
@@ -38,7 +42,7 @@ export const NodesContent = () => {
   return (
     <Content className={styles.gridWrapper}>
       {isNoData ? (
-        <NoData>No Data</NoData>
+        <NoData>{instancesTranslations.noData.text}</NoData>
       ) : (
         <>
           <TopBar

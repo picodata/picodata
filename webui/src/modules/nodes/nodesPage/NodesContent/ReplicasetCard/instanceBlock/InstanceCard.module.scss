@@ -10,6 +10,7 @@ $failure-domain-column-flex: 1.5;
 $target-grade-column-flex: 0.74;
 $current-grade-column-flex: 0.74;
 $version-column-flex: 0.75;
+$leader-height: 16px;
 
 .cardWrapper {
   display: flex;
@@ -17,6 +18,8 @@ $version-column-flex: 0.75;
   padding: 8xp 16px;
   border-radius: 4px;
   box-shadow: $elevation1;
+  position: relative;
+  overflow: hidden;
 }
 
 .content {
@@ -34,6 +37,7 @@ $version-column-flex: 0.75;
 
 .nameColumn {
   align-items: flex-start;
+  justify-content: center;
   flex: $name-column-flex;
 }
 
@@ -76,12 +80,6 @@ $version-column-flex: 0.75;
   padding: $column-item-vertical-padding $column-item-horizontal-padding;
 }
 
-.nameValue {
-  display: flex;
-  align-items: center;
-  column-gap: 8px;
-}
-
 .domainValue {
   display: flex;
   width: 100%;
@@ -106,7 +104,7 @@ $version-column-flex: 0.75;
   }
 
   .content {
-    padding: 8px 16px;
+    padding: 8px calc(16px + $leader-height);
     column-gap: 24px;
   }
 }
@@ -115,7 +113,26 @@ $version-column-flex: 0.75;
   background-color: $colorBgWhite;
 
   .content {
-    padding: 8px 8px;
+    padding: 8px calc(8px + $leader-height);
     column-gap: 16px;
   }
+}
+
+.leaderBlock {
+  position: absolute;
+  bottom: 0;
+  left: $leader-height;
+  height: $leader-height;
+  width: 64px;
+  background-color: $colorNotificationSuccess;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 400;
+  color: $colorTextGrey;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: bottom left;
+  transform: rotate(-90deg);
 }

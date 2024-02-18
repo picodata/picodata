@@ -20,7 +20,7 @@ export const SortByButton = <T extends string | number>(
 
   return (
     <ButtonSelect
-      size="normal"
+      size="small"
       rightIcon={
         <ArrowsUpDown
           onClick={(event) => {

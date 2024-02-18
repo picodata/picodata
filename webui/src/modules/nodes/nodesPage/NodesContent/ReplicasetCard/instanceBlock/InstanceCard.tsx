@@ -1,7 +1,6 @@
 import cn from "classnames";
 import React, { FC } from "react";
 
-import { LeaderIcon } from "shared/icons/LeaderIcon";
 import { InstanceType } from "shared/entity/instance";
 import { useTranslation } from "shared/intl";
 import { NetworkState } from "shared/components/NetworkState/NetworkState";
@@ -40,15 +39,19 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
             classes?.cardWrapper
           )}
         >
+          {instance.isLeader && (
+            <div className={styles.leaderBlock}>
+              {instanceTranslations.leader.label}
+            </div>
+          )}
           <div className={styles.content}>
             <div className={cn(styles.infoColumn, styles.nameColumn)}>
-              <div className={styles.label}>
-                {instanceTranslations.name.label}
-              </div>
-              <div className={cn(styles.value, styles.nameValue)}>
-                {instance.name}
-                {instance.isLeader && <LeaderIcon />}
-              </div>
+              {theme === "primary" && (
+                <div className={styles.label}>
+                  {instanceTranslations.name.label}
+                </div>
+              )}
+              <div className={styles.value}>{instance.name}</div>
             </div>
             <div className={cn(styles.infoColumn, styles.failureDomainColumn)}>
               <div className={styles.label}>

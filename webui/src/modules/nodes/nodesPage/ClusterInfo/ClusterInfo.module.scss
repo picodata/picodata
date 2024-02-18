@@ -6,16 +6,18 @@
   justify-content: space-between;
 }
 
-.infoColumn {
+.left {
   display: flex;
   flex-direction: column;
   gap: 4px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .capacityInfoColumn {
   align-items: flex-start;
   flex-basis: 23%;
+  padding: 0 24px;
 }
 
 .capacityWrapper {
@@ -54,22 +56,23 @@
   text-align: center;
 }
 
+.right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-grow: 1;
+  column-gap: 40px;
+}
+
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 24px 12px;
+}
+
 .instancesBlock {
   display: flex;
-  gap: 16px;
-}
-
-.replicasetsColumn {
-  flex-basis: 15%;
-  margin-left: 7%;
-}
-
-.instancesColumn {
-  flex-basis: 32%;
-  margin-left: 4%;
-}
-
-.versionColumn {
-  flex-basis: 15%;
-  margin-left: 4%;
+  align-items: center;
+  column-gap: 24px;
 }

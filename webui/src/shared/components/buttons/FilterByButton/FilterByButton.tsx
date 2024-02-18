@@ -8,7 +8,7 @@ export const FilterByButton = (props: FilterByButtonProps) => {
   const { translation } = useTranslation();
 
   return (
-    <Button size="normal" rightIcon={<FunnelIcon />} {...props}>
+    <Button size="small" rightIcon={<FunnelIcon />} {...props}>
       {translation.components.buttons.filterBy.label}
     </Button>
   );

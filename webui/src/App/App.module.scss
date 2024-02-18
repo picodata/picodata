@@ -14,11 +14,11 @@
   flex-grow: 1;
   overflow: hidden;
   position: relative;
+  padding: 0 140px;
 }
 
 .bodyWrapper {
   display: flex;
   flex-grow: 1;
   overflow: hidden;
-  padding-left: $sideMenuWidth;
 }

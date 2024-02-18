@@ -36,6 +36,8 @@ export const instances = {
       title: "Filter",
       failureDomainField: {
         label: "Failure Domain",
+        promptText:
+          "Each parameter must be in KEY-VALUE format. One key can have multiple meanings",
         keyController: {
           placeholder: "Key",
         },
@@ -83,6 +85,9 @@ export const instances = {
       },
     },
     instanceCard: {
+      leader: {
+        label: "Leader",
+      },
       name: {
         label: "Instance name",
       },
@@ -105,5 +110,8 @@ export const instances = {
         label: "Version",
       },
     },
+  },
+  noData: {
+    text: "No Data",
   },
 };

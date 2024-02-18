@@ -27,7 +27,7 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
 
   return (
     <Content className={cn(styles.container, className)}>
-      <div className={cn(styles.infoColumn, styles.capacityInfoColumn)}>
+      <div className={cn(styles.left, styles.capacityInfoColumn)}>
         <div className={styles.columnName}>
           {clusterTranslations.capacityProgress.label}
         </div>
@@ -40,52 +40,54 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           />
         </div>
       </div>
-      <div className={cn(styles.infoColumn, styles.replicasetsColumn)}>
-        <div className={styles.columnName}>
-          {clusterTranslations.replicasets.label}
-        </div>
-        <div className={styles.columnContent}>
-          <div className={styles.columnValue}>
-            {clusterInfoData.replicasetsCount}
-          </div>
-          <div className={styles.columnLabel}>
-            {clusterTranslations.replicasets.description}
-          </div>
-        </div>
-      </div>
-      <div className={cn(styles.infoColumn, styles.instancesColumn)}>
-        <div className={styles.columnName}>
-          {clusterTranslations.instances.label}
-        </div>
-        <div className={styles.instancesBlock}>
-          <div className={styles.columnContent}>
-            <div className={styles.columnValue}>
-              {clusterInfoData.instancesCurrentGradeOnline}
-            </div>
-            <div className={styles.columnLabel}>
-              {clusterTranslations.instances.onlineGrade}
-            </div>
+      <div className={styles.right}>
+        <div className={cn(styles.rightColumn)}>
+          <div className={styles.columnName}>
+            {clusterTranslations.replicasets.label}
           </div>
           <div className={styles.columnContent}>
             <div className={styles.columnValue}>
-              {clusterInfoData.instancesCurrentGradeOffline}
+              {clusterInfoData.replicasetsCount}
             </div>
             <div className={styles.columnLabel}>
-              {clusterTranslations.instances.offlineGrade}
+              {clusterTranslations.replicasets.description}
             </div>
           </div>
         </div>
-      </div>
-      <div className={cn(styles.infoColumn, styles.versionColumn)}>
-        <div className={styles.columnName}>
-          {clusterTranslations.version.label}
-        </div>
-        <div className={styles.columnContent}>
-          <div className={styles.columnValue}>
-            {clusterInfoData.currentInstaceVersion}
+        <div className={cn(styles.rightColumn)}>
+          <div className={styles.columnName}>
+            {clusterTranslations.instances.label}
           </div>
-          <div className={styles.columnLabel}>
-            {clusterTranslations.version.description}
+          <div className={styles.instancesBlock}>
+            <div className={styles.columnContent}>
+              <div className={styles.columnValue}>
+                {clusterInfoData.instancesCurrentGradeOnline}
+              </div>
+              <div className={styles.columnLabel}>
+                {clusterTranslations.instances.onlineGrade}
+              </div>
+            </div>
+            <div className={styles.columnContent}>
+              <div className={styles.columnValue}>
+                {clusterInfoData.instancesCurrentGradeOffline}
+              </div>
+              <div className={styles.columnLabel}>
+                {clusterTranslations.instances.offlineGrade}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className={cn(styles.rightColumn)}>
+          <div className={styles.columnName}>
+            {clusterTranslations.version.label}
+          </div>
+          <div className={styles.columnContent}>
+            <div className={styles.columnValue}>
+              {clusterInfoData.currentInstaceVersion}
+            </div>
+            <div className={styles.columnLabel}>
+              {clusterTranslations.version.description}
+            </div>
           </div>
         </div>
       </div>

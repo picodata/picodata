@@ -5,6 +5,7 @@ import { PlusIcon } from "shared/icons/PlusIcon";
 import { truthy } from "shared/utils/tsUtils";
 import { getUniqueArrayBy } from "shared/utils/array/getUniqueArrayBy";
 import { useTranslation } from "shared/intl";
+import { PromptIcon } from "shared/components/Prompt/PromptIcon";
 
 import { TKeyValueFilter } from "./DomainField/types";
 import { useKeyValues } from "./hooks";
@@ -68,6 +69,9 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
       <div className={styles.field}>
         <div className={styles.label}>
           {modalTranslations.failureDomainField.label}
+          <PromptIcon>
+            {modalTranslations.failureDomainField.promptText}
+          </PromptIcon>
         </div>
         <div className={styles.scroll}>
           {keyValueFilters.map((filter, i) => {

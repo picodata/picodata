@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { BurgerIcon } from "shared/icons/BurgerIcon";
 import { useOutsideClickEvent } from "shared/react/hooks/useOutsideClickEvent";
-import { NodesIcon } from "shared/icons/navLinks/NodesIcon";
+import { InstancesIcon } from "shared/icons/navLinks/InstancesIcon";
 import { URL_CONFIG } from "shared/router/config";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
 import { useTranslation } from "shared/intl";
@@ -28,28 +28,42 @@ export const SideMenu = () => {
   const { translation } = useTranslation();
   const sideMenuTranslations = translation.sideMenu;
 
+  const navLinks = [
+    {
+      to: URL_CONFIG.NODES.absolutePath,
+      label: sideMenuTranslations.navLinks.instances.label,
+      icon: <InstancesIcon />,
+    },
+  ];
+
   return (
     <div
       className={cn(styles.container, isOpen && styles.openContainer)}
       ref={containerRef}
     >
-      <div className={styles.menuIcon} onClick={() => setIsOpen(!isOpen)}>
+      <div
+        className={cn(styles.menuIcon, isOpen && styles.openMenuIcon)}
+        onClick={() => setIsOpen(!isOpen)}
+      >
         <BurgerIcon />
       </div>
       <div className={styles.navLinksList}>
-        <NavLink
-          to={URL_CONFIG.NODES.absolutePath}
-          className={(isActive) => {
-            if (isActive) return cn(styles.navLink, styles.activeNavLink);
+        {navLinks.map((link) => {
+          return (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={(isActive) => {
+                if (isActive) return cn(styles.navLink, styles.activeNavLink);
 
-            return styles.navLink;
-          }}
-        >
-          <NodesIcon />
-          <span className={styles.navLinkText}>
-            {sideMenuTranslations.navLinks.instances.label}
-          </span>
-        </NavLink>
+                return styles.navLink;
+              }}
+            >
+              {link.icon}
+              <span className={styles.navLinkText}>{link.label}</span>
+            </NavLink>
+          );
+        })}
       </div>
       {/* Пример смены языка
       <div
