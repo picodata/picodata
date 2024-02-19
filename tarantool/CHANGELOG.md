@@ -15,6 +15,7 @@
   compared to naked `tlua::AsTable`.
 - `TarantoolError::{file, line, errno, cause, fields}` methods for getting the
   corresponding info from the tarantool error (currently only work for remote errors).
+- `Tuple::to_vec` method to get raw msgpack bytes from `Tuple`.
 
 ### Changed
 - `network::client::{Client, ReconnClient}::send` now returns one of the new
@@ -66,6 +67,7 @@
   instead of `network::ProtocolError`.
 - Remove parameter `limit` from method `network::client::AsClient::execute`,
   which was never used correctly.
+- `msgpack::encode` no longer returns `Result` as it should not fail.
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.

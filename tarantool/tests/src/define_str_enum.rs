@@ -60,12 +60,12 @@ pub fn basic() {
     );
 
     // encode
-    let white_mp = msgpack::encode(&"#FFFFFF").unwrap();
-    assert_eq!(msgpack::encode(&Color::White).unwrap(), white_mp);
+    let white_mp = msgpack::encode(&"#FFFFFF");
+    assert_eq!(msgpack::encode(&Color::White), white_mp);
 
     // decode
     assert_eq!(msgpack::decode::<Color>(&white_mp).unwrap(), Color::White);
-    let green_mp = msgpack::encode(&"#00FF00").unwrap();
+    let green_mp = msgpack::encode(&"#00FF00");
     assert_eq!(
         msgpack::decode::<Color>(&green_mp)
             .unwrap_err()

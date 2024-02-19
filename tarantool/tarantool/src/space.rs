@@ -10,9 +10,9 @@ use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
 use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
-use crate::tuple_from_box_api;
 use crate::unwrap_or;
 use crate::util::Value;
+use crate::{msgpack, tuple_from_box_api};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 use std::borrow::Cow;
@@ -226,7 +226,8 @@ pub enum SpaceType {
 #[deprecated = "Use `space::Field` instead"]
 pub type SpaceFieldFormat = Field;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, msgpack::Encode, msgpack::Decode, PartialEq, Eq)]
+#[encode(tarantool = "crate", as_map)]
 pub struct Field {
     pub name: String, // TODO(gmoshkin): &str
     #[serde(alias = "type")]

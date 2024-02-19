@@ -38,7 +38,7 @@ impl Debug for Tuple {
             f.debug_tuple("Tuple").field(&v).finish()
         } else {
             // Probably will never happen but better safe than sorry
-            f.debug_tuple("Tuple").field(&self.as_buffer()).finish()
+            f.debug_tuple("Tuple").field(&self.to_vec()).finish()
         }
     }
 }
@@ -261,12 +261,15 @@ impl Tuple {
     where
         T: DecodeOwned,
     {
-        let raw_data = self.as_buffer();
+        let raw_data = self.to_vec();
         Decode::decode(&raw_data)
     }
 
+    /// Get tuple contents as a vector of raw bytes.
+    ///
+    /// Returns tuple bytes in msgpack encoding.
     #[inline]
-    pub(crate) fn as_buffer(&self) -> Vec<u8> {
+    pub fn to_vec(&self) -> Vec<u8> {
         let size = self.bsize();
         let mut buf = Vec::with_capacity(size);
 
@@ -435,7 +438,7 @@ impl ToTupleBuffer for Tuple {
 
     #[inline]
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        w.write_all(&self.as_buffer()).map_err(Into::into)
+        w.write_all(&self.to_vec()).map_err(Into::into)
     }
 }
 
@@ -595,14 +598,14 @@ impl TryFrom<Vec<u8>> for TupleBuffer {
 impl From<Tuple> for TupleBuffer {
     #[inline(always)]
     fn from(t: Tuple) -> Self {
-        Self(t.as_buffer())
+        Self(t.to_vec())
     }
 }
 
 impl From<&Tuple> for TupleBuffer {
     #[inline(always)]
     fn from(t: &Tuple) -> Self {
-        Self(t.as_buffer())
+        Self(t.to_vec())
     }
 }
 
@@ -1537,7 +1540,7 @@ mod picodata {
         /// This function is useful if there is no information about tuple fields in program runtime.
         pub fn as_named_buffer(&self) -> Result<Vec<u8>> {
             let format = self.format();
-            let buff = self.as_buffer();
+            let buff = self.to_vec();
 
             let field_count = self.len();
             let mut named_buffer = Vec::with_capacity(buff.len());

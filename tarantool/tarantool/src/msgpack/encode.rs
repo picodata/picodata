@@ -22,12 +22,14 @@ pub use tarantool_proc::{Decode, Encode};
 ///
 /// See [`Encode`].
 #[inline(always)]
-pub fn encode(value: &impl Encode) -> Result<Vec<u8>, EncodeError> {
+pub fn encode(value: &impl Encode) -> Vec<u8> {
     // 128 is chosen pretty randomly, we might want to benchmark this to find
     // better values
     let mut v = Vec::with_capacity(128);
-    value.encode(&mut v, &Context::DEFAULT)?;
-    Ok(v)
+    value
+        .encode(&mut v, &Context::DEFAULT)
+        .expect("encoding to vector should not fail");
+    v
 }
 
 /// Decodes `T` from a slice of bytes in msgpack.
@@ -855,7 +857,7 @@ mod tests {
             e: E::A,
             b: true,
         };
-        let bytes = encode(&test).unwrap();
+        let bytes = encode(&test);
         let test_dec: Test = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_dec, test);
 
@@ -868,13 +870,13 @@ mod tests {
 
         // Try (de)encoding as part of vec
         let test = vec![E::A, E::B, E::A];
-        let bytes = encode(&test).unwrap();
+        let bytes = encode(&test);
         let test_dec: Vec<E> = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_dec, test);
 
         // Try (de)encoding as part of map
         let test: HashMap<E, E> = vec![(E::A, E::B), (E::B, E::A)].into_iter().collect();
-        let bytes = encode(&test).unwrap();
+        let bytes = encode(&test);
         let test_dec: HashMap<E, E> = decode(bytes.as_slice()).unwrap();
         assert_eq!(test_dec, test);
     }
@@ -894,7 +896,7 @@ mod tests {
 
         // Do not override, encode as array
         let test_1 = Test1 { b: 42 };
-        let bytes = encode(&test_1).unwrap();
+        let bytes = encode(&test_1);
         assert_value(
             &bytes,
             rmpv::Value::Array(vec![rmpv::Value::Integer(42.into())]),
@@ -959,7 +961,7 @@ mod tests {
         };
 
         // Do not override, encode as map
-        let bytes = encode(&test).unwrap();
+        let bytes = encode(&test);
         assert_value(
             &bytes,
             Value::Map(vec![
@@ -1029,7 +1031,7 @@ mod tests {
         #[encode(tarantool = "crate")]
         struct Test(u32, bool);
         let original = Test(0, true);
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(
             &bytes,
             rmpv::Value::Array(vec![
@@ -1047,7 +1049,7 @@ mod tests {
         #[encode(tarantool = "crate")]
         struct Test;
         let original = Test;
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(&bytes, rmpv::Value::Nil);
         let decoded: Test = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
@@ -1073,7 +1075,7 @@ mod tests {
             },
         }
         let original = Foo::BarUnit;
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
@@ -1097,7 +1099,7 @@ mod tests {
         );
 
         let original = Foo::BarTuple1(true);
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
@@ -1109,7 +1111,7 @@ mod tests {
         assert_eq!(original, decoded);
 
         let original = Foo::BarTupleN(13, 0.37, "hello".into());
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
@@ -1125,7 +1127,7 @@ mod tests {
         assert_eq!(original, decoded);
 
         let original = Foo::BarStruct1 { bar: false };
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
@@ -1141,7 +1143,7 @@ mod tests {
             bar2: [b'a', b'b', b'c'],
             bar3: Box::new(Foo::BarUnit),
         };
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         assert_value(
             &bytes,
             rmpv::Value::Map(vec![(
@@ -1172,7 +1174,7 @@ mod tests {
             r#fn: u32,
         }
         let original = Test { r#fn: 1 };
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let mut bytes = Cursor::new(bytes);
         let marker = rmp::decode::read_marker(&mut bytes).unwrap();
         assert!(matches!(marker, rmp::Marker::FixMap(1)));
@@ -1184,17 +1186,17 @@ mod tests {
     #[test]
     fn encode_vec() {
         let original = vec![1u32];
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: Vec<u32> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = vec![1, 2, 3, 4, 5];
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: Vec<i32> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = Vec::<i32>::new();
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: Vec<i32> = decode(bytes.as_slice()).unwrap();
         assert_eq!(&original, &decoded);
     }
@@ -1202,17 +1204,17 @@ mod tests {
     #[test]
     fn encode_array() {
         let original = [1u32];
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: [u32; 1] = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = [1, 2, 3, 4, 5];
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: [u32; 5] = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let original = [0_u32; 0];
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: [u32; 0] = decode(bytes.as_slice()).unwrap();
         assert_eq!(&original, &decoded);
 
@@ -1250,7 +1252,7 @@ mod tests {
         original.insert(10);
         original.insert(20);
 
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         // Set is encoded as array
         assert_value(
             &bytes,
@@ -1263,7 +1265,7 @@ mod tests {
         original.insert(10);
         original.insert(20);
 
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         // Set is encoded as array
         let len = rmp::decode::read_array_len(&mut &bytes[..]).unwrap();
         assert_eq!(len, 3);
@@ -1275,14 +1277,14 @@ mod tests {
         let mut original = BTreeMap::new();
         original.insert(1, "abc".to_string());
         original.insert(2, "def".to_string());
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: BTreeMap<u32, String> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
 
         let mut original = HashMap::new();
         original.insert(1, "abc".to_string());
         original.insert(2, "def".to_string());
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: HashMap<u32, String> = decode(bytes.as_slice()).unwrap();
         assert_eq!(original, decoded);
     }
@@ -1291,33 +1293,33 @@ mod tests {
     fn encode_str() {
         let original = "hello";
 
-        let bytes = encode(&original).unwrap();
+        let bytes = encode(&original);
         let decoded: String = decode(&bytes).unwrap();
         assert_eq!(original, decoded);
 
-        let bytes = encode(&Cow::Borrowed(original)).unwrap();
+        let bytes = encode(&Cow::Borrowed(original));
         assert_eq!(original, decode::<String>(&bytes).unwrap());
 
-        let bytes = encode(&String::from(original)).unwrap();
+        let bytes = encode(&String::from(original));
         assert_eq!(original, decode::<String>(&bytes).unwrap());
 
-        let bytes = encode(&Cow::<str>::Owned(original.to_owned())).unwrap();
+        let bytes = encode(&Cow::<str>::Owned(original.to_owned()));
         assert_eq!(original, decode::<String>(&bytes).unwrap());
     }
 
     #[test]
     fn encode_char() {
-        let bytes = encode(&'a').unwrap();
+        let bytes = encode(&'a');
         assert_eq!(bytes, b"\xa1a");
         assert_eq!('a', decode::<char>(&bytes).unwrap());
         assert_eq!("a", decode::<String>(&bytes).unwrap());
 
-        let bytes = encode(&'я').unwrap();
+        let bytes = encode(&'я');
         assert_eq!(bytes, b"\xa2\xd1\x8f");
         assert_eq!('я', decode::<char>(&bytes).unwrap());
         assert_eq!("я", decode::<String>(&bytes).unwrap());
 
-        let bytes = encode(&'☺').unwrap();
+        let bytes = encode(&'☺');
         assert_eq!(bytes, b"\xa3\xe2\x98\xba");
         assert_eq!('☺', decode::<char>(&bytes).unwrap());
         assert_eq!("☺", decode::<String>(&bytes).unwrap());
@@ -1356,17 +1358,17 @@ mod tests {
     #[test]
     #[rustfmt::skip]
     fn encode_integer() {
-        assert_eq!(&encode(&i8::MAX).unwrap(), &b"\x7f"[..]);
-        assert_eq!(&encode(&(i8::MAX as i64)).unwrap(), &b"\x7f"[..]);
-        assert_eq!(&encode(&i16::MAX).unwrap(), &b"\xcd\x7f\xff"[..]);
-        assert_eq!(&encode(&i32::MAX).unwrap(), &b"\xce\x7f\xff\xff\xff"[..]);
-        assert_eq!(&encode(&i64::MAX).unwrap(), &b"\xcf\x7f\xff\xff\xff\xff\xff\xff\xff"[..]);
+        assert_eq!(&encode(&i8::MAX), &b"\x7f"[..]);
+        assert_eq!(&encode(&(i8::MAX as i64)), &b"\x7f"[..]);
+        assert_eq!(&encode(&i16::MAX), &b"\xcd\x7f\xff"[..]);
+        assert_eq!(&encode(&i32::MAX), &b"\xce\x7f\xff\xff\xff"[..]);
+        assert_eq!(&encode(&i64::MAX), &b"\xcf\x7f\xff\xff\xff\xff\xff\xff\xff"[..]);
 
-        assert_eq!(&encode(&u8::MAX).unwrap(), &b"\xcc\xff"[..]);
-        assert_eq!(&encode(&(u8::MAX as i64)).unwrap(), &b"\xcc\xff"[..]);
-        assert_eq!(&encode(&u16::MAX).unwrap(), &b"\xcd\xff\xff"[..]);
-        assert_eq!(&encode(&u32::MAX).unwrap(), &b"\xce\xff\xff\xff\xff"[..]);
-        assert_eq!(&encode(&u64::MAX).unwrap(), &b"\xcf\xff\xff\xff\xff\xff\xff\xff\xff"[..]);
+        assert_eq!(&encode(&u8::MAX), &b"\xcc\xff"[..]);
+        assert_eq!(&encode(&(u8::MAX as i64)), &b"\xcc\xff"[..]);
+        assert_eq!(&encode(&u16::MAX), &b"\xcd\xff\xff"[..]);
+        assert_eq!(&encode(&u32::MAX), &b"\xce\xff\xff\xff\xff"[..]);
+        assert_eq!(&encode(&u64::MAX), &b"\xcf\xff\xff\xff\xff\xff\xff\xff\xff"[..]);
 
         assert_eq!(decode::<i8>(b"\x7f").unwrap(), i8::MAX);
         assert_eq!(decode::<i16>(b"\xcd\x7f\xff").unwrap(), i16::MAX);

@@ -93,7 +93,7 @@ mod msgpack_serialization {
     fn bench_custom_encode() {
         let tree = gen_tree(HEIGHT, DEGREE);
         let samples = harness_iter(|| {
-            let _bytes = encode(&tree).unwrap();
+            let _bytes = encode(&tree);
         });
         print_stats("custom_encode", samples);
     }
@@ -101,7 +101,7 @@ mod msgpack_serialization {
     #[proc]
     fn bench_custom_decode() {
         let tree = gen_tree(HEIGHT, DEGREE);
-        let bytes = encode(&tree).unwrap();
+        let bytes = encode(&tree);
         let samples = harness_iter(|| {
             let _got_tree: Node = decode(&bytes).unwrap();
         });
