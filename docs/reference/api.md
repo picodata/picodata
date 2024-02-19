@@ -52,7 +52,6 @@ picodata> pico.help("help")
 | [pico.raft_read_index()](#pico_raft_read_index) | Кворумное чтение индекса raft-журнала.
 | [pico.raft_status()](#pico_raft_status) | Получение данных о текущем состоянии raft ([терм](../overview/glossary.md#term), [лидер](../overview/glossary.md#leader) и т.д.).
 | [pico.raft_term()](#pico_raft_term) | Получение номера терма (текущего или для указанной записи).
-| [pico.raft_timeout_now()](#pico_raft_timeout_now) | Немедленное объявление новых выборов в raft-группе.
 | [pico.raft_wait_index()](#pico_raft_wait_index) | Ожидание локального применения указанного raft-индекса.
 | [pico.revoke_privilege()](#pico_revoke_privilege) | Удаление привилегии у пользователя или роли.
 | [pico.sql()](#pico_sql) | Выполнение кластерных SQL-запросов.
@@ -893,57 +892,6 @@ function raft_term([index])
 
 (_number_) или <br>(_nil_, _string_) в случае ошибки.
 
-### pico.raft_timeout_now {: #pico_raft_timeout_now }
-
-Вызывает таймаут raft-узла и немедленно объявляет новые выборы в
-raft-группе.
-
-Функция используется для явного завершения текущего
-терма и объявления новых выборов в raft-группе. Функция не имеет
-передаваемых параметров.
-
-После вызова функции в выводе `stdout` будут отражены этапы новых
-выборов (пример для инстанса в `raft_id`=`3`):
-
-Объявление новых выборов:
-
-  ```lua
-  received MsgTimeoutNow from 3 and starts an election to get leadership., from: 3, term: 4, raft_id: 3
-  ```
-
-Начало выборов:
-
-  ```lua
-  starting a new election, term: 4, raft_id: 3
-  ```
-
-Превращение текущего инстанса в кандидаты в лидеры:
-
-  ```lua
-  became candidate at term 5, term: 5, raft_id: 3
-  ```
-
-Объявление голосования:
-
-  ```lua
-  broadcasting vote request, to: [4, 1], log_index: 54, log_term: 4, term: 5, type: MsgRequestVote, raft_id: 3
-  ```
-
-Получение голосов:
-
-  ```lua
-  received votes response, term: 5, type: MsgRequestVoteResponse, approvals: 2, rejections: 0, from: 4, vote: true, raft_id: 3
-  ```
-
-Объявление результата выборов:
-
-  ```lua
-  became leader at term 5, term: 5, raft_id: 3
-  ```
-
-В отсутствие других кандидатов, инстанс, инициировавший
-`raft_timeout_now`, с большой вероятностью (при наличии кворума) сам
-станет лидером по результатам выборов.
 
 ### pico.raft_wait_index {: #pico_raft_wait_index }
 
