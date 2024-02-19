@@ -1071,6 +1071,7 @@ mod tests {
     }
 
     #[crate::test(tarantool = "crate")]
+    #[allow(clippy::let_unit_value)]
     fn set_error_with_no_semicolon() {
         // Basically you should always put double {{}} in your macros if there's
         // a let statement in it, otherwise it will suddenly stop compiling in
