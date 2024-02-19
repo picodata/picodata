@@ -42,11 +42,11 @@ Picodata. На них невозможно выдать или отозвать 
 
 ## Public API {: #public_api }
 
----
+--------------------------------------------------------------------------------
 ### .proc_version_info {: #proc_version_info }
 
 ```rust
-fn proc_version_info()
+fn proc_version_info() -> VersionInfo
 ```
 
 Возвращает информацию о версиях Picodata и отдельных ее компонентах.
@@ -62,11 +62,11 @@ fn proc_version_info()
 
 [semver]: https://semver.org/
 
----
+--------------------------------------------------------------------------------
 ### .proc_sql {: #proc_sql }
 
 ```rust
-fn proc_sql(query, options)
+fn proc_sql(query, options) -> Result
 ```
 
 Выполняет распределенный SQL запрос.
@@ -100,11 +100,11 @@ fn proc_sql(query, options)
 
 ## Service API {: #service_api }
 
----
+--------------------------------------------------------------------------------
 ### .proc_raft_info {: #proc_raft_info }
 
 ```rust
-fn proc_raft_info()
+fn proc_raft_info() -> RaftInfo
 ```
 
 Возвращает информацию о состоянии raft-узла на текущем инстансе
@@ -121,11 +121,11 @@ fn proc_raft_info()
     - `state` (MP_STR)
       <br>возможные значения: `Follower`, `Candidate`, `Leader`, `PreCandidate`
 
----
+--------------------------------------------------------------------------------
 ### .proc_instance_info {: #proc_instance_info }
 
 ```rust
-fn proc_instance_info(instance_id)
+fn proc_instance_info(instance_id) -> InstanceInfo
 ```
 
 Возвращает информацию о запрашиваемом инстансе из кластера.
@@ -152,11 +152,11 @@ fn proc_instance_info(instance_id)
     - `target_grade`: (MP_MAP `Grade`), целевое состояние инстанса
     - `tier`: (MP_STR)
 
----
+--------------------------------------------------------------------------------
 ### .proc_runtime_info {: #proc_runtime_info }
 
 ```rust
-fn proc_runtime_info()
+fn proc_runtime_info() -> RuntimeInfo
 ```
 
 Возвращает служебную информацию.
@@ -181,7 +181,8 @@ fn proc_runtime_info()
 fn proc_raft_promote()
 ```
 
-Завершает текущий raft-терм и объявляет выборы нового лидера. Предлагает себя
+Завершает текущий [raft-терм](../overview/glossary.md#term) и объявляет выборы
+нового [лидера](../overview/glossary.md#raft_leader). Предлагает себя
 как кандидата в лидеры raft-группы. Если других кандидатов не обнаружится,
 текущий инстанс с большой вероятностью станет новым лидером.
 
@@ -189,7 +190,7 @@ fn proc_raft_promote()
 ### .proc_get_index {: #proc_get_index }
 
 ```rust
-fn proc_get_index()
+fn proc_get_index() -> RaftIndex
 ```
 
 Возвращает текущий примененный (applied) индекс raft-журнала
@@ -198,11 +199,11 @@ fn proc_get_index()
 
 - (MP_INT)
 
----
+--------------------------------------------------------------------------------
 ### .proc_read_index {: #proc_read_index }
 
 ```rust
-fn proc_read_index(timeout)
+fn proc_read_index(timeout) -> RaftIndex
 ```
 
 Выполняет кворумное чтение по следующему принципу:
@@ -228,11 +229,11 @@ fn proc_read_index(timeout)
 - (MP_INT)
 - (MP_NIL, MP_STR) в случае ошибки
 
----
+--------------------------------------------------------------------------------
 ### .proc_wait_index {: #proc_wait_index }
 
 ```rust
-fn proc_wait_index(target, timeout)
+fn proc_wait_index(target, timeout) -> RaftIndex
 ```
 
 Ожидает применения (apply) указанного raft-индекса на текущем инстансе.
@@ -249,11 +250,11 @@ fn proc_wait_index(target, timeout)
 - (MP_INT)
 - (MP_NIL, MP_STR) в случае ошибки
 
----
+--------------------------------------------------------------------------------
 ### .proc_get_vclock {: #proc_get_vclock }
 
 ```rust
-fn proc_get_vclock()
+fn proc_get_vclock() -> Vclock
 ```
 
 Возвращает текущее значение [Vclock](../overview/glossary.md#vclock)
@@ -262,11 +263,11 @@ fn proc_get_vclock()
 
 - (MP_MAP `Vclock`)
 
----
+------------------------------------------------------------------------------—-
 ### .proc_wait_vclock {: #proc_wait_vclock }
 
 ```
-fn proc_wait_vclock(target, timeout)
+fn proc_wait_vclock(target, timeout) -> Vclock
 ```
 
 Ожидает момента, когда текущее значение
