@@ -28,6 +28,9 @@
 - `error::set_last_error` function. It's similar to `tarantool::set_error!` macro,
   but the new function also supports specifying an explicit source location, while
   the old macro always uses the caller's location.
+- `error::IntoBoxError` trait. Implement this for your error types to return
+  structured error info from stored procedures defined with `#[tarantool::proc]`,
+  or just use `BoxError` directly.
 
 ### Changed
 - `tarantool::error::TarantoolError` is renamed `BoxError`. The old name is
@@ -87,6 +90,11 @@
 - Remove parameter `limit` from method `network::client::AsClient::execute`,
   which was never used correctly.
 - `msgpack::encode` no longer returns `Result` as it should not fail.
+- Stored procedures defined with `#[tarantool::proc]` no longer compile with some
+  error return types. Previously error type required only trait `std::fmt::Display`,
+  but now it requires `tarantool::error::IntoBoxError`.
+  This means that most error types from third-party crates are no longer supported,
+  but `tarantool::error::Error`, `Box<dyn Error>` & even `String` still work.
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.

@@ -505,6 +505,100 @@ pub fn set_last_error(file_line: Option<(&str, u32)>, code: u32, message: &CStr)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// IntoBoxError
+////////////////////////////////////////////////////////////////////////////////
+
+/// Types implementing this trait represent an error which can be converted to
+/// a structured tarantool internal error. In simple cases this may just be an
+/// conversion into an error message, but may also add an error code and/or
+/// additional custom fields. (custom fields not yet implemented).
+pub trait IntoBoxError: Sized {
+    /// Set `self` as the current fiber's last error.
+    #[inline(always)]
+    #[track_caller]
+    fn set_last_error(self) {
+        self.into_box_error().set_last();
+    }
+
+    /// Convert `self` to `BoxError`.
+    fn into_box_error(self) -> BoxError;
+}
+
+impl IntoBoxError for BoxError {
+    #[inline(always)]
+    #[track_caller]
+    fn set_last_error(self) {
+        self.set_last()
+    }
+
+    #[inline(always)]
+    fn into_box_error(self) -> BoxError {
+        self
+    }
+}
+
+impl IntoBoxError for Error {
+    #[inline(always)]
+    #[track_caller]
+    fn into_box_error(self) -> BoxError {
+        match self {
+            Error::Tarantool(e) => e,
+            Error::Remote(e) => {
+                // TODO: maybe we want actually to set the last error to
+                // something like ProcC, "server responded with error" and then
+                // set `e` to be the `cause` of that error. But for now there's
+                // no way to do that
+                e
+            }
+            Error::Decode { .. } => {
+                BoxError::new(TarantoolErrorCode::InvalidMsgpack, self.to_string())
+            }
+            Error::DecodeRmpValue(e) => {
+                BoxError::new(TarantoolErrorCode::InvalidMsgpack, e.to_string())
+            }
+            Error::ValueRead(e) => BoxError::new(TarantoolErrorCode::InvalidMsgpack, e.to_string()),
+            _ => BoxError::new(TarantoolErrorCode::ProcC, self.to_string()),
+        }
+    }
+}
+
+impl IntoBoxError for String {
+    #[inline(always)]
+    #[track_caller]
+    fn into_box_error(self) -> BoxError {
+        BoxError::new(TarantoolErrorCode::ProcC, self)
+    }
+}
+
+impl IntoBoxError for &str {
+    #[inline(always)]
+    #[track_caller]
+    fn into_box_error(self) -> BoxError {
+        self.to_owned().into_box_error()
+    }
+}
+
+impl IntoBoxError for Box<dyn std::error::Error> {
+    #[inline(always)]
+    #[track_caller]
+    fn into_box_error(self) -> BoxError {
+        (&*self).into_box_error()
+    }
+}
+
+impl IntoBoxError for &dyn std::error::Error {
+    #[inline(always)]
+    #[track_caller]
+    fn into_box_error(self) -> BoxError {
+        let mut res = BoxError::new(TarantoolErrorCode::ProcC, self.to_string());
+        if let Some(cause) = self.source() {
+            res.cause = Some(Box::new(cause.into_box_error()));
+        }
+        res
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // TarantoolErrorCode
 ////////////////////////////////////////////////////////////////////////////////
 

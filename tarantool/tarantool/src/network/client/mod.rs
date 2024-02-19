@@ -848,4 +848,41 @@ mod tests {
 
         assert!(e.cause().is_none());
     }
+
+    #[crate::test(tarantool = "crate")]
+    async fn custom_error_code_from_proc() {
+        #[crate::proc(tarantool = "crate")]
+        fn proc_custom_error_code() -> Result<(), crate::error::Error> {
+            Err(BoxError::new(666666_u32, "na ah").into())
+        }
+        let error_line = line!() - 2; // where `BoxError` is constructed
+
+        let path = crate::proc::module_path(&custom_error_code_from_proc as *const _ as _).unwrap();
+        let module = path.file_stem().unwrap().to_str().unwrap();
+        let proc = format!("{module}.proc_custom_error_code");
+
+        let lua = crate::lua_state();
+        lua.exec_with("box.schema.func.create(..., { language = 'C' })", &proc)
+            .unwrap();
+
+        let client = test_client().await;
+
+        let res = client
+            .call(&proc, &())
+            .timeout(Duration::from_secs(3))
+            .await;
+
+        let e = match error::Error::from(res.unwrap_err()) {
+            error::Error::Remote(e) => e,
+            other => {
+                panic!("unexpected error: {}", other);
+            }
+        };
+
+        assert_eq!(e.error_code(), 666666);
+        assert_eq!(e.message(), "na ah");
+        assert_eq!(e.error_type(), "ClientError");
+        assert_eq!(e.file(), Some(file!()));
+        assert_eq!(e.line(), Some(error_line));
+    }
 }

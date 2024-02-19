@@ -1,18 +1,16 @@
-use crate::{
-    error::TarantoolErrorCode::ProcC,
-    ffi::tarantool as ffi,
-    set_error,
-    tuple::{FunctionCtx, RawByteBuf, RawBytes, Tuple, TupleBuffer},
-};
+use crate::error::IntoBoxError;
+use crate::ffi::tarantool as ffi;
+use crate::tuple::{FunctionCtx, RawByteBuf, RawBytes, Tuple, TupleBuffer};
 use serde::Serialize;
-use std::{fmt::Display, os::raw::c_int, path::Path};
+use std::os::raw::c_int;
+use std::path::Path;
 
 macro_rules! unwrap_or_report_err {
     ($res:expr) => {
         match $res {
             Ok(o) => o,
             Err(e) => {
-                set_error!(ProcC, "{}", e);
+                e.set_last_error();
                 -1
             }
         }
@@ -226,7 +224,7 @@ impl Return for Tuple {
 
 impl<E> Return for Result<Tuple, E>
 where
-    E: Display,
+    E: IntoBoxError,
 {
     #[inline(always)]
     fn ret(self, ctx: FunctionCtx) -> c_int {
@@ -244,7 +242,7 @@ impl Return for TupleBuffer {
 
 impl<E> Return for Result<TupleBuffer, E>
 where
-    E: Display,
+    E: IntoBoxError,
 {
     #[inline(always)]
     fn ret(self, ctx: FunctionCtx) -> c_int {
@@ -262,7 +260,7 @@ impl Return for &RawBytes {
 
 impl<E> Return for Result<&RawBytes, E>
 where
-    E: Display,
+    E: IntoBoxError,
 {
     #[inline(always)]
     fn ret(self, ctx: FunctionCtx) -> c_int {
@@ -280,7 +278,7 @@ impl Return for RawByteBuf {
 
 impl<E> Return for Result<RawByteBuf, E>
 where
-    E: Display,
+    E: IntoBoxError,
 {
     #[inline(always)]
     fn ret(self, ctx: FunctionCtx) -> c_int {
@@ -298,7 +296,7 @@ impl Return for () {
 impl<O, E> Return for Result<O, E>
 where
     O: Serialize,
-    E: Display,
+    E: IntoBoxError,
 {
     #[inline(always)]
     fn ret(self, ctx: FunctionCtx) -> c_int {
@@ -306,12 +304,12 @@ where
             Ok(o) => match ctx.return_mp(&o) {
                 Ok(_) => 0,
                 Err(e) => {
-                    set_error!(ProcC, "{}", e);
+                    e.set_last_error();
                     -1
                 }
             },
             Err(e) => {
-                set_error!(ProcC, "{}", e);
+                e.set_last_error();
                 -1
             }
         }
