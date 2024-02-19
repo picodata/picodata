@@ -146,10 +146,10 @@ fn proc_instance_info(instance_id) -> InstanceInfo
     - `replicaset_id`: (MP_STR)
     - `replicaset_uuid`: (MP_STR)
     - `cluster_id`: (MP_STR)
-    - `current_grade`: (MP_MAP `Grade`), текущее состояние инстанса
+    - `current_grade`: (MP_MAP [`Grade`](../overview/glossary.md#grade)), текущее состояние инстанса
       <br>формат: `MP_MAP { variant = MP_STR, incarnation = MP_UINT}`
       <br>возможные значения `variant`: `Offline`, `Replicated`, `Online`, `Expelled`
-    - `target_grade`: (MP_MAP `Grade`), целевое состояние инстанса
+    - `target_grade`: (MP_MAP [`Grade`](../overview/glossary.md#grade)), целевое состояние инстанса
     - `tier`: (MP_STR)
 
 --------------------------------------------------------------------------------
@@ -285,4 +285,451 @@ fn proc_wait_vclock(target, timeout) -> Vclock
 - (MP_MAP `Vclock`)
 - (MP_NIL, MP_STR) в случае ошибки
 
+
+------------------------------------------------------------------------------—-
+### .proc_apply_schema_change {: #proc_apply_schema_change }
+
+```rust
+fn proc_apply_schema_change(raft_term, raft_index, timeout) -> Result
+```
+
+Дожидается применения raft записи с заданным индексом и термом перед тем как
+делать что-то ещё, чтобы синхронизовать состояние [глобальных системных
+таблиц](./system_tables.md). Возвращает ошибку, если время не хватило.
+
+Применяет текущие изменения глобальной схемы к локальному состоянию инстанса.
+
+Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+в рамках алгоритма отказоустойчивой смены кластерной схемы (подробнее он описан
+[здесь](пока-нигде-не-описан)).
+
+Текущие изменения схемы инстанс читает из системной таблицы
+[_pico_property](./system_tables.md#_pico_property). В ней по ключам
+соответственно `pending_schema_change` и `pending_schema_version` находятся
+описание текущей [DDL](https://ru.wikipedia.org/wiki/Data_Definition_Language)
+операции и версия глобальной схемы после применения этой операции.
+
+В случае если изменение не применимо на текущем инстансе из-за конфликта
+хранимых данных, в ответ посылается сообщение с причиной конфликта.
+
+Параметры:
+
+- `raft_term`: (MP_INT)
+- `raft_index`: (MP_INT)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+Возвращаемое значение:
+
+- (MP_STR `Ok`)
+- (MP_MAP, `{ "Abort": { "reason": MP_STR } }`) в случае ошибки
+
+
+------------------------------------------------------------------------------—-
+### .proc_replication {: #proc_replication }
+
+```rust
+fn proc_replication(is_master, replicaset_peers) -> Lsn
+```
+
+Обновляет конфигурацию топологии репликации текущего инстанса с остальными
+инстансами из одного репликасета.
+
+Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+в рамках алгоритма автоматической смены топологии кластера (подробнее он описан
+[здесь](пока-нигде-не-описан)).
+
+Первоисточником принадлежности инстанса к тому или иному репликасету является
+информация в системной таблице [_pico_instance](./system_tables.md#_pico_instance),
+однако при вызове этой хранимой процедуры список адресов инстансев указывается
+явно из-за ограничений на репликацию системных таблиц: так как данные системных
+таблиц распространяются через механизм репликации, его нужно настроить перед
+тем, как данные смогут реплицироваться.
+
+Пикодата использует full-mesh тополгию репликации, при которой каждая реплика
+поддерживает соединение с каждой другой репликой. При этом
+[мастер-реплика](../overview/glossary.md#replicaset) в каждом репликасете только
+одна. Признак того, что текущая реплика должна стать мастером передаётся
+соответствующим параметром.
+
+Подробнее про механизм репликации можно прочитать
+[здесь](https://www.tarantool.io/ru/doc/latest/concepts/replication/).
+
+В случае успешного завершения в ответ посылается [LSN](../overview/glossary.md#lsn)
+текущего инстанса. Эта информация на данный момент используется только для
+отладки.
+
+Параметры:
+
+- `is_master`: (MP_BOOL)
+- `replicaset_peers`: (MP_ARRAY of MP_STR)
+
+Возвращаемое значение:
+
+- (MP_INT)
+
+
+------------------------------------------------------------------------------—-
+### .proc_replication_promote {: #proc_replication_promote }
+
+```rust
+fn proc_replication_promote(vclock, timeout)
+```
+
+Переводит текущий инстанс в состояние [мастер-реплики](../overview/glossary.md#replicaset)
+предварительно синхронизуя его с остальными репликами.
+
+Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+в рамках алгоритма автоматической смены текущего мастера репликасета
+(подробнее он описан [здесь](пока-нигде-не-описан)).
+
+Получив такой запрос инстанс дожидается пока его локальный
+[vclock](../overview/glossary.md#vclock) не догонит vclock предыдущей
+мастер-реплики указанный в параметрах, или не закончится отведённое на это время.
+Vclock предыдущего мастера governor получает после вызова на ней [#proc_replication_demote].
+
+Синхронизация происходит в фоновом режиме засчёт механизма репликации.
+Смотри [#proc_replication] о том, как в picodata настраивается репликация.
+
+Параметры:
+
+- `vclock`: (MP_MAP `Vclock`)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+
+------------------------------------------------------------------------------—-
+### .proc_replication_demote {: #proc_replication_demote }
+
+```rust
+fn proc_replication_demote() -> Vclock
+```
+
+Переводит текущий инстанс в состояние [резервной реплики](../overview/glossary.md#replicaset).
+
+Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+в рамках алгоритма автоматической смены текущего мастера репликасета
+(подробнее он описан [здесь](пока-нигде-не-описан)).
+
+Получив такой запрос инстанс сразу переходит в read-only режим и отправляет в
+ответ текущее значение своего [vclock](../overview/glossary.md#vclock), которое
+дальше используется для синхронизации новой мастер-реплики (см. [#proc_replication_promote]).
+
+Смотри [#proc_replication] о том, как в picodata настраивается репликация.
+
+Параметры:
+
+- `vclock`: (MP_MAP ключ: MP_INT, значение: MP_INT)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+Возвращаемое значение:
+
+- (MP_MAP `Vclock`)
+
+
+------------------------------------------------------------------------------—-
+### .proc_sharding {: #proc_sharding }
+
+```rust
+fn proc_sharding(raft_term, raft_index, timeout, do_reconfigure)
+```
+
+Дожидается применения raft записи с заданным индексом и термом перед тем как
+делать что-то ещё, чтобы синхронизовать состояние [глобальных системных
+таблиц](./system_tables.md). Возвращает ошибку, если время не хватило.
+
+Обновляет конфигурацию [шардирования данных](../overview/glossary.md#vshard)
+между [репликасетами](../overview/glossary.md#replicaset).
+
+Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+в рамках алгоритма автоматической смены топологии кластера (подробнее он описан
+[здесь](пока-нигде-не-описан)).
+
+**ОСТОРОЖНО:** детали реализации и параметры запроса с большой вероятностью
+скоро устареют.
+
+Конфигурация распределения [бакетов](../overview/glossary.md#bucket) на данный
+момент хранится в системной таблице [_pico_property](./system_tables.md#_pico_property)
+по ключу `target_vshard_config`.
+
+Параметр `do_reconfigure` указывает, нужно ли обновлять конфигурацию, в случае
+если она уже применена на текущем инстансе, о чём говорит наличие луа переменной
+`pico._vshard_is_configured`.
+
+Параметры:
+
+- `raft_term`: (MP_INT)
+- `raft_index`: (MP_INT)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+- `do_reconfigure` (MP_BOOL)
+
+
+------------------------------------------------------------------------------—-
+### .proc_sharding_bootstrap {: #proc_sharding_bootstrap }
+
+```rust
+fn proc_sharding_bootstrap(raft_term, raft_index, timeout)
+```
+
+Дожидается применения raft записи с заданным индексом и термом перед тем как
+делать что-то ещё, чтобы синхронизовать состояние [глобальных системных
+таблиц](./system_tables.md). Возвращает ошибку, если время не хватило.
+
+Инициирует распределение [бакетов](../overview/glossary.md#bucket)
+между [репликасетами](../overview/glossary.md#replicaset).
+
+Этy хранимую процедуру вызывает только [governor](../overview/glossary.md#governor)
+в рамках алгоритма автоматической смены топологии кластера (подробнее он описан
+[здесь](пока-нигде-не-описан)).
+
+За жизненный цикл кластера эта процедуры вызывается ровно один раз как
+только в кластере появляется первый репликасет удовлетворяющий соответствующему
+[фактору репликации](../overview/glossary.md#replication_factor).
+
+Параметры:
+
+- `raft_term`: (MP_INT)
+- `raft_index`: (MP_INT)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+
+------------------------------------------------------------------------------—-
+### .proc_raft_snapshot_next_chunk {: #proc_raft_snapshot_next_chunk }
+
+```rust
+fn proc_raft_snapshot_next_chunk(raft_term, raft_index, snapshot_position)
+```
+
+Возвращает следующий отрезок данных [raft снапшота](../overview/glossary.md#snapshot).
+
+Этy хранимую процедуру вызывают только инстансы с ролью [raft follower](../overview/glossary.md#node_states)
+в рамках процесса [актуализации raft журнала](../overview/glossary.md#actualization).
+
+Текущий инстанс проверяет наличие снапшота соответствующего состоянию raft
+журнала на момент, когда актуальными были указанные [терм](../overview/glossary.md#term)
+и [индекс](../overview/glossary.md#log_replication). При этом снапшот должен
+существовать на момент вызова этой процедуры, так как он создаётся автоматически
+когда raft лидер получает запрос на актуализацию raft журнала и обнаруживает,
+что его журнал был [компактизирован](../overview/glossary.md#raft_log_compaction).
+
+Снапшот (на момент написания этого текста) представляет из себя
+последовательность кортежей [глобальных таблиц](../overview/glossary.md#table),
+как системных так и пользовательских. В этой последовательности кортежи
+сгруппированны по таблицам и упорядочены в соответствие с первичными ключами таблиц.
+Последовательность таблиц в снапшоте детерминирована и совпадает между разными
+версиями снапшотов.
+
+Следующий отрезок снапшота определяется параметрами: идентификатор последней таблицы
+кортежи которой были получены в предыдущем отрезке, и количество кортежей этой
+таблицы полученных за все предыдущие отрезки снапшота.
+
+Параметры:
+
+- `raft_term`: (MP_INT)
+- `raft_index`: (MP_INT)
+- `snapshot_position`: (MP_MAP `SnapshotPosition`)
+    - `table_id`: MP_INT
+    - `tuple_offset`: MP_INT
+
+Возвращаемое значение:
+
+- (MP_MAP `SnapshotData`)
+    - `schema_version`: MP_INT
+
+    - `space_dumps`: MP_ARRAY:
+        - MP_MAP:
+            - `table_id`: MP_INT
+            - `tuples`: MP_ARRAY of MP_ARRAY "сырые" кортежы таблицы
+
+    - `next_position`: MP_NIL | MP_MAP `SnapshotPosition` (см. выше)
+
+
+------------------------------------------------------------------------------—-
+### .proc_cas {: #proc_cas }
+
+```rust
+fn proc_cas(cluster_id, predicate, op, as_user) -> (RaftIndex, RaftTerm)
+```
+
+Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
+противном случае немедленно возвращает ошибку.
+
+Исполняет [кластерную compare-and-swap](../overview/glossary.md#cas) операцию.
+
+Проверяет предикат. Если проверка не выявляет конфликтов, то добавляет
+новую запись в raft-журнал и возвращает её индекс (пока ещё не зафиксированный в
+кластере). Операции применяется только для [глобальных таблиц](../overview/glossary.md#table)
+и работает на всем кластере.
+
+Предикат состоит из трёх частей:
+
+- индекс записи в [raft журнале](../overview/glossary.md#log_replication);
+- номера [терма](../overview/glossary.md#term);
+- диапазона значений самого проверяемого параметра (ranges).
+
+Параметры:
+
+- `cluster_id`: (MP_STR)
+- `predicate`: (MP_MAP `CasPredicate`)
+- `op`: (MP_MAP `Op`)
+- `as_user`: (MP_INT)
+
+Возвращаемое значение:
+
+- (MP_INT raft индекс)
+- (MP_INT raft терм)
+
+
+------------------------------------------------------------------------------—-
+### .proc_raft_interact {: #proc_raft_interact }
+
+```rust
+fn proc_raft_interact(raft_messages)
+```
+
+Этy хранимую процедуру вызывают все инстансы Picodata для передачи внутренних
+сообщений друг другу в рамках реализации алгоритма [raft](../overview/glossary.md#raft).
+
+Параметры:
+
+- `raft_messages`: (MP_ARRAY of MP_ARRAY)
+
+
+------------------------------------------------------------------------------—-
+### .proc_discover {: #proc_discover }
+
+```rust
+fn proc_discover(request, receiver)
+```
+
+Этy хранимую процедуру вызывают инстансы Picodata во время старта с пустым
+состоянием ([bootstrap](../overview/glossary.md#bootstrap)) в рамках реализации
+алгоритма [discovery](./discovery.md).
+
+Параметры:
+
+- `request`: (MP_MAP):
+    - `tmp_id`: (MP_STR)
+    - `peers`: (MP_ARRAY of MP_STR)
+- `receiver`: (MP_STR) адрес по которому достигнут текущий инстанс
+
+Возвращаемое значение:
+
+- (MP_MAP)
+    - `LeaderElection`: (MP_MAP) в случае если алгоритм продолжается
+        - `tmp_id`: (MP_STR)
+        - `peers`: (MP_ARRAY of MP_STR)
+
+    - `Done`: (MP_MAP): в случае если результат уже известен
+        - `leader_address`: (MP_STR): адрес лидера
+
+
+------------------------------------------------------------------------------—-
+### .proc_raft_join {: #proc_raft_join }
+
+```rust
+fn proc_raft_join(cluster_id, instance_id, replicaset_id, advertise_address, failure_domain, tier)
+```
+
+Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader),
+в противном случае немедленно возвращает ошибку.
+
+Этy хранимую процедуру вызывают инстансы Picodata присоединяющиеся к кластеру,
+то есть ещё не состоящие в [raft-группе](../overview/glossary.md#raft).
+
+Смотри также [жизненный цикл инстанса](../architecture/instance_lifecycle.md#fn_start_join).
+
+Параметры:
+
+- `cluster_id`: (MP_STR),
+- `instance_id`: (MP_STR | MP_NIL),
+- `replicaset_id`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset),
+- `advertise_address`: (MP_STR),
+- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain),
+- `tier`: (MP_STR) идентификатор [тира](../overview/glossary.md#tier),
+
+Возвращаемое значение:
+
+- `instance`: (MP_MAP): кортеж из системной таблицы [_pico_instance](./system_tables.md#_pico_instance),
+                        соответствующий присоединяющемуся инстансу,
+
+- `peer_addresses`: (MP_ARRAY): набор адресов некоторых инстансев кластера
+    - (MP_MAP):
+        - `raft_id`: (MP_INT),
+        - `address`: (MP_STR),
+
+- `box_replication`: (MP_ARRAY of MP_STR): адреса всех реплик в репликасете
+                                           присоединяющегося инстанса
+
+
+------------------------------------------------------------------------------—-
+### .proc_update_instance {: #proc_update_instance }
+
+```rust
+fn proc_update_instance(instance_id, cluster_id, current_grade, target_grade, failure_domain, dont_retry)
+```
+
+Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
+противном случае немедленно возвращает ошибку.
+
+Обновляет информацию об указанном инстансе.
+
+Этy хранимую процедуру вызывают инстансы Picodata уже состоящие в кластере
+чтобы обновить [своё целевое состояние](../overview/glossary.md#grade) при
+перезапуске или в рамках [штатного выключения](../architecture/topology_management.md/#graceful_shutdown).
+
+Лидер получив такой запрос проверяет консистентность параметров (например, что
+новый домен отказа не противоречит конфигурации репликасета), и выполняет
+[CaS](../overview/glossary.md#cas) операцию по применению изменений к глобальной
+системной таблице [_pico_instance](./system_tables.md#_pico_instance).
+
+По умолчанию, если в [raft журнал](../overview/glossary.md#raft) попала
+конфликтующая CaS операция, запрос повторяется.
+
+Параметры:
+
+- `instance_id`: (MP_STR),
+- `cluster_id`: (MP_STR),
+- `current_grade`: (MP_MAP `Grade`), текущее состояние инстанса
+- `target_grade`: (MP_STR `GradeVariant`), целевое состояние инстанса
+- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain),
+- `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
+
+
+------------------------------------------------------------------------------—-
+### .proc_expel {: #proc_expel }
+
+```rust
+fn proc_expel(cluster_id, instance_id)
+```
+
+Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
+противном случае немедленно возвращает ошибку.
+
+Удаляет указанный инстанс из кластера. На его место в будущем может придти
+инстанс с тем же `instance_id`, однако `raft_id` уходящего инстанса больше
+никогда не будет использоваться.
+
+Параметры:
+
+- `cluster_id`: (MP_STR),
+- `instance_id`: (MP_STR),
+
+
+------------------------------------------------------------------------------—-
+### .proc_expel_redirect {: #proc_expel_redirect }
+
+```rust
+fn proc_expel_redirect(cluster_id, instance_id)
+```
+
+Вызывает [proc_expel](#proc_expel) на текущем [raft лидере](../overview/glossary.md#raft_leader).
+
+С большой вероятностью скоро будет удалена.
+
+Параметры:
+
+- `cluster_id`: (MP_STR),
+- `instance_id`: (MP_STR),
+
+
+------------------------------------------------------------------------------—-
 ### to be continued {: #TBC }
