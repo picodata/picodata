@@ -2419,7 +2419,8 @@ mod tests {
             .func(|| 10569)
             .start_non_joinable()
             .unwrap_err();
-        assert_eq!(e.to_string(), "tarantool error: Unsupported: non-joinable fibers which return a value are not supported");
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "box error: Unsupported: non-joinable fibers which return a value are not supported");
 
         // Spawn a non-joinable fiber which immediately exits
         struct ZeroSizedType; // () also works
@@ -2473,7 +2474,7 @@ mod tests {
                 .func(|| {})
                 .defer_non_joinable()
                 .unwrap_err();
-            assert_eq!(e.to_string(), "tarantool error: Unsupported: deferred non-joinable fibers are not supported in current tarantool version (fiber_set_ctx API is required)");
+            assert_eq!(e.to_string(), "box error: Unsupported: deferred non-joinable fibers are not supported in current tarantool version (fiber_set_ctx API is required)");
 
             return;
         }
@@ -2484,7 +2485,8 @@ mod tests {
             .func(|| 10569)
             .defer_non_joinable()
             .unwrap_err();
-        assert_eq!(e.to_string(), "tarantool error: Unsupported: non-joinable fibers which return a value are not supported");
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "box error: Unsupported: non-joinable fibers which return a value are not supported");
 
         if unsafe { has_fiber_id() } {
             // Spawn a non-joinable fiber which immediately exits
@@ -2591,7 +2593,7 @@ mod tests {
             .start()
             .unwrap_err();
         #[rustfmt::skip]
-        assert_eq!(e.to_string(), "tarantool error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
+        assert_eq!(e.to_string(), "box error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
 
         let e = Builder::new()
             .name("nul\0byte")
@@ -2599,7 +2601,7 @@ mod tests {
             .defer()
             .unwrap_err();
         #[rustfmt::skip]
-        assert_eq!(e.to_string(), "tarantool error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
+        assert_eq!(e.to_string(), "box error: IllegalParams: fiber name may not contain nul-bytes: nul byte found in provided data at position: 3");
     }
 
     #[rustfmt::skip]

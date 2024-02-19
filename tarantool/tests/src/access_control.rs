@@ -53,13 +53,13 @@ pub fn box_check_access_space() {
         let e = access_control::box_access_check_space(space.id(), PrivType::Read).unwrap_err();
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Read access to space '{space_name}' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Read access to space '{space_name}' is denied for user '{user_name}'"),
         );
 
         let e = access_control::box_access_check_space(space.id(), PrivType::Write).unwrap_err();
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Write access to space '{space_name}' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Write access to space '{space_name}' is denied for user '{user_name}'"),
         );
     }
 
@@ -73,7 +73,7 @@ pub fn box_check_access_space() {
         let e = access_control::box_access_check_space(space.id(), PrivType::Write).unwrap_err();
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Write access to space '{space_name}' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Write access to space '{space_name}' is denied for user '{user_name}'"),
         );
     }
 
@@ -113,7 +113,7 @@ pub fn box_check_access_ddl_space() {
 
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Create access to space 'space_to_be_created' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Create access to space 'space_to_be_created' is denied for user '{user_name}'"),
         );
     }
 
@@ -146,7 +146,7 @@ pub fn box_check_access_ddl_space() {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: {name} access to space '{space_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: {name} access to space '{space_name}' is denied for user '{user_name}'"),
             );
         }
 
@@ -183,7 +183,7 @@ pub fn box_check_access_ddl_space() {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: {name} access to space '{space_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: {name} access to space '{space_name}' is denied for user '{user_name}'"),
             );
         }
 
@@ -258,7 +258,7 @@ pub fn box_check_access_ddl_space() {
 
                 assert_eq!(
                     e.to_string(),
-                    format!("tarantool error: AccessDenied: {name} access to space '{space_name_grant}' is denied for user '{grantee_user_name}'"),
+                    format!("box error: AccessDenied: {name} access to space '{space_name_grant}' is denied for user '{grantee_user_name}'"),
                 );
             }
 
@@ -312,7 +312,7 @@ pub fn box_check_access_ddl_user() {
 
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Create access to user 'user_to_be_created' is denied for user '{actor_user_name}'"),
+            format!("box error: AccessDenied: Create access to user 'user_to_be_created' is denied for user '{actor_user_name}'"),
         );
     }
 
@@ -345,7 +345,7 @@ pub fn box_check_access_ddl_user() {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: {name} access to user '{user_name_under_test}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: {name} access to user '{user_name_under_test}' is denied for user '{actor_user_name}'"),
             );
         }
 
@@ -382,7 +382,7 @@ pub fn box_check_access_ddl_user() {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: {name} access to user '{user_name_under_test}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: {name} access to user '{user_name_under_test}' is denied for user '{actor_user_name}'"),
             );
         }
 
@@ -463,7 +463,7 @@ pub fn box_check_access_ddl_user() {
 
                 assert_eq!(
                     e.to_string(),
-                    format!("tarantool error: AccessDenied: {name} access to user '{user_name_grant}' is denied for user '{grantee_user_name}'"),
+                    format!("box error: AccessDenied: {name} access to user '{user_name_grant}' is denied for user '{grantee_user_name}'"),
                 );
             }
 
@@ -524,7 +524,7 @@ pub fn box_check_access_ddl_role() {
 
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Create access to role 'role_to_be_created' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Create access to role 'role_to_be_created' is denied for user '{user_name}'"),
         );
     }
 
@@ -556,7 +556,7 @@ pub fn box_check_access_ddl_role() {
 
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
         );
     }
 
@@ -590,7 +590,7 @@ pub fn box_check_access_ddl_role() {
 
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
         );
     }
 
@@ -651,7 +651,7 @@ pub fn box_check_access_ddl_function() {
 
         assert_eq!(
             e.to_string(),
-            format!("tarantool error: AccessDenied: Create access to role 'function_to_be_created' is denied for user '{user_name}'"),
+            format!("box error: AccessDenied: Create access to role 'function_to_be_created' is denied for user '{user_name}'"),
         );
     }
 
@@ -690,7 +690,7 @@ pub fn box_check_access_ddl_function() {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: {name} access to function '{func_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: {name} access to function '{func_name}' is denied for user '{user_name}'"),
             );
         }
 
@@ -727,7 +727,7 @@ pub fn box_check_access_ddl_function() {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: {name} access to function '{func_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: {name} access to function '{func_name}' is denied for user '{user_name}'"),
             );
         }
 

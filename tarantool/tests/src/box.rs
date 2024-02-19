@@ -34,7 +34,7 @@ pub fn space_cache_invalidated() {
     // `space` is invalid due to stale cache
     let space = Space::find_cached(SPACE_NAME).unwrap();
     let msg = space.get(&[1]).unwrap_err().to_string();
-    const HEAD: &str = "tarantool error: NoSuchSpace: Space '";
+    const HEAD: &str = "box error: NoSuchSpace: Space '";
     const TAIL: &str = "' does not exist";
     assert_eq!(&msg[..HEAD.len()], HEAD);
     assert_eq!(&msg[msg.len() - TAIL.len()..], TAIL);
@@ -74,7 +74,7 @@ pub fn index_cache_invalidated() {
     let index = space.index_cached(INDEX_NAME).unwrap();
     assert_eq!(
         index.get(&[1]).unwrap_err().to_string(),
-        format!("tarantool error: NoSuchIndexID: No index #0 is defined in space '{SPACE_NAME}'")
+        format!("box error: NoSuchIndexID: No index #0 is defined in space '{SPACE_NAME}'")
     );
 
     // refresh the cache
@@ -1009,7 +1009,7 @@ pub fn fully_temporary_space() {
         .unwrap_err();
     assert_eq!(
         err.to_string(),
-        "tarantool error: Readonly: Can't modify data on a read-only instance - box.cfg.read_only is true"
+        "box error: Readonly: Can't modify data on a read-only instance - box.cfg.read_only is true"
     );
 
     // But fully-temporary space can

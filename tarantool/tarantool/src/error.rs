@@ -44,8 +44,8 @@ pub type TimeoutError<E> = crate::fiber::r#async::timeout::Error<E>;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("tarantool error: {0}")]
-    Tarantool(TarantoolError),
+    #[error("box error: {0}")]
+    Tarantool(BoxError),
 
     #[error("io error: {0}")]
     IO(#[from] io::Error),
@@ -81,12 +81,8 @@ pub enum Error {
     /// answers to the client in case of faulty request or an error
     /// during request execution on the server side.
     #[error("server responded with error: {0}")]
-    Remote(TarantoolError),
+    Remote(BoxError),
 
-    /// The error is wrapped in a [`Arc`], because some libraries require
-    /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
-    ///
-    /// [`Rc`]: std::rc::Rc
     #[error("{0}")]
     Protocol(#[from] crate::network::protocol::ProtocolError),
 
@@ -147,7 +143,7 @@ impl Error {
     /// Returns the name of the variant as it is spelled in the source code.
     pub const fn variant_name(&self) -> &'static str {
         match self {
-            Self::Tarantool(_) => "Tarantool",
+            Self::Tarantool(_) => "Box",
             Self::IO(_) => "IO",
             Self::Encode(_) => "Encode",
             Self::Decode { .. } => "Decode",
@@ -232,12 +228,16 @@ impl From<std::string::FromUtf8Error> for Error {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TarantoolError
+// BoxError
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Settable by Tarantool error type
+/// Structured info about an error which can happen as a result of an internal
+/// API or a remote procedure call.
+///
+/// Can also be used in user code to return structured error info from stored
+/// procedures.
 #[derive(Debug, Clone, Default)]
-pub struct TarantoolError {
+pub struct BoxError {
     pub(crate) code: u32,
     pub(crate) message: Option<Box<str>>,
     pub(crate) error_type: Option<Box<str>>,
@@ -245,10 +245,13 @@ pub struct TarantoolError {
     pub(crate) file: Option<Box<str>>,
     pub(crate) line: Option<u32>,
     pub(crate) fields: HashMap<Box<str>, rmpv::Value>,
-    pub(crate) cause: Option<Box<TarantoolError>>,
+    pub(crate) cause: Option<Box<BoxError>>,
 }
 
-impl TarantoolError {
+// TODO mark this as deprecated
+pub type TarantoolError = BoxError;
+
+impl BoxError {
     /// Tries to get the information about the last API call error. If error was not set
     /// returns `Ok(())`
     #[inline]
@@ -263,7 +266,7 @@ impl TarantoolError {
         Err(unsafe { Self::from_ptr(error_ptr) })
     }
 
-    /// Create a `TarantoolError` from a poniter to the underlying struct.
+    /// Create a `BoxError` from a poniter to the underlying struct.
     ///
     /// Use [`Self::maybe_last`] to automatically get the last error set by tarantool.
     ///
@@ -286,7 +289,7 @@ impl TarantoolError {
         // If they don't match, we just fallback to not extracting the source
         // location.
 
-        TarantoolError {
+        Self {
             code,
             message: Some(message),
             error_type: Some(error_type),
@@ -301,7 +304,7 @@ impl TarantoolError {
     /// Get the information about the last API call error.
     #[inline(always)]
     pub fn last() -> Self {
-        TarantoolError::maybe_last().err().unwrap()
+        Self::maybe_last().err().unwrap()
     }
 
     /// Return IPROTO error code
@@ -361,17 +364,17 @@ impl TarantoolError {
     }
 }
 
-impl Display for TarantoolError {
+impl Display for BoxError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(code) = TarantoolErrorCode::from_i64(self.code as _) {
             return write!(f, "{:?}: {}", code, self.message());
         }
-        write!(f, "tarantool error #{}: {}", self.code, self.message())
+        write!(f, "box error #{}: {}", self.code, self.message())
     }
 }
 
-impl From<TarantoolError> for Error {
-    fn from(error: TarantoolError) -> Self {
+impl From<BoxError> for Error {
+    fn from(error: BoxError) -> Self {
         Error::Tarantool(error)
     }
 }
@@ -668,11 +671,11 @@ pub fn clear_error() {
 ///
 /// # Example:
 /// ```rust
-/// # use tarantool::error::{TarantoolErrorCode, TarantoolError};
-/// # fn foo() -> Result<(), tarantool::error::TarantoolError> {
+/// # use tarantool::error::{TarantoolErrorCode, BoxError};
+/// # fn foo() -> Result<(), tarantool::error::BoxError> {
 /// let reason = "just 'cause";
 /// tarantool::set_error!(TarantoolErrorCode::Unsupported, "this you cannot do, because: {reason}");
-/// return Err(TarantoolError::last());
+/// return Err(BoxError::last());
 /// # }
 /// ```
 #[macro_export]
@@ -696,7 +699,7 @@ macro_rules! set_error {
 /// ```rust
 /// # use tarantool::set_and_get_error;
 /// # use tarantool::error::TarantoolErrorCode;
-/// # fn foo() -> Result<(), tarantool::error::TarantoolError> {
+/// # fn foo() -> Result<(), tarantool::error::BoxError> {
 /// let reason = "just 'cause";
 /// return Err(set_and_get_error!(TarantoolErrorCode::Unsupported, "this you cannot do, because: {reason}"));
 /// # }
@@ -705,7 +708,7 @@ macro_rules! set_error {
 macro_rules! set_and_get_error {
     ($code:expr, $($msg_args:tt)+) => {{
         $crate::set_error!($code, $($msg_args)+);
-        $crate::error::TarantoolError::last()
+        $crate::error::BoxError::last()
     }};
 }
 

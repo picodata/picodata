@@ -46,7 +46,7 @@ use self::tcp::TcpStream;
 use super::protocol::api::{Call, Eval, Execute, Ping, Request};
 use super::protocol::{self, Protocol, SyncIndex};
 use crate::error;
-use crate::error::TarantoolError;
+use crate::error::BoxError;
 use crate::fiber;
 use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
@@ -89,7 +89,7 @@ pub enum ClientError {
     /// The error is wrapped in a [`Arc`], because some libraries require
     /// error types to implement [`Sync`], which isn't implemented for [`Rc`].
     #[error("{0}")]
-    ErrorResponse(TarantoolError),
+    ErrorResponse(BoxError),
 }
 
 impl From<ClientError> for crate::error::Error {

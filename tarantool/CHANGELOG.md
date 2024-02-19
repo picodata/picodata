@@ -18,11 +18,14 @@
 - `fiber::NoYieldsRefCell` a RefCell replacement for fiber-safety. Will cause a
   panic if a value is borrowed across yields. Also displays the source location
   of the last borrow unlike the standard RefCell.
-- `TarantoolError::{file, line, errno, cause, fields}` methods for getting the
+- `BoxError::{file, line, errno, cause, fields}` methods for getting the
   corresponding info from the tarantool error (currently only work for remote errors).
 - `Tuple::to_vec` method to get raw msgpack bytes from `Tuple`.
 
 ### Changed
+- `tarantool::error::TarantoolError` is renamed `BoxError`. The old name is
+  still available via a type alias, and is not yet deprecated so as not to break
+  too much code, but in future it will be deprecated.
 - `network::client::{Client, ReconnClient}::send` now returns one of the new
   error variants: `ConnectionClosed`, `RequestEncode`, `ResponseDecode` or
   `ErrorResponse`.
@@ -36,7 +39,7 @@
   error during authentication.
 - Bug in legacy `net_box` client which resulted in a deadlock when sending
   requests after receiving a previous error response.
-- Use after free when calling `TarantoolError::error_type` in some cases.
+- Use after free when calling `BoxError::error_type` in some cases.
 - Bug in `define_str_enum` in `Decode` implementation - the slice reference was not modified
   after decoding.
 - `tarantool::set_error` used to do undefined behaviour when the message
@@ -45,11 +48,11 @@
 ### Deprecated
 - `network::client::Error` is now a deprecated alias for `network::ClientError`
 - `network::protocol::Error` is now a deprecated alias for `network::ProtocolError`
-- `network::protocol::ResponseError` is now a deprecated alias for `error::TarantoolError`
+- `network::protocol::ResponseError` is now a deprecated alias for `error::BoxError`
 - `error::Encode` is now a deprecated alias for `error::EncodeError`
 
 ### Breaking changes
-- `TarantoolError::error_type` now returns a `&str` instead of `String`.
+- `BoxError::error_type` now returns a `&str` instead of `String`.
 - `network::protocol::Config` struct is now marked as `#[non_exhaustive]`,
   so that we can add fields to it in the future without breaking backwards
   compatibility. Now it should always be constructed like so

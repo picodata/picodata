@@ -1724,7 +1724,7 @@ mod test {
 
         let tuple = Tuple::new(&["foo"]).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
-        assert_eq!(e.to_string(), "tarantool error: KeyPartType: Supplied key type of part 0 does not match index part type: expected unsigned");
+        assert_eq!(e.to_string(), "box error: KeyPartType: Supplied key type of part 0 does not match index part type: expected unsigned");
 
         let tuple = Tuple::new(&[1]).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
@@ -1733,14 +1733,14 @@ mod test {
         // for that.
         assert_eq!(
             e.to_string(),
-            "tarantool error: FieldMissing: Tuple field [3] required by space format is missing"
+            "box error: FieldMissing: Tuple field [3] required by space format is missing"
         );
 
         let tuple = Tuple::new(&(1, [1, 2, 3], "foo")).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         assert_eq!(
             e.to_string(),
-            "tarantool error: FieldMissing: Tuple field [4][2].blabla required by space format is missing"
+            "box error: FieldMissing: Tuple field [4][2].blabla required by space format is missing"
         );
 
         let raw_data = b"\x94\x69\x93\x01\x02\x03\xa3foo\x93\xc0\x81\xa6blabla\x42\x07"; // [0x69, [1, 2, 3], "foo", [null, {blabla: 0x42}, 7]]
@@ -1759,6 +1759,6 @@ mod test {
 
         // This tuple can't be inserted into the space.
         let e = space.insert(&tuple).unwrap_err();
-        assert_eq!(e.to_string(), "tarantool error: FieldType: Tuple field 2 (not-key) type does not match one required by operation: expected array, got string");
+        assert_eq!(e.to_string(), "box error: FieldType: Tuple field 2 (not-key) type does not match one required by operation: expected array, got string");
     }
 }
