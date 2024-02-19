@@ -311,6 +311,8 @@ impl BoxError {
     ///
     /// # Safety
     /// The pointer must point to a valid struct of type `BoxError`.
+    ///
+    /// Also must only be called from the `tx` thread.
     pub unsafe fn from_ptr(error_ptr: NonNull<ffi::BoxError>) -> Self {
         let code = ffi::box_error_code(error_ptr.as_ptr());
 
@@ -320,21 +322,20 @@ impl BoxError {
         let error_type = CStr::from_ptr(ffi::box_error_type(error_ptr.as_ptr()));
         let error_type = error_type.to_string_lossy().into_owned().into_boxed_str();
 
-        // TODO: extract file, line from error_ptr.
-        // We can do this safely, because tarantool uses `struct error` from lua
-        // via ffi, which means there's luajit-ffi type info for this struct.
-        // So we can do a one-time on demand check that our rust struct
-        // definition matches the one lua-ffi knows about.
-        // If they don't match, we just fallback to not extracting the source
-        // location.
+        let mut file = None;
+        let mut line = None;
+        if let Some((f, l)) = error_get_file_line(error_ptr.as_ptr()) {
+            file = Some(f.into());
+            line = Some(l);
+        }
 
         Self {
             code,
             message: Some(message),
             error_type: Some(error_type),
             errno: None,
-            file: None,
-            line: None,
+            file,
+            line,
             fields: HashMap::default(),
             cause: None,
         }
@@ -430,6 +431,49 @@ impl From<BoxError> for Error {
     fn from(error: BoxError) -> Self {
         Error::Tarantool(error)
     }
+}
+
+/// # Safety
+/// Only safe to be called from `tx` thread. Also `ptr` must point at a valid
+/// instance of `ffi::BoxError`.
+unsafe fn error_get_file_line(ptr: *const ffi::BoxError) -> Option<(String, u32)> {
+    #[derive(Clone, Copy)]
+    struct Failure;
+    static mut FIELD_OFFSETS: Option<std::result::Result<(u32, u32), Failure>> = None;
+
+    if FIELD_OFFSETS.is_none() {
+        let lua = crate::lua_state();
+        let res = lua.eval::<(u32, u32)>(
+            "ffi = require 'ffi'
+            return
+                ffi.offsetof('struct error', '_file'),
+                ffi.offsetof('struct error', '_line')",
+        );
+        let (file_ofs, line_ofs) = crate::unwrap_ok_or!(res,
+            Err(e) => {
+                crate::say_warn!("failed getting struct error type info: {e}");
+                FIELD_OFFSETS = Some(Err(Failure));
+                return None;
+            }
+        );
+        FIELD_OFFSETS = Some(Ok((file_ofs, line_ofs)));
+    }
+    let (file_ofs, line_ofs) = crate::unwrap_ok_or!(
+        FIELD_OFFSETS.expect("always Some at this point"),
+        Err(Failure) => {
+            return None;
+        }
+    );
+
+    let ptr = ptr.cast::<u8>();
+    // TODO: check that struct error::_file is an array of bytes via lua-jit's ffi.typeinfo
+    let file_ptr = ptr.add(file_ofs as _).cast::<std::ffi::c_char>();
+    let file = CStr::from_ptr(file_ptr).to_string_lossy().into_owned();
+    // TODO: check that struct error::_line has type u32 via lua-jit's ffi.typeinfo
+    let line_ptr = ptr.add(line_ofs as _).cast::<u32>();
+    let line = *line_ptr;
+
+    Some((file, line))
 }
 
 /// Sets the last tarantool error. The `file_line` specifies source location to
@@ -846,6 +890,90 @@ mod tests {
             let e = BoxError::last();
             assert_eq!(e.to_string(), format!("Unknown: %{c}"));
         }
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn set_error_caller_location() {
+        //
+        // If called in a function without `#[track_caller]`, the location of macro call is used
+        //
+        fn no_track_caller() {
+            set_error!(TarantoolErrorCode::Unknown, "custom error");
+        }
+        let line_1 = line!() - 2; // line number where `set_error!` is called above
+
+        no_track_caller();
+        let e = BoxError::last();
+        assert_eq!(e.file(), Some(file!()));
+        assert_eq!(e.line(), Some(line_1));
+
+        //
+        // If called in a function with `#[track_caller]`, the location of the caller is used
+        //
+        #[track_caller]
+        fn with_track_caller() {
+            set_error!(TarantoolErrorCode::Unknown, "custom error");
+        }
+
+        with_track_caller();
+        let line_2 = line!() - 1; // line number where `with_track_caller()` is called above
+
+        let e = BoxError::last();
+        assert_eq!(e.file(), Some(file!()));
+        assert_eq!(e.line(), Some(line_2));
+
+        //
+        // If specified explicitly, the provided values are used
+        //
+        set_last_error(
+            Some(("foobar", 420)),
+            69,
+            crate::c_str!("super custom error"),
+        );
+        let e = BoxError::last();
+        assert_eq!(e.file(), Some("foobar"));
+        assert_eq!(e.line(), Some(420));
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn box_error_location() {
+        //
+        // If called in a function without `#[track_caller]`, the location where the error is constructed is used
+        //
+        fn no_track_caller() {
+            let e = BoxError::new(69105_u32, "too many leaves");
+            e.set_last();
+        }
+        let line_1 = line!() - 3; // line number where `BoxError` is constructed above
+
+        no_track_caller();
+        let e = BoxError::last();
+        assert_eq!(e.file(), Some(file!()));
+        assert_eq!(e.line(), Some(line_1));
+
+        //
+        // If called in a function with `#[track_caller]`, the location of the caller is used
+        //
+        #[track_caller]
+        fn with_track_caller() {
+            let e = BoxError::new(69105_u32, "too many leaves");
+            e.set_last();
+        }
+
+        with_track_caller();
+        let line_2 = line!() - 1; // line number where `with_track_caller()` is called above
+
+        let e = BoxError::last();
+        assert_eq!(e.file(), Some(file!()));
+        assert_eq!(e.line(), Some(line_2));
+
+        //
+        // If specified explicitly, the provided values are used
+        //
+        BoxError::with_location(69105_u32, "too many leaves", "nice", 69).set_last();
+        let e = BoxError::last();
+        assert_eq!(e.file(), Some("nice"));
+        assert_eq!(e.line(), Some(69));
     }
 
     #[crate::test(tarantool = "crate")]
