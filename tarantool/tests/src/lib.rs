@@ -31,7 +31,6 @@ mod datetime;
 mod decimal;
 mod define_str_enum;
 mod enums;
-mod error;
 mod fiber;
 mod latch;
 mod net_box;
@@ -474,7 +473,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tuple::to_and_from_lua,
                 tuple::tuple_debug_fmt,
                 tuple::tuple_buffer_from_vec_fail,
-                error::error_last,
                 coio::coio_accept,
                 coio::coio_read_write,
                 coio::coio_call,
