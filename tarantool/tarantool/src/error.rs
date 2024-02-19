@@ -30,6 +30,7 @@ use rmp::encode::ValueWriteError;
 use crate::ffi::tarantool as ffi;
 use crate::tlua::LuaError;
 use crate::transaction::TransactionError;
+use crate::util::to_cstring_lossy;
 
 /// A specialized [`Result`] type for the crate
 pub type Result<T> = std::result::Result<T, Error>;
@@ -190,14 +191,15 @@ where
     Error: From<E>,
 {
     #[inline]
+    #[track_caller]
     fn from(e: TransactionError<E>) -> Self {
         match e {
             TransactionError::FailedToCommit(e) => e.into(),
             TransactionError::FailedToRollback(e) => e.into(),
             TransactionError::RolledBack(e) => e.into(),
-            TransactionError::AlreadyStarted => crate::set_and_get_error!(
+            TransactionError::AlreadyStarted => BoxError::new(
                 TarantoolErrorCode::ActiveTransaction,
-                "transaction has already been started"
+                "transaction has already been started",
             )
             .into(),
         }
@@ -209,11 +211,10 @@ where
     Error: From<E>,
 {
     #[inline]
+    #[track_caller]
     fn from(e: TimeoutError<E>) -> Self {
         match e {
-            TimeoutError::Expired => {
-                crate::set_and_get_error!(TarantoolErrorCode::Timeout, "timeout").into()
-            }
+            TimeoutError::Expired => BoxError::new(TarantoolErrorCode::Timeout, "timeout").into(),
             TimeoutError::Failed(e) => e.into(),
         }
     }
@@ -252,6 +253,44 @@ pub struct BoxError {
 pub type TarantoolError = BoxError;
 
 impl BoxError {
+    /// Construct an error object with given error `code` and `message`. The
+    /// resulting error will have `file` & `line` fields set from the caller's
+    /// location.
+    ///
+    /// Use [`Self::with_location`] to override error location.
+    #[inline(always)]
+    #[track_caller]
+    pub fn new(code: impl Into<u32>, message: impl Into<String>) -> Self {
+        let location = std::panic::Location::caller();
+        Self {
+            code: code.into(),
+            message: Some(message.into().into_boxed_str()),
+            file: Some(location.file().into()),
+            line: Some(location.line()),
+            ..Default::default()
+        }
+    }
+
+    /// Construct an error object with given error `code` and `message` and
+    /// source location.
+    ///
+    /// Use [`Self::new`] to use the caller's location.
+    #[inline(always)]
+    pub fn with_location(
+        code: impl Into<u32>,
+        message: impl Into<String>,
+        file: impl Into<String>,
+        line: u32,
+    ) -> Self {
+        Self {
+            code: code.into(),
+            message: Some(message.into().into_boxed_str()),
+            file: Some(file.into().into_boxed_str()),
+            line: Some(line),
+            ..Default::default()
+        }
+    }
+
     /// Tries to get the information about the last API call error. If error was not set
     /// returns `Ok(())`
     #[inline]
@@ -305,6 +344,20 @@ impl BoxError {
     #[inline(always)]
     pub fn last() -> Self {
         Self::maybe_last().err().unwrap()
+    }
+
+    /// Set `self` as the last API call error.
+    /// Useful when returning errors from stored prcoedures.
+    #[inline(always)]
+    #[track_caller]
+    pub fn set_last(&self) {
+        let mut loc = None;
+        if let Some(f) = self.file() {
+            debug_assert!(self.line().is_some());
+            loc = Some((f, self.line().unwrap_or(0)));
+        }
+        let message = to_cstring_lossy(self.message());
+        set_last_error(loc, self.error_code(), &message);
     }
 
     /// Return IPROTO error code
@@ -376,6 +429,34 @@ impl Display for BoxError {
 impl From<BoxError> for Error {
     fn from(error: BoxError) -> Self {
         Error::Tarantool(error)
+    }
+}
+
+/// Sets the last tarantool error. The `file_line` specifies source location to
+/// be set for the error. If it is `None`, the location of the caller is used
+/// (see [`std::panic::Location::caller`] for details on caller location).
+#[inline]
+#[track_caller]
+pub fn set_last_error(file_line: Option<(&str, u32)>, code: u32, message: &CStr) {
+    let (file, line) = crate::unwrap_or!(file_line, {
+        let file_line = std::panic::Location::caller();
+        (file_line.file(), file_line.line())
+    });
+
+    // XXX: we allocate memory each time this is called (sometimes even more
+    // than once). This is very sad...
+    let file = to_cstring_lossy(file);
+
+    // Safety: this is safe, because all pointers point to nul-terimnated
+    // strings, and the "%s" format works with any nul-terimnated string.
+    unsafe {
+        ffi::box_error_set(
+            file.as_ptr(),
+            line,
+            code,
+            crate::c_ptr!("%s"),
+            message.as_ptr(),
+        );
     }
 }
 
@@ -658,6 +739,13 @@ impl TarantoolErrorCode {
     }
 }
 
+impl From<TarantoolErrorCode> for u32 {
+    #[inline(always)]
+    fn from(code: TarantoolErrorCode) -> u32 {
+        code as _
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ...
 ////////////////////////////////////////////////////////////////////////////////
@@ -683,13 +771,7 @@ macro_rules! set_error {
     ($code:expr, $($msg_args:tt)+) => {{
         let msg = ::std::fmt::format(::std::format_args!($($msg_args)+));
         let msg = ::std::ffi::CString::new(msg).unwrap();
-        // `msg` must outlive `msg_ptr`
-        let msg_ptr = msg.as_ptr().cast::<::std::ffi::c_char>();
-        let file = $crate::c_ptr!(::std::file!());
-        #[allow(unused_unsafe)]
-        unsafe {
-            $crate::ffi::tarantool::box_error_set(file as _, ::std::line!(), $code as u32, $crate::c_ptr!("%s"), msg_ptr)
-        }
+        $crate::error::set_last_error(None, $code as _, &msg);
     }};
 }
 
@@ -705,6 +787,7 @@ macro_rules! set_error {
 /// # }
 /// ```
 #[macro_export]
+#[deprecated = "use `BoxError::new` instead"]
 macro_rules! set_and_get_error {
     ($code:expr, $($msg_args:tt)+) => {{
         $crate::set_error!($code, $($msg_args)+);
@@ -750,7 +833,8 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn set_error_expands_format() {
         let msg = "my message";
-        let e = set_and_get_error!(TarantoolErrorCode::Unknown, "{msg}");
+        set_error!(TarantoolErrorCode::Unknown, "{msg}");
+        let e = BoxError::last();
         assert_eq!(e.to_string(), "Unknown: my message");
     }
 
@@ -758,7 +842,8 @@ mod tests {
     fn set_error_format_sequences() {
         for c in b'a'..=b'z' {
             let c = c as char;
-            let e = set_and_get_error!(TarantoolErrorCode::Unknown, "%{c}");
+            set_error!(TarantoolErrorCode::Unknown, "%{c}");
+            let e = BoxError::last();
             assert_eq!(e.to_string(), format!("Unknown: %{c}"));
         }
     }
@@ -783,7 +868,8 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn tarantool_error_use_after_free() {
-        let e = set_and_get_error!(TarantoolErrorCode::Unknown, "foo");
+        set_error!(TarantoolErrorCode::Unknown, "foo");
+        let e = BoxError::last();
         assert_eq!(e.error_type(), "ClientError");
         clear_error();
         // This used to crash before the fix

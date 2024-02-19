@@ -18,9 +18,16 @@
 - `fiber::NoYieldsRefCell` a RefCell replacement for fiber-safety. Will cause a
   panic if a value is borrowed across yields. Also displays the source location
   of the last borrow unlike the standard RefCell.
+- `Tuple::to_vec` method to get raw msgpack bytes from `Tuple`.
 - `BoxError::{file, line, errno, cause, fields}` methods for getting the
   corresponding info from the tarantool error (currently only work for remote errors).
-- `Tuple::to_vec` method to get raw msgpack bytes from `Tuple`.
+- `BoxError::{new, with_location}` constructors useful for returning structured
+  error info from stored procedures.
+- `BoxError::set_last` method for setting the info about the last error in the
+  current fiber. Useful for returning structured error info from stored procedures.
+- `error::set_last_error` function. It's similar to `tarantool::set_error!` macro,
+  but the new function also supports specifying an explicit source location, while
+  the old macro always uses the caller's location.
 
 ### Changed
 - `tarantool::error::TarantoolError` is renamed `BoxError`. The old name is
@@ -31,6 +38,9 @@
   `ErrorResponse`.
 - `tarantool::error::Error::Remote` variant is no longer disabled without the
   `net_box` feature.
+- `tarantool::set_error!` macro will now use the caller's location, so if it's
+  called from a function marked `#[track_caller]`, the log message will contain
+  that function's call site, instead of the location of the macro call itself.
 
 ### Fixed
 - `network::ReconnClient::with_config` constructor now has `pub` visibility,
@@ -50,6 +60,7 @@
 - `network::protocol::Error` is now a deprecated alias for `network::ProtocolError`
 - `network::protocol::ResponseError` is now a deprecated alias for `error::BoxError`
 - `error::Encode` is now a deprecated alias for `error::EncodeError`
+- `tarantool::set_and_get_error!` macro is deprecated in favor of `BoxError::new`.
 
 ### Breaking changes
 - `BoxError::error_type` now returns a `&str` instead of `String`.

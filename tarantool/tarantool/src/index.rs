@@ -516,16 +516,17 @@ impl Index {
     #[inline]
     pub fn meta(&self) -> Result<Metadata, Error> {
         let sys_space: Space = SystemSpace::Index.into();
-        let tuple = sys_space
-            .get(&[self.space_id, self.index_id])?
-            .ok_or_else(|| {
-                crate::set_and_get_error!(
-                    TarantoolErrorCode::NoSuchIndexID,
+        let tuple = sys_space.get(&[self.space_id, self.index_id])?;
+        let Some(tuple) = tuple else {
+            return Err(crate::error::BoxError::new(
+                TarantoolErrorCode::NoSuchIndexID,
+                format!(
                     "index #{} for space #{} not found",
-                    self.index_id,
-                    self.space_id,
-                )
-            })?;
+                    self.index_id, self.space_id,
+                ),
+            )
+            .into());
+        };
         tuple.decode::<Metadata>()
     }
 
