@@ -46,6 +46,8 @@
   that function's call site, instead of the location of the macro call itself.
 
 ### Fixed
+- Used to panic when implicitly converting a 64-bit integer to a `Decimal`
+  inside an arithmetic operation, due to global context contention.
 - `network::ReconnClient::with_config` constructor now has `pub` visibility,
   so it's now possible to use it with non-default credentials.
 - Bug in legacy `net_box` client which resulted in a deadlock when receiving an

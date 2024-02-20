@@ -186,7 +186,10 @@ impl Decimal {
         if self.inner.digits() + delta as u32 > ffi::DECIMAL_MAX_DIGITS {
             return None;
         }
-        with_context(|ctx| ctx.rescale(&mut self.inner, &Self::from(-(scale as i32)).inner))?;
+        // This `Self::from()` call may also acquire the context, so it must
+        // not be done in the callback passed into `with_context`.
+        let scale = Self::from(-(scale as i32));
+        with_context(|ctx| ctx.rescale(&mut self.inner, &scale.inner))?;
         Self::try_from(self.inner).ok()
     }
 
@@ -230,7 +233,10 @@ impl Decimal {
     /// is out of range.
     #[inline(always)]
     pub fn pow(mut self, pow: impl Into<Self>) -> Option<Self> {
-        with_context(|ctx| ctx.pow(&mut self.inner, &pow.into().inner))?;
+        // This `.into()` call may also acquire the context, so it must
+        // not be done in the callback passed into `with_context`.
+        let pow = pow.into();
+        with_context(|ctx| ctx.pow(&mut self.inner, &pow.inner))?;
         Self::try_from(self.inner).ok()
     }
 
@@ -301,6 +307,9 @@ thread_local! {
     static CONTEXT: Lazy<std::cell::RefCell<Context>> = Lazy::new(std::cell::RefCell::default);
 }
 
+/// # Panics
+///
+/// If callback also borrows the static `CONTEXT`.
 #[inline(always)]
 fn with_context<F, T>(f: F) -> Option<T>
 where
@@ -480,7 +489,10 @@ macro_rules! impl_bin_op {
             #[inline(always)]
             #[track_caller]
             pub fn $m(mut self, rhs: impl Into<Self>) -> Option<Self> {
-                with_context(|ctx| ctx.$op(&mut self.inner, &rhs.into().inner))?;
+                // This `.into()` call may also acquire the context, so it must
+                // not be done in the callback passed into `with_context`.
+                let rhs = rhs.into();
+                with_context(|ctx| ctx.$op(&mut self.inner, &rhs.inner))?;
                 Self::try_from(self.inner).ok()
             }
         }
@@ -763,6 +775,7 @@ macro_rules! impl_try_into_int {
             impl std::convert::TryFrom<Decimal> for $t {
                 type Error = DecimalToIntError;
 
+                #[inline]
                 fn try_from(dec: Decimal) -> Result<Self, Self::Error> {
                     with_context(|ctx| ctx.$f(dec.inner).ok())
                         .flatten()
@@ -862,6 +875,7 @@ macro_rules! decimal {
 // test
 ////////////////////////////////////////////////////////////////////////////////
 
+#[allow(clippy::modulo_one)]
 #[cfg(test)]
 mod test {
     use super::Decimal;
@@ -1251,5 +1265,74 @@ mod test {
         assert_eq!(decimal!(2).pow(64), Some(decimal!(18446744073709551616)));
         assert_eq!(decimal!(2).pow(-2), Some(decimal!(.25)));
         assert_eq!(decimal!(10).pow(39), None::<Decimal>);
+    }
+
+    #[test]
+    fn no_context_contention() {
+        let _should_not_panic = Decimal::from(1) + 1_usize;
+        let _should_not_panic = Decimal::from(1) + 1_isize;
+        let _should_not_panic = Decimal::from(1) + 1_u64;
+        let _should_not_panic = Decimal::from(1) + 1_i64;
+        let _should_not_panic = Decimal::from(1) + 1_u32;
+        let _should_not_panic = Decimal::from(1) + 1_i32;
+        let _should_not_panic = Decimal::from(1) + 1_u16;
+        let _should_not_panic = Decimal::from(1) + 1_i16;
+        let _should_not_panic = Decimal::from(1) + 1_u8;
+        let _should_not_panic = Decimal::from(1) + 1_i8;
+
+        let _should_not_panic = Decimal::from(1) - 1_usize;
+        let _should_not_panic = Decimal::from(1) - 1_isize;
+        let _should_not_panic = Decimal::from(1) - 1_u64;
+        let _should_not_panic = Decimal::from(1) - 1_i64;
+        let _should_not_panic = Decimal::from(1) - 1_u32;
+        let _should_not_panic = Decimal::from(1) - 1_i32;
+        let _should_not_panic = Decimal::from(1) - 1_u16;
+        let _should_not_panic = Decimal::from(1) - 1_i16;
+        let _should_not_panic = Decimal::from(1) - 1_u8;
+        let _should_not_panic = Decimal::from(1) - 1_i8;
+
+        let _should_not_panic = Decimal::from(1) * 1_usize;
+        let _should_not_panic = Decimal::from(1) * 1_isize;
+        let _should_not_panic = Decimal::from(1) * 1_u64;
+        let _should_not_panic = Decimal::from(1) * 1_i64;
+        let _should_not_panic = Decimal::from(1) * 1_u32;
+        let _should_not_panic = Decimal::from(1) * 1_i32;
+        let _should_not_panic = Decimal::from(1) * 1_u16;
+        let _should_not_panic = Decimal::from(1) * 1_i16;
+        let _should_not_panic = Decimal::from(1) * 1_u8;
+        let _should_not_panic = Decimal::from(1) * 1_i8;
+
+        let _should_not_panic = Decimal::from(1) / 1_usize;
+        let _should_not_panic = Decimal::from(1) / 1_isize;
+        let _should_not_panic = Decimal::from(1) / 1_u64;
+        let _should_not_panic = Decimal::from(1) / 1_i64;
+        let _should_not_panic = Decimal::from(1) / 1_u32;
+        let _should_not_panic = Decimal::from(1) / 1_i32;
+        let _should_not_panic = Decimal::from(1) / 1_u16;
+        let _should_not_panic = Decimal::from(1) / 1_i16;
+        let _should_not_panic = Decimal::from(1) / 1_u8;
+        let _should_not_panic = Decimal::from(1) / 1_i8;
+
+        let _should_not_panic = Decimal::from(1) % 1_usize;
+        let _should_not_panic = Decimal::from(1) % 1_isize;
+        let _should_not_panic = Decimal::from(1) % 1_u64;
+        let _should_not_panic = Decimal::from(1) % 1_i64;
+        let _should_not_panic = Decimal::from(1) % 1_u32;
+        let _should_not_panic = Decimal::from(1) % 1_i32;
+        let _should_not_panic = Decimal::from(1) % 1_u16;
+        let _should_not_panic = Decimal::from(1) % 1_i16;
+        let _should_not_panic = Decimal::from(1) % 1_u8;
+        let _should_not_panic = Decimal::from(1) % 1_i8;
+
+        let _should_not_panic = Decimal::from(1).pow(1_usize);
+        let _should_not_panic = Decimal::from(1).pow(1_isize);
+        let _should_not_panic = Decimal::from(1).pow(1_u64);
+        let _should_not_panic = Decimal::from(1).pow(1_i64);
+        let _should_not_panic = Decimal::from(1).pow(1_u32);
+        let _should_not_panic = Decimal::from(1).pow(1_i32);
+        let _should_not_panic = Decimal::from(1).pow(1_u16);
+        let _should_not_panic = Decimal::from(1).pow(1_i16);
+        let _should_not_panic = Decimal::from(1).pow(1_u8);
+        let _should_not_panic = Decimal::from(1).pow(1_i8);
     }
 }
