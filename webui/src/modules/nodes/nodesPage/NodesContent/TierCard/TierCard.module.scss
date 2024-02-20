@@ -39,22 +39,40 @@ $chevron-column-flex: 0.2;
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: $default-column-flex;
+}
+
+.hiddenColumn {
+  overflow: hidden;
 }
 
 .nameColumn {
+  flex: 1 179px;
   align-items: flex-start;
-  flex: $name-column-flex;
+}
+
+.pluginColumn {
+  flex: 1 167px;
+}
+
+.replicasetsColumn {
+  flex: 1 166px;
+}
+
+.instancesColumn {
+  flex: 1 166px;
+}
+
+.rfColumn {
+  flex: 1 166px;
 }
 
 .canVoterColumn {
-  align-items: flex-start;
-  flex: $can-voter-column-flex;
+  flex: 1 77px;
 }
 
 .chevronColumn {
+  flex: 1 64px;
   justify-content: center;
-  flex: $chevron-column-flex;
   padding: $column-item-vertical-padding calc($column-item-horizontal-padding * 2);
 }
 
@@ -74,6 +92,16 @@ $chevron-column-flex: 0.2;
   line-height: 16px;
   color: $colorTextBlack;
   padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.hiddenValue {
+  width: 100%;
+
+  @include ellipsis;
+}
+
+.pluginValue {
+  text-align: center;
 }
 
 .chevronIcon {

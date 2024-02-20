@@ -7,7 +7,8 @@ export const useHiddenRefs = (refs: React.RefObject<HTMLDivElement>[]) => {
     const newIsHidden = !!refs.find((ref) => {
       return ref.current
         ? ref.current.scrollWidth > ref.current.clientWidth ||
-            ref.current.scrollHeight > ref.current.clientHeight
+            // -1 - хак для текста. Из за шрифта scrollHeight на 1 больше чем нужно
+            ref.current.scrollHeight - 1 > ref.current.clientHeight
         : undefined;
     });
 

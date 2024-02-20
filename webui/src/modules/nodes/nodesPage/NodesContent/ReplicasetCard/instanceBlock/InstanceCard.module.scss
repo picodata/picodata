@@ -4,12 +4,6 @@
 $column-item-vertical-padding: 4px;
 $column-item-horizontal-padding: 8px;
 
-$default-column-flex: 1;
-$name-column-flex: 1.09;
-$failure-domain-column-flex: 1.5;
-$target-grade-column-flex: 0.74;
-$current-grade-column-flex: 0.74;
-$version-column-flex: 0.75;
 $leader-height: 16px;
 
 .cardWrapper {
@@ -19,47 +13,55 @@ $leader-height: 16px;
   border-radius: 4px;
   box-shadow: $elevation1;
   position: relative;
-  overflow: hidden;
 }
 
 .content {
   display: flex;
   justify-content: space-between;
-  column-gap: 24px;
+  column-gap: 10px;
 }
 
 .infoColumn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: $default-column-flex;
+}
+
+.hiddenColumn {
+  overflow: hidden;
 }
 
 .nameColumn {
   align-items: flex-start;
   justify-content: center;
-  flex: $name-column-flex;
+  flex: 1 143px;
 }
 
 .failureDomainColumn {
-  flex: $failure-domain-column-flex;
-  overflow: hidden;
-}
-
-.binaryAddressColumn {
+  flex: 1 198px;
   overflow: hidden;
 }
 
 .targetGradeColumn {
-  flex: $target-grade-column-flex;
+  flex: 1 118px;
 }
 
 .currentGradeColumn {
-  flex: $current-grade-column-flex;
+  flex: 1 118px;
+}
+
+.binaryAddressColumn {
+  flex: 1 135px;
+  overflow: hidden;
+}
+
+.httpAddressColumn {
+  flex: 1 135px;
+  overflow: hidden;
 }
 
 .versionColumn {
-  flex: $version-column-flex;
+  flex: 1 157px;
 }
 
 .label {
@@ -78,6 +80,17 @@ $leader-height: 16px;
   line-height: 16px;
   color: $colorTextBlack;
   padding: $column-item-vertical-padding $column-item-horizontal-padding;
+  text-align: center;
+}
+
+.hiddenValue {
+  width: 100%;
+
+  @include ellipsis;
+}
+
+.startValue {
+  text-align: start;
 }
 
 .domainValue {
@@ -104,8 +117,8 @@ $leader-height: 16px;
   }
 
   .content {
-    padding: 8px calc(16px + $leader-height);
-    column-gap: 24px;
+    padding: 8px 16px 8px calc(16px + $leader-height);
+    column-gap: 10px;
   }
 }
 
@@ -113,8 +126,8 @@ $leader-height: 16px;
   background-color: $colorBgWhite;
 
   .content {
-    padding: 8px calc(8px + $leader-height);
-    column-gap: 16px;
+    padding: 8px 16px 8px calc(16px + $leader-height);
+    column-gap: 10px;
   }
 }
 

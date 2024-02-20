@@ -7,11 +7,6 @@ $column-gap: 24px;
 $column-item-vertical-padding: 4px;
 $column-item-horizontal-padding: 8px;
 
-$default-column-flex: 1;
-$name-column-flex: 0.59;
-$capacity-column-flex: 1.25;
-$chevron-column-flex: 0.27;
-
 .cardWrapper {
   display: flex;
   flex-direction: column;
@@ -31,23 +26,34 @@ $chevron-column-flex: 0.27;
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: $default-column-flex;
+}
+
+.hiddenColumn {
+  overflow: hidden;
 }
 
 .nameColumn {
+  flex: 1 171px;
   align-items: flex-start;
-  flex: $name-column-flex;
+}
+
+.inctancesColumn {
+  flex: 1 326px;
+}
+
+.gradeColumn {
+  flex: 1 135px;
 }
 
 .capacityColumn {
+  flex: 1 288px;
   align-items: flex-start;
-  flex: $capacity-column-flex;
   padding: calc($column-item-vertical-padding * 2) 30px;
 }
 
 .chevronColumn {
+  flex: 1 64px;
   justify-content: center;
-  flex: $chevron-column-flex;
 }
 
 .label {
@@ -66,6 +72,12 @@ $chevron-column-flex: 0.27;
   line-height: 16px;
   color: $colorTextBlack;
   padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.hiddenValue {
+  width: 100%;
+
+  @include ellipsis;
 }
 
 .gradeValue {

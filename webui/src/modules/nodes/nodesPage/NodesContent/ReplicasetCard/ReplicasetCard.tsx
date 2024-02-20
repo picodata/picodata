@@ -6,6 +6,7 @@ import { InstanceType } from "shared/entity/instance";
 import { Collapse } from "shared/ui/Collapse/Collapse";
 import { useTranslation } from "shared/intl";
 import { NetworkState } from "shared/components/NetworkState/NetworkState";
+import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 
 import { CapacityProgress } from "../../ClusterInfo/CapacityProgress/CapacityProgress";
 
@@ -47,19 +48,27 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
     return (
       <div className={cn(styles.cardWrapper, styles[theme])} onClick={onClick}>
         <div className={styles.content}>
-          <div className={cn(styles.infoColumn, styles.nameColumn)}>
+          <div
+            className={cn(
+              styles.infoColumn,
+              styles.nameColumn,
+              styles.hiddenColumn
+            )}
+          >
             <div className={styles.label}>
               {replicasetTranslations.name.label}
             </div>
-            <div className={styles.infoValue}>{replicaset.id}</div>
+            <div className={cn(styles.infoValue, styles.hiddenValue)}>
+              <HiddenWrapper>{replicaset.id}</HiddenWrapper>
+            </div>
           </div>
-          <div className={styles.infoColumn}>
+          <div className={cn(styles.infoColumn, styles.inctancesColumn)}>
             <div className={styles.label}>
               {replicasetTranslations.instances.label}
             </div>
             <div className={styles.infoValue}>{replicaset.instanceCount}</div>
           </div>
-          <div className={styles.infoColumn}>
+          <div className={cn(styles.infoColumn, styles.gradeColumn)}>
             <div className={styles.label}>
               {replicasetTranslations.grade.label}
             </div>

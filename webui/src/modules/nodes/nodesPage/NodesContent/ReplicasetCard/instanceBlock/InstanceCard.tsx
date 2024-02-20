@@ -4,6 +4,7 @@ import React, { FC } from "react";
 import { InstanceType } from "shared/entity/instance";
 import { useTranslation } from "shared/intl";
 import { NetworkState } from "shared/components/NetworkState/NetworkState";
+import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 
 import { FailureDomainLabel } from "./FailureDomainLabel/FailureDomainLabel";
 import { IpAddressLabel } from "./IpAddressLabel/IpAddressLabel";
@@ -45,15 +46,35 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
             </div>
           )}
           <div className={styles.content}>
-            <div className={cn(styles.infoColumn, styles.nameColumn)}>
+            <div
+              className={cn(
+                styles.infoColumn,
+                styles.nameColumn,
+                styles.hiddenColumn
+              )}
+            >
               {theme === "primary" && (
                 <div className={styles.label}>
                   {instanceTranslations.name.label}
                 </div>
               )}
-              <div className={styles.value}>{instance.name}</div>
+              <div
+                className={cn(
+                  styles.value,
+                  styles.hiddenValue,
+                  styles.startValue
+                )}
+              >
+                <HiddenWrapper>{instance.name}</HiddenWrapper>
+              </div>
             </div>
-            <div className={cn(styles.infoColumn, styles.failureDomainColumn)}>
+            <div
+              className={cn(
+                styles.infoColumn,
+                styles.failureDomainColumn,
+                styles.hiddenColumn
+              )}
+            >
               <div className={styles.label}>
                 {instanceTranslations.failureDomain.label}
               </div>
@@ -82,24 +103,32 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
                 {instanceTranslations.binaryAddress.label}
               </div>
               <IpAddressLabel
-                className={styles.value}
+                className={cn(styles.value, styles.hiddenValue)}
                 address={instance.binaryAddress}
               />
             </div>
-            <div className={cn(styles.infoColumn)}>
+            <div className={cn(styles.infoColumn, styles.httpAddressColumn)}>
               <div className={styles.label}>
                 {instanceTranslations.httpAddress.label}
               </div>
               <IpAddressLabel
-                className={styles.value}
+                className={cn(styles.value, styles.hiddenValue)}
                 address={instance.httpAddress ?? ""}
               />
             </div>
-            <div className={cn(styles.infoColumn, styles.versionColumn)}>
+            <div
+              className={cn(
+                styles.infoColumn,
+                styles.versionColumn,
+                styles.hiddenValue
+              )}
+            >
               <div className={styles.label}>
                 {instanceTranslations.version.label}
               </div>
-              <div className={styles.value}>{instance.version}</div>
+              <div className={cn(styles.value, styles.hiddenValue)}>
+                <HiddenWrapper>{instance.version}</HiddenWrapper>
+              </div>
             </div>
           </div>
         </div>

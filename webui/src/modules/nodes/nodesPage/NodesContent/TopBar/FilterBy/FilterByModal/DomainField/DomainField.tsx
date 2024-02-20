@@ -55,6 +55,10 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
     return domainValuesOptions.filter((o) => filter.value?.includes(o.value));
   }, [domainValuesOptions, filter.value]);
 
+  const keyValue = filter.key
+    ? { label: filter.key, value: filter.key }
+    : undefined;
+
   return (
     <div className={cn(styles.container, className)}>
       <div className={styles.keyValueField}>
@@ -63,9 +67,7 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
           classNames={{ container: () => styles.valueSelect }}
           isMulti={false}
           placeholder={fieldTranslation.keyController.placeholder}
-          value={
-            filter.key ? { label: filter.key, value: filter.key } : undefined
-          }
+          value={keyValue}
           onChange={(newOptions) => {
             if (!newOptions || Array.isArray(newOptions)) return;
 
@@ -87,6 +89,7 @@ export const DomainField: React.FC<DomainFieldProps> = (props) => {
           isMulti
           placeholder={fieldTranslation.valueController.placeholder}
           value={domainValuesValue}
+          isDisabled={!keyValue}
           onChange={(newOptions) => {
             if (!newOptions || !Array.isArray(newOptions)) return;
 

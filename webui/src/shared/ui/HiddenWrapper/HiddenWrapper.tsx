@@ -44,13 +44,12 @@ export const HiddenWrapper = ({
       <Tooltip
         opacity={1}
         hidden={!isHidden}
-        style={{
-          background: "none",
-          color: "#050505",
-          opacity: 0,
-        }}
         id={id}
         clickable
+        className={styles.tooltip}
+        place="bottom"
+        noArrow
+        offset={0}
       >
         <div className={cn(styles.overlay)}>{children}</div>
       </Tooltip>

@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 
 import { Button } from "shared/ui/Button/Button";
 import { PlusIcon } from "shared/icons/PlusIcon";
@@ -64,6 +64,14 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
     });
   }, [onApply, keyValueFilters]);
 
+  const notSelectedDomains = useMemo(() => {
+    const keys = keyValueFilters.map((keyValue) => keyValue.key);
+
+    return domains.filter((domain) => !keys.includes(domain.key));
+  }, [domains, keyValueFilters]);
+
+  const canAddMoreFilters = !!notSelectedDomains.length;
+
   return (
     <>
       <div className={styles.field}>
@@ -75,11 +83,19 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
         </div>
         <div className={styles.scroll}>
           {keyValueFilters.map((filter, i) => {
+            const currentDomains = domains.filter(
+              (domain) => domain.key === filter.key
+            );
+
             return (
               <DomainField
                 key={filter.id}
                 filter={filter}
-                domains={domains}
+                domains={
+                  currentDomains.length
+                    ? [...notSelectedDomains, ...currentDomains]
+                    : notSelectedDomains
+                }
                 onDelete={
                   i === 0
                     ? undefined
@@ -93,14 +109,17 @@ export const FilterByModal: React.FC<FilterByModalProps> = (props) => {
           })}
         </div>
       </div>
-      <div className={styles.addFilter} onClick={addKeyValueFilter}>
-        <PlusIcon />
-      </div>
+      {canAddMoreFilters && (
+        <div className={styles.addFilter} onClick={addKeyValueFilter}>
+          <PlusIcon />
+        </div>
+      )}
       <div className={styles.footer}>
-        <Button className={styles.apply} onClick={onApplyClick}>
+        <Button size="small" className={styles.apply} onClick={onApplyClick}>
           {modalTranslations.ok}
         </Button>
         <Button
+          size="small"
           className={styles.clear}
           theme="secondary"
           onClick={() =>

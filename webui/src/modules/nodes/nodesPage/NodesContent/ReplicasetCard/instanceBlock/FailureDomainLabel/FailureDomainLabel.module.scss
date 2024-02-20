@@ -2,7 +2,7 @@
 @import 'styles/mixins';
 
 .container {
-  display: flex;
+  display: inline-flex;
   column-gap: 4px;
   align-items: center;
 }

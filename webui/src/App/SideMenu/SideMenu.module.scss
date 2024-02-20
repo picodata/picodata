@@ -17,6 +17,7 @@
   top: 0;
   bottom: 0;
   padding: 40px 16px;
+  z-index: $zIndexSideMenu;
 
   transition: width 0.3s ease-out;
 }

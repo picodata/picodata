@@ -7,6 +7,7 @@ import { SwitchInfo } from "shared/ui/SwitchInfo/SwitchInfo";
 import { Collapse } from "shared/ui/Collapse/Collapse";
 import { InfoNoData } from "shared/ui/InfoNoData/InfoNoData";
 import { useTranslation } from "shared/intl";
+import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
 
 import { ReplicasetCard } from "../ReplicasetCard/ReplicasetCard";
 
@@ -30,35 +31,55 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
   return (
     <div className={styles.cardWrapper} onClick={onClick}>
       <div className={styles.content}>
-        <div className={cn(styles.infoColumn, styles.nameColumn)}>
+        <div
+          className={cn(
+            styles.infoColumn,
+            styles.nameColumn,
+            styles.hiddenColumn
+          )}
+        >
           <div className={styles.label}>{tierTranslations.name.label}</div>
-          <div className={styles.infoValue}>{tier.name}</div>
+          <div className={cn(styles.infoValue, styles.hiddenValue)}>
+            <HiddenWrapper>{tier.name}</HiddenWrapper>
+          </div>
         </div>
-        <div className={styles.infoColumn}>
+        <div
+          className={cn(
+            styles.infoColumn,
+            styles.pluginColumn,
+            styles.hiddenColumn
+          )}
+        >
           <div className={styles.label}>{tierTranslations.plugins.label}</div>
-          <div className={styles.infoValue}>
+          <div
+            className={cn(
+              styles.infoValue,
+              styles.hiddenValue,
+              styles.pluginValue
+            )}
+          >
             {tier.plugins.length ? (
-              tier.plugins.join(", ")
+              <HiddenWrapper>{tier.plugins.join(", ")}</HiddenWrapper>
             ) : (
               <InfoNoData text={translation.components.infoNoData.label} />
             )}
           </div>
         </div>
-        <div className={styles.infoColumn}>
+        <div className={cn(styles.infoColumn, styles.replicasetsColumn)}>
           <div className={styles.label}>
             {tierTranslations.replicasets.label}
           </div>
           <div className={styles.infoValue}>{tier.replicasetCount}</div>
         </div>
-        <div className={styles.infoColumn}>
+        <div className={cn(styles.infoColumn, styles.instancesColumn)}>
           <div className={styles.label}>{tierTranslations.instances.label}</div>
           <div className={styles.infoValue}>{tier.instanceCount}</div>
         </div>
-        <div className={styles.infoColumn}>
+        <div className={cn(styles.infoColumn, styles.rfColumn)}>
           <div className={styles.label}>{tierTranslations.rf.label}</div>
           <div className={styles.infoValue}>{tier.rf}</div>
         </div>
-        <div className={styles.infoColumn}>
+        <div className={cn(styles.infoColumn, styles.canVoterColumn)}>
           <div className={styles.label}>{tierTranslations.canVote.label}</div>
           <div className={styles.infoValue}>
             <SwitchInfo checked={tier.can_vote} />
