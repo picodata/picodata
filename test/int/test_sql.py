@@ -247,6 +247,40 @@ def test_read_from_global_tables(cluster: Cluster):
     assert len(data["rows"]) == 1
 
 
+def test_read_from_system_tables(cluster: Cluster):
+    instance_count = 2
+    cluster.deploy(instance_count=instance_count)
+    i1, _ = cluster.instances
+    data = i1.sql(
+        """
+        select * from "_pico_property"
+        """,
+    )
+    assert data["metadata"] == [
+        {"name": "key", "type": "string"},
+        {"name": "value", "type": "any"},
+    ]
+    assert len(data["rows"]) == 15
+
+    data = i1.sql(
+        """
+        select * from "_pico_instance"
+        """,
+    )
+    assert data["metadata"] == [
+        {"name": "instance_id", "type": "string"},
+        {"name": "instance_uuid", "type": "string"},
+        {"name": "raft_id", "type": "unsigned"},
+        {"name": "replicaset_id", "type": "string"},
+        {"name": "replicaset_uuid", "type": "string"},
+        {"name": "current_grade", "type": "array"},
+        {"name": "target_grade", "type": "array"},
+        {"name": "failure_domain", "type": "map"},
+        {"name": "tier", "type": "string"},
+    ]
+    assert len(data["rows"]) == instance_count
+
+
 def test_subqueries_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
