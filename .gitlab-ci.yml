@@ -108,6 +108,7 @@ upload-doc-to-binary:
   needs:
     - job: pack-doc
       artifacts: true
+    - job: upload-doc-to-binary
 
 deploy-staging:
   extends:
