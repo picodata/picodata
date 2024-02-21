@@ -7,6 +7,7 @@ name = "pypi"
 mkdocs = "==1.5.3"
 mkdocs-material = "==9.4.8"
 mkdocs-plugin-inline-svg = "==0.1.0"
+mkdocs-open-in-new-tab = "==1.0.3"
 markdown-callouts = "==0.4.0"
 
 [dev-packages]

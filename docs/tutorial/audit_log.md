@@ -68,10 +68,10 @@ API, предоставляемых самой СУБД.
 - `syslog` — с использованием общесистемного логирования и встроенных
 средств защищенной ОС. Подобная схема решает вопросы архивации, ротации
 и оповещения администратора. В качестве реализации
-[Syslog](https://ru.wikipedia.org/wiki/Syslog){:target="_blank"} на
+[Syslog](https://ru.wikipedia.org/wiki/Syslog) на
 современных дистрибутивах Linux часто используется `journald` (компонент
 системного менеджера
-[Systemd](https://ru.wikipedia.org/wiki/Systemd){:target="_blank"}),
+[Systemd](https://ru.wikipedia.org/wiki/Systemd)),
 который имеет множество настроек и даже позволяет отправлять журналы на
 внешние хосты.
 
@@ -106,7 +106,7 @@ tail -f /tmp/audit.log
 
 Вывод журнала в syslog в современных дистрибутивах Linux предполагает
 доступ к данным с помощью
-[journalctl](https://www.man7.org/linux/man-pages/man1/journalctl.1.html){:target="_blank"}
+[journalctl](https://www.man7.org/linux/man-pages/man1/journalctl.1.html)
 (компонента Systemd). Для изоляции событий, относящихся только к
 инстансу Picodata, используйте такую команду:
 

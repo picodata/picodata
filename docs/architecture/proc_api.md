@@ -58,7 +58,7 @@ fn proc_version_info()
     - `picodata_version`: (MP_STR) версия Picodata
       <!-- TODO ссылка на политику версионирования -->
     - `proc_api_version`: (MP_STR) версия Proc API согласно семантическому
-      версионированию ([Semantic Versioning][semver]{:target="_blank"})
+      версионированию ([Semantic Versioning][semver])
 
 [semver]: https://semver.org/
 

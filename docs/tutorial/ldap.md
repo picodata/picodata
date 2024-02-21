@@ -6,9 +6,9 @@
 ## Общие сведения {: #intro }
 
 [Lightweight Directory Access
-Protocol](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol){:target="_blank"}
+Protocol](https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol)
 (далее LDAP) — это легковесный протокол для доступа к службе каталогов
-[X.500](https://en.wikipedia.org/wiki/X.500){:target="_blank"}, которая
+[X.500](https://en.wikipedia.org/wiki/X.500), которая
 часто используется организациями для контроля доступа к ресурсам и
 управления доменными учетными записями. Существует множество серверов,
 которые поддерживают данный протокол: OpenLDAP, GLAuth и прочие.

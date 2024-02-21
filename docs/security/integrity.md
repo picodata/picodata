@@ -30,14 +30,14 @@ Picodata, когда в рабочей директории присутству
   Picodata. Для каждой записи журнала производится проверка контрольной
   суммы (crc32). Изменение любой записи приводит к недействительности
   всего журнала. Подробнее см. [устройство формат
-  WAL](https://www.tarantool.io/ru/doc/latest/dev_guide/internals/file_formats/#the-snapshot-file-format){:target="_blank"}
+  WAL](https://www.tarantool.io/ru/doc/latest/dev_guide/internals/file_formats/#the-snapshot-file-format)
 - размещение рабочей директории инстанса Picodata на отдельном
   логическом разделе, в опциях монтирования которого использован
   параметр `iversion`. Одновременно с этим следует настроить политику
   проверки целостности (службы `integrity-notifier` и
   `integrity-scanner` в защищенной ОС) на единовременную проверку
   содержимого рабочей директории. Подробнее см. [документацию ОС Альт 8
-  СП](https://www.basealt.ru/altsp/docs){:target="_blank"}, Руководство
+  СП](https://www.basealt.ru/altsp/docs), Руководство
   по комплексу средств защиты, п. 3.6.2. "Подсистема IMA/EVM"
 - сверка контрольных сумм (md5sum) рабочих файлов вручную и с помощью
   средств автоматизации в защищенной ОС

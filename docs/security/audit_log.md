@@ -16,7 +16,7 @@ Picodata поддерживает [запись событий в системн
 через службу `journald` (`picodata run --audit=syslog:`).
 
 Информация по использованию `journald` приведена в [документации ОС Альт 8
-СП](https://www.basealt.ru/altsp/docs){:target="_blank"},
+СП](https://www.basealt.ru/altsp/docs),
 Руководство по комплексу средств защиты, пп. 3.7.1.2–3.7.1.9.
 
 ## Разграничение доступа к журналу {: #limit_audit_log_access }
@@ -43,5 +43,5 @@ usermod -a -G systemd-journal <user_name>
 отредактировать файл `/etc/systemd/journald.conf`.
 
 Подробности приведены в [документации ОС Альт 8
-СП](https://www.basealt.ru/altsp/docs){:target="_blank"}, Руководство по
+СП](https://www.basealt.ru/altsp/docs), Руководство по
 комплексу средств защиты, п. 3.7.9. "Управление логгированием".

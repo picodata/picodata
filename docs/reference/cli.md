@@ -107,7 +107,7 @@ admin](#admin). Данный способ использует обычный т
 `--http-listen <[host][:port]>`
 
 Адрес
-[HTTP-сервера](https://github.com/tarantool/http){:target="_blank"}.
+[HTTP-сервера](https://github.com/tarantool/http).
 Интерфейс конфигурации сервера экспортирован в Lua-переменной
 `_G.pico.httpd`. При отсутствии параметра сервер не запускается, а
 указанная Lua-переменная имеет зачение `nil`.

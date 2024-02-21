@@ -13,13 +13,13 @@ Picodata поставляется для поддерживаемых опера
 Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится статически
 слинкованная версия исполняемого файла `picodata`. Более подробная
 информация об установке приведена на сайте
-[https://picodata.io/download](https://picodata.io/download/){:target="_blank"}.
+[https://picodata.io/download](https://picodata.io/download/).
 
 ## Установка из исходного кода {: #installing_from_sources }
 
 ### Необходимые инструменты {: #prerequisites }
 
-- [Rust и Cargo](http://www.rustup.rs){:target="_blank"} 1.71 или новее
+- [Rust и Cargo](http://www.rustup.rs) 1.71 или новее
 - cmake 3.16 или новее
 - gcc, g++
 - libstdc++-static
@@ -113,11 +113,11 @@ cargo build --features dynamic_build
 macOS 10.15 Catalina, либо более новая версия (11+).
 
 Для начала следует установить актуальные версии [Rust и
-Cargo](https://rustup.rs){:target="_blank"}.
+Cargo](https://rustup.rs).
 
 Если планируется сборка Picodata c веб-интерфейсом, то нужно будет
 установить дополнительно NodeJS и Yarn при помощи пакетного менеджера
-[Brew](https://brew.sh){:target="_blank"}.
+[Brew](https://brew.sh).
 
 Установка Brew:
 
@@ -228,7 +228,7 @@ picodata run
 
 Запустить остальные инстансы аналогичным образом, передавая каждому инстансу уникальные идентификаторы (`instance-id`). У несколько инстансов на одном хосте должны быть уникальные параметры `data-dir` и `listen`.
 После запуска Picodata поднимет и настроит инстанс кластера, создаст на каждом инстансе глобальную Lua-таблицу `myapp`. В ней будут функции, которые можно вызывать по протоколу Tarantool, например, через `net.box call('myapp.hello_world’, {42})`.
-Клиенты могут подключаться к любому инстансу и вызывать методы приложения через вызов CALL по протоколу Tarantool. Подробнее об интеграции клиентских приложений с Tarantool см. в описании [Tarantool Rust SDK](https://git.picodata.io/picodata/picodata/tarantool-module){:target="_blank"}.
+Клиенты могут подключаться к любому инстансу и вызывать методы приложения через вызов CALL по протоколу Tarantool. Подробнее об интеграции клиентских приложений с Tarantool см. в описании [Tarantool Rust SDK](https://git.picodata.io/picodata/picodata/tarantool-module).
 
 ## Минимальный вариант кластера
 

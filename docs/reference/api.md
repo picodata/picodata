@@ -64,7 +64,7 @@ picodata> pico.help("help")
 
 Строковая переменная (не функция), которая содержит версию Lua API Picodata.
 Формат соответствует семантическому версионированию ([Semantic
-Versioning][semver]{:target="_blank"}).
+Versioning][semver]).
 
 [semver]: https://semver.org/
 
@@ -81,7 +81,7 @@ picodata> pico.LUA_API_VERSION
 
 Строковая переменная (не функция), которая содержит версию Picodata.
 Формат соответствует календарному версионированию ([Calendar
-Versioning][calver]{:target="_blank"}) с форматом `YY.0M.MICRO`.
+Versioning][calver]) с форматом `YY.0M.MICRO`.
 
 [calver]: https://calver.org/#scheme
 
@@ -380,7 +380,7 @@ local tuple = box.tuple.new({'unicorns'})
 local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
 ```
 
-Добавление данных в шардированную таблицу происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/){:target="_blank"}:
+Добавление данных в шардированную таблицу происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/):
 
 ```lua
 local bucket_id = vshard.router.bucket_id_mpcrc32('unicorns')
@@ -539,7 +539,7 @@ function exit([code])
 - `code`: (_table_)
 
 В качестве параметров функция может принимать [код
-выхода](https://linuxconfig.org/list-of-exit-codes-on-linux){:target="_blank"},
+выхода](https://linuxconfig.org/list-of-exit-codes-on-linux),
 обозначающий состояние завершения процесса.
 
 Результат работы:
@@ -1239,8 +1239,8 @@ Lua-таблица, описывающая поле в составе табли
 
 См. также:
 
-- Описание [space_object:format()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/){:target="_blank"}
-- Описание [типов полей Tarantool](https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html){:target="_blank"}
+- Описание [space_object:format()](https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/format/)
+- Описание [типов полей Tarantool](https://docs.rs/tarantool/latest/tarantool/space/enum.FieldType.html)
 
 ### table Vclock {: #vclock_table }
 

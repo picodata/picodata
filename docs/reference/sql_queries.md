@@ -491,7 +491,7 @@ Cхема использования [псевдонимов](#aliases):
 
 Пароль пользователя может использовать русские и английские буквы во
 всех регистрах, а так же цифры и основные знаки препинания из [таблицы
-ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойства_таблицы){:target="_blank"}.
+ASCII](https://ru.wikipedia.org/wiki/ASCII#Структурные_свойства_таблицы).
 При использовании методов аутентификации `chap-sha1` и `md5` требуется
 использовать пароль не короче 8 символов, для метода `ldap` длина пароля
 не проверяется.
@@ -970,8 +970,8 @@ SELECT CAST("score" AS INT) FROM "scoring";
 необязательные [опции](#options):
 
 - `SQL_VDBE_MAX_STEPS`, ограничение на максимальное количество
-  [opcode](https://www.sqlite.org/opcode.html){:target="_blank"} при
-  работе [VDBE](https://www.sqlite.org/vdbe.html){:target="_blank"} на
+  [opcode](https://www.sqlite.org/opcode.html) при
+  работе [VDBE](https://www.sqlite.org/vdbe.html) на
   локальных узлах Picodata;
 - `VTABLE_MAX_ROWS`, ограничение на максимальное число строк в
   результирующей виртуальной таблице, собирающей результаты отдельных

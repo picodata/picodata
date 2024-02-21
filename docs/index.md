@@ -3,7 +3,7 @@
 Picodata — это распределенная система промышленного уровня для
 управления базами данных с возможностью расширения функциональности за
 счет плагинов. Исходный код Picodata
-[открыт](https://git.picodata.io/picodata/picodata){:target="_blank"}.
+[открыт](https://git.picodata.io/picodata/picodata).
 Программное обеспечение Picodata реализует хранение структурированных и
 неструктурированных данных, транзакционное управление данными, язык
 запросов SQL, а также поддержку плагинов на языках Rust и Lua.
@@ -92,6 +92,6 @@ Picodata — это распределенная система промышле
 На данном портале представлена техническая документация программного
 продукта Picodata. Информация о выгодах сотрудничества с компанией
 Picodata, корпоративных решениях и услугах, новостях, событиях находится
-на сайте [picodata.io](https://www.picodata.io){:target="_blank"}.
+на сайте [picodata.io](https://picodata.io).
 
 <a style="display: none" href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fdocs.picodata.io%2Fpicodata%2F&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false"/></a>

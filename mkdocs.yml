@@ -122,14 +122,18 @@ extra_css:
 # Плагины MkDocs
 # https://www.mkdocs.org/user-guide/configuration/#plugins
   ## > inline-svg
-  ## Вставляет изображений формата svg с относительными ссылками
+  ## Вставляет изображения формата `.svg` с относительными ссылками
   ## https://pypi.org/project/mkdocs-plugin-inline-svg/
+  ## > open-in-new-tab
+  ## Вставляет атрибуты `target="_blank"` и `rel="noopener"` во внешние ссылки
+  ## https://github.com/JakubAndrysek/mkdocs-open-in-new-tab
   ## > search
   ## Добавляет в хедер панель поиска
   ## https://www.mkdocs.org/user-guide/configuration/#search
   ## https://squidfunk.github.io/mkdocs-material/plugins/search/
 plugins:
   - inline-svg
+  - open-in-new-tab
   - search:
       lang:
         - en

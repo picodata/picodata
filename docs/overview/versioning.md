@@ -1,8 +1,8 @@
 # Политика версионирования
 
 Picodata использует формат обозначения версий, основанный на семантике
-[CalVer](https://calver.org/){:target="_blank"} с отдельными элементами
-[SemVer](https://semver.org/lang/ru/){:target="_blank"}. Номер версии
+[CalVer](https://calver.org/) с отдельными элементами
+[SemVer](https://semver.org/lang/ru/). Номер версии
 имеет следующий формат:
 
 ```plain
@@ -24,7 +24,7 @@ YY.MINOR.PATCH[-N-gHASH]
 - `HASH` — хеш коммита (для отладочных версий)
 
 Разработка новых функций и исправлений ведется в ветке `master` нашего
-[Git-репозитория](https://git.picodata.io/picodata/picodata/picodata/-/tree/master){:target="_blank"}.
+[Git-репозитория](https://git.picodata.io/picodata/picodata/picodata/-/tree/master).
 
 Мы придерживаемся следующего распорядка при разработке:
 
