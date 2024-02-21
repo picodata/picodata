@@ -16,7 +16,8 @@ edit_uri: -/blob/main/docs/
 # Исключения из навигации
 # https://www.mkdocs.org/user-guide/configuration/#not_in_nav
 not_in_nav: |
-  /index.md
+  index.md
+  architecture/proc_api.md
 
 # Навигация
 # https://www.mkdocs.org/user-guide/configuration/#nav
