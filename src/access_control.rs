@@ -153,7 +153,7 @@ fn access_check_dml(dml: &op::Dml, as_user: UserId) -> tarantool::Result<()> {
 }
 
 /// This function performs access control checks that are identical to ones performed in
-/// vanilla tarantool in on_replace_dd_space and on_replace_dd_index respectively
+/// vanilla tarantool in on_replace_dd_space, on_replace_dd_index and on_replace_dd_func respectively
 fn access_check_ddl(ddl: &op::Ddl, as_user: UserId) -> tarantool::Result<()> {
     match ddl {
         op::Ddl::CreateTable {
