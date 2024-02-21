@@ -14,23 +14,23 @@ class AsUser(TypedDict):
 
 as_alice: AsUser = {
     "user": "alice",
-    "password": "topsecret",
+    "password": "T0psecret",
 }
 
 as_bob: AsUser = {
     "user": "bob",
-    "password": "totallysecret",
+    "password": "T0tallysecret",
 }
 
 _3_SEC = 3
-as_alice = dict(user="alice", password="topsecret")
-as_bob = dict(user="bob", password="totallysecret")
+as_alice = dict(user="alice", password="T0psecret")
+as_bob = dict(user="bob", password="T0tallysecret")
 
 
 def test_access_global_table(cluster: Cluster):
     (i1,) = cluster.deploy(instance_count=1)
-    i1.sql("""create user "alice" with password 'topsecret'""")
-    i1.sql("""create user "bob" with password 'totallysecret'""")
+    i1.sql("""create user "alice" with password 'T0psecret'""")
+    i1.sql("""create user "bob" with password 'T0tallysecret'""")
 
     create_table_friends_of_peppa = """
         create table "friends_of_peppa" (
@@ -91,8 +91,8 @@ def test_access_global_table(cluster: Cluster):
 
 def test_access_sharded_table(cluster: Cluster):
     (i1,) = cluster.deploy(instance_count=1)
-    i1.sql("""create user "alice" with password 'topsecret'""")
-    i1.sql("""create user "bob" with password 'totallysecret'""")
+    i1.sql("""create user "alice" with password 'T0psecret'""")
+    i1.sql("""create user "bob" with password 'T0tallysecret'""")
 
     create_table_wonderland = """
         create table "wonderland" (

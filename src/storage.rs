@@ -1100,6 +1100,19 @@ impl From<ClusterwideTable> for SpaceId {
 
         PasswordMinLength = "password_min_length",
 
+        /// Password should contain at least one uppercase letter
+        PasswordEnforceUppercase = "password_enforce_uppercase",
+
+        /// Password should contain at least one lowercase letter
+        PasswordEnforceLowercase = "password_enforce_lowercase",
+
+        /// Password should contain at least one digit
+        PasswordEnforceDigits = "password_enforce_digits",
+
+        /// Password should contain at least one special symbol.
+        /// Special symbols - &, |, ?, !, $, @
+        PasswordEnforceSpecialchars = "password_enforce_specialchars",
+
         /// Maximum number of login attempts through `picodata connect`.
         /// Each failed login attempt increases a local per user counter of failed attempts.
         /// When the counter reaches the value of this property any subsequent logins
@@ -1183,7 +1196,11 @@ impl PropertyName {
         };
 
         match self {
-            Self::VshardBootstrapped => {
+            Self::PasswordEnforceUppercase
+            | Self::PasswordEnforceLowercase
+            | Self::PasswordEnforceDigits
+            | Self::PasswordEnforceSpecialchars
+            | Self::VshardBootstrapped => {
                 // Check it's a bool.
                 _ = new.field::<bool>(1)?;
             }
@@ -1239,6 +1256,10 @@ impl PropertyName {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub const DEFAULT_PASSWORD_MIN_LENGTH: usize = 8;
+pub const DEFAULT_PASSWORD_ENFORCE_UPPERCASE: bool = true;
+pub const DEFAULT_PASSWORD_ENFORCE_LOWERCASE: bool = true;
+pub const DEFAULT_PASSWORD_ENFORCE_DIGITS: bool = true;
+pub const DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS: bool = false;
 pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
 pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
 pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
@@ -1382,7 +1403,39 @@ impl Properties {
     pub fn password_min_length(&self) -> tarantool::Result<usize> {
         let res = self
             .get(PropertyName::PasswordMinLength)?
-            .unwrap_or_default();
+            .unwrap_or(DEFAULT_PASSWORD_MIN_LENGTH);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn password_enforce_uppercase(&self) -> tarantool::Result<bool> {
+        let res = self
+            .get(PropertyName::PasswordEnforceUppercase)?
+            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_UPPERCASE);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn password_enforce_lowercase(&self) -> tarantool::Result<bool> {
+        let res = self
+            .get(PropertyName::PasswordEnforceLowercase)?
+            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_LOWERCASE);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn password_enforce_digits(&self) -> tarantool::Result<bool> {
+        let res = self
+            .get(PropertyName::PasswordEnforceDigits)?
+            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_DIGITS);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn password_enforce_specialchars(&self) -> tarantool::Result<bool> {
+        let res = self
+            .get(PropertyName::PasswordEnforceSpecialchars)?
+            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS);
         Ok(res)
     }
 

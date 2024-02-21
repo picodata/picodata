@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @pytest.fixture
 def i1(cluster: Cluster) -> Instance:
     [i1] = cluster.deploy(instance_count=1)
-    acl = i1.sudo_sql("create user \"testuser\" with password 'testpass'")
+    acl = i1.sudo_sql("create user \"testuser\" with password 'Testpa55'")
     assert acl["row_count"] == 1
     return i1
 
@@ -27,7 +27,7 @@ def test_connect_testuser(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("testpass")
+    cli.sendline("Testpa55")
 
     cli.expect_exact("picodata> ")
 
@@ -46,7 +46,7 @@ def test_connect_user_host_port(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("testpass")
+    cli.sendline("Testpa55")
 
     cli.expect_exact("picodata> ")
 
@@ -98,7 +98,7 @@ def test_wrong_pass(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("badpass")
+    cli.sendline("Badpa5s")
 
     cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
@@ -133,7 +133,7 @@ def test_connect_auth_type_ok(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("testpass")
+    cli.sendline("Testpa55")
 
     cli.expect_exact("picodata> ")
 
@@ -152,7 +152,7 @@ def test_connect_auth_type_wrong(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("testpass")
+    cli.sendline("Testpa55")
 
     cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
@@ -170,7 +170,7 @@ def test_connect_auth_type_md5(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("testpass")
+    cli.sendline("Testpa55")
 
     cli.expect_exact("picosql :)")
 
@@ -449,7 +449,7 @@ def test_connect_with_wrong_password_path(binary_path: str):
 def test_connect_with_password_from_file(i1: Instance, binary_path: str):
     password_path = i1.data_dir + "/password"
     with open(password_path, "w") as f:
-        f.write("testpass")
+        f.write("Testpa55")
 
     cli = pexpect.spawn(
         command=binary_path,
@@ -484,7 +484,7 @@ def test_connect_connection_info_and_help(i1: Instance):
     cli.logfile = sys.stdout
 
     cli.expect_exact("Enter password for testuser: ")
-    cli.sendline("testpass")
+    cli.sendline("Testpa55")
 
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user'

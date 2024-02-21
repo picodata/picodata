@@ -3,7 +3,7 @@ from conftest import MAX_LOGIN_ATTEMPTS, Cluster, Instance, TarantoolError, Retu
 from tarantool.error import NetworkError  # type: ignore
 from tarantool.connection import Connection  # type: ignore
 
-VALID_PASSWORD = "long enough"
+VALID_PASSWORD = "L0ng enough"
 PASSWORD_MIN_LENGTH_KEY = "password_min_length"
 
 
@@ -31,7 +31,7 @@ def test_max_login_attempts(cluster: Cluster):
     i1, i2, _ = cluster.deploy(instance_count=3)
 
     i1.sql(
-        """ CREATE USER "foo" WITH PASSWORD '12345678' USING chap-sha1 OPTION (timeout = 3) """
+        """ CREATE USER "foo" WITH PASSWORD 'T0psecret' USING chap-sha1 OPTION (timeout = 3) """
     )
 
     def connect(
@@ -47,7 +47,7 @@ def test_max_login_attempts(cluster: Cluster):
         )
 
     # First login is successful
-    c = connect(i1, user="foo", password="12345678")
+    c = connect(i1, user="foo", password="T0psecret")
     assert c
 
     # Several failed login attempts but one less than maximum
@@ -62,7 +62,7 @@ def test_max_login_attempts(cluster: Cluster):
     c = connect(
         i1,
         user="foo",
-        password="12345678",
+        password="T0psecret",
     )
     assert c
 
@@ -76,7 +76,7 @@ def test_max_login_attempts(cluster: Cluster):
 
     # Next login even with correct password fails as the limit is reached
     with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
-        connect(i1, user="foo", password="bar")
+        connect(i1, user="foo", password="T0psecret")
 
     # Unlock user - alter user login is interpreted as grant session
     # which resets the login attempts counter.
@@ -85,7 +85,7 @@ def test_max_login_attempts(cluster: Cluster):
     assert acl["row_count"] == 1
 
     # Now user can connect again
-    c = connect(i1, user="foo", password="12345678")
+    c = connect(i1, user="foo", password="T0psecret")
     assert c
 
 
@@ -1052,7 +1052,7 @@ def test_alter_system_user(cluster: Cluster):
         ReturnError,
         match="altering guest user's password is not allowed",
     ):
-        i1.sql("alter user \"guest\" with password '12345678'")
+        i1.sql("alter user \"guest\" with password 'Validpa55word'")
 
     with pytest.raises(
         ReturnError,
@@ -1070,7 +1070,7 @@ def test_alter_system_user(cluster: Cluster):
 def test_submit_sql_after_revoke_login(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    password = "12345678"
+    password = "Validpa55word"
 
     acl = i1.sudo_sql(f"create user \"alice\" with password '{password}'")
     assert acl["row_count"] == 1

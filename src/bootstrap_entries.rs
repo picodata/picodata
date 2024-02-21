@@ -82,6 +82,42 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
     init_entries_push_op(
         op::Dml::insert(
             ClusterwideTable::Property,
+            &(PropertyName::PasswordEnforceUppercase, storage::DEFAULT_PASSWORD_ENFORCE_UPPERCASE),
+            ADMIN_ID,
+        )
+    );
+
+    #[rustfmt::skip]
+    init_entries_push_op(
+        op::Dml::insert(
+            ClusterwideTable::Property,
+            &(PropertyName::PasswordEnforceLowercase, storage::DEFAULT_PASSWORD_ENFORCE_LOWERCASE),
+            ADMIN_ID,
+        )
+    );
+
+    #[rustfmt::skip]
+    init_entries_push_op(
+        op::Dml::insert(
+            ClusterwideTable::Property,
+            &(PropertyName::PasswordEnforceDigits, storage::DEFAULT_PASSWORD_ENFORCE_DIGITS),
+            ADMIN_ID,
+        )
+    );
+
+    #[rustfmt::skip]
+    init_entries_push_op(
+        op::Dml::insert(
+            ClusterwideTable::Property,
+            &(PropertyName::PasswordEnforceSpecialchars, storage::DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS),
+            ADMIN_ID,
+        )
+    );
+
+    #[rustfmt::skip]
+    init_entries_push_op(
+        op::Dml::insert(
+            ClusterwideTable::Property,
             &(PropertyName::AutoOfflineTimeout, storage::DEFAULT_AUTO_OFFLINE_TIMEOUT),
             ADMIN_ID,
         )

@@ -260,6 +260,10 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_property}, ["global_schema_version",0])|
 |  0  | 1  |Insert({_pico_property}, ["next_schema_version",1])|
 |  0  | 1  |Insert({_pico_property}, ["password_min_length",8])|
+|  0  | 1  |Insert({_pico_property}, ["password_enforce_uppercase",true])|
+|  0  | 1  |Insert({_pico_property}, ["password_enforce_lowercase",true])|
+|  0  | 1  |Insert({_pico_property}, ["password_enforce_digits",true])|
+|  0  | 1  |Insert({_pico_property}, ["password_enforce_specialchars",false])|
 |  0  | 1  |Insert({_pico_property}, ["auto_offline_timeout",5.0])|
 |  0  | 1  |Insert({_pico_property}, ["max_heartbeat_period",5.0])|
 |  0  | 1  |Insert({_pico_property}, ["max_pg_portals",50])|

@@ -60,6 +60,7 @@ pub mod storage;
 use otm::TracerKind;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
+const SPECTIAL_CHARACTERS: [char; 6] = ['&', '|', '?', '!', '$', '@'];
 
 enum Privileges {
     Read,
@@ -578,7 +579,7 @@ impl TraftNode {
     }
 }
 
-fn check_password_min_length(
+fn validate_password(
     password: &str,
     auth_method: &AuthMethod,
     node: &TraftNode,
@@ -604,6 +605,46 @@ fn check_password_min_length(
             .into(),
         ));
     }
+
+    let password_enforce_uppercase =
+        session::with_su(ADMIN_ID, || storage.properties.password_enforce_uppercase())??;
+    if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
+        return Err(Error::Other(
+            "invalid password: password should contains at least one uppercase letter".into(),
+        ));
+    }
+
+    let password_enforce_lowercase =
+        session::with_su(ADMIN_ID, || storage.properties.password_enforce_lowercase())??;
+    if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
+        return Err(Error::Other(
+            "invalid password: password should contains at least one lowercase letter".into(),
+        ));
+    }
+
+    let password_enforce_digits =
+        session::with_su(ADMIN_ID, || storage.properties.password_enforce_digits())??;
+    if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
+        return Err(Error::Other(
+            "invalid password: password should contains at least one digit".into(),
+        ));
+    }
+
+    let password_enforce_specialchars = session::with_su(ADMIN_ID, || {
+        storage.properties.password_enforce_specialchars()
+    })??;
+    if password_enforce_specialchars
+        && !password.chars().any(|ch| SPECTIAL_CHARACTERS.contains(&ch))
+    {
+        return Err(Error::Other(
+            format!(
+                "invalid password: password should contains at least one special character - {:?}",
+                SPECTIAL_CHARACTERS
+            )
+            .into(),
+        ));
+    }
+
     Ok(())
 }
 
@@ -749,7 +790,7 @@ fn reenterable_schema_change_request(
         }) => {
             let method = AuthMethod::from_str(&auth_method)
                 .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
-            check_password_min_length(&password, &method, node)?;
+            validate_password(&password, &method, node)?;
             let data = AuthData::new(&method, &name, &password);
             let auth = AuthDef::new(method, data.into_string());
             Params::CreateUser(name, auth)
@@ -765,7 +806,7 @@ fn reenterable_schema_change_request(
                     let method = AuthMethod::from_str(&auth_method).map_err(|_| {
                         Error::Other(format!("Unknown auth method: {auth_method}").into())
                     })?;
-                    check_password_min_length(&password, &method, node)?;
+                    validate_password(&password, &method, node)?;
                     let data = AuthData::new(&method, &name, &password);
                     let auth = AuthDef::new(method, data.into_string());
                     AlterOptionParam::ChangePassword(auth)

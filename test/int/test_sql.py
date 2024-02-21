@@ -1357,7 +1357,7 @@ def test_sql_acl_password_length(cluster: Cluster):
 
     username = "USER"
     password_short = "pwd"
-    password_long = "password"
+    password_long = "Passw0rd"
 
     acl = i1.sql(
         f"""
@@ -1395,7 +1395,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     i1, i2 = cluster.instances
 
     username = "User"
-    password = "Password"
+    password = "Passw0rd"
     upper_username = "USER"
     rolename = "Role"
     upper_rolename = "ROLE"
@@ -1506,12 +1506,12 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Can't create same user with different password.
     with pytest.raises(ReturnError, match="already exists with different auth method"):
-        i1.sql(f"create user {username} with password '123456789' using md5")
-        i1.sql(f"create user {username} with password '987654321' using md5")
+        i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
+        i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
-    another_password = "qwerty123"
+    another_password = "Qwerty123"
     # Alter of unexisted user should do nothing.
     acl = i1.sql(f"alter user \"nobody\" with password '{another_password}'")
     assert acl["row_count"] == 0
@@ -1557,7 +1557,9 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Attempt to create role with the name of already existed user
     # should lead to an error.
-    acl = i1.sql(f""" create user "{username}" with password '123456789' using md5 """)
+    acl = i1.sql(
+        f""" create user "{username}" with password 'Validpassw0rd' using md5 """
+    )
     assert acl["row_count"] == 1
     with pytest.raises(ReturnError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
@@ -1607,7 +1609,7 @@ def test_sql_alter_login(cluster: Cluster):
     i1, i2 = cluster.instances
 
     username = "USER"
-    password = "PASSWORD"
+    password = "PA5sWORD"
     # Create user.
     acl = i1.sudo_sql(f"create user {username} with password '{password}'")
     assert acl["row_count"] == 1
@@ -1642,7 +1644,7 @@ def test_sql_acl_privileges(cluster: Cluster):
 
     username = "USER"
     another_username = "ANOTHER_USER"
-    password = "PASSWORD"
+    password = "PaSSW0RD"
     rolename = "ROLE"
     another_rolename = "ANOTHER_ROLE"
 
@@ -2036,7 +2038,7 @@ def test_sql_privileges(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     username = "alice"
-    alice_pwd = "1234567890"
+    alice_pwd = "Pa55sword"
 
     # Create user with execute on universe privilege
     acl = i1.sql(
@@ -2157,8 +2159,8 @@ def test_sql_privileges(cluster: Cluster):
 def test_user_changes_password(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
     user_name = "U"
-    old_password = "12341234"
-    new_password = "11111111"
+    old_password = "Passw0rd"
+    new_password = "Pa55word"
 
     i1.create_user(with_name=user_name, with_password=old_password)
 
@@ -2258,3 +2260,90 @@ def test_create_procedure(cluster: Cluster):
     assert data["rows"] == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
     assert data["rows"] == []
+
+
+def test_sql_user_password_checks(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, _ = cluster.instances
+
+    with pytest.raises(
+        ReturnError,
+        match="invalid password: password should contains at least one uppercase letter",
+    ):
+        i1.sql(
+            """
+            create user noname with password 'withoutdigitsanduppercase'
+            using md5 option (timeout = 3)
+            """
+        )
+
+    with pytest.raises(
+        ReturnError,
+        match="invalid password: password should contains at least one lowercase letter",
+    ):
+        i1.sql(
+            """
+            create user noname with password 'PASSWORD3'
+            using md5 option (timeout = 3)
+            """
+        )
+
+    with pytest.raises(
+        ReturnError,
+        match="invalid password: password should contains at least one digit",
+    ):
+        i1.sql(
+            """
+            create user noname with password 'Withoutdigits'
+            using md5 option (timeout = 3)
+            """
+        )
+
+    acl = i1.sql(
+        """
+        create user success with password 'Withdigit1'
+        using md5 option (timeout = 3)
+        """
+    )
+    assert acl["row_count"] == 1
+
+    # let's turn off uppercase check and turn on special characters check
+    read_index = i1.raft_read_index()
+
+    ret = cluster.cas(
+        "replace",
+        "_pico_property",
+        ["password_enforce_uppercase", False],
+        index=read_index,
+    )
+    assert ret == read_index + 1
+
+    ret = cluster.cas(
+        "replace",
+        "_pico_property",
+        ["password_enforce_specialchars", True],
+        index=read_index,
+    )
+    assert ret == read_index + 2
+
+    cluster.raft_wait_index(ret)
+
+    with pytest.raises(
+        ReturnError,
+        match="invalid password: password should contains at least one special character",
+    ):
+        i1.sql(
+            """
+            create user noname with password 'withoutspecialchar14'
+            using md5 option (timeout = 3)
+            """
+        )
+
+    # now it's ok to create password without uppercase letter, but with special symbol
+    acl = i1.sql(
+        """
+        create user noname with password '!withdigit1@'
+        using md5 option (timeout = 3)
+        """
+    )
+    assert acl["row_count"] == 1

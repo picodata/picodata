@@ -400,14 +400,14 @@ def test_user(instance: Instance):
     instance.start()
     instance.sql(
         """
-        create user "ymir" with password '0123456789' using chap-sha1
+        create user "ymir" with password 'T0psecret' using chap-sha1
         """
     )
     # TODO user cant change password without access to _pico_property
     # https://git.picodata.io/picodata/picodata/picodata/-/issues/449
     instance.sudo_sql(
         """
-        alter user "ymir" password '9876543210'
+        alter user "ymir" password 'Topsecre1'
         """,
     )
     instance.sql(
@@ -451,7 +451,7 @@ def test_role(instance: Instance):
 
     setup = [
         """
-        create user "bubba" with password '0123456789' using chap-sha1
+        create user "bubba" with password 'T0psecret' using chap-sha1
         """,
         """
         grant create role to "bubba"
@@ -460,7 +460,7 @@ def test_role(instance: Instance):
     for query in setup:
         instance.sudo_sql(query)
 
-    with instance.connect(timeout=1, user="bubba", password="0123456789") as c:
+    with instance.connect(timeout=1, user="bubba", password="T0psecret") as c:
         c.sql(
             """
             create role "skibidi"
@@ -569,7 +569,7 @@ def test_auth(instance: Instance):
 
     instance.sudo_sql(
         """
-        create user "ymir" with password '0123456789' using chap-sha1
+        create user "ymir" with password 'T0psecret' using chap-sha1
         """
     )
     instance.sudo_sql(
@@ -583,7 +583,7 @@ def test_auth(instance: Instance):
         pass
     events = audit.events()
 
-    with instance.connect(4, user="ymir", password="0123456789"):
+    with instance.connect(4, user="ymir", password="T0psecret"):
         pass
 
     auth_ok = take_until_type(events, EventAuthOk)
@@ -609,7 +609,7 @@ def test_auth(instance: Instance):
         assert auth_fail.initiator == "ymir"
 
     with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
-        with instance.connect(4, user="ymir", password="wrong_pwd"):
+        with instance.connect(4, user="ymir", password="Wr0ng_pwd"):
             pass
 
     auth_fail = take_until_type(events, EventAuthFail)
@@ -626,7 +626,7 @@ def test_auth(instance: Instance):
 def test_access_denied(instance: Instance):
     instance.start()
 
-    instance.create_user(with_name="ymir", with_password="12341234")
+    instance.create_user(with_name="ymir", with_password="T0psecret")
 
     audit = AuditFile(instance.audit_flag_value)
     for _ in audit.events():
@@ -641,7 +641,7 @@ def test_access_denied(instance: Instance):
         Exception,
         match=expected_error,
     ):
-        instance.sql('CREATE ROLE "R"', user="ymir", password="12341234")
+        instance.sql('CREATE ROLE "R"', user="ymir", password="T0psecret")
 
     access_denied = take_until_type(events, EventAccessDenied)
     assert access_denied is not None
@@ -657,7 +657,7 @@ def test_grant_revoke(instance: Instance):
     instance.start()
 
     user = "ymir"
-    password = "12341234"
+    password = "T0psecret"
 
     instance.create_user(with_name=user, with_password=password)
 
@@ -863,7 +863,7 @@ def test_rotation(instance: Instance):
     instance.start()
 
     user = "ymir"
-    password = "12341234"
+    password = "T0psecret"
 
     audit = AuditFile(instance.audit_flag_value)
     for _ in audit.events():
