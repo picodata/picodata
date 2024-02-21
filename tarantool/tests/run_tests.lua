@@ -67,12 +67,9 @@ package.cpath = string.format(
     package.cpath
 )
 
--- Prepare config
-cfg = json.encode {
-    filter = arg[1] or "",
-}
+box.schema.func.create('libtarantool_module_test_runner.entry', { language = 'C' })
 
--- Run tests
-local test_main = require('libtarantool_module_test_runner')
-local exit_code = test_main(cfg)
-os.exit(exit_code)
+local cfg = { filter = arg[1] or "" }
+box.func['libtarantool_module_test_runner.entry']:call{cfg}
+
+os.exit(0)

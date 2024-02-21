@@ -7,9 +7,7 @@
 #![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::useless_vec)]
 #![allow(clippy::get_first)]
-use std::ffi::CStr;
 use std::io;
-use std::os::raw::{c_char, c_int};
 
 use serde::Deserialize;
 use tester::{
@@ -18,7 +16,6 @@ use tester::{
 };
 
 use tarantool::error::Error;
-use tarantool::ffi::lua as ffi_lua;
 use tarantool::index::IndexType;
 use tarantool::space::{Field, FieldType, Space};
 
@@ -152,18 +149,6 @@ fn create_test_spaces() -> Result<(), Error> {
 
     with_array.insert(&(1, vec![1, 2, 3]))?;
     with_array.insert(&(2, ("foo", ("bar", [69, 420]), 3.14)))?;
-
-    Ok(())
-}
-
-fn drop_test_spaces() -> Result<(), Error> {
-    let space_names = vec!["test_s1".to_string(), "test_s2".to_string()];
-
-    for s in space_names.iter() {
-        if let Some(space) = Space::find(s) {
-            space.drop()?;
-        }
-    }
 
     Ok(())
 }
@@ -561,45 +546,14 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
     )
 }
 
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn start(l: *mut ffi_lua::lua_State) -> c_int {
-    let cfg_src = ffi_lua::lua_tostring(l, 1);
-    let cfg_src = if !cfg_src.is_null() {
-        CStr::from_ptr(cfg_src).to_str().unwrap()
-    } else {
-        "{}"
-    };
-    let cfg: TestConfig = serde_json::from_str(cfg_src).unwrap();
+#[tarantool::proc]
+pub fn entry(cfg: TestConfig) -> Result<(), Error> {
+    create_test_spaces()?;
 
-    if let Err(e) = create_test_spaces() {
-        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_char);
-        return 0;
+    let ok = run_tests(cfg)?;
+    if !ok {
+        return Err(Error::other("test failure"));
     }
 
-    let is_success = match run_tests(cfg) {
-        Ok(success) => success,
-        Err(e) => {
-            // Clenaup without handling error to avoid code mess.
-            let _ = drop_test_spaces();
-            ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_char);
-            return 0;
-        }
-    };
-
-    if let Err(e) = drop_test_spaces() {
-        ffi_lua::luaL_error(l, e.to_string().as_ptr() as *const c_char);
-        return 0;
-    }
-
-    ffi_lua::lua_pushinteger(l, (!is_success) as isize);
-    1
-}
-
-#[allow(clippy::missing_safety_doc)]
-#[no_mangle]
-pub unsafe extern "C" fn luaopen_libtarantool_module_test_runner(
-    l: *mut ffi_lua::lua_State,
-) -> c_int {
-    ffi_lua::lua_pushcfunction(l, start);
-    1
+    Ok(())
 }
