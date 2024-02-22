@@ -51,7 +51,7 @@ picodata>
 Для этого можно использовать следующую команду:
 
 ```SQL
-CREATE USER "alex" WITH PASSWORD 'topsecret';
+CREATE USER "alex" WITH PASSWORD 'T0psecret';
 ```
 
 Чтобы новый пользователь мог создавать таблицы, ему понадобится
