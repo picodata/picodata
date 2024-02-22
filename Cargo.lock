@@ -1953,6 +1953,7 @@ dependencies = [
  "blake3",
  "hash32",
  "itertools",
+ "lazy_static",
  "opentelemetry",
  "pest",
  "pest_derive",

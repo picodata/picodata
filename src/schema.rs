@@ -442,6 +442,7 @@ impl SchemaObjectType {
     pub fn as_tarantool(&self) -> &'static str {
         match self {
             SchemaObjectType::Table => "space",
+            SchemaObjectType::Routine => "function",
             t => t.as_str(),
         }
     }
@@ -570,7 +571,7 @@ impl PrivilegeDef {
             SchemaObjectType::Universe => &[Login],
             SchemaObjectType::Routine => match privilege_def.object_id() {
                 Some(_) => &[Execute, Drop],
-                None => &[Create, Drop],
+                None => &[Create, Drop, Execute],
             },
         };
 

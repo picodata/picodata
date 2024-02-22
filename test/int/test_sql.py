@@ -2189,45 +2189,6 @@ def test_sql_privileges(cluster: Cluster):
     dml = i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
     assert dml["row_count"] == 2
 
-    # Check that a user can't create a procedure without permition.
-    with pytest.raises(
-        ReturnError,
-        match=f"AccessDenied: Create access to function 'PROC' is denied for user '{username}'",
-    ):
-        i1.sql(
-            f"""
-            create procedure proc(int)
-            language SQL
-            as $$insert into "{table_name}" values(?, ?)$$
-            """,
-            user=username,
-            password=alice_pwd,
-        )
-
-    ddl = i1.sudo_sql(
-        f"""
-        create procedure proc(int)
-        language SQL
-        as $$insert into "{table_name}" values(?, ?)$$
-        """
-    )
-    assert ddl["row_count"] == 1
-
-    # Check that a non-owner user without drop privilege can't drop a function.
-    with pytest.raises(
-        ReturnError,
-        match=f"AccessDenied: Drop access to function 'PROC' is denied for user '{username}'",
-    ):
-        i1.sql(
-            """ drop procedure proc(int) """,
-            user=username,
-            password=alice_pwd,
-        )
-
-    # Check that the owner can drop a function.
-    ddl = i1.sudo_sql(""" drop procedure proc(int) """)
-    assert ddl["row_count"] == 1
-
 
 def test_user_changes_password(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
@@ -2700,3 +2661,292 @@ def test_rename_procedure(cluster: Cluster):
     assert data["rows"] == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'foobar' """)
     assert data["rows"] == []
+
+
+def test_procedure_privileges(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    table_name = "t"
+    # Create a test table
+    ddl = i1.sql(
+        f"""
+        create table "{table_name}" ("a" int not null, "b" int, primary key ("a"))
+        using memtx
+        distributed by ("a")
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    alice = "alice"
+    alice_pwd = "Passw0rd"
+
+    bob = "bob"
+    bob_pwd = "Passw0rd"
+
+    for user, pwd in [(alice, alice_pwd), (bob, bob_pwd)]:
+        acl = i1.sql(
+            f"""
+            create user "{user}" with password '{pwd}'
+            using chap-sha1 option (timeout = 3)
+            """
+        )
+        assert acl["row_count"] == 1
+        # grant write permission for procedure calls to work
+        acl = i1.sudo_sql(
+            f"""
+            grant write on table "{table_name}" to "{user}"
+            """
+        )
+        assert acl["row_count"] == 1
+
+    # ---------------
+    # HELPERS
+    # ---------------
+
+    def create_procedure(name: str, arg_cnt: int, as_user=None, as_pwd=None):
+        assert arg_cnt < 3
+        query = f"""
+        create procedure {name}()
+        language SQL
+        as $$insert into "{table_name}" values(42, 8) on conflict do replace$$
+        """
+        if arg_cnt == 1:
+            query = f"""
+            create procedure {name}(int)
+            language SQL
+            as $$insert into "{table_name}" values($1, $1) on conflict do replace$$
+            """
+        if arg_cnt == 2:
+            query = f"""
+            create procedure {name}(int, int)
+            language SQL
+            as $$insert into "{table_name}" values($2, $1) on conflict do replace$$
+            """
+        ddl = None
+        if not as_user:
+            ddl = i1.sudo_sql(query)
+        else:
+            ddl = i1.sql(query, user=as_user, password=as_pwd)
+        assert ddl["row_count"] == 1
+
+    def drop_procedure(name: str, as_user=None, as_pwd=None):
+        query = f"drop procedure {name}"
+        ddl = None
+        if not as_user:
+            ddl = i1.sudo_sql(query)
+        else:
+            ddl = i1.sql(query, user=as_user, password=as_pwd)
+        assert ddl["row_count"] == 1
+
+    def rename_procedure(old_name: str, new_name: str, as_user=None, as_pwd=None):
+        query = f"alter procedure {old_name} rename to {new_name}"
+        ddl = None
+        if not as_user:
+            ddl = i1.sudo_sql(query)
+        else:
+            ddl = i1.sql(query, user=as_user, password=as_pwd)
+        assert ddl["row_count"] == 1
+
+    def grant_procedure(priv: str, user: str, fun=None, as_user=None, as_pwd=None):
+        query = f"grant {priv}"
+        if fun:
+            query += f' on procedure "{fun}"'
+        else:
+            query += " procedure"
+        query += f' to "{user}"'
+        acl = (
+            i1.sql(query, user=as_user, password=as_pwd)
+            if as_user
+            else i1.sudo_sql(query)
+        )
+
+        assert acl["row_count"] == 1
+
+    def revoke_procedure(priv: str, user: str, fun=None, as_user=None, as_pwd=None):
+        query = f"revoke {priv}"
+        if fun:
+            query += f' on procedure "{fun}"'
+        else:
+            query += " procedure"
+        query += f' from "{user}"'
+        acl = (
+            i1.sql(query, user=as_user, password=as_pwd)
+            if as_user
+            else i1.sudo_sql(query)
+        )
+
+        assert acl["row_count"] == 1
+
+    def call_procedure(proc, *args, as_user=None, as_pwd=None):
+        args_str = ",".join(str(x) for x in args)
+        data = i1.sql(
+            f"""
+            call {proc}({args_str})
+            """,
+            user=as_user,
+            password=as_pwd,
+        )
+        assert data["row_count"] == 1
+
+    def check_execute_access_denied(fun, username, pwd, *args):
+        with pytest.raises(
+            ReturnError,
+            match=f"AccessDenied: Execute access to function '{fun}' "
+            + f"is denied for user '{username}'",
+        ):
+            call_procedure(fun, *args, as_user=username, as_pwd=pwd)
+
+    def check_create_access_denied(fun, username, pwd):
+        with pytest.raises(
+            ReturnError,
+            match=f"AccessDenied: Create access to function '{fun}' "
+            + f"is denied for user '{username}'",
+        ):
+            create_procedure(fun, 0, as_user=username, as_pwd=pwd)
+
+    def check_drop_access_denied(fun, username, pwd):
+        with pytest.raises(
+            ReturnError,
+            match=f"AccessDenied: Drop access to function '{fun}' "
+            + f"is denied for user '{username}'",
+        ):
+            drop_procedure(fun, as_user=username, as_pwd=pwd)
+
+    def check_rename_access_denied(old_name, new_name, username, pwd):
+        with pytest.raises(
+            ReturnError,
+            match=f"AccessDenied: Alter access to function '{old_name}' "
+            + f"is denied for user '{username}'",
+        ):
+            rename_procedure(old_name, new_name, as_user=username, as_pwd=pwd)
+
+    # ----------------- Default privliges -----------------
+
+    # Check that a user can't create a procedure without permition.
+    check_create_access_denied("FOOBAZSPAM", alice, alice_pwd)
+
+    # Check that a non-owner user without drop privilege can't drop proc
+    create_procedure("FOO", 0)
+    check_drop_access_denied("FOO", bob, bob_pwd)
+
+    # Check that a non-owner user can't rename proc
+    check_rename_access_denied("FOO", "BAR", bob, bob_pwd)
+
+    # Check that a user without permession can't call proc
+    check_execute_access_denied("FOO", bob, bob_pwd)
+
+    # Check that owner can call proc
+    call_procedure("FOO")
+
+    # Check that owner can rename proc
+    rename_procedure("FOO", "BAR")
+
+    # Check that owner can drop proc
+    drop_procedure("BAR")
+
+    # ----------------- Default privliges -----------------
+
+    # ----------------- grant-revoke privilege -----------------
+
+    # ALL PROCEDURES
+
+    # Check admin can grant create procedure to user
+    grant_procedure("create", alice)
+    create_procedure("FOO", 0, alice, alice_pwd)
+    drop_procedure("FOO", alice, alice_pwd)
+    create_procedure("FOO", 0)
+    check_drop_access_denied("FOO", alice, alice_pwd)
+    check_rename_access_denied("FOO", "BAR", alice, alice_pwd)
+    drop_procedure("FOO")
+
+    # Check admin can revoke create procedure from user
+    revoke_procedure("create", alice)
+    check_create_access_denied("FOO", alice, alice_pwd)
+
+    # check grant execute to all procedures
+    grant_procedure("create", bob)
+    create_procedure("FOO", 0, bob, bob_pwd)
+    grant_procedure("execute", alice)
+    call_procedure("FOO", as_user=alice, as_pwd=alice_pwd)
+
+    # check revoke execute from all procedures
+    revoke_procedure("execute", alice)
+    check_execute_access_denied("FOO", alice, alice_pwd)
+    revoke_procedure("create", bob)
+
+    # check grant drop for all procedures
+    drop_procedure("FOO")
+    create_procedure("FOO", 0)
+    check_drop_access_denied("FOO", bob, bob_pwd)
+    grant_procedure("drop", bob)
+    drop_procedure("FOO", bob, bob_pwd)
+
+    # check revoke drop for all procedures
+    create_procedure("FOO", 0)
+    revoke_procedure("drop", bob)
+    check_drop_access_denied("FOO", bob, bob_pwd)
+
+    drop_procedure("FOO")
+
+    # Check that user can't grant create procedure (only admin can)
+    with pytest.raises(
+        ReturnError,
+        match=f"AccessDenied: Grant to routine '' is denied for user '{alice}'",
+    ):
+        grant_procedure("create", bob, as_user=alice, as_pwd=alice_pwd)
+
+    # Check that user can't grant execute procedure (only admin can)
+    with pytest.raises(
+        ReturnError,
+        match=f"AccessDenied: Grant to routine '' is denied for user '{alice}'",
+    ):
+        grant_procedure("execute", bob, as_user=alice, as_pwd=alice_pwd)
+
+    # SPECIFIC PROCEDURE
+
+    # check grant execute specific procedure
+    grant_procedure("create", alice)
+    create_procedure("FOO", 0, alice, alice_pwd)
+    check_execute_access_denied("FOO", bob, bob_pwd)
+    grant_procedure("execute", bob, "FOO", as_user=alice, as_pwd=alice_pwd)
+    call_procedure("FOO", as_user=bob, as_pwd=bob_pwd)
+
+    # check admin can revoke execute from user
+    revoke_procedure("execute", bob, "FOO", alice, alice_pwd)
+    check_execute_access_denied("FOO", bob, bob_pwd)
+
+    # check owner of procedure can grant drop to other user
+    check_drop_access_denied("FOO", bob, bob_pwd)
+    grant_procedure("drop", bob, "FOO", as_user=alice, as_pwd=alice_pwd)
+    check_rename_access_denied("FOO", "BAR", bob, bob_pwd)
+    drop_procedure("FOO", bob, bob_pwd)
+
+    # check owner of procedure can revoke drop to other user
+    create_procedure("FOO", 0, alice, alice_pwd)
+    check_drop_access_denied("FOO", bob, bob_pwd)
+    grant_procedure("drop", bob, "FOO", as_user=alice, as_pwd=alice_pwd)
+    revoke_procedure("drop", bob, "FOO", alice, alice_pwd)
+    check_drop_access_denied("FOO", bob, bob_pwd)
+
+    # check we can't grant create specific procedure
+    with pytest.raises(
+        ReturnError,
+        match="sbroad: invalid privilege",
+    ):
+        grant_procedure("create", bob, "FOO")
+
+    # check we can't grant to non-existing user
+    with pytest.raises(
+        ReturnError,
+        match="Nor user, neither role with name pasha exists",
+    ):
+        grant_procedure("drop", "pasha", "FOO")
+
+    # check we can't revoke from non-existing user
+    with pytest.raises(
+        ReturnError,
+        match="Nor user, neither role with name pasha exists",
+    ):
+        revoke_procedure("execute", "pasha", "FOO")

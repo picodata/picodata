@@ -38,6 +38,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Clusterwide SQL supports procedure renaming.
 
+- Clusterwide SQL supports granting/revoking execute/create/drop for procedures.
+
 -->
 
 ## [24.1.1] - 2024-02-09

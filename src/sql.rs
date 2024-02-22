@@ -526,10 +526,11 @@ pub fn proc_pg_parse(
                     .with(|cache| cache.borrow_mut().put((cid, name.into()), statement))?;
                 return Ok(());
             }
-            let ast = <RouterRuntime as Router>::ParseTree::new(&query).map_err(Error::from)?;
             let metadata = &*runtime.metadata().map_err(Error::from)?;
             let plan = with_su(ADMIN_ID, || -> traft::Result<IrPlan> {
-                let mut plan = ast.resolve_metadata(metadata).map_err(Error::from)?;
+                let mut plan =
+                    <RouterRuntime as Router>::ParseTree::transform_into_plan(&query, metadata)
+                        .map_err(Error::from)?;
                 if runtime.provides_versions() {
                     let mut table_version_map =
                         TableVersionMap::with_capacity(plan.relations.tables.len());
@@ -710,6 +711,30 @@ impl TraftNode {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
                         Some(format!("There is no table with name {table_name}")),
+                    )))
+                }
+            }
+            GrantRevokeType::Procedure { privilege } => {
+                Ok((SchemaObjectType::Routine, privilege.try_into()?, -1))
+            }
+            GrantRevokeType::SpecificProcedure {
+                privilege,
+                proc_name,
+                proc_params,
+            } => {
+                if let Some(routine) = self.storage.routines.by_name(proc_name)? {
+                    if let Some(params) = proc_params.as_ref() {
+                        ensure_parameters_match(&routine, params)?;
+                    }
+                    Ok((
+                        SchemaObjectType::Routine,
+                        privilege.try_into()?,
+                        routine.id as i64,
+                    ))
+                } else {
+                    Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("There is no routine with name {proc_name}")),
                     )))
                 }
             }
@@ -1084,7 +1109,7 @@ fn reenterable_schema_change_request(
                 };
 
                 // drop by name if no parameters are specified
-                if !params.is_empty() {
+                if let Some(params) = params {
                     ensure_parameters_match(routine, params)?;
                 }
 
@@ -1407,7 +1432,7 @@ fn reenterable_schema_change_request(
         RevokePrivilege(GrantRevokeType, String),
         RenameRoutine(RenameRoutineParams),
         CreateProcedure(CreateProcParams),
-        DropProcedure(String, Vec<ParamDef>),
+        DropProcedure(String, Option<Vec<ParamDef>>),
     }
 }
 
