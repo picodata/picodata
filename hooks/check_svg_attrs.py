@@ -13,6 +13,9 @@ log = get_plugin_logger(os.path.basename(__file__))
 
 # https://www.mkdocs.org/dev-guide/plugins/#events
 def on_files(files: Files, config: MkDocsConfig):
+    used_svg: set[str] = set()
+    config["used_svg"] = used_svg
+
     for file in files.documentation_pages():
         Page(None, file, config)
         assert file.page is not None
@@ -29,6 +32,8 @@ def on_files(files: Files, config: MkDocsConfig):
 
         for href in hrefs:
             svg: File = Files.get_file_from_path(files, href)  # type: ignore
+
+            used_svg.add(svg.src_path)
 
             dom = minidom.parse(svg.abs_src_path)
 
