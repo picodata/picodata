@@ -217,7 +217,8 @@ test result: ok. 6 passed; 0 failed; finished in 0.88s
   Важно [удостовериться](#post_install_check), что после этого будет
   запускаться именно новая версия `picodata`
 - после обновления следует [запустить](../tutorial/deploy.md) инстанс
-  Picodata
+  Picodata с прежними параметрами (в первую очередь, с тем же
+  `--data-dir`)
 
 ## Удаление Picodata {: #uninstall_picodata }
 
@@ -228,7 +229,7 @@ test result: ok. 6 passed; 0 failed; finished in 0.88s
   данном хосте инстансы Picоdata
 - для каждого инстанса требуется удалить его [рабочие
   файлы](../architecture/instance_runtime_files.md). Например: `rm -rf
-  *.xlog *.vylog *.snap`
+  *.xlog *.vylog *.snap *.sock`
 - если Picodata была установлена из готового пакета для определенной ОС,
   то следует удалить этот пакет, используя системный менеджер пакетов
   (например, `sudo apt remove picodata` или `sudo dnf remove picodata`)
@@ -236,7 +237,7 @@ test result: ok. 6 passed; 0 failed; finished in 0.88s
   исполняемый файл `picodata`. Если этот файл был ранее помещен в одну
   из директорий, входящих в `$PATH`, то следует явно удалить его оттуда:
   `sudo rm -rf $(which picodata)`. После этого следует удалить
-  директорию с Git-репозиторием Picodata.
+  директорию с Git-репозиторием Picodata
 - после удаления следует удостовериться, что команда `which picodata`
   сигнализирует об отсутствии исполняемого файла `picodata` в `$PATH`
 
@@ -324,6 +325,7 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 Значение параметра `--advertise` анонсируется кластеру при запуске инстанса. Его можно поменять при перезапуске инстанса или в процессе его работы командой `picodata set-advertise`.
 -->
 
-Подробнее о запуске Picodata и работе с кластером см. в разделе
-[Запуск кластера](deploy.md). Параметры запуска из командной
-строки описаны в разделе [Аргументы командной строки Picodata](../reference/cli.md).
+См. также:
+
+- [Запуск Picodata](run.md)
+- [Аргументы командной строки Picodata](../reference/cli.md)

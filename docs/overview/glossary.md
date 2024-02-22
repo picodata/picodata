@@ -131,7 +131,7 @@ Picodata содержит следующие встроенные системн
 
 <!--См. также:
 
-- [Запуск кластера — Тиры](../tutorial/deploy.md#tiers) -->
+- [Создание кластера — Тиры](../tutorial/deploy.md#tiers) -->
 
 ### Кластер (cluster) {: #cluster }
 
@@ -176,7 +176,7 @@ Picodata содержит следующие встроенные системн
 
 См. также:
 
-- [Запуск кластера — Репликация и зоны доступности](../tutorial/deploy.md#failure_domains)
+- [Создание кластера — Репликация и зоны доступности](../tutorial/deploy.md#failure_domains)
 
 ### Бакет (bucket) {: #bucket }
 

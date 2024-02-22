@@ -30,6 +30,7 @@ nav:
     - overview/versioning.md
   - Инструкции и руководства:
     - tutorial/install.md
+    - tutorial/run.md
     - tutorial/deploy.md
     - tutorial/connecting.md
     - tutorial/sql_examples.md

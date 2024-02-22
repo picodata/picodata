@@ -31,7 +31,7 @@ SUBCOMMANDS:
 ## picodata run {: #run }
 <!-- ********************************************************************** -->
 
-Запускает инстанс Picodata, см. [Запуск кластера](../tutorial/deploy.md).
+Запускает инстанс Picodata, см. [Запуск Picodata](../tutorial/run.md).
 
 ```
 picodata run [OPTIONS]
