@@ -159,3 +159,12 @@ impl From<::tarantool::error::TarantoolError> for Error {
         Self::Tarantool(err.into())
     }
 }
+
+impl<V> From<tarantool::tlua::CallError<V>> for Error
+where
+    V: Into<tarantool::tlua::Void>,
+{
+    fn from(err: tarantool::tlua::CallError<V>) -> Self {
+        Self::Lua(err.into())
+    }
+}

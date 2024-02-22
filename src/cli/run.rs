@@ -100,7 +100,10 @@ pub fn main(args: args::Run) -> ! {
                         });
                         std::mem::forget(fuse.start());
 
-                        entrypoint.exec(args, to_parent)
+                        if let Err(e) = entrypoint.exec(args, to_parent) {
+                            tlog!(Critical, "{e}");
+                            std::process::exit(1);
+                        }
                     }
                 );
                 std::process::exit(rc);

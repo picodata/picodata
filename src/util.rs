@@ -515,7 +515,7 @@ pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
 ///
 /// Return None in case of incorrect path
 /// Return Some(`value`) with `unix/:` and, probably, `./` prepended to `value`
-pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<String, String> {
+pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<String, Error> {
     let l = ::tarantool::lua_state();
     let path = std::path::Path::new(socket_path);
     let console_sock = match path.components().next() {
@@ -530,7 +530,7 @@ pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<Strin
         "local u = require('uri').parse(...); assert(u and u.unix)",
         &console_sock,
     )
-    .map_err(|_| format!("invalid socket path: {socket_path}"))?;
+    .map_err(|_| Error::other(format!("invalid socket path: {socket_path}")))?;
 
     Ok(console_sock)
 }
@@ -539,13 +539,14 @@ pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<Strin
 /// Starts admin console.
 ///
 /// Returns Err in case of problems with socket path.
-pub fn listen_admin_console(args: &args::Run) -> Result<(), String> {
+pub fn listen_admin_console(args: &args::Run) -> Result<(), Error> {
     let lua = ::tarantool::lua_state();
 
     let validated_path = validate_and_complete_unix_socket_path(&args.admin_sock())?;
 
-    lua.exec_with(r#"require('console').listen(...)"#, &validated_path)
-        .map_err(|err| err.to_string())
+    lua.exec_with(r#"require('console').listen(...)"#, &validated_path)?;
+
+    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

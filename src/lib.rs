@@ -31,8 +31,9 @@ use crate::plugin::*;
 use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tier::{Tier, DEFAULT_TIER};
+use crate::traft::error::Error;
 use crate::traft::op;
-use crate::util::{effective_user_id, listen_admin_console, unwrap_or_terminate};
+use crate::util::{effective_user_id, listen_admin_console};
 
 mod access_control;
 pub mod audit;
@@ -503,20 +504,22 @@ pub enum Entrypoint {
 }
 
 impl Entrypoint {
-    pub fn exec(self, args: cli::args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
+    pub fn exec(
+        self,
+        args: cli::args::Run,
+        to_supervisor: ipc::Sender<IpcMessage>,
+    ) -> Result<(), Error> {
         if let Some(filename) = &args.service_password_file {
-            let res = pico_service::read_pico_service_password_from_file(filename);
-            if let Err(e) = res {
-                tlog!(Error, "{e}");
-                std::process::exit(-1);
-            }
+            pico_service::read_pico_service_password_from_file(filename)?;
         }
 
         match self {
-            Self::StartDiscover => start_discover(&args, to_supervisor),
-            Self::StartBoot => start_boot(&args),
-            Self::StartJoin { leader_address } => start_join(&args, leader_address),
+            Self::StartDiscover => start_discover(&args, to_supervisor)?,
+            Self::StartBoot => start_boot(&args)?,
+            Self::StartJoin { leader_address } => start_join(&args, leader_address)?,
         }
+
+        Ok(())
     }
 }
 
@@ -571,7 +574,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     (storage.clone(), raft_storage)
 }
 
-fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
+fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> Result<(), Error> {
     tlog!(Info, ">>>>> start_discover()");
 
     tlog::set_log_level(args.log_level());
@@ -630,14 +633,14 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) {
             to_supervisor.send(&msg);
             std::process::exit(0);
         }
-    };
+    }
 }
 
-fn start_boot(args: &args::Run) {
+fn start_boot(args: &args::Run) -> Result<(), Error> {
     tlog!(Info, ">>>>> start_boot()");
 
     let init_cfg = match &args.init_cfg {
-        Some(path) => unwrap_or_terminate(InitCfg::try_from_yaml_file(path)),
+        Some(path) => InitCfg::try_from_yaml_file(path).map_err(Error::other)?,
         None => {
             tlog!(Info, "init-cfg wasn't set");
             tlog!(
@@ -654,16 +657,13 @@ fn start_boot(args: &args::Run) {
 
     let tiers = init_cfg.tier;
 
-    let current_instance_tier = unwrap_or_terminate(
-        tiers
-            .iter()
-            .find(|tier| tier.name == args.tier)
-            .cloned()
-            .ok_or(format!(
-                "tier '{}' for current instance is not found in init-cfg",
-                args.tier
-            )),
-    );
+    let Some(current_instance_tier) = tiers.iter().find(|tier| tier.name == args.tier).cloned()
+    else {
+        return Err(Error::other(format!(
+            "tier '{}' for current instance is not found in init-cfg",
+            args.tier
+        )));
+    };
 
     let instance = Instance::new(
         None,
@@ -724,7 +724,7 @@ fn start_boot(args: &args::Run) {
     })
     .unwrap();
 
-    postjoin(args, storage, raft_storage);
+    postjoin(args, storage, raft_storage)?;
 
     let db_name = &args.cluster_id;
     let instance_id = instance.instance_id.as_ref();
@@ -736,9 +736,11 @@ fn start_boot(args: &args::Run) {
         instance_id: %instance_id,
         raft_id: %raft_id,
     );
+
+    Ok(())
 }
 
-fn start_join(args: &args::Run, instance_address: String) {
+fn start_join(args: &args::Run, instance_address: String) -> Result<(), Error> {
     tlog!(Info, ">>>>> start_join({instance_address})");
 
     let req = join::Request {
@@ -775,8 +777,9 @@ fn start_join(args: &args::Run, instance_address: String) {
                 continue;
             }
             Err(e) => {
-                tlog!(Error, "join request failed: {e}, shutting down...");
-                std::process::exit(-1);
+                return Err(Error::other(format!(
+                    "join request failed: {e}, shutting down..."
+                )));
             }
         }
     };
@@ -826,7 +829,11 @@ fn start_join(args: &args::Run, instance_address: String) {
     postjoin(args, storage, raft_storage)
 }
 
-fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAccess) {
+fn postjoin(
+    args: &args::Run,
+    storage: Clusterwide,
+    raft_storage: RaftSpaceAccess,
+) -> Result<(), Error> {
     tlog!(Info, ">>>>> postjoin()");
 
     if let Some(config) = &args.audit {
@@ -881,7 +888,7 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     box_cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
     tarantool::set_cfg(&box_cfg);
 
-    unwrap_or_terminate(listen_admin_console(args));
+    listen_admin_console(args)?;
 
     if let Err(e) =
         tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback(PluginList::get())))
@@ -954,8 +961,9 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
                 continue;
             }
             Err(e) => {
-                tlog!(Error, "failed to activate myself: {e}, shutting down...");
-                std::process::exit(-1);
+                return Err(Error::other(format!(
+                    "failed to activate myself: {e}, shutting down..."
+                )));
             }
         }
     }
@@ -992,4 +1000,6 @@ fn postjoin(args: &args::Run, storage: Clusterwide, raft_storage: RaftSpaceAcces
     PluginList::get().iter().for_each(|plugin| {
         plugin.start();
     });
+
+    Ok(())
 }
