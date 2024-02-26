@@ -4,7 +4,7 @@ from conftest import Postgres
 import os
 
 
-def test_ssl_request_handling(postgres: Postgres):
+def test_ssl_refuse(postgres: Postgres):
     host = "127.0.0.1"
     port = 5432
 
@@ -38,3 +38,27 @@ def test_ssl_request_handling(postgres: Postgres):
         pg.DatabaseError, match=f"authentication failed for user '{user}'"
     ):
         pg.Connection(user, password="wrong password", host=host, port=port)
+
+
+def test_ssl_accept(postgres: Postgres):
+    host = "127.0.0.1"
+    port = 5432
+    # where the server should find .crt and .key files
+    pgdata = "test/pgdata"
+    instance = postgres.instance
+
+    postgres.start(host, port, pgdata)
+
+    user = "user"
+    password = "P@ssw0rd"
+    instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+
+    # where the client should find his certificate
+    client_cert_file = os.path.join(os.path.abspath(pgdata), "root.crt")
+    os.environ["SSL_CERT_FILE"] = client_cert_file
+
+    os.environ["PGSSLMODE"] = "require"
+    conn = pg.Connection(
+        user, password=password, host=host, port=port, ssl_context=True
+    )
+    conn.close()

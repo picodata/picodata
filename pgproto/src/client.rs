@@ -3,6 +3,7 @@ use crate::error::*;
 use crate::messages;
 use crate::storage::StorageManager;
 use crate::stream::{BeMessage, FeMessage, PgStream};
+use crate::tls::TlsAcceptor;
 use pgwire::messages::startup::*;
 use std::io;
 
@@ -25,24 +26,18 @@ pub struct PgClient<S> {
 
 impl<S: io::Read + io::Write> PgClient<S> {
     /// Create a client context by receiving a startup message and authenticating the client.
-    pub fn accept(mut stream: PgStream<S>) -> PgResult<PgClient<S>> {
-        let mut startup_sequence = || {
-            let client_params = startup::handshake(&mut stream)?;
-            log::info!("processed startup message");
+    pub fn accept(stream: PgStream<S>, tls_acceptor: Option<TlsAcceptor>) -> PgResult<PgClient<S>> {
+        let (mut stream, params) = startup::handshake(stream, tls_acceptor.as_ref())?;
+        log::info!("processed startup");
 
-            let salt = rand::random::<[u8; 20]>();
-            auth::authenticate(&mut stream, &salt, &client_params.username)?;
-            log::info!("client authenticated");
-
-            PgResult::Ok(())
-        };
-
-        startup_sequence().map_err(|error| {
+        let salt = rand::random::<[u8; 20]>();
+        auth::authenticate(&mut stream, &salt, &params.username).map_err(|error| {
             log::info!("failed to establish client connection: {error}");
             // At this point we don't care about failed writes (best effort approach).
             let _ = stream.write_message(messages::error_response(error.info()));
             error
         })?;
+        log::info!("client authenticated");
 
         Ok(PgClient {
             manager: StorageManager::new(),

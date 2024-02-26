@@ -1673,13 +1673,13 @@ class Postgres:
         self.instance.eval(code)
         return self
 
-    def start(self, host, port):
+    def start(self, host, port, pgdata=None):
         # TODO: Research why calling server_start without wrapping it to fiber leads to
         #       "Connection reset by peer" error.
         code = f"""
             fiber = require('fiber')
             fiber.create(function()
-                box.func['libpgproto.server_start']:call({{ '{host}', '{port}' }})
+                box.func['libpgproto.server_start']:call({{ '{host}', '{port}', '{pgdata}' }})
             end)
         """
         self.instance.eval(code)

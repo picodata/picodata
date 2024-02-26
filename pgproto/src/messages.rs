@@ -52,6 +52,10 @@ pub fn ssl_refuse() -> BeMessage {
     BeMessage::SslResponse(SslResponse::Refuse)
 }
 
+pub fn ssl_accept() -> BeMessage {
+    BeMessage::SslResponse(SslResponse::Accept)
+}
+
 pub fn parse_complete() -> BeMessage {
     BeMessage::ParseComplete(ParseComplete::new())
 }

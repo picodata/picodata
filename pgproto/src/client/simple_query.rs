@@ -1,10 +1,10 @@
 use crate::storage::StorageManager;
 use crate::{error::PgResult, messages, stream::PgStream};
 use pgwire::messages::simplequery::Query;
-use std::io;
+use std::io::{Read, Write};
 
 pub fn process_query_message(
-    stream: &mut PgStream<impl io::Read + io::Write>,
+    stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
     query: Query,
 ) -> PgResult<()> {

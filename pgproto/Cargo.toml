@@ -12,6 +12,8 @@ bytes = "1.4.0"
 ctor = "0.2.4"
 log = "0.4.20"
 once_cell = "1.18.0"
+# TODO: use openssl vendored in tarantool (see https://docs.rs/openssl/0.10.64/openssl/#manual)
+openssl = { version = "0.10.64", features = ["vendored"] }
 pgwire = { git = "https://github.com/sunng87/pgwire", rev = "6e653e851703bb743a96ba7a8e0f1fde6a5abeb0" }
 postgres-types = "0.2.6"
 rand = "0.8.5"

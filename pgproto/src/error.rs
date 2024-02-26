@@ -1,10 +1,13 @@
 use pgwire::error::{ErrorInfo, PgWireError};
+use std::env;
 use std::error;
 use std::io;
 use std::num::{ParseFloatError, ParseIntError};
 use std::str::ParseBoolError;
 use std::string::FromUtf8Error;
 use thiserror::Error;
+
+use crate::tls::TlsError;
 
 pub type PgResult<T> = Result<T, PgError>;
 
@@ -37,6 +40,12 @@ pub enum PgError {
 
     #[error("{0}")]
     DecodingError(#[from] DecodingError),
+
+    #[error("tls error: {0}")]
+    TlsError(#[from] TlsError),
+
+    #[error("env error: {0}")]
+    EnvError(#[from] env::VarError),
 }
 
 #[derive(Error, Debug)]

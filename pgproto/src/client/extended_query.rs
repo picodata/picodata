@@ -9,8 +9,9 @@ use crate::{
 use bytes::Bytes;
 use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
 use postgres_types::Oid;
+use std::io::{Read, Write};
 use std::iter::zip;
-use std::{io, mem};
+use std::mem;
 
 fn use_tarantool_parameter_placeholders(sql: &str) -> String {
     // TODO: delete it after the pg parameters are supported,
@@ -22,7 +23,7 @@ fn use_tarantool_parameter_placeholders(sql: &str) -> String {
 }
 
 pub fn process_parse_message(
-    stream: &mut PgStream<impl io::Write>,
+    stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
     parse: Parse,
 ) -> PgResult<()> {
@@ -75,7 +76,7 @@ fn decode_parameter_values(
 }
 
 pub fn process_bind_message(
-    stream: &mut PgStream<impl io::Write>,
+    stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
     mut bind: Bind,
 ) -> PgResult<()> {
@@ -97,7 +98,7 @@ pub fn process_bind_message(
 }
 
 pub fn process_execute_message(
-    stream: &mut PgStream<impl io::Write>,
+    stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
     execute: Execute,
 ) -> PgResult<()> {
@@ -155,7 +156,7 @@ fn describe_portal(manager: &StorageManager, portal: Option<&str>) -> PgResult<B
 }
 
 pub fn process_describe_message(
-    stream: &mut PgStream<impl io::Write>,
+    stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
     describe: Describe,
 ) -> PgResult<()> {
@@ -180,7 +181,7 @@ pub fn process_describe_message(
 }
 
 pub fn process_close_message(
-    stream: &mut PgStream<impl io::Write>,
+    stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
     close: Close,
 ) -> PgResult<()> {

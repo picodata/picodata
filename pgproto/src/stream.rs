@@ -1,7 +1,10 @@
-use crate::error::PgResult;
+use crate::{
+    error::{PgError, PgResult},
+    tls::{TlsAcceptor, TlsStream},
+};
 use bytes::{BufMut, BytesMut};
 use pgwire::messages::startup::SslRequest;
-use std::io::{self, ErrorKind::UnexpectedEof};
+use std::io::{self, ErrorKind::UnexpectedEof, Write};
 
 // Public re-exports.
 pub use pgwire::messages::{
@@ -22,10 +25,42 @@ fn read_into_buf(reader: &mut impl io::Read, buf: &mut impl BufMut) -> io::Resul
     Ok(cnt)
 }
 
+enum PgSocket<S> {
+    Plain(S),
+    Secure(TlsStream<S>),
+}
+
+// TlsStream used for secure sockets requires Read and Write for reading.
+impl<S: io::Read + io::Write> io::Read for PgSocket<S> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            PgSocket::Plain(sock) => sock.read(buf),
+            PgSocket::Secure(sock) => sock.read(buf),
+        }
+    }
+}
+
+// TlsStream used for secure sockets requires Read and Write for writing.
+impl<S: io::Read + io::Write> io::Write for PgSocket<S> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            PgSocket::Plain(sock) => sock.write(buf),
+            PgSocket::Secure(sock) => sock.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            PgSocket::Plain(sock) => sock.flush(),
+            PgSocket::Secure(sock) => sock.flush(),
+        }
+    }
+}
+
 /// Postgres connection wrapper for raw streams.
 pub struct PgStream<S> {
     /// Raw byte stream (duplex).
-    raw: S,
+    socket: PgSocket<S>,
     /// Receive buffer.
     ibuf: BytesMut,
     /// Send buffer.
@@ -38,7 +73,7 @@ impl<S> PgStream<S> {
     pub fn new(raw: S) -> PgStream<S> {
         const INITIAL_BUF_SIZE: usize = 8192;
         PgStream {
-            raw,
+            socket: PgSocket::Plain(raw),
             ibuf: BytesMut::with_capacity(INITIAL_BUF_SIZE),
             obuf: BytesMut::with_capacity(INITIAL_BUF_SIZE),
             startup_processed: false,
@@ -47,7 +82,7 @@ impl<S> PgStream<S> {
 }
 
 /// Read part of the stream.
-impl<S: io::Read> PgStream<S> {
+impl<S: io::Read + io::Write> PgStream<S> {
     /// Try decoding an incoming message considering the connection's state.
     /// Return `None` if the packet is not complete for parsing.
     fn try_decode_message(&mut self) -> PgResult<Option<FeMessage>> {
@@ -81,7 +116,7 @@ impl<S: io::Read> PgStream<S> {
                 }
             }
 
-            let cnt = read_into_buf(&mut self.raw, &mut self.ibuf)?;
+            let cnt = read_into_buf(&mut self.socket, &mut self.ibuf)?;
             log::debug!("received {cnt} bytes from client");
             if cnt == 0 {
                 return Err(io::Error::from(UnexpectedEof).into());
@@ -91,10 +126,10 @@ impl<S: io::Read> PgStream<S> {
 }
 
 /// Write part of the stream.
-impl<S: io::Write> PgStream<S> {
+impl<S: io::Read + io::Write> PgStream<S> {
     /// Flush all buffered messages to an underlying byte stream.
     pub fn flush(&mut self) -> PgResult<&mut Self> {
-        self.raw.write_all(&self.obuf)?;
+        self.socket.write_all(&self.obuf)?;
         self.obuf.clear();
         Ok(self)
     }
@@ -108,5 +143,31 @@ impl<S: io::Write> PgStream<S> {
     /// Put the message into the output buffer and immediately flush everything.
     pub fn write_message(&mut self, message: BeMessage) -> PgResult<&mut Self> {
         self.write_message_noflush(message)?.flush()
+    }
+}
+
+impl<S: io::Read + io::Write> PgStream<S> {
+    pub fn into_secure(self, acceptor: &TlsAcceptor) -> PgResult<PgStream<S>> {
+        let Self {
+            socket,
+            ibuf,
+            obuf,
+            startup_processed,
+        } = self;
+
+        if let PgSocket::Plain(socket) = socket {
+            let secure_socket = acceptor.accept(socket)?;
+            Ok(PgStream {
+                socket: PgSocket::Secure(secure_socket),
+                ibuf,
+                obuf,
+                startup_processed,
+            })
+        } else {
+            // this should be checked during the handshake
+            Err(PgError::ProtocolViolation(
+                "BUG: stream is already secured".into(),
+            ))
+        }
     }
 }

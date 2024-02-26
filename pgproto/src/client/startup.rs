@@ -1,9 +1,10 @@
-use pgwire::messages::startup::Startup;
-
 use crate::error::{PgError, PgResult};
 use crate::messages;
 use crate::stream::{FeMessage, PgStream};
-use std::{collections::BTreeMap, io};
+use crate::tls::TlsAcceptor;
+use pgwire::messages::startup::Startup;
+use std::collections::BTreeMap;
+use std::io::{Read, Write};
 
 pub struct ClientParams {
     pub username: String,
@@ -27,21 +28,38 @@ fn parse_startup(mut startup: Startup) -> PgResult<ClientParams> {
         rest: parameters,
     })
 }
+
+fn handle_ssl_request<S: Read + Write>(
+    mut stream: PgStream<S>,
+    tls_acceptor: Option<&TlsAcceptor>,
+) -> PgResult<PgStream<S>> {
+    let Some(acceptor) = tls_acceptor else {
+        stream.write_message(messages::ssl_refuse())?;
+        return Ok(stream);
+    };
+
+    stream.write_message(messages::ssl_accept())?;
+    stream.into_secure(acceptor)
+}
+
 /// Respond to SslRequest if you receive it, read startup message, verify parameters and return them.
-pub fn handshake(stream: &mut PgStream<impl io::Read + io::Write>) -> PgResult<ClientParams> {
+pub fn handshake<S: Read + Write>(
+    mut stream: PgStream<S>,
+    tls_acceptor: Option<&TlsAcceptor>,
+) -> PgResult<(PgStream<S>, ClientParams)> {
     let mut expect_startup = false;
     loop {
         let message = stream.read_message()?;
         // At the beginning we can get SslRequest or Startup.
         match message {
-            FeMessage::Startup(startup) => return parse_startup(startup),
+            FeMessage::Startup(startup) => return Ok((stream, parse_startup(startup)?)),
             FeMessage::SslRequest(_) => {
                 if expect_startup {
                     return Err(PgError::ProtocolViolation(format!(
                         "expected Startup, got {message:?}"
                     )));
                 } else {
-                    stream.write_message(messages::ssl_refuse())?;
+                    stream = handle_ssl_request(stream, tls_acceptor)?;
                     // After SslRequest, only Startup is expected.
                     expect_startup = true;
                 }
