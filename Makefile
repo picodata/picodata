@@ -4,7 +4,7 @@ default: ;
 
 install-cargo:
 	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |\
-		sh -s -- -y --profile default --default-toolchain 1.71.0
+		sh -s -- -y --profile default --default-toolchain 1.76.0
 
 centos7-cmake3:
 	if [ ! -L /usr/bin/cmake3 ] ; then \
@@ -40,7 +40,7 @@ lint:
 	cargo fmt --check
 	cargo check
 	cargo clippy --version
-	cargo clippy --all-features -- --deny clippy::all --no-deps
+	cargo clippy --features "load_test webui error_injection" -- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" cargo doc --workspace --no-deps --document-private-items --exclude tlua --exclude sbroad-core --exclude tarantool
 

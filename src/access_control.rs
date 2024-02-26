@@ -133,7 +133,7 @@ pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
 ///
 /// Note that not all combinations of parameters are valid.
 /// For in depth description of cases when this function may panic see
-/// [box_access_check_ddl](::tarantool::access_control::box_access_check_ddl) in tarantool module.
+/// [box_access_check_ddl(box_access_check_ddl) in tarantool module.
 fn box_access_check_ddl_as_user(
     object_name: &str,
     object_id: u32,

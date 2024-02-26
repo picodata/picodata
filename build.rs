@@ -139,7 +139,7 @@ fn rerun_if_webui_changed() {
     let source_dir = std::env::current_dir().unwrap().join("picodata-webui");
     // Do not rerun for generated files changes
     let ignored_files = ["node_modules", ".husky"];
-    for entry in fs::read_dir(&source_dir)
+    for entry in fs::read_dir(source_dir)
         .expect("failed to scan picodata-webui dir")
         .flatten()
     {

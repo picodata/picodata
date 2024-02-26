@@ -113,7 +113,7 @@ impl SpanProcessor for StatCollector {
         let _su = su(ADMIN_ID).expect("can't fail because session is available");
 
         let Some(span_data) = span.exported_data() else {
-            return
+            return;
         };
 
         let id: String = match span_data.attributes.get(&"id".into()) {
@@ -336,7 +336,7 @@ pub struct SqlStats {
 }
 
 impl SqlStats {
-    const TABLE_NAME: &str = "_sql_stat";
+    const TABLE_NAME: &'static str = "_sql_stat";
 
     /// Must be called from tx thread
     pub fn id() -> SpaceId {
@@ -487,7 +487,7 @@ pub struct SqlQueries {
 }
 
 impl SqlQueries {
-    pub const TABLE_NAME: &str = "_sql_query";
+    pub const TABLE_NAME: &'static str = "_sql_query";
 
     // Must be called from tx thread
     pub fn id() -> SpaceId {
@@ -536,7 +536,7 @@ impl SqlQueries {
             query_id: &str,
         ) -> tarantool::Result<Option<SqlQueryDef>> {
             let Some(tuple) = queries.index.get(&[query_id])? else {
-                return Ok(None)
+                return Ok(None);
             };
 
             queries
