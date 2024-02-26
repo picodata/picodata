@@ -169,3 +169,4 @@ hooks:
   - ./hooks/check_headers.py
   - ./hooks/check_svg_attrs.py
   - ./hooks/check_links.py
+  - ./hooks/check_sorting.py
