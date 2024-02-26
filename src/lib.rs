@@ -21,8 +21,8 @@ use storage::Clusterwide;
 use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
+use crate::address::Address;
 use crate::cli::args;
-use crate::cli::args::Address;
 use crate::cli::init_cfg::InitCfg;
 use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
@@ -36,6 +36,7 @@ use crate::traft::op;
 use crate::util::{effective_user_id, listen_admin_console};
 
 mod access_control;
+pub mod address;
 pub mod audit;
 mod bootstrap_entries;
 pub mod cas;
