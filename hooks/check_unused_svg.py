@@ -16,4 +16,4 @@ def on_files(files: Files, config: MkDocsConfig):
             continue
 
         if file.src_path not in config["used_svg"]:
-            log.info(f"UNUSED SVG: {file.src_path}")
+            log.warning(f"UNUSED SVG: {file.src_path}")
