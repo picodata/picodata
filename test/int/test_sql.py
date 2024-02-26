@@ -1,5 +1,6 @@
 import pytest
 import re
+import uuid
 
 from conftest import Cluster, KeyDef, KeyPart, ReturnError, Retriable
 
@@ -214,6 +215,37 @@ def test_select(cluster: Cluster):
         2,
     )
     assert data["rows"] == [[2, 2]]
+
+
+def test_select_uuid(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    id1 = "e4166fc5-e113-46c5-8ae9-970882ca8842"
+    id2 = "6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1"
+
+    ddl = i1.sql(
+        """
+        create table t (a uuid not null, primary key (a))
+        using memtx
+        distributed by (a)
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    data = i1.sql("""insert into t values(?);""", id1)
+    assert data["row_count"] == 1
+
+    i1.sql("""insert into t values(?);""", id2)
+    data = i1.sql("""select * from t where a = ?""", uuid.UUID(id2))
+    assert data["rows"] == [[uuid.UUID(id2)]]
+
+    data = i1.sql("""select cast(a as Text) from t""")
+    assert data == {
+        "metadata": [{"name": "COL_1", "type": "string"}],
+        "rows": [[id2], [id1]],
+    }
 
 
 def test_read_from_global_tables(cluster: Cluster):

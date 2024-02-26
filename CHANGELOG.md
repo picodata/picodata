@@ -40,6 +40,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Clusterwide SQL supports granting/revoking execute/create/drop for procedures.
 
+- Clusterwide SQL supports UUID data type.
+
 -->
 
 ## [24.1.1] - 2024-02-09
@@ -86,7 +88,7 @@ with the `YY.MINOR.MICRO` scheme.
   ```
 
 - `ALTER USER ... WITH LOGIN` can now unblock a user, who was blocked due to exceeding login attempts.
-
+- uuid support add
 ### Fixes
 
 - Revoke excess privileges from `guest`
