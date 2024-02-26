@@ -175,9 +175,9 @@ admin](#admin). Данный способ использует обычный т
 Значение по умолчанию: `info`<br>
 Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`
 
-### --memtx_memory {: #run_memtx_memory }
+### --memtx-memory {: #run_memtx_memory }
 
-`--memtx_memory`
+`--memtx-memory <MEMTX_MEMORY>`
 
 Количество памяти предоставляемое непосредственно на хранение данных.
 
@@ -264,7 +264,6 @@ type '\help' for interactive help
 picodata>
 ```
 
-
 <!-- ********************************************************************** -->
 ## picodata connect {: #connect }
 <!-- ********************************************************************** -->
@@ -298,15 +297,6 @@ picodata>
 Возможные значения: `chap-sha1`, `ldap`, `md5`<br>
 Значение по умолчанию: `chap-sha1`<br>.
 
-### -u, --user {: #connect_user }
-
-`-u, --user <USER>`
-
-Имя пользователя, см. [Управление доступом](../tutorial/access_control.md#user_management).
-
-Игнорируется при указании имени пользователя в адресе<br>
-Значение по умолчанию: `guest`
-
 ### --password-file {: #connect_password_file }
 
 `--password-file`
@@ -317,6 +307,15 @@ picodata>
 
 Значение по умолчанию: `localhost:3301`<br>
 Аналогичная переменная окружения: `PICODATA_PASSWORD_FILE`
+
+### -u, --user {: #connect_user }
+
+`-u, --user <USER>`
+
+Имя пользователя, см. [Управление доступом](../tutorial/access_control.md#user_management).
+
+Игнорируется при указании имени пользователя в адресе<br>
+Значение по умолчанию: `guest`
 
 <!-- ### Число попыток неудачного входа {: #max_login_attempts }
 
@@ -338,7 +337,6 @@ picodata> pico.cas({
 разблокировать пользователя.
 ```
 -->
-
 
 <!-- ********************************************************************** -->
 ## picodata expel {: #expel }
