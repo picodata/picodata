@@ -77,37 +77,6 @@
     {% if config.theme.palette %}
       {% if not config.theme.palette is mapping %}
         {% include "partials/palette.html" %}
-        <form class="md-header__option" data-md-component="palette">
-          {% for option in config.theme.palette %}
-            {% set primary = option.primary | replace(" ", "-") | lower %}
-            {% set accent  = option.accent  | replace(" ", "-") | lower %}
-            <input
-              class="md-option"
-              data-md-color-media="{{ option.media }}"
-              data-md-color-scheme="{{ option.scheme }}"
-              data-md-color-primary="{{ primary }}"
-              data-md-color-accent="{{ accent }}"
-              {% if option.toggle %}
-                aria-label="{{ option.toggle.name }}"
-              {% else %}
-                aria-hidden="true"
-              {% endif %}
-              type="radio"
-              name="__palette"
-              id="__palette_{{ loop.index }}"
-            >
-            {% if option.toggle %}
-              <label
-                class="md-header__button md-icon"
-                title="{{ option.toggle.name }}"
-                for="__palette_{{ loop.index0 or loop.length }}"
-                hidden
-              >
-                {% include ".icons/" ~ option.toggle.icon ~ ".svg" %}
-              </label>
-            {% endif %}
-          {% endfor %}
-        </form>
       {% endif %}
     {% endif %}
 
@@ -119,32 +88,6 @@
     <!-- Site language selector -->
     {% if config.extra.alternate %}
       {% include "partials/alternate.html" %}
-      <div class="md-header__option">
-        <div class="md-select">
-          {% set icon = config.theme.icon.alternate or "material/translate" %}
-          <button
-            class="md-header__button md-icon"
-            aria-label="{{ lang.t('select.language.title') }}"
-          >
-            {% include ".icons/" ~ icon ~ ".svg" %}
-          </button>
-          <div class="md-select__inner">
-            <ul class="md-select__list">
-              {% for alt in config.extra.alternate %}
-                <li class="md-select__item">
-                  <a
-                    href="{{ alt.link | url }}"
-                    hreflang="{{ alt.lang }}"
-                    class="md-select__link"
-                  >
-                    {{ alt.name }}
-                  </a>
-                </li>
-              {% endfor %}
-            </ul>
-          </div>
-        </div>
-      </div>
     {% endif %}
 
     <!-- Button to open search modal -->
