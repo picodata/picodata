@@ -70,8 +70,9 @@ pico.change_password('username', '', { auth_type = 'ldap' })
 в сообщении `IPROTO_AUTH`; в свою очередь Picodata будет использовать
 полученный пароль при взаимодействии с сервером LDAP.
 
-Подробнее о работе с пользователями и привилегиями и см. разделе
-[Публичный API Picodata](../reference/api.md).
+Cм. также:
+
+- [Управление доступом](access_control.md)
 
 ### Настройка кластера Picodata {: #cluster_setup }
 
