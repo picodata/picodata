@@ -44,7 +44,7 @@ nav:
     - reference/cli.md
     - reference/sql_types.md
     - reference/sql_queries.md
-    - reference/api.md
+    # - reference/api.md
     - reference/ansi_sql.md
     - reference/audit_events.md
   - Архитектура:
@@ -55,7 +55,7 @@ nav:
     - architecture/topology_management.md
     - architecture/raft_failover.md
     - architecture/system_tables.md
-    # - architecture/proc_api.md
+    - architecture/proc_api.md
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
