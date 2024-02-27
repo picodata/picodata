@@ -345,3 +345,13 @@ h6 {
 .md-header__source {
     max-width: 4.1rem;
 }
+
+.md-source__repository {
+    max-width: 100%
+}
+
+@media screen and (max-width: 59.984375em) {
+    .md-nav__source {
+        background-color: var(--bg);
+    }
+}
