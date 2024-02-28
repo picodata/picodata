@@ -20,12 +20,13 @@
 //! See also:
 //! - [Lua reference: Module log](https://www.tarantool.io/en/doc/latest/reference/reference_lua/log/)
 //! - [C API reference: Module say (logging)](https://www.tarantool.io/en/doc/latest/dev_guide/reference_capi/say/)
-use std::ffi::CString;
 use std::ptr::null;
 
 use log::{Level, Log, Metadata, Record};
 
 use crate::ffi::tarantool as ffi;
+use crate::util::into_cstring_lossy;
+use crate::util::to_cstring_lossy;
 
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
@@ -225,13 +226,13 @@ impl<L> tlua::PushOneInto<L> for SayLevel where L: tlua::AsLua {}
 /// Format and print a message to the Tarantool log file.
 #[inline]
 pub fn say(level: SayLevel, file: &str, line: i32, error: Option<&str>, message: &str) {
-    let file = CString::new(file).unwrap();
-    let error = error.map(|e| CString::new(e).unwrap());
+    let file = to_cstring_lossy(file);
+    let error = error.map(to_cstring_lossy);
     let error_ptr = match error {
         Some(ref error) => error.as_ptr(),
         None => null(),
     };
-    let message = CString::new(message).unwrap();
+    let message = to_cstring_lossy(message);
 
     unsafe {
         ffi::SAY_FN.unwrap()(
@@ -251,7 +252,7 @@ pub fn say_format_args(level: SayLevel, args: std::fmt::Arguments) {
         return;
     }
     let loc = std::panic::Location::caller();
-    let file = CString::new(loc.file()).unwrap();
+    let file = to_cstring_lossy(loc.file());
     let line = loc.line();
 
     let mut error_str = String::new();
@@ -263,8 +264,7 @@ pub fn say_format_args(level: SayLevel, args: std::fmt::Arguments) {
         error_ptr = error_str.as_ptr();
     }
 
-    let mut message = std::fmt::format(args);
-    message.push('\0');
+    let message = into_cstring_lossy(std::fmt::format(args));
 
     unsafe {
         ffi::SAY_FN.expect("_say is always not NULL")(
@@ -500,5 +500,12 @@ mod tests {
 
         super::set_current_level(SayLevel::Warn);
         assert_eq!(super::current_level(), SayLevel::Warn);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn no_panic_when_nul_byte() {
+        #[rustfmt::skip]
+        say(SayLevel::Crit, "a\0b\0c\0d", 0, Some("e\0f\0g"), "\0h\0j\0k\0");
+        say_format_args(SayLevel::Info, format_args!("m\0s\0g\0"));
     }
 }
