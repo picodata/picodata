@@ -1,6 +1,29 @@
 from conftest import Cluster, log_crawler
 
 
+def test_config_works(cluster: Cluster):
+    instance = cluster.add_instance(instance_id=False, wait_online=False)
+    config_path = cluster.data_dir + "/config.yaml"
+    with open(config_path, "w") as f:
+        f.write(
+            """
+instance:
+    instance-id: from-config
+    replicaset-id: with-love
+    memtx-memory: 42069
+            """
+        )
+    instance.env["PICODATA_CONFIG_FILE"] = config_path
+    instance.start()
+    instance.wait_online()
+
+    info = instance.call(".proc_instance_info")
+    assert info["instance_id"] == "from-config"
+    assert info["replicaset_id"] == "with-love"
+
+    assert instance.eval("return box.cfg.memtx_memory") == 42069
+
+
 def test_run_init_cfg_enoent(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_INIT_CFG": "./unexisting_dir/trash.yaml"})

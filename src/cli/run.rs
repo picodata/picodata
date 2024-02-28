@@ -4,14 +4,24 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{self, fork, ForkResult};
 use tarantool::fiber;
 
+use crate::cli::args;
+use crate::config::PicodataConfig;
 use crate::{ipc, tarantool_main, tlog, Entrypoint, IpcMessage};
 
-use super::args;
-
 pub fn main(args: args::Run) -> ! {
+    let tt_args = args.tt_args().unwrap();
+
+    let res = PicodataConfig::init(args);
+    let config = crate::unwrap_ok_or!(res,
+        Err(e) => {
+            tlog!(Error, "{e}");
+            std::process::exit(1);
+        }
+    );
+
     // Set the log level as soon as possible to not miss any messages during
     // initialization.
-    tlog::set_log_level(args.log_level());
+    tlog::set_log_level(config.instance.log_level());
 
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
@@ -80,9 +90,9 @@ pub fn main(args: args::Run) -> ! {
                 drop(to_child);
 
                 let rc = tarantool_main!(
-                    args.tt_args().unwrap(),
-                    callback_data: (entrypoint, args, to_parent, from_parent),
-                    callback_data_type: (Entrypoint, args::Run, ipc::Sender<IpcMessage>, ipc::Fd),
+                    tt_args,
+                    callback_data: (entrypoint, config, to_parent, from_parent),
+                    callback_data_type: (Entrypoint, PicodataConfig, ipc::Sender<IpcMessage>, ipc::Fd),
                     callback_body: {
                         // We don't want a child to live without a supervisor.
                         //
@@ -104,7 +114,7 @@ pub fn main(args: args::Run) -> ! {
                         });
                         std::mem::forget(fuse.start());
 
-                        if let Err(e) = entrypoint.exec(args, to_parent) {
+                        if let Err(e) = entrypoint.exec(config, to_parent) {
                             tlog!(Critical, "{e}");
                             std::process::exit(1);
                         }
@@ -169,7 +179,7 @@ pub fn main(args: args::Run) -> ! {
                 if let Ok(msg) = msg {
                     entrypoint = msg.next_entrypoint;
                     if msg.drop_db {
-                        rm_tarantool_files(&args.data_dir);
+                        rm_tarantool_files(&config.instance.data_dir());
                     }
                 } else {
                     let rc = match status {

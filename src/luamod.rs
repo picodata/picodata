@@ -1,9 +1,8 @@
 //! Lua API exported as `_G.pico`
 //!
 
-use std::time::Duration;
-
 use crate::cas::{self, compare_and_swap};
+use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
 use crate::schema::{self, CreateTableParams, ADMIN_ID};
 use crate::traft::error::Error;
@@ -12,7 +11,7 @@ use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::str_eq;
 use crate::util::INFINITY;
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{args, rpc, sync, tlog};
+use crate::{rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::session;
 use ::tarantool::tlua;
@@ -21,6 +20,7 @@ use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
 use indoc::indoc;
+use std::time::Duration;
 
 #[inline(always)]
 fn luamod_set<V>(l: &LuaThread, name: &str, help: &str, value: V)
@@ -41,7 +41,7 @@ fn luamod_set_help_only(l: &LuaThread, name: &str, help: &str) {
     help_table.set(name, help);
 }
 
-pub(crate) fn setup(args: &args::Run) {
+pub(crate) fn setup(config: &PicodataConfig) {
     let l = ::tarantool::lua_state();
     l.exec(include_str!("luamod.lua")).unwrap();
 
@@ -95,29 +95,43 @@ pub(crate) fn setup(args: &args::Run) {
         "3.1.0",
     );
 
+    let config = config.clone();
     luamod_set(
         &l,
-        "args",
+        "config",
         indoc! {"
-        pico.args
+        pico.get_config()
         =========
 
-        A Lua table (not a function) containing the command-line arguments
-        specified at the instance startup. The content of the table is not
-        strictly defined and may depend on circumstances.
+        Returns a Lua table containing picodata configuration which is
+        gathered from the configuration file, environment variables and/or
+        command line arguments.
+
+        The content of the table is not strictly defined and may depend on circumstances.
+
+        Returns:
+
+            (table)
 
         Example:
 
-            picodata> pico.args
+            picodata> pico.get_config()
             ---
-            - log_level: info
-              listen: localhost:3301
-              data_dir: .
-              peers:
-              - localhost:3301
+            - cluster:
+                cluster_id: demo
+            - instance:
+                log_level: info
+                listen: localhost:3301
+                data_dir: .
+                peers:
+                  - localhost:3301
             ...
         "},
-        args,
+        tlua::Function::new(move || -> PicodataConfig {
+            // FIXME: currently it only contains explicitly specified parameters,
+            // but default parameters are omitted
+            config.clone()
+        }),
     );
 
     luamod_set(

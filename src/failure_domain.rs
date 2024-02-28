@@ -2,6 +2,7 @@ use crate::stringify_debug;
 use crate::traft::Distance;
 use crate::util::Uppercase;
 use std::collections::{HashMap, HashSet};
+use tarantool::tlua;
 
 /// Failure domain of a given instance.
 ///
@@ -31,7 +32,9 @@ use std::collections::{HashMap, HashSet};
 /// Failure domains are case-insensitive. Components are converted to
 /// upprcase implicitly.
 ///
-#[derive(Default, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Default, PartialEq, Eq, Clone, serde::Deserialize, serde::Serialize, tlua::Push, tlua::PushInto,
+)]
 pub struct FailureDomain {
     #[serde(flatten)]
     pub data: HashMap<Uppercase, Uppercase>,

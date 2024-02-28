@@ -1,4 +1,3 @@
-use crate::cli::args;
 use crate::traft::error::Error;
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use std::any::{Any, TypeId};
@@ -498,13 +497,11 @@ pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Validate unix socket uri via lua uri module
+/// Returns a unix socket uri from the given file path.
 ///
-/// Doesn't change path in case of absolute path.
-/// To relative path `./` prepended.
+/// Non-absolute paths are prepended with `./`.
 ///
-/// Return None in case of incorrect path
-/// Return Some(`value`) with `unix/:` and, probably, `./` prepended to `value`
+/// Returns and error in case validation using lua `uri` module fails.
 pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<String, Error> {
     let l = ::tarantool::lua_state();
     let path = std::path::Path::new(socket_path);
@@ -523,20 +520,6 @@ pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<Strin
     .map_err(|_| Error::other(format!("invalid socket path: {socket_path}")))?;
 
     Ok(console_sock)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Starts admin console.
-///
-/// Returns Err in case of problems with socket path.
-pub fn listen_admin_console(args: &args::Run) -> Result<(), Error> {
-    let lua = ::tarantool::lua_state();
-
-    let validated_path = validate_and_complete_unix_socket_path(&args.admin_sock())?;
-
-    lua.exec_with(r#"require('console').listen(...)"#, &validated_path)?;
-
-    Ok(())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -745,6 +728,11 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 // ...
 ////////////////////////////////////////////////////////////////////////////////
+
+#[inline(always)]
+pub fn file_exists(path: &str) -> bool {
+    std::fs::metadata(path).is_ok()
+}
 
 #[inline]
 pub(crate) fn effective_user_id() -> UserId {

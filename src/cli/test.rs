@@ -1,4 +1,4 @@
-use crate::args;
+use crate::cli::args;
 use crate::ipc;
 use crate::tarantool_main;
 use ::tarantool::test::TestCase;

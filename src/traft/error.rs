@@ -77,6 +77,9 @@ pub enum Error {
     #[error("storage corrupted: failed to decode field '{field}' from table '{table}'")]
     StorageCorrupted { table: String, field: String },
 
+    #[error("invalid configuration: {0}")]
+    InvalidConfiguration(String),
+
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),
 }
@@ -88,6 +91,11 @@ impl Error {
         E: Into<Box<dyn std::error::Error>>,
     {
         Self::Other(error.into())
+    }
+
+    #[inline(always)]
+    pub fn invalid_configuration(msg: impl ToString) -> Self {
+        Self::InvalidConfiguration(msg.to_string())
     }
 
     /// Temporary solution until proc_cas returns structured errors

@@ -4,7 +4,7 @@ use tarantool::tlua;
 const DEFAULT_HOST: &str = "localhost";
 const DEFAULT_PORT: &str = "3301";
 
-#[derive(Debug, Clone, PartialEq, Eq, tlua::Push)]
+#[derive(Debug, Clone, PartialEq, Eq, tlua::Push, tlua::PushInto)]
 pub struct Address {
     pub user: Option<String>,
     pub host: String,

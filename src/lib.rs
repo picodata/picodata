@@ -22,7 +22,6 @@ use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
 use crate::address::Address;
-use crate::cli::args;
 use crate::cli::init_cfg::InitCfg;
 use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
@@ -33,7 +32,8 @@ use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::error::Error;
 use crate::traft::op;
-use crate::util::{effective_user_id, listen_admin_console};
+use crate::util::effective_user_id;
+use config::PicodataConfig;
 
 mod access_control;
 pub mod address;
@@ -41,6 +41,7 @@ pub mod audit;
 mod bootstrap_entries;
 pub mod cas;
 pub mod cli;
+pub mod config;
 pub mod discovery;
 pub mod error_injection;
 pub mod failure_domain;
@@ -507,17 +508,17 @@ pub enum Entrypoint {
 impl Entrypoint {
     pub fn exec(
         self,
-        args: cli::args::Run,
+        config: PicodataConfig,
         to_supervisor: ipc::Sender<IpcMessage>,
     ) -> Result<(), Error> {
-        if let Some(filename) = &args.service_password_file {
+        if let Some(filename) = &config.instance.service_password_file {
             pico_service::read_pico_service_password_from_file(filename)?;
         }
 
         match self {
-            Self::StartDiscover => start_discover(&args, to_supervisor)?,
-            Self::StartBoot => start_boot(&args)?,
-            Self::StartJoin { leader_address } => start_join(&args, leader_address)?,
+            Self::StartDiscover => start_discover(&config, to_supervisor)?,
+            Self::StartBoot => start_boot(&config)?,
+            Self::StartJoin { leader_address } => start_join(&config, leader_address)?,
         }
 
         Ok(())
@@ -538,15 +539,15 @@ pub struct IpcMessage {
 /// - `start_boot`
 /// - `start_join`
 ///
-fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
-    std::fs::create_dir_all(&args.data_dir).unwrap();
+fn init_common(config: &PicodataConfig, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
+    std::fs::create_dir_all(config.instance.data_dir()).unwrap();
 
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized();
 
     tarantool::set_cfg(cfg);
 
-    if args.shredding {
+    if config.instance.shredding() {
         tarantool::xlog_set_remove_file_impl();
     }
 
@@ -579,10 +580,13 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
     (storage.clone(), raft_storage)
 }
 
-fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> Result<(), Error> {
+fn start_discover(
+    config: &PicodataConfig,
+    to_supervisor: ipc::Sender<IpcMessage>,
+) -> Result<(), Error> {
     tlog!(Info, "entering discovery phase");
 
-    luamod::setup(args);
+    luamod::setup(config);
     assert!(tarantool::cfg().is_none());
 
     // Don't try to guess instance and replicaset uuids now,
@@ -590,29 +594,25 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> R
     let mut cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
-        log: args.log.clone(),
-        wal_dir: args.data_dir.clone(),
-        memtx_dir: args.data_dir.clone(),
-        vinyl_dir: args.data_dir.clone(),
-        log_level: args.log_level() as u8,
-        memtx_memory: args.memtx_memory,
+        log: config.instance.log.clone(),
+        wal_dir: config.instance.data_dir(),
+        memtx_dir: config.instance.data_dir(),
+        vinyl_dir: config.instance.data_dir(),
+        log_level: config.instance.log_level() as u8,
+        memtx_memory: config.instance.memtx_memory(),
         ..Default::default()
     };
 
-    let (storage, raft_storage) = init_common(args, &cfg);
-    discovery::init_global(
-        args.peers
-            .iter()
-            .map(|Address { host, port, .. }| format!("{host}:{port}")),
-    );
+    let (storage, raft_storage) = init_common(config, &cfg);
+    discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
 
-    cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
+    cfg.listen = Some(config.instance.listen().to_host_port());
     tarantool::set_cfg(&cfg);
 
     // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if raft_storage.raft_id().unwrap().is_some() {
         tarantool::set_cfg_field("read_only", true).unwrap();
-        return postjoin(args, storage, raft_storage);
+        return postjoin(config, storage, raft_storage);
     }
 
     let role = discovery::wait_global();
@@ -640,10 +640,10 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> R
     }
 }
 
-fn start_boot(args: &args::Run) -> Result<(), Error> {
+fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "entering cluster bootstrap phase");
 
-    let init_cfg = match &args.init_cfg {
+    let init_cfg = match &config.cluster.init_cfg {
         Some(path) => InitCfg::try_from_yaml_file(path).map_err(Error::other)?,
         None => {
             tlog!(Info, "init-cfg wasn't set");
@@ -651,61 +651,63 @@ fn start_boot(args: &args::Run) -> Result<(), Error> {
                 Info,
                 "filling init-cfg with default tier `{}` using replication-factor={}",
                 DEFAULT_TIER,
-                args.init_replication_factor
+                config.cluster.default_replication_factor()
             );
 
-            let tier = vec![Tier::with_replication_factor(args.init_replication_factor)];
+            let tier = vec![Tier::with_replication_factor(
+                config.cluster.default_replication_factor(),
+            )];
             InitCfg { tier }
         }
     };
 
     let tiers = init_cfg.tier;
 
-    let Some(current_instance_tier) = tiers.iter().find(|tier| tier.name == args.tier).cloned()
+    let my_tier_name = config.instance.tier();
+    let Some(current_instance_tier) = tiers.iter().find(|tier| tier.name == my_tier_name).cloned()
     else {
         return Err(Error::other(format!(
-            "tier '{}' for current instance is not found in init-cfg",
-            args.tier
+            "tier '{my_tier_name}' for current instance is not found in init-cfg",
         )));
     };
 
     let instance = Instance::new(
         None,
-        args.instance_id.clone(),
-        args.replicaset_id.clone(),
+        config.instance.instance_id.clone(),
+        config.instance.replicaset_id.clone(),
         Grade::new(Offline, 0),
         Grade::new(Offline, 0),
-        args.failure_domain(),
+        config.instance.failure_domain(),
         &current_instance_tier.name,
     );
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
 
-    luamod::setup(args);
+    luamod::setup(config);
     assert!(tarantool::cfg().is_none());
 
     let cfg = tarantool::Cfg {
         listen: None,
         read_only: false,
-        log: args.log.clone(),
+        log: config.instance.log.clone(),
         instance_uuid: Some(instance.instance_uuid.clone()),
         replicaset_uuid: Some(instance.replicaset_uuid.clone()),
-        wal_dir: args.data_dir.clone(),
-        memtx_dir: args.data_dir.clone(),
-        vinyl_dir: args.data_dir.clone(),
-        log_level: args.log_level() as u8,
-        memtx_memory: args.memtx_memory,
+        wal_dir: config.instance.data_dir(),
+        memtx_dir: config.instance.data_dir(),
+        vinyl_dir: config.instance.data_dir(),
+        log_level: config.instance.log_level() as u8,
+        memtx_memory: config.instance.memtx_memory(),
         ..Default::default()
     };
 
-    let (storage, raft_storage) = init_common(args, &cfg);
+    let (storage, raft_storage) = init_common(config, &cfg);
 
     let cs = raft::ConfState {
         voters: vec![raft_id],
         ..Default::default()
     };
 
-    let bootstrap_entries = bootstrap_entries::prepare(args, &instance, &tiers);
+    let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers);
 
     let hs = raft::HardState {
         term: traft::INIT_RAFT_TERM,
@@ -719,7 +721,9 @@ fn start_boot(args: &args::Run) -> Result<(), Error> {
         raft_storage
             .persist_tier(&current_instance_tier.name)
             .unwrap();
-        raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
+        raft_storage
+            .persist_cluster_id(config.cluster_id())
+            .unwrap();
         raft_storage.persist_entries(&bootstrap_entries).unwrap();
         raft_storage.persist_conf_state(&cs).unwrap();
         raft_storage.persist_hard_state(&hs).unwrap();
@@ -727,9 +731,9 @@ fn start_boot(args: &args::Run) -> Result<(), Error> {
     })
     .unwrap();
 
-    postjoin(args, storage, raft_storage)?;
+    postjoin(config, storage, raft_storage)?;
 
-    let db_name = &args.cluster_id;
+    let db_name = config.cluster_id();
     let instance_id = instance.instance_id.as_ref();
     crate::audit!(
         message: "a new database `{db_name}` was created",
@@ -743,16 +747,16 @@ fn start_boot(args: &args::Run) -> Result<(), Error> {
     Ok(())
 }
 
-fn start_join(args: &args::Run, instance_address: String) -> Result<(), Error> {
-    tlog!(Info, ">>>>> start_join({instance_address})");
+fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), Error> {
+    tlog!(Info, "joining cluster, peer address: {instance_address}");
 
     let req = join::Request {
-        cluster_id: args.cluster_id.clone(),
-        instance_id: args.instance_id.clone(),
-        replicaset_id: args.replicaset_id.clone(),
-        advertise_address: args.advertise_address(),
-        failure_domain: args.failure_domain(),
-        tier: args.tier.clone(),
+        cluster_id: config.cluster_id().into(),
+        instance_id: config.instance.instance_id().map(From::from),
+        replicaset_id: config.instance.replicaset_id().map(From::from),
+        advertise_address: config.instance.advertise_address().to_host_port(),
+        failure_domain: config.instance.failure_domain(),
+        tier: config.instance.tier().into(),
     };
 
     // Arch memo.
@@ -787,7 +791,7 @@ fn start_join(args: &args::Run, instance_address: String) -> Result<(), Error> {
         }
     };
 
-    luamod::setup(args);
+    luamod::setup(config);
     assert!(tarantool::cfg().is_none());
 
     let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
@@ -796,21 +800,21 @@ fn start_join(args: &args::Run, instance_address: String) -> Result<(), Error> {
     }
 
     let cfg = tarantool::Cfg {
-        listen: Some(format!("{}:{}", args.listen.host, args.listen.port)),
+        listen: Some(config.instance.listen().to_host_port()),
         read_only: resp.box_replication.len() > 1,
-        log: args.log.clone(),
+        log: config.instance.log.clone(),
         instance_uuid: Some(resp.instance.instance_uuid.clone()),
         replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
         replication: replication_cfg,
-        wal_dir: args.data_dir.clone(),
-        memtx_dir: args.data_dir.clone(),
-        vinyl_dir: args.data_dir.clone(),
-        log_level: args.log_level() as u8,
-        memtx_memory: args.memtx_memory,
+        wal_dir: config.instance.data_dir(),
+        memtx_dir: config.instance.data_dir(),
+        vinyl_dir: config.instance.data_dir(),
+        log_level: config.instance.log_level() as u8,
+        memtx_memory: config.instance.memtx_memory(),
         ..Default::default()
     };
 
-    let (storage, raft_storage) = init_common(args, &cfg);
+    let (storage, raft_storage) = init_common(config, &cfg);
 
     let raft_id = resp.instance.raft_id;
     transaction(|| -> Result<(), TntError> {
@@ -822,29 +826,33 @@ fn start_join(args: &args::Run, instance_address: String) -> Result<(), Error> {
         raft_storage
             .persist_instance_id(&resp.instance.instance_id)
             .unwrap();
-        raft_storage.persist_cluster_id(&args.cluster_id).unwrap();
-        raft_storage.persist_tier(&args.tier).unwrap();
+        raft_storage
+            .persist_cluster_id(config.cluster_id())
+            .unwrap();
+        raft_storage.persist_tier(config.instance.tier()).unwrap();
         Ok(())
     })
     .unwrap();
 
-    postjoin(args, storage, raft_storage)
+    postjoin(config, storage, raft_storage)
 }
 
 fn postjoin(
-    args: &args::Run,
+    config: &PicodataConfig,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
 
-    if let Some(config) = &args.audit {
+    if let Some(config) = &config.instance.audit {
         audit::init(config, &raft_storage);
     }
 
-    PluginList::global_init(&args.plugins);
+    if let Some(plugins) = &config.instance.plugins {
+        PluginList::global_init(plugins);
+    }
 
-    if let Some(addr) = &args.http_listen {
+    if let Some(addr) = &config.instance.http_listen {
         start_http_server(addr);
         if cfg!(feature = "webui") {
             tlog!(Info, "Web UI is enabled");
@@ -855,7 +863,7 @@ fn postjoin(
         start_webui();
     }
     // Execute postjoin script if present
-    if let Some(ref script) = args.script {
+    if let Some(ref script) = config.instance.deprecated_script {
         let l = ::tarantool::lua_state();
         l.exec_with("dofile(...)", script)
             .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
@@ -882,10 +890,13 @@ fn postjoin(
         assert!(node.status().raft_state.is_leader());
     }
 
-    box_cfg.listen = Some(format!("{}:{}", args.listen.host, args.listen.port));
+    box_cfg.listen = Some(config.instance.listen().to_host_port());
     tarantool::set_cfg(&box_cfg);
 
-    listen_admin_console(args)?;
+    // Start admin console
+    let socket_uri = util::validate_and_complete_unix_socket_path(&config.instance.admin_socket())?;
+    let lua = ::tarantool::lua_state();
+    lua.exec_with(r#"require('console').listen(...)"#, &socket_uri)?;
 
     if let Err(e) =
         tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback(PluginList::get())))
@@ -934,7 +945,7 @@ fn postjoin(
         );
         let req = update_instance::Request::new(instance.instance_id, cluster_id)
             .with_target_grade(Online)
-            .with_failure_domain(args.failure_domain());
+            .with_failure_domain(config.instance.failure_domain());
         let now = Instant::now();
         let fut = rpc::network_call(&leader_address, &req).timeout(activation_deadline - now);
         match fiber::block_on(fut) {

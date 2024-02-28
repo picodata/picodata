@@ -4,10 +4,11 @@ use std::str::FromStr;
 use tarantool::network::{AsClient, Client, Config};
 
 use crate::address::Address;
+use crate::config::DEFAULT_USERNAME;
 use crate::tarantool_main;
 use crate::util::{prompt_password, unwrap_or_terminate};
 
-use super::args::{self, DEFAULT_USERNAME};
+use super::args;
 use super::console::{Command, Console, ReplError, SpecialCommand};
 use comfy_table::{ContentArrangement, Table};
 use serde::{Deserialize, Serialize};

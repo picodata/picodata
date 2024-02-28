@@ -1,8 +1,6 @@
 use crate::address::Address;
-use crate::failure_domain::FailureDomain;
+use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceId;
-use crate::replicaset::ReplicasetId;
-use crate::tier::DEFAULT_TIER;
 use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
@@ -30,29 +28,29 @@ pub enum Picodata {
 #[derive(Debug, Parser, tlua::Push, PartialEq)]
 #[clap(about = "Run the picodata instance")]
 pub struct Run {
-    #[clap(
-        long,
-        value_name = "NAME",
-        default_value = "demo",
-        env = "PICODATA_CLUSTER_ID"
-    )]
+    #[clap(long, value_name = "NAME", env = "PICODATA_CLUSTER_ID")]
     /// Name of the cluster. The instance will refuse
     /// to join a cluster with a different name.
-    pub cluster_id: String,
+    ///
+    /// By default this will be "demo".
+    pub cluster_id: Option<String>,
 
-    #[clap(
-        long,
-        value_name = "PATH",
-        default_value = ".",
-        env = "PICODATA_DATA_DIR"
-    )]
-    /// Here the instance persists all of its data
-    pub data_dir: String,
+    #[clap(long, value_name = "PATH", env = "PICODATA_DATA_DIR")]
+    /// Here the instance persists all of its data.
+    ///
+    /// By default this is the current working directory (".").
+    pub data_dir: Option<String>,
+
+    #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
+    /// Path to configuration file in yaml format.
+    ///
+    /// By default the "config.yaml" in the data directory is used.
+    pub config: Option<String>,
 
     #[clap(long, value_name = "NAME", env = "PICODATA_INSTANCE_ID")]
     /// Name of the instance.
     /// If not defined, it'll be generated automatically.
-    pub instance_id: Option<InstanceId>,
+    pub instance_id: Option<String>,
 
     #[clap(
         long = "advertise",
@@ -67,21 +65,23 @@ pub struct Run {
         short = 'l',
         long = "listen",
         value_name = "[HOST][:PORT]",
-        default_value = "localhost:3301",
         env = "PICODATA_LISTEN"
     )]
-    /// Socket bind address
-    pub listen: Address,
+    /// Socket bind address.
+    ///
+    /// By default "localhost:3301" is used.
+    pub listen: Option<Address>,
 
     #[clap(
         long = "peer",
         value_name = "[HOST][:PORT]",
         require_value_delimiter = true,
         use_value_delimiter = true,
-        default_value = "localhost:3301",
         env = "PICODATA_PEER"
     )]
     /// Address(es) of other instance(s)
+    ///
+    /// By default "localhost:3301" is used.
     pub peers: Vec<Address>,
 
     #[clap(
@@ -102,22 +102,24 @@ pub struct Run {
     pub failure_domain: Vec<(Uppercase, Uppercase)>,
 
     #[clap(long, value_name = "NAME", env = "PICODATA_REPLICASET_ID")]
-    /// Name of the replicaset
-    pub replicaset_id: Option<ReplicasetId>,
+    /// Name of the replicaset.
+    ///
+    /// If not specified, a replicaset will be automatically chosen based on the
+    /// failure domain settings.
+    pub replicaset_id: Option<String>,
 
-    #[clap(long, arg_enum, default_value = "info", env = "PICODATA_LOG_LEVEL")]
-    /// Log level
-    log_level: LogLevel,
+    #[clap(long, arg_enum, env = "PICODATA_LOG_LEVEL")]
+    /// Log level.
+    ///
+    /// By default "info" is used.
+    pub log_level: Option<LogLevel>,
 
-    #[clap(
-        long,
-        default_value = "1",
-        env = "PICODATA_INIT_REPLICATION_FACTOR",
-        group = "init_cfg"
-    )]
+    #[clap(long, env = "PICODATA_INIT_REPLICATION_FACTOR", group = "init_cfg")]
     /// Total number of replicas (copies of data) for each replicaset.
     /// It makes sense only when starting cluster without --init-cfg option.
-    pub init_replication_factor: u8,
+    ///
+    /// By default 1 is used.
+    pub init_replication_factor: Option<u8>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_SCRIPT")]
     /// A path to a lua script that will be executed at postjoin stage.
@@ -141,7 +143,9 @@ pub struct Run {
     /// `picodata admin`. Unlike connecting via `picodata connect`
     /// console communication occurs in plain text
     /// and always operates under the admin account.
-    /// Default value: <data_dir>/admin.sock
+    ///
+    /// By default the "admin.sock" in the data directory is used.
+    // TODO: rename to admin_socket
     pub admin_sock: Option<String>,
 
     #[clap(
@@ -154,9 +158,11 @@ pub struct Run {
     /// Path to `some_plugin_name.so`
     pub plugins: Vec<String>,
 
+    #[clap(long = "tier", value_name = "TIER", env = "PICODATA_INSTANCE_TIER")]
     /// Name of the tier to which the instance will belong.
-    #[clap(long = "tier", value_name = "TIER", default_value = DEFAULT_TIER, env = "PICODATA_INSTANCE_TIER")]
-    pub tier: String,
+    ///
+    /// By default "default" is used.
+    pub tier: Option<String>,
 
     /// Filepath to configuration file in yaml format.
     #[clap(
@@ -167,6 +173,7 @@ pub struct Run {
     )]
     pub init_cfg: Option<String>,
 
+    #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
     /// Configuration for the audit log.
     /// Valid options:
     ///
@@ -182,7 +189,6 @@ pub struct Run {
     ///
     ///    picodata run --audit 'syslog:'
     ///
-    #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
     pub audit: Option<String>,
 
     #[clap(long = "shredding", env = "PICODATA_SHREDDING")]
@@ -208,37 +214,37 @@ pub struct Run {
     ///
     pub log: Option<String>,
 
-    #[clap(
-        long = "memtx-memory",
-        env = "PICODATA_MEMTX_MEMORY",
-        default_value = "67108864"
-    )]
+    #[clap(long = "memtx-memory", env = "PICODATA_MEMTX_MEMORY")]
     /// The amount of memory in bytes to allocate for the database engine.
-    pub memtx_memory: u64,
+    ///
+    /// By default 67'108'864 is used.
+    pub memtx_memory: Option<u64>,
 
-    /// Path to a plain-text file with a password for the system user "pico_service".
-    /// This password will be used for internal communication among instances of
-    /// picodata, so it must be the same on all instances.
     #[clap(
         long = "service-password-file",
         value_name = "PATH",
         env = "PICODATA_SERVICE_PASSWORD_FILE"
     )]
+    /// Path to a plain-text file with a password for the system user "pico_service".
+    /// This password will be used for internal communication among instances of
+    /// picodata, so it must be the same on all instances.
     pub service_password_file: Option<String>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
-#[derive(Debug, Copy, Clone, tlua::Push, PartialEq, clap::ArgEnum)]
-#[clap(rename_all = "lower")]
-enum LogLevel {
-    Fatal,
-    System,
-    Error,
-    Crit,
-    Warn,
-    Info,
-    Verbose,
-    Debug,
+tarantool::define_str_enum! {
+    #[derive(clap::ArgEnum)]
+    #[clap(rename_all = "lower")]
+    pub enum LogLevel {
+        Fatal = "fatal",
+        System = "system",
+        Error = "error",
+        Crit = "crit",
+        Warn = "warn",
+        Info = "info",
+        Verbose = "verbose",
+        Debug = "debug",
+    }
 }
 
 impl From<LogLevel> for SayLevel {
@@ -270,30 +276,6 @@ impl Run {
         }
 
         Ok(args)
-    }
-
-    pub fn admin_sock(&self) -> String {
-        match &self.admin_sock {
-            Some(path) => path.clone(),
-            None => self.data_dir.clone() + "/admin.sock",
-        }
-    }
-
-    pub fn advertise_address(&self) -> String {
-        let Address { host, port, .. } = self.advertise_address.as_ref().unwrap_or(&self.listen);
-        format!("{host}:{port}")
-    }
-
-    pub fn log_level(&self) -> SayLevel {
-        self.log_level.into()
-    }
-
-    pub fn failure_domain(&self) -> FailureDomain {
-        FailureDomain::from(
-            self.failure_domain
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone())),
-        )
     }
 }
 
@@ -471,269 +453,5 @@ impl Admin {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])
-    }
-}
-
-pub const DEFAULT_USERNAME: &str = "guest";
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    macro_rules! parse {
-        ($subcmd:ty, $($arg:literal),*) => {{
-            let args = vec![stringify!($subcmd), $($arg),*];
-            <$subcmd>::try_parse_from(args).unwrap()
-        }}
-    }
-
-    struct EnvDump(Vec<(String, String)>);
-    impl EnvDump {
-        fn new() -> Self {
-            let dump: Vec<(String, String)> = std::env::vars()
-                .filter(|(k, _)| k.starts_with("PICODATA_"))
-                .collect();
-            for (k, _) in &dump {
-                std::env::remove_var(k);
-            }
-            Self(dump)
-        }
-    }
-
-    impl Drop for EnvDump {
-        fn drop(&mut self) {
-            for (k, v) in self.0.drain(..) {
-                std::env::set_var(k, v);
-            }
-        }
-    }
-
-    #[test]
-    fn test_parse() {
-        let _env_dump = EnvDump::new();
-
-        std::env::set_var("PICODATA_INSTANCE_ID", "instance-id-from-env");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(parsed.instance_id, Some("instance-id-from-env".into()));
-            assert_eq!(
-                parsed.peers.as_ref(),
-                vec![Address {
-                    user: None,
-                    host: "localhost".into(),
-                    port: "3301".into()
-                }]
-            );
-            assert_eq!(
-                parsed.listen,
-                Address {
-                    user: None,
-                    host: "localhost".into(),
-                    port: "3301".into()
-                }
-            ); // default
-            assert_eq!(parsed.advertise_address(), "localhost:3301"); // default
-            assert_eq!(parsed.log_level(), SayLevel::Info); // default
-            assert_eq!(parsed.failure_domain(), FailureDomain::default()); // default
-
-            let parsed = parse![Run, "--instance-id", "instance-id-from-args"];
-            assert_eq!(parsed.instance_id, Some("instance-id-from-args".into()));
-
-            let parsed = parse![Run, "--instance-id", ""];
-            assert_eq!(parsed.instance_id, Some("".into()));
-        }
-
-        std::env::set_var("PICODATA_PEER", "peer-from-env");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(
-                parsed.peers.as_ref(),
-                vec![Address {
-                    user: None,
-                    host: "peer-from-env".into(),
-                    port: "3301".into()
-                }]
-            );
-
-            let parsed = parse![Run, "--peer", "peer-from-args"];
-            assert_eq!(
-                parsed.peers.as_ref(),
-                vec![Address {
-                    user: None,
-                    host: "peer-from-args".into(),
-                    port: "3301".into()
-                }]
-            );
-
-            let parsed = parse![Run, "--peer", ":3302"];
-            assert_eq!(
-                parsed.peers.as_ref(),
-                vec![Address {
-                    user: None,
-                    host: "localhost".into(),
-                    port: "3302".into()
-                }]
-            );
-
-            let parsed = parse![Run, "--peer", "p1", "--peer", "p2,p3"];
-            assert_eq!(
-                parsed.peers.as_ref(),
-                vec![
-                    Address {
-                        user: None,
-                        host: "p1".into(),
-                        port: "3301".into()
-                    },
-                    Address {
-                        user: None,
-                        host: "p2".into(),
-                        port: "3301".into()
-                    },
-                    Address {
-                        user: None,
-                        host: "p3".into(),
-                        port: "3301".into()
-                    }
-                ]
-            );
-        }
-
-        std::env::set_var("PICODATA_INSTANCE_ID", "");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(parsed.instance_id, Some("".into()));
-        }
-
-        std::env::remove_var("PICODATA_INSTANCE_ID");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(parsed.instance_id, None);
-        }
-
-        std::env::set_var("PICODATA_LISTEN", "listen-from-env");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(
-                parsed.listen,
-                Address {
-                    user: None,
-                    host: "listen-from-env".into(),
-                    port: "3301".into()
-                }
-            );
-            assert_eq!(parsed.advertise_address(), "listen-from-env:3301");
-
-            let parsed = parse![Run, "-l", "listen-from-args"];
-            assert_eq!(
-                parsed.listen,
-                Address {
-                    user: None,
-                    host: "listen-from-args".into(),
-                    port: "3301".into()
-                }
-            );
-            assert_eq!(parsed.advertise_address(), "listen-from-args:3301");
-        }
-
-        std::env::set_var("PICODATA_ADVERTISE", "advertise-from-env");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(
-                parsed.listen,
-                Address {
-                    user: None,
-                    host: "listen-from-env".into(),
-                    port: "3301".into()
-                }
-            );
-            assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
-
-            let parsed = parse![Run, "-l", "listen-from-args"];
-            assert_eq!(
-                parsed.listen,
-                Address {
-                    user: None,
-                    host: "listen-from-args".into(),
-                    port: "3301".into()
-                }
-            );
-            assert_eq!(parsed.advertise_address(), "advertise-from-env:3301");
-
-            let parsed = parse![Run, "--advertise", "advertise-from-args"];
-            assert_eq!(
-                parsed.listen,
-                Address {
-                    user: None,
-                    host: "listen-from-env".into(),
-                    port: "3301".into()
-                }
-            );
-            assert_eq!(parsed.advertise_address(), "advertise-from-args:3301");
-        }
-
-        std::env::set_var("PICODATA_LOG_LEVEL", "verbose");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(parsed.log_level(), SayLevel::Verbose);
-
-            let parsed = parse![Run, "--log-level", "warn"];
-            assert_eq!(parsed.log_level(), SayLevel::Warn);
-        }
-
-        std::env::set_var("PICODATA_FAILURE_DOMAIN", "k1=env1,k2=env2");
-        {
-            let parsed = parse![Run,];
-            assert_eq!(
-                parsed.failure_domain(),
-                FailureDomain::from([("K1", "ENV1"), ("K2", "ENV2")])
-            );
-
-            let parsed = parse![Run, "--failure-domain", "k1=arg1,k1=arg1-again"];
-            assert_eq!(
-                parsed.failure_domain(),
-                FailureDomain::from([("K1", "ARG1-AGAIN")])
-            );
-
-            let parsed = parse![
-                Run,
-                "--failure-domain",
-                "k2=arg2",
-                "--failure-domain",
-                "k3=arg3,k4=arg4"
-            ];
-            assert_eq!(
-                parsed.failure_domain(),
-                FailureDomain::from([("K2", "ARG2"), ("K3", "ARG3"), ("K4", "ARG4")])
-            );
-        }
-
-        {
-            let parsed = parse![Run,];
-            assert_eq!(parsed.init_replication_factor, 1);
-
-            let parsed = parse![Run, "--init-replication-factor", "7"];
-            assert_eq!(parsed.init_replication_factor, 7);
-
-            std::env::set_var("PICODATA_INIT_REPLICATION_FACTOR", "9");
-            let parsed = parse![Run,];
-            assert_eq!(parsed.init_replication_factor, 9);
-        }
-
-        {
-            let parsed = parse![Run, "-i"];
-            assert!(parsed.interactive_mode);
-
-            let parsed = parse![Run, "--interactive"];
-            assert!(parsed.interactive_mode);
-
-            let parsed = parse![Run,];
-            assert!(!parsed.interactive_mode);
-        }
-
-        {
-            std::env::set_var("PICODATA_USER", "batman");
-            let parsed = parse!(Connect, "somewhere:3301");
-            assert_eq!(parsed.user, "batman");
-        }
     }
 }

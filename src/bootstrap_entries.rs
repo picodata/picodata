@@ -1,7 +1,7 @@
 use ::raft::prelude as raft;
 use protobuf::Message;
 
-use crate::cli::args;
+use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::schema;
 use crate::schema::ADMIN_ID;
@@ -13,7 +13,11 @@ use crate::tier::Tier;
 use crate::traft;
 use crate::traft::op;
 
-pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> Vec<raft::Entry> {
+pub(super) fn prepare(
+    config: &PicodataConfig,
+    instance: &Instance,
+    tiers: &[Tier],
+) -> Vec<raft::Entry> {
     let mut init_entries = Vec::new();
 
     let mut init_entries_push_op = |dml: tarantool::Result<op::Dml>| {
@@ -38,7 +42,7 @@ pub(super) fn prepare(args: &args::Run, instance: &Instance, tiers: &[Tier]) -> 
         ClusterwideTable::Address,
         &traft::PeerAddress {
             raft_id: instance.raft_id,
-            address: args.advertise_address(),
+            address: config.instance.advertise_address().to_host_port(),
         },
         ADMIN_ID,
     ));
