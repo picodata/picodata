@@ -37,7 +37,6 @@ Picodata — это распределенная система промышле
 * [Аргументы командной строки](reference/cli.md)
 * [Типы данных SQL](reference/sql_types.md)
 * [Команды SQL](reference/sql_queries.md)
-<!-- * [Публичный API](reference/api.md) -->
 * [Совместимость с ANSI SQL](reference/ansi_sql.md)
 * [Регистрируемые события безопасности](reference/audit_events.md)
 
@@ -50,7 +49,7 @@ Picodata — это распределенная система промышле
 * [Управление топологией](architecture/topology_management.md)
 * [Raft и отказоустойчивость](architecture/raft_failover.md)
 * [Описание системных таблиц](architecture/system_tables.md)
-* [Интерфейс Proc API](architecture/proc_api.md)
+* [Интерфейс RPC API](architecture/rpc_api.md)
 
 ### Обеспечение безопасности {: #security }
 

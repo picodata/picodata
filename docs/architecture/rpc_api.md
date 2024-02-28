@@ -1,31 +1,31 @@
-# Интерфейс Proc API
+# Интерфейс RPC API
 
-В данном документе описан интерфейс Proc API — основной интерфейс
-взаимодействия с инстансом Picodata с помощью удаленного выполнения
-процедур (RPC). Вызов функций происходит по протоколу [iproto] через
-[коннектор][connectors] `net.box` или любой другой.
+В данном документе описан Интерфейс RPC API — основной интерфейс
+взаимодействия с инстансом Picodata. Вызов RPC-функций происходит по
+протоколу [iproto] через [коннектор][connectors] `net.box` или любой
+другой.
 
 [iproto]: https://www.tarantool.io/en/doc/2.11/dev_guide/internals/box_protocol/
 [connectors]: https://www.tarantool.io/en/doc/2.11/book/connectors/
 
-Proc API используется в следующих сценариях:
+RPC API используется в следующих сценариях:
 
 - Внешние системы могут вызывать функции через коннектор
 - Инстансы взаимодействуют друг с другом под служебной учетной записью
   `pico_service`
 - Тестирование pytest использует для подключения клиент tarantool-python
-- Поключение `picodata connect` использует вызов [.proc_sql](#proc_sql)
+- Подключение `picodata connect` использует вызов [.proc_sql](#proc_sql)
 <!-- - Синтаксис вызова из Lua: `box.func[".proc_version_info"]:call()` -->
 <!-- - Команда `picodata expel` использует вызов [.proc_expel_instance](#proc_expel_instance) -->
 
 <!-- TODO Описать для всех функций
-- В какой версии Proc API добавлена
+- В какой версии RPC API добавлена
 - Йилдит ли
 -->
 
 ## Детали реализации {: #implementation_details }
 
-Функции Proc API представляют собой хранимые процедуры Tarantool
+Функции RPC API представляют собой хранимые процедуры Tarantool
 `box.func`. Аргументы функций описаны в системе типов
 [msgpack](https://msgpack.org/).
 
@@ -57,7 +57,7 @@ fn proc_version_info() -> VersionInfo
 
     - `picodata_version`: (MP_STR) версия Picodata
       <!-- TODO ссылка на политику версионирования -->
-    - `proc_api_version`: (MP_STR) версия Proc API согласно семантическому
+    - `rpc_api_version`: (MP_STR) версия RPC API согласно семантическому
       версионированию ([Semantic Versioning][semver])
 
 [semver]: https://semver.org/

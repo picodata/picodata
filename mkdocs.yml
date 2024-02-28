@@ -55,7 +55,7 @@ nav:
     - architecture/topology_management.md
     - architecture/raft_failover.md
     - architecture/system_tables.md
-    - architecture/proc_api.md
+    - architecture/rpc_api.md
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
