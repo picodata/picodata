@@ -1,4 +1,5 @@
 from conftest import Cluster, log_crawler
+import os
 
 
 def test_config_works(cluster: Cluster):
@@ -22,6 +23,50 @@ instance:
     assert info["replicaset_id"] == "with-love"
 
     assert instance.eval("return box.cfg.memtx_memory") == 42069
+
+
+def test_default_path_to_config_file(cluster: Cluster):
+    instance = cluster.add_instance(instance_id=False, wait_online=False)
+
+    # By default ./config.yaml will be used in the instance's current working directory
+    work_dir = cluster.data_dir + "/work-dir"
+    os.mkdir(work_dir)
+    with open(work_dir + "/config.yaml", "w") as f:
+        f.write(
+            """
+instance:
+    memtx-memory: 0xdeadbeef
+            """
+        )
+    instance.start(cwd=work_dir)
+    instance.wait_online()
+
+    assert instance.eval("return box.cfg.memtx_memory") == 0xDEADBEEF
+    instance.terminate()
+
+    # But if a config is specified explicitly, it will be used instead
+    config_path = cluster.data_dir + "/explicit-config.yaml"
+    with open(config_path, "w") as f:
+        f.write(
+            """
+instance:
+    memtx-memory: 0xcafebabe
+            """
+        )
+    instance.env["PICODATA_CONFIG_FILE"] = config_path
+
+    msg = f"""\
+A path to configuration file '{config_path}' was provided explicitly,
+but a 'config.yaml' file in the current working directory '{work_dir}' also exists.
+Using configuration file '{config_path}'.
+"""  # noqa E501
+    crawler = log_crawler(instance, msg)
+    instance.start(cwd=work_dir)
+    instance.wait_online()
+    assert crawler.matched
+
+    assert instance.eval("return box.cfg.memtx_memory") == 0xCAFEBABE
+    instance.terminate()
 
 
 def test_run_init_cfg_enoent(cluster: Cluster):

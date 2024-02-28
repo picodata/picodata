@@ -456,6 +456,7 @@ class Connection(tarantool.Connection):  # type: ignore
 @dataclass
 class Instance:
     binary_path: str
+    cwd: str
     cluster_id: str
     data_dir: str
     peers: list[str]
@@ -691,7 +692,7 @@ class Instance:
     def on_output_line(self, cb: Callable[[bytes], None]):
         self._on_output_callbacks.append(cb)
 
-    def start(self, peers=[]):
+    def start(self, peers=[], cwd=None):
         if self.process:
             # Be idempotent
             return
@@ -715,6 +716,7 @@ class Instance:
 
         self.process = subprocess.Popen(
             self.command,
+            cwd=cwd or self.cwd,
             env=env or None,
             stdin=subprocess.DEVNULL,
             stdout=out,
@@ -1294,6 +1296,7 @@ class Cluster:
 
         instance = Instance(
             binary_path=self.binary_path,
+            cwd=self.data_dir,
             cluster_id=self.id,
             instance_id=generated_instance_id,
             replicaset_id=replicaset_id,
@@ -1578,9 +1581,8 @@ def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
 
     has_webui = bool(pytestconfig.getoption("--with-webui"))
     if has_webui:
-        instance.env[
-            "PICODATA_HTTP_LISTEN"
-        ] = f"{cluster.base_host}:{cluster.base_port+80}"
+        listen = f"{cluster.base_host}:{cluster.base_port+80}"
+        instance.env["PICODATA_HTTP_LISTEN"] = listen
 
     instance.start()
     instance.wait_online()
@@ -1633,10 +1635,53 @@ def pgrep_tree(pid):
 
 class log_crawler:
     def __init__(self, instance: Instance, search_str: str) -> None:
+        # If search_str contains multiple lines, we need to be checking multiple
+        # lines at a time. Because self._cb will only be called on 1 line at a
+        # time we need to do some hoop jumping to make this work.
         self.matched = False
-        self.search_str = search_str.encode("utf-8")
+
+        search_bytes = search_str.encode("utf-8")
+        self.expected_lines = search_bytes.splitlines()
+        self.n_lines = len(self.expected_lines)
+
+        # This is the current window in which we're searching for the search_str.
+        # Basically this is just last N lines of output we've seen.
+        self.current_window: List[bytes] = []
+
         instance.on_output_line(self._cb)
 
     def _cb(self, line: bytes):
-        if self.search_str in line:
+        # exit early if match was already found
+        if self.matched:
+            return
+
+        if self.n_lines == 1 and self.expected_lines[0] in line:
             self.matched = True
+            return
+
+        if len(self.current_window) == self.n_lines:
+            # shift window
+            del self.current_window[0]
+            self.current_window.append(line.strip(b"\n"))
+
+        elif len(self.current_window) < self.n_lines:
+            # extend window
+            self.current_window.append(line.strip(b"\n"))
+            if len(self.current_window) < self.n_lines:
+                # still not engough data, no match possible
+                return
+
+        #
+        # Look trough the search window
+        #
+        if not self.current_window[0].endswith(self.expected_lines[0]):
+            return
+
+        for i in range(1, self.n_lines - 1):
+            if self.current_window[i] != self.expected_lines[i]:
+                return
+
+        if not self.current_window[-1].startswith(self.expected_lines[-1]):
+            return
+
+        self.matched = True

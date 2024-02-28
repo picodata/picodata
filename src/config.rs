@@ -4,15 +4,19 @@ use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
 use crate::storage;
+use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
+use crate::util::file_exists;
 use std::collections::HashMap;
+use std::path::Path;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
 
 pub const DEFAULT_USERNAME: &str = "guest";
 pub const DEFAULT_LISTEN_HOST: &str = "localhost";
 pub const DEFAULT_IPROTO_PORT: &str = "3301";
+pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
 ////////////////////////////////////////////////////////////////////////////////
 // PicodataConfig
@@ -53,10 +57,33 @@ impl PicodataConfig {
     // which returns an instance of config with all the default parameters.
     // Also add a command to generate a default config from command line.
     pub fn init(args: args::Run) -> Result<Self, Error> {
+        let cwd = std::env::current_dir();
+        let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new(".")).display();
+        let default_path = format!("{cwd}/{DEFAULT_CONFIG_FILE_NAME}");
+
         let mut config = None;
-        if let Some(args_path) = &args.config {
-            config = Some(Self::read_yaml_file(args_path)?);
+        match (&args.config, file_exists(&default_path)) {
+            (Some(args_path), true) => {
+                if args_path != &default_path {
+                    #[rustfmt::skip]
+                    tlog!(Warning, "A path to configuration file '{args_path}' was provided explicitly,
+but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}' also exists.
+Using configuration file '{args_path}'.");
+                }
+
+                config = Some(Self::read_yaml_file(args_path)?);
+            }
+            (Some(args_path), false) => {
+                config = Some(Self::read_yaml_file(args_path)?);
+            }
+            (None, true) => {
+                #[rustfmt::skip]
+                tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{cwd}'.");
+                config = Some(Self::read_yaml_file(&default_path)?);
+            }
+            (None, false) => {}
         }
+
         let mut config = config.unwrap_or_default();
 
         config.set_from_args(args);
