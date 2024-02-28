@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use tarantool::proc;
 
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
-pub const PROC_API_VERSION: &'static str = "0.1.0";
+pub const RPC_API_VERSION: &'static str = "0.1.0";
 
 ////////////////////////////////////////////////////////////////////////////////
 // VersionInfo
@@ -19,7 +19,7 @@ pub const PROC_API_VERSION: &'static str = "0.1.0";
 #[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
 pub struct VersionInfo<'a> {
     pub picodata_version: Cow<'a, str>,
-    pub proc_api_version: Cow<'a, str>,
+    pub rpc_api_version: Cow<'a, str>,
 }
 
 impl tarantool::tuple::Encode for VersionInfo<'_> {}
@@ -36,7 +36,7 @@ impl VersionInfo<'static> {
     pub fn current() -> Self {
         Self {
             picodata_version: PICODATA_VERSION.into(),
-            proc_api_version: PROC_API_VERSION.into(),
+            rpc_api_version: RPC_API_VERSION.into(),
         }
     }
 }
