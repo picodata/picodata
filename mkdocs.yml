@@ -17,7 +17,8 @@ edit_uri: -/blob/main/docs/
 # https://www.mkdocs.org/user-guide/configuration/#not_in_nav
 not_in_nav: |
   index.md
-  architecture/proc_api.md
+  reference/api.md
+  architecture/clusterwide_schema.md
 
 # Навигация
 # https://www.mkdocs.org/user-guide/configuration/#nav
@@ -44,7 +45,6 @@ nav:
     - reference/cli.md
     - reference/sql_types.md
     - reference/sql_queries.md
-    # - reference/api.md
     - reference/ansi_sql.md
     - reference/audit_events.md
   - Архитектура:
