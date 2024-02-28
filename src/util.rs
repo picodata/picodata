@@ -471,18 +471,8 @@ pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
     let tty_fd = tty.as_raw_fd();
     let tcattr_old = tcgetattr(tty_fd)?;
 
-    // Restore old terminal settings when `_d` is dropped
-    let _d = Defer(Some(|| {
-        tcsetattr(tty_fd, TCSADRAIN, &tcattr_old).unwrap_or(())
-    }));
-    struct Defer<F: FnOnce()>(Option<F>);
-    impl<F: FnOnce()> Drop for Defer<F> {
-        fn drop(&mut self) {
-            if let Some(f) = self.0.take() {
-                f()
-            }
-        }
-    }
+    // Restore old terminal settings when `_guard` is dropped
+    let _guard = on_scope_exit(|| tcsetattr(tty_fd, TCSADRAIN, &tcattr_old).unwrap_or(()));
 
     // Disable echo while prompting a password
     let mut tcattr_new = tcattr_old.clone();
@@ -716,6 +706,40 @@ impl<T> std::ops::DerefMut for NoYieldsRefMut<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ScopeGuard
+////////////////////////////////////////////////////////////////////////////////
+// TODO: this one is copied from tarantool-module, it should instead be export from there
+
+#[derive(Debug)]
+#[must_use = "The callback is invoked when the `ScopeGuard` is dropped"]
+pub struct ScopeGuard<F>
+where
+    F: FnOnce(),
+{
+    cb: Option<F>,
+}
+
+impl<F> Drop for ScopeGuard<F>
+where
+    F: FnOnce(),
+{
+    #[inline(always)]
+    fn drop(&mut self) {
+        if let Some(cb) = self.cb.take() {
+            cb()
+        }
+    }
+}
+
+#[inline(always)]
+pub fn on_scope_exit<F>(cb: F) -> ScopeGuard<F>
+where
+    F: FnOnce(),
+{
+    ScopeGuard { cb: Some(cb) }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
