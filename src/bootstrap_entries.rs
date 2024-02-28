@@ -12,11 +12,12 @@ use crate::storage::PropertyName;
 use crate::tier::Tier;
 use crate::traft;
 use crate::traft::op;
+use std::collections::HashMap;
 
 pub(super) fn prepare(
     config: &PicodataConfig,
     instance: &Instance,
-    tiers: &[Tier],
+    tiers: &HashMap<String, Tier>,
 ) -> Vec<raft::Entry> {
     let mut init_entries = Vec::new();
 
@@ -55,7 +56,7 @@ pub(super) fn prepare(
     //
     // Populate "_pico_tier" with initial tiers
     //
-    for tier in tiers {
+    for tier in tiers.values() {
         init_entries_push_op(op::Dml::insert(ClusterwideTable::Tier, &tier, ADMIN_ID));
     }
 

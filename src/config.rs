@@ -4,6 +4,9 @@ use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
 use crate::storage;
+use crate::tier::Tier;
+use crate::tier::TierConfig;
+use crate::tier::DEFAULT_TIER;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
@@ -51,12 +54,28 @@ pub struct PicodataConfig {
     // pub unknown_sections: HashMap<String, serde_json::Value>,
 }
 
+fn validate_args(args: &args::Run) -> Result<(), Error> {
+    if args.init_cfg.is_some() {
+        return Err(Error::other(
+            "error: option `--init-cfg` is removed, use `--config` instead",
+        ));
+    }
+
+    if args.init_replication_factor.is_some() && args.config.is_some() {
+        return Err(Error::other("error: option `--init-replication-factor` cannot be used with `--config` simultaneously"));
+    }
+
+    Ok(())
+}
+
 impl PicodataConfig {
     // TODO:
     // fn default() -> Self
     // which returns an instance of config with all the default parameters.
     // Also add a command to generate a default config from command line.
     pub fn init(args: args::Run) -> Result<Self, Error> {
+        validate_args(&args)?;
+
         let cwd = std::env::current_dir();
         let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new(".")).display();
         let default_path = format!("{cwd}/{DEFAULT_CONFIG_FILE_NAME}");
@@ -84,6 +103,9 @@ Using configuration file '{args_path}'.");
             (None, false) => {}
         }
 
+        if let Some(config) = &config {
+            config.validate_from_file()?;
+        }
         let mut config = config.unwrap_or_default();
 
         config.set_from_args(args);
@@ -134,11 +156,6 @@ Using configuration file '{args_path}'.");
 
         if let Some(tier) = args.tier {
             self.instance.tier = Some(tier);
-        }
-
-        // TODO: remove this
-        if let Some(init_cfg) = args.init_cfg {
-            self.cluster.init_cfg = Some(init_cfg);
         }
 
         if let Some(init_replication_factor) = args.init_replication_factor {
@@ -197,6 +214,21 @@ Using configuration file '{args_path}'.");
         // TODO: the rest
     }
 
+    /// Does checks which are applicable to configuration loaded from a file.
+    fn validate_from_file(&self) -> Result<(), Error> {
+        // XXX: This is kind of a hack. If a config file is provided we require
+        // it to define the list of initial tiers. However if config file wasn't
+        // specified, there's no way to define tiers, so we just ignore that
+        // case and create a dummy "default" tier.
+        if self.cluster.tiers.is_empty() {
+            return Err(Error::invalid_configuration(
+                "empty `cluster.tiers` section which is required to define the initial tiers",
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Does basic config validation. This function checks constraints
     /// applicable for all configuration updates.
     ///
@@ -210,6 +242,14 @@ Using configuration file '{args_path}'.");
             if cci != ici {
                 return Err(Error::InvalidConfiguration(format!(
                     "`cluster.cluster_id` ({cci}) conflicts with `instance.cluster_id` ({ici})",
+                )));
+            }
+        }
+
+        for (name, info) in &self.cluster.tiers {
+            if let Some(explicit_name) = &info.name {
+                return Err(Error::InvalidConfiguration(format!(
+                    "tier '{name}' has an explicit name field '{explicit_name}', which is not allowed. Tier name is always derived from the outer dictionary's key"
                 )));
             }
         }
@@ -329,8 +369,8 @@ Using configuration file '{args_path}'.");
 pub struct ClusterConfig {
     pub cluster_id: Option<String>,
 
-    // TODO: remove this
-    pub init_cfg: Option<String>,
+    #[serde(deserialize_with = "deserialize_map_forbid_duplicate_keys")]
+    pub tiers: HashMap<String, TierConfig>,
 
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
@@ -338,6 +378,33 @@ pub struct ClusterConfig {
 }
 
 impl ClusterConfig {
+    pub fn tiers(&self) -> HashMap<String, Tier> {
+        if self.tiers.is_empty() {
+            return HashMap::from([(
+                DEFAULT_TIER.to_string(),
+                Tier {
+                    name: DEFAULT_TIER.into(),
+                    replication_factor: self.default_replication_factor(),
+                },
+            )]);
+        }
+
+        let mut tier_defs = HashMap::with_capacity(self.tiers.len());
+        for (name, info) in &self.tiers {
+            let replication_factor = info
+                .replication_factor
+                .unwrap_or_else(|| self.default_replication_factor());
+
+            let tier_def = Tier {
+                name: name.into(),
+                replication_factor,
+                // TODO: support other fields
+            };
+            tier_defs.insert(name.into(), tier_def);
+        }
+        tier_defs
+    }
+
     #[inline]
     pub fn default_replication_factor(&self) -> u8 {
         self.default_replication_factor.unwrap_or(1)
@@ -703,12 +770,43 @@ mod tests {
 cluster:
     cluster_id: foobar
 
+    tiers:
+        voter:
+            can_vote: true
+
+        storage:
+            replication_factor: 3
+            can_vote: false
+
+        search-index:
+            replication_factor: 2
+            can_vote: false
+
 instance:
     instance_id: voter1
 "###;
 
-        let config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-        dbg!(config);
+        _ = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+    }
+
+    #[test]
+    fn duplicate_tiers_is_error() {
+        let yaml = r###"
+cluster:
+    tiers:
+        voter:
+            can_vote: true
+
+        voter:
+            can_vote: false
+
+"###;
+
+        let err = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid configuration: cluster.tiers: duplicate key `voter` found at line 3 column 9"
+        );
     }
 
     #[test]
@@ -716,12 +814,45 @@ instance:
         let yaml = r###"
 cluster:
     cluster_id: foo
+    tiers:
+        default:
 instance:
     cluster_id: bar
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         let err = config.validate_common().unwrap_err();
         assert_eq!(err.to_string(), "invalid configuration: `cluster.cluster_id` (foo) conflicts with `instance.cluster_id` (bar)")
+    }
+
+    #[test]
+    fn missing_tiers_is_error() {
+        let yaml = r###"
+cluster:
+"###;
+        let err = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid configuration: cluster: missing field `tiers` at line 1 column 9"
+        );
+
+        let yaml = r###"
+cluster:
+    tiers:
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        let err = config.validate_from_file().unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid configuration: empty `cluster.tiers` section which is required to define the initial tiers"
+        );
+
+        let yaml = r###"
+cluster:
+    tiers:
+        default:
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        config.validate_from_file().unwrap();
     }
 
     #[test]

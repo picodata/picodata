@@ -215,6 +215,7 @@ pub fn build_instance(
     Ok(instance)
 }
 
+// TODO: choose instance id based on tier name instead
 /// Choose [`InstanceId`] based on `raft_id`.
 fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
     let mut suffix: Option<u64> = None;

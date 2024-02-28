@@ -2,6 +2,7 @@ use super::instance::InstanceId;
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
 
+// TODO: this redundant boilerplate needs to be removed
 crate::define_string_newtype! {
     /// Unique id of a replicaset.
     ///

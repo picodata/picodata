@@ -22,14 +22,12 @@ use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
 use crate::address::Address;
-use crate::cli::init_cfg::InitCfg;
 use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
 use crate::plugin::*;
 use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
-use crate::tier::{Tier, DEFAULT_TIER};
 use crate::traft::error::Error;
 use crate::traft::op;
 use crate::util::effective_user_id;
@@ -642,31 +640,11 @@ fn start_discover(
 fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     tlog!(Info, "entering cluster bootstrap phase");
 
-    let init_cfg = match &config.cluster.init_cfg {
-        Some(path) => InitCfg::try_from_yaml_file(path).map_err(Error::other)?,
-        None => {
-            tlog!(Info, "init-cfg wasn't set");
-            tlog!(
-                Info,
-                "filling init-cfg with default tier `{}` using replication-factor={}",
-                DEFAULT_TIER,
-                config.cluster.default_replication_factor()
-            );
-
-            let tier = vec![Tier::with_replication_factor(
-                config.cluster.default_replication_factor(),
-            )];
-            InitCfg { tier }
-        }
-    };
-
-    let tiers = init_cfg.tier;
-
+    let tiers = config.cluster.tiers();
     let my_tier_name = config.instance.tier();
-    let Some(current_instance_tier) = tiers.iter().find(|tier| tier.name == my_tier_name).cloned()
-    else {
+    if !tiers.contains_key(my_tier_name) {
         return Err(Error::other(format!(
-            "tier '{my_tier_name}' for current instance is not found in init-cfg",
+            "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
         )));
     };
 
@@ -677,7 +655,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         Grade::new(Offline, 0),
         Grade::new(Offline, 0),
         config.instance.failure_domain(),
-        &current_instance_tier.name,
+        my_tier_name,
     );
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
@@ -717,9 +695,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     transaction(|| -> Result<(), TntError> {
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage.persist_instance_id(&instance_id).unwrap();
-        raft_storage
-            .persist_tier(&current_instance_tier.name)
-            .unwrap();
+        raft_storage.persist_tier(my_tier_name).unwrap();
         raft_storage
             .persist_cluster_id(config.cluster_id())
             .unwrap();

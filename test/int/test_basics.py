@@ -252,14 +252,17 @@ def test_whoami(instance: Instance):
 
 
 def test_whoami_in_different_tiers(cluster: Cluster):
-    cfg = {
-        "tier": {
-            "storage": {"replication_factor": 1},
-            "router": {"replication_factor": 2},
-        }
-    }
-
-    cluster.set_init_cfg(cfg)
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tiers:
+        storage:
+            replication_factor: 2
+        router:
+            replication_factor: 1
+"""
+    )
     i1 = cluster.add_instance(tier="storage")
     i2 = cluster.add_instance(tier="router")
 
@@ -454,13 +457,17 @@ def test_proc_version_info(instance: Instance):
 
 
 def test_proc_instance_info(cluster: Cluster):
-    cfg = {
-        "tier": {
-            "storage": {"replication_factor": 1},
-            "router": {"replication_factor": 2},
-        }
-    }
-    cluster.set_init_cfg(cfg)
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tiers:
+        storage:
+            replication_factor: 2
+        router:
+            replication_factor: 1
+"""
+    )
 
     i1 = cluster.add_instance(tier="storage")
     i2 = cluster.add_instance(tier="router")

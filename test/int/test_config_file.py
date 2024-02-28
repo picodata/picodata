@@ -3,18 +3,19 @@ import os
 
 
 def test_config_works(cluster: Cluster):
-    instance = cluster.add_instance(instance_id=False, wait_online=False)
-    config_path = cluster.data_dir + "/config.yaml"
-    with open(config_path, "w") as f:
-        f.write(
-            """
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    tiers:
+        default:
 instance:
-    instance-id: from-config
-    replicaset-id: with-love
-    memtx-memory: 42069
-            """
-        )
-    instance.env["PICODATA_CONFIG_FILE"] = config_path
+    cluster_id: test
+    instance_id: from-config
+    replicaset_id: with-love
+    memtx_memory: 42069
+"""
+    )
+    instance = cluster.add_instance(instance_id=False, wait_online=False)
     instance.start()
     instance.wait_online()
 
@@ -34,8 +35,12 @@ def test_default_path_to_config_file(cluster: Cluster):
     with open(work_dir + "/config.yaml", "w") as f:
         f.write(
             """
+cluster:
+    cluster_id: test
+    tiers:
+        default:
 instance:
-    memtx-memory: 0xdeadbeef
+    memtx_memory: 0xdeadbeef
             """
         )
     instance.start(cwd=work_dir)
@@ -49,8 +54,12 @@ instance:
     with open(config_path, "w") as f:
         f.write(
             """
+cluster:
+    cluster_id: test
+    tiers:
+        default:
 instance:
-    memtx-memory: 0xcafebabe
+    memtx_memory: 0xcafebabe
             """
         )
     instance.env["PICODATA_CONFIG_FILE"] = config_path
@@ -69,11 +78,23 @@ Using configuration file '{config_path}'.
     instance.terminate()
 
 
-def test_run_init_cfg_enoent(cluster: Cluster):
+def test_init_cfg_is_removed(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
-    i1.env.update({"PICODATA_INIT_CFG": "./unexisting_dir/trash.yaml"})
+
+    i1.env["PICODATA_INIT_CFG"] = "any-path"
     err = """\
-can't read from ./unexisting_dir/trash.yaml, error: No such file or directory (os error 2)\
+error: option `--init-cfg` is removed, use `--config` instead
+"""
+    crawler = log_crawler(i1, err)
+    i1.fail_to_start()
+    assert crawler.matched
+
+
+def test_config_file_enoent(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env.update({"PICODATA_CONFIG_FILE": "./unexisting_dir/trash.yaml"})
+    err = """\
+can't read from './unexisting_dir/trash.yaml': No such file or directory (os error 2)
 """
     crawler = log_crawler(i1, err)
 
@@ -82,36 +103,18 @@ can't read from ./unexisting_dir/trash.yaml, error: No such file or directory (o
     assert crawler.matched
 
 
-def test_run_init_cfg_with_duplicated_tier_names(cluster: Cluster):
-    cluster.cfg_path = cluster.data_dir + "/init_cfg.yaml"
-    cfg_content = """\
-tier:
-    storage:
-        replication_factor: 1
-    storage:
-        replication_factor: 1
+def test_config_file_with_empty_tiers(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    tiers:
 """
-    with open(cluster.cfg_path, "w") as yaml_file:
-        yaml_file.write(cfg_content)
-
+    )
     i1 = cluster.add_instance(wait_online=False)
-    err = f"""\
-error while parsing {cluster.cfg_path}, \
-reason: tier: duplicated tier name `storage` found at line 2\
-"""
-    crawler = log_crawler(i1, err)
-
-    i1.fail_to_start()
-
-    assert crawler.matched
-
-
-def test_run_init_cfg_with_empty_tiers(cluster: Cluster):
-    cfg: dict = {"tier": {}}
-    cluster.set_init_cfg(cfg)
-    i1 = cluster.add_instance(wait_online=False)
-    err = f"empty `tier` field in init-cfg by path: {cluster.cfg_path}"
-    crawler = log_crawler(i1, err)
+    err = """\
+invalid configuration: empty `cluster.tiers` section which is required to define the initial tiers\
+"""  # noqa: E501
+    crawler = log_crawler(i1, err.strip())
 
     i1.fail_to_start()
 
@@ -121,7 +124,9 @@ def test_run_init_cfg_with_empty_tiers(cluster: Cluster):
 def test_run_with_tier_which_is_not_in_tier_list(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.tier = "unexistent_tier"
-    err = "tier 'unexistent_tier' for current instance is not found in init-cfg"
+    err = """\
+current instance is assigned tier 'unexistent_tier' which is not defined in the configuration file\
+"""
     crawler = log_crawler(i1, err)
 
     i1.fail_to_start()
@@ -129,11 +134,13 @@ def test_run_with_tier_which_is_not_in_tier_list(cluster: Cluster):
     assert crawler.matched
 
 
-def test_run_init_cfg_with_garbage(cluster: Cluster):
+def test_config_file_with_garbage(cluster: Cluster):
     cfg = {"trash": [], "garbage": "tier"}
-    cluster.set_init_cfg(cfg)
+    cluster.set_config_file(cfg)
     i1 = cluster.add_instance(wait_online=False)
-    err = "reason: missing field `tier`"
+    err = """\
+invalid configuration: unknown field `garbage`, expected `cluster` or `instance`\
+"""
     crawler = log_crawler(i1, err)
 
     i1.fail_to_start()
@@ -141,14 +148,13 @@ def test_run_init_cfg_with_garbage(cluster: Cluster):
     assert crawler.matched
 
 
-def test_run_init_cfg_with_init_replication_factor(cluster: Cluster):
+def test_config_file_with_init_replication_factor(cluster: Cluster):
     cfg = {"no matter": "init-cfg doesn't allow to use with `init-replication-factor"}
-    cluster.set_init_cfg(cfg)
+    cluster.set_config_file(cfg)
     i1 = cluster.add_instance(wait_online=False)
     i1.init_replication_factor = 1
     err = """\
-error: The argument '--init-replication-factor <INIT_REPLICATION_FACTOR>' \
-cannot be used with '--init-cfg <PATH>'\
+error: option `--init-replication-factor` cannot be used with `--config` simultaneously\
 """
     crawler = log_crawler(i1, err)
 

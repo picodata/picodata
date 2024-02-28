@@ -3,7 +3,6 @@ pub mod args;
 pub mod connect;
 pub mod console;
 pub mod expel;
-pub mod init_cfg;
 pub mod run;
 pub mod tarantool;
 pub mod test;

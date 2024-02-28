@@ -8,7 +8,7 @@ import time
 import threading
 from types import SimpleNamespace
 
-import yaml  # type: ignore
+import yaml as yaml_lib  # type: ignore
 import pytest
 import signal
 import subprocess
@@ -468,7 +468,7 @@ class Instance:
     audit: str | bool = True
     tier: str | None = None
     init_replication_factor: int | None = None
-    init_cfg_path: str | None = None
+    config_path: str | None = None
     instance_id: str | None = None
     replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
@@ -524,8 +524,7 @@ class Instance:
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
             *(["--init-replication-factor", f"{self.init_replication_factor}"]
               if self.init_replication_factor is not None else []),
-            *(["--init-cfg", self.init_cfg_path]
-              if self.init_cfg_path is not None else []),
+            *(["--config", self.config_path] if self.config_path is not None else []),
             *(["--tier", self.tier] if self.tier is not None else []),
             *(["--audit", audit] if audit else []),
             *(["--service-password-file", service_password] if service_password else []),
@@ -1211,7 +1210,7 @@ class Cluster:
     base_port: int
     max_port: int
     instances: list[Instance] = field(default_factory=list)
-    cfg_path: str | None = None
+    config_path: str | None = None
 
     def __repr__(self):
         return f'Cluster("{self.base_host}:{self.base_port}", n={len(self.instances)})'
@@ -1244,12 +1243,18 @@ class Cluster:
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
-    def set_init_cfg(self, cfg: dict):
-        assert self.cfg_path is None
-        self.cfg_path = self.data_dir + "/tier.yaml"
-        with open(self.cfg_path, "w") as yaml_file:
-            dump = yaml.dump(cfg, default_flow_style=False)
-            yaml_file.write(dump)
+    def set_config_file(self, config: dict | None = None, yaml: str | None = None):
+        assert config or yaml
+        assert self.config_path is None
+
+        self.config_path = self.data_dir + "/config.yaml"
+
+        if config:
+            yaml = yaml_lib.dump(config, default_flow_style=False)
+
+        assert yaml
+        with open(self.config_path, "w") as yaml_file:
+            yaml_file.write(yaml)
 
     def add_instance(
         self,
@@ -1308,7 +1313,7 @@ class Cluster:
             failure_domain=failure_domain,
             init_replication_factor=init_replication_factor,
             tier=tier,
-            init_cfg_path=self.cfg_path,
+            config_path=self.config_path,
             audit=True,
         )
 
