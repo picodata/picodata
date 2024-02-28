@@ -580,7 +580,7 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
 }
 
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> Result<(), Error> {
-    tlog!(Info, ">>>>> start_discover()");
+    tlog!(Info, "entering discovery phase");
 
     luamod::setup(args);
     assert!(tarantool::cfg().is_none());
@@ -641,7 +641,7 @@ fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> R
 }
 
 fn start_boot(args: &args::Run) -> Result<(), Error> {
-    tlog!(Info, ">>>>> start_boot()");
+    tlog!(Info, "entering cluster bootstrap phase");
 
     let init_cfg = match &args.init_cfg {
         Some(path) => InitCfg::try_from_yaml_file(path).map_err(Error::other)?,
@@ -836,7 +836,7 @@ fn postjoin(
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
 ) -> Result<(), Error> {
-    tlog!(Info, ">>>>> postjoin()");
+    tlog!(Info, "entering post-join phase");
 
     if let Some(config) = &args.audit {
         audit::init(config, &raft_storage);
@@ -874,13 +874,8 @@ fn postjoin(
 
     let cs = raft_storage.conf_state().unwrap();
     if cs.voters == [raft_id] {
-        tlog!(
-            Info,
-            concat!(
-                "this is the only voter in cluster, ",
-                "triggering election immediately"
-            )
-        );
+        #[rustfmt::skip]
+        tlog!(Info, "this is the only voter in cluster, triggering election immediately");
 
         node.tick_and_yield(1); // apply configuration, if any
         node.campaign_and_yield().ok(); // trigger election immediately
