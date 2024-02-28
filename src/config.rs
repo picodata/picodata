@@ -195,6 +195,81 @@ impl PicodataConfig {
         todo!()
     }
 
+    /// Does validation of configuration parameters which are persisted in the
+    /// storage.
+    pub fn validate_storage(
+        &self,
+        storage: &storage::Clusterwide,
+        raft_storage: &RaftSpaceAccess,
+    ) -> Result<(), Error> {
+        // Cluster id
+        match (raft_storage.cluster_id()?, self.cluster_id()) {
+            (from_storage, from_config) if from_storage != from_config => {
+                return Err(Error::InvalidConfiguration(format!(
+                    "instance restarted with a different `cluster_id`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                )));
+            }
+            _ => {}
+        }
+
+        // Instance id
+        let mut instance_id = None;
+        match (raft_storage.instance_id()?, &self.instance.instance_id) {
+            (Some(from_storage), Some(from_config)) if from_storage != from_config => {
+                return Err(Error::InvalidConfiguration(format!(
+                    "instance restarted with a different `instance_id`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                )));
+            }
+            (Some(from_storage), _) => {
+                instance_id = Some(from_storage);
+            }
+            _ => {}
+        }
+
+        // Replicaset id
+        if let Some(instance_id) = &instance_id {
+            if let Ok(instance_info) = storage.instances.get(instance_id) {
+                match (&instance_info.replicaset_id, &self.instance.replicaset_id) {
+                    (from_storage, Some(from_config)) if from_storage != from_config => {
+                        return Err(Error::InvalidConfiguration(format!(
+                            "instance restarted with a different `replicaset_id`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                        )));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Tier
+        match (&raft_storage.tier()?, &self.instance.tier) {
+            (Some(from_storage), Some(from_config)) if from_storage != from_config => {
+                return Err(Error::InvalidConfiguration(format!(
+                    "instance restarted with a different `tier`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                )));
+            }
+            _ => {}
+        }
+
+        // Advertise address
+        if let Some(raft_id) = raft_storage.raft_id()? {
+            match (
+                storage.peer_addresses.get(raft_id)?,
+                &self.instance.advertise_address,
+            ) {
+                (Some(from_storage), Some(from_config))
+                    if from_storage != from_config.to_host_port() =>
+                {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "instance restarted with a different `advertise_address`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    )));
+                }
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
     #[inline]
     pub fn cluster_id(&self) -> &str {
         match (&self.instance.cluster_id, &self.cluster.cluster_id) {

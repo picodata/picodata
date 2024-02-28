@@ -609,7 +609,6 @@ fn start_discover(
     cfg.listen = Some(config.instance.listen().to_host_port());
     tarantool::set_cfg(&cfg);
 
-    // TODO assert traft::Storage::instance_id == (null || args.instance_id)
     if raft_storage.raft_id().unwrap().is_some() {
         tarantool::set_cfg_field("read_only", true).unwrap();
         return postjoin(config, storage, raft_storage);
@@ -843,6 +842,8 @@ fn postjoin(
     raft_storage: RaftSpaceAccess,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
+
+    config.validate_storage(&storage, &raft_storage)?;
 
     if let Some(config) = &config.instance.audit {
         audit::init(config, &raft_storage);

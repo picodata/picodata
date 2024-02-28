@@ -168,6 +168,80 @@ def test_graceful_stop(instance: Instance):
         assert f.read()[-4:] == b"\xd5\x10\xad\xed"
 
 
+def test_config_storage_conflicts_on_restart(instance: Instance):
+    instance.terminate()
+
+    #
+    # Change cluster_id
+    #
+    was = instance.cluster_id  # type: ignore
+    instance.cluster_id = "new-cluster-id"
+    assert instance.cluster_id != was
+    err = f"""\
+invalid configuration: instance restarted with a different `cluster_id`, which is not allowed, was: '{was}' became: 'new-cluster-id'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.cluster_id = was
+
+    #
+    # Change instance_id
+    #
+    was = instance.instance_id  # type: ignore
+    instance.instance_id = "new-instance-id"
+    assert instance.instance_id != was
+    err = f"""\
+invalid configuration: instance restarted with a different `instance_id`, which is not allowed, was: '{was}' became: 'new-instance-id'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.instance_id = was
+
+    #
+    # Change tier
+    #
+    was = instance.tier  # type: ignore
+    instance.tier = "new-tier"
+    assert instance.tier != was
+    err = """\
+invalid configuration: instance restarted with a different `tier`, which is not allowed, was: 'default' became: 'new-tier'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.tier = was
+
+    #
+    # Change replicaset_id
+    #
+    was = instance.replicaset_id  # type: ignore
+    instance.replicaset_id = "new-replicaset-id"
+    assert instance.replicaset_id != was
+    err = """\
+invalid configuration: instance restarted with a different `replicaset_id`, which is not allowed, was: 'r1' became: 'new-replicaset-id'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    instance.replicaset_id = was
+
+    #
+    # Change advertise address
+    #
+    was = instance.listen  # type: ignore
+    instance.env["PICODATA_ADVERTISE"] = "example.com:1234"
+    assert instance.env["PICODATA_ADVERTISE"] != was
+    err = f"""\
+invalid configuration: instance restarted with a different `advertise_address`, which is not allowed, was: '{was}' became: 'example.com:1234'
+"""  # noqa: E501
+    crawler = log_crawler(instance, err)
+    instance.fail_to_start()
+    assert crawler.matched
+    del instance.env["PICODATA_ADVERTISE"]
+
+
 def test_whoami(instance: Instance):
     assert instance.call("pico.whoami") == {
         "raft_id": 1,
