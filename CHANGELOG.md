@@ -15,8 +15,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - New feature `tier` - a group of instances with own replication factor. Tiers can span multiple failure domains and a single cluster can have multiple tiers. Going forward it will be possible to specify which tier a table belongs to.
 
-- New option `--init-cfg` for `picodata run` allows supplying bootstrap
-  configuration in a yaml format file.
+- New option `--config` for `picodata run` allows supplying configuration
+  for both the cluster and a given instance in a yaml file.
 
 - New option `--tier` for `picodata run` allows to specify whether an
   instance belongs to a tier.
