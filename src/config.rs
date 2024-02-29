@@ -903,6 +903,19 @@ instance:
         assert_eq!(listen.port, "3301");
     }
 
+    #[test]
+    fn default_http_port() {
+        let yaml = r###"
+instance:
+    http_listen: localhost
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
+        let listen = config.instance.http_listen.unwrap();
+        assert_eq!(listen.host, "localhost");
+        assert_eq!(listen.port, "3301"); // FIXME: This is wrong! The default
+                                         // http port should be something different
+    }
+
     #[rustfmt::skip]
     #[test]
     fn parameter_source_precedence() {
