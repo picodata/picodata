@@ -150,3 +150,87 @@ def test_lua_completion(cluster: Cluster):
     cli.expect_exact(
         "getting completions failed: error during IO: Broken pipe (os error 32)"
     )
+
+
+def test_sql_explain_ok(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    cli = pexpect.spawn(
+        cwd=i1.data_dir,
+        command=i1.binary_path,
+        args=["admin", "./admin.sock"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("picodata> ")
+
+    i1.sudo_sql(
+        """
+        CREATE TABLE "assets"
+             ("id" INTEGER NOT NULL,
+              "name" TEXT,
+              "stock" INTEGER,
+              PRIMARY KEY("id")
+            )
+        DISTRIBUTED BY("id")
+        OPTION (TIMEOUT = 3.0)"""
+    )
+
+    i1.sudo_sql(
+        """
+        CREATE TABLE "characters"
+           ("id" INTEGER NOT NULL,
+            "name" TEXT NOT NULL,
+            "year" INTEGER,
+            PRIMARY KEY ("id")
+            )
+        USING MEMTX DISTRIBUTED BY ("id")
+        OPTION (TIMEOUT = 3.0)"""
+    )
+
+    cli.sendline("""EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561)""")
+
+    cli.expect_exact('insert "assets" on conflict: fail')
+    cli.expect_exact('motion [policy: segment([ref("COLUMN_1")])]')
+    cli.expect_exact("values")
+    cli.expect_exact(
+        "value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))"
+    )
+    cli.expect_exact("execution options:")
+    cli.expect_exact("sql_vdbe_max_steps = 45000")
+    cli.expect_exact("vtable_max_rows = 5000")
+
+    cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010""")
+
+    cli.expect_exact('update "characters')
+    cli.expect_exact('"year" = COL_0')
+    cli.expect_exact("motion [policy: local]")
+    cli.expect_exact(
+        'projection (2010::unsigned -> COL_0, "characters"."id"::integer -> COL_1)'
+    )
+    cli.expect_exact('scan "characters"')
+    cli.expect_exact("execution options:")
+    cli.expect_exact("sql_vdbe_max_steps = 45000")
+    cli.expect_exact("vtable_max_rows = 5000")
+
+    cli.sendline(
+        """EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;"""
+    )
+
+    cli.expect_exact('update "characters"')
+    cli.expect_exact('"name" = COL_0')
+    cli.expect_exact('"year" = COL_1')
+    cli.expect_exact("motion [policy: local]")
+    cli.expect_exact(
+        "projection ('Etch'::string -> COL_0, 2010::unsigned -> COL_1, "
+        '"characters"."id"::integer -> COL_2)'
+    )
+    cli.expect_exact('selection ROW("characters"."id"::integer) = ROW(2::unsigned)')
+    cli.expect_exact('scan "characters"')
+    cli.expect_exact("execution options:")
+    cli.expect_exact("sql_vdbe_max_steps = 45000")
+    cli.expect_exact("vtable_max_rows = 5000")

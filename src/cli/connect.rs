@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
 use tarantool::network::{AsClient, Client, Config};
@@ -75,8 +75,25 @@ impl Display for RowCount {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(transparent)]
+pub struct ExplainResult {
+    explain_result: Vec<String>,
+}
+
+impl Display for ExplainResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for i in self.explain_result.iter() {
+            f.write_fmt(format_args!("{}\n", i))?
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
 pub enum ResultSet {
+    Explain(Vec<ExplainResult>),
     RowSet(Vec<RowSet>),
     RowCount(Vec<RowCount>),
     // Option<()> here is for ignoring tarantool redundant "null"
@@ -99,6 +116,9 @@ impl Display for ResultSet {
             ResultSet::Error(_, message) => f.write_str(message),
             ResultSet::RowCount(c) => f.write_fmt(format_args!("{}", c.first().expect(
                 "RowCount response always consists of a Vec containing the only entry"
+            ))),
+            ResultSet::Explain(e) => f.write_fmt(format_args!("{}", e.first().expect(
+                "Explain is represented as a Vec<Vec<String>> where outer vec always has lenghth equal to 1"
             ))),
         }
     }
