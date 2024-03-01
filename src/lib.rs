@@ -533,13 +533,19 @@ pub struct IpcMessage {
 /// - `start_boot`
 /// - `start_join`
 ///
-fn init_common(config: &PicodataConfig, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
+fn init_common(
+    config: &PicodataConfig,
+    cfg: &tarantool::Cfg,
+) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
     std::fs::create_dir_all(config.instance.data_dir()).unwrap();
 
     // See doc comments in tlog.rs for explanation.
-    tlog::set_core_logger_is_initialized();
+    tlog::set_core_logger_is_initialized(true);
 
-    tarantool::set_cfg(cfg);
+    if let Err(e) = tarantool::set_cfg(cfg) {
+        tlog::set_core_logger_is_initialized(false);
+        return Err(Error::other(format!("core initialization failed: {e}")));
+    }
 
     if config.instance.shredding() {
         tarantool::xlog_set_remove_file_impl();
@@ -571,7 +577,7 @@ fn init_common(config: &PicodataConfig, cfg: &tarantool::Cfg) -> (Clusterwide, R
     set_on_access_denied_audit_trigger();
     let raft_storage =
         RaftSpaceAccess::new().expect("raft storage initialization should never fail");
-    (storage.clone(), raft_storage)
+    Ok((storage.clone(), raft_storage))
 }
 
 fn start_discover(
@@ -583,30 +589,20 @@ fn start_discover(
     luamod::setup(config);
     assert!(tarantool::cfg().is_none());
 
-    // Don't try to guess instance and replicaset uuids now,
-    // finally, the box will be rebootstraped after discovery.
-    let mut cfg = tarantool::Cfg {
-        listen: None,
-        read_only: false,
-        log: config.instance.log.clone(),
-        wal_dir: config.instance.data_dir(),
-        memtx_dir: config.instance.data_dir(),
-        vinyl_dir: config.instance.data_dir(),
-        log_level: config.instance.log_level() as u8,
-        memtx_memory: config.instance.memtx_memory(),
-        ..Default::default()
-    };
-
-    let (storage, raft_storage) = init_common(config, &cfg);
+    let cfg = tarantool::Cfg::for_discovery(config);
+    let (storage, raft_storage) = init_common(config, &cfg)?;
     discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
 
-    cfg.listen = Some(config.instance.listen().to_host_port());
-    tarantool::set_cfg(&cfg);
-
     if raft_storage.raft_id().unwrap().is_some() {
+        // This is a restart, go to postjoin immediately.
         tarantool::set_cfg_field("read_only", true).unwrap();
         return postjoin(config, storage, raft_storage);
     }
+
+    // Start listenning only after we've checked if this is a restart.
+    // Postjoin phase has it's own idea of when to start listenning.
+    tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())
+        .expect("setting listen port shouldn't fail");
 
     let role = discovery::wait_global();
     match role {
@@ -659,21 +655,8 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     luamod::setup(config);
     assert!(tarantool::cfg().is_none());
 
-    let cfg = tarantool::Cfg {
-        listen: None,
-        read_only: false,
-        log: config.instance.log.clone(),
-        instance_uuid: Some(instance.instance_uuid.clone()),
-        replicaset_uuid: Some(instance.replicaset_uuid.clone()),
-        wal_dir: config.instance.data_dir(),
-        memtx_dir: config.instance.data_dir(),
-        vinyl_dir: config.instance.data_dir(),
-        log_level: config.instance.log_level() as u8,
-        memtx_memory: config.instance.memtx_memory(),
-        ..Default::default()
-    };
-
-    let (storage, raft_storage) = init_common(config, &cfg);
+    let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance);
+    let (storage, raft_storage) = init_common(config, &cfg)?;
 
     let cs = raft::ConfState {
         voters: vec![raft_id],
@@ -765,27 +748,8 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     luamod::setup(config);
     assert!(tarantool::cfg().is_none());
 
-    let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
-    for address in &resp.box_replication {
-        replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:@{address}"))
-    }
-
-    let cfg = tarantool::Cfg {
-        listen: Some(config.instance.listen().to_host_port()),
-        read_only: resp.box_replication.len() > 1,
-        log: config.instance.log.clone(),
-        instance_uuid: Some(resp.instance.instance_uuid.clone()),
-        replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
-        replication: replication_cfg,
-        wal_dir: config.instance.data_dir(),
-        memtx_dir: config.instance.data_dir(),
-        vinyl_dir: config.instance.data_dir(),
-        log_level: config.instance.log_level() as u8,
-        memtx_memory: config.instance.memtx_memory(),
-        ..Default::default()
-    };
-
-    let (storage, raft_storage) = init_common(config, &cfg);
+    let cfg = tarantool::Cfg::for_instance_join(config, &resp);
+    let (storage, raft_storage) = init_common(config, &cfg)?;
 
     let raft_id = resp.instance.raft_id;
     transaction(|| -> Result<(), TntError> {
@@ -842,12 +806,10 @@ fn postjoin(
             .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
     }
 
-    let mut box_cfg = tarantool::cfg().unwrap();
-
     // Reset the quorum BEFORE initializing the raft node.
     // Otherwise it may stuck on `box.cfg({replication})` call.
-    box_cfg.replication_connect_quorum = 0;
-    tarantool::set_cfg(&box_cfg);
+    tarantool::set_cfg_field("replication_connect_quorum", 0)
+        .expect("changing replication_connect_quorum shouldn't fail");
 
     let node = traft::node::Node::init(storage.clone(), raft_storage.clone());
     let node = node.expect("failed initializing raft node");
@@ -863,8 +825,8 @@ fn postjoin(
         assert!(node.status().raft_state.is_leader());
     }
 
-    box_cfg.listen = Some(config.instance.listen().to_host_port());
-    tarantool::set_cfg(&box_cfg);
+    tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())
+        .expect("changing listen port shouldn't fail");
 
     // Start admin console
     let socket_uri = util::validate_and_complete_unix_socket_path(&config.instance.admin_socket())?;

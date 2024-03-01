@@ -19,8 +19,8 @@ pub fn set_log_level(lvl: SayLevel) {
 /// work that good and it's much simpler to just have a global variable. Maybe
 /// this will change in the future.
 static mut CORE_LOGGER_IS_INITIALIZED: bool = false;
-pub fn set_core_logger_is_initialized() {
-    unsafe { CORE_LOGGER_IS_INITIALIZED = true }
+pub fn set_core_logger_is_initialized(is: bool) {
+    unsafe { CORE_LOGGER_IS_INITIALIZED = is }
 }
 
 #[rustfmt::skip]

@@ -1,11 +1,16 @@
-use file_shred::*;
-use std::ffi::CStr;
-use std::os::unix::ffi::OsStrExt;
-
+use crate::config::ElectionMode;
+use crate::config::PicodataConfig;
+use crate::instance::Instance;
+use crate::rpc::join;
+use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::traft::error::Error;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
 use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThread, PushGuard};
 pub use ::tarantool::trigger::on_shutdown;
+use file_shred::*;
+use std::ffi::CStr;
+use std::os::unix::ffi::OsStrExt;
 
 #[macro_export]
 macro_rules! stringify_last_token {
@@ -73,58 +78,132 @@ mod tests {
 
 /// Tarantool configuration.
 /// See <https://www.tarantool.io/en/doc/latest/reference/configuration/#configuration-parameters>
-#[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
 pub struct Cfg {
-    pub listen: Option<String>,
-    pub read_only: bool,
-    pub log: Option<String>,
-
     pub instance_uuid: Option<String>,
     pub replicaset_uuid: Option<String>,
+
+    pub listen: Option<String>,
+
+    pub read_only: bool,
     pub replication: Vec<String>,
     pub replication_connect_quorum: u8,
-    pub election_mode: CfgElectionMode,
+    pub election_mode: ElectionMode,
+
+    pub log: Option<String>,
+    pub log_level: Option<u8>,
 
     pub wal_dir: String,
     pub memtx_dir: String,
     pub vinyl_dir: String,
 
     pub memtx_memory: u64,
-
-    pub log_level: u8,
 }
 
-#[derive(Clone, Debug, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
-pub enum CfgElectionMode {
-    Off,
-    Voter,
-    Candidate,
-    Manual,
-}
-
-impl Default for Cfg {
-    fn default() -> Self {
-        Self {
-            listen: Some("3301".into()),
-            read_only: true,
-            log: None,
-
+impl Cfg {
+    /// Temporary minimal configuration. After initializing with this
+    /// configuration we either will go into discovery phase after which we will
+    /// rebootstrap and go to the next phase (either boot or join), or if the
+    /// storage is already initialize we will go into the post join phase.
+    pub fn for_discovery(config: &PicodataConfig) -> Self {
+        let mut res = Self {
+            // These will either be chosen on the next phase or are already
+            // chosen and will be restored from the local storage.
             instance_uuid: None,
             replicaset_uuid: None,
-            replication: vec![],
+
+            // Listen port will be set a bit later.
+            listen: None,
+
+            // On discovery stage the local storage needs to be bootstrapped,
+            // but if we're restarting this will be changed to `true`, because
+            // we can't be a replication master at that point.
+            read_only: false,
+
+            // If this is a restart, replication will be configured by governor
+            // before our grade changes to Online.
+            //
+            // `replication_connect_quorum` is not configurable currently.
             replication_connect_quorum: 32,
-            election_mode: CfgElectionMode::Off,
+            election_mode: ElectionMode::Off,
 
-            wal_dir: ".".into(),
-            memtx_dir: ".".into(),
-            vinyl_dir: ".".into(),
+            ..Default::default()
+        };
 
-            // Effectively this is the minimum value. Values less than 64MB will be rounded up to 64MB.
-            // See memtx_engine_set_memory
-            memtx_memory: 64 * 1024 * 1024,
+        res.set_core_parameters(config);
+        res
+    }
 
-            log_level: tarantool::log::SayLevel::Info as u8,
+    /// Initial configuration for the cluster bootstrap phase.
+    pub fn for_cluster_bootstrap(config: &PicodataConfig, leader: &Instance) -> Self {
+        let mut res = Self {
+            // At this point uuids must be valid, it will be impossible to
+            // change them until the instance is expelled.
+            instance_uuid: Some(leader.instance_uuid.clone()),
+            replicaset_uuid: Some(leader.replicaset_uuid.clone()),
+
+            // Listen port will be set after the global raft node is initialized.
+            listen: None,
+
+            // Must be writable, we're going to initialize the storage.
+            read_only: false,
+
+            // Replication will be configured by governor when another replica
+            // joins.
+            replication_connect_quorum: 32,
+            election_mode: ElectionMode::Off,
+
+            ..Default::default()
+        };
+
+        res.set_core_parameters(config);
+        res
+    }
+
+    /// Initial configuration for the new instance joining to an already
+    /// initialized cluster.
+    pub fn for_instance_join(config: &PicodataConfig, resp: &join::Response) -> Self {
+        let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
+        for address in &resp.box_replication {
+            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:@{address}"))
         }
+
+        let mut res = Self {
+            // At this point uuids must be valid, it will be impossible to
+            // change them until the instance is expelled.
+            instance_uuid: Some(resp.instance.instance_uuid.clone()),
+            replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
+
+            // Needs to be set, because an applier will attempt to connect to
+            // self and will block box.cfg() call until it succeeds.
+            listen: Some(config.instance.listen().to_host_port()),
+
+            // If we're joining to an existing replicaset,
+            // then we're the follower.
+            read_only: replication_cfg.len() > 1,
+
+            // Always contains the current instance.
+            replication: replication_cfg,
+
+            replication_connect_quorum: 32,
+            election_mode: ElectionMode::Off,
+
+            ..Default::default()
+        };
+
+        res.set_core_parameters(config);
+        res
+    }
+
+    pub fn set_core_parameters(&mut self, config: &PicodataConfig) {
+        self.log = config.instance.log.clone();
+        self.log_level = Some(config.instance.log_level() as _);
+
+        self.wal_dir = config.instance.data_dir();
+        self.memtx_dir = config.instance.data_dir();
+        self.vinyl_dir = config.instance.data_dir();
+
+        self.memtx_memory = config.instance.memtx_memory();
     }
 }
 
@@ -134,10 +213,12 @@ pub fn cfg() -> Option<Cfg> {
     b.get("cfg")
 }
 
-pub fn set_cfg(cfg: &Cfg) {
+#[track_caller]
+pub fn set_cfg(cfg: &Cfg) -> Result<(), Error> {
     let l = lua_state();
     let box_cfg = LuaFunction::load(l, "return box.cfg(...)").unwrap();
-    box_cfg.call_with_args(cfg).unwrap()
+    box_cfg.call_with_args(cfg)?;
+    Ok(())
 }
 
 #[allow(dead_code)]

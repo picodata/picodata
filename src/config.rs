@@ -522,7 +522,7 @@ pub struct InstanceConfig {
     // pub replication_timeout: Option<f64>,
     // pub replication_threads: Option<u8>,
     // pub election_fencing_mode: Option<String>,
-    // pub election_mode: Option<String>,
+    // pub election_mode: Option<ElectionMode>,
     // pub election_timeout: Option<f64>,
 
     // TODO: correct type
@@ -750,6 +750,21 @@ where
     }
 
     des.deserialize_map(Visitor::<K, V>(PhantomData))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ElectionMode
+////////////////////////////////////////////////////////////////////////////////
+
+tarantool::define_str_enum! {
+    #[derive(Default)]
+    pub enum ElectionMode {
+        #[default]
+        Off = "off",
+        Voter = "voter",
+        Candidate = "candidate",
+        Manual = "manual",
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -136,11 +136,11 @@ fn test_one(test: &TestCase) {
     let cfg = tarantool::Cfg {
         listen: Some("127.0.0.1:0".into()),
         read_only: false,
-        log_level: ::tarantool::log::SayLevel::Verbose as u8,
+        log_level: Some(::tarantool::log::SayLevel::Verbose as u8),
         ..Default::default()
     };
 
-    tarantool::set_cfg(&cfg);
+    tarantool::set_cfg(&cfg).unwrap();
 
     crate::schema::init_user_pico_service();
 
