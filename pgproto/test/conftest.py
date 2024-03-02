@@ -1,3 +1,11 @@
+"""
+This is a copy of conftest.py from picodata that instead of building picodata
+tries to find it in PATH or in PICODATA_EXECUTABLE.
+
+This changes are reflected in cargo_build and binary_path fixtures,
+the rest is the same to the picodata's version, except pgproto's fixtures.
+"""
+
 import io
 import os
 import re
@@ -5,9 +13,10 @@ import socket
 import sys
 import time
 import threading
+from types import SimpleNamespace
 import logging
 import shutil
-from types import SimpleNamespace
+import yaml  # type: ignore
 import pytest
 import signal
 import subprocess
@@ -15,11 +24,22 @@ import msgpack  # type: ignore
 from functools import reduce
 from datetime import datetime
 from shutil import rmtree
-from typing import Any, Callable, Literal, Generator, Iterator, Dict, List, Tuple, Type
+from typing import (
+    Any,
+    Callable,
+    Literal,
+    Generator,
+    Iterator,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+)
 from itertools import count
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from tarantool.connection import Connection  # type: ignore
+import tarantool  # type: ignore
 from tarantool.error import (  # type: ignore
     tnt_strerror,
     DatabaseError,
@@ -32,6 +52,8 @@ INVALID_RAFT_ID = 0
 BASE_HOST = "127.0.0.1"
 BASE_PORT = 3300
 PORT_RANGE = 200
+
+MAX_LOGIN_ATTEMPTS = 4
 
 
 def eprint(*args, **kwargs):
@@ -54,6 +76,23 @@ def pytest_addoption(parser: pytest.Parser):
         default=False,
         help="Whether gather flamegraphs or not (for benchmarks only)",
     )
+    parser.addoption(
+        "--with-webui",
+        action="store_true",
+        default=False,
+        help="Whether to run Web UI tests",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]):
+    # https://docs.pytest.org/en/7.4.x/how-to/writing_hook_functions.html
+    # https://docs.pytest.org/en/7.4.x/example/simple.html#control-skipping-of-tests-according-to-command-line-option
+
+    if not config.getoption("--with-webui"):
+        skip = pytest.mark.skip(reason="run: pytest --with-webui")
+        for item in items:
+            if "webui" in item.keywords:
+                item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")
@@ -87,17 +126,17 @@ def seed(pytestconfig):
     """Return a seed for randomized tests. Unless passed via
     command-line options it is generated automatically.
     """
-    return pytestconfig.getoption("seed")
+    return pytestconfig.getoption("--seed")
 
 
 @pytest.fixture(scope="session")
 def delay(pytestconfig):
-    return pytestconfig.getoption("delay")
+    return pytestconfig.getoption("--delay")
 
 
 @pytest.fixture(scope="session")
 def with_flamegraph(pytestconfig):
-    return bool(pytestconfig.getoption("with_flamegraph"))
+    return bool(pytestconfig.getoption("--with-flamegraph"))
 
 
 @pytest.fixture(scope="session")
@@ -170,6 +209,10 @@ def normalize_net_box_result(func):
                 case _:
                     raise exc from exc
 
+        # This is special case for Connection.__init__
+        if result is None:
+            return
+
         match result.data:
             case []:
                 return None
@@ -204,14 +247,6 @@ class KeyDef:
     def __str__(self):
         parts = ", ".join(str(part) for part in self.parts)
         return """{{ {} }}""".format(parts)
-
-
-@dataclass(frozen=True)
-class RaftStatus:
-    id: int
-    raft_state: str
-    term: int
-    leader_id: int | None = None
 
 
 class CasRange:
@@ -389,6 +424,41 @@ OUT_LOCK = threading.Lock()
 POSITION_IN_SPACE_INSTANCE_ID = 3
 
 
+class Connection(tarantool.Connection):  # type: ignore
+    @normalize_net_box_result
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @normalize_net_box_result
+    def call(self, func_name, *args, on_push=None, on_push_ctx=None):
+        return super().call(func_name, *args, on_push=on_push, on_push_ctx=on_push_ctx)
+
+    @normalize_net_box_result
+    def eval(self, expr, *args, on_push=None, on_push_ctx=None):
+        return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
+
+    def sql(self, sql: str, *params, options={}) -> dict:
+        """Run SQL query and return result"""
+        return self.call("pico.sql", sql, params, options)
+
+    def sudo_sql(
+        self,
+        sql: str,
+        *params,
+    ) -> dict:
+        """Run SQL query as admin and return result"""
+        old_euid = self.eval(
+            """
+            local before = box.session.euid()
+            box.session.su('admin')
+            return before
+            """
+        )
+        ret = self.sql(sql, *params)
+        self.eval("box.session.su(...)", old_euid)
+        return ret
+
+
 @dataclass
 class Instance:
     binary_path: str
@@ -397,17 +467,21 @@ class Instance:
     peers: list[str]
     host: str
     port: int
-    init_replication_factor: int
 
     color: Callable[[str], str]
 
+    audit: str | bool = True
+    tier: str | None = None
+    init_replication_factor: int | None = None
+    init_cfg_path: str | None = None
     instance_id: str | None = None
     replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
+    service_password_file: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen | None = None
     raft_id: int = INVALID_RAFT_ID
-    _on_output_callbacks: list[Callable[[str], None]] = field(default_factory=list)
+    _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
 
     @property
     def listen(self):
@@ -416,7 +490,7 @@ class Instance:
     def current_grade(self, instance_id=None):
         if instance_id is None:
             instance_id = self.instance_id
-        return self.call("pico.instance_info", instance_id)["current_grade"]
+        return self.call(".proc_instance_info", instance_id)["current_grade"]
 
     def instance_uuid(self):
         return self.eval("return box.info.uuid")
@@ -425,7 +499,24 @@ class Instance:
         return self.eval("return box.info.cluster.uuid")
 
     @property
+    def audit_flag_value(self):
+        """
+        This property abstracts away peculiarities of the audit config.
+        This is the value we're going to pass via `--audit`, or `None`
+        if audit is disabled for this instance.
+        """
+        if self.audit:
+            if isinstance(self.audit, bool):
+                return os.path.join(self.data_dir, "audit.log")
+            if isinstance(self.audit, str):
+                return self.audit
+        return None
+
+    @property
     def command(self):
+        audit = self.audit_flag_value
+        service_password = self.service_password_file
+
         # fmt: off
         return [
             self.binary_path, "run",
@@ -436,7 +527,13 @@ class Instance:
             "--listen", self.listen,
             "--peer", ','.join(self.peers),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
-            "--init-replication-factor", f"{self.init_replication_factor}"
+            *(["--init-replication-factor", f"{self.init_replication_factor}"]
+              if self.init_replication_factor is not None else []),
+            *(["--init-cfg", self.init_cfg_path]
+              if self.init_cfg_path is not None else []),
+            *(["--tier", self.tier] if self.tier is not None else []),
+            *(["--audit", audit] if audit else []),
+            *(["--service-password-file", service_password] if service_password else []),
         ]
         # fmt: on
 
@@ -447,6 +544,14 @@ class Instance:
     def connect(
         self, timeout: int | float, user: str | None = None, password: str | None = None
     ):
+        if user is None:
+            user = "pico_service"
+            if password is None and self.service_password_file is not None:
+                with open(self.service_password_file, "r") as f:
+                    password = f.readline()
+                    if password.endswith("\n"):
+                        password = password[:-1]
+
         c = Connection(
             self.host,
             self.port,
@@ -462,7 +567,6 @@ class Instance:
         finally:
             c.close()
 
-    @normalize_net_box_result
     def call(
         self,
         fn,
@@ -474,7 +578,6 @@ class Instance:
         with self.connect(timeout, user=user, password=password) as conn:
             return conn.call(fn, args)
 
-    @normalize_net_box_result
     def eval(
         self,
         expr,
@@ -509,9 +612,47 @@ class Instance:
         )
         return self.eval(lua)
 
-    def sql(self, sql: str, *params, timeout: int | float = 1) -> dict:
+    def sql(
+        self,
+        sql: str,
+        *params,
+        options={},
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ) -> dict:
         """Run SQL query and return result"""
-        return self.call("pico.sql", sql, params, timeout=timeout)
+        with self.connect(timeout=timeout, user=user, password=password) as conn:
+            return conn.sql(sql, *params, options=options)
+
+    def sudo_sql(
+        self,
+        sql: str,
+        *params,
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ) -> dict:
+        """Run SQL query as admin and return result"""
+        with self.connect(timeout, user=user, password=password) as conn:
+            return conn.sudo_sql(sql, params)
+
+    def create_user(
+        self,
+        with_name: str,
+        with_password: str,
+        user: str | None = None,
+        password: str | None = None,
+        timeout: int | float = 1,
+    ):
+        self.sql(
+            f"""
+            CREATE USER "{with_name}" WITH PASSWORD '{with_password}' USING chap-sha1
+            """,
+            user=user,
+            password=password,
+            timeout=timeout,
+        )
 
     def terminate(self, kill_after_seconds=10) -> int | None:
         """Terminate the instance gracefully with SIGTERM"""
@@ -532,22 +673,28 @@ class Instance:
         finally:
             self.kill()
 
-    def _process_output(self, src, out):
+    def _process_output(self, src, out: io.TextIOWrapper):
         id = self.instance_id or f":{self.port}"
         prefix = f"{id:<3} | "
 
         if sys.stdout.isatty():
             prefix = self.color(prefix)
 
-        for line in io.TextIOWrapper(src, line_buffering=True):
+        prefix_bytes = prefix.encode("utf-8")
+
+        # `iter(callable, sentinel)` form: calls callable until it returns sentinel
+        for line in iter(src.readline, b""):
             with OUT_LOCK:
-                out.write(prefix)
-                out.write(line)
+                out.buffer.write(prefix_bytes)
+                out.buffer.write(line)
                 out.flush()
                 for cb in self._on_output_callbacks:
                     cb(line)
 
-    def on_output_line(self, cb: Callable[[str], None]):
+        # Close the stream, because `Instance.fail_to_start` is waiting for it
+        src.close()
+
+    def on_output_line(self, cb: Callable[[bytes], None]):
         self._on_output_callbacks.append(cb)
 
     def start(self, peers=[]):
@@ -567,12 +714,17 @@ class Instance:
         if os.environ.get("RUST_BACKTRACE") is not None:
             env.update(RUST_BACKTRACE=str(os.environ.get("RUST_BACKTRACE")))
 
+        if os.getenv("NOLOG"):
+            out = subprocess.DEVNULL
+        else:
+            out = subprocess.PIPE
+
         self.process = subprocess.Popen(
             self.command,
             env=env or None,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=out,
+            stderr=out,
             # Picodata instance consists of two processes: a supervisor
             # and a child. Pytest manages it at the level of linux
             # process groups that is a collection of related processes
@@ -590,6 +742,12 @@ class Instance:
             start_new_session=True,
         )
 
+        # Assert a new process group is created
+        assert os.getpgid(self.process.pid) == self.process.pid
+
+        if out == subprocess.DEVNULL:
+            return
+
         for src, out in [
             (self.process.stdout, sys.stdout),
             (self.process.stderr, sys.stderr),
@@ -600,20 +758,40 @@ class Instance:
                 daemon=True,
             ).start()
 
-        # Assert a new process group is created
-        assert os.getpgid(self.process.pid) == self.process.pid
-
     def fail_to_start(self, timeout: int = 5):
         assert self.process is None
         self.start()
         assert self.process
         try:
             rc = self.process.wait(timeout)
+
+            # Wait for all the output to be handled in the separate threads
+            while not self.process.stdout.closed or not self.process.stderr.closed:  # type: ignore
+                time.sleep(0.1)
+
             self.process = None
             assert rc != 0
         except Exception as e:
             self.kill()
             raise e from e
+
+    def wait_process_stopped(self, timeout: int = 5):
+        if self.process is None:
+            return
+
+        # FIXME: copy-pasted from above
+        self.process.wait(timeout)
+
+        # When logs are disabled stdour and stderr are set to None
+        if not (self.process.stdout or self.process.stderr):
+            self.process = None
+            return
+
+        # Wait for all the output to be handled in the separate threads
+        while not self.process.stdout.closed or not self.process.stderr.closed:  # type: ignore
+            time.sleep(0.1)
+
+        self.process = None
 
     def restart(self, kill: bool = False, remove_data: bool = False):
         if kill:
@@ -628,11 +806,6 @@ class Instance:
 
     def remove_data(self):
         rmtree(self.data_dir)
-
-    def _raft_status(self) -> RaftStatus:
-        status = self.call("pico.raft_status")
-        assert isinstance(status, dict)
-        return RaftStatus(**status)
 
     def raft_propose_nop(self):
         return self.call("pico.raft_propose_nop")
@@ -669,10 +842,11 @@ class Instance:
             case _:
                 raise TypeError("space must be str or int")
 
+    # FIXME: this method's parameters are out of sync with Cluster.cas
     def cas(
         self,
         op_kind: Literal["insert", "replace", "delete"],
-        space: str | int,
+        table: str | int,
         tuple: Tuple | List | None = None,
         index: int | None = None,
         term: int | None = None,
@@ -694,14 +868,14 @@ class Instance:
         elif term is None:
             term = self.raft_term_by_index(index)
 
-        space_id = self.space_id(space)
+        table_id = self.space_id(table)
 
         predicate_ranges = []
         if ranges is not None:
             for range in ranges:
                 predicate_ranges.append(
                     dict(
-                        space=space_id,
+                        table=table_id,
                         key_min=range.key_min_packed,
                         key_max=range.key_max_packed,
                     )
@@ -717,30 +891,38 @@ class Instance:
             op = dict(
                 kind="dml",
                 op_kind=op_kind,
-                space=space_id,
+                table=table_id,
                 tuple=msgpack.packb(tuple),
             )
         elif op_kind == "delete":
             op = dict(
                 kind="dml",
                 op_kind=op_kind,
-                space=space_id,
+                table=table_id,
                 key=msgpack.packb(tuple),
             )
         else:
             raise Exception(f"unsupported {op_kind=}")
 
+        # guest has super privs for now by default this should be equal
+        # to ADMIN_USER_ID on the rust side
+        as_user = 1
+        op["initiator"] = as_user
+
         eprint(f"CaS:\n  {predicate=}\n  {op=}")
-        return self.call(".proc_cas", self.cluster_id, predicate, op)[0]["index"]
+        return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)["index"]
+
+    def pico_property(self, key: str):
+        tup = self.call("box.space._pico_property:get", key)
+        if tup is None:
+            return None
+
+        return tup[1]
 
     def next_schema_version(self) -> int:
-        t = self.call("box.space._pico_property:get", "next_schema_version")
-        if t is None:
-            return 1
+        return self.pico_property("next_schema_version") or 1
 
-        return t[1]
-
-    def create_space(self, params: dict, timeout: float = 3.0) -> int:
+    def create_table(self, params: dict, timeout: float = 3.0) -> int:
         """
         Creates a space. Returns a raft index at which a newly created space
         has to exist on all peers.
@@ -749,16 +931,16 @@ class Instance:
         which is more low level and directly proposes a raft entry.
         """
         params["timeout"] = timeout
-        index = self.call("pico.create_space", params, timeout, timeout=timeout + 0.5)
+        index = self.call("pico.create_table", params, timeout, timeout=timeout + 0.5)
         return index
 
-    def drop_space(self, space: int | str, timeout: float = 3.0):
+    def drop_table(self, space: int | str, timeout: float = 3.0):
         """
         Drops the space. Returns a raft index at which the space has to be
         dropped on all peers.
         """
         index = self.call(
-            "pico.drop_space", space, dict(timeout=timeout), timeout=timeout + 0.5
+            "pico.drop_table", space, dict(timeout=timeout), timeout=timeout + 0.5
         )
         return index
 
@@ -786,7 +968,7 @@ class Instance:
         op = dict(
             kind="ddl_prepare",
             schema_version=self.next_schema_version(),
-            ddl=dict(kind="create_space", **space_def),
+            ddl=dict(kind="create_table", **space_def),
         )
         # TODO: rewrite the test using pico.cas
         index = self.call("pico.raft_propose", op, timeout=timeout)
@@ -798,21 +980,26 @@ class Instance:
         return index_fin
 
     def assert_raft_status(self, state, leader_id=None):
-        status = self._raft_status()
+        status = self.call(".proc_raft_info")
 
         if leader_id is None:
-            leader_id = status.leader_id
+            leader_id = status["leader_id"]
 
         assert {
-            "raft_state": status.raft_state,
-            "leader_id": status.leader_id,
+            "raft_state": status["state"],
+            "leader_id": status["leader_id"],
         } == {"raft_state": state, "leader_id": leader_id}
 
-    def wait_online(self, timeout: int | float = 6, rps: int | float = 5):
-        """Wait until instance attains Online grade
+    def wait_online(
+        self, timeout: int | float = 6, rps: int | float = 5, expected_incarnation=None
+    ):
+        """Wait until instance attains Online grade.
+
+        This function will periodically check the current instance's grade and
+        reset the timeout each time the grade changes.
 
         Args:
-            timeout (int | float, default=6): total time limit
+            timeout (int | float, default=6): time limit since last grade change
             rps (int | float, default=5): retries per second
 
         Raises:
@@ -825,28 +1012,65 @@ class Instance:
         if self.process is None:
             raise ProcessDead("process was not started")
 
-        def fetch_info():
+        def fetch_current_grade() -> Tuple[str, int]:
             try:
-                exit_code = self.process.wait(timeout=0)
+                exit_code = self.process.wait(timeout=0)  # type: ignore
             except subprocess.TimeoutExpired:
                 # it's fine, the process is still running
                 pass
             else:
                 raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
 
-            whoami = self.call("pico.whoami")
-            assert isinstance(whoami, dict)
-            assert isinstance(whoami["raft_id"], int)
-            assert isinstance(whoami["instance_id"], str)
-            self.raft_id = whoami["raft_id"]
-            self.instance_id = whoami["instance_id"]
-
-            myself = self.call("pico.instance_info", self.instance_id)
+            myself = self.call(".proc_instance_info")
             assert isinstance(myself, dict)
-            assert isinstance(myself["current_grade"], dict)
-            assert myself["current_grade"]["variant"] == "Online"
 
-        Retriable(timeout, rps, fatal=ProcessDead).call(fetch_info)
+            assert isinstance(myself["raft_id"], int)
+            self.raft_id = myself["raft_id"]
+
+            assert isinstance(myself["instance_id"], str)
+            self.instance_id = myself["instance_id"]
+
+            assert isinstance(myself["current_grade"], dict)
+            return (
+                myself["current_grade"]["variant"],
+                myself["current_grade"]["incarnation"],
+            )
+
+        now = time.monotonic()
+        deadline = now + timeout
+        next_retry = now
+        last_grade = None
+        while True:
+            now = time.monotonic()
+            assert now < deadline, "timeout"
+
+            # Throttling
+            if now < next_retry:
+                time.sleep(next_retry - now)
+            next_retry = time.monotonic() + 1 / rps
+
+            try:
+                # Fetch grade
+                grade = fetch_current_grade()
+                if grade != last_grade:
+                    last_grade = grade
+                    deadline = time.monotonic() + timeout
+
+                # Check grade
+                variant, incarnation = grade
+                assert variant == "Online"
+                if expected_incarnation is not None:
+                    assert incarnation == expected_incarnation
+
+                # Success!
+                break
+
+            except ProcessDead as e:
+                raise e from e
+            except Exception as e:
+                if time.monotonic() > deadline:
+                    raise e from e
+
         eprint(f"{self} is online")
 
     def raft_term(self) -> int:
@@ -891,12 +1115,18 @@ class Instance:
         See `crate::traft::node::Node::wait_index`.
         """
 
-        return self.call(
-            "pico.raft_wait_index",
-            target,
-            timeout,  # this timeout is passed as an argument
-            timeout=timeout + 1,  # this timeout is for network call
-        )
+        def make_attempt():
+            return self.call(
+                "pico.raft_wait_index",
+                target,
+                timeout,  # this timeout is passed as an argument
+                timeout=timeout + 1,  # this timeout is for network call
+            )
+
+        index = Retriable(timeout=timeout + 1, rps=10).call(make_attempt)
+
+        assert index is not None
+        return index
 
     def get_vclock(self) -> int:
         """Get current vclock"""
@@ -928,13 +1158,38 @@ class Instance:
             eprint(f"{self} is trying to become a leader, {attempt=}")
 
             # 1. Force the node to campaign.
-            self.call("pico.raft_timeout_now")
+            self.call(".proc_raft_promote")
 
             # 2. Wait until the miracle occurs.
             Retriable(timeout, rps).call(self.assert_raft_status, "Leader")
 
         Retriable(timeout=3, rps=1).call(make_attempt, timeout=1, rps=10)
         eprint(f"{self} is a leader now")
+
+    def grant_privilege(
+        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
+    ):
+        # do it as admin because some privileges can be granted only by admin
+        return self.eval(
+            """
+            box.session.su("admin")
+            user, privilege, object_type, object_name = ...
+            return pico.grant_privilege(user, privilege, object_type, object_name)
+            """,
+            [user, privilege, object_type, object_name],
+        )
+
+    def revoke_privilege(
+        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
+    ):
+        return self.eval(
+            """
+            box.session.su("admin")
+            user, privilege, object_type, object_name = ...
+            return pico.revoke_privilege(user, privilege, object_type, object_name)
+            """,
+            [user, privilege, object_type, object_name],
+        )
 
 
 CLUSTER_COLORS = (
@@ -960,6 +1215,7 @@ class Cluster:
     base_port: int
     max_port: int
     instances: list[Instance] = field(default_factory=list)
+    cfg_path: str | None = None
 
     def __repr__(self):
         return f'Cluster("{self.base_host}:{self.base_port}", n={len(self.instances)})'
@@ -968,13 +1224,19 @@ class Cluster:
         return self.instances[item]
 
     def deploy(
-        self, *, instance_count: int, init_replication_factor: int = 1
+        self,
+        *,
+        instance_count: int,
+        init_replication_factor: int | None = None,
+        tier: str | None = None,
     ) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
         for _ in range(instance_count):
             self.add_instance(
-                wait_online=False, init_replication_factor=init_replication_factor
+                wait_online=False,
+                tier=tier,
+                init_replication_factor=init_replication_factor,
             )
 
         for instance in self.instances:
@@ -986,6 +1248,13 @@ class Cluster:
         eprint(f" {self} deployed ".center(80, "="))
         return self.instances
 
+    def set_init_cfg(self, cfg: dict):
+        assert self.cfg_path is None
+        self.cfg_path = self.data_dir + "/tier.yaml"
+        with open(self.cfg_path, "w") as yaml_file:
+            dump = yaml.dump(cfg, default_flow_style=False)
+            yaml_file.write(dump)
+
     def add_instance(
         self,
         wait_online=True,
@@ -993,7 +1262,8 @@ class Cluster:
         instance_id: str | bool = True,
         replicaset_id: str | None = None,
         failure_domain=dict(),
-        init_replication_factor=1,
+        init_replication_factor: int | None = None,
+        tier: str | None = None,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -1037,9 +1307,12 @@ class Cluster:
             host=self.base_host,
             port=port,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
-            init_replication_factor=init_replication_factor,
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
+            init_replication_factor=init_replication_factor,
+            tier=tier,
+            init_cfg_path=self.cfg_path,
+            audit=True,
         )
 
         self.instances.append(instance)
@@ -1055,7 +1328,8 @@ class Cluster:
         peers=None,
         instance_id: str | bool = True,
         failure_domain=dict(),
-        init_replication_factor=1,
+        init_replication_factor: int | None = None,
+        tier: str = "storage",
     ):
         instance = self.add_instance(
             wait_online=False,
@@ -1063,6 +1337,7 @@ class Cluster:
             instance_id=instance_id,
             failure_domain=failure_domain,
             init_replication_factor=init_replication_factor,
+            tier=tier,
         )
         self.instances.remove(instance)
         instance.fail_to_start()
@@ -1107,8 +1382,7 @@ class Cluster:
         """
         Waits for all peers to commit an entry with index `index`.
         """
-        import time
-
+        assert type(index) is int
         deadline = time.time() + timeout
         for instance in self.instances:
             if instance.process is not None:
@@ -1117,18 +1391,18 @@ class Cluster:
                     timeout = 0
                 instance.raft_wait_index(index, timeout)
 
-    def create_space(self, params: dict, timeout: float = 3.0):
+    def create_table(self, params: dict, timeout: float = 3.0):
         """
         Creates a space. Waits for all online peers to be aware of it.
         """
-        index = self.instances[0].create_space(params, timeout)
+        index = self.instances[0].create_table(params, timeout)
         self.raft_wait_index(index, timeout)
 
-    def drop_space(self, space: int | str, timeout: float = 3.0):
+    def drop_table(self, space: int | str, timeout: float = 3.0):
         """
         Drops the space. Waits for all online peers to be aware of it.
         """
-        index = self.instances[0].drop_space(space, timeout)
+        index = self.instances[0].drop_table(space, timeout)
         self.raft_wait_index(index, timeout)
 
     def abort_ddl(self, timeout: float = 3.0):
@@ -1140,14 +1414,19 @@ class Cluster:
 
     def cas(
         self,
-        dml_kind: Literal["insert", "replace", "delete"],
-        space: str,
-        tuple: Tuple | List,
+        dml_kind: Literal["insert", "replace", "delete", "update"],
+        table: str,
+        tuple: Tuple | List | None = None,
+        *,
+        key: Tuple | List | None = None,
+        ops: Tuple | List | None = None,
         index: int | None = None,
         term: int | None = None,
         ranges: List[CasRange] | None = None,
         # If specified send CaS through this instance
         instance: Instance | None = None,
+        user: str | None = None,
+        password: str | None = None,
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
@@ -1165,7 +1444,7 @@ class Cluster:
             for range in ranges:
                 predicate_ranges.append(
                     dict(
-                        space=space,
+                        table=table,
                         key_min=range.key_min,
                         key_max=range.key_max,
                     )
@@ -1176,21 +1455,77 @@ class Cluster:
             term=term,
             ranges=predicate_ranges,
         )
-        if dml_kind in ["insert", "replace", "delete"]:
+        if dml_kind in ["insert", "replace", "delete", "update"]:
             dml = dict(
-                space=space,
+                table=table,
                 kind=dml_kind,
                 tuple=tuple,
+                key=key,
+                ops=ops,
             )
         else:
             raise Exception(f"unsupported {dml_kind=}")
 
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
-        return instance.call("pico.cas", dml, predicate)
+        return instance.call("pico.cas", dml, predicate, user=user, password=password)
+
+    def masters(self) -> List[Instance]:
+        ret = []
+        for instance in self.instances:
+            if not instance.eval("return box.info.ro"):
+                ret.append(instance)
+
+        return ret
+
+    def grant_box_privilege(
+        self, user, privilege: str, object_type: str, object_name: Optional[str] = None
+    ):
+        """
+        Sometimes in our tests we go beyond picodata privilege model and need
+        to grant priveleges on something that is not part of the picodata access control model.
+        For example execute access on universe mainly needed to invoke functions.
+        """
+        for instance in self.masters():
+            instance.eval(
+                """
+                box.session.su("admin")
+                user, privilege, object_type, object_name = ...
+                return box.schema.user.grant(user, privilege, object_type, object_name)
+                """,
+                [user, privilege, object_type, object_name],
+            )
+
+
+@dataclass
+class PortalStorage:
+    instance: Instance
+
+    @property
+    def descriptors(self):
+        return self.instance.call("pico.pg_portals")
+
+    def bind(self, *params):
+        return self.instance.call("pico.pg_bind", *params, False)
+
+    def close(self, descriptor: int):
+        return self.instance.call("pico.pg_close", descriptor)
+
+    def describe(self, descriptor: int) -> dict:
+        return self.instance.call("pico.pg_describe", descriptor, False)
+
+    def execute(self, descriptor: int) -> dict:
+        return self.instance.call("pico.pg_execute", descriptor, False)
+
+    def flush(self):
+        for descriptor in self.descriptors["available"]:
+            self.close(descriptor)
+
+    def parse(self, sql: str) -> int:
+        return self.instance.call("pico.pg_parse", sql, False)
 
 
 @pytest.fixture(scope="session")
-def binary_path() -> str:
+def binary_path(cargo_build: None) -> str:
     """Path to the picodata binary, e.g. `./target/debug/picodata`."""
     path = os.getenv("PICODATA_EXECUTABLE")
     if path:
@@ -1204,6 +1539,29 @@ def binary_path() -> str:
         return path
 
     raise Exception("can't find picodata executable!")
+
+
+@pytest.fixture(scope="session")
+def cargo_build(pytestconfig: pytest.Config) -> None:
+    """Run cargo build before tests. Skipped in CI"""
+
+    # Start test logs with a newline. This makes them prettier with
+    # `pytest -s` (a shortcut for `pytest --capture=no`)
+    eprint("")
+
+    if os.environ.get("CI") is not None:
+        eprint("Skipping cargo build")
+        return
+
+    features = ["error_injection"]
+    if bool(pytestconfig.getoption("--with-webui")):
+        features.append("webui")
+
+    # We work with picodata executabe so there is no need in building it.
+
+    # cmd = ["cargo", "build", "--features", ",".join(features)]
+    # eprint(f"Running {cmd}")
+    # assert subprocess.call(cmd) == 0, "cargo build failed"
 
 
 @pytest.fixture(scope="session")
@@ -1231,10 +1589,27 @@ def cluster(
 
 
 @pytest.fixture
-def instance(cluster: Cluster) -> Generator[Instance, None, None]:
+def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
     """Returns a deployed instance forming a single-node cluster."""
-    cluster.deploy(instance_count=1)
-    yield cluster[0]
+    instance = cluster.add_instance(wait_online=False)
+
+    has_webui = bool(pytestconfig.getoption("--with-webui"))
+    if has_webui:
+        instance.env["PICODATA_HTTP_LISTEN"] = (
+            f"{cluster.base_host}:{cluster.base_port+80}"
+        )
+
+    instance.start()
+    instance.wait_online()
+    yield instance
+
+
+@pytest.fixture
+def pg_portals(instance: Instance) -> Generator[PortalStorage, None, None]:
+    """Returns a PG portal storage on a single instance."""
+    portals = PortalStorage(instance)
+    yield portals
+    portals.flush()
 
 
 def retrying(fn, timeout=3):
@@ -1273,6 +1648,17 @@ def pgrep_tree(pid):
         return [pid]
 
 
+class log_crawler:
+    def __init__(self, instance: Instance, search_str: str) -> None:
+        self.matched = False
+        self.search_str = search_str.encode("utf-8")
+        instance.on_output_line(self._cb)
+
+    def _cb(self, line: bytes):
+        if self.search_str in line:
+            self.matched = True
+
+
 @dataclass
 class Postgres:
     instance: Instance
@@ -1282,7 +1668,7 @@ class Postgres:
             package.cpath="{os.environ['LUA_CPATH']}"
 
             box.schema.func.create('libpgproto.server_start', {{ language = 'C' }})
-            box.schema.user.grant('guest', 'execute', 'function', 'libpgproto.server_start')
+            box.schema.user.grant('pico_service', 'execute', 'function', 'libpgproto.server_start')
         """
         self.instance.eval(code)
         return self

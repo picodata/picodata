@@ -12,9 +12,8 @@ def test_simple_query_flow_errors(postgres: Postgres):
     i1 = postgres.instance
 
     user = "admin"
-    password = "fANPIOUWEh79p12hdunqwADI"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     with pytest.raises(pg.InterfaceError, match="Server refuses SSL"):
         pg.Connection(user, password=password, host=host, port=port, ssl_context=True)
@@ -49,9 +48,8 @@ def test_simple_flow_session(postgres: Postgres):
     i1 = postgres.instance
 
     user = "admin"
-    password = "password"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(user, password=password, host=host, port=port)
@@ -107,9 +105,8 @@ def test_explain(postgres: Postgres):
     i1 = postgres.instance
 
     user = "admin"
-    password = "password"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(user, password=password, host=host, port=port)
@@ -133,7 +130,7 @@ def test_explain(postgres: Postgres):
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert 'insert "explain" on conflict: fail' in plan[0]
-    assert '    motion [policy: local segment([ref("COLUMN_1")])]' in plan[1]
+    assert '    motion [policy: segment([ref("COLUMN_1")])]' in plan[1]
     assert "        values" in plan[2]
     assert "            value row (data=ROW(0::unsigned))" in plan[3]
     assert "execution options:" in plan[4]
@@ -142,7 +139,7 @@ def test_explain(postgres: Postgres):
     cur.execute("explain " + query)
     plan = cur.fetchall()
     assert 'insert "explain" on conflict: fail' in plan[0]
-    assert '    motion [policy: local segment([ref("COLUMN_1")])]' in plan[1]
+    assert '    motion [policy: segment([ref("COLUMN_1")])]' in plan[1]
     assert "        values" in plan[2]
     assert "            value row (data=ROW(0::unsigned))" in plan[3]
     assert "execution options:" in plan[4]
@@ -176,9 +173,8 @@ def test_aggregate_error(postgres: Postgres):
     i1 = postgres.instance
 
     user = "admin"
-    password = "password"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(user, password=password, host=host, port=port)

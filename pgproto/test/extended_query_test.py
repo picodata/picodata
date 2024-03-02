@@ -2,7 +2,6 @@ import pytest
 import pg8000.native as pg  # type: ignore
 import os
 from conftest import Postgres
-from conftest import ReturnError
 from pg8000.exceptions import DatabaseError  # type: ignore
 
 # We use psycopg for parameterized queries because pg8000
@@ -24,9 +23,8 @@ def test_extended_query(postgres: Postgres):
     i1 = postgres.instance
 
     user = "admin"
-    password = "password"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(user, password=password, host=host, port=port)
@@ -47,8 +45,8 @@ def test_extended_query(postgres: Postgres):
     )
 
     # statement is prepared, but not executed yet
-    with pytest.raises(ReturnError, match="space TALL not found"):
-        i1.sql(""" select * from tall """)
+    with pytest.raises(DatabaseError, match="space TALL not found"):
+        conn.run(""" select * from tall """)
 
     ps.run()
 
@@ -109,9 +107,8 @@ def test_parameterized_queries(postgres: Postgres):
     i1 = postgres.instance
 
     user = "admin"
-    password = "password"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.eval(f"box.schema.user.passwd('{user}', '{password}')")
+    password = "P@ssw0rd"
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"

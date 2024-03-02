@@ -12,9 +12,8 @@ def test_ssl_request_handling(postgres: Postgres):
     i1 = postgres.instance
 
     user = "user"
-    password = "password"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.call("pico.create_user", user, password, dict(timeout=3))
+    password = "P@ssw0rd"
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     # disable: only try a non-SSL connection
     os.environ["PGSSLMODE"] = "disable"

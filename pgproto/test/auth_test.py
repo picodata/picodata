@@ -11,9 +11,8 @@ def test_auth(postgres: Postgres):
     i1 = postgres.instance
 
     user = "user"
-    password = "fANPIOUWEh79p12hdunqwADI"
-    i1.eval("box.cfg{auth_type='md5'}")
-    i1.call("pico.create_user", user, password, dict(timeout=3))
+    password = "P@ssw0rd"
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     # test successful authentication
     conn = pg.Connection(user, password=password, host=host, port=port)
@@ -32,9 +31,8 @@ def test_auth(postgres: Postgres):
         pg.Connection("unknown-user", password="aaa", host=host, port=port)
 
     sha_user = "chap-sha-enjoyer"
-    sha_password = "231321fnijphui217h08"
-    i1.eval("box.cfg{auth_type='chap-sha1'}")
-    i1.call("pico.create_user", sha_user, sha_password, dict(timeout=3))
+    password = "P@ssw0rd"
+    i1.sql(f"CREATE USER \"{sha_user}\" WITH PASSWORD '{password}' USING md5")
 
     # test authentication with an unsupported method
     with pytest.raises(
