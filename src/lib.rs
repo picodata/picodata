@@ -539,6 +539,10 @@ pub struct IpcMessage {
 ///
 fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpaceAccess) {
     std::fs::create_dir_all(&args.data_dir).unwrap();
+
+    // See doc comments in tlog.rs for explanation.
+    tlog::set_core_logger_is_initialized();
+
     tarantool::set_cfg(cfg);
 
     if args.shredding {

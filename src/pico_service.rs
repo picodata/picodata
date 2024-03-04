@@ -28,15 +28,12 @@ pub(crate) fn read_pico_service_password_from_file(filename: &str) -> Result<(),
         }
     );
 
+    #[rustfmt::skip]
     if (mode & 0o000_077) != 0 {
-        tlog!(
-            Warning,
-            "\
-**************************************************************************************
-! WARNING: service password file's permissions are too open, this is a security risk !
-**************************************************************************************"
-        );
-    }
+        tlog!(Warning, "*****************************************************************************");
+        tlog!(Warning, "! service password file's permissions are too open, this is a security risk !");
+        tlog!(Warning, "*****************************************************************************");
+    };
 
     let Ok(text) = String::from_utf8(data) else {
         return Err(Error::other("password must be encoded as utf-8"));
