@@ -23,6 +23,13 @@ pub fn main(args: args::Run) -> ! {
     // initialization.
     tlog::set_log_level(config.instance.log_level());
 
+    if let Some(filename) = &config.instance.service_password_file {
+        if let Err(e) = crate::pico_service::read_pico_service_password_from_file(filename) {
+            tlog!(Error, "{e}");
+            std::process::exit(1);
+        }
+    }
+
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {

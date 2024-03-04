@@ -509,10 +509,6 @@ impl Entrypoint {
         config: PicodataConfig,
         to_supervisor: ipc::Sender<IpcMessage>,
     ) -> Result<(), Error> {
-        if let Some(filename) = &config.instance.service_password_file {
-            pico_service::read_pico_service_password_from_file(filename)?;
-        }
-
         match self {
             Self::StartDiscover => start_discover(&config, to_supervisor)?,
             Self::StartBoot => start_boot(&config)?,
