@@ -90,23 +90,26 @@ but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}'
 Using configuration file '{args_path}'.");
                 }
 
-                config = Some(Self::read_yaml_file(args_path)?);
+                config = Some((Self::read_yaml_file(args_path)?, args_path));
             }
             (Some(args_path), false) => {
-                config = Some(Self::read_yaml_file(args_path)?);
+                config = Some((Self::read_yaml_file(args_path)?, args_path));
             }
             (None, true) => {
                 #[rustfmt::skip]
                 tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{cwd}'.");
-                config = Some(Self::read_yaml_file(&default_path)?);
+                config = Some((Self::read_yaml_file(&default_path)?, &default_path));
             }
             (None, false) => {}
         }
 
-        if let Some(config) = &config {
+        let mut config = if let Some((mut config, path)) = config {
             config.validate_from_file()?;
-        }
-        let mut config = config.unwrap_or_default();
+            config.instance.config_file = Some(path.clone());
+            config
+        } else {
+            Default::default()
+        };
 
         config.set_from_args(args);
 
@@ -210,8 +213,6 @@ Using configuration file '{args_path}'.");
         if let Some(memtx_memory) = args.memtx_memory {
             self.instance.memtx_memory = Some(memtx_memory);
         }
-
-        // TODO: the rest
     }
 
     /// Does checks which are applicable to configuration loaded from a file.
@@ -435,6 +436,7 @@ impl ClusterConfig {
 pub struct InstanceConfig {
     pub data_dir: Option<String>,
     pub service_password_file: Option<String>,
+    pub config_file: Option<String>,
 
     pub cluster_id: Option<String>,
     pub instance_id: Option<String>,
