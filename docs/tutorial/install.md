@@ -19,7 +19,13 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 
 ### Необходимые инструменты {: #prerequisites }
 
-- [Rust и Cargo](http://www.rustup.rs) 1.71 или новее
+<!--
+IMPORTANT
+Указанная здесь версия rust должна быть согласована с Cargo.toml, см:
+https://git.picodata.io/picodata/picodata/picodata/-/blob/master/Cargo.toml#L6
+--> 
+
+- [Rust и Cargo](http://www.rustup.rs) 1.76 или новее
 - cmake 3.16 или новее
 - gcc, g++
 - libstdc++-static
@@ -34,7 +40,7 @@ source "$HOME/.cargo/env"
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-#### CentOS 8, Fedora 37-39 {: #centos_fedora }
+#### CentOS 8, Fedora 37-40 {: #centos_fedora }
 
 Только для CentOS 8:
 
