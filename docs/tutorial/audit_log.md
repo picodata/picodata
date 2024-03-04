@@ -111,8 +111,125 @@ tail -f /tmp/audit.log
 инстансу Picodata, используйте такую команду:
 
 ```bash
-journalctl -f _COMM=picodata
+journalctl -f | grep AUDIT
 ```
+
+## Оповещения о событиях журнала аудита {: #notifications }
+### Поддерживаемые способы доставки оповещений {: #supported_notifications }
+
+В Picodata существует возможность получать оповещения о событиях,
+зафиксированных в журнале аудита. Поддерживаются следующие способы
+доставки оповещений:
+
+- уведомления для графического рабочего стола
+- уведомления по электронной почте
+
+### Оповещения для рабочего стола {: #desktop_notifications }
+
+Для доставки оповещений на рабочий стол используется программа
+`notify-send`, имеющаяся в составе защищенной ОС. Для того, чтобы
+использовать ее совместно с Picodata, потребуется создать файл-обработчик
+следующего содержания:
+
+```python
+#!/usr/bin/env python
+
+import json
+import subprocess
+import sys
+from systemd import journal
+
+for line in sys.stdin:
+    if line:
+        journal.send(f"AUDIT {line}")
+        entry = json.loads(line)
+        if entry['severity']:
+            subprocess.call(['notify-send', entry['message']])
+
+```
+
+Сохраните этот код в файл `audit-sink.py` в директорию, из которой будет
+запускаться `picodata`, сделайте его исполняемым (`chmod +x
+audit-sink.py`) и затем запустите инстанс:
+
+```shell
+picodata run --admin-sock ./i1.sock  --audit='|/tmp/audit-sink.py'
+```
+В результате, сообщения из журнала аудита будут сохраняться в `syslog` и
+дублироваться в виде уведомлений на рабочем столе.
+
+### Оповещения по электронной почте {: #email_notifications }
+
+Для получения оповещений по электронной почте потребуются:
+
+- программа `sendmail`, имеющаяся в составе защищенной ОС
+- настройка `sendmail` для корректной работы с почтовым сервером
+- файл-обработчик для дублирования событий журнала аудит в виде сообщений для `sendmail`
+
+Для настройки `sendmail` нужно отредактировать файл настроек
+`/etc/mail/sendmail.mc` следующим образом:
+
+```
+define(`SMART_HOST', `your.smtp.server')dnl
+define(`confAUTH_MECHANISMS', `EXTERNAL GSSAPI DIGEST-MD5 CRAM-MD5 LOGIN PLAIN')dnl
+FEATURE(`authinfo',`hash -o /etc/mail/authinfo.db')dnl
+```
+
+где `your.smtp.server` — адрес SMTP-сервера для отправки писем
+
+Далее следует настроить аутентификацию, отредактировав файл `/etc/mail/authinfo`:
+
+```
+AuthInfo:your.smtp.server "U:your_username" "P:your_password" "M:PLAIN"
+```
+
+где:
+
+- `your.smtp.server` — адрес SMTP-сервера для отправки писем
+- `your_username` — имя пользователя
+- `your_password` — пароль пользователя
+- `PLAIN` — тип аутентификации
+
+Следующим шагом нужно сгенерировать базу данных для аутентификации:
+
+```shell
+sudo makemap hash /etc/mail/authinfo < /etc/mail/authinfo
+```
+
+сгенерировать конфигурацию `sendmail`:
+
+```shell
+sudo make -C /etc/mail
+```
+
+включить и запустить `sendmail`:
+
+```shell
+sudo systemctl enable --now sendmail.service
+```
+
+Теперь можно использовать модифицированный скрипт `audit-sink.py` со следующим содержанием:
+
+```python
+#!/usr/bin/env python
+
+import json
+import subprocess
+import sys
+from systemd import journal
+
+for line in sys.stdin:
+    if line:
+        journal.send(f"AUDIT {line}")
+        entry = json.loads(line)
+        if entry['severity']:
+            subprocess.call(['sendmail user@example.com <', entry['message']])
+
+```
+
+В результате, сообщения из журнала аудита будут попадать в `syslog` от
+имени процесса `python` и дублироваться в виде писем на указанный вместо
+`user@example.com` почтовый ящик.
 
 См. также:
 
