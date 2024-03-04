@@ -577,7 +577,6 @@ fn init_common(args: &args::Run, cfg: &tarantool::Cfg) -> (Clusterwide, RaftSpac
 fn start_discover(args: &args::Run, to_supervisor: ipc::Sender<IpcMessage>) -> Result<(), Error> {
     tlog!(Info, ">>>>> start_discover()");
 
-    tlog::set_log_level(args.log_level());
     luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 
@@ -677,7 +676,6 @@ fn start_boot(args: &args::Run) -> Result<(), Error> {
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
 
-    tlog::set_log_level(args.log_level());
     luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 
@@ -784,7 +782,6 @@ fn start_join(args: &args::Run, instance_address: String) -> Result<(), Error> {
         }
     };
 
-    tlog::set_log_level(args.log_level());
     luamod::setup(args);
     assert!(tarantool::cfg().is_none());
 

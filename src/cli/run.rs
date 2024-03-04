@@ -9,6 +9,10 @@ use crate::{ipc, tarantool_main, tlog, Entrypoint, IpcMessage};
 use super::args;
 
 pub fn main(args: args::Run) -> ! {
+    // Set the log level as soon as possible to not miss any messages during
+    // initialization.
+    tlog::set_log_level(args.log_level());
+
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {
