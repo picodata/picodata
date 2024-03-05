@@ -23,7 +23,7 @@ Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится 
 IMPORTANT
 Указанная здесь версия rust должна быть согласована с Cargo.toml, см:
 https://git.picodata.io/picodata/picodata/picodata/-/blob/master/Cargo.toml#L6
---> 
+-->
 
 - [Rust и Cargo](http://www.rustup.rs) 1.76 или новее
 - cmake 3.16 или новее
@@ -146,6 +146,7 @@ git submodule update --init --recursive
 ```
 
 ### Сборка {: #building }
+
 Сборка Picodata только c консольным интерфейсом:
 
 ```bash
@@ -200,6 +201,7 @@ test test_version ... ok
 
 test result: ok. 6 passed; 0 failed; finished in 0.88s
 ```
+
 ## Обновление Picodata {: #update_picodata }
 
 Обновление без потери данных поддерживается для выпусков Picodata,
