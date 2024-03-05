@@ -1468,6 +1468,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pico_proc_macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.69",
+ "quote 1.0.33",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "picodata"
 version = "24.2.0"
 dependencies = [
@@ -1489,6 +1498,7 @@ dependencies = [
  "nix",
  "once_cell",
  "opentelemetry",
+ "pico_proc_macro",
  "picodata-sdk",
  "pretty_assertions 0.6.1",
  "protobuf",
