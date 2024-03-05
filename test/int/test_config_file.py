@@ -135,12 +135,26 @@ current instance is assigned tier 'unexistent_tier' which is not defined in the 
 
 
 def test_config_file_with_garbage(cluster: Cluster):
-    cfg = {"trash": [], "garbage": "tier"}
-    cluster.set_config_file(cfg)
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tiers:
+        default:
+    replication_topology: mobius
+
+instance:
+    instance-id: i1
+
+super-cluster:
+    - foo
+    - bar
+"""
+    )
     i1 = cluster.add_instance(wait_online=False)
     err = """\
-invalid configuration: unknown field `garbage`, expected `cluster` or `instance`\
-"""
+invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), `cluster.replication_topology`, `instance.instance-id` (did you mean `instance_id`?)\
+"""  # noqa: E501
     crawler = log_crawler(i1, err)
 
     i1.fail_to_start()

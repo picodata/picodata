@@ -10,8 +10,11 @@ use crate::tier::DEFAULT_TIER;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
+use crate::util::edit_distance;
 use crate::util::file_exists;
+use crate::yaml_value::YamlValue;
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::Path;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
@@ -34,8 +37,8 @@ pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
     serde::Serialize,
     tlua::Push,
     tlua::PushInto,
+    pico_proc_macro::Introspection,
 )]
-#[serde(deny_unknown_fields)]
 pub struct PicodataConfig {
     // TODO: add a flag for each parameter specifying where it came from, i.e.:
     // - default value
@@ -48,10 +51,9 @@ pub struct PicodataConfig {
 
     #[serde(default)]
     pub instance: InstanceConfig,
-    // TODO: currently this doesn't compile, because serde_json::Value doesn't implement tlua::Push
-    // But if we had this, we could report a warning if unknown fields were specified
-    // #[serde(flatten)]
-    // pub unknown_sections: HashMap<String, serde_json::Value>,
+
+    #[serde(flatten)]
+    pub unknown_sections: HashMap<String, YamlValue>,
 }
 
 fn validate_args(args: &args::Run) -> Result<(), Error> {
@@ -241,6 +243,61 @@ Using configuration file '{args_path}'.");
             _ => {}
         }
 
+        let mut unknown_parameters = vec![];
+        if !self.unknown_sections.is_empty() {
+            report_unknown_fields(
+                "",
+                &self.unknown_sections,
+                PicodataConfig::FIELD_NAMES,
+                &mut unknown_parameters,
+            )
+        }
+
+        // TODO: for future compatibility this is a very bad approach. Image if
+        // you will this scenario, picodata 69.3 has added a new parameter
+        // "maximum_security" and now we want to add it to the config file.
+        // But we have a config.yaml file for picodata 42.8 which is already deployed,
+        // we add the new parameter to that config and then we try to start the
+        // old picodata with the new config, and what we get? Error. Now you
+        // have to go and copy-paste all of your config files and have at least
+        // one for each picodata version. You probably want to this anyway, but
+        // it's going to be incredibly annoying to deal with this when you're
+        // just trying to tinker with stuff. For that reason we're gonna have a
+        // parameter "strictness" or preferrably a better named one.
+        if !self.cluster.unknown_parameters.is_empty() {
+            report_unknown_fields(
+                "cluster.",
+                &self.cluster.unknown_parameters,
+                ClusterConfig::FIELD_NAMES,
+                &mut unknown_parameters,
+            );
+        }
+
+        if !self.instance.unknown_parameters.is_empty() {
+            report_unknown_fields(
+                "instance.",
+                &self.instance.unknown_parameters,
+                InstanceConfig::FIELD_NAMES,
+                &mut unknown_parameters,
+            );
+        }
+
+        if !unknown_parameters.is_empty() {
+            let mut buffer = Vec::with_capacity(512);
+            _ = write!(&mut buffer, "unknown parameters: ");
+            for (param, i) in unknown_parameters.iter().zip(1..) {
+                _ = write!(&mut buffer, "`{}{}`", param.prefix, param.name);
+                if let Some(best_match) = param.best_match {
+                    _ = write!(&mut buffer, " (did you mean `{best_match}`?)");
+                }
+                if i != unknown_parameters.len() {
+                    _ = write!(&mut buffer, ", ");
+                }
+            }
+            let msg = String::from_utf8_lossy(&buffer);
+            return Err(Error::InvalidConfiguration(msg.into()));
+        }
+
         Ok(())
     }
 
@@ -358,6 +415,56 @@ Using configuration file '{args_path}'.");
     }
 }
 
+struct UnknownFieldInfo<'a> {
+    name: &'a str,
+    prefix: &'static str,
+    best_match: Option<&'static str>,
+}
+
+fn report_unknown_fields<'a>(
+    prefix: &'static str,
+    unknown_fields: &'a HashMap<String, YamlValue>,
+    known_fields: &[&'static str],
+    report: &mut Vec<UnknownFieldInfo<'a>>,
+) {
+    for name in unknown_fields.keys() {
+        debug_assert!(!known_fields.is_empty());
+        let mut min_distance = usize::MAX;
+        let mut maybe_best_match = None;
+        for &known_field in known_fields {
+            if known_field.starts_with("unknown_") {
+                // These are special catch-all fields automatically filled by
+                // serde for us. We don't want to suggest to users to specify them
+                continue;
+            }
+            let distance = edit_distance(name, known_field);
+            if distance < min_distance {
+                maybe_best_match = Some(known_field);
+                min_distance = distance;
+            }
+        }
+
+        let mut msg_postfix = String::new();
+        if let Some(best_match) = maybe_best_match {
+            let name_len = name.chars().count();
+            let match_len = best_match.chars().count();
+            if (min_distance as f64) / (usize::max(name_len, match_len) as f64) < 0.5 {
+                msg_postfix = format!(", did you mean `{best_match}`?");
+            } else {
+                maybe_best_match = None;
+            }
+        }
+
+        #[rustfmt::skip]
+        tlog!(Warning, "Ignoring unknown parameter `{prefix}{name}`{msg_postfix}");
+        report.push(UnknownFieldInfo {
+            name,
+            prefix,
+            best_match: maybe_best_match,
+        });
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ClusterConfig
 ////////////////////////////////////////////////////////////////////////////////
@@ -371,8 +478,8 @@ Using configuration file '{args_path}'.");
     serde::Serialize,
     tlua::Push,
     tlua::PushInto,
+    pico_proc_macro::Introspection,
 )]
-#[serde(deny_unknown_fields)]
 pub struct ClusterConfig {
     pub cluster_id: Option<String>,
 
@@ -382,6 +489,9 @@ pub struct ClusterConfig {
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
     pub default_replication_factor: Option<u8>,
+
+    #[serde(flatten)]
+    pub unknown_parameters: HashMap<String, YamlValue>,
 }
 
 impl ClusterConfig {
@@ -431,8 +541,8 @@ impl ClusterConfig {
     serde::Serialize,
     tlua::Push,
     tlua::PushInto,
+    pico_proc_macro::Introspection,
 )]
-#[serde(deny_unknown_fields)]
 pub struct InstanceConfig {
     pub data_dir: Option<String>,
     pub service_password_file: Option<String>,
@@ -541,6 +651,12 @@ pub struct InstanceConfig {
     // pub sql_cache_size: Option<u64>,
 
     // pub worker_pool_threads: Option<u8>,
+
+    //
+    /// Special catch-all field which will be filled by serde with all unknown
+    /// fields from the yaml file.
+    #[serde(flatten)]
+    pub unknown_parameters: HashMap<String, YamlValue>,
 }
 
 impl InstanceConfig {
@@ -786,7 +902,9 @@ mod tests {
         //
         let yaml = r###"
 "###;
-        let config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+        let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+        // By default it deserializes as Value::Mapping for some reason
+        config.unknown_sections = Default::default();
         assert_eq!(config, PicodataConfig::default());
 
         let yaml = r###"
@@ -807,6 +925,8 @@ cluster:
 
 instance:
     instance_id: voter1
+
+goo-goo: ga-ga
 "###;
 
         _ = PicodataConfig::read_yaml_contents(&yaml).unwrap();
