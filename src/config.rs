@@ -226,6 +226,20 @@ Using configuration file '{args_path}'.");
             ));
         }
 
+        match (&self.cluster.cluster_id, &self.instance.cluster_id) {
+            (Some(from_cluster), Some(from_instance)) if from_cluster != from_instance => {
+                return Err(Error::InvalidConfiguration(format!(
+                    "`cluster.cluster_id` ({from_cluster}) conflicts with `instance.cluster_id` ({from_instance})",
+                )));
+            }
+            (None, None) => {
+                return Err(Error::invalid_configuration(
+                    "either `cluster.cluster_id` or `instance.cluster_id` must be specified",
+                ));
+            }
+            _ => {}
+        }
+
         Ok(())
     }
 
@@ -238,14 +252,6 @@ Using configuration file '{args_path}'.");
     /// Checks specific to reloading a config file on an initialized istance are
     /// done in [`Self::validate_reload`].
     fn validate_common(&self) -> Result<(), Error> {
-        if let (Some(cci), Some(ici)) = (&self.cluster.cluster_id, &self.instance.cluster_id) {
-            if cci != ici {
-                return Err(Error::InvalidConfiguration(format!(
-                    "`cluster.cluster_id` ({cci}) conflicts with `instance.cluster_id` ({ici})",
-                )));
-            }
-        }
-
         for (name, info) in &self.cluster.tiers {
             if let Some(explicit_name) = &info.name {
                 return Err(Error::InvalidConfiguration(format!(
@@ -813,6 +819,16 @@ cluster:
     fn cluster_id_is_required() {
         let yaml = r###"
 cluster:
+    tiers:
+        default:
+instance:
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        let err = config.validate_from_file().unwrap_err();
+        assert_eq!(err.to_string(), "invalid configuration: either `cluster.cluster_id` or `instance.cluster_id` must be specified");
+
+        let yaml = r###"
+cluster:
     cluster_id: foo
     tiers:
         default:
@@ -820,23 +836,25 @@ instance:
     cluster_id: bar
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
-        let err = config.validate_common().unwrap_err();
-        assert_eq!(err.to_string(), "invalid configuration: `cluster.cluster_id` (foo) conflicts with `instance.cluster_id` (bar)")
+        let err = config.validate_from_file().unwrap_err();
+        assert_eq!(err.to_string(), "invalid configuration: `cluster.cluster_id` (foo) conflicts with `instance.cluster_id` (bar)");
     }
 
     #[test]
     fn missing_tiers_is_error() {
         let yaml = r###"
 cluster:
+    cluster_id: test
 "###;
         let err = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "invalid configuration: cluster: missing field `tiers` at line 1 column 9"
+            "invalid configuration: cluster: missing field `tiers` at line 2 column 5"
         );
 
         let yaml = r###"
 cluster:
+    cluster_id: test
     tiers:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
@@ -848,6 +866,7 @@ cluster:
 
         let yaml = r###"
 cluster:
+    cluster_id: test
     tiers:
         default:
 "###;
