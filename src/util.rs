@@ -5,6 +5,7 @@ use std::cell::Cell;
 use std::io::BufRead as _;
 use std::io::BufReader;
 use std::io::Write as _;
+use std::mem::replace;
 use std::os::fd::AsRawFd;
 use std::panic::Location;
 use std::time::Duration;
@@ -781,10 +782,87 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
     }
 }
 
+/// Returns the number of character edit operations needed to convert `lhs` to `rhs`.
+///
+/// By operations we mean
+/// - insert character
+/// - remove character
+/// - replace one character with another
+///
+/// # Examples
+/// ```rust
+/// # use picodata::util::edit_distance;
+/// assert_eq!(edit_distance("instance-id", "instance_id"), 1);
+/// assert_eq!(edit_distance("foo", "bar"), 3);
+/// assert_eq!(edit_distance("care", "scar"), 2);
+/// ```
+pub fn edit_distance(lhs: &str, rhs: &str) -> usize {
+    let mut l_size = lhs.chars().count();
+    let mut r_size = rhs.chars().count();
+
+    if l_size == 0 {
+        return r_size;
+    } else if r_size == 0 {
+        return l_size;
+    }
+
+    // Make rhs always be the shorter string, to minimize memory allocation.
+    let (lhs, rhs) = if l_size < r_size {
+        std::mem::swap(&mut l_size, &mut r_size);
+        (rhs, lhs)
+    } else {
+        (lhs, rhs)
+    };
+
+    let n = r_size + 1;
+    // In the regular Damerau-Levenshtein algorithm we need to compute the
+    // matrix of distances between all the string prefixes of `lhs` and `rhs`.
+    // Our particular implementation has an optimization where we only store at
+    // most 1 row of that distance_matrix.
+    // For full algorithm definition see <https://en.wikipedia.org/wiki/Damerau-Levenshtein_distance>
+    let mut current_row = vec![0; n];
+    // This warning bellow in this case is the stupidest suggestion by clippy yet
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..n {
+        current_row[i] = i;
+    }
+
+    for (l_char, i) in lhs.chars().zip(1..) {
+        // On the previous iteration of this loop (if any) `current_row` was
+        // assigned the values for the previous row of "distance_matrix",
+        // so this value is equivalent to distance_matrix[i - 1][0]
+        let mut previous_row = replace(&mut current_row[0], i);
+
+        for (r_char, j) in rhs.chars().zip(1..) {
+            let d = if l_char != r_char { 1 } else { 0 };
+
+            // Equivalent to distance_matrix[i - 1][j - 1]
+            let previous_diagonal = previous_row;
+            let substitute_cost = previous_diagonal + d;
+
+            // Equivalent to distance_matrix[i - 1][j]
+            previous_row = current_row[j];
+            let delete_cost = previous_row + 1;
+
+            // Equivalent to distance_matrix[i][j - 1]
+            let previous_column = current_row[j - 1];
+            let insert_cost = previous_column + 1;
+
+            let distance = substitute_cost.min(delete_cost).min(insert_cost);
+            // Equivalent to distance_matrix[i][j]
+            current_row[j] = distance;
+        }
+    }
+
+    current_row[current_row.len() - 1]
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// tests
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn uppercase() {
         use super::Uppercase;
@@ -821,5 +899,17 @@ mod tests {
             err.to_string(),
             r#"downcast error: expected "i8", actual: "u8""#
         );
+    }
+
+    #[test]
+    fn check_edit_distance() {
+        assert_eq!(edit_distance("", ""), 0);
+        assert_eq!(edit_distance("", "a"), 1);
+        assert_eq!(edit_distance("aba", ""), 3);
+        assert_eq!(edit_distance("abba", "baba"), 2);
+        assert_eq!(edit_distance("instance-id", "instance_id"), 1);
+        assert_eq!(edit_distance("буква-w", "буква-ю"), 1);
+        assert_eq!(edit_distance("thouroughness", "abandonment"), 11);
+        assert_eq!(edit_distance("lonesome", "somebody"), 5);
     }
 }
