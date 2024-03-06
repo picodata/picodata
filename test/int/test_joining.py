@@ -257,6 +257,7 @@ def test_failure_domains(cluster: Cluster):
     i1.assert_raft_status("Leader")
     assert replicaset_id(i1) == "r1"
 
+    assert i1.cluster_id
     with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
         raft_join(
             instance=i1,

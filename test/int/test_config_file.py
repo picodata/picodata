@@ -1,4 +1,4 @@
-from conftest import Cluster, log_crawler
+from conftest import Cluster, Instance, log_crawler, color
 import os
 
 
@@ -24,6 +24,75 @@ instance:
     assert info["replicaset_id"] == "with-love"
 
     assert instance.eval("return box.cfg.memtx_memory") == 42069
+
+
+def test_pico_config(cluster: Cluster):
+    host = cluster.base_host
+    port = cluster.base_port + 1
+    listen = f"{host}:{port}"
+    data_dir = f"{cluster.data_dir}/my-instance"
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    tiers:
+        deluxe:
+instance:
+    data_dir: {data_dir}
+    listen: {listen}
+    peers:
+        - {listen}
+    cluster_id: my-cluster
+    instance_id: my-instance
+    replicaset_id: my-replicaset
+    tier: deluxe
+    audit: {data_dir}/audit.log
+    log_level: verbose
+"""
+    )
+    instance = Instance(
+        binary_path=cluster.binary_path,
+        cwd=cluster.data_dir,
+        color=color.cyan,
+        config_path=cluster.config_path,
+        audit=False,
+    )
+    cluster.instances.append(instance)
+
+    instance.start()
+
+    # These fields should be set after the instance starts, so that the
+    # parameters are extracted from the config file, but before we try doing any
+    # rpc, because our test harness needs them to be set
+    instance.host = host
+    instance.port = port
+
+    instance.wait_online()
+
+    config = instance.call("pico.config")
+    assert config == dict(
+        cluster=dict(
+            tiers=dict(
+                deluxe=dict(
+                    can_vote=True,
+                )
+            ),
+            unknown_parameters=[],
+        ),
+        instance=dict(
+            cluster_id="my-cluster",
+            instance_id="my-instance",
+            replicaset_id="my-replicaset",
+            tier="deluxe",
+            audit=f"{data_dir}/audit.log",
+            config_file=instance.config_path,
+            data_dir=data_dir,
+            listen=dict(host=host, port=str(port)),
+            log_level="verbose",
+            peers=[dict(host=host, port=str(port))],
+            unknown_parameters=[],
+        ),
+        unknown_sections=[],
+    )
 
 
 def test_default_path_to_config_file(cluster: Cluster):

@@ -457,13 +457,13 @@ class Connection(tarantool.Connection):  # type: ignore
 class Instance:
     binary_path: str
     cwd: str
-    cluster_id: str
-    data_dir: str
-    peers: list[str]
-    host: str
-    port: int
-
     color: Callable[[str], str]
+
+    cluster_id: str | None = None
+    _data_dir: str | None = None
+    peers: list[str] = field(default_factory=list)
+    host: str | None = None
+    port: int | None = None
 
     audit: str | bool = True
     tier: str | None = None
@@ -479,7 +479,14 @@ class Instance:
     _on_output_callbacks: list[Callable[[bytes], None]] = field(default_factory=list)
 
     @property
+    def data_dir(self):
+        assert self._data_dir
+        return self._data_dir
+
+    @property
     def listen(self):
+        if self.host is None or self.port is None:
+            return None
         return f"{self.host}:{self.port}"
 
     def current_grade(self, instance_id=None):
@@ -515,12 +522,12 @@ class Instance:
         # fmt: off
         return [
             self.binary_path, "run",
-            "--cluster-id", self.cluster_id,
+            *([f"--cluster-id={self.cluster_id}"] if self.cluster_id else []),
             *([f"--instance-id={self.instance_id}"] if self.instance_id else []),
             *([f"--replicaset-id={self.replicaset_id}"] if self.replicaset_id else []),
-            "--data-dir", self.data_dir,
-            "--listen", self.listen,
-            "--peer", ','.join(self.peers),
+            *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
+            *([f"--listen={self.listen}"] if self.listen else []),
+            *([f"--peer={str.join(',', self.peers)}"] if self.peers else []),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
             *(["--init-replication-factor", f"{self.init_replication_factor}"]
               if self.init_replication_factor is not None else []),
@@ -1305,7 +1312,7 @@ class Cluster:
             cluster_id=self.id,
             instance_id=generated_instance_id,
             replicaset_id=replicaset_id,
-            data_dir=f"{self.data_dir}/i{i}",
+            _data_dir=f"{self.data_dir}/i{i}",
             host=self.base_host,
             port=port,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],

@@ -100,7 +100,7 @@ pub(crate) fn setup(config: &PicodataConfig) {
         &l,
         "config",
         indoc! {"
-        pico.get_config()
+        pico.config()
         =========
 
         Returns a Lua table containing picodata configuration which is
@@ -115,7 +115,7 @@ pub(crate) fn setup(config: &PicodataConfig) {
 
         Example:
 
-            picodata> pico.get_config()
+            picodata> pico.config()
             ---
             - cluster:
                 cluster_id: demo
