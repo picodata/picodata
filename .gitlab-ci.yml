@@ -57,6 +57,8 @@ lint:
 pack-doc:
   image: ${BASE_IMAGE_NAME}:${BASE_IMAGE_TAG}
   stage: pack-doc
+  variables:
+    SED_SLUG: 's/[^a-zA-Z0-9.]+/_/g'
   before_script:
     - |
       if [ "$CI_COMMIT_BRANCH" == "main" ]; then
@@ -64,22 +66,31 @@ pack-doc:
       elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
         PICODATA_DOC_VER="$MAIN_BRANCH"
       else
-        PICODATA_DOC_VER="branch-$CI_COMMIT_REF_SLUG"
+        PICODATA_DOC_VER="$(echo $CI_COMMIT_REF_NAME | sed -E "$SED_SLUG")"
       fi
   script:
     - echo "Pack picodata doc..."
+    - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee .vars
     - DATE=$(date +%Y%m%d%H%M%S)
-    - FNAME="picodata-doc-${DATE}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHA}.tgz"
-    - echo "FNAME=$FNAME" | tee .vars
+    - FNAME="picodata-doc-${DATE}-${PICODATA_DOC_VER}-${CI_COMMIT_SHA}.tgz"
+    - echo "FNAME=$FNAME" | tee -a .vars
     - pipenv run mkdocs build -sd build
     - pushd build
     - tar -cvzf ../$FNAME .
     - popd
-    - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee -a .vars
     - echo "Picodata doc successfully packed."
+    - >
+      git ls-remote origin |
+      grep -Eo 'refs/heads/.+' |
+      cut -d/ -f3- |
+      sed 's/^main$/devel/g' |
+      sed -E "$SED_SLUG" |
+      tee branches.list
   artifacts:
+    name: "artifacts-vars-${CI_PIPELINE_ID}"
     paths:
       - picodata-doc-*.tgz
+      - branches.list
     reports:
       dotenv: .vars
 
@@ -103,7 +114,6 @@ upload-doc-to-binary:
     PICODATA_DOC_SUBDIR: $PICODATA_DOC_VER
   trigger:
     project: 'picodata/web-site/infra'
-    branch: 'main'
     strategy: depend
   needs:
     - job: pack-doc
