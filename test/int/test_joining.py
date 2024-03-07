@@ -117,7 +117,9 @@ def test_parallel(cluster3: Cluster):
 
 
 def test_replication(cluster: Cluster):
-    cluster.deploy(instance_count=2, init_replication_factor=2)
+    cluster.deploy(
+        instance_count=2, init_replication_factor=2, service_password="secret"
+    )
     i1, i2 = cluster.instances
 
     assert i1.replicaset_uuid() == i2.replicaset_uuid()
@@ -125,7 +127,7 @@ def test_replication(cluster: Cluster):
     def check_replicated(instance):
         box_replication = instance.eval("return box.cfg.replication")
         assert set(box_replication) == set(
-            (f"pico_service:@{addr}" for addr in [i1.listen, i2.listen])
+            (f"pico_service:secret@{addr}" for addr in [i1.listen, i2.listen])
         ), instance
 
     for instance in cluster.instances:

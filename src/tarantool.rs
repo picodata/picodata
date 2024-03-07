@@ -164,8 +164,9 @@ impl Cfg {
     /// initialized cluster.
     pub fn for_instance_join(config: &PicodataConfig, resp: &join::Response) -> Self {
         let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
+        let password = crate::pico_service::pico_service_password();
         for address in &resp.box_replication {
-            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:@{address}"))
+            replication_cfg.push(format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"))
         }
 
         let mut res = Self {
