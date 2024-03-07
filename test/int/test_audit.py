@@ -2,9 +2,7 @@ import signal
 import pytest
 import json
 
-from dataclasses import dataclass
-from typing import Optional, ClassVar
-from enum import Enum
+from typing import Generator
 
 from tarantool.error import (  # type: ignore
     NetworkError,
@@ -19,273 +17,18 @@ from conftest import (
 )
 
 
-class Severity(str, Enum):
-    Low = "low"
-    Medium = "medium"
-    High = "high"
-
-
-@dataclass
-class Event:
-    id: str
-    time: str
-    title: str
-    message: str
-    severity: Severity
-
-    @staticmethod
-    def parse(s):
-        match s.get("title"):
-            case EventLocalStartup.TITLE:
-                return EventLocalStartup(**s)
-            case EventLocalShutdown.TITLE:
-                return EventLocalShutdown(**s)
-            case EventInitAudit.TITLE:
-                return EventInitAudit(**s)
-            case EventAuthOk.TITLE:
-                return EventAuthOk(**s)
-            case EventAuthFail.TITLE:
-                return EventAuthFail(**s)
-            case EventChangeConfig.TITLE:
-                return EventChangeConfig(**s)
-            case EventChangePassword.TITLE:
-                return EventChangePassword(**s)
-            case EventChangeTargetGrade.TITLE:
-                return EventChangeTargetGrade(**s)
-            case EventChangeCurrentGrade.TITLE:
-                return EventChangeCurrentGrade(**s)
-            case EventJoinInstance.TITLE:
-                return EventJoinInstance(**s)
-            case EventExpelInstance.TITLE:
-                return EventExpelInstance(**s)
-            case EventGrantPrivilege.TITLE:
-                return EventGrantPrivilege(**s)
-            case EventRevokePrivilege.TITLE:
-                return EventRevokePrivilege(**s)
-            case EventGrantRole.TITLE:
-                return EventGrantRole(**s)
-            case EventRevokeRole.TITLE:
-                return EventRevokeRole(**s)
-            case EventCreateRole.TITLE:
-                return EventCreateRole(**s)
-            case EventDropRole.TITLE:
-                return EventDropRole(**s)
-            case EventCreateUser.TITLE:
-                return EventCreateUser(**s)
-            case EventDropUser.TITLE:
-                return EventDropUser(**s)
-            case EventCreateTable.TITLE:
-                return EventCreateTable(**s)
-            case EventDropTable.TITLE:
-                return EventDropTable(**s)
-            case EventAccessDenied.TITLE:
-                return EventAccessDenied(**s)
-            case EventAuditRotate.TITLE:
-                return EventAuditRotate(**s)
-            case EventAuditNewDataBase.TITLE:
-                return EventAuditNewDataBase(**s)
-            case _:
-                raise ValueError(f"Unknown event type for event: '{s}'")
-
-
-@dataclass
-class EventLocalStartup(Event):
-    TITLE: ClassVar[str] = "local_startup"
-
-
-@dataclass
-class EventLocalShutdown(Event):
-    TITLE: ClassVar[str] = "local_shutdown"
-
-
-@dataclass
-class EventInitAudit(Event):
-    TITLE: ClassVar[str] = "init_audit"
-
-
-@dataclass
-class EventAuthOk(Event):
-    TITLE: ClassVar[str] = "auth_ok"
-    user: str
-    initiator: str
-    verdict: str
-
-
-@dataclass
-class EventAuthFail(Event):
-    TITLE: ClassVar[str] = "auth_fail"
-    user: str
-    initiator: str
-    verdict: str
-
-
-@dataclass
-class EventChangeConfig(Event):
-    TITLE: ClassVar[str] = "change_config"
-    key: str
-    initiator: str
-    value: Optional[str] = None
-
-
-@dataclass
-class EventChangePassword(Event):
-    TITLE: ClassVar[str] = "change_password"
-    user: str
-    auth_type: str
-    initiator: str
-
-
-@dataclass
-class EventChangeTargetGrade(Event):
-    TITLE: ClassVar[str] = "change_target_grade"
-    instance_id: str
-    raft_id: str
-    new_grade: str
-    initiator: str
-
-
-@dataclass
-class EventChangeCurrentGrade(Event):
-    TITLE: ClassVar[str] = "change_current_grade"
-    instance_id: str
-    raft_id: str
-    new_grade: str
-    initiator: str
-
-
-@dataclass
-class EventJoinInstance(Event):
-    TITLE: ClassVar[str] = "join_instance"
-    instance_id: str
-    raft_id: str
-    initiator: str
-
-
-@dataclass
-class EventExpelInstance(Event):
-    TITLE: ClassVar[str] = "expel_instance"
-    instance_id: str
-    raft_id: str
-    initiator: str
-
-
-@dataclass
-class EventGrantPrivilege(Event):
-    TITLE: ClassVar[str] = "grant_privilege"
-    privilege: str
-    object_type: str
-    grantee: str
-    grantee_type: str
-    initiator: str
-    object: Optional[str] = None
-
-
-@dataclass
-class EventRevokePrivilege(Event):
-    TITLE: ClassVar[str] = "revoke_privilege"
-    privilege: str
-    object_type: str
-    grantee: str
-    grantee_type: str
-    initiator: str
-    object: Optional[str] = None
-
-
-@dataclass
-class EventGrantRole(Event):
-    TITLE: ClassVar[str] = "grant_role"
-    role: str
-    grantee: str
-    grantee_type: str
-    initiator: str
-
-
-@dataclass
-class EventRevokeRole(Event):
-    TITLE: ClassVar[str] = "revoke_role"
-    role: str
-    grantee: str
-    grantee_type: str
-    initiator: str
-
-
-@dataclass
-class EventCreateRole(Event):
-    TITLE: ClassVar[str] = "create_role"
-    role: str
-    initiator: str
-
-
-@dataclass
-class EventDropRole(Event):
-    TITLE: ClassVar[str] = "drop_role"
-    role: str
-    initiator: str
-
-
-@dataclass
-class EventCreateUser(Event):
-    TITLE: ClassVar[str] = "create_user"
-    user: str
-    auth_type: str
-    initiator: str
-
-
-@dataclass
-class EventDropUser(Event):
-    TITLE: ClassVar[str] = "drop_user"
-    user: str
-    initiator: str
-
-
-@dataclass
-class EventCreateTable(Event):
-    TITLE: ClassVar[str] = "create_table"
-    name: str
-    initiator: str
-
-
-@dataclass
-class EventDropTable(Event):
-    TITLE: ClassVar[str] = "drop_table"
-    name: str
-    initiator: str
-
-
-@dataclass
-class EventAccessDenied(Event):
-    TITLE: ClassVar[str] = "access_denied"
-    privilege_type: str
-    object_type: str
-    object_name: str
-    initiator: str
-
-
-@dataclass
-class EventAuditRotate(Event):
-    TITLE: ClassVar[str] = "audit_rotate"
-
-
-@dataclass
-class EventAuditNewDataBase(Event):
-    TITLE: ClassVar[str] = "new_database_created"
-    initiator: str
-    instance_id: str
-    raft_id: str
-
-
 class AuditFile:
     def __init__(self, path):
         self._f = open(path)
 
-    def events(self):
+    def events(self) -> Generator[dict, None, None]:
         for line in self._f:
-            yield Event.parse(json.loads(line))
+            yield json.loads(line)
 
 
-def take_until_type(events, event_class: type):
+def take_until_title(events, title: str) -> dict | None:
     for event in events:
-        if isinstance(event, event_class):
+        if event["title"] == title:
             return event
     return None
 
@@ -299,51 +42,52 @@ def test_startup(instance: Instance):
 
     # Check identifiers
     i = 1
+    event: dict | None
     for event in events:
-        assert event.id == f"1.0.{i}"
+        assert event["id"] == f"1.0.{i}"
         i += 1
 
     # These should be the first two events
-    assert isinstance(events[0], EventInitAudit)
-    assert events[0].message == "audit log is ready"
-    assert events[0].severity == Severity.Low
-    assert isinstance(events[1], EventLocalStartup)
-    assert events[1].message == "instance is starting"
-    assert events[1].severity == Severity.Low
+    assert events[0]["title"] == "init_audit"
+    assert events[0]["message"] == "audit log is ready"
+    assert events[0]["severity"] == "low"
+    assert events[1]["title"] == "local_startup"
+    assert events[1]["message"] == "instance is starting"
+    assert events[1]["severity"] == "low"
 
-    event = take_until_type(iter(events), EventJoinInstance)
+    event = take_until_title(iter(events), "join_instance")
     assert event is not None
-    assert event.instance_id == "i1"
-    assert event.raft_id == "1"
-    assert event.initiator == "admin"
+    assert event["instance_id"] == "i1"
+    assert event["raft_id"] == "1"
+    assert event["initiator"] == "admin"
 
-    event = take_until_type(iter(events), EventChangeTargetGrade)
+    event = take_until_title(iter(events), "change_target_grade")
     assert event is not None
-    assert event.new_grade == "Offline(0)"
-    assert event.instance_id == "i1"
-    assert event.raft_id == "1"
+    assert event["new_grade"] == "Offline(0)"
+    assert event["instance_id"] == "i1"
+    assert event["raft_id"] == "1"
     assert (
-        event.message
-        == f"target grade of instance `{event.instance_id}` changed to {event.new_grade}"
+        event["message"]
+        == f"target grade of instance `{event['instance_id']}` changed to {event['new_grade']}"
     )
-    assert event.severity == Severity.Low
-    assert event.initiator == "admin"
+    assert event["severity"] == "low"
+    assert event["initiator"] == "admin"
 
-    event = take_until_type(iter(events), EventChangeCurrentGrade)
+    event = take_until_title(iter(events), "change_current_grade")
     assert event is not None
-    assert event.new_grade == "Offline(0)"
-    assert event.instance_id == "i1"
-    assert event.raft_id == "1"
+    assert event["new_grade"] == "Offline(0)"
+    assert event["instance_id"] == "i1"
+    assert event["raft_id"] == "1"
     assert (
-        event.message
-        == f"current grade of instance `{event.instance_id}` changed to {event.new_grade}"
+        event["message"]
+        == f"current grade of instance `{event['instance_id']}` changed to {event['new_grade']}"
     )
-    assert event.severity == Severity.Medium
-    assert event.initiator == "admin"
+    assert event["severity"] == "medium"
+    assert event["initiator"] == "admin"
 
-    event = take_until_type(iter(events), EventChangeConfig)
+    event = take_until_title(iter(events), "change_config")
     assert event is not None
-    assert event.initiator == "admin"
+    assert event["initiator"] == "admin"
 
 
 def test_new_database_created(cluster: Cluster):
@@ -351,14 +95,14 @@ def test_new_database_created(cluster: Cluster):
 
     events = list(AuditFile(i1.audit_flag_value).events())
 
-    event = take_until_type(iter(events), EventAuditNewDataBase)
+    event = take_until_title(iter(events), "new_database_created")
     assert event is not None
-    assert event.initiator == "admin"
-    assert event.instance_id == "i1"
-    assert event.raft_id == "1"
+    assert event["initiator"] == "admin"
+    assert event["instance_id"] == "i1"
+    assert event["raft_id"] == "1"
 
     events = list(AuditFile(i2.audit_flag_value).events())
-    event = take_until_type(iter(events), EventAuditNewDataBase)
+    event = take_until_title(iter(events), "new_database_created")
     assert event is None
 
     cluster.terminate()
@@ -381,19 +125,19 @@ def test_create_drop_table(instance: Instance):
 
     events = AuditFile(instance.audit_flag_value).events()
 
-    create_table = take_until_type(events, EventCreateTable)
+    create_table = take_until_title(events, "create_table")
     assert create_table is not None
-    assert create_table.name == "foo"
-    assert create_table.message == "created table `foo`"
-    assert create_table.severity == Severity.Medium
-    assert create_table.initiator == "pico_service"
+    assert create_table["name"] == "foo"
+    assert create_table["message"] == "created table `foo`"
+    assert create_table["severity"] == "medium"
+    assert create_table["initiator"] == "pico_service"
 
-    drop_table = take_until_type(events, EventDropTable)
+    drop_table = take_until_title(events, "drop_table")
     assert drop_table is not None
-    assert drop_table.name == "foo"
-    assert drop_table.message == "dropped table `foo`"
-    assert drop_table.severity == Severity.Medium
-    assert drop_table.initiator == "pico_service"
+    assert drop_table["name"] == "foo"
+    assert drop_table["message"] == "dropped table `foo`"
+    assert drop_table["severity"] == "medium"
+    assert drop_table["initiator"] == "pico_service"
 
 
 def test_user(instance: Instance):
@@ -419,31 +163,31 @@ def test_user(instance: Instance):
 
     events = AuditFile(instance.audit_flag_value).events()
 
-    create_user = take_until_type(events, EventCreateUser)
+    create_user = take_until_title(events, "create_user")
     assert create_user is not None
-    assert create_user.user == "ymir"
-    assert create_user.auth_type == "chap-sha1"
-    assert create_user.message == f"created user `{create_user.user}`"
-    assert create_user.severity == Severity.High
-    assert create_user.initiator == "pico_service"
+    assert create_user["user"] == "ymir"
+    assert create_user["auth_type"] == "chap-sha1"
+    assert create_user["message"] == f"created user `{create_user['user']}`"
+    assert create_user["severity"] == "high"
+    assert create_user["initiator"] == "pico_service"
 
-    change_password = take_until_type(events, EventChangePassword)
+    change_password = take_until_title(events, "change_password")
     assert change_password is not None
-    assert change_password.user == "ymir"
-    assert change_password.auth_type == "chap-sha1"
+    assert change_password["user"] == "ymir"
+    assert change_password["auth_type"] == "chap-sha1"
     assert (
-        change_password.message
-        == f"password of user `{change_password.user}` was changed"
+        change_password["message"]
+        == f"password of user `{change_password['user']}` was changed"
     )
-    assert change_password.severity == Severity.High
-    assert change_password.initiator == "admin"
+    assert change_password["severity"] == "high"
+    assert change_password["initiator"] == "admin"
 
-    drop_user = take_until_type(events, EventDropUser)
+    drop_user = take_until_title(events, "drop_user")
     assert drop_user is not None
-    assert drop_user.user == "ymir"
-    assert drop_user.message == f"dropped user `{drop_user.user}`"
-    assert drop_user.severity == Severity.Medium
-    assert drop_user.initiator == "pico_service"
+    assert drop_user["user"] == "ymir"
+    assert drop_user["message"] == f"dropped user `{drop_user['user']}`"
+    assert drop_user["severity"] == "medium"
+    assert drop_user["initiator"] == "pico_service"
 
 
 def test_role(instance: Instance):
@@ -490,43 +234,43 @@ def test_role(instance: Instance):
 
     events = AuditFile(instance.audit_flag_value).events()
 
-    create_role = take_until_type(events, EventCreateRole)
+    create_role = take_until_title(events, "create_role")
     assert create_role is not None
-    assert create_role.role == "skibidi"
-    assert create_role.message == f"created role `{create_role.role}`"
-    assert create_role.severity == Severity.High
-    assert create_role.initiator == "bubba"
+    assert create_role["role"] == "skibidi"
+    assert create_role["message"] == f"created role `{create_role['role']}`"
+    assert create_role["severity"] == "high"
+    assert create_role["initiator"] == "bubba"
 
-    grant_role = take_until_type(events, EventGrantRole)
+    grant_role = take_until_title(events, "grant_role")
     assert grant_role is not None
-    assert grant_role.role == "dummy"
-    assert grant_role.grantee == "skibidi"
-    assert grant_role.grantee_type == "role"
+    assert grant_role["role"] == "dummy"
+    assert grant_role["grantee"] == "skibidi"
+    assert grant_role["grantee_type"] == "role"
     assert (
-        grant_role.message
-        == f"granted role `{grant_role.role}` to role `{grant_role.grantee}`"
+        grant_role["message"]
+        == f"granted role `{grant_role['role']}` to role `{grant_role['grantee']}`"
     )
-    assert grant_role.severity == Severity.High
-    assert grant_role.initiator == "bubba"
+    assert grant_role["severity"] == "high"
+    assert grant_role["initiator"] == "bubba"
 
-    revoke_role = take_until_type(events, EventRevokeRole)
+    revoke_role = take_until_title(events, "revoke_role")
     assert revoke_role is not None
-    assert revoke_role.role == "dummy"
-    assert revoke_role.grantee == "skibidi"
-    assert revoke_role.grantee_type == "role"
+    assert revoke_role["role"] == "dummy"
+    assert revoke_role["grantee"] == "skibidi"
+    assert revoke_role["grantee_type"] == "role"
     assert (
-        revoke_role.message
-        == f"revoked role `{grant_role.role}` from role `{revoke_role.grantee}`"
+        revoke_role["message"]
+        == f"revoked role `{grant_role['role']}` from role `{revoke_role['grantee']}`"
     )
-    assert revoke_role.severity == Severity.High
-    assert revoke_role.initiator == "bubba"
+    assert revoke_role["severity"] == "high"
+    assert revoke_role["initiator"] == "bubba"
 
-    drop_role = take_until_type(events, EventDropRole)
+    drop_role = take_until_title(events, "drop_role")
     assert drop_role is not None
-    assert drop_role.role == "skibidi"
-    assert drop_role.message == f"dropped role `{drop_role.role}`"
-    assert drop_role.severity == Severity.Medium
-    assert drop_role.initiator == "bubba"
+    assert drop_role["role"] == "skibidi"
+    assert drop_role["message"] == f"dropped role `{drop_role['role']}`"
+    assert drop_role["severity"] == "medium"
+    assert drop_role["initiator"] == "bubba"
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
@@ -546,22 +290,22 @@ def test_join_expel_instance(cluster: Cluster):
 
     i2 = cluster.add_instance(instance_id="i2")
 
-    join_instance = take_until_type(events, EventJoinInstance)
+    join_instance = take_until_title(events, "join_instance")
     assert join_instance is not None
-    assert join_instance.instance_id == "i2"
-    assert join_instance.raft_id == str(i2.raft_id)
-    assert join_instance.severity == Severity.Low
-    assert join_instance.initiator == "admin"
+    assert join_instance["instance_id"] == "i2"
+    assert join_instance["raft_id"] == str(i2.raft_id)
+    assert join_instance["severity"] == "low"
+    assert join_instance["initiator"] == "admin"
 
     cluster.expel(i2)
     retrying(lambda: assert_instance_expelled(i2, i1))
 
-    expel_instance = take_until_type(events, EventExpelInstance)
+    expel_instance = take_until_title(events, "expel_instance")
     assert expel_instance is not None
-    assert expel_instance.instance_id == "i2"
-    assert expel_instance.raft_id == str(i2.raft_id)
-    assert expel_instance.severity == Severity.Low
-    assert expel_instance.initiator == "admin"
+    assert expel_instance["instance_id"] == "i2"
+    assert expel_instance["raft_id"] == str(i2.raft_id)
+    assert expel_instance["severity"] == "low"
+    assert expel_instance["initiator"] == "admin"
 
 
 def test_auth(instance: Instance):
@@ -586,12 +330,12 @@ def test_auth(instance: Instance):
     with instance.connect(4, user="ymir", password="T0psecret"):
         pass
 
-    auth_ok = take_until_type(events, EventAuthOk)
+    auth_ok = take_until_title(events, "auth_ok")
     assert auth_ok is not None
-    assert auth_ok.user == "ymir"
-    assert auth_ok.severity == Severity.High
-    assert auth_ok.initiator == "ymir"
-    assert auth_ok.verdict == "user is not blocked"
+    assert auth_ok["user"] == "ymir"
+    assert auth_ok["severity"] == "high"
+    assert auth_ok["initiator"] == "ymir"
+    assert auth_ok["verdict"] == "user is not blocked"
 
     for _ in range(MAX_LOGIN_ATTEMPTS):
         with pytest.raises(
@@ -600,27 +344,27 @@ def test_auth(instance: Instance):
             with instance.connect(4, user="ymir", password="wrong_pwd"):
                 pass
 
-        auth_fail = take_until_type(events, EventAuthFail)
+        auth_fail = take_until_title(events, "auth_fail")
         assert auth_fail is not None
-        assert auth_fail.message == "failed to authenticate user `ymir`"
-        assert auth_fail.severity == Severity.High
-        assert auth_fail.verdict == "user is not blocked"
-        assert auth_fail.user == "ymir"
-        assert auth_fail.initiator == "ymir"
+        assert auth_fail["message"] == "failed to authenticate user `ymir`"
+        assert auth_fail["severity"] == "high"
+        assert auth_fail["verdict"] == "user is not blocked"
+        assert auth_fail["user"] == "ymir"
+        assert auth_fail["initiator"] == "ymir"
 
     with pytest.raises(NetworkError, match="Maximum number of login attempts exceeded"):
         with instance.connect(4, user="ymir", password="Wr0ng_pwd"):
             pass
 
-    auth_fail = take_until_type(events, EventAuthFail)
+    auth_fail = take_until_title(events, "auth_fail")
     assert auth_fail is not None
-    assert auth_fail.message == "failed to authenticate user `ymir`"
-    assert auth_fail.severity == Severity.High
-    assert auth_fail.verdict == (
+    assert auth_fail["message"] == "failed to authenticate user `ymir`"
+    assert auth_fail["severity"] == "high"
+    assert auth_fail["verdict"] == (
         "Maximum number of login attempts exceeded; user blocked"
     )
-    assert auth_fail.user == "ymir"
-    assert auth_fail.initiator == "ymir"
+    assert auth_fail["user"] == "ymir"
+    assert auth_fail["initiator"] == "ymir"
 
 
 def test_access_denied(instance: Instance):
@@ -643,14 +387,14 @@ def test_access_denied(instance: Instance):
     ):
         instance.sql('CREATE ROLE "R"', user="ymir", password="T0psecret")
 
-    access_denied = take_until_type(events, EventAccessDenied)
+    access_denied = take_until_title(events, "access_denied")
     assert access_denied is not None
-    assert access_denied.message == expected_audit
-    assert access_denied.severity == Severity.Medium
-    assert access_denied.privilege_type == "Create"
-    assert access_denied.object_type == "role"
-    assert access_denied.object_name == "R"
-    assert access_denied.initiator == "ymir"
+    assert access_denied["message"] == expected_audit
+    assert access_denied["severity"] == "medium"
+    assert access_denied["privilege_type"] == "Create"
+    assert access_denied["object_type"] == "role"
+    assert access_denied["object_name"] == "R"
+    assert access_denied["initiator"] == "ymir"
 
 
 def test_grant_revoke(instance: Instance):
@@ -672,191 +416,195 @@ def test_grant_revoke(instance: Instance):
     # wildcard privilege to user
     instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
 
-    grant_privilege = take_until_type(events, EventGrantPrivilege)
+    grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert grant_privilege.message == "granted privilege create on table to user `ymir`"
-    assert grant_privilege.severity == Severity.High
-    assert grant_privilege.privilege == "create"
-    assert grant_privilege.object_type == "table"
-    assert grant_privilege.grantee == user
-    assert grant_privilege.grantee_type == "user"
-    assert grant_privilege.initiator == "admin"
-    assert grant_privilege.object is None
+    assert (
+        grant_privilege["message"] == "granted privilege create on table to user `ymir`"
+    )
+    assert grant_privilege["severity"] == "high"
+    assert grant_privilege["privilege"] == "create"
+    assert grant_privilege["object_type"] == "table"
+    assert grant_privilege["grantee"] == user
+    assert grant_privilege["grantee_type"] == "user"
+    assert grant_privilege["initiator"] == "admin"
+    assert "object" not in grant_privilege
 
     instance.sudo_sql(f'REVOKE CREATE TABLE FROM "{user}"')
 
-    revoke_privilege = take_until_type(events, EventRevokePrivilege)
+    revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
     assert (
-        revoke_privilege.message
+        revoke_privilege["message"]
         == f"revoked privilege create on table from user `{user}`"
     )
-    assert revoke_privilege.severity == Severity.High
-    assert revoke_privilege.privilege == "create"
-    assert revoke_privilege.object_type == "table"
-    assert revoke_privilege.grantee == user
-    assert revoke_privilege.grantee_type == "user"
-    assert revoke_privilege.initiator == "admin"
-    assert revoke_privilege.object is None
+    assert revoke_privilege["severity"] == "high"
+    assert revoke_privilege["privilege"] == "create"
+    assert revoke_privilege["object_type"] == "table"
+    assert revoke_privilege["grantee"] == user
+    assert revoke_privilege["grantee_type"] == "user"
+    assert revoke_privilege["initiator"] == "admin"
+    assert "object" not in revoke_privilege
 
     # specific privilege to user
     instance.sudo_sql(f'GRANT READ ON TABLE "_pico_tier" TO "{user}"')
 
-    grant_privilege = take_until_type(events, EventGrantPrivilege)
+    grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
     assert (
-        grant_privilege.message
+        grant_privilege["message"]
         == f"granted privilege read on table `_pico_tier` to user `{user}`"
     )
-    assert grant_privilege.severity == Severity.High
-    assert grant_privilege.privilege == "read"
-    assert grant_privilege.object_type == "table"
-    assert grant_privilege.grantee == user
-    assert grant_privilege.grantee_type == "user"
-    assert grant_privilege.initiator == "admin"
-    assert grant_privilege.object == "_pico_tier"
+    assert grant_privilege["severity"] == "high"
+    assert grant_privilege["privilege"] == "read"
+    assert grant_privilege["object_type"] == "table"
+    assert grant_privilege["grantee"] == user
+    assert grant_privilege["grantee_type"] == "user"
+    assert grant_privilege["initiator"] == "admin"
+    assert grant_privilege["object"] == "_pico_tier"
 
     instance.sudo_sql(f'REVOKE READ ON TABLE "_pico_tier" FROM "{user}"')
 
-    revoke_privilege = take_until_type(events, EventRevokePrivilege)
+    revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
     assert (
-        revoke_privilege.message
+        revoke_privilege["message"]
         == f"revoked privilege read on table `_pico_tier` from user `{user}`"
     )
-    assert revoke_privilege.severity == Severity.High
-    assert revoke_privilege.privilege == "read"
-    assert revoke_privilege.object_type == "table"
-    assert revoke_privilege.grantee == user
-    assert revoke_privilege.grantee_type == "user"
-    assert revoke_privilege.initiator == "admin"
-    assert revoke_privilege.object == "_pico_tier"
+    assert revoke_privilege["severity"] == "high"
+    assert revoke_privilege["privilege"] == "read"
+    assert revoke_privilege["object_type"] == "table"
+    assert revoke_privilege["grantee"] == user
+    assert revoke_privilege["grantee_type"] == "user"
+    assert revoke_privilege["initiator"] == "admin"
+    assert revoke_privilege["object"] == "_pico_tier"
 
     instance.sql('CREATE ROLE "R"', user=user, password=password)
 
     # wildcard privilege to role
     instance.sudo_sql('GRANT CREATE TABLE TO "R"')
 
-    grant_privilege = take_until_type(events, EventGrantPrivilege)
+    grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert grant_privilege.message == "granted privilege create on table to role `R`"
-    assert grant_privilege.severity == Severity.High
-    assert grant_privilege.privilege == "create"
-    assert grant_privilege.object_type == "table"
-    assert grant_privilege.grantee == "R"
-    assert grant_privilege.grantee_type == "role"
-    assert grant_privilege.initiator == "admin"
-    assert grant_privilege.object is None
+    assert grant_privilege["message"] == "granted privilege create on table to role `R`"
+    assert grant_privilege["severity"] == "high"
+    assert grant_privilege["privilege"] == "create"
+    assert grant_privilege["object_type"] == "table"
+    assert grant_privilege["grantee"] == "R"
+    assert grant_privilege["grantee_type"] == "role"
+    assert grant_privilege["initiator"] == "admin"
+    assert "object" not in grant_privilege
 
     instance.sudo_sql('REVOKE CREATE TABLE FROM "R"')
 
-    revoke_privilege = take_until_type(events, EventRevokePrivilege)
+    revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
-    assert revoke_privilege.message == "revoked privilege create on table from role `R`"
-    assert revoke_privilege.severity == Severity.High
-    assert revoke_privilege.privilege == "create"
-    assert revoke_privilege.object_type == "table"
-    assert revoke_privilege.grantee == "R"
-    assert revoke_privilege.grantee_type == "role"
-    assert revoke_privilege.initiator == "admin"
-    assert revoke_privilege.object is None
+    assert (
+        revoke_privilege["message"] == "revoked privilege create on table from role `R`"
+    )
+    assert revoke_privilege["severity"] == "high"
+    assert revoke_privilege["privilege"] == "create"
+    assert revoke_privilege["object_type"] == "table"
+    assert revoke_privilege["grantee"] == "R"
+    assert revoke_privilege["grantee_type"] == "role"
+    assert revoke_privilege["initiator"] == "admin"
+    assert "object" not in revoke_privilege
 
     # specific privilege to role
     instance.sudo_sql('GRANT READ ON TABLE "_pico_user" TO "R"')
 
-    grant_privilege = take_until_type(events, EventGrantPrivilege)
+    grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
     assert (
-        grant_privilege.message
+        grant_privilege["message"]
         == "granted privilege read on table `_pico_user` to role `R`"
     )
-    assert grant_privilege.severity == Severity.High
-    assert grant_privilege.privilege == "read"
-    assert grant_privilege.object_type == "table"
-    assert grant_privilege.grantee == "R"
-    assert grant_privilege.grantee_type == "role"
-    assert grant_privilege.initiator == "admin"
-    assert grant_privilege.object == "_pico_user"
+    assert grant_privilege["severity"] == "high"
+    assert grant_privilege["privilege"] == "read"
+    assert grant_privilege["object_type"] == "table"
+    assert grant_privilege["grantee"] == "R"
+    assert grant_privilege["grantee_type"] == "role"
+    assert grant_privilege["initiator"] == "admin"
+    assert grant_privilege["object"] == "_pico_user"
 
     instance.sudo_sql('REVOKE READ ON TABLE "_pico_user" FROM "R"')
 
-    revoke_privilege = take_until_type(events, EventRevokePrivilege)
+    revoke_privilege = take_until_title(events, "revoke_privilege")
 
     assert revoke_privilege is not None
     assert (
-        revoke_privilege.message
+        revoke_privilege["message"]
         == "revoked privilege read on table `_pico_user` from role `R`"
     )
-    assert revoke_privilege.severity == Severity.High
-    assert revoke_privilege.privilege == "read"
-    assert revoke_privilege.object_type == "table"
-    assert revoke_privilege.grantee == "R"
-    assert revoke_privilege.grantee_type == "role"
-    assert revoke_privilege.initiator == "admin"
-    assert revoke_privilege.object == "_pico_user"
+    assert revoke_privilege["severity"] == "high"
+    assert revoke_privilege["privilege"] == "read"
+    assert revoke_privilege["object_type"] == "table"
+    assert revoke_privilege["grantee"] == "R"
+    assert revoke_privilege["grantee_type"] == "role"
+    assert revoke_privilege["initiator"] == "admin"
+    assert revoke_privilege["object"] == "_pico_user"
 
     # role to user
     instance.sql('GRANT "R" TO "ymir"', user=user, password=password)
 
-    grant_role = take_until_type(events, EventGrantRole)
+    grant_role = take_until_title(events, "grant_role")
     assert grant_role is not None
-    assert grant_role.message == "granted role `R` to user `ymir`"
-    assert grant_role.severity == Severity.High
-    assert grant_role.role == "R"
-    assert grant_role.grantee == "ymir"
-    assert grant_role.grantee_type == "user"
-    assert grant_role.initiator == "ymir"
+    assert grant_role["message"] == "granted role `R` to user `ymir`"
+    assert grant_role["severity"] == "high"
+    assert grant_role["role"] == "R"
+    assert grant_role["grantee"] == "ymir"
+    assert grant_role["grantee_type"] == "user"
+    assert grant_role["initiator"] == "ymir"
 
     instance.sql(f'REVOKE "R" FROM "{user}"', user=user, password=password)
 
-    revoke_role = take_until_type(events, EventRevokeRole)
+    revoke_role = take_until_title(events, "revoke_role")
 
     assert revoke_role is not None
-    assert revoke_role.message == f"revoked role `R` from user `{user}`"
-    assert revoke_role.severity == Severity.High
-    assert revoke_role.role == "R"
-    assert revoke_role.grantee == user
-    assert revoke_role.grantee_type == "user"
-    assert revoke_role.initiator == user
+    assert revoke_role["message"] == f"revoked role `R` from user `{user}`"
+    assert revoke_role["severity"] == "high"
+    assert revoke_role["role"] == "R"
+    assert revoke_role["grantee"] == user
+    assert revoke_role["grantee_type"] == "user"
+    assert revoke_role["initiator"] == user
 
     # one role to another role
     instance.sql('CREATE ROLE "R2"', user=user, password=password)
     instance.sql('GRANT "R" TO "R2"', user=user, password=password)
 
-    grant_role = take_until_type(events, EventGrantRole)
+    grant_role = take_until_title(events, "grant_role")
     assert grant_role is not None
-    assert grant_role.message == "granted role `R` to role `R2`"
-    assert grant_role.severity == Severity.High
-    assert grant_role.role == "R"
-    assert grant_role.grantee == "R2"
-    assert grant_role.grantee_type == "role"
-    assert grant_role.initiator == "ymir"
+    assert grant_role["message"] == "granted role `R` to role `R2`"
+    assert grant_role["severity"] == "high"
+    assert grant_role["role"] == "R"
+    assert grant_role["grantee"] == "R2"
+    assert grant_role["grantee_type"] == "role"
+    assert grant_role["initiator"] == "ymir"
 
     instance.sql('REVOKE "R" FROM "R2"', user=user, password=password)
 
-    revoke_role = take_until_type(events, EventRevokeRole)
+    revoke_role = take_until_title(events, "revoke_role")
 
     assert revoke_role is not None
-    assert revoke_role.message == "revoked role `R` from role `R2`"
-    assert revoke_role.severity == Severity.High
-    assert revoke_role.role == "R"
-    assert revoke_role.grantee == "R2"
-    assert revoke_role.grantee_type == "role"
-    assert revoke_role.initiator == user
+    assert revoke_role["message"] == "revoked role `R` from role `R2`"
+    assert revoke_role["severity"] == "high"
+    assert revoke_role["role"] == "R"
+    assert revoke_role["grantee"] == "R2"
+    assert revoke_role["grantee_type"] == "role"
+    assert revoke_role["initiator"] == user
 
 
 def check_rotate(audit: AuditFile):
-    rotate = take_until_type(audit.events(), EventAuditRotate)
+    rotate = take_until_title(audit.events(), "audit_rotate")
     assert rotate is not None
-    assert rotate.message == "log file has been reopened"
-    assert rotate.severity == Severity.Low
+    assert rotate["message"] == "log file has been reopened"
+    assert rotate["severity"] == "low"
 
 
 def test_rotation(instance: Instance):
