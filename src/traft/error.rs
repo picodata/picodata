@@ -22,7 +22,7 @@ pub enum Error {
         actual: &'static str,
     },
     /// cluster_id of the joining instance mismatches the cluster_id of the cluster
-    #[error("cannot join the instance to the cluster: cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
+    #[error("cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
     ClusterIdMismatch {
         instance_cluster_id: String,
         cluster_cluster_id: String,

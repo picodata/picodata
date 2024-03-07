@@ -1,4 +1,3 @@
-import re
 import pytest
 import time
 
@@ -195,19 +194,17 @@ def test_cluster_id_mismatch(instance: Instance):
 
     assert instance.cluster_id != wrong_cluster_id
 
-    expected_error_re = re.escape(
-        "cannot join the instance to the cluster: cluster_id mismatch:"
-        ' cluster_id of the instance = "wrong-cluster-id",'
-        f' cluster_id of the cluster = "{instance.cluster_id}"'
-    )
-
-    with pytest.raises(TarantoolError, match=expected_error_re):
+    with pytest.raises(TarantoolError) as e:
         raft_join(
             instance=instance,
             cluster_id=wrong_cluster_id,
             instance_id="whatever",
             timeout_seconds=1,
         )
+    assert e.value.args == (
+        "ER_PROC_C",
+        f'cluster_id mismatch: cluster_id of the instance = "wrong-cluster-id", cluster_id of the cluster = "{instance.cluster_id}"',  # noqa: E501
+    )
 
 
 @pytest.mark.xfail(
