@@ -1107,14 +1107,14 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    # Already dropped -> ok.
-    ddl = i2.sql(
+    # already dropped -> error, no such space
+    with pytest.raises(ReturnError, match="sbroad: space t not found"):
+        i2.sql(
+            """
+            drop table "t"
+            option (timeout = 3)
         """
-        drop table "t"
-        option (timeout = 3)
-    """
-    )
-    assert ddl["row_count"] == 0
+        )
 
     ddl = i2.sql(
         """
