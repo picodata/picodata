@@ -524,19 +524,6 @@ pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<Strin
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Like unwrap(), but instead of a panic it logs
-/// the error in picodata format and calls exit()
-///
-pub fn unwrap_or_terminate<T, E: std::fmt::Display>(res: Result<T, E>) -> T {
-    match res {
-        Ok(value) => value,
-        Err(msg) => {
-            crate::tlog!(Critical, "{msg}");
-            std::process::exit(1);
-        }
-    }
-}
-////////////////////////////////////////////////////////////////////////////////
 /// IsSameType
 
 pub trait IsSameType<L, R> {

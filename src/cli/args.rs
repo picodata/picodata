@@ -414,7 +414,7 @@ pub struct Connect {
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address to connect. Format:
     /// `[user@][host][:port]`.
-    pub address: String,
+    pub address: Address,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
     /// Path to a plain-text file with a password.

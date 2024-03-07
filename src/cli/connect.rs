@@ -1,27 +1,30 @@
 use std::fmt::{Debug, Display};
-use std::str::FromStr;
 
+use tarantool::auth::AuthMethod;
 use tarantool::network::{AsClient, Client, Config};
 
 use crate::address::Address;
 use crate::config::DEFAULT_USERNAME;
 use crate::tarantool_main;
-use crate::util::{prompt_password, unwrap_or_terminate};
+use crate::traft::error::Error;
+use crate::util::prompt_password;
 
 use super::args;
 use super::console::{Command, Console, ReplError, SpecialCommand};
 use comfy_table::{ContentArrangement, Table};
 use serde::{Deserialize, Serialize};
 
-fn get_password_from_file(path: &str) -> Result<String, String> {
+fn get_password_from_file(path: &str) -> Result<String, Error> {
     let content = std::fs::read_to_string(path).map_err(|e| {
-        format!(r#"can't read password from password file by "{path}", reason: {e}"#)
+        Error::other(format!(
+            r#"can't read password from password file by "{path}", reason: {e}"#
+        ))
     })?;
 
     let password = content
         .lines()
         .next()
-        .ok_or("Empty password file".to_string())?
+        .ok_or_else(|| Error::other("Empty password file"))?
         .trim();
 
     if password.is_empty() {
@@ -126,30 +129,65 @@ impl Display for ResultSet {
     }
 }
 
-fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
-    let address = Address::from_str(&args.address).map_err(ReplError::Other)?;
-
-    let user = address.user.as_ref().unwrap_or(&args.user).clone();
+/// Determines the username and password from the provided arguments and uses
+/// these credentials to establish a connection to a remote instance at given `address`.
+///
+/// The user for the connection is determined in the following way:
+/// - if `address.user` is not `None`, it is used, else
+/// - if `user` is not `None`, it is used, else
+/// - [`DEFAULT_USERNAME`] is used.
+///
+/// The password for the connection is determined in the following way:
+/// - if resulting user is `DEFAULT_USERNAME`, the password is empty (!?!??), else
+/// - if `password_file` is not `None`, it is used to read the password from, else
+/// - prompts the user for the password on the tty.
+///
+/// On success returns the connection object and the chosen username.
+pub fn determine_credentials_and_connect(
+    address: &Address,
+    user: Option<&str>,
+    password_file: Option<&str>,
+    auth_method: AuthMethod,
+) -> Result<(Client, String), Error> {
+    let user = if let Some(user) = &address.user {
+        user
+    } else if let Some(user) = user {
+        user
+    } else {
+        DEFAULT_USERNAME
+    };
 
     let password = if user == DEFAULT_USERNAME {
         String::new()
-    } else if let Some(path) = args.password_file {
-        get_password_from_file(&path).map_err(ReplError::Other)?
+    } else if let Some(path) = password_file {
+        get_password_from_file(path)?
     } else {
         let prompt = format!("Enter password for {user}: ");
         prompt_password(&prompt)
-            .map_err(|err| ReplError::Other(format!("Failed to prompt for a password: {err}")))?
+            .map_err(|err| Error::other(format!("Failed to prompt for a password: {err}")))?
     };
 
     let mut config = Config::default();
-    config.creds = Some((user.clone(), password));
-    config.auth_method = args.auth_method;
+    config.creds = Some((user.into(), password));
+    config.auth_method = auth_method;
 
     let client = ::tarantool::fiber::block_on(Client::connect_with_config(
         &address.host,
         address.port.parse().unwrap(),
         config,
     ))?;
+
+    Ok((client, user.into()))
+}
+
+fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
+    let (client, user) = determine_credentials_and_connect(
+        &args.address,
+        Some(&args.user),
+        args.password_file.as_deref(),
+        args.auth_method,
+    )
+    .map_err(|e| ReplError::Other(e.to_string()))?;
 
     // Check if connection is valid. We need to do it because connect is lazy
     // and we want to check whether authentication have succeeded or not
@@ -159,7 +197,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 
     console.greet(&format!(
         "Connected to interactive console by address \"{}:{}\" under \"{}\" user",
-        address.host, address.port, user
+        args.address.host, args.address.port, user
     ));
 
     const HELP_MESSAGE: &'static str = "
@@ -205,7 +243,10 @@ pub fn main(args: args::Connect) -> ! {
         callback_data: (args,),
         callback_data_type: (args::Connect,),
         callback_body: {
-            unwrap_or_terminate(sql_repl(args));
+            if let Err(e) = sql_repl(args) {
+                crate::tlog!(Critical, "{e}");
+                std::process::exit(1);
+            };
             std::process::exit(0)
         }
     );

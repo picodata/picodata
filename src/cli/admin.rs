@@ -11,7 +11,6 @@ use rustyline::Context;
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter, Validator};
 
 use crate::tarantool_main;
-use crate::util::unwrap_or_terminate;
 
 use super::args;
 use super::connect::ResultSet;
@@ -300,7 +299,10 @@ pub fn main(args: args::Admin) -> ! {
         callback_data: args,
         callback_data_type: args::Admin,
         callback_body: {
-            unwrap_or_terminate(admin_repl(args));
+            if let Err(e) = admin_repl(args) {
+                crate::tlog!(Critical, "{e}");
+                std::process::exit(1);
+            }
             std::process::exit(0)
         }
     );
