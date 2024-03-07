@@ -1382,6 +1382,7 @@ class Cluster:
 
     def expel(self, target: Instance, peer: Instance | None = None):
         peer = peer if peer else target
+        assert self.service_password_file, "cannot expel without pico_service password"
 
         # fmt: off
         command = [
@@ -1389,6 +1390,8 @@ class Cluster:
             "--peer", peer.listen,
             "--cluster-id", target.cluster_id,
             "--instance-id", target.instance_id,
+            "--user", "pico_service",
+            "--password-file", self.service_password_file,
         ]
         # fmt: on
 

@@ -315,12 +315,34 @@ pub struct Expel {
     pub instance_id: InstanceId,
 
     #[clap(
-        long = "peer",
-        value_name = "[HOST][:PORT]",
-        default_value = "localhost:3301"
+        short = 'u',
+        long = "user",
+        value_name = "USER",
+        default_value = DEFAULT_USERNAME,
+        env = "PICODATA_USER"
     )]
-    /// Address of any instance from the cluster.
+    /// The username to connect with. Ignored if provided in `ADDRESS`.
+    pub user: String,
+
+    #[clap(
+        short = 'a',
+        long = "auth-type",
+        value_name = "METHOD",
+        default_value = AuthMethod::ChapSha1.as_str(),
+    )]
+    /// The preferred authentication method.
+    pub auth_method: AuthMethod,
+
+    #[clap(long = "peer", value_name = "[USER@][HOST][:PORT]")]
+    /// Address of any picodata instance of the given cluster. It will be used
+    /// to redirect the request to the current raft-leader to execute the actual
+    /// request.
     pub peer_address: Address,
+
+    #[clap(long, env = "PICODATA_PASSWORD_FILE")]
+    /// Path to a plain-text file with a password.
+    /// If this option isn't provided, the password is prompted from the terminal.
+    pub password_file: Option<String>,
 }
 
 impl Expel {
