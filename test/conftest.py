@@ -1218,6 +1218,7 @@ class Cluster:
     max_port: int
     instances: list[Instance] = field(default_factory=list)
     config_path: str | None = None
+    service_password_file: str | None = None
 
     def __repr__(self):
         return f'Cluster("{self.base_host}:{self.base_port}", n={len(self.instances)})'
@@ -1231,8 +1232,17 @@ class Cluster:
         instance_count: int,
         init_replication_factor: int | None = None,
         tier: str | None = None,
+        service_password: str | None = None,
     ) -> list[Instance]:
         assert not self.instances, "Already deployed"
+
+        if not service_password:
+            service_password = "password"
+
+        self.service_password_file = self.data_dir + "/password.txt"
+        with open(self.service_password_file, "w") as f:
+            print(service_password, file=f)
+        os.chmod(self.service_password_file, 0o600)
 
         for _ in range(instance_count):
             self.add_instance(
@@ -1323,6 +1333,8 @@ class Cluster:
             config_path=self.config_path,
             audit=True,
         )
+        if self.service_password_file:
+            instance.service_password_file = self.service_password_file
 
         self.instances.append(instance)
 
