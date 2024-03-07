@@ -1,5 +1,6 @@
 use quote::quote;
 
+#[allow(clippy::single_match)]
 #[proc_macro_derive(Introspection)]
 pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
