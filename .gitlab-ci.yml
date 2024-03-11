@@ -79,18 +79,10 @@ pack-doc:
     - tar -cvzf ../$FNAME .
     - popd
     - echo "Picodata doc successfully packed."
-    - >
-      git ls-remote origin |
-      grep -Eo 'refs/heads/.+' |
-      cut -d/ -f3- |
-      sed 's/^main$/devel/g' |
-      sed -E "$SED_SLUG" |
-      tee branches.list
   artifacts:
     name: "artifacts-vars-${CI_PIPELINE_ID}"
     paths:
       - picodata-doc-*.tgz
-      - branches.list
     reports:
       dotenv: .vars
 
