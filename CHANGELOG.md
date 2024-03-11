@@ -90,7 +90,7 @@ with the `YY.MINOR.MICRO` scheme.
   ```
 
 - `ALTER USER ... WITH LOGIN` can now unblock a user, who was blocked due to exceeding login attempts.
-- uuid support add
+
 ### Fixes
 
 - Revoke excess privileges from `guest`
