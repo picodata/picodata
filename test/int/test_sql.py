@@ -1697,12 +1697,12 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Creation of the role that already exists shouldn't do anything.
     acl = i1.sql(f'create role "{rolename}"')
     assert acl["row_count"] == 0
-    assert i1.call("box.space._pico_role.index.name:get", rolename) is not None
+    assert i1.call("box.space._pico_user.index.name:get", rolename) is not None
 
     # Dropping role that does exist should return 1.
     acl = i1.sql(f'drop role "{rolename}"')
     assert acl["row_count"] == 1
-    assert i1.call("box.space._pico_role.index.name:get", rolename) is None
+    assert i1.call("box.space._pico_user.index.name:get", rolename) is None
 
     # All the rolenames below should match the same role.
     acl = i1.sql(f'create role "{upper_rolename}"')

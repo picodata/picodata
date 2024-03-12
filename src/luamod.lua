@@ -64,21 +64,13 @@ end
 local function get_next_grantee_id()
     -- TODO: if id overflows start filling the holes
     local max_user = box.space._pico_user.index[0]:max()
-    local max_role = box.space._pico_role.index[0]:max()
-    local new_id = 0
     if max_user then
-        new_id = max_user.id + 1
+        return max_user.id + 1
     end
-    if max_role and new_id <= max_role.id then
-        new_id = max_role.id + 1
-    end
-    if new_id ~= 0 then
-        return new_id
-    else
-        -- There are always builtin tarantool users
-        local tt_user = box.space._user.index[0]:max()
-        return tt_user.id + 1
-    end
+
+    -- There are always builtin tarantool users
+    local tt_user = box.space._user.index[0]:max()
+    return tt_user.id + 1
 end
 
 local function next_schema_version()
@@ -290,7 +282,8 @@ function pico.create_user(user, password, opts)
                     method = auth_type,
                     data = auth_data,
                 },
-                owner = owner
+                owner = owner,
+                type = "user"
             }
         }
     end
@@ -524,7 +517,13 @@ function pico.create_role(role, opts)
                 id = get_next_grantee_id(),
                 name = role,
                 schema_version = next_schema_version(),
-                owner = owner
+                owner = owner,
+                -- Dummy auth table specially for role as user_def object
+                auth = {
+                    method = 'ldap',
+                    data = '',
+                },
+                type = "role",
             }
         }
     end
@@ -579,7 +578,7 @@ function pico.drop_role(role, opts)
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
     local function make_op_if_needed()
-        local role_def = box.space._pico_role.index.name:get(role)
+        local role_def = box.space._pico_user.index.name:get(role)
         if role_def == nil then
             -- Role doesn't exists, request is satisfied, no op needed
             return nil
@@ -863,9 +862,6 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
         -- passed for any required entities to be created
         local grantee_def = box.space._pico_user.index.name:get(grantee)
         if grantee_def == nil then
-            grantee_def = box.space._pico_role.index.name:get(grantee)
-        end
-        if grantee_def == nil then
             box.error(box.error.NO_SUCH_USER, grantee)
         end
 
@@ -965,9 +961,6 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
         -- This is being checked after raft_read_index, so enough time has
         -- passed for any required entities to be created
         local grantee_def = box.space._pico_user.index.name:get(grantee)
-        if grantee_def == nil then
-            grantee_def = box.space._pico_role.index.name:get(grantee)
-        end
         if grantee_def == nil then
             box.error(box.error.NO_SUCH_USER, grantee)
         end

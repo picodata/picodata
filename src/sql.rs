@@ -1,10 +1,11 @@
 //! Clusterwide SQL query execution.
 
+use crate::access_control::UserMetadataKind;
 use crate::schema::{
-    wait_for_ddl_commit, CreateProcParams, CreateTableParams, DistributionParam, Field,
-    PrivilegeDef, PrivilegeType, RenameRoutineParams, RoleDef, RoutineDef, RoutineLanguage,
-    RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn, UserDef,
-    ADMIN_ID,
+    auth_for_role_definition, wait_for_ddl_commit, CreateProcParams, CreateTableParams,
+    DistributionParam, Field, PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef,
+    RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn,
+    UserDef, ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals_mut, Portal, PortalDescribe, Statement, StatementDescribe, UserPortalNames,
@@ -587,19 +588,10 @@ impl TraftNode {
     fn get_next_grantee_id(&self) -> traft::Result<UserId> {
         let storage = &self.storage;
         let max_user_id = storage.users.max_user_id()?;
-        let max_role_id = storage.roles.max_role_id()?;
-        let mut new_id: UserId = 0;
         if let Some(max_user_id) = max_user_id {
-            new_id = max_user_id + 1
+            return Ok(max_user_id + 1);
         }
-        if let Some(max_role_id) = max_role_id {
-            if new_id <= max_role_id {
-                new_id = max_role_id + 1
-            }
-        }
-        if new_id != 0 {
-            return Ok(new_id);
-        }
+
         let max_tarantool_user_id: UserId = Space::from(SystemSpace::User)
             .index("primary")
             .expect("_user should have a primary index")
@@ -829,8 +821,6 @@ fn validate_password(
 fn get_grantee_id(storage: &Clusterwide, grantee_name: &String) -> traft::Result<UserId> {
     if let Some(grantee_user_def) = storage.users.by_name(grantee_name)? {
         Ok(grantee_user_def.id)
-    } else if let Some(grantee_role_def) = storage.roles.by_name(grantee_name)? {
-        Ok(grantee_role_def.id)
     } else {
         // No existing user or role found.
         Err(Error::Sbroad(SbroadError::Invalid(
@@ -1193,37 +1183,47 @@ fn reenterable_schema_change_request(
                 }
             }
             Params::CreateUser(name, auth) => {
-                if storage.roles.by_name(name)?.is_some() {
-                    return Err(Error::Other(format!("Role {name} already exists").into()));
-                }
-                if let Some(user_def) = storage.users.by_name(name)? {
-                    if user_def.auth != *auth {
-                        return Err(Error::Other(
-                            format!("User {name} already exists with different auth method").into(),
-                        ));
+                let user_def = storage.users.by_name(name)?;
+                match user_def {
+                    Some(user_def) if user_def.is_role() => {
+                        return Err(Error::Other(format!("Role {name} already exists").into()));
                     }
-                    // User already exists, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
+                    Some(user_def) => {
+                        if user_def.auth != *auth {
+                            return Err(Error::Other(
+                                format!("User {name} already exists with different auth method")
+                                    .into(),
+                            ));
+                        }
+                        // User already exists, no op needed
+                        return Ok(ConsumerResult { row_count: 0 });
+                    }
+                    None => {
+                        let id = node.get_next_grantee_id()?;
+                        let user_def = UserDef {
+                            id,
+                            name: name.clone(),
+                            schema_version,
+                            auth: auth.clone(),
+                            owner: current_user,
+                            ty: UserMetadataKind::User,
+                        };
+                        Op::Acl(OpAcl::CreateUser { user_def })
+                    }
                 }
-                let id = node.get_next_grantee_id()?;
-                let user_def = UserDef {
-                    id,
-                    name: name.clone(),
-                    schema_version,
-                    auth: auth.clone(),
-                    owner: current_user,
-                };
-                Op::Acl(OpAcl::CreateUser { user_def })
             }
             Params::AlterUser(name, alter_option_param) => {
-                if storage.roles.by_name(name)?.is_some() {
-                    return Err(Error::Other(
-                        format!("Role {name} exists. Unable to alter role.").into(),
-                    ));
-                }
-                let Some(user_def) = storage.users.by_name(name)? else {
+                let user_def = storage.users.by_name(name)?;
+                let user_def = match user_def {
+                    // Unable to alter role
+                    Some(user_def) if user_def.is_role() => {
+                        return Err(Error::Other(
+                            format!("Role {name} exists. Unable to alter role.").into(),
+                        ));
+                    }
                     // User doesn't exists, no op needed.
-                    return Ok(ConsumerResult { row_count: 0 });
+                    None => return Ok(ConsumerResult { row_count: 0 }),
+                    Some(user_def) => user_def,
                 };
 
                 // For ALTER Login/NoLogin.
@@ -1297,17 +1297,19 @@ fn reenterable_schema_change_request(
                     }
                 }
                 let id = node.get_next_grantee_id()?;
-                let role_def = RoleDef {
+                let role_def = UserDef {
                     id,
                     name: name.clone(),
                     // This field will be updated later.
                     schema_version,
                     owner: current_user,
+                    auth: auth_for_role_definition(),
+                    ty: UserMetadataKind::Role,
                 };
                 Op::Acl(OpAcl::CreateRole { role_def })
             }
             Params::DropRole(name) => {
-                let Some(role_def) = storage.roles.by_name(name)? else {
+                let Some(role_def) = storage.users.by_name(name)? else {
                     // Role doesn't exist yet, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 };

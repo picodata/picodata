@@ -15,13 +15,14 @@ use tarantool::tuple::KeyDef;
 use tarantool::tuple::{Decode, DecodeOwned, Encode};
 use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 
+use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
 use crate::schema::INITIAL_SCHEMA_VERSION;
 use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
 use crate::schema::{IndexDef, TableDef};
-use crate::schema::{PrivilegeDef, RoleDef, RoutineDef, UserDef};
+use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::sql::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::tier::Tier;
@@ -47,6 +48,8 @@ use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::time::Duration;
+
+use self::acl::{on_master_drop_role, on_master_drop_user};
 
 macro_rules! define_clusterwide_tables {
     (
@@ -333,17 +336,6 @@ define_clusterwide_tables! {
                 #[primary]
                 primary_key: Index => "primary",
                 object_idx: Index => "object",
-            }
-        }
-        Role = 522, "_pico_role" => {
-            Clusterwide::roles;
-
-            /// A struct for accessing info of all the user-defined roles.
-            pub struct Roles {
-                space: Space,
-                #[primary]
-                index_id: Index => "id",
-                index_name: Index => "name",
             }
         }
         Tier = 523, "_pico_tier" => {
@@ -673,7 +665,6 @@ impl Clusterwide {
         // These need to be saved before we truncate the corresponding spaces.
         let mut old_table_versions = HashMap::new();
         let mut old_user_versions = HashMap::new();
-        let mut old_role_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
 
         for def in self.tables.iter()? {
@@ -681,9 +672,6 @@ impl Clusterwide {
         }
         for def in self.users.iter()? {
             old_user_versions.insert(def.id, def.schema_version);
-        }
-        for def in self.roles.iter()? {
-            old_role_versions.insert(def.id, def.schema_version);
         }
         for def in self.privileges.iter()? {
             let schema_version = def.schema_version();
@@ -746,7 +734,6 @@ impl Clusterwide {
             self.apply_schema_changes_on_master(self.tables.iter()?, &old_table_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
-            self.apply_schema_changes_on_master(self.roles.iter()?, &old_role_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
             set_local_schema_version(v_snapshot)?;
 
@@ -825,7 +812,6 @@ impl Clusterwide {
             ClusterwideTable::Table.id(),
             ClusterwideTable::Index.id(),
             ClusterwideTable::User.id(),
-            ClusterwideTable::Role.id(),
             ClusterwideTable::Privilege.id(),
         ];
     }
@@ -2734,122 +2720,6 @@ impl ToEntryIter for Users {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Roles
-////////////////////////////////////////////////////////////////////////////////
-
-impl Roles {
-    pub fn new() -> tarantool::Result<Self> {
-        let space = Space::builder(Self::TABLE_NAME)
-            .id(Self::TABLE_ID)
-            .space_type(SpaceType::DataLocal)
-            .format(Self::format())
-            .if_not_exists(true)
-            .create()?;
-
-        let index_id = space
-            .index_builder("id")
-            .unique(true)
-            .part("id")
-            .if_not_exists(true)
-            .create()?;
-
-        let index_name = space
-            .index_builder("name")
-            .unique(true)
-            .part("name")
-            .if_not_exists(true)
-            .create()?;
-
-        Ok(Self {
-            space,
-            index_id,
-            index_name,
-        })
-    }
-
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        RoleDef::format()
-    }
-
-    #[inline]
-    pub fn index_definitions() -> Vec<IndexDef> {
-        vec![
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                // Primary index
-                id: 0,
-                name: "id".into(),
-                parts: vec![Part::from("id")],
-                unique: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-                operable: true,
-                local: true,
-            },
-            IndexDef {
-                table_id: Self::TABLE_ID,
-                id: 1,
-                name: "name".into(),
-                parts: vec![Part::from("name")],
-                unique: true,
-                // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
-                operable: true,
-                local: true,
-            },
-        ]
-    }
-
-    #[inline]
-    pub fn by_id(&self, role_id: UserId) -> tarantool::Result<Option<RoleDef>> {
-        let tuple = self.space.get(&[role_id])?;
-        tuple.as_ref().map(Tuple::decode).transpose()
-    }
-
-    #[inline]
-    pub fn by_name(&self, role_name: &str) -> tarantool::Result<Option<RoleDef>> {
-        let tuple = self.index_name.get(&[role_name])?;
-        tuple.as_ref().map(Tuple::decode).transpose()
-    }
-
-    #[inline]
-    pub fn max_role_id(&self) -> tarantool::Result<Option<UserId>> {
-        match self.index_id.max(&())? {
-            Some(role) => Ok(role.get(0).unwrap()),
-            None => Ok(None),
-        }
-    }
-
-    #[inline]
-    pub fn replace(&self, role_def: &RoleDef) -> tarantool::Result<()> {
-        self.space.replace(role_def)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn insert(&self, role_def: &RoleDef) -> tarantool::Result<()> {
-        self.space.insert(role_def)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn delete(&self, role_id: UserId) -> tarantool::Result<()> {
-        self.space.delete(&[role_id])?;
-        Ok(())
-    }
-}
-
-impl ToEntryIter for Roles {
-    type Entry = RoleDef;
-
-    #[inline(always)]
-    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
-        self.space.select(IteratorType::All, &())
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // Privileges
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -3356,7 +3226,13 @@ impl SchemaDef for UserDef {
     #[inline(always)]
     fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        let res = acl::on_master_create_user(self, true);
+        let res = {
+            if self.is_role() {
+                acl::on_master_create_role(self)
+            } else {
+                acl::on_master_create_user(self, true)
+            }
+        };
         ignore_only_error(res, TntErrorCode::TupleFound)?;
         Ok(())
     }
@@ -3364,36 +3240,13 @@ impl SchemaDef for UserDef {
     #[inline(always)]
     fn on_delete(user_id: &UserId, storage: &Clusterwide) -> traft::Result<()> {
         _ = storage;
-        acl::on_master_drop_user(*user_id)?;
-        Ok(())
-    }
-}
 
-impl SchemaDef for RoleDef {
-    type Key = UserId;
+        let user = user_by_id(*user_id)?;
+        match user.ty {
+            UserMetadataKind::User => on_master_drop_user(*user_id)?,
+            UserMetadataKind::Role => on_master_drop_role(*user_id)?,
+        }
 
-    #[inline(always)]
-    fn key(&self) -> UserId {
-        self.id
-    }
-
-    #[inline(always)]
-    fn schema_version(&self) -> u64 {
-        self.schema_version
-    }
-
-    #[inline(always)]
-    fn on_insert(&self, storage: &Clusterwide) -> traft::Result<()> {
-        _ = storage;
-        let res = acl::on_master_create_role(self);
-        ignore_only_error(res, TntErrorCode::TupleFound)?;
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn on_delete(user_id: &UserId, storage: &Clusterwide) -> traft::Result<()> {
-        _ = storage;
-        acl::on_master_drop_role(*user_id)?;
         Ok(())
     }
 }
@@ -3444,14 +3297,15 @@ pub mod acl {
             &self,
             storage: &Clusterwide,
         ) -> tarantool::Result<(&'static str, String)> {
-            let role_def = storage.roles.by_id(self.grantee_id())?;
             let user_def = storage.users.by_id(self.grantee_id())?;
-            match (role_def, user_def) {
-                (Some(role_def), None) => Ok(("role", role_def.name)),
-                (None, Some(user_def)) => Ok(("user", user_def.name)),
-                // TODO: maybe those should be proper errors or None instead.
-                (Some(_), Some(_)) => panic!("grantee_id is both user and role"),
-                (None, None) => panic!("found neither user nor role for grantee_id"),
+            let Some(user_def) = user_def else {
+                panic!("found neither user nor role for grantee_id")
+            };
+
+            if user_def.is_role() {
+                Ok(("role", user_def.name))
+            } else {
+                Ok(("user", user_def.name))
             }
         }
     }
@@ -3573,8 +3427,8 @@ pub mod acl {
     }
 
     /// Persist a role definition in the internal clusterwide storage.
-    pub fn global_create_role(storage: &Clusterwide, role_def: &RoleDef) -> tarantool::Result<()> {
-        storage.roles.insert(role_def)?;
+    pub fn global_create_role(storage: &Clusterwide, role_def: &UserDef) -> tarantool::Result<()> {
+        storage.users.insert(role_def)?;
 
         let initiator_def = user_by_id(role_def.owner)?;
 
@@ -3597,10 +3451,10 @@ pub mod acl {
         role_id: UserId,
         initiator: UserId,
     ) -> Result<()> {
-        let role_def = storage.roles.by_id(role_id)?.expect("role should exist");
+        let role_def = storage.users.by_id(role_id)?.expect("role should exist");
         storage.privileges.delete_all_by_grantee_id(role_id)?;
         storage.privileges.delete_all_by_granted_role(role_id)?;
-        storage.roles.delete(role_id)?;
+        storage.users.delete(role_id)?;
 
         let initiator_def = user_by_id(initiator)?;
 
@@ -3817,7 +3671,7 @@ pub mod acl {
     }
 
     /// Create a tarantool role.
-    pub fn on_master_create_role(role_def: &RoleDef) -> tarantool::Result<()> {
+    pub fn on_master_create_role(role_def: &UserDef) -> tarantool::Result<()> {
         let sys_user = Space::from(SystemSpace::User);
 
         // This implementation was copied from box.schema.role.create.

@@ -607,7 +607,8 @@ mod tests {
     use crate::{
         access_control::{access_check_op, UserMetadataKind},
         schema::{
-            Distribution, PrivilegeDef, PrivilegeType, RoleDef, SchemaObjectType, UserDef, ADMIN_ID,
+            auth_for_role_definition, Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType,
+            UserDef, ADMIN_ID,
         },
         storage::{
             acl::{
@@ -661,6 +662,7 @@ mod tests {
             schema_version: 0,
             auth: dummy_auth_def(),
             owner: owner.unwrap_or_else(|| session::uid().unwrap()),
+            ty: UserMetadataKind::User,
         }
     }
 
@@ -1212,21 +1214,25 @@ mod tests {
         let storage = Clusterwide::for_tests();
 
         let role_name = "box_access_check_ddl_test_role_some_role";
-        let role_def = RoleDef {
+        let role_def = UserDef {
             id: next_user_id(),
             name: String::from(role_name),
             schema_version: 0,
             owner: ADMIN_ID,
+            auth: auth_for_role_definition(),
+            ty: UserMetadataKind::Role,
         };
         on_master_create_role(&role_def).expect("create role shouldnt fail");
 
         // create works with passed id
         {
-            let role_to_be_created = RoleDef {
+            let role_to_be_created = UserDef {
                 id: 123,
                 name: String::from("role_to_be_created"),
                 schema_version: 0,
                 owner: user_id,
+                auth: auth_for_role_definition(),
+                ty: UserMetadataKind::Role,
             };
 
             let e = access_check_acl(
@@ -1356,11 +1362,13 @@ mod tests {
 
             let role_name_grant = format!("{role_name}_grant");
             let role_id_grant = next_user_id();
-            let role_def = RoleDef {
+            let role_def = UserDef {
                 id: role_id_grant,
                 name: role_name_grant.clone(),
                 schema_version: 0,
                 owner: user_id,
+                auth: auth_for_role_definition(),
+                ty: UserMetadataKind::Role,
             };
             on_master_create_role(&role_def).expect("create role shouldn't fail");
 
@@ -1404,11 +1412,13 @@ mod tests {
 
         let create_role = |name| {
             let id = next_user_id();
-            let role_def = RoleDef {
+            let role_def = UserDef {
                 id,
                 name: String::from(name),
                 schema_version: 0,
                 owner: ADMIN_ID,
+                auth: auth_for_role_definition(),
+                ty: UserMetadataKind::Role,
             };
 
             on_master_create_role(&role_def).expect("create role shouldn't fail");

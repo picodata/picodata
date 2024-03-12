@@ -347,10 +347,10 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_property}, ["max_pg_portals",50])|
 |  0  | 1  |Insert({_pico_property}, ["snapshot_chunk_max_size",16777216])|
 |  0  | 1  |Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0])|
-|  0  | 1  |Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|
+|  0  | 1  |Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"])|
 |  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,0,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","role",2,0,1,0])|
-|  0  | 1  |Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1])|
+|  0  | 1  |Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1,"user"])|
 |  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","universe",0,1,1,0])|
@@ -358,7 +358,7 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_privilege}, ["create","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,1,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1])|
+|  0  | 1  |Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"])|
 |  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","universe",0,32,1,0])|
@@ -367,8 +367,8 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","role",3,32,1,0])|
-|  0  | 1  |Insert({_pico_role}, [2,"public",0,1])|
-|  0  | 1  |Insert({_pico_role}, [31,"super",0,1])|
+|  0  | 1  |Insert({_pico_user}, [2,"public",0,["ldap",""],1,"role"])|
+|  0  | 1  |Insert({_pico_user}, [31,"super",0,["ldap",""],1,"role"])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_table},0,"id",true,[["id",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_table},1,"name",true,[["name",null,null,null,null]],0,true,true])|
@@ -385,15 +385,12 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_index}, [{_pico_property},0,"key",true,[["key",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_replicaset},"_pico_replicaset",["global"],[["replicaset_id","string",false],["replicaset_uuid","string",false],["current_master_id","string",false],["target_master_id","string",false],["tier","string",false],["weight","number",false],["weight_origin","string",false],["state","string",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_replicaset},0,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_user},"_pico_user",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["auth","array",false],["owner","unsigned",false]],0,true,"memtx",1])|
+|  0  | 1  |Insert({_pico_table}, [{_pico_user},"_pico_user",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["auth","array",false],["owner","unsigned",false],["type","string",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_user},0,"id",true,[["id",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_user},1,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",["global"],[["privilege","string",false],["object_type","string",false],["object_id","integer",false],["grantee_id","unsigned",false],["grantor_id","unsigned",false],["schema_version","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_privilege},0,"primary",true,[["grantee_id",null,null,null,null],["object_type",null,null,null,null],["object_id",null,null,null,null],["privilege",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_privilege},1,"object",true,[["object_type",null,null,null,null],["object_id",null,null,null,null]],0,true,false])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_role},"_pico_role",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_role},0,"id",true,[["id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_role},1,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_tier},"_pico_tier",["global"],[["name","string",false],["replication_factor","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_tier},0,"name",true,[["name",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
@@ -421,7 +418,6 @@ def test_raft_log(instance: Instance):
         _pico_tier=space_id("_pico_tier"),
         _pico_privilege=space_id("_pico_privilege"),
         _pico_user=space_id("_pico_user"),
-        _pico_role=space_id("_pico_role"),
         _pico_table=space_id("_pico_table"),
         _pico_index=space_id("_pico_index"),
     )

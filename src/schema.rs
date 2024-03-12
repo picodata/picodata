@@ -29,6 +29,7 @@ use sbroad::ir::value::Value as IrValue;
 
 use serde::{Deserialize, Serialize};
 
+use crate::access_control::UserMetadataKind;
 use crate::cas::{self, compare_and_swap};
 use crate::pico_service::pico_service_password;
 use crate::storage::{self, RoutineId};
@@ -297,6 +298,15 @@ pub struct UserDef {
     pub schema_version: u64,
     pub auth: AuthDef,
     pub owner: UserId,
+    #[serde(rename = "type")]
+    pub ty: UserMetadataKind,
+}
+
+pub fn auth_for_role_definition() -> AuthDef {
+    AuthDef {
+        method: AuthMethod::Ldap,
+        data: String::new(),
+    }
 }
 
 impl Encode for UserDef {}
@@ -306,6 +316,11 @@ impl UserDef {
     ///
     /// Index of first field is 0.
     pub const FIELD_AUTH: usize = 3;
+
+    #[inline(always)]
+    pub fn is_role(&self) -> bool {
+        matches!(self.ty, UserMetadataKind::Role)
+    }
 
     /// Format of the _pico_user global table.
     #[inline(always)]
@@ -317,6 +332,7 @@ impl UserDef {
             Field::from(("schema_version", FieldType::Unsigned)),
             Field::from(("auth", FieldType::Array)),
             Field::from(("owner", FieldType::Unsigned)),
+            Field::from(("type", FieldType::String)),
         ]
     }
 
@@ -329,46 +345,7 @@ impl UserDef {
             schema_version: 421,
             auth: AuthDef::new(tarantool::auth::AuthMethod::ChapSha1, "".into()),
             owner: 42,
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// RoleDef
-////////////////////////////////////////////////////////////////////////////////
-
-/// Role definition.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RoleDef {
-    pub id: UserId,
-    pub name: String,
-    pub schema_version: u64,
-    pub owner: UserId,
-}
-
-impl Encode for RoleDef {}
-
-impl RoleDef {
-    /// Format of the _pico_role global table.
-    #[inline(always)]
-    pub fn format() -> Vec<tarantool::space::Field> {
-        use tarantool::space::Field;
-        vec![
-            Field::from(("id", FieldType::Unsigned)),
-            Field::from(("name", FieldType::String)),
-            Field::from(("schema_version", FieldType::Unsigned)),
-            Field::from(("owner", FieldType::Unsigned)),
-        ]
-    }
-
-    /// A dummy instance of the type for use in tests.
-    #[inline(always)]
-    pub fn for_tests() -> Self {
-        Self {
-            id: 13,
-            name: "devops".into(),
-            schema_version: 419,
-            owner: 42,
+            ty: UserMetadataKind::User,
         }
     }
 }
@@ -667,8 +644,9 @@ impl PrivilegeDef {
         };
         let name = match self.object_type {
             SchemaObjectType::Table => storage.tables.get(id).map(|t| t.map(|t| t.name)),
-            SchemaObjectType::Role => storage.roles.by_id(id).map(|t| t.map(|t| t.name)),
-            SchemaObjectType::User => storage.users.by_id(id).map(|t| t.map(|t| t.name)),
+            SchemaObjectType::Role | SchemaObjectType::User => {
+                storage.users.by_id(id).map(|t| t.map(|t| t.name))
+            }
             SchemaObjectType::Universe => {
                 debug_assert_eq!(self.object_id, 0);
                 return Ok(None);
@@ -707,6 +685,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
                 AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
             ),
             owner: initiator,
+            ty: UserMetadataKind::User,
         };
         let priv_defs = vec![
             PrivilegeDef {
@@ -747,6 +726,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             // empty string as output of sha1)
             auth: AuthDef::new(AuthMethod::ChapSha1, "".into()),
             owner: initiator,
+            ty: UserMetadataKind::User,
         };
         let mut priv_defs = Vec::with_capacity(PrivilegeType::VARIANTS.len());
         // Grant all privileges on "universe" to "admin".
@@ -783,6 +763,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
                 .into_string(),
             ),
             owner: initiator,
+            ty: UserMetadataKind::User,
         };
         let mut priv_defs = Vec::with_capacity(PrivilegeType::VARIANTS.len() + 1);
         // Grant all privileges on "universe" to "pico_service".
@@ -816,15 +797,17 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
 /// Definitions of builtin roles & their respective privileges.
 /// These should be inserted into "_pico_role" & "_pico_privilege" at cluster bootstrap.
 // TODO: maybe this "_pico_role" should be merged with "_pico_user"
-pub fn system_role_definitions() -> Vec<(RoleDef, Vec<PrivilegeDef>)> {
+pub fn system_role_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
     let mut result = vec![];
 
-    let public_def = RoleDef {
+    let public_def = UserDef {
         id: PUBLIC_ID,
         name: "public".into(),
         // This means the local schema is already up to date and main loop doesn't need to do anything
         schema_version: INITIAL_SCHEMA_VERSION,
         owner: ADMIN_ID,
+        auth: auth_for_role_definition(),
+        ty: UserMetadataKind::Role,
     };
     let public_privs = vec![
         // TODO:
@@ -833,12 +816,14 @@ pub fn system_role_definitions() -> Vec<(RoleDef, Vec<PrivilegeDef>)> {
     ];
     result.push((public_def, public_privs));
 
-    let super_def = RoleDef {
+    let super_def = UserDef {
         id: SUPER_ID,
         name: "super".into(),
         // This means the local schema is already up to date and main loop doesn't need to do anything
         schema_version: INITIAL_SCHEMA_VERSION,
         owner: ADMIN_ID,
+        auth: auth_for_role_definition(),
+        ty: UserMetadataKind::Role,
     };
     let super_privs = vec![
         // Special role, it's privileges are implicit
@@ -1632,6 +1617,7 @@ mod tests {
                 schema_version: 0,
                 auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
                 owner: ADMIN_ID,
+                ty: UserMetadataKind::User,
             })
             .unwrap();
         storage
@@ -1926,15 +1912,6 @@ mod test {
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "UserDef::format");
 
         assert_eq!(format[UserDef::FIELD_AUTH].name, "auth");
-    }
-
-    #[test]
-    #[rustfmt::skip]
-    fn role_def_matches_format() {
-        let i = RoleDef::for_tests();
-        let tuple_data = i.to_tuple_buffer().unwrap();
-        let format = RoleDef::format();
-        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "RoleDef::format");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::schema::{
-    Distribution, PrivilegeDef, RoleDef, RoutineLanguage, RoutineParams, RoutineSecurity, UserDef,
-    ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
+    Distribution, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity, UserDef, ADMIN_ID,
+    GUEST_ID, PUBLIC_ID, SUPER_ID,
 };
 use crate::storage::Clusterwide;
 use crate::storage::{space_by_name, RoutineId};
@@ -162,7 +162,7 @@ impl std::fmt::Display for Op {
                 write!(f, "DropUser({schema_version}, {user_id} {initiator})")
             }
             Self::Acl(Acl::CreateRole { role_def }) => {
-                let RoleDef {
+                let UserDef {
                     id,
                     name,
                     schema_version,
@@ -622,7 +622,7 @@ pub enum Acl {
     },
 
     /// Create a tarantool role. Grant it default privileges.
-    CreateRole { role_def: RoleDef },
+    CreateRole { role_def: UserDef },
 
     /// Drop a tarantool role and revoke it from any grantees.
     DropRole {

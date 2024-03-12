@@ -8,8 +8,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-<!--
 ## Unreleased
+
+### Compatibility
+
+- System table `_pico_role` was deleted.
+
+- System table `_pico_user` now has a different format: added new field `type`
+  with two possible variants - 'user' and 'role'.
 
 ### Features
 

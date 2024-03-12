@@ -195,7 +195,7 @@ pub(super) fn prepare(
     // Populate "_pico_role" and "_pico_priv" to match tarantool ones
     //
     for (role_def, privilege_defs) in &schema::system_role_definitions() {
-        init_entries_push_op(op::Dml::insert(ClusterwideTable::Role, &role_def, ADMIN_ID));
+        init_entries_push_op(op::Dml::insert(ClusterwideTable::User, role_def, ADMIN_ID));
 
         for priv_def in privilege_defs {
             init_entries_push_op(op::Dml::insert(

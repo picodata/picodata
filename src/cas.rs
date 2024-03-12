@@ -35,7 +35,6 @@ const PROHIBITED_SPACES: &[ClusterwideTable] = &[
     ClusterwideTable::Table,
     ClusterwideTable::Index,
     ClusterwideTable::User,
-    ClusterwideTable::Role,
     ClusterwideTable::Privilege,
     ClusterwideTable::Routine,
 ];
