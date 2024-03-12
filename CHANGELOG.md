@@ -8,50 +8,77 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+<!--
 ## Unreleased
+
+- New feature `tier` - a group of instances with own replication factor.
+  Tiers can span multiple failure domains and a single cluster can have
+  multiple tiers. Going forward it will be possible to specify which
+  tier a table belongs to.
+- New option `picodata run --tier` specifies whether an
+  instance belongs to a tier.
+-->
+
+--------------------------------------------------------------------------------
+## [24.2.1] - 2024-03-20
+
+### SQL
+
+- Introduce stored procedures:
+
+  ```sql
+  CREATE PROCEDURE my_proc(int, text)
+  LANGUAGE SQL
+  AS $$
+    INSERT INTO my_table VALUES($1, $2)
+  $$;
+
+  CALL my_proc(42, 'the answer');
+
+  SELECT * FROM my_table;
+  ```
+
+- The following new queries are supported:
+
+  ```
+  CREATE PROCEDURE
+  DROP PROCEDURE
+  CALL PROCEDURE
+  ALTER PROCEDURE ... RENAME TO
+  GRANT ... ON PROCEDURE
+  REVOKE ... ON PROCEDURE
+
+  ALTER USER ... RENAME TO
+  ```
+
+### Security
+
+- All inter-instance communications now occur under `pico_service`
+  builtin user. The user is secured with a password in a file provided
+  in `picodata run --service-password-file` command-line option
+
+- New requirements on password complexity — enforce uppercase,
+  lowercase, digits, special symbols
+
+### Implementation details
+
+- Make RPC API the main communication interface, see [Architecture — RPC
+  API]. Lua API is deprecated and will be removed soon
 
 ### Compatibility
 
-- System table `_pico_role` was deleted.
+- System table `_pico_role` was deleted
 
-- System table `_pico_user` now has a different format: added new field `type`
-  with two possible variants - 'user' and 'role'.
+- System table `_pico_user` format changed, a new field `type` was added
+  (_string_, `"user" | "role"`)
 
-### Features
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots
 
-- New feature `tier` - a group of instances with own replication factor. Tiers can span multiple failure domains and a single cluster can have multiple tiers. Going forward it will be possible to specify which tier a table belongs to.
+[Architecture — RPC API]:
+  https://docs.picodata.io/picodata/devel/architecture/rpc_api/
 
-- New option `--config` for `picodata run` allows supplying configuration
-  for both the cluster and a given instance in a yaml file.
-
-- New option `--tier` for `picodata run` allows to specify whether an
-  instance belongs to a tier.
-
-- Introduce a new _pico_routine system table for the SQL procedures.
-
-- Clusterwide SQL supports procedure creation.
-
-- Clusterwide SQL supports procedure deletion.
-
-- Make Proc API the main picodata API. Lua API is considered deprecated.
-
-- New "pico_service" builtin user is used for all inter-instance system
-  communications. A path to a file containing the password for this user can be
-  specified via the new `--service-password-file` option (under `picodata run`
-  command).
-
-- Clusterwide SQL supports procedure calling.
-
-- Clusterwide SQL supports procedure renaming.
-
-- Clusterwide SQL supports granting/revoking execute/create/drop for procedures.
-
-- Clusterwide SQL supports UUID data type.
-
-- Clusterwide SQL supports new parameter syntax similar to PostgreSQL.
-
--->
-
+--------------------------------------------------------------------------------
 ## [24.1.1] - 2024-02-09
 
 - Slightly change calendar versioning semantics, it's `YY.MINOR` now
@@ -63,7 +90,7 @@ with the `YY.MINOR.MICRO` scheme.
   under the admin account, see [Tutorial — Connecting — Admin console].
 
 - New `picodata connect` implementation provides a console interface to
-  the distributed SQL, see [Tutorial — Connecting — SQL console]
+  the distributed SQL, see [Tutorial — Connecting — SQL console].
 
 - New option `picodata run --admin-sock` replaces `--console-sock` which
   is removed. The default value is `<data_dir>/admin.sock`.
@@ -126,6 +153,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Web UI appeared to be broken in 23.12.0
 - And `picodata connect --unix` too
 
+--------------------------------------------------------------------------------
 ## [23.12.0] - 2023-12-08
 
 ### Features
@@ -232,6 +260,7 @@ with the `YY.MINOR.MICRO` scheme.
 - The current version is NOT compatible with prior releases. It cannot
   be started with the old snapshots.
 
+--------------------------------------------------------------------------------
 ## [23.06.0] - 2023-06-16
 
 ### Features
@@ -277,6 +306,7 @@ with the `YY.MINOR.MICRO` scheme.
 - The current version is NOT compatible with prior releases. It cannot
   be started with the old snapshots.
 
+--------------------------------------------------------------------------------
 ## [22.11.0] - 2022-11-22
 
 ### Features
@@ -303,6 +333,7 @@ with the `YY.MINOR.MICRO` scheme.
 - The current version is NOT compatible with `22.07.0`. It cannot be
   started with the old snapshots.
 
+--------------------------------------------------------------------------------
 ## [22.07.0] - 2022-07-08
 
 ### Basic functionality
