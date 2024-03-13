@@ -223,7 +223,7 @@ CREATE USER <user name>
 Пример:
 
 ```sql
-CREATE USER "alice" WITH PASSWORD 'totallysecret' USING chap-sha1
+CREATE USER "alice" WITH PASSWORD 'T0tallysecret' USING chap-sha1
 CREATE USER "bob" USING ldap
 ```
 
