@@ -45,7 +45,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // conf change
     if let Some(conf_change) = raft_conf_change(instances, voters, learners) {
-        return Ok(Plan::ConfChange(ConfChange { conf_change }));
+        return Ok(ConfChange { conf_change }.into());
     }
 
     // TODO: reduce number of iterations over all instances
@@ -73,9 +73,7 @@ pub(super) fn action_plan<'i>(
                 // FIXME: linear search
                 .find(|instance| voters.contains(&instance.raft_id));
             if let Some(new_leader) = new_leader {
-                return Ok(Plan::TransferLeadership(TransferLeadership {
-                    to: new_leader,
-                }));
+                return Ok(TransferLeadership { to: new_leader }.into());
             } else {
                 tlog!(Warning, "leader is going offline and no substitution is found";
                     "leader_raft_id" => my_raft_id,
