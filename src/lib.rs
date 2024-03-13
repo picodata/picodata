@@ -47,6 +47,7 @@ pub mod governor;
 pub mod http_server;
 pub mod info;
 pub mod instance;
+pub mod introspection;
 pub mod ipc;
 pub mod kvcell;
 pub mod r#loop;

@@ -1,0 +1,269 @@
+//! This module contains items intended to help with runtime introspection of
+//! rust types. Currently it's mainly used for the [`PicodataConfig`] struct
+//! to simplify the management of configuration parameters and relatetd stuff.
+//!
+//! The main functionality is implemented via the [`Introspection`] trait and
+//! the corresponding derive macro. This trait currently facilitates the ability
+//! to set and get fields of the struct via a path known at runtime. Also it
+//! supports some basic struct field information.
+//!
+//! [`PicodataConfig`]: crate::config::PicodataConfig
+pub use pico_proc_macro::Introspection;
+
+pub trait Introspection {
+    const FIELD_NAMES: &'static [&'static str];
+
+    /// Assign field of `self` described by `path` to value parsed from a given
+    /// `yaml` expression.
+    ///
+    /// When using the `#[derive(Introspection)]` derive macro the implementation
+    /// uses the `serde_yaml` to decode values from yaml. This may change in the
+    /// future.
+    ///
+    /// # Examples:
+    /// ```
+    /// use picodata::introspection::Introspection;
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct MyStruct {
+    ///     number: i32,
+    ///     text: String,
+    ///     #[introspection(nested)]
+    ///     nested: NestedStruct,
+    /// }
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct NestedStruct {
+    ///     sub_field: f32,
+    /// }
+    ///
+    /// let mut s = MyStruct::default();
+    /// s.set_field_from_yaml("number", "420").unwrap();
+    /// s.set_field_from_yaml("text", "hello world").unwrap();
+    /// s.set_field_from_yaml("nested.sub_field", "3.14").unwrap();
+    /// ```
+    fn set_field_from_yaml(&mut self, path: &str, yaml: &str) -> Result<(), IntrospectionError>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum IntrospectionError {
+    #[error("{}", Self::no_such_field_error_message(.parent, .field, .expected))]
+    NoSuchField {
+        parent: String,
+        field: String,
+        expected: &'static [&'static str],
+    },
+
+    #[error("incorrect value for field '{field}': {error}")]
+    SerdeYaml {
+        field: String,
+        error: serde_yaml::Error,
+    },
+
+    #[error("{expected} '{path}'")]
+    InvalidPath {
+        path: String,
+        expected: &'static str,
+    },
+
+    #[error("field '{field}' has no nested sub-fields")]
+    NotNestable { field: String },
+
+    #[error("field '{field}' cannot be assigned directly, must choose a sub-field (for example '{field}.{example}')")]
+    AssignToNested {
+        field: String,
+        example: &'static str,
+    },
+}
+
+impl IntrospectionError {
+    fn no_such_field_error_message(parent: &str, field: &str, expected: &[&str]) -> String {
+        let mut res = String::with_capacity(128);
+        if !parent.is_empty() {
+            _ = write!(&mut res, "{parent}: ");
+        }
+        use std::fmt::Write;
+        _ = write!(&mut res, "unknown field `{field}`");
+
+        let mut fields = expected.iter();
+        if let Some(first) = fields.next() {
+            _ = write!(&mut res, ", expected one of `{first}`");
+            for next in fields {
+                _ = write!(&mut res, ", `{next}`");
+            }
+        } else {
+            _ = write!(&mut res, ", there are no fields at all");
+        }
+
+        res
+    }
+
+    pub fn prepend_prefix(&mut self, prefix: &str) {
+        match self {
+            Self::NotNestable { field } => {
+                *field = format!("{prefix}.{field}");
+            }
+            Self::InvalidPath { path, .. } => {
+                *path = format!("{prefix}.{path}");
+            }
+            Self::NoSuchField { parent, .. } => {
+                if parent.is_empty() {
+                    *parent = prefix.into();
+                } else {
+                    *parent = format!("{prefix}.{parent}");
+                }
+            }
+            Self::SerdeYaml { field, .. } => {
+                *field = format!("{prefix}.{field}");
+            }
+            Self::AssignToNested { field, .. } => {
+                *field = format!("{prefix}.{field}");
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn with_prepended_prefix(mut self, prefix: &str) -> Self {
+        self.prepend_prefix(prefix);
+        self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn derive_set_field_from_yaml() {
+        #[derive(Default, Debug, Introspection)]
+        struct S {
+            x: i32,
+            y: f32,
+            s: String,
+            v: Vec<String>,
+            #[introspection(nested)]
+            r#struct: Nested,
+
+            #[introspection(ignore)]
+            ignored: serde_yaml::Value,
+        }
+
+        #[derive(Default, Debug, Introspection)]
+        struct Nested {
+            a: String,
+            b: i64,
+            #[introspection(nested)]
+            empty: Empty,
+        }
+
+        #[derive(Default, Debug, Introspection)]
+        struct Empty {}
+
+        let mut s = S::default();
+
+        //
+        // Check error cases
+        //
+        let e = s.set_field_from_yaml("a", "foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `a`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+
+        let e = s.set_field_from_yaml(".x", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "expected a field name before '.x'");
+
+        let e = s.set_field_from_yaml("&-*%?!", "foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `&-*%?!`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+
+        let e = s.set_field_from_yaml("x.foo.bar", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "field 'x' has no nested sub-fields");
+
+        let e = s.set_field_from_yaml("struct", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "field 'struct' cannot be assigned directly, must choose a sub-field (for example 'struct.a')");
+
+        let e = s.set_field_from_yaml("struct.empty", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "field 'struct.empty' cannot be assigned directly, must choose a sub-field (for example 'struct.empty.<actually there's no fields in this struct :(>')");
+
+        let e = s.set_field_from_yaml("struct.foo", "foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "struct: unknown field `foo`, expected one of `a`, `b`, `empty`"
+        );
+
+        let e = s.set_field_from_yaml("struct.a.bar", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "field 'struct.a' has no nested sub-fields");
+
+        let e = s.set_field_from_yaml("struct.a..", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "expected a field name after 'struct.a.'");
+
+        let e = s.set_field_from_yaml("x.", "foo").unwrap_err();
+        assert_eq!(e.to_string(), "expected a field name after 'x.'");
+
+        let e = s.set_field_from_yaml("x", "foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "incorrect value for field 'x': invalid type: string \"foo\", expected i32"
+        );
+
+        let e = s.set_field_from_yaml("x", "'420'").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "incorrect value for field 'x': invalid type: string \"420\", expected i32"
+        );
+
+        let e = s.set_field_from_yaml("x", "'420'").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "incorrect value for field 'x': invalid type: string \"420\", expected i32"
+        );
+
+        let e = s.set_field_from_yaml("ignored", "foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `ignored`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+        assert_eq!(s.ignored, serde_yaml::Value::default());
+
+        let e = s
+            .set_field_from_yaml("struct.empty.foo", "bar")
+            .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "struct.empty: unknown field `foo`, there are no fields at all"
+        );
+
+        //
+        // Check success cases
+        //
+        s.set_field_from_yaml("v", "[1, 2, 3]").unwrap();
+        assert_eq!(&s.v, &["1", "2", "3"]);
+        s.set_field_from_yaml("v", "['foo', \"bar\", baz]").unwrap();
+        assert_eq!(&s.v, &["foo", "bar", "baz"]);
+
+        s.set_field_from_yaml("x", "420").unwrap();
+        assert_eq!(s.x, 420);
+
+        s.set_field_from_yaml("y", "13").unwrap();
+        assert_eq!(s.y, 13.0);
+        s.set_field_from_yaml("y", "13.37").unwrap();
+        assert_eq!(s.y, 13.37);
+
+        s.set_field_from_yaml("s", "13.37").unwrap();
+        assert_eq!(s.s, "13.37");
+        s.set_field_from_yaml("s", "foo bar").unwrap();
+        assert_eq!(s.s, "foo bar");
+        s.set_field_from_yaml("s", "'foo bar'").unwrap();
+        assert_eq!(s.s, "foo bar");
+
+        s.set_field_from_yaml("  struct  .  a  ", "aaaa").unwrap();
+        assert_eq!(s.r#struct.a, "aaaa");
+        s.set_field_from_yaml("struct.b", "  0xbbbb  ").unwrap();
+        assert_eq!(s.r#struct.b, 0xbbbb);
+    }
+}

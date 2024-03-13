@@ -2,6 +2,7 @@ use crate::address::Address;
 use crate::cli::args;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
+use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetId;
 use crate::storage;
 use crate::tier::Tier;
