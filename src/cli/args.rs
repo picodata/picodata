@@ -21,6 +21,8 @@ pub enum Picodata {
     Admin(Admin),
 }
 
+pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
+
 ////////////////////////////////////////////////////////////////////////////////
 // Run
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,6 +48,25 @@ pub struct Run {
     ///
     /// By default the "config.yaml" in the data directory is used.
     pub config: Option<String>,
+
+    #[clap(
+        short = 'c',
+        long,
+        value_name = "PARAMETER=VALUE",
+        use_value_delimiter = false
+    )]
+    /// A list of key-value pairs specifying configuration parameters.
+    ///
+    /// These will override both parameters provided in the config.yaml file,
+    /// the legacy command-line parameters and the legacy environment variables.
+    ///
+    /// Key is a `.` separated path to a configuration parameter.
+    /// Value is a parameter's value using yaml syntax.
+    ///
+    /// For example: `-c instance.log_level=verbose`
+    ///
+    /// Can also be provided via PICODATA_CONFIG_PARAMETERS environment variable.
+    pub config_parameter: Vec<String>,
 
     #[clap(long, value_name = "NAME", env = "PICODATA_INSTANCE_ID")]
     /// Name of the instance.

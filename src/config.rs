@@ -1,5 +1,6 @@
 use crate::address::Address;
 use crate::cli::args;
+use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::introspection::Introspection;
@@ -38,7 +39,7 @@ pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
     serde::Serialize,
     tlua::Push,
     tlua::PushInto,
-    pico_proc_macro::Introspection,
+    Introspection,
 )]
 pub struct PicodataConfig {
     // TODO: add a flag for each parameter specifying where it came from, i.e.:
@@ -48,9 +49,11 @@ pub struct PicodataConfig {
     // - environment variable
     // - persisted storage (because some of the values are read from the storage on restart)
     #[serde(default)]
+    #[introspection(nested)]
     pub cluster: ClusterConfig,
 
     #[serde(default)]
+    #[introspection(nested)]
     pub instance: InstanceConfig,
 
     #[serde(flatten)]
@@ -140,6 +143,31 @@ Using configuration file '{args_path}'.");
         // if a parameter is specified both in the config and in the command line
         // arguments
 
+        // We have to parse the environment variable explicitly, because clap
+        // will ignore it for us in case the -c option was also provided.
+        //
+        // Also we do this before copying other fields from `args`, so that
+        // parameters provided on command line have higher priority. But there's
+        // a problem here, because as a result PICODATA_CONFIG_PARAMETERS env
+        // var has lower priority then other PICODATA_* env vars, while
+        // --config-parameters parameter has higher priority then other cli args.
+        if let Ok(env) = std::env::var(CONFIG_PARAMETERS_ENV) {
+            for item in env.split(';') {
+                let item = item.trim();
+                if item.is_empty() {
+                    continue;
+                }
+                let Some((path, yaml)) = item.split_once('=') else {
+                    return Err(Error::InvalidConfiguration(format!(
+                        "error when parsing {CONFIG_PARAMETERS_ENV} environment variable: expected '=' after '{item}'",
+                    )));
+                };
+
+                self.set_field_from_yaml(path.trim(), yaml.trim())
+                    .map_err(Error::invalid_configuration)?;
+            }
+        }
+
         if let Some(data_dir) = args.data_dir {
             self.instance.data_dir = Some(data_dir);
         }
@@ -220,6 +248,22 @@ Using configuration file '{args_path}'.");
 
         if let Some(memtx_memory) = args.memtx_memory {
             self.instance.memtx_memory = Some(memtx_memory);
+        }
+
+        // --config-parameter has higher priority than other command line
+        // arguments as a side effect of the fact that clap doesn't tell us
+        // where the value came from: cli or env. Because we want
+        // --config-parameter to have higher priority then other ENV
+        // parameters, it must also be higher priority then other cli args.
+        // Very sad...
+        for item in args.config_parameter {
+            let Some((path, yaml)) = item.split_once('=') else {
+                return Err(Error::InvalidConfiguration(format!(
+                    "failed parsing --config-parameter value: expected '=' after '{item}'"
+                )));
+            };
+            self.set_field_from_yaml(path.trim(), yaml.trim())
+                .map_err(Error::invalid_configuration)?;
         }
 
         Ok(())
@@ -481,7 +525,7 @@ fn report_unknown_fields<'a>(
     serde::Serialize,
     tlua::Push,
     tlua::PushInto,
-    pico_proc_macro::Introspection,
+    Introspection,
 )]
 pub struct ClusterConfig {
     pub cluster_id: Option<String>,
@@ -545,7 +589,7 @@ impl ClusterConfig {
     serde::Serialize,
     tlua::Push,
     tlua::PushInto,
-    pico_proc_macro::Introspection,
+    Introspection,
 )]
 pub struct InstanceConfig {
     pub data_dir: Option<String>,
@@ -1113,7 +1157,15 @@ instance:
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-CONFIG");
 
-            // env > config
+            // PICODATA_CONFIG_PARAMETERS > config
+            std::env::set_var("PICODATA_CONFIG_PARAMETERS", "instance.instance_id=I-ENV-CONF-PARAM");
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run"]).unwrap();
+            config.set_from_args(args).unwrap();
+
+            assert_eq!(config.instance.instance_id().unwrap(), "I-ENV-CONF-PARAM");
+
+            // other env > PICODATA_CONFIG_PARAMETERS
             std::env::set_var("PICODATA_INSTANCE_ID", "I-ENVIRON");
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
@@ -1127,6 +1179,13 @@ instance:
             config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-COMMANDLINE");
+
+            // -c PARAMETER=VALUE > other command line
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run", "-c", "instance.instance_id=I-CLI-CONF-PARAM", "--instance-id=I-COMMANDLINE"]).unwrap();
+            config.set_from_args(args).unwrap();
+
+            assert_eq!(config.instance.instance_id().unwrap(), "I-CLI-CONF-PARAM");
         }
 
         //
@@ -1240,6 +1299,34 @@ instance:
                     }
                 ]
             );
+
+            // --config-parameter > --peer
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run",
+                "-c", "instance.peers=[  host:123  , ghost :321, гост:666]",
+            ]).unwrap();
+            config.set_from_args(args).unwrap();
+
+            assert_eq!(
+                config.instance.peers(),
+                vec![
+                    Address {
+                        user: None,
+                        host: "host".into(),
+                        port: "123".into(),
+                    },
+                    Address {
+                        user: None,
+                        host: "ghost ".into(),
+                        port: "321".into(),
+                    },
+                    Address {
+                        user: None,
+                        host: "гост".into(),
+                        port: "666".into(),
+                    },
+                ]
+            );
         }
 
         //
@@ -1328,6 +1415,70 @@ instance:
                     ("BAZ", "3"),
                 ])
             );
+
+            // --config-parameter
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run",
+                "-c", "instance.failure_domain={foo: '11', bar: '22'}"
+            ]).unwrap();
+            config.set_from_args(args).unwrap();
+            assert_eq!(
+                config.instance.failure_domain(),
+                FailureDomain::from([
+                    ("FOO", "11"),
+                    ("BAR", "22"),
+                ])
+            );
+        }
+
+        // --config-parameter + PICODATA_CONFIG_PARAMETERS
+        {
+            let yaml = r###"
+instance:
+    tier: this-will-be-overloaded
+"###;
+            std::env::set_var(
+                "PICODATA_CONFIG_PARAMETERS",
+                "  instance.tier = ABC;cluster.cluster_id=DEF  ;
+                instance.audit=audit.txt ;;
+                ; instance.data_dir=. ;"
+            );
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run",
+                "-c", "  instance.log_level =debug  ",
+                "--config-parameter", "instance. memtx_memory=  0xdeadbeef",
+            ]).unwrap();
+            config.set_from_args(args).unwrap();
+            assert_eq!(config.instance.tier.unwrap(), "ABC");
+            assert_eq!(config.cluster.cluster_id.unwrap(), "DEF");
+            assert_eq!(config.instance.log_level.unwrap(), args::LogLevel::Debug);
+            assert_eq!(config.instance.memtx_memory.unwrap(), 0xdead_beef);
+            assert_eq!(config.instance.audit.unwrap(), "audit.txt");
+            assert_eq!(config.instance.data_dir.unwrap(), ".");
+
+            //
+            // Errors
+            //
+            let yaml = r###"
+"###;
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run",
+                "-c", "  instance.hoobabooba = malabar  ",
+            ]).unwrap();
+            let e = config.set_from_args(args).unwrap_err();
+            assert!(dbg!(e.to_string()).starts_with("invalid configuration: instance: unknown field `hoobabooba`, expected one of"));
+
+            let yaml = r###"
+"###;
+            std::env::set_var(
+                "PICODATA_CONFIG_PARAMETERS",
+                "  cluster.cluster_id=DEF  ;
+                  cluster.asdfasdfbasdfbasd = "
+            );
+            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
+            let args = args::Run::try_parse_from(["run"]).unwrap();
+            let e = config.set_from_args(args).unwrap_err();
+            assert!(dbg!(e.to_string()).starts_with("invalid configuration: cluster: unknown field `asdfasdfbasdfbasd`, expected one of"));
         }
     }
 }
