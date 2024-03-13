@@ -113,7 +113,7 @@ Using configuration file '{args_path}'.");
             Default::default()
         };
 
-        config.set_from_args(args);
+        config.set_from_args(args)?;
 
         config.validate_common()?;
 
@@ -133,7 +133,7 @@ Using configuration file '{args_path}'.");
         Ok(config)
     }
 
-    pub fn set_from_args(&mut self, args: args::Run) {
+    pub fn set_from_args(&mut self, args: args::Run) -> Result<(), Error> {
         // TODO: add forbid_conflicts_with_args so that it's considered an error
         // if a parameter is specified both in the config and in the command line
         // arguments
@@ -219,6 +219,8 @@ Using configuration file '{args_path}'.");
         if let Some(memtx_memory) = args.memtx_memory {
             self.instance.memtx_memory = Some(memtx_memory);
         }
+
+        Ok(())
     }
 
     /// Does checks which are applicable to configuration loaded from a file.
@@ -1079,7 +1081,7 @@ instance:
         {
             let mut config = PicodataConfig::default();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1108,7 +1110,7 @@ instance:
             // only config
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-CONFIG");
 
@@ -1116,14 +1118,14 @@ instance:
             std::env::set_var("PICODATA_INSTANCE_ID", "I-ENVIRON");
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-ENVIRON");
 
             // command line > env
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run", "--instance-id=I-COMMANDLINE"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-COMMANDLINE");
         }
@@ -1139,7 +1141,7 @@ instance:
 "###;
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1161,7 +1163,7 @@ instance:
 "###;
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1183,7 +1185,7 @@ instance:
             std::env::set_var("PICODATA_PEER", "oops there's a space over here -> <-:13,             maybe we should at least strip these:37");
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1207,7 +1209,7 @@ instance:
                 "--peer", "one:1",
                 "--peer", "two:2,    <- same problem here,:3,4"
             ]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1248,7 +1250,7 @@ instance:
             std::env::set_var("PICODATA_LISTEN", "L-ENVIRON");
             let mut config = PicodataConfig::read_yaml_contents("").unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "L-ENVIRON:3301");
@@ -1259,14 +1261,14 @@ instance:
 "###;
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
 
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run", "-l", "L-COMMANDLINE"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
 
             assert_eq!(config.instance.listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
@@ -1287,7 +1289,7 @@ instance:
 "###;
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([("KCONF1", "VCONF1"), ("KCONF2", "VCONF2-REPLACED")])
@@ -1297,7 +1299,7 @@ instance:
             std::env::set_var("PICODATA_FAILURE_DOMAIN", "kenv1=venv1,kenv2=venv2,kenv2=venv2-replaced");
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([("KENV1", "VENV1"), ("KENV2", "VENV2-REPLACED")])
@@ -1306,7 +1308,7 @@ instance:
             // command line
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run", "--failure-domain", "karg1=varg1,karg1=varg1-replaced"]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([("KARG1", "VARG1-REPLACED")])
@@ -1318,7 +1320,7 @@ instance:
                 "--failure-domain", "foo=1",
                 "--failure-domain", "bar=2,baz=3"
             ]).unwrap();
-            config.set_from_args(args);
+            config.set_from_args(args).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([
