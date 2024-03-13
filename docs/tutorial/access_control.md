@@ -131,6 +131,7 @@ GRANT DROP ROLE TO "admin"
 GRANT CREATE TABLE TO <grantee>
 GRANT CREATE USER TO <grantee>
 GRANT CREATE ROLE TO <grantee>
+GRANT CREATE PROCEDURE TO <grantee>
 ```
 
 Это обеспечивает наличие у администратора БД следующих прав:
@@ -140,6 +141,7 @@ GRANT CREATE ROLE TO <grantee>
 - управлять конфигурацией БД
 - назначать права доступа пользователям БД к объектам доступа БД
 - создавать резервные копии БД и восстанавливать БД из резервной копии
+- создавать, модифицировать и удалять хранимые процедуры
 
 При создании объекта пользователь становится его владельцем и
 автоматически получает на него следующие права (в зависимости от типа
@@ -158,6 +160,10 @@ GRANT DROP ON USER <user name> TO <owner>
 
 -- CREATE ROLE <role name>
 GRANT DROP ON ROLE <role name> TO <owner>
+
+-- CREATE PROCEDURE <procedure name>
+GRANT ALTER ON PROCEDURE <procedure name> TO <owner>
+GRANT DROP ON PROCEDURE <procedure name> TO <owner>
 ```
 
 ### Роли {: #roles }
@@ -403,6 +409,34 @@ GRANT <priv> ON TABLE <table name> TO <grantee>
 REVOKE <priv> ON TABLE <table name> FROM <grantee>
 ```
 
+## Управление доступом к хранимым процедурам {: #proc_access }
+
+Для того, чтобы пользователь в Picodata мог создавать хранимые
+процедуры, ему требуется соответствующая привилегия от Администратора
+СУБД:
+
+```sql
+GRANT CREATE PROCEDURE TO <grantee>
+```
+
+После этого <grantee> сможет не только создавать, но и управлять своими
+хранимыми процедурами. При этом, можно выдать привилегии для отдельных
+действий с процедурами, например на их исполнение и удаление. Это может
+быть полезно для настройки доступа к процедурам, созданным  другими
+пользователями:
+
+```sql
+GRANT EXECUTE PROCEDURE TO <grantee>
+GRANT DROP PROCEDURE TO <grantee>
+```
+
+Как и в остальных случаях, отозвать выданные привилегии можно при помощи команды `REVOKE`:
+
+```sql
+REVOKE EXECUTE PROCEDURE FROM <grantee>
+REVOKE DROP PROCEDURE FROM <grantee>
+```
+
 ## Дополнительные примеры SQL-запросов {: #sql_examples }
 
 ```sql
@@ -438,6 +472,9 @@ GRANT DROP ROLE TO <grantee>
 GRANT DROP ON TABLE <table name> TO <grantee>
 GRANT DROP ON USER <user name> TO <grantee>
 GRANT DROP ON ROLE <role name> TO <grantee>
+
+GRANT EXECUTE ON PROCEDURE <proc name> TO <grantee>
+GRANT DROP ON PROCEDURE <proc name> TO <grantee>
 
 GRANT <role name> TO <grantee>
 ```

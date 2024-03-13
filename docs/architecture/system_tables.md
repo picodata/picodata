@@ -81,6 +81,37 @@ Picodata 23.06.0-287-ga98dc6919
 * `id` (unique), parts: `[table_id, id]`
 * `name` (unique), parts: `[table_id, name]`
 
+### _pico_routine {: #_pico_routine }
+
+Содержит информацию о пользовательских
+[хранимых процедурах](../reference/sql_queries.md#proc) Picodata.
+
+Поля:
+
+* `id`: (_unsigned_) — идентификатор (тип `u32`, первичный ключ)
+* `name`: (_string_) — имя (уникальный индекс)
+* `kind`: (_string_) — тип хранимого объекта: функция или процедура
+* `params`: (_array_) — таблица с типами параметров объекта, в виде  `[
+  {type: 'int', mode: 'in', default: 42}, {type: 'text'} ]`.
+* `returns`: (_array_) — тип возвращаемого результата. Для процедур это
+  пустой массив `[]`, для функций — массив типов в возвращаемом кортеже
+* `language`: (_string_) — язык тела процедуры (например, `SQL`)
+* `body`: (_string_) — тело основной части хранимой процедуры
+* `security`: (_string_) — режим безопасности, определяющий, от чьего
+  имени будет исполнена процедура (`invoker` — от имени вызывающего,
+  `definer` — от имени стороннего пользователя)
+* `operable`: (_boolean_) —  признак доступности процедуры (для
+  `prepare` — _false_, для `commit` — _true_)
+* `schema_version`: (_unsigned_) — версия схемы данных в Raft на момент
+  изменения хранимой процедуры
+* `owner`: (_unsigned_) — идентификатор владельца (создателя) хранимой
+  процедуры
+
+Индексы:
+
+* `id` (unique), parts: `[id]`
+* `name` (unique), parts: `[name]`
+
 ## Описание свойств кластера {: #cluster_properties }
 
 ### _pico_property {: #_pico_property }
