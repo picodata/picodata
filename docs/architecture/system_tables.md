@@ -83,8 +83,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 ### _pico_routine
 
-Содержит информацию о пользовательских
-[хранимых процедурах](../reference/sql_queries.md#proc) Picodata.
+Содержит информацию о процедурах Picodata.
 
 Поля:
 

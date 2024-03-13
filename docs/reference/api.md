@@ -1050,8 +1050,6 @@ pico.sql([[
 См. также:
 
 - [Работа с данным SQL](../tutorial/sql_examples.md)
-- [Описание
-команд SQL](../reference/sql_queries.md).
 
 ### pico.wait_ddl_finalize {: #pico_wait_ddl_finalize }
 

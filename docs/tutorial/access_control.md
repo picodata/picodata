@@ -1,7 +1,8 @@
 # Управление доступом
 
 В данном разделе описана ролевая модель управления доступом в Picodata и
-приведены примеры необходимых для ее настройки SQL-команд.
+приведены примеры необходимых для ее настройки с помощью [DCL](../reference/sql/dcl.md)
+команд языка SQL. 
 
 ## Ролевая модель {: #role_model }
 
@@ -35,10 +36,10 @@ Picodata является распределенной СУБД, и управл
 - `table` – [таблица](#tables_access) БД
 - `user` – [пользователь](#users) СУБД
 - `role` – [роль](#roles)
-- `procedure` – [хранимая процедура](#proc_access)
+- `procedure` – [процедура](#proc_access)
 
 Доступ к объектам предоставляется на основе настраиваемого списка
-управления доступом (access control list, [ACL](../reference/sql_queries.md#acl)), который определяет,
+управления доступом (access control list, ACL), который определяет,
 какими привилегиями обладает каждый субъект (пользователь или роль).
 
 ### Привилегии {: #privileges }
@@ -50,15 +51,17 @@ Picodata является распределенной СУБД, и управл
 - привилегии для работы с ролями (`CREATE ROLE`, `DROP ROLE`)
 - привилегии для работы с таблицами (`CREATE TABLE`, `ALTER TABLE`,
   `DROP TABLE`, `READ TABLE`, `WRITE TABLE`)
-- `LOGIN` — право подключаться к инстансу. Автоматически выдается
+- привилегии для работы с процедурами (`CREATE PROCEDURE`, `DROP PROCEDURE`,
+  `EXECUTE PROCEDURE`)
+- `LOGIN` — право подключаться к экземпляру кластера. Автоматически выдается
   новым пользователям при создании.
 
 NOTE: **Примечание**
-В отличие от других привилегий, для выдачи или отзыва
-привилегии `LOGIN` [используется](#alter_user) SQL-синтаксис `ALTER USER <user name> WITH {
-LOGIN / NOLOGIN }`
+В отличие от других привилегий, для выдачи или отзыва привилегии `LOGIN` используется
+команда [ALTER USER](../reference/sql/alter_user.md).
 
-Информация о привилегиях хранится в системной таблице [_pico_privilege](../architecture/system_tables.md#_pico_privilege).
+Информация о привилегиях хранится в системной таблице
+[_pico_privilege](../architecture/system_tables.md#_pico_privilege).
 
 ### Пользователи {: #users }
 
@@ -170,7 +173,7 @@ GRANT DROP ON PROCEDURE <procedure name> TO <owner>
 
 Роль представляет собой именованную группу привилегий, что позволяет
 структурировать управление доступом. Добавление привилегий в роль
-производится командой `GRANT`, которая наделяет роль
+производится командой [GRANT](../reference/sql/grant.md), которая наделяет роль
 привилегией. Кроме того, роли могут быть вложенными друг в друга.
 Пример:
 
@@ -211,25 +214,19 @@ GRANT <role name> TO <role name>
 
 ### Создание {: #create_user }
 
-Для создания пользователя используйте SQL-команду [CREATE
-USER](../reference/sql_queries.md#create_user):
-
-```sql
-CREATE USER <user name>
-    [ [ WITH ] PASSWORD 'password' ]
-    [ USING chap-sha1 | md5 | ldap ]
-```
+Для создания пользователя необходимо использовать SQL-команду [CREATE
+USER](../reference/sql/create_user.md).
 
 Пример:
 
 ```sql
-CREATE USER "alice" WITH PASSWORD 'T0tallysecret' USING chap-sha1
-CREATE USER "bob" USING ldap
+CREATE USER alice WITH PASSWORD 'T0tallysecret' USING chap-sha1
+CREATE USER bob USING ldap
 ```
 
 Для имени пользователя (и в целом для объектов в Picodata) действуют
 [правила использования допустимых
-символов](../reference/sql_queries.md#name). Также следует учитывать
+символов](../reference/sql/object.md). Также следует учитывать
 [требования](#allowed_passwords) к длине и сложности пароля.
 
 Для выполнения команды требуется привилегия `CREATE USER`:
@@ -246,31 +243,19 @@ GRANT CREATE USER TO <grantee>
 
 ### Изменение {: #alter_user }
 
-Для изменения учетных данных пользователя используйте SQL-команду [ALTER
-USER](../reference/sql_queries.md#alter_user):
-
-```sql
-ALTER USER <user name>
-    [ WITH LOGIN | NOLOGIN ] |
-    [ PASSWORD <password> [ USING chap-sha1 | md5 | ldap ] ]
-```
-
-Возможные действия:
-
-- `LOGIN` / `NOLOGIN` — выдача/отзыв привилегии `LOGIN`
-- `WITH PASSWORD` — установка пароля пользователя
-- `USING` — выбора метода аутентификации
+Для изменения учетных данных пользователя необходимо использовать SQL-команду [ALTER
+USER](../reference/sql/alter_user.md).
 
 Пример блокировки пользователя (отзыва привилегий `LOGIN`):
 
 ```sql
-ALTER USER "alice" WITH NOLOGIN
+ALTER USER alice WITH NOLOGIN
 ```
 
 Обратное действие (разблокировка) с возвращением этой привилегии:
 
 ```sql
-ALTER USER "alice" WITH LOGIN
+ALTER USER alice WITH LOGIN
 ```
 
 Для использования `ALTER USER` требуется иметь эту привилегию. Ее можно выдать на конкретного
@@ -291,16 +276,14 @@ GRANT ALTER USER TO <grantee>
 
 ### Удаление {: #drop_user }
 
-Для удаление пользователя используйте SQL-команду [DROP
-USER](../reference/sql_queries.md#drop_user):
+Для удаление пользователя необходимо использовать SQL-команду 
+[DROP USER](../reference/sql/drop_user.md).
+
+Пример:
 
 ```sql
-DROP USER <user name>
+DROP USER alice
 ```
-
-Удаление пользователя приведет к ошибке если в системе есть объекты,
-владельцем которых он является (что соответствует опции `RESTRICT` из
-ANSI SQL).
 
 Для удаления пользователя требуется привилегия `DROP USER` на
 конкретного пользователя или на всех пользователей сразу:
@@ -343,25 +326,20 @@ NOTE: **Примечание** Требования к паролю примен
 
 ### Использование ролей {: #role_management }
 
-Для [создания](../reference/sql_queries.md#create_role) и
-[удаления](../reference/sql_queries.md#drop_role) ролей используйте
-следующие команды:
-
-```sql
-CREATE ROLE <role name>
-DROP ROLE <role name>
-```
+Для создания и удаления ролей используйте команды
+[CREATE ROLE](../reference/sql/create_role.md) и
+[DROP ROLE](../reference/sql/drop_role.md).
 
 Выполнение данных действий требует наличия привилегий `CREATE ROLE` /
 `DROP ROLE` соответственно.
 
-Для назначения роли используйте следующую команду:
+Для назначения роли используйте команду [GRANT](../reference/sql/grant.md):
 
 ```sql
 GRANT <role name> TO <grantee>
 ```
 
-Назначение привилегий роли происходит при помощи команды `GRANT`:
+Назначение привилегий роли:
 
 ```sql
 GRANT <action> ON <object name> TO <grantee>
@@ -376,7 +354,7 @@ GRANT <action> ON <object name> TO <grantee>
 Исключением является [администратор СУБД](#admin),
 который может выдать или отозвать любую роль.
 
-Отозвать роль можно следующим образом:
+Отозвать роль можно с помощью команды [REVOKE](../reference/sql/revoke.md):
 
 ```sql
 REVOKE <role name> FROM <grantee>
@@ -409,21 +387,19 @@ GRANT <priv> ON TABLE <table name> TO <grantee>
 REVOKE <priv> ON TABLE <table name> FROM <grantee>
 ```
 
-## Управление доступом к хранимым процедурам {: #proc_access }
+## Управление доступом к процедурам {: #proc_access }
 
-Для того, чтобы пользователь в Picodata мог создавать хранимые
-процедуры, ему требуется соответствующая привилегия от Администратора
-СУБД:
+Для того, чтобы пользователь в Picodata мог создавать процедуры, ему требуется
+соответствующая привилегия от Администратора СУБД:
 
 ```sql
 GRANT CREATE PROCEDURE TO <grantee>
 ```
 
 После этого <grantee> сможет не только создавать, но и управлять своими
-хранимыми процедурами. При этом, можно выдать привилегии для отдельных
-действий с процедурами, например на их исполнение и удаление. Это может
-быть полезно для настройки доступа к процедурам, созданным  другими
-пользователями:
+процедурами. При этом, можно выдать привилегии для отдельных действий с процедурами,
+например на их исполнение и удаление. Это может быть полезно для настройки доступа
+к процедурам, созданным  другими пользователями:
 
 ```sql
 GRANT EXECUTE PROCEDURE TO <grantee>

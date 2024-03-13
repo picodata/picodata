@@ -96,7 +96,6 @@ fn proc_sql(query, options) -> Result
 См. также:
 
 - [Инструкции и руководства — Работа с данными SQL](../tutorial/sql_examples.md)
-- [Справочные материалы — Команды SQL](../reference/sql_queries.md)
 
 ## Service API {: #service_api }
 

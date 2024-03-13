@@ -1,15 +1,12 @@
 # Работа с данными SQL
 
 В данном разделе приведены примеры команд для работы с данными в
-Picodata с помощью языка [SQL-запросов](../reference/sql_queries.md).
+Picodata с помощью команд языка SQL.
 
 ## Создание таблицы {: #creating_table }
 
-Для создания таблицы в Picodata следует сначала [подключиться](connecting.md) к
-интерактивной консоли инстанса. Для ввода команд можно использовать как формат
-Lua, так и язык SQL напрямую, в зависимости от
-[выбранного](../reference/sql_queries.md#getting_started) языка консоли. В
-примерах ниже использован формат SQL.
+Для [создания таблицы](../reference/sql/create_table.md) в Picodata следует сначала
+[подключиться](connecting.md) к интерактивной консоли инстанса.
 
 Пользователям доступны функции для работы как с глобальными, так и
 шардированными таблицами (в последнем случае реализованы возможности
@@ -19,20 +16,20 @@ Lua, так и язык SQL напрямую, в зависимости от
 котором будет два поля: идентификатор записи и имя друга:
 
 ```sql
-CREATE TABLE "friends_of_peppa" (
-			"id" INTEGER NOT NULL,
-			"name" TEXT NOT NULL,
-			PRIMARY KEY ("id"))
-USING memtx DISTRIBUTED BY ("id")
+CREATE TABLE friends_of_peppa (
+			id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			PRIMARY KEY (id))
+USING memtx DISTRIBUTED BY (id)
 OPTION (TIMEOUT = 3.0);
 ```
 
 Помимо двух колонок, в примере указаны:
 
-- первичный ключ таблицы (колонка `"id"`);
+- первичный ключ таблицы (колонка `id`);
 - [движок хранения данных](../overview/glossary.md#db_engine) in-memory (`memtx`);
 - тип таблицы (шардированный, `distributed by`);
-- ключ шардирования таблицы (колонка `"id"`);
+- ключ шардирования таблицы (колонка `id`);
 - таймаут перед возвращением управления пользователю.
 
 <!-- TODO: использовать другое имя для таблицы чтобы оба примера работали -->
@@ -41,16 +38,15 @@ OPTION (TIMEOUT = 3.0);
 соответствующий тип:
 
 ```sql
-CREATE TABLE "friends_of_peppa" (
-			"id" INTEGER NOT NULL,
-			"name" TEXT NOT NULL,
-			PRIMARY KEY ("id"))
+CREATE TABLE friends_of_peppa (
+			id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			PRIMARY KEY (id))
 USING memtx DISTRIBUTED GLOBALLY
 OPTION (TIMEOUT = 3.0);
 ```
 
 Подробнее о типах таблиц см. в [глоссарии](../overview/glossary.md#table).
-Описание команд SQL приведено в разделе [Команды SQL](../reference/sql_queries.md).
 
 ## Запись данных в таблицу {: #writing_to_table }
 
@@ -60,42 +56,42 @@ OPTION (TIMEOUT = 3.0);
 прямой передачей значений:
 
 ```sql
-INSERT INTO "friends_of_peppa" ("id", "name") VALUES (1, 'Suzy');
+INSERT INTO friends_of_peppa (id, name) VALUES (1, 'Suzy');
 ```
 
 Либо параметризированный запрос, но в Lua-режиме (`\s l lua`):
 
 ```sql
 pico.sql(
-	[[INSERT INTO "friends_of_peppa" ("id", "name") VALUES (?, ?)]],
-	{1, "Suzy"}
+	[[INSERT INTO friends_of_peppa (id, name) VALUES (?, ?)]],
+	{1, 'Suzy'}
 );
 ```
 
-См. [подробнее](../reference/sql_queries.md#insert) о различиях в `INSERT`-запросах.
+См. [подробнее](../reference/sql/insert.md) о различиях в `INSERT`-запросах.
 
 ## Чтение данных из таблицы {: #reading_from_table }
 
 Для чтения всех данных из таблицы подойдёт команда:
 
 ```sql
-SELECT * FROM "friends_of_peppa";
+SELECT * FROM friends_of_peppa;
 ```
 
 Можно вывести отдельно строку по известному полю:
 
 ```sql
-SELECT * FROM "friends_of_peppa" WHERE "id" = 1;
+SELECT * FROM friends_of_peppa WHERE id = 1;
 ```
 
-См. [подробнее](../reference/sql_queries.md#select) о вариантах чтения данных в SQL.
+См. [подробнее](../reference/sql/select.md) о вариантах чтения данных в SQL.
 
 ## Удаление данных {: #deleting_from_table }
 
 Удаление строки с известным `id`:
 
 ```sql
-DELETE FROM "friends_of_peppa" WHERE "id" = 1;
+DELETE FROM friends_of_peppa WHERE id = 1;
 ```
 
 В консоли будет выведено количество удаленных строк (в данном случае, это `1`).
