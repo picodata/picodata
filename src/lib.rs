@@ -550,6 +550,9 @@ fn init_common(
 ) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
     std::fs::create_dir_all(config.instance.data_dir()).unwrap();
 
+    if let Some(log_config) = &cfg.log {
+        tlog!(Info, "switching to log configuration: {log_config}");
+    }
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized(true);
 
