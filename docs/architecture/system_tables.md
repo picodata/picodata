@@ -169,7 +169,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 ### _pico_user {: #_pico_user }
 
-Содержит информацию обо всех пользователях Picodata.
+Содержит информацию обо всех пользователях и ролях Picodata.
 
 Поля:
 
@@ -177,7 +177,8 @@ Picodata 23.06.0-287-ga98dc6919
 * `name` (*string*)
 * `owner` (*unsigned*)
 * `schema_version` (*unsigned*)
-* `auth `(*array*)
+* `auth` (*array*)
+* `type` (*string*, "user" | "role")
 
 Индексы:
 
@@ -201,19 +202,3 @@ Picodata 23.06.0-287-ga98dc6919
 
 * `primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
 * `object` (unique), parts: `[object_type, object_id]`
-
-### _pico_role {: #_pico_role }
-
-Содержит информацию обо всех ролях Picodata.
-
-Поля:
-
-* `id` (*unsigned*)
-* `name` (*string*)
-* `owner` (*unsigned*)
-* `schema_version` (*unsigned*)
-
-Индексы:
-
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`

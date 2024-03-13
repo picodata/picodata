@@ -172,12 +172,14 @@ GRANT DROP ON ROLE <role name> TO <owner>
 GRANT <role name> TO <role name>
 ```
 
-Информация о ролях хранится системной таблице `_pico_role`. Данная
+Информация о ролях хранится системной таблице
+[_pico_user](../architecture/system_tables.md#_pico_user). Данная
 таблица имеет следующую структуру:
 
-- `id` – уникальный идентификатор роли
-- `name` – имя роли
+- `id` – уникальный идентификатор записи
+- `name` – имя записи
 - `owner_id` – идентификатор владельца
+- `type` – тип записи (`user` | `role`)
 
 #### Встроенные роли {: #builtin_roles }
 
