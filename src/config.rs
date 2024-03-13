@@ -54,6 +54,7 @@ pub struct PicodataConfig {
     pub instance: InstanceConfig,
 
     #[serde(flatten)]
+    #[introspection(ignore)]
     pub unknown_sections: HashMap<String, YamlValue>,
 }
 
@@ -439,11 +440,6 @@ fn report_unknown_fields<'a>(
         let mut min_distance = usize::MAX;
         let mut maybe_best_match = None;
         for &known_field in known_fields {
-            if known_field.starts_with("unknown_") {
-                // These are special catch-all fields automatically filled by
-                // serde for us. We don't want to suggest to users to specify them
-                continue;
-            }
             let distance = edit_distance(name, known_field);
             if distance < min_distance {
                 maybe_best_match = Some(known_field);
@@ -498,6 +494,7 @@ pub struct ClusterConfig {
     pub default_replication_factor: Option<u8>,
 
     #[serde(flatten)]
+    #[introspection(ignore)]
     pub unknown_parameters: HashMap<String, YamlValue>,
 }
 
@@ -663,6 +660,7 @@ pub struct InstanceConfig {
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
     #[serde(flatten)]
+    #[introspection(ignore)]
     pub unknown_parameters: HashMap<String, YamlValue>,
 }
 
