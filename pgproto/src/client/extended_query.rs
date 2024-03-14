@@ -32,27 +32,24 @@ pub fn process_parse_message(
     Ok(())
 }
 
-/// Map any encoding format to per-parameter format just like pg does it in
+/// Map any encoding format to per-column or per-parameter format just like pg does it in
 /// [exec_bind_message](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/postgres.c#L1840-L1845)
 /// or [PortalSetResultFormat](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/pquery.c#L623).
-fn prepare_parameter_encoding_format(
-    formats: &[RawFormat],
-    nparams: usize,
-) -> PgResult<Vec<Format>> {
-    if formats.len() == nparams {
+fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Format>> {
+    if formats.len() == n {
         // format specified for each column
         formats.iter().map(|i| Format::try_from(*i)).collect()
     } else if formats.len() == 1 {
         // single format specified, use it for each column
-        Ok(vec![Format::try_from(formats[0])?; nparams])
+        Ok(vec![Format::try_from(formats[0])?; n])
     } else if formats.is_empty() {
         // no format specified, use the default for each column
-        Ok(vec![Format::Text; nparams])
+        Ok(vec![Format::Text; n])
     } else {
         Err(PgError::ProtocolViolation(format!(
-            "got {} format codes for {} columns",
+            "got {} format codes for {} items",
             formats.len(),
-            nparams
+            n
         )))
     }
 }
@@ -62,7 +59,7 @@ fn decode_parameter_values(
     param_oids: &[Oid],
     formats: &[RawFormat],
 ) -> PgResult<Vec<PgValue>> {
-    let formats = prepare_parameter_encoding_format(formats, params.len())?;
+    let formats = prepare_encoding_format(formats, params.len())?;
     if params.len() != param_oids.len() {
         return Err(PgError::ProtocolViolation(format!(
             "got {} parameters, {} oids and {} formats",
@@ -86,7 +83,8 @@ pub fn process_bind_message(
     let params = mem::take(bind.parameters_mut());
     let formats = bind.parameter_format_codes();
     let params = decode_parameter_values(params, &describe.param_oids, formats)?;
-    let result_format = bind.result_column_format_codes();
+    let ncolumns = describe.ncolumns();
+    let result_format = prepare_encoding_format(bind.result_column_format_codes(), ncolumns)?;
 
     manager.bind(
         bind.statement_name().as_deref(),

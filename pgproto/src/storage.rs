@@ -1,6 +1,6 @@
 use self::describe::{PortalDescribe, StatementDescribe};
 use self::result::ExecuteResult;
-use self::value::PgValue;
+use self::value::{Format, PgValue};
 use crate::client::ClientId;
 use crate::entrypoints::PG_ENTRYPOINTS;
 use crate::error::PgResult;
@@ -68,7 +68,7 @@ impl StorageManager {
         statement: Option<&str>,
         portal: Option<&str>,
         params: Vec<PgValue>,
-        result_format: &[i16],
+        result_format: Vec<Format>,
     ) -> PgResult<()> {
         PG_ENTRYPOINTS.with(|entrypoints| {
             entrypoints.borrow().bind(

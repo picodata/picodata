@@ -4,7 +4,7 @@ use crate::{
     storage::{
         describe::{PortalDescribe, QueryType, StatementDescribe},
         result::ExecuteResult,
-        value::PgValue,
+        value::{Format, PgValue},
     },
 };
 use postgres_types::Oid;
@@ -78,8 +78,7 @@ fn parse_explain(res: Value) -> PgResult<DqlResult> {
     })
 }
 
-fn execute_result_from_json(json: &str) -> PgResult<ExecuteResult> {
-    let raw: RawExecuteResult = serde_json::from_str(json)?;
+fn execute_result_from_raw_result(raw: RawExecuteResult) -> PgResult<ExecuteResult> {
     match raw.describe.query_type() {
         QueryType::Dql => {
             let res = parse_dql(raw.result)?;
@@ -92,6 +91,20 @@ fn execute_result_from_json(json: &str) -> PgResult<ExecuteResult> {
         QueryType::Acl | QueryType::Ddl => Ok(ExecuteResult::empty(0, raw.describe)),
         QueryType::Dml => Ok(ExecuteResult::empty(parse_dml(raw.result)?, raw.describe)),
     }
+}
+
+fn execute_result_from_json(json: &str) -> PgResult<ExecuteResult> {
+    let raw: RawExecuteResult = serde_json::from_str(json)?;
+    execute_result_from_raw_result(raw)
+}
+
+fn simple_execute_result_from_json(json: &str) -> PgResult<ExecuteResult> {
+    let mut raw: RawExecuteResult = serde_json::from_str(json)?;
+    // Simple query supports only the text format.
+    // We couldn't set the format when we were calling bind, because we didn't know the number of columns,
+    // but after executing the whole simple query pipeline we have a description containing this number.
+    raw.describe.set_text_output_format();
+    execute_result_from_raw_result(raw)
 }
 
 type Entrypoint = LuaFunction<PushGuard<LuaThread>>;
@@ -327,7 +340,7 @@ impl Entrypoints {
             .simple_query
             .call_with_args((client_id, sql))
             .map_err(|e| PgError::TarantoolError(e.into()))?;
-        execute_result_from_json(&json)
+        simple_execute_result_from_json(&json)
     }
 
     /// Handler for a Parse message. See self.parse for the details.
@@ -350,7 +363,7 @@ impl Entrypoints {
         statement: &str,
         portal: &str,
         params: Vec<PgValue>,
-        result_format: &[i16],
+        result_format: Vec<Format>,
     ) -> PgResult<()> {
         self.bind
             .call_with_args((id, statement, portal, params, result_format))

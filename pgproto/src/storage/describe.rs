@@ -22,6 +22,12 @@ pub struct StatementDescribe {
     pub param_oids: Vec<Oid>,
 }
 
+impl StatementDescribe {
+    pub fn ncolumns(&self) -> usize {
+        self.describe.metadata.len()
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct PortalDescribe {
     #[serde(flatten)]
@@ -58,6 +64,17 @@ impl PortalDescribe {
 
     pub fn output_format(&self) -> &[Format] {
         &self.output_format
+    }
+
+    // Enforce use of the text format for output rows. We use it for simple query, as it supports only the text format.
+    pub fn set_text_output_format(&mut self) {
+        let mut output_format = Vec::new();
+        output_format.resize(self.ncolumns(), Format::Text);
+        self.output_format = output_format;
+    }
+
+    pub fn ncolumns(&self) -> usize {
+        self.describe.metadata.len()
     }
 }
 

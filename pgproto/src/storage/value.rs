@@ -34,6 +34,15 @@ pub enum Format {
     Binary = 1,
 }
 
+impl<L: AsLua> PushInto<L> for Format {
+    type Err = tarantool::tlua::Void;
+
+    fn push_into_lua(self, lua: L) -> Result<tarantool::tlua::PushGuard<L>, (Self::Err, L)> {
+        let value = self as RawFormat;
+        value.push_into_lua(lua)
+    }
+}
+
 impl TryFrom<RawFormat> for Format {
     type Error = PgError;
     fn try_from(value: RawFormat) -> Result<Self, Self::Error> {
