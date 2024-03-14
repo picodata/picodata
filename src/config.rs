@@ -969,6 +969,15 @@ tarantool::define_str_enum! {
     }
 }
 
+tarantool::define_str_enum! {
+    #[derive(Default)]
+    pub enum BootstrapStrategy {
+        #[default]
+        Auto = "auto",
+        Legacy = "legacy",
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // tests
 ////////////////////////////////////////////////////////////////////////////////

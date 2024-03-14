@@ -1,3 +1,4 @@
+use crate::config::BootstrapStrategy;
 use crate::config::ElectionMode;
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
@@ -91,7 +92,9 @@ pub struct Cfg {
 
     pub read_only: bool,
     pub replication: Vec<String>,
-    pub replication_connect_quorum: u8,
+
+    pub bootstrap_strategy: Option<BootstrapStrategy>,
+
     pub election_mode: ElectionMode,
 
     pub log: Option<String>,
@@ -125,13 +128,15 @@ impl Cfg {
             // we can't be a replication master at that point.
             read_only: false,
 
-            // If this is a restart, replication will be configured by governor
-            // before our grade changes to Online.
-            //
-            // `replication_connect_quorum` is not configurable currently.
-            replication_connect_quorum: 32,
+            // During discovery phase we either don't set up the replication, or
+            // the replicaset is already bootstrapped, so bootstrap strategy is
+            // irrelevant.
+            bootstrap_strategy: Some(BootstrapStrategy::Auto),
+
             election_mode: ElectionMode::Off,
 
+            // If this is a restart, replication will be configured by governor
+            // before our grade changes to Online.
             ..Default::default()
         };
 
@@ -156,11 +161,14 @@ impl Cfg {
             // Must be writable, we're going to initialize the storage.
             read_only: false,
 
-            // Replication will be configured by governor when another replica
-            // joins.
-            replication_connect_quorum: 32,
+            // During bootstrap the replicaset contains only one instance,
+            // so bootstrap strategy is irrelevant.
+            bootstrap_strategy: Some(BootstrapStrategy::Auto),
+
             election_mode: ElectionMode::Off,
 
+            // Replication will be configured by governor when another replica
+            // joins.
             ..Default::default()
         };
 
@@ -197,7 +205,15 @@ impl Cfg {
             // Always contains the current instance.
             replication: replication_cfg,
 
-            replication_connect_quorum: 32,
+            // TODO: in tarantool-3.0 there's a new bootstrap_strategy = "config"
+            // which allows to specify the bootstrap leader explicitly. This is
+            // what we want to use, so we should switch to that when that
+            // feature is available in our tarantool fork.
+            //
+            // When joining we already know the leader, and the "auto" strategy
+            // implies connecting to that leader during bootstrap.
+            bootstrap_strategy: Some(BootstrapStrategy::Auto),
+
             election_mode: ElectionMode::Off,
 
             ..Default::default()
