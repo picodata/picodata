@@ -64,8 +64,8 @@
      "title": "change_password",
      "message": "password of user `<user>` was changed",
      "severity": "high",
-     "auth_type": "<auth_type>",
-     "user": "<user>",
+     "user": ...,
+     "auth_type": ...,
      "initiator": ...,
      "time": ...,
      "id": ...
