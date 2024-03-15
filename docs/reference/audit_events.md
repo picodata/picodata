@@ -186,8 +186,27 @@
 }
 ```
 
-### Подключение, восстановление БД {: #db_connect_or_restore }
+### new_database_created
 
+Создание базы данных.
+
+<!-- TODO: rename to "create_db" -->
+
+```json
+{
+     "title": "new_database_created",
+     "message": "a new database `<cluster_id>` was created",
+     "severity": "low",
+     "raft_id": ...,
+     "instance_id": ...,
+     // TODO: "cluster_id": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
+
+<!--
 В Picodata определена ровно одна БД, которая называется `universe`. Ее
 нельзя создать повторно, удалить или подключить. Восстановление БД
 эквивалентно восстановлению СУБД и может быть произведено следующими
@@ -201,15 +220,9 @@
 ([rebootstrap](../overview/glossary.md#bootstrap)). В этом случае
 происходит запись события "Создание БД".
 
-### Создание БД {: #db_create }
-
 В процессе выполнения [bootstrap](../overview/glossary.md#bootstrap) при создании кластера
 происходит запись события "Создание БД" со следующими свойствами:
-
-- наименование (`new_database_created`)
-- важность (`низкая`)
-- пользователь, от имени которого происходила аутентификация
-- идентификаторы узла кластера (`raft_id`, `instance_id`)
+-->
 
 <!-- ### Удаление БД {: #db_drop } -->
 
