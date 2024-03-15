@@ -345,8 +345,11 @@ picodata> pico.cas({
 Исключает инстанс Picodata из состава кластера.
 
 ```
-picodata expel [OPTIONS]
+picodata expel [OPTIONS] <INSTANCE_ID>
 ```
+
+- `INSTANCE_ID`: Название инстанса
+
 
 ### --cluster-id {: #expel_cluster_id }
 
@@ -355,12 +358,6 @@ picodata expel [OPTIONS]
 Имя кластера, из которого должен быть исключен инстанс.
 
 Значение по умолчанию: `demo`
-
-### --instance-id {: #expel_instance_id }
-
-`--instance-id <NAME>`
-
-Имя инстанса, который следует исключить.
 
 ### --peer {: #expel_peer }
 

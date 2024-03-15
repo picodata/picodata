@@ -230,8 +230,8 @@ test result: ok. 6 passed; 0 failed; finished in 0.88s
 Порядок действий для удаления Picodata:
 
 - перед удалением необходимо [остановить и вывести из
-  кластера](../tutorial/deploy.md#instance_expulsion) все запущенные на
-  данном хосте инстансы Picоdata
+  кластера](../tutorial/deploy.md#expel) все запущенные на данном хосте
+  инстансы Picоdata
 - для каждого инстанса требуется удалить его [рабочие
   файлы](../architecture/instance_runtime_files.md). Например: `rm -rf
   *.xlog *.vylog *.snap *.sock`
