@@ -358,6 +358,16 @@ picodata expel [OPTIONS] <INSTANCE_ID>
 
 Значение по умолчанию: `demo`
 
+### --password-file {: #expel_password_file }
+
+`--password-file <PATH>`
+
+Путь к файлу с паролем Администратора СУБД `admin` (хранится в виде
+обычного текста). Без этого параметра пароль будет запрошен в
+интерактивном режиме.
+
+Аналогичная переменная окружения: `PICODATA_PASSWORD_FILE`
+
 ### --peer {: #expel_peer }
 
 `--peer <[HOST][:PORT]>`
