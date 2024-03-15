@@ -72,28 +72,49 @@
 }
 ```
 
-#### Изменение ролей учетной записи {: #manage_account_role }
+### grant_privilege
 
-Так как каждая роль является именованной группой привилегий, то в файле
-журнала отражается каждое изменение привилегий и ролей учетной записи
-пользователя, а также изменения самих ролей. См. [изменение правил
-разграничения доступа](#manage_access_details).
+Выдача привилегии пользователю СУБД
 
-### Изменение правил разграничения доступа {: #manage_access_details }
+```json
+{
+     "title": "grant_privilege",
+     "message": "granted privilege <privilege>
+          on <object_type> `<object>`
+          to <grantee_type> `<grantee>`",
+     "severity": "high",
+     "privilege": ...,
+     "object_type": ...,
+     "object": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
 
-#### Назначение и отзыв привилегий учетной записи или роли {: #manage_privileges }
+### revoke_privilege
 
-Так как привилегии могут быть выданы как учетной записи, так и роли, то
-при установке привилегии будет записано событие со следующими
-свойствами:
+Отзыв привилегии у пользователя СУБД
 
-- наименование (`grant_privilege` / `revoke_privilege`)
-- важность (`высокая`)
-- тип получателя привилегии (`user` / `role`)
-- идентификатор получателя привилегии (`grantee`: УЗ или роль)
-- тип объекта доступа (`table` / `user` / `role`)
-- название объекта доступа
-- привилегия (`create` / `alter` / `drop` / `read` / `write`)
+```json
+{
+     "title": "revoke_privilege",
+     "message": "revoked privilege <privilege>
+          on <object_type> `<object>`
+          from <grantee_type> `<grantee>`",
+     "severity": "high",
+     "privilege": ...,
+     "object_type": ...,
+     "object": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
 
 #### Назначение и отзыв роли {: #manage_roles }
 
