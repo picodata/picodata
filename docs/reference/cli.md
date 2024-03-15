@@ -276,7 +276,7 @@ picodata connect [OPTIONS] <ADDRESS>
 ```
 
 - `ADDRESS`: Адрес инстанса Picodata в формате `[user@][host][:port]`,
-  соответствующий опции [picodata run --advertise](#run_advertise).
+  соответствующий опции [picodata run --advertise](#run_advertise)
 
 **Пример**
 
