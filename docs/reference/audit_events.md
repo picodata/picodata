@@ -4,23 +4,53 @@
 аудита](../tutorial/audit_log.md) Picodata. События проиллюстрированы
 псевдоструктурами в формате JSON.
 
-### Создание учетных записей пользователей и ролей СУБД {: #create_users_or_roles }
+<!--
+Релевантный код Picodata:
+- https://git.picodata.io/picodata/picodata/picodata/-/blob/master/test/int/test_audit.py
+- https://git.picodata.io/search?project_id=58&search=audit%21%28
+- или в репозитории picodata: `grep -a7 -R 'audit!(' src/`
+-->
 
-- наименование (`create_user` / `create_role`)
-- важность (`высокая`)
-- имя новой учетной записи / роли
-- метод аутентификации (`auth_type`)
+### create_user
 
-При создании учетной записи субъект указывает пароль и метод
-аутентификации учетной записи. Ни пароль, ни его хеш в журнал не
-попадут.
+Создание учетной записи пользователя СУБД
 
-### Удаление учетных записей пользователей и ролей СУБД {: #drop_users_or_roles }
+```json
+{
+     "title": "create_user",
+     "message": "created user `<user>`",
+     "severity": "high",
+     "auth_type": "<auth_type>",
+     "user": "<user>",
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
 
-- наименование (`drop_user` / `drop_role`)
-- важность (`средняя`)
+### create_role
 
-### Изменение атрибутов учетных записей пользователей СУБД {: #manage_attributes }
+Создание роли СУБД
+
+```json
+{
+     "title": "create_role",
+     "message": "created role `<role>`",
+     "severity": "high",
+     "role": "<role>",
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+### drop_user
+
+Удаление учетной записи пользователя СУБД
+
+### drop_role
+
+Удаление роли СУБД
 
 #### Изменение имени учетной записи {: #alter_account_name }
 
