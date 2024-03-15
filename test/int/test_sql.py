@@ -3031,3 +3031,80 @@ def test_procedure_privileges(cluster: Cluster):
         match="Nor user, neither role with name pasha exists",
     ):
         revoke_procedure("execute", "pasha", "FOO")
+
+
+def test_rename_user(cluster: Cluster):
+    i1, _ = cluster.deploy(instance_count=2)
+
+    # Two users biba and boba
+    biba = "biba"
+    boba = "boba"
+    password = "Passw0rd"
+
+    i1.create_user(with_name=biba, with_password=password)
+    i1.create_user(with_name=boba, with_password=password)
+
+    # rename to it's own name, nothing happens
+    data = i1.sql(
+        f"""
+        ALTER USER "{boba}"
+        RENAME TO "{boba}"
+        """,
+        user=boba,
+        password=password,
+    )
+    assert data["row_count"] == 0
+
+    # Existed name
+    with pytest.raises(
+        ReturnError,
+        match=f'User with name "{biba}" exists. Unable to rename user "{boba}".',
+    ):
+        data = i1.sudo_sql(
+            f"""
+            ALTER USER "{boba}"
+            RENAME TO "{biba}"
+            """
+        )
+
+    # Without privileges they cannot rename each other
+    with pytest.raises(
+        ReturnError,
+        match="""\
+tarantool error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'.\
+""",
+    ):
+        data = i1.sql(
+            f"""
+            ALTER USER "{boba}"
+            RENAME TO "skibidi"
+            """,
+            user=biba,
+            password=password,
+        )
+
+    # Admin can rename anyone: boba -> skibidi
+    data = i1.sudo_sql(
+        f"""
+        ALTER USER "{boba}"
+        RENAME TO "skibidi"
+        """
+    )
+    assert data["row_count"] == 1
+
+    def names_from_pico_user_table():
+        data = i1.sudo_sql(
+            """
+            SELECT "name" FROM "_pico_user"
+            """
+        )
+
+        return [row[0] for row in data["rows"]]
+
+    # Check that rename works fine
+    assert "skibidi" in names_from_pico_user_table()
+    assert boba not in names_from_pico_user_table()
+
+    # Check that we can create a new user "boba" after rename him
+    i1.create_user(with_name=boba, with_password=password)
+    assert boba in names_from_pico_user_table()

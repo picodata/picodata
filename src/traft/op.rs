@@ -207,6 +207,13 @@ impl std::fmt::Display for Op {
                 } = user_def;
                 write!(f, r#"CreateUser({schema_version}, {id}, "{name}")"#,)
             }
+            Self::Acl(Acl::RenameUser {
+                user_id,
+                name,
+                schema_version,
+            }) => {
+                write!(f, r#"RenameUser({schema_version}, {user_id}, "{name}")"#,)
+            }
             Self::Acl(Acl::ChangeAuth {
                 user_id,
                 initiator,
@@ -674,6 +681,13 @@ pub enum Acl {
     /// Create a tarantool user. Grant it default privileges.
     CreateUser { user_def: UserDef },
 
+    /// Rename a tarantool user.
+    RenameUser {
+        user_id: UserId,
+        name: String,
+        schema_version: u64,
+    },
+
     /// Update the tarantool user's authentication details (e.g. password).
     ChangeAuth {
         user_id: UserId,
@@ -713,6 +727,7 @@ impl Acl {
     pub fn schema_version(&self) -> u64 {
         match self {
             Self::CreateUser { user_def } => user_def.schema_version,
+            Self::RenameUser { schema_version, .. } => *schema_version,
             Self::ChangeAuth { schema_version, .. } => *schema_version,
             Self::DropUser { schema_version, .. } => *schema_version,
             Self::CreateRole { role_def, .. } => role_def.schema_version,

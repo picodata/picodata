@@ -508,7 +508,7 @@ fn access_check_acl(
                 as_user,
             )
         }
-        op::Acl::ChangeAuth { user_id, .. } => {
+        op::Acl::ChangeAuth { user_id, .. } | op::Acl::RenameUser { user_id, .. } => {
             let sys_user = user_by_id(*user_id)?;
 
             assert_eq!(sys_user.id, *user_id, "user metadata id mismatch");
@@ -1148,6 +1148,98 @@ mod tests {
                     schema_version: 0,
                 },
                 actor_user_id,
+            )
+            .unwrap();
+        }
+
+        // rename user
+        {
+            revoke(
+                &storage,
+                actor_user_id,
+                PrivilegeType::Alter,
+                SchemaObjectType::User,
+                user_under_test_id.into(),
+            );
+
+            // actor_user doesn't have alter to user_under_test
+            let e = access_check_acl(
+                &storage,
+                &Acl::RenameUser {
+                    user_id: user_under_test_id,
+                    name: "new_name".into(),
+                    schema_version: 0,
+                },
+                actor_user_id,
+            )
+            .unwrap_err();
+
+            assert_eq!(
+                e.to_string(),
+                format!("tarantool error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
+            );
+
+            grant(
+                &storage,
+                PrivilegeType::Alter,
+                SchemaObjectType::User,
+                user_under_test_id as i64,
+                actor_user_id,
+                None,
+            );
+
+            // after grant actor_user have alter to user_under_test
+            access_check_acl(
+                &storage,
+                &Acl::RenameUser {
+                    user_id: user_under_test_id,
+                    name: "new_name".into(),
+                    schema_version: 0,
+                },
+                actor_user_id,
+            )
+            .unwrap();
+
+            // by default user_under_test has alter on himself
+            access_check_acl(
+                &storage,
+                &Acl::RenameUser {
+                    user_id: user_under_test_id,
+                    name: "new_name".into(),
+                    schema_version: 0,
+                },
+                user_under_test_id,
+            )
+            .unwrap();
+
+            revoke(
+                &storage,
+                user_under_test_id,
+                PrivilegeType::Alter,
+                SchemaObjectType::User,
+                user_under_test_id.into(),
+            );
+
+            access_check_acl(
+                &storage,
+                &Acl::RenameUser {
+                    user_id: user_under_test_id,
+                    name: "new_name".into(),
+                    schema_version: 0,
+                },
+                user_under_test_id,
+            )
+            .unwrap_err();
+
+            // admin always can rename user
+            access_check_acl(
+                &storage,
+                &Acl::RenameUser {
+                    user_id: user_under_test_id,
+                    name: "new_name".into(),
+                    schema_version: 0,
+                },
+                ADMIN_ID,
             )
             .unwrap();
         }

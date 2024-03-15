@@ -1030,6 +1030,7 @@ fn reenterable_schema_change_request(
                 }
                 AlterOption::Login => AlterOptionParam::Login,
                 AlterOption::NoLogin => AlterOptionParam::NoLogin,
+                AlterOption::Rename { new_name } => AlterOptionParam::Rename(new_name),
             };
             Params::AlterUser(name, alter_option_param)
         }
@@ -1255,7 +1256,6 @@ fn reenterable_schema_change_request(
                             schema_version,
                         })
                     }
-
                     AlterOptionParam::Login => {
                         // It will be checked at a later stage whether login is already granted
                         Op::Acl(OpAcl::GrantPrivilege { priv_def })
@@ -1266,6 +1266,25 @@ fn reenterable_schema_change_request(
                             priv_def,
                             initiator: current_user,
                         })
+                    }
+                    AlterOptionParam::Rename(new_name) => {
+                        if user_def.name == *new_name {
+                            // Username is already the one given, no op needed.
+                            return Ok(ConsumerResult { row_count: 0 });
+                        }
+                        let user = storage.users.by_name(new_name)?;
+                        match user {
+                            Some(_) => {
+                                return Err(Error::Other(
+                                    format!(r#"User with name "{new_name}" exists. Unable to rename user "{name}"."#).into(),
+                                ))
+                            }
+                            None => Op::Acl(OpAcl::RenameUser {
+                                user_id: user_def.id,
+                                name: new_name.into(),
+                                schema_version,
+                            }),
+                        }
                     }
                 }
             }
@@ -1419,6 +1438,7 @@ fn reenterable_schema_change_request(
         ChangePassword(AuthDef),
         Login,
         NoLogin,
+        Rename(String),
     }
 
     // THOUGHT: should `owner_id` be part of `CreateUser`, `CreateRole` params?

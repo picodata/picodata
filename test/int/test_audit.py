@@ -630,3 +630,25 @@ def test_rotation(instance: Instance):
     instance.process.send_signal(sig=signal.SIGHUP)
 
     Retriable(timeout=5, rps=1).call(check_rotate, audit)
+
+
+def test_rename_user(instance: Instance):
+    instance.start()
+
+    user = "ymir"
+    password = "T0psecret"
+
+    instance.create_user(with_name=user, with_password=password)
+
+    instance.sudo_sql('ALTER USER "ymir" RENAME TO "TOM"')
+
+    instance.terminate()
+
+    events = AuditFile(instance.audit_flag_value).events()
+
+    rename_user = take_until_title(events, "rename_user")
+    assert rename_user is not None
+    assert rename_user["message"] == "name of user `ymir` was changed to `TOM`"
+    assert rename_user["severity"] == "high"
+    assert rename_user["old_name"] == "ymir"
+    assert rename_user["new_name"] == "TOM"

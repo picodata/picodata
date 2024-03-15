@@ -2719,6 +2719,14 @@ impl Users {
     }
 
     #[inline]
+    pub fn update_name(&self, user_id: UserId, name: &str) -> tarantool::Result<()> {
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(UserDef::FIELD_NAME, name)?;
+        self.space.update(&[user_id], ops)?;
+        Ok(())
+    }
+
+    #[inline]
     pub fn update_auth(&self, user_id: UserId, auth: &AuthDef) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
         ops.assign(UserDef::FIELD_AUTH, auth)?;
@@ -3418,6 +3426,27 @@ pub mod acl {
         Ok(())
     }
 
+    /// Change user's name in the internal clusterwide storage.
+    pub fn global_rename_user(
+        storage: &Clusterwide,
+        user_id: UserId,
+        new_name: &str,
+    ) -> tarantool::Result<()> {
+        let user_with_old_name = storage.users.by_id(user_id)?.expect("failed to get user");
+        let old_name = &user_with_old_name.name;
+        storage.users.update_name(user_id, new_name)?;
+
+        crate::audit!(
+            message: "name of user `{old_name}` was changed to `{new_name}`",
+            title: "rename_user",
+            severity: High,
+            old_name: old_name,
+            new_name: new_name,
+        );
+
+        Ok(())
+    }
+
     /// Remove a user definition and any entities owned by it from the internal
     /// clusterwide storage.
     pub fn global_drop_user(
@@ -3670,6 +3699,17 @@ pub mod acl {
         let mut ops = UpdateOps::with_capacity(2);
         ops.assign(USER_FIELD_AUTH, auth_map)?;
         ops.assign(USER_FIELD_LAST_MODIFIED, clock::time64())?;
+        sys_user.update(&[user_id], ops)?;
+        Ok(())
+    }
+
+    /// Rename a tarantool user.
+    pub fn on_master_rename_user(user_id: UserId, new_name: &str) -> tarantool::Result<()> {
+        const USER_FIELD_NAME: i32 = 2;
+        let sys_user = Space::from(SystemSpace::User);
+
+        let mut ops = UpdateOps::with_capacity(1);
+        ops.assign(USER_FIELD_NAME, new_name)?;
         sys_user.update(&[user_id], ops)?;
         Ok(())
     }

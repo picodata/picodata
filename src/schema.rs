@@ -317,6 +317,9 @@ impl UserDef {
     /// Index of first field is 0.
     pub const FIELD_AUTH: usize = 3;
 
+    /// Index of field "name" in the space _pico_user format.
+    pub const FIELD_NAME: usize = 1;
+
     #[inline(always)]
     pub fn is_role(&self) -> bool {
         matches!(self.ty, UserMetadataKind::Role)
@@ -1912,6 +1915,7 @@ mod test {
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "UserDef::format");
 
         assert_eq!(format[UserDef::FIELD_AUTH].name, "auth");
+        assert_eq!(format[UserDef::FIELD_NAME].name, "name");
     }
 
     #[test]

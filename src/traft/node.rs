@@ -1195,6 +1195,10 @@ impl NodeImpl {
                                 acl::on_master_create_user(user_def, true)
                                     .expect("creating user shouldn't fail");
                             }
+                            Acl::RenameUser { user_id, name, .. } => {
+                                acl::on_master_rename_user(*user_id, name)
+                                    .expect("renaming user shouldn't fail");
+                            }
                             Acl::ChangeAuth { user_id, auth, .. } => {
                                 acl::on_master_change_user_auth(*user_id, auth)
                                     .expect("changing user auth shouldn't fail");
@@ -1227,6 +1231,10 @@ impl NodeImpl {
                 match &acl {
                     Acl::CreateUser { user_def } => {
                         acl::global_create_user(&self.storage, user_def)
+                            .expect("persisting a user definition shouldn't fail");
+                    }
+                    Acl::RenameUser { user_id, name, .. } => {
+                        acl::global_rename_user(&self.storage, *user_id, name)
                             .expect("persisting a user definition shouldn't fail");
                     }
                     Acl::ChangeAuth {
