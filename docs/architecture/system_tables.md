@@ -11,7 +11,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 ## Описание схемы данных {: #schema }
 
-### _pico_table {: #_pico_table }
+### _pico_table
 
 Содержит информацию о пользовательских
 [таблицах](../overview/glossary.md#table) Picodata.
@@ -61,7 +61,7 @@ Picodata 23.06.0-287-ga98dc6919
 * `id` (unique), parts: `[id]`
 * `name` (unique), parts: `[name]`
 
-### _pico_index {: #_pico_index }
+### _pico_index
 
 Содержит информацию об [индексах](../overview/glossary.md#index) БД.
 
@@ -81,7 +81,7 @@ Picodata 23.06.0-287-ga98dc6919
 * `id` (unique), parts: `[table_id, id]`
 * `name` (unique), parts: `[table_id, name]`
 
-### _pico_routine {: #_pico_routine }
+### _pico_routine
 
 Содержит информацию о пользовательских
 [хранимых процедурах](../reference/sql_queries.md#proc) Picodata.
@@ -114,7 +114,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 ## Описание свойств кластера {: #cluster_properties }
 
-### _pico_property {: #_pico_property }
+### _pico_property
 
 Содержит свойства кластера в формате «ключ—значение».
 
@@ -129,7 +129,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 ## Описание топологии кластера {: #cluster_topology }
 
-### _pico_peer_address {: #_pico_peer_address }
+### _pico_peer_address
 
 Содержит адреса всех пиров кластера.
 
@@ -142,7 +142,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 * `raft_id` (unique), parts: `[raft_id]`
 
-### _pico_instance {: #_pico_instance }
+### _pico_instance
 
 Содержит информацию обо всех инстансах кластера.
 
@@ -164,7 +164,7 @@ Picodata 23.06.0-287-ga98dc6919
 * `raft_id` (unique), parts: `[raft_id]`
 * `replicaset_id` (non-unique), parts: `[replicaset_id]`
 
-### _pico_replicaset {: #_pico_replicaset }
+### _pico_replicaset
 
 Содержит информацию обо всех репликасетах кластера.
 
@@ -183,7 +183,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 * `replicaset_id` (unique), parts: `[replicaset_id]`
 
-### _pico_tier {: #_pico_tier }
+### _pico_tier
 
 Содержит информацию обо всех тирах в кластере.
 
@@ -198,7 +198,7 @@ Picodata 23.06.0-287-ga98dc6919
 
 ## Описание управления доступом {: #access_control }
 
-### _pico_user {: #_pico_user }
+### _pico_user
 
 Содержит информацию обо всех пользователях и ролях Picodata.
 
@@ -216,7 +216,7 @@ Picodata 23.06.0-287-ga98dc6919
 * `id` (unique), parts: `[id]`
 * `name` (unique), parts: `[name]`
 
-### _pico_privilege {: #_pico_privilege }
+### _pico_privilege
 
 Содержит информацию обо всех привилегиях, предоставленных пользователям Picodata.
 

@@ -10,6 +10,12 @@ from markdown.extensions.attr_list import AttrListTreeprocessor, get_attrs
 log = get_plugin_logger(os.path.basename(__file__))
 
 
+# Markdown headers style guide:
+#
+#   # Page title doesn't need an anchor
+#   ## All other headers need an explicit anchor {: #explicit_anchor }
+#   ## snake_case_headers_have_an_implicit_anchor
+#
 # https://www.mkdocs.org/dev-guide/plugins/#events
 # https://github.com/mkdocs/mkdocs/blob/1.5.3/mkdocs/commands/build.py#L258
 def on_files(files: Files, config: MkDocsConfig):
@@ -33,6 +39,13 @@ def on_files(files: Files, config: MkDocsConfig):
         anchors[file.src_path] = file_anchors
 
         for line in headers:
+            # Anchors are optional for snake_case headers
+            match = re.search("^##+ ([a-z_]+)$", line)
+            if match:
+                anchor = match.group(1)
+                file_anchors.append(anchor)
+                continue
+
             # https://python-markdown.github.io/extensions/attr_list/
             match = AttrListTreeprocessor.HEADER_RE.search(line)
             if not match:
