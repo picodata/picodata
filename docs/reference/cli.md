@@ -299,13 +299,12 @@ picodata>
 
 ### --password-file {: #connect_password_file }
 
-`--password-file`
+`--password-file <PATH>`
 
 Путь к файлу с паролем указанного пользователя (хранится в виде обычного
 текста). Без этого параметра пароль будет запрошен в интерактивном
 режиме.
 
-Значение по умолчанию: `localhost:3301`<br>
 Аналогичная переменная окружения: `PICODATA_PASSWORD_FILE`
 
 ### -u, --user {: #connect_user }
