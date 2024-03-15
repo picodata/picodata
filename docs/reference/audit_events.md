@@ -20,11 +20,11 @@
      "title": "create_user",
      "message": "created user `<user>`",
      "severity": "high",
-     "auth_type": "<auth_type>",
-     "user": "<user>",
+     "user": ...,
+     "auth_type": ...,
      "initiator": ...,
      "time": ...,
-     "id": ...,
+     "id": ...
 }
 ```
 
@@ -37,7 +37,7 @@
      "title": "create_role",
      "message": "created role `<role>`",
      "severity": "high",
-     "role": "<role>",
+     "role": ...,
      "initiator": ...,
      "time": ...,
      "id": ...
