@@ -116,17 +116,41 @@
 }
 ```
 
-#### Назначение и отзыв роли {: #manage_roles }
+### grant_role
 
-Роли могут быть назначены как пользователям, так и другим ролям (т.е.
-возможно создание вложенных ролей). При этом будет записано событие со
-следующими свойствами:
+Назначение роли пользователю СУБД или другой роли.
 
-- наименование (`grant_role` / `revoke_role`)
-- важность (`высокая`)
-- тип получателя роли (`user` / `role`)
-- идентификатор получателя роли (`grantee`: УЗ или роль)
-- идентификатор назначенной роли
+```json
+{
+     "title": "grant_role",
+     "message": "granted role `<role>` to <grantee_type> `<grantee>`",
+     "severity": "high",
+     "role": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+### revoke_role
+
+Отзыв роли у пользователя СУБД или у другой роли.
+
+```json
+{
+     "title": "revoke_role",
+     "message": "revoked role `<role>` from <grantee_type> `<grantee>`",
+     "severity": "high",
+     "role": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
 
 ### Успешные и неуспешные попытки аутентификации {: #auth_attempts }
 
