@@ -152,12 +152,39 @@
 }
 ```
 
-### Успешные и неуспешные попытки аутентификации {: #auth_attempts }
+### auth_ok
 
-- наименование (`auth_ok` / `auth_fail`)
-- важность (`высокая`)
-- пользователь, от имени которого происходила аутентификация
-- вердикт о блокировке учетной записи (`да` / `нет`) и срок (например, `неопределенный`)
+Успешная попытка аутентификации
+
+```json
+{
+     "title": "auth_ok",
+     "message": "successfully authenticated user `<user>`",
+     "severity": "high",
+     "user": ...,
+     "verdict": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+### auth_fail
+
+Неуспешная попытка аутентификации
+
+```json
+{
+     "title": "auth_fail",
+     "message": "failed to authenticate user `<user>`",
+     "severity": "high",
+     "user": ...,
+     "verdict": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
 
 ### Подключение, восстановление БД {: #db_connect_or_restore }
 
