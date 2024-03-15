@@ -39,7 +39,7 @@ picodata run [OPTIONS]
 
 ### --admin-sock {: #run_admin_sock }
 
-`--admin-sock <path>`
+`--admin-sock <PATH>`
 
 Путь к unix-сокету для подключения с помощью команды [picodata
 admin](#admin). Данный способ использует обычный текстовый протокол и
@@ -51,7 +51,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --advertise {: #run_advertise }
 
-`--advertise <[host][:port]>`
+`--advertise <[HOST][:PORT]>`
 
 Адрес, по которому другие инстансы смогут подключиться к данному
 инстансу. По умолчанию используется значение [--listen](#run_listen).
@@ -60,19 +60,19 @@ admin](#admin). Данный способ использует обычный т
 
 ### --audit {: #run_audit }
 
-`--audit <file>`
+`--audit <FILE>`
 
 Конфигурация журнала аудита. Доступны следующие варианты:
 
-- `file:<file>` или просто `<file>` — запись в файл
-- `pipe:<command>` или `| <command>` — перенаправление вывода в подпроцесс
+- `file:<FILE>` или просто `<FILE>` — запись в файл
+- `pipe:<COMMAND>` или `| <COMMAND>` — перенаправление вывода в подпроцесс
 - `syslog:` — перенаправление вывода в службу `syslog` защищенной ОС
 
 Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`
 
 ### --cluster-id {: #run_cluster_id }
 
-`--cluster-id <name>`
+`--cluster-id <NAME>`
 
 Имя кластера. Инстанс не сможет стать частью кластера, если у него
 указано другое имя.
@@ -81,7 +81,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --data-dir {: #run_data_dir }
 
-`--data-dir <path>`
+`--data-dir <PATH>`
 
 Рабочая директория инстанса. Здесь Picodata хранит все данные.
 
@@ -89,7 +89,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --failure-domain {: #run_failure_domain }
 
-`--failure-domain <key=value>`
+`--failure-domain <KEY=VALUE>`
 
 Список параметров географического расположения сервера (через запятую).
 Также этот аргумент называется _зоной доступности_. Каждый параметр
@@ -104,7 +104,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --http-listen {: #run_http_listen }
 
-`--http-listen <[host][:port]>`
+`--http-listen <[HOST][:PORT]>`
 
 Адрес
 [HTTP-сервера](https://github.com/tarantool/http).
@@ -135,7 +135,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --instance-id {: #run_instance_id }
 
-`--instance-id <name>`
+`--instance-id <NAME>`
 
 Название инстанса. При отсутствии параметра, значение будет
 автоматически сгенерировано raft-лидером в момент присоединения
@@ -145,7 +145,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --listen {: #run_listen }
 
-`-l, --listen <[host][:port]>`
+`-l, --listen <[HOST][:PORT]>`
 
 Адрес и порт привязки инстанса.
 
@@ -158,8 +158,8 @@ admin](#admin). Данный способ использует обычный т
 
 Конфигурация журнала логирования. Доступны следующие варианты:
 
-- `file:<file>` или просто `<file>` — запись в файл
-- `pipe:<command>` или `| <command>` — перенаправление вывода в подпроцесс
+- `file:<FILE>` или просто `<FILE>` — запись в файл
+- `pipe:<COMMAND>` или `| <COMMAND>` — перенаправление вывода в подпроцесс
 - `syslog:` — перенаправление вывода в службу `syslog` защищенной ОС
 
 Аналогичная переменная окружения: `PICODATA_LOG`
@@ -186,7 +186,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --peer {: #run_peer }
 
-`--peer <[host][:port]>`
+`--peer <[HOST][:PORT]>`
 
 Один или несколько адресов других инстансов через запятую.
 
@@ -195,7 +195,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --replicaset-id {: #run_replicaset_id }
 
-`--replicaset-id <name>`
+`--replicaset-id <NAME>`
 
 Имя репликасета. При отсутствии параметра, значение будет
 автоматически выбрано raft-лидером в момент присоединения
@@ -205,7 +205,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --script {: #run_script }
 
-`--script <path>`
+`--script <PATH>`
 
 Путь к файлу Lua-скрипта, который будет выполнен после присоединения
 инстанса к кластеру.
@@ -233,7 +233,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --tier {: #run_tier }
 
-`--tier <tier>`
+`--tier <TIER>`
 
 Название [тира](../overview/glossary.md#tier), которому будет
 принадлежать инстанс.
@@ -276,7 +276,7 @@ picodata connect [OPTIONS] <ADDRESS>
 ```
 
 - `ADDRESS`: Адрес инстанса Picodata в формате `[user@][host][:port]`,
-  соответствующий опции [picodata run --adverse](#run_advertise).
+  соответствующий опции [picodata run --advertise](#run_advertise).
 
 **Пример**
 
@@ -350,7 +350,7 @@ picodata expel [OPTIONS]
 
 ### --cluster-id {: #expel_cluster_id }
 
-`--cluster-id <name>`
+`--cluster-id <NAME>`
 
 Имя кластера, из которого должен быть исключен инстанс.
 
@@ -358,13 +358,13 @@ picodata expel [OPTIONS]
 
 ### --instance-id {: #expel_instance_id }
 
-`--instance-id <name>`
+`--instance-id <NAME>`
 
 Имя инстанса, который следует исключить.
 
 ### --peer {: #expel_peer }
 
-`--peer <[host][:port]>`
+`--peer <[HOST][:PORT]>`
 
 Адрес любого инстанса из состава кластера.
 
