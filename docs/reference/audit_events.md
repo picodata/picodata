@@ -345,14 +345,37 @@
 }
 ```
 
-### Создание и удаление хранимых процедур {: #manage_stored_procedures }
+### create_procedure
 
-- наименование (`create_procedure` / `drop_procedure`)
-- важность (`средняя`)
-- имя новой процедуры
-- идентификатор пользователя-владельца процедуры
+Создание хранимой процедуры.
 
-Владельцем созданной процедуры автоматически становится тот, кто ее создал.
+```json
+{
+     "title": "create_procedure",
+     "message": "created procedure `<name>`",
+     "severity": "medium",
+     "name": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
+
+### drop_procedure
+
+Удаление хранимой процедуры.
+
+```json
+{
+     "title": "drop_procedure",
+     "message": "dropped procedure `<name>`",
+     "severity": "medium",
+     "name": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
 
 ### Факты нарушения целостности объектов контроля {: #detect_intrusion }
 
