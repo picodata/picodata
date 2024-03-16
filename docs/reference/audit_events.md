@@ -377,12 +377,32 @@
 }
 ```
 
-### Неудачные попытки доступа к объекту {: #failed_access_attempts }
+### access_denied
 
-- наименование (`access_denied`)
-- важность (`средняя`)
-- пользователь, запросивший доступ
-- имя и тип объекта
+Неавторизованный запрос к БД.
+
+<!--
+TODO:
+privilege_type -> privilege
+object_name -> object
+new field: user == initiator
+-->
+
+```json
+{
+     "title": "access_denied",
+     "message": "<privilege> access
+          to <object_type> `<object>`
+          is denied for user `<user>`",
+     "severity": "medium",
+     "privilege" ...,
+     "object_type" ...,
+     "object" ...,
+     "initiator" ...,
+     "time" ...,
+     "id" ...
+}
+```
 
 ### Ротация журнала аудита {: #audit_log_rotation }
 
