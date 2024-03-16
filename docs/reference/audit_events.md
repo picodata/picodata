@@ -296,33 +296,22 @@
 }
 ```
 
-### Изменение конфигурации СУБД {: #db_configure }
+### change_config
 
-#### Изменение значений параметров конфигурации {: #db_change_config }
+Изменение конфигурации СУБД.
 
-- наименование (`change_config`)
-- важность (`высокая`)
-- название и новое значение параметра конфигурации
-
-Отслеживается изменение следующих параметров СУБД:
-
-- `password_min_length` – минимальная длина пароля учетной записи
-- `audit_log` – настройки файла журнала безопасности
-- `audit_enabled` – статус журнала безопасности (`ВКЛ`/`ВЫКЛ`)
-- низкоуровневых параметров, таких как:
-     - `listen`
-     - `checkpoint_interval`
-     - `checkpoint_count`
-     - `memtx_memory`
-     - `vinyl_memory`
-     - `snapshot_period`
-     - `log`
-     - `log_level`
-     - `log_format`
-     - `log_nonblock`
-     - `too_long_threshold`
-
-Параметры, которые не были указаны, изменить невозможно.
+```json
+{
+     "title": "change_config",
+     "message": "property `<key>` was changed to <value>",
+     "severity": "high",
+     "key": ...,
+     "value": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
 
 #### Изменение топологии кластера (удаление и добавление узлов) {: #db_change_topology }
 
