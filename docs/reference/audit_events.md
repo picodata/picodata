@@ -275,21 +275,26 @@
 }
 ```
 
-### Запуск и остановка СУБД с указанием причины остановки {: #db_start_stop }
+### change_current_grade
 
-- наименование (`change_current_grade`)
-- важность (`средняя`)
-- имя [грейда](../overview/glossary.md#grade) при запуске (`online`)
-- имя грейда при остановке (`offline`)
-- идентификатор узла кластера (`raft_id`, `instance_id`)
+Запуск и остановка инстанса.
 
-К данному событию относится информация о любом изменении грейда каждого
-узла кластера, как только оно было зарегистрировано. Плановые
-[запуск](../reference/cli.md#run) и
-[остановка](../reference/api.md#pico_exit) узла
-([добавление](../overview/glossary.md#joining) в кластер и
-[исключение](../reference/cli.md#expel) из него соответственно) связаны
-с переоценкой грейдов и поэтому также вызывают это событие.
+```json
+{
+     "title": "change_current_grade",
+     "message": "current grade
+          of instance `<instance_id>`
+          changed to <new_grade>",
+     "severity": ...,
+     "instance_id": ...,
+     // TODO: "old_grade": ...,
+     "new_grade": ...,
+     "raft_id": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
 
 ### Изменение конфигурации СУБД {: #db_configure }
 
