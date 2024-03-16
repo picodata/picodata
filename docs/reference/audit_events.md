@@ -313,14 +313,37 @@
 }
 ```
 
-### Создание и удаление таблиц за исключением временных таблиц, создаваемых СУБД в служебных целях {: #manage_tables }
+### create_table
 
-- наименование (`create_table` / `drop_table`)
-- важность (`средняя`)
-- имя новой таблицы
-- идентификатор пользователя-владельца таблицы
+Создание таблицы.
 
-Владельцем созданной таблицы автоматически становится тот, кто ее создал.
+```json
+{
+     "title": "create_table",
+     "message": "created table `<name>`",
+     "severity": "medium",
+     "name": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+### drop_table
+
+Удаление таблицы.
+
+```json
+{
+     "title": "drop_table",
+     "message": "dropped table `<name>`",
+     "severity": "medium",
+     "name": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
 
 ### Создание и удаление хранимых процедур {: #manage_stored_procedures }
 
