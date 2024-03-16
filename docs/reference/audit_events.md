@@ -224,19 +224,56 @@
 происходит запись события "Создание БД" со следующими свойствами:
 -->
 
-<!-- ### Удаление БД {: #db_drop } -->
 
-### Удаление журналов при ротации {: #xlog_snap_shredding }
+### shredding_started
 
-В Picodata при создании очередного [снапшота](../overview/glossary.md#snapshot)
-могут быть удалены предыдущие версии снапшотов, а также [журнала упреждающей
-записи](../overview/glossary.md#persistence). При этом могут быть записаны
-события со следующими свойствами:
+Начало безопасного удаления рабочих файлов инстанса путем многократной
+перезаписи специальными битовыми последовательностями.
 
-- наименование (`shreddig_started` / `shredding_finished` / `shredding_failed`)
-- важность (`низкая`)
-- путь до удаляемого файла
-- текст ошибки (в случае события `shredding_failed`)
+```json
+{
+     "title": "shredding_started",
+     "message": "shredding started for <filename>",
+     "severity": "low",
+     "filename": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+### shredding_finished
+
+Успешное удаление рабочих файлов инстанса.
+
+```json
+{
+     "title": "shredding_finished",
+     "message": "shredding finished for <filename>",
+     "severity": "low",
+     "filename": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+### shredding_failed
+
+Ошибка безопасного удалении рабочих файлов инстанса.
+
+```json
+{
+     "title": "shredding_failed",
+     "message": "shredding failed for <filename>",
+     "severity": "low",
+     "filename": ...,
+     "error": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
 
 #### Добавление нового узла в кластер {: #add_instance }
 
