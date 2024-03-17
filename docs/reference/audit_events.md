@@ -428,7 +428,7 @@ new field: user == initiator
 
 ### local_startup
 
-Запуск инстанса
+Запуск инстанса.
 
 ```json
 {
@@ -442,7 +442,11 @@ new field: user == initiator
 
 ### local_shutdown
 
-Остановка инстанса
+Остановка инстанса.
+<!--
+TODO:
+new field: reason
+-->
 
 ```json
 {
