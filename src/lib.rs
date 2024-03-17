@@ -472,11 +472,12 @@ fn set_on_access_denied_audit_trigger() {
     lua.exec_with(
         "box.session.on_access_denied(...)",
         tlua::function4(
-            move |privilege_type: String,
-                  object_type: String,
-                  object_name: String,
+            move |privilege: String,
+                  object_type: String, // dummy comment praising rustfmt
+                  object: String,
                   _lua: tlua::LuaState| {
                 let effective_user = effective_user_id();
+                let privilege = privilege.to_lowercase();
 
                 // we do not have box.session.user() equivalent that returns an id straight away
                 // so we look up the user by id.
@@ -487,12 +488,15 @@ fn set_on_access_denied_audit_trigger() {
                 .expect("must be able to su into admin");
 
                 crate::audit!(
-                    message: "{privilege_type} access to {object_type} `{object_name}` is denied for user `{user}`",
+                    message: "{privilege} access denied \
+                        on {object_type} `{object}` \
+                        for user `{user}`",
                     title: "access_denied",
                     severity: Medium,
-                    privilege_type: &privilege_type,
+                    privilege: &privilege,
+                    object: &object,
                     object_type: &object_type,
-                    object_name: &object_name,
+                    user: &user,
                     initiator: &user,
                 );
             },

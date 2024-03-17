@@ -379,7 +379,7 @@ def test_access_denied(instance: Instance):
     events = audit.events()
 
     expected_error = "Create access to role 'R' is denied for user 'ymir'"
-    expected_audit = "Create access to role `R` is denied for user `ymir`"
+    expected_audit = "create access denied on role `R` for user `ymir`"
 
     with pytest.raises(
         Exception,
@@ -391,9 +391,9 @@ def test_access_denied(instance: Instance):
     assert access_denied is not None
     assert access_denied["message"] == expected_audit
     assert access_denied["severity"] == "medium"
-    assert access_denied["privilege_type"] == "Create"
+    assert access_denied["privilege"] == "create"
     assert access_denied["object_type"] == "role"
-    assert access_denied["object_name"] == "R"
+    assert access_denied["object"] == "R"
     assert access_denied["initiator"] == "ymir"
 
 
