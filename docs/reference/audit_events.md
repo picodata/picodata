@@ -403,3 +403,31 @@ new field: user == initiator
      "id" ...
 }
 ```
+
+### local_startup
+
+Запуск инстанса
+
+```json
+{
+     "title": "local_startup",
+     "message": "instance is starting",
+     "severity": "low",
+     "time": ...,
+     "id": ...
+}
+```
+
+### local_shutdown
+
+Остановка инстанса
+
+```json
+{
+     "title": "local_shutdown",
+     "message": "instance is shutting down",
+     "severity": "high",
+     "time": ...,
+     "id": ...
+}
+```
