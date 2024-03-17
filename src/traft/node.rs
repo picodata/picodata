@@ -1080,9 +1080,11 @@ impl NodeImpl {
 
                         let initiator_def = user_by_id(initiator_id).expect("user must exist");
                         crate::audit!(
-                            message: "renamed routine {routine_id} from {old_name} to {new_name}",
-                            title: "rename routine",
+                            message: "renamed procedure `{old_name}` to `{new_name}`",
+                            title: "rename_procedure",
                             severity: Medium,
+                            old_name: &old_name,
+                            new_name: &new_name,
                             initiator: initiator_def.name,
                         );
                     }
