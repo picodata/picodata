@@ -277,7 +277,7 @@
 
 ### change_current_grade
 
-Запуск и остановка инстанса.
+Изменение текущего [грейда](../overview/glossary.md#grade) инстанса.
 
 ```json
 {
@@ -285,7 +285,29 @@
      "message": "current grade
           of instance `<instance_id>`
           changed to <new_grade>",
-     "severity": ...,
+     "severity": "medium",
+     "instance_id": ...,
+     // TODO: "old_grade": ...,
+     "new_grade": ...,
+     "raft_id": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...
+}
+```
+
+
+### change_target_grade
+
+Изменение целевого [грейда](../overview/glossary.md#grade) инстанса.
+
+```json
+{
+     "title": "change_target_grade",
+     "message": "target grade
+          of instance `<instance_id>`
+          changed to <new_grade>",
+     "severity": "low",
      "instance_id": ...,
      // TODO: "old_grade": ...,
      "new_grade": ...,
