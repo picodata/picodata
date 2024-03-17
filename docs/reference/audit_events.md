@@ -403,8 +403,3 @@ new field: user == initiator
      "id" ...
 }
 ```
-
-### Ротация журнала аудита {: #audit_log_rotation }
-
-- наименование (`audit_rotate`)
-- важность (`низкая`)
