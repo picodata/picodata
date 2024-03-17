@@ -383,6 +383,23 @@
 }
 ```
 
+### rename_procedure
+
+Переименование хранимой процедуры.
+
+```json
+{
+     "title": "rename_procedure",
+     "message": "renamed procedure `<old_name>` to `<new_name>`",
+     "severity": "medium",
+     "old_name": ...,
+     "new_name": ...,
+     "initiator": ...,
+     "time": ...,
+     "id": ...,
+}
+```
+
 ### drop_procedure
 
 Удаление хранимой процедуры.
