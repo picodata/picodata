@@ -420,15 +420,16 @@ def test_grant_revoke(instance: Instance):
 
     assert grant_privilege is not None
     assert (
-        grant_privilege["message"] == "granted privilege create on table to user `ymir`"
+        grant_privilege["message"]
+        == "granted privilege create on table `*` to user `ymir`"
     )
     assert grant_privilege["severity"] == "high"
     assert grant_privilege["privilege"] == "create"
+    assert grant_privilege["object"] == "*"
     assert grant_privilege["object_type"] == "table"
     assert grant_privilege["grantee"] == user
     assert grant_privilege["grantee_type"] == "user"
     assert grant_privilege["initiator"] == "admin"
-    assert "object" not in grant_privilege
 
     instance.sudo_sql(f'REVOKE CREATE TABLE FROM "{user}"')
 
@@ -437,15 +438,15 @@ def test_grant_revoke(instance: Instance):
     assert revoke_privilege is not None
     assert (
         revoke_privilege["message"]
-        == f"revoked privilege create on table from user `{user}`"
+        == f"revoked privilege create on table `*` from user `{user}`"
     )
     assert revoke_privilege["severity"] == "high"
     assert revoke_privilege["privilege"] == "create"
+    assert revoke_privilege["object"] == "*"
     assert revoke_privilege["object_type"] == "table"
     assert revoke_privilege["grantee"] == user
     assert revoke_privilege["grantee_type"] == "user"
     assert revoke_privilege["initiator"] == "admin"
-    assert "object" not in revoke_privilege
 
     # specific privilege to user
     instance.sudo_sql(f'GRANT READ ON TABLE "_pico_tier" TO "{user}"')
@@ -490,14 +491,17 @@ def test_grant_revoke(instance: Instance):
     grant_privilege = take_until_title(events, "grant_privilege")
 
     assert grant_privilege is not None
-    assert grant_privilege["message"] == "granted privilege create on table to role `R`"
+    assert (
+        grant_privilege["message"]
+        == "granted privilege create on table `*` to role `R`"
+    )
     assert grant_privilege["severity"] == "high"
     assert grant_privilege["privilege"] == "create"
+    assert grant_privilege["object"] == "*"
     assert grant_privilege["object_type"] == "table"
     assert grant_privilege["grantee"] == "R"
     assert grant_privilege["grantee_type"] == "role"
     assert grant_privilege["initiator"] == "admin"
-    assert "object" not in grant_privilege
 
     instance.sudo_sql('REVOKE CREATE TABLE FROM "R"')
 
@@ -505,15 +509,16 @@ def test_grant_revoke(instance: Instance):
 
     assert revoke_privilege is not None
     assert (
-        revoke_privilege["message"] == "revoked privilege create on table from role `R`"
+        revoke_privilege["message"]
+        == "revoked privilege create on table `*` from role `R`"
     )
     assert revoke_privilege["severity"] == "high"
     assert revoke_privilege["privilege"] == "create"
+    assert grant_privilege["object"] == "*"
     assert revoke_privilege["object_type"] == "table"
     assert revoke_privilege["grantee"] == "R"
     assert revoke_privilege["grantee_type"] == "role"
     assert revoke_privilege["initiator"] == "admin"
-    assert "object" not in revoke_privilege
 
     # specific privilege to role
     instance.sudo_sql('GRANT READ ON TABLE "_pico_user" TO "R"')

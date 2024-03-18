@@ -3522,13 +3522,11 @@ pub mod acl {
                 );
             }
             _ => {
-                let object_fmt = match &object {
-                    Some(object) => format!("`{object}` "),
-                    None => "".into(),
-                };
+                let object = object.as_deref().unwrap_or("*");
                 crate::audit!(
-                    message: "granted privilege {privilege} on {object_type} {object_fmt}\
-                              to {grantee_type} `{grantee}`",
+                    message: "granted privilege {privilege} \
+                        on {object_type} `{object}` \
+                        to {grantee_type} `{grantee}`",
                     title: "grant_privilege",
                     severity: High,
                     privilege: privilege.as_str(),
@@ -3579,13 +3577,11 @@ pub mod acl {
                 );
             }
             _ => {
-                let object_fmt = match &object {
-                    Some(object) => format!("`{object}` "),
-                    None => "".into(),
-                };
+                let object = object.as_deref().unwrap_or("*");
                 crate::audit!(
-                    message: "revoked privilege {privilege} on {object_type} {object_fmt}\
-                              from {grantee_type} `{grantee}`",
+                    message: "revoked privilege {privilege} \
+                        on {object_type} `{object}` \
+                        from {grantee_type} `{grantee}`",
                     title: "revoke_privilege",
                     severity: High,
                     privilege: privilege.as_str(),
