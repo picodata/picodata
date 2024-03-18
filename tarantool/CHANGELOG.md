@@ -100,6 +100,7 @@
   but now it requires `tarantool::error::IntoBoxError`.
   This means that most error types from third-party crates are no longer supported,
   but `tarantool::error::Error`, `Box<dyn Error>` & even `String` still work.
+- `tarantool::set_error!` macro now returns `()` instead of `-1_i32` as it did previously
 
 ### Added (picodata)
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.

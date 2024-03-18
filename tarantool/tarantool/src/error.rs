@@ -1077,7 +1077,7 @@ mod tests {
         // a let statement in it, otherwise it will suddenly stop compiling in
         // some weird context. And neither the compiler nor clippy will tell you
         // anything about this.
-        _ = set_error!(TarantoolErrorCode::Unknown, "idk");
+        () = set_error!(TarantoolErrorCode::Unknown, "idk");
 
         if true {
             set_error!(TarantoolErrorCode::Unknown, "idk")
