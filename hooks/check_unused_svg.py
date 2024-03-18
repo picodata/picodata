@@ -15,5 +15,6 @@ def on_files(files: Files, config: MkDocsConfig):
         if not file.src_path.endswith(".svg"):
             continue
 
-        if file.src_path not in config["used_svg"]:
-            log.warning(f"UNUSED SVG: {file.src_path}")
+        abs_src_path = os.path.join(config["docs_dir"], file.src_path)
+        if abs_src_path not in config["used_svg"]:
+            log.warning(f"UNUSED SVG: {abs_src_path}")

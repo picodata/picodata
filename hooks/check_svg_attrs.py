@@ -3,7 +3,7 @@ import re
 from urllib.parse import urlsplit
 from mkdocs.plugins import get_plugin_logger
 from mkdocs.config.defaults import MkDocsConfig
-from mkdocs.structure.files import File, Files
+from mkdocs.structure.files import Files
 from mkdocs.structure.pages import Page
 from xml.dom import minidom
 
@@ -28,14 +28,17 @@ def on_files(files: Files, config: MkDocsConfig):
         images: list[str] = list(filter(lambda line: re.match(r"^!\[", line), lines))
 
         hrefs: list[str] = re.findall(r"(?<=\()(.*?\.svg)", " ".join(images))
-        hrefs = [hrefs[i][3:] for i in range(len(hrefs))]
 
         for href in hrefs:
-            svg: File = Files.get_file_from_path(files, href)  # type: ignore
+            dir_path = os.path.dirname(file.abs_src_path)
+            svg_path = os.path.normpath(os.path.join(dir_path, href))
+            if not os.path.exists(svg_path):
+                log.warning(f"MISSING FILE @ {svg_path}")
+                continue
 
-            used_svg.add(svg.src_path)
+            used_svg.add(svg_path)
 
-            dom = minidom.parse(svg.abs_src_path)
+            dom = minidom.parse(svg_path)
 
             # Check `viewBox` attribute
             for tag in dom.getElementsByTagName("svg"):
@@ -44,18 +47,18 @@ def on_files(files: Files, config: MkDocsConfig):
                 height = tag.getAttribute("height").replace("mm", "")
 
                 if not attr:
-                    log.warning(f"MISSING viewBox @ {svg.src_path}")
+                    log.warning(f"MISSING viewBox @ {svg_path}")
                     continue
 
                 # Ensure values are equal to prevent image distortion
                 vals = attr.split()
                 if vals[2] != width:
                     log.warning(
-                        f'DIFFER width="{width}" AND viewBox=". . {vals[2]} ." @ {svg.src_path}'
+                        f'DIFFER width="{width}" AND viewBox=". . {vals[2]} ." @ {svg_path}'
                     )
                 if vals[3] != height:
                     log.warning(
-                        f'DIFFER height="{height}" AND viewBox=". . . {vals[3]}" @ {svg.src_path}'
+                        f'DIFFER height="{height}" AND viewBox=". . . {vals[3]}" @ {svg_path}'
                     )
 
             # Check `xlink:href` attribute
@@ -70,11 +73,11 @@ def on_files(files: Files, config: MkDocsConfig):
                     path = file.src_path
 
                 if path not in config["anchors"]:
-                    log.warning(f"PAGE NOT FOUND @ {svg.src_path}: {path}")
+                    log.warning(f"PAGE NOT FOUND @ {svg_path}: {path}")
                     continue
 
                 if url.fragment not in config["anchors"][path]:
-                    log.warning(f"BROKEN ANCHOR @ {svg.src_path}: #{url.fragment}")
+                    log.warning(f"BROKEN ANCHOR @ {svg_path}: #{url.fragment}")
                     continue
 
         # Drop loaded page in order to suppress MkDocs DeprecationWarning:
