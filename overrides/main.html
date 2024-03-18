@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{# see: https://github.com/squidfunk/mkdocs-material/blob/9.4.8/src/templates/base.html #}
+
+{% block extrahead %}
+    <meta name="GIT_DESCRIBE" content="{{ config.env.GIT_DESCRIBE }}">
+    <meta name="PICODATA_DOC_VER" content="{{ config.env.PICODATA_DOC_VER }}">
+{% endblock %}

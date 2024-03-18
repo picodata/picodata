@@ -74,6 +74,7 @@ pack-doc:
     - DATE=$(date +%Y%m%d%H%M%S)
     - FNAME="picodata-doc-${DATE}-${PICODATA_DOC_VER}-${CI_COMMIT_SHA}.tgz"
     - echo "FNAME=$FNAME" | tee -a .env
+    - echo "GIT_DESCRIBE=$(git describe --always)" | tee -a .env
     - pipenv run mkdocs build -sd build
     - pushd build
     - tar -cvzf ../$FNAME .

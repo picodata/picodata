@@ -164,6 +164,7 @@ validation:
 
 # https://www.mkdocs.org/user-guide/configuration/#hooks
 hooks:
+  - ./hooks/add_meta.py
   - ./hooks/exclude_sitemap.py
   - ./hooks/filter_logs.py
   - ./hooks/check_headers.py
