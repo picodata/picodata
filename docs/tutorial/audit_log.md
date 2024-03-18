@@ -114,7 +114,7 @@ tail -f /tmp/audit.log
 journalctl -f | grep AUDIT
 ```
 
-## Оповещения о событиях журнала аудита {: #notifications }
+## Оповещения о событиях безопасности {: #notifications }
 
 ### Поддерживаемые способы доставки оповещений {: #supported_notifications }
 
