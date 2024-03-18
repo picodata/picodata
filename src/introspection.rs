@@ -130,6 +130,67 @@ pub trait Introspection {
     /// assert_eq!(s.get_field_as_rmpv("nested.sub_field").unwrap(), Value::from(2.71));
     /// ```
     fn get_field_as_rmpv(&self, path: &str) -> Result<rmpv::Value, IntrospectionError>;
+
+    /// Get a value which was specified via the `#[introspection(config_default = expr)]`
+    /// attribute converted to a [`rmpv::Value`].
+    ///
+    /// Returns `Ok(None)` if `config_default` attribute wasn't provided for
+    /// given field.
+    ///
+    /// Note that the value is not type checked, instead it is immediately
+    /// converted to a rmpv::Value, so it's the user's responsibility to make
+    /// sure the resulting value has the appropriate type. This however makes it
+    /// a bit simpler to specify values for nested types like `Option<String>`,
+    /// etc.
+    ///
+    /// The `expr` in `#[introspection(config_default = expr)]` may contain
+    /// references to `self`, which allows for default values of some parameters
+    /// to be dependent on values of other parameters
+    /// (see [`InstanceConfig::advertise_address`] for example).
+    ///
+    /// Also note that this function doesn't do any special checks to see if the
+    /// values are set or not in the actual struct. See what happens in
+    /// [`PicodataConfig::set_defaults_explicitly`] for a real-life example.
+    ///
+    /// When using the `#[derive(Introspection)]` derive macro the implementation
+    /// converts the value to msgpack using `rmp_serde` and then decodes that
+    /// msgpack into a `rmpv::Value`. This is sub-optimal with respect to performance,
+    /// but for our use cases this is fine.
+    ///
+    /// # Examples:
+    /// ```
+    /// use picodata::introspection::Introspection;
+    /// use rmpv::Value;
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct MyStruct {
+    ///     #[introspection(config_default = 69105)]
+    ///     number: i32,
+    ///     #[introspection(config_default = format!("there's {} leaves in the pile", self.number))]
+    ///     text: String,
+    ///     doesnt_have_default: bool,
+    /// }
+    ///
+    /// let mut s = MyStruct {
+    ///     number: 2,
+    ///     ..Default::default()
+    /// };
+    ///
+    /// assert_eq!(s.get_field_default_value_as_rmpv("number").unwrap(), Some(Value::from(69105)));
+    ///
+    /// // Note here the actual value of `s.number` is used, not the config_default one. --------V
+    /// assert_eq!(s.get_field_default_value_as_rmpv("text").unwrap(), Some(Value::from("there's 2 leaves in the pile")));
+    ///
+    /// assert_eq!(s.get_field_default_value_as_rmpv("doesnt_have_default").unwrap(), None);
+    /// ```
+    ///
+    /// [`InstanceConfig::advertise_address`]: crate::config::InstanceConfig::advertise_address
+    /// [`PicodataConfig::set_defaults_explicitly`]: crate::config::PicodataConfig::set_defaults_explicitly
+    fn get_field_default_value_as_rmpv(
+        &self,
+        path: &str,
+    ) -> Result<Option<rmpv::Value>, IntrospectionError>;
 }
 
 /// Information about a single struct field. This is the type which is stored
@@ -322,8 +383,11 @@ mod test {
     #[derive(Default, Debug, Introspection, PartialEq)]
     struct S {
         x: i32,
+        #[introspection(config_default = self.x as f32 * 0.5)]
         y: f32,
+        #[introspection(config_default = "this is a &str but it still works")]
         s: String,
+        #[introspection(config_default = &["this", "also", "works"])]
         v: Vec<String>,
         #[introspection(nested)]
         r#struct: Nested,
@@ -334,7 +398,9 @@ mod test {
 
     #[derive(Default, Debug, Introspection, PartialEq)]
     struct Nested {
+        #[introspection(config_default = "nested of course works")]
         a: String,
+        #[introspection(config_default = format!("{}, but type safety is missing unfortunately", self.a))]
         b: i64,
         #[introspection(nested)]
         empty: Empty,
@@ -660,5 +726,89 @@ mod test {
         );
 
         assert_eq!(leaf_field_paths::<Nested>(), &["a", "b", "empty"]);
+    }
+
+    #[test]
+    fn get_field_default_value_as_rmpv() {
+        let s = S {
+            x: 999,
+            y: 8.88,
+            s: "S".into(),
+            v: vec!["V0".into(), "V1".into(), "V2".into()],
+            r#struct: Nested {
+                a: "self.a which was set explicitly".into(),
+                b: 0xb,
+                empty: Empty {},
+            },
+            ignored: serde_yaml::Value::default(),
+        };
+
+        //
+        // Error cases are mostly covered in tests above
+        //
+        let e = s
+            .get_field_default_value_as_rmpv("struct.no_such_field")
+            .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "struct: unknown field `no_such_field`, expected one of `a`, `b`, `empty`"
+        );
+
+        let e = s.get_field_default_value_as_rmpv("ignored").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `ignored`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+
+        //
+        // Success cases
+        //
+        assert_eq!(s.get_field_default_value_as_rmpv("x").unwrap(), None);
+        // Remember, it's `self.x * 0.5`
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("y").unwrap(),
+            Some(rmpv::Value::F32(499.5))
+        );
+
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("s").unwrap(),
+            Some(rmpv::Value::from("this is a &str but it still works"))
+        );
+
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("v").unwrap(),
+            Some(rmpv::Value::Array(vec![
+                rmpv::Value::from("this"),
+                rmpv::Value::from("also"),
+                rmpv::Value::from("works"),
+            ]))
+        );
+
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("struct.a").unwrap(),
+            Some(rmpv::Value::from("nested of course works"))
+        );
+
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("struct.b").unwrap(),
+            Some(rmpv::Value::from(
+                "self.a which was set explicitly, but type safety is missing unfortunately"
+            ))
+        );
+
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("struct.empty").unwrap(),
+            None
+        );
+
+        // For some reason we even allow getting the default for the whole subsection.
+        #[rustfmt::skip]
+        assert_eq!(
+            s.get_field_default_value_as_rmpv("struct").unwrap(),
+            Some(rmpv::Value::Map(vec![
+                (rmpv::Value::from("a"), rmpv::Value::from("nested of course works")),
+                (rmpv::Value::from("b"), rmpv::Value::from("self.a which was set explicitly, but type safety is missing unfortunately")),
+            ])),
+        );
     }
 }

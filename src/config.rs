@@ -711,6 +711,7 @@ impl ClusterConfig {
 
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct InstanceConfig {
+    #[introspection(config_default = ".")]
     pub data_dir: Option<String>,
     pub service_password_file: Option<String>,
     pub config_file: Option<String>,

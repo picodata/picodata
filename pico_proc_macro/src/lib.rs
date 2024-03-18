@@ -66,6 +66,9 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
 
     let body_for_get_field_as_rmpv = generate_body_for_get_field_as_rmpv(&context);
 
+    let body_for_get_field_default_value_as_rmpv =
+        generate_body_for_get_field_default_value_as_rmpv(&context);
+
     let crate_ = &context.args.crate_;
     quote! {
         #[automatically_derived]
@@ -87,6 +90,11 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
             fn get_field_as_rmpv(&self, path: &str) -> ::std::result::Result<#crate_::introspection::RmpvValue, #crate_::introspection::IntrospectionError> {
                 use #crate_::introspection::IntrospectionError;
                 #body_for_get_field_as_rmpv
+            }
+
+            fn get_field_default_value_as_rmpv(&self, path: &str) -> Result<Option<#crate_::introspection::RmpvValue>, #crate_::introspection::IntrospectionError> {
+                use #crate_::introspection::IntrospectionError;
+                #body_for_get_field_default_value_as_rmpv
             }
         }
     }
@@ -347,6 +355,133 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
     }
 }
 
+fn generate_body_for_get_field_default_value_as_rmpv(
+    context: &Context,
+) -> proc_macro2::TokenStream {
+    let crate_ = &context.args.crate_;
+
+    let mut default_for_non_nestable = quote! {};
+    let mut default_for_whole_nestable = quote! {};
+    let mut default_for_nested_subfield = quote! {};
+    let mut non_nestable_names = vec![];
+    for field in &context.fields {
+        let name = &field.name;
+        let ident = &field.ident;
+        #[allow(non_snake_case)]
+        let Type = &field.field.ty;
+
+        if !field.attrs.nested {
+            non_nestable_names.push(name);
+
+            // Handle getting default for a non-nestable field
+            if let Some(default) = &field.attrs.config_default {
+                default_for_non_nestable.extend(quote! {
+                    #name => {
+                        match #crate_::introspection::to_rmpv_value(&(#default)) {
+                            Err(e) => {
+                                return Err(IntrospectionError::ToRmpvValue { field: path.into(), details: e });
+                            }
+                            Ok(value) => return Ok(Some(value)),
+                        }
+                    }
+                });
+            } else {
+                default_for_non_nestable.extend(quote! {
+                    #name => { return Ok(None); }
+                });
+            }
+        } else {
+            // Handle getting a field marked with `#[introspection(nested)]`.
+            default_for_whole_nestable.extend(quote! {
+                #name => {
+                    use #crate_::introspection::RmpvValue;
+                    let field_infos = #Type::FIELD_INFOS;
+                    let mut fields = Vec::with_capacity(field_infos.len());
+
+                    for field in field_infos {
+                        let value = self.#ident.get_field_default_value_as_rmpv(field.name)
+                            .map_err(|e| e.with_prepended_prefix(#name))?;
+                        let Some(value) = value else {
+                            continue;
+                        };
+
+                        fields.push((RmpvValue::from(field.name), value));
+                    }
+                    if fields.is_empty() {
+                        return Ok(None);
+                    }
+
+                    return Ok(Some(RmpvValue::Map(fields)));
+                }
+            });
+
+            // Handle getting a nested field
+            default_for_nested_subfield.extend(quote! {
+                #name => {
+                    return self.#ident.get_field_default_value_as_rmpv(tail)
+                        .map_err(|e| e.with_prepended_prefix(head));
+                }
+            });
+        }
+    }
+
+    // Handle if a nested path is specified for non-nestable field
+    let mut error_if_non_nestable = quote! {};
+    if !non_nestable_names.is_empty() {
+        error_if_non_nestable = quote! {
+            #( #non_nestable_names )|* => {
+                return Err(IntrospectionError::NotNestable { field: head.into() })
+            }
+        };
+    }
+
+    // Actual generated body:
+    quote! {
+        match path.split_once('.') {
+            Some((head, tail)) => {
+                let head = head.trim();
+                if head.is_empty() {
+                    return Err(IntrospectionError::InvalidPath {
+                        expected: "expected a field name before",
+                        path: format!(".{tail}"),
+                    })
+                }
+                let tail = tail.trim();
+                if !tail.chars().next().map_or(false, char::is_alphabetic) {
+                    return Err(IntrospectionError::InvalidPath {
+                        expected: "expected a field name after",
+                        path: format!("{head}."),
+                    })
+                }
+                match head {
+                    #error_if_non_nestable
+                    #default_for_nested_subfield
+                    _ => {
+                        return Err(IntrospectionError::NoSuchField {
+                            parent: "".into(),
+                            field: head.into(),
+                            expected: Self::FIELD_INFOS,
+                        });
+                    }
+                }
+            }
+            None => {
+                match path {
+                    #default_for_non_nestable
+                    #default_for_whole_nestable
+                    _ => {
+                        return Err(IntrospectionError::NoSuchField {
+                            parent: "".into(),
+                            field: path.into(),
+                            expected: Self::FIELD_INFOS,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct Context {
     fields: Vec<FieldInfo>,
     args: Args,
@@ -385,17 +520,16 @@ impl Args {
     }
 }
 
+#[derive(Default)]
 struct FieldAttrs {
     ignore: bool,
     nested: bool,
+    config_default: Option<syn::Expr>,
 }
 
 impl FieldAttrs {
     fn from_attributes(attrs: Vec<syn::Attribute>) -> Result<Self, syn::Error> {
-        let mut result = Self {
-            ignore: false,
-            nested: false,
-        };
+        let mut result = Self::default();
 
         for attr in attrs {
             if !attr.path.is_ident("introspection") {
@@ -412,10 +546,18 @@ impl FieldAttrs {
                         result.ignore = true;
                     } else if ident == "nested" {
                         result.nested = true;
+                    } else if ident == "config_default" {
+                        if result.config_default.is_some() {
+                            return Err(syn::Error::new(ident.span(), "duplicate `config_default` specified"));
+                        }
+
+                        input.parse::<syn::Token![=]>()?;
+
+                        result.config_default = Some(input.parse::<syn::Expr>()?);
                     } else {
                         return Err(syn::Error::new(
                             ident.span(),
-                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`"),
+                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`"),
                         ));
                     }
 
