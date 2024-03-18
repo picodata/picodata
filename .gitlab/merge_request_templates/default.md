@@ -13,8 +13,9 @@ Reminder:
 
 - Close #...
 - Target branch: %{target_branch}
-- Changes should be cherry-picked to 24.1: yes / no
+- Changes should be cherry-picked to 24.2: yes / no
 - Docs follow-up: not necessary / [new issue](https://git.picodata.io/picodata/picodata/docs/-/issues/new?issuable_template=followup)
+
 <!--
 - Follow-up for !...
 - Depends on !...
