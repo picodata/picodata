@@ -79,9 +79,29 @@
 
 Удаление учетной записи пользователя СУБД.
 
+```json
+{
+     "title": "drop_user",
+     "message": "dropped user `<user>`",
+     "severity": "medium",
+     "user": ...,
+     ...
+}
+```
+
 ### drop_role
 
 Удаление роли СУБД.
+
+```json
+{
+     "title": "drop_role",
+     "message": "dropped role `<role>`",
+     "severity": "medium",
+     "role": ...,
+     ...
+}
+```
 
 ### change_password
 
