@@ -1293,6 +1293,13 @@ fn reenterable_schema_change_request(
                     // User doesn't exist yet, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 };
+                if user_def.is_role() {
+                    return Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("Role {name} exists. Unable to drop role.")),
+                    )));
+                }
+
                 Op::Acl(OpAcl::DropUser {
                     user_id: user_def.id,
                     initiator: current_user,
@@ -1332,6 +1339,13 @@ fn reenterable_schema_change_request(
                     // Role doesn't exist yet, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 };
+                if !role_def.is_role() {
+                    return Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format!("User {name} exists. Unable to drop user.")),
+                    )));
+                }
+
                 Op::Acl(OpAcl::DropRole {
                     role_id: role_def.id,
                     initiator: current_user,
