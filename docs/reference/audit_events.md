@@ -21,8 +21,9 @@
 {
      "title": "create_table",
      "message": "created table `friends_of_peppa`",
-     "name": "friends_of_peppa",
      "severity": "medium",
+     "name": "friends_of_peppa",
+     "initiator": "admin",
      "time": "2023-12-01T14:31:50.117+0300",
      "id": "1.0.14"
 }
@@ -30,9 +31,10 @@
 
 Каждая запись журнала включает следующие обязательные элементы:
 
-- `title` – название
+- `title` – наименование
 - `message` – описание
 - `severity` – важность (`low` / `medium` / `high`)
+- `initiator` — субъект доступа
 - `time` – дата и время
 - `id` – идентификатор, состоящий из трех чисел:
     - `raft_id` – идентификатор инстанса в Raft
