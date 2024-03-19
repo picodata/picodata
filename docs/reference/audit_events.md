@@ -70,8 +70,8 @@
 - [x] изменение правил разграничения доступа в СУБД;
      * (grant_privilege, grant_role, revoke_privilege, revoke_role)
 
-- [ ] создание и удаление БД;
-     * (create_db, todo:drop_db)
+- [x] создание и удаление БД;
+     * (create_local_db, drop_local_db)
 
 - [ ] подключение, восстановление БД;
 - [ ] факты нарушения целостности объектов контроля;
@@ -256,19 +256,36 @@
 }
 ```
 
-### create_db
+### create_local_db
 
-Создание базы данных. Событие фиксируется по завершении
-[бутстрапа](../overview/glossary.md) первого инстанса в кластере.
+Создание базы данных. Событие фиксируется после добавления инстанса в
+кластер, см. [join_instance](#join_instance). Событие фиксируется на
+всех узлах кластера, включая добавляемый.
 
 ```json
 {
-     "title": "create_db",
-     "message": "a new database `<cluster_id>` was created",
+     "title": "create_local_db",
+     "message": "local database created on `<instance_id>`",
      "severity": "low",
-     "raft_id": 1,
+     "raft_id": ...,
      "instance_id": ...,
-     // TODO: "cluster_id": ...,
+     ...
+}
+```
+
+### drop_local_db
+
+Удаление базы данных. Событие фиксируется после удаления инстанса из
+кластера, см. [expel_instance](#expel_instance). Событие фиксируется на
+всех узлах кластера.
+
+```json
+{
+     "title": "drop_local_db",
+     "message": "local database dropped on `<instance_id>`",
+     "severity": "low",
+     "raft_id": ...,
+     "instance_id": ...,
      ...
 }
 ```
