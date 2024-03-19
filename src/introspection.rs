@@ -8,6 +8,7 @@
 //! supports some basic struct field information.
 //!
 //! [`PicodataConfig`]: crate::config::PicodataConfig
+use crate::traft::error::Error;
 pub use pico_proc_macro::Introspection;
 
 pub trait Introspection {
@@ -45,6 +46,64 @@ pub trait Introspection {
     /// s.set_field_from_yaml("nested.sub_field", "3.14").unwrap();
     /// ```
     fn set_field_from_yaml(&mut self, path: &str, yaml: &str) -> Result<(), IntrospectionError>;
+
+    /// Get field of `self` described by `path` as a generic msgpack value in
+    /// form of [`rmpv::Value`].
+    ///
+    /// When using the `#[derive(Introspection)]` derive macro the implementation
+    /// converts the value to msgpack using [`to_rmpv_value`].
+    ///
+    /// In the future we may want to get values as some other enums (maybe
+    /// serde_yaml::Value, or our custom one), but for now we've chosen rmpv
+    /// because we're using this to convert values to msgpack.
+    ///
+    /// # Examples:
+    /// ```
+    /// use picodata::introspection::Introspection;
+    /// use rmpv::Value;
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct MyStruct {
+    ///     number: i32,
+    ///     text: String,
+    ///     #[introspection(nested)]
+    ///     nested: NestedStruct,
+    /// }
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct NestedStruct {
+    ///     sub_field: f64,
+    /// }
+    ///
+    /// let mut s = MyStruct {
+    ///     number: 13,
+    ///     text: "hello".into(),
+    ///     nested: NestedStruct {
+    ///         sub_field: 2.71,
+    ///     },
+    /// };
+    ///
+    /// assert_eq!(s.get_field_as_rmpv("number").unwrap(), Value::from(13));
+    /// assert_eq!(s.get_field_as_rmpv("text").unwrap(), Value::from("hello"));
+    /// assert_eq!(s.get_field_as_rmpv("nested.sub_field").unwrap(), Value::from(2.71));
+    /// ```
+    fn get_field_as_rmpv(&self, path: &str) -> Result<rmpv::Value, IntrospectionError>;
+}
+
+/// A public reimport for use in the derive macro.
+pub use rmpv::Value as RmpvValue;
+
+/// Converts a generic serde serializable value to [`rmpv::Value`]. This
+/// function is just needed to be called from the derived
+/// [`Introspection::get_field_as_rmpv`] implementations.
+#[inline(always)]
+pub fn to_rmpv_value<T>(v: &T) -> Result<rmpv::Value, Error>
+where
+    T: serde::Serialize,
+{
+    crate::to_rmpv_named::to_rmpv_named(v).map_err(Error::other)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -57,7 +116,7 @@ pub enum IntrospectionError {
     },
 
     #[error("incorrect value for field '{field}': {error}")]
-    SerdeYaml {
+    FromSerdeYaml {
         field: String,
         error: serde_yaml::Error,
     },
@@ -76,6 +135,9 @@ pub enum IntrospectionError {
         field: String,
         example: &'static str,
     },
+
+    #[error("failed converting '{field}' to a msgpack value: {details}")]
+    ToRmpvValue { field: String, details: Error },
 }
 
 impl IntrospectionError {
@@ -100,8 +162,8 @@ impl IntrospectionError {
         res
     }
 
-    pub fn prepend_prefix(&mut self, prefix: &str) {
-        match self {
+    pub fn with_prepended_prefix(mut self, prefix: &str) -> Self {
+        match &mut self {
             Self::NotNestable { field } => {
                 *field = format!("{prefix}.{field}");
             }
@@ -115,18 +177,16 @@ impl IntrospectionError {
                     *parent = format!("{prefix}.{parent}");
                 }
             }
-            Self::SerdeYaml { field, .. } => {
+            Self::FromSerdeYaml { field, .. } => {
                 *field = format!("{prefix}.{field}");
             }
             Self::AssignToNested { field, .. } => {
                 *field = format!("{prefix}.{field}");
             }
+            Self::ToRmpvValue { field, .. } => {
+                *field = format!("{prefix}.{field}");
+            }
         }
-    }
-
-    #[inline(always)]
-    pub fn with_prepended_prefix(mut self, prefix: &str) -> Self {
-        self.prepend_prefix(prefix);
         self
     }
 }
@@ -134,37 +194,38 @@ impl IntrospectionError {
 #[cfg(test)]
 mod test {
     use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[derive(Default, Debug, Introspection)]
+    struct S {
+        x: i32,
+        y: f32,
+        s: String,
+        v: Vec<String>,
+        #[introspection(nested)]
+        r#struct: Nested,
+
+        #[introspection(ignore)]
+        ignored: serde_yaml::Value,
+    }
+
+    #[derive(Default, Debug, Introspection)]
+    struct Nested {
+        a: String,
+        b: i64,
+        #[introspection(nested)]
+        empty: Empty,
+    }
+
+    #[derive(Default, Debug, Introspection)]
+    struct Empty {}
 
     #[test]
-    fn derive_set_field_from_yaml() {
-        #[derive(Default, Debug, Introspection)]
-        struct S {
-            x: i32,
-            y: f32,
-            s: String,
-            v: Vec<String>,
-            #[introspection(nested)]
-            r#struct: Nested,
-
-            #[introspection(ignore)]
-            ignored: serde_yaml::Value,
-        }
-
-        #[derive(Default, Debug, Introspection)]
-        struct Nested {
-            a: String,
-            b: i64,
-            #[introspection(nested)]
-            empty: Empty,
-        }
-
-        #[derive(Default, Debug, Introspection)]
-        struct Empty {}
-
+    fn set_field_from_yaml() {
         let mut s = S::default();
 
         //
-        // Check error cases
+        // Check `set_field_from_yaml` error cases
         //
         let e = s.set_field_from_yaml("a", "foo").unwrap_err();
         assert_eq!(
@@ -239,7 +300,7 @@ mod test {
         );
 
         //
-        // Check success cases
+        // Check `set_field_from_yaml` success cases
         //
         s.set_field_from_yaml("v", "[1, 2, 3]").unwrap();
         assert_eq!(&s.v, &["1", "2", "3"]);
@@ -265,5 +326,111 @@ mod test {
         assert_eq!(s.r#struct.a, "aaaa");
         s.set_field_from_yaml("struct.b", "  0xbbbb  ").unwrap();
         assert_eq!(s.r#struct.b, 0xbbbb);
+    }
+
+    #[test]
+    fn get_field_as_rmpv() {
+        let s = S {
+            x: 111,
+            y: 2.22,
+            s: "sssss".into(),
+            v: vec!["v".into(), "vv".into(), "vvv".into()],
+            r#struct: Nested {
+                a: "aaaaaa".into(),
+                b: 0xbbbbbb,
+                empty: Empty {},
+            },
+            ignored: serde_yaml::Value::default(),
+        };
+
+        //
+        // Check `get_field_as_rmpv` error cases
+        //
+        let e = s.get_field_as_rmpv("a").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `a`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+
+        let e = s.get_field_as_rmpv(".x").unwrap_err();
+        assert_eq!(e.to_string(), "expected a field name before '.x'");
+
+        let e = s.get_field_as_rmpv("&-*%?!").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `&-*%?!`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+
+        let e = s.get_field_as_rmpv("x.foo.bar").unwrap_err();
+        assert_eq!(e.to_string(), "field 'x' has no nested sub-fields");
+
+        let e = s.get_field_as_rmpv("struct.foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "struct: unknown field `foo`, expected one of `a`, `b`, `empty`"
+        );
+
+        let e = s.get_field_as_rmpv("struct.a.bar").unwrap_err();
+        assert_eq!(e.to_string(), "field 'struct.a' has no nested sub-fields");
+
+        let e = s.get_field_as_rmpv("struct.a..").unwrap_err();
+        assert_eq!(e.to_string(), "expected a field name after 'struct.a.'");
+
+        let e = s.get_field_as_rmpv("x.").unwrap_err();
+        assert_eq!(e.to_string(), "expected a field name after 'x.'");
+
+        let e = s.get_field_as_rmpv("ignored").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `ignored`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+        assert_eq!(s.ignored, serde_yaml::Value::default());
+
+        let e = s.get_field_as_rmpv("struct.empty.foo").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "struct.empty: unknown field `foo`, there are no fields at all"
+        );
+
+        //
+        // Check `get_field_as_rmpv` success cases
+        //
+        assert_eq!(s.get_field_as_rmpv("x").unwrap(), rmpv::Value::from(111));
+        assert_eq!(s.get_field_as_rmpv("y").unwrap(), rmpv::Value::F32(2.22));
+        assert_eq!(
+            s.get_field_as_rmpv("s").unwrap(),
+            rmpv::Value::from("sssss")
+        );
+        assert_eq!(
+            s.get_field_as_rmpv("v").unwrap(),
+            rmpv::Value::Array(vec![
+                rmpv::Value::from("v"),
+                rmpv::Value::from("vv"),
+                rmpv::Value::from("vvv"),
+            ])
+        );
+
+        assert_eq!(
+            s.get_field_as_rmpv("struct.a").unwrap(),
+            rmpv::Value::from("aaaaaa")
+        );
+        assert_eq!(
+            s.get_field_as_rmpv("struct.b").unwrap(),
+            rmpv::Value::from(0xbbbbbb)
+        );
+        assert_eq!(
+            s.get_field_as_rmpv("struct.empty").unwrap(),
+            rmpv::Value::Map(vec![])
+        );
+
+        // We can also get the entire `struct` sub-field if we wanted:
+        assert_eq!(
+            s.get_field_as_rmpv("struct").unwrap(),
+            rmpv::Value::Map(vec![
+                (rmpv::Value::from("a"), rmpv::Value::from("aaaaaa")),
+                (rmpv::Value::from("b"), rmpv::Value::from(0xbbbbbb)),
+                (rmpv::Value::from("empty"), rmpv::Value::Map(vec![])),
+            ])
+        );
     }
 }

@@ -53,6 +53,7 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
     }
 
     let body_for_set_field_from_yaml = generate_body_for_set_field_from_yaml(&context);
+    let body_for_get_field_as_rmpv = generate_body_for_get_field_as_rmpv(&context);
 
     let crate_ = &context.args.crate_;
     quote! {
@@ -65,6 +66,11 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
             fn set_field_from_yaml(&mut self, path: &str, yaml: &str) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
                 use #crate_::introspection::IntrospectionError;
                 #body_for_set_field_from_yaml
+            }
+
+            fn get_field_as_rmpv(&self, path: &str) -> ::std::result::Result<#crate_::introspection::RmpvValue, #crate_::introspection::IntrospectionError> {
+                use #crate_::introspection::IntrospectionError;
+                #body_for_get_field_as_rmpv
             }
         }
     }
@@ -93,7 +99,7 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
                             self.#ident = v;
                             return Ok(());
                         }
-                        Err(error) => return Err(IntrospectionError::SerdeYaml { field: path.into(), error }),
+                        Err(error) => return Err(IntrospectionError::FromSerdeYaml { field: path.into(), error }),
                     }
                 }
             });
@@ -161,6 +167,117 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
                 match path {
                     #set_non_nestable
                     #error_if_nestable
+                    _ => {
+                        return Err(IntrospectionError::NoSuchField {
+                            parent: "".into(),
+                            field: path.into(),
+                            expected: Self::FIELD_NAMES,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenStream {
+    let crate_ = &context.args.crate_;
+
+    let mut get_non_nestable = quote! {};
+    let mut get_whole_nestable = quote! {};
+    let mut get_nested_subfield = quote! {};
+    let mut non_nestable_names = vec![];
+    for field in &context.fields {
+        let name = &field.name;
+        let ident = &field.ident;
+        #[allow(non_snake_case)]
+        let Type = &field.field.ty;
+
+        if !field.attrs.nested {
+            non_nestable_names.push(name);
+
+            // Handle getting a non-nestable field
+            get_non_nestable.extend(quote! {
+                #name => {
+                    match #crate_::introspection::to_rmpv_value(&self.#ident) {
+                        Err(e) => {
+                            return Err(IntrospectionError::ToRmpvValue { field: path.into(), details: e });
+                        }
+                        Ok(value) => return Ok(value),
+                    }
+                }
+            });
+        } else {
+            // Handle getting a field marked with `#[introspection(nested)]`.
+            get_whole_nestable.extend(quote! {
+                #name => {
+                    use #crate_::introspection::RmpvValue;
+                    let field_names = #Type::FIELD_NAMES;
+                    let mut fields = Vec::with_capacity(field_names.len());
+                    for sub_field in field_names {
+                        let key = RmpvValue::from(*sub_field);
+                        let value = self.#ident.get_field_as_rmpv(sub_field)
+                            .map_err(|e| e.with_prepended_prefix(#name))?;
+                        fields.push((key, value));
+                    }
+                    return Ok(RmpvValue::Map(fields));
+                }
+            });
+
+            // Handle getting a nested field
+            get_nested_subfield.extend(quote! {
+                #name => {
+                    return self.#ident.get_field_as_rmpv(tail)
+                        .map_err(|e| e.with_prepended_prefix(head));
+                }
+            });
+        }
+    }
+
+    // Handle if a nested path is specified for non-nestable field
+    let mut error_if_non_nestable = quote! {};
+    if !non_nestable_names.is_empty() {
+        error_if_non_nestable = quote! {
+            #( #non_nestable_names )|* => {
+                return Err(IntrospectionError::NotNestable { field: head.into() })
+            }
+        };
+    }
+
+    // Actual generated body:
+    quote! {
+        match path.split_once('.') {
+            Some((head, tail)) => {
+                let head = head.trim();
+                if head.is_empty() {
+                    return Err(IntrospectionError::InvalidPath {
+                        expected: "expected a field name before",
+                        path: format!(".{tail}"),
+                    })
+                }
+                let tail = tail.trim();
+                if !tail.chars().next().map_or(false, char::is_alphabetic) {
+                    return Err(IntrospectionError::InvalidPath {
+                        expected: "expected a field name after",
+                        path: format!("{head}."),
+                    })
+                }
+                match head {
+                    #error_if_non_nestable
+                    #get_nested_subfield
+                    _ => {
+                        return Err(IntrospectionError::NoSuchField {
+                            parent: "".into(),
+                            field: head.into(),
+                            expected: Self::FIELD_NAMES,
+                        });
+                    }
+                }
+            }
+            None => {
+                match path {
+                    #get_non_nestable
+                    #get_whole_nestable
                     _ => {
                         return Err(IntrospectionError::NoSuchField {
                             parent: "".into(),

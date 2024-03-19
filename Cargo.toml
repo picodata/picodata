@@ -32,7 +32,7 @@ once_cell = "1.17.1"
 blake3 = "=1.3.3"
 rustyline = "12.0.0"
 rustyline-derive = "0.10.0"
-rmpv = "1.0.0"
+rmpv = { version = "1.0.0", features = ["with-serde"] }
 comfy-table = "7.0.1"
 va_list = ">=0.1.4"
 chrono = "0.4.31"
