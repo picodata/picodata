@@ -62,7 +62,7 @@
      * (local_startup, local_shutdown, change_current_grade)
 
 - [x] изменение конфигурации СУБД;
-     * (change_config)
+     * (change_config, join_instance, expel_instance)
 
 - [x] создание и удаление таблицы
      * (create_table, drop_table)
@@ -383,9 +383,40 @@
 }
 ```
 
+### join_instance
+
+Изменение конфигурации СУБД связанное с добавлением инстанса в кластер.
+
+```json
+{
+     "title": "join_instance",
+     "message": "a new instance `<instance_id>` joined the cluster",
+     "severity": "low",
+     "instance_id": ...,
+     "raft_id": ...,
+     ...
+}
+```
+
+### expel_instance
+
+Изменение конфигурации СУБД связанное с удалением инстанса из кластера.
+
+```json
+{
+     "title": "expel_instance",
+     "message": "instance `<instance_id>` was expelled from the cluster",
+     "severity": "low",
+     "instance_id": ...,
+     "raft_id": ...,
+     ...
+}
+```
+
 ### change_config
 
-Изменение конфигурации СУБД.
+Изменение конфигурации СУБД связанное с изменением в системной таблице
+[_pico_property](../architecture/system_tables.md#_pico_property).
 
 ```json
 {
