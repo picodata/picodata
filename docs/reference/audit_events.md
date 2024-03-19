@@ -74,7 +74,10 @@
      * (create_local_db, drop_local_db)
 
 - [ ] подключение, восстановление БД;
+
 - [ ] факты нарушения целостности объектов контроля;
+     * (todo:integrity_violation)
+
 - [x] создание и изменение процедур (программного кода), хранимых в БД, и представлений.
      * (create_procedure, drop_procedure, rename_procedure)
 -->
@@ -588,4 +591,9 @@ new field: reason
      "time": ...,
      "id": ...
 }
+```
+
+### integrity_violation
+
+```json
 ```
