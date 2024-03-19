@@ -617,7 +617,7 @@ fn start_discover(
     tlog!(Info, "entering discovery phase");
 
     luamod::setup(config);
-    assert!(tarantool::cfg().is_none());
+    assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_discovery(config);
     let (storage, raft_storage) = init_common(config, &cfg)?;
@@ -703,7 +703,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     let instance_id = instance.instance_id.clone();
 
     luamod::setup(config);
-    assert!(tarantool::cfg().is_none());
+    assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance);
     let (storage, raft_storage) = init_common(config, &cfg)?;
@@ -794,7 +794,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     };
 
     luamod::setup(config);
-    assert!(tarantool::cfg().is_none());
+    assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_instance_join(config, &resp);
     let (storage, raft_storage) = init_common(config, &cfg)?;

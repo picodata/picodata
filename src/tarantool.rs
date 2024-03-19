@@ -208,10 +208,14 @@ impl Cfg {
     }
 }
 
-pub fn cfg() -> Option<Cfg> {
-    let l = lua_state();
-    let b: LuaTable<_> = l.get("box")?;
-    b.get("cfg")
+pub fn is_box_configured() -> bool {
+    let lua = lua_state();
+    let box_: Option<LuaTable<_>> = lua.get("box");
+    let Some(box_) = box_ else {
+        return false;
+    };
+    let box_cfg: Option<LuaTable<_>> = box_.get("cfg");
+    box_cfg.is_some()
 }
 
 #[track_caller]
