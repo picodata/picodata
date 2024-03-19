@@ -1626,6 +1626,15 @@ def test_sql_acl_users_roles(cluster: Cluster):
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
+    # Attempt to drop role with name of user should return error.
+    with pytest.raises(
+        ReturnError, match=f"User {username} exists. Unable to drop user."
+    ):
+        i1.sql(f""" create user "{username}" with password '{password}' """)
+        i1.sql(f""" drop role "{username}" """)
+    acl = i1.sql(f""" drop user "{username}" """)
+    assert acl["row_count"] == 1
+
     another_password = "Qwerty123"
     # Alter of unexisted user should do nothing.
     acl = i1.sql(f"alter user \"nobody\" with password '{another_password}'")
@@ -1693,6 +1702,12 @@ def test_sql_acl_users_roles(cluster: Cluster):
         ReturnError, match=f"Role {rolename} exists. Unable to alter role."
     ):
         i1.sql(f"alter user \"{rolename}\" with password '{password}'")
+
+    # Attempt to drop user with name of role should return error.
+    with pytest.raises(
+        ReturnError, match=f"Role {rolename} exists. Unable to drop role."
+    ):
+        i1.sql(f""" drop user "{rolename}" """)
 
     # Creation of the role that already exists shouldn't do anything.
     acl = i1.sql(f'create role "{rolename}"')
