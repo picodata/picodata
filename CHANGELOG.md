@@ -65,6 +65,9 @@ with the `YY.MINOR.MICRO` scheme.
 - Make RPC API the main communication interface, see [Architecture — RPC
   API]. Lua API is deprecated and will be removed soon
 
+[Architecture — RPC API]:
+  https://docs.picodata.io/picodata/devel/architecture/rpc_api/
+
 ### Compatibility
 
 - System table `_pico_role` was deleted
@@ -74,9 +77,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 - The current version is NOT compatible with prior releases. It cannot
   be started with the old snapshots
-
-[Architecture — RPC API]:
-  https://docs.picodata.io/picodata/devel/architecture/rpc_api/
 
 --------------------------------------------------------------------------------
 ## [24.1.1] - 2024-02-09
