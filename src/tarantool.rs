@@ -6,11 +6,14 @@ use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
+use ::tarantool::msgpack::ViaMsgpack;
 use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThread, PushGuard};
 pub use ::tarantool::trigger::on_shutdown;
 use file_shred::*;
+use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::unix::ffi::OsStrExt;
+use tlua::CallError;
 
 #[macro_export]
 macro_rules! stringify_last_token {
@@ -78,7 +81,7 @@ mod tests {
 
 /// Tarantool configuration.
 /// See <https://www.tarantool.io/en/doc/latest/reference/configuration/#configuration-parameters>
-#[derive(Clone, Debug, Default, tlua::Push, tlua::LuaRead, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Cfg {
     pub instance_uuid: Option<String>,
     pub replicaset_uuid: Option<String>,
@@ -97,7 +100,8 @@ pub struct Cfg {
     pub memtx_dir: String,
     pub vinyl_dir: String,
 
-    pub memtx_memory: u64,
+    #[serde(flatten)]
+    pub other_fields: HashMap<String, rmpv::Value>,
 }
 
 impl Cfg {
@@ -204,7 +208,8 @@ impl Cfg {
         self.memtx_dir = config.instance.data_dir();
         self.vinyl_dir = config.instance.data_dir();
 
-        self.memtx_memory = config.instance.memtx_memory();
+        self.other_fields
+            .insert("memtx_memory".into(), config.instance.memtx_memory().into());
     }
 }
 
@@ -220,9 +225,18 @@ pub fn is_box_configured() -> bool {
 
 #[track_caller]
 pub fn set_cfg(cfg: &Cfg) -> Result<(), Error> {
-    let l = lua_state();
-    let box_cfg = LuaFunction::load(l, "return box.cfg(...)").unwrap();
-    box_cfg.call_with_args(cfg)?;
+    let lua = lua_state();
+    let res = lua.exec_with("return box.cfg(...)", ViaMsgpack(cfg));
+    match res {
+        Err(CallError::PushError(e)) => {
+            crate::tlog!(Error, "failed to push box configuration via msgpack: {e}");
+            return Err(Error::other(e));
+        }
+        Err(CallError::LuaError(e)) => {
+            return Err(Error::other(e));
+        }
+        Ok(()) => {}
+    }
     Ok(())
 }
 
@@ -250,7 +264,7 @@ pub fn set_cfg_fields<T>(table: T) -> Result<(), tlua::LuaError>
 where
     tlua::AsTable<T>: tlua::PushInto<tlua::LuaState>,
 {
-    use tlua::{Call, CallError};
+    use tlua::Call;
 
     let l = lua_state();
     let b: LuaTable<_> = l.get("box").expect("can't fail under tarantool");
