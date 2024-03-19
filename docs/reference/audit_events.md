@@ -70,7 +70,9 @@
 - [x] изменение правил разграничения доступа в СУБД;
      * (grant_privilege, grant_role, revoke_privilege, revoke_role)
 
-- [ ] создание и удаление БД (new_database_created)
+- [ ] создание и удаление БД;
+     * (create_db, todo:drop_db)
+
 - [ ] подключение, восстановление БД;
 - [ ] факты нарушения целостности объектов контроля;
 - [x] создание и изменение процедур (программного кода), хранимых в БД, и представлений.
@@ -254,18 +256,17 @@
 }
 ```
 
-### new_database_created
+### create_db
 
-Создание базы данных.
-
-<!-- TODO: rename to "create_db" -->
+Создание базы данных. Событие фиксируется по завершении
+[бутстрапа](../overview/glossary.md) первого инстанса в кластере.
 
 ```json
 {
-     "title": "new_database_created",
+     "title": "create_db",
      "message": "a new database `<cluster_id>` was created",
      "severity": "low",
-     "raft_id": ...,
+     "raft_id": 1,
      "instance_id": ...,
      // TODO: "cluster_id": ...,
      ...
