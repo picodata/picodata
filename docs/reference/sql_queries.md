@@ -163,10 +163,6 @@ ALTER USER "andy" WITH NOLOGIN;
 ALTER USER "andy" WITH LOGIN;
 ```
 
-См. также:
-
-- [Блокировка пользователя](../security/integrity.md#user_blocking)
-
 ## Управление привилегиями {: #privileges }
 
 В Picodata применяется ролевая модель, в которой можно назначать
