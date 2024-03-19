@@ -57,9 +57,7 @@
      "severity": "high",
      "user": ...,
      "auth_type": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -73,9 +71,7 @@
      "message": "created role `<role>`",
      "severity": "high",
      "role": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -101,9 +97,7 @@
      "severity": "high",
      "user": ...,
      "auth_type": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -123,9 +117,7 @@
      "object": ...,
      "grantee_type": ...,
      "grantee": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -145,9 +137,7 @@
      "object": ...,
      "grantee_type": ...,
      "grantee": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -163,9 +153,7 @@
      "role": ...,
      "grantee_type": ...,
      "grantee": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -181,9 +169,7 @@
      "role": ...,
      "grantee_type": ...,
      "grantee": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -198,9 +184,7 @@
      "severity": "high",
      "user": ...,
      "verdict": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -215,9 +199,7 @@
      "severity": "high",
      "user": ...,
      "verdict": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...,
 }
 ```
 
@@ -235,9 +217,7 @@
      "raft_id": ...,
      "instance_id": ...,
      // TODO: "cluster_id": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...
 }
 ```
 
