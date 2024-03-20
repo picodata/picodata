@@ -384,6 +384,7 @@ pack-on-tag:
   variables:
     PROJECT_TARGET: 'picodata'
     TYPE: 'RELEASE'
+    BRANCH_TARGET: $CI_COMMIT_TAG
   inherit:
     variables:
       - TYPE
