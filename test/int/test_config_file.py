@@ -46,7 +46,8 @@ instance:
     replicaset_id: my-replicaset
     tier: deluxe
     audit: {data_dir}/audit.log
-    log_level: verbose
+    log:
+        level: verbose
 """
     )
     instance = Instance(
@@ -87,7 +88,7 @@ instance:
             config_file=instance.config_path,
             data_dir=data_dir,
             listen=dict(host=host, port=str(port)),
-            log_level="verbose",
+            log=dict(level="verbose"),
             peers=[dict(host=host, port=str(port))],
             unknown_parameters=[],
         ),
@@ -244,3 +245,59 @@ error: option `--init-replication-factor` cannot be used with `--config` simulta
     i1.fail_to_start()
 
     assert crawler.matched
+
+
+def test_config_file_box_cfg_parameters(cluster: Cluster):
+    #
+    # Check default values
+    #
+    cluster.set_config_file(
+        yaml="""
+# just the required part
+cluster:
+    cluster_id: test
+    tiers:
+        default:
+"""
+    )
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    box_cfg = i1.eval("return box.cfg")
+
+    assert box_cfg.get("log") is None  # type: ignore
+    assert box_cfg["log_level"] == 6  # means verbose -- set by our testing harness
+    assert box_cfg["log_format"] == "plain"
+
+    #
+    # Check explicitly set values
+    #
+    cluster.config_path = None
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tiers:
+        default:
+
+instance:
+    log:
+        destination: file:/proc/self/fd/2  # this is how you say `stderr` explicitly
+        level: debug
+        format: json
+"""
+    )
+
+    # XXX: Just pretend this value comes from the config,
+    # even though this will override any value from the config
+    i1.env["PICODATA_LOG_LEVEL"] = "debug"
+
+    i1.restart(remove_data=True)
+    i1.wait_online()
+
+    box_cfg = i1.eval("return box.cfg")
+
+    assert box_cfg["log"] == "file:/proc/self/fd/2"
+    assert box_cfg["log_level"] == 7  # means debug
+    assert box_cfg["log_format"] == "json"

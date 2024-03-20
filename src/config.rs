@@ -219,11 +219,11 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(log_level) = args.log_level {
-            self.instance.log_level = Some(log_level);
+            self.instance.log.level = Some(log_level);
         }
 
         if let Some(log_destination) = args.log {
-            self.instance.log = Some(log_destination);
+            self.instance.log.destination = Some(log_destination);
         }
 
         if let Some(audit_destination) = args.audit {
@@ -614,9 +614,6 @@ pub struct InstanceConfig {
     pub deprecated_script: Option<String>,
 
     pub audit: Option<String>,
-    pub log_level: Option<args::LogLevel>,
-    pub log: Option<String>,
-    pub log_format: Option<String>,
 
     // box.cfg.background currently doesn't work with our supervisor/child implementation
     // pub background: Option<bool>,
@@ -627,6 +624,10 @@ pub struct InstanceConfig {
     pub shredding: Option<bool>,
 
     pub memtx_memory: Option<u64>,
+
+    #[serde(default)]
+    #[introspection(nested)]
+    pub log: LogSection,
 
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
@@ -706,7 +707,7 @@ impl InstanceConfig {
 
     #[inline]
     pub fn log_level(&self) -> SayLevel {
-        if let Some(level) = self.log_level {
+        if let Some(level) = self.log.level {
             level.into()
         } else {
             SayLevel::Info
@@ -723,6 +724,48 @@ impl InstanceConfig {
         self.memtx_memory.unwrap_or(64 * 1024 * 1024)
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// LogSection
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(
+    PartialEq,
+    Default,
+    Debug,
+    Clone,
+    serde::Deserialize,
+    serde::Serialize,
+    tlua::Push,
+    tlua::PushInto,
+    Introspection,
+)]
+#[serde(deny_unknown_fields)]
+pub struct LogSection {
+    pub level: Option<args::LogLevel>,
+
+    /// By default, Picodata sends the log to the standard error stream
+    /// (stderr). If `log.destination` is specified, Picodata can send the log to a:
+    /// - file
+    /// - pipe
+    /// - system logger
+    pub destination: Option<String>,
+
+    pub format: Option<LogFormat>,
+}
+
+tarantool::define_str_enum! {
+    #[derive(Default)]
+    pub enum LogFormat {
+        #[default]
+        Plain = "plain",
+        Json = "json",
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// deserialize_map_forbid_duplicate_keys
+////////////////////////////////////////////////////////////////////////////////
 
 pub fn deserialize_map_forbid_duplicate_keys<'de, D, K, V>(
     des: D,
@@ -1299,13 +1342,13 @@ instance:
             );
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run",
-                "-c", "  instance.log_level =debug  ",
+                "-c", "  instance.log .level =debug  ",
                 "--config-parameter", "instance. memtx_memory=  0xdeadbeef",
             ]).unwrap();
             config.set_from_args(args).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.cluster_id.unwrap(), "DEF");
-            assert_eq!(config.instance.log_level.unwrap(), args::LogLevel::Debug);
+            assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
             assert_eq!(config.instance.memtx_memory.unwrap(), 0xdead_beef);
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
             assert_eq!(config.instance.data_dir.unwrap(), ".");

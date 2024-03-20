@@ -208,7 +208,7 @@ impl Cfg {
     }
 
     pub fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
-        self.log = config.instance.log.clone();
+        self.log = config.instance.log.destination.clone();
         self.log_level = Some(config.instance.log_level() as _);
 
         self.wal_dir = config.instance.data_dir();
@@ -221,6 +221,8 @@ impl Cfg {
 
         #[rustfmt::skip]
         const MAPPING: &[(&str, &str)] = &[
+            // Other instance.log.* parameters are set explicitly above
+            ("log_format",                  "instance.log.format"),
         ];
         for (box_field, picodata_field) in MAPPING {
             let value = config
