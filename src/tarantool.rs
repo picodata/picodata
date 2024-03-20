@@ -1,6 +1,7 @@
 use crate::config::ElectionMode;
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
+use crate::introspection::Introspection;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
@@ -109,7 +110,7 @@ impl Cfg {
     /// configuration we either will go into discovery phase after which we will
     /// rebootstrap and go to the next phase (either boot or join), or if the
     /// storage is already initialize we will go into the post join phase.
-    pub fn for_discovery(config: &PicodataConfig) -> Self {
+    pub fn for_discovery(config: &PicodataConfig) -> Result<Self, Error> {
         let mut res = Self {
             // These will either be chosen on the next phase or are already
             // chosen and will be restored from the local storage.
@@ -134,12 +135,15 @@ impl Cfg {
             ..Default::default()
         };
 
-        res.set_core_parameters(config);
-        res
+        res.set_core_parameters(config)?;
+        Ok(res)
     }
 
     /// Initial configuration for the cluster bootstrap phase.
-    pub fn for_cluster_bootstrap(config: &PicodataConfig, leader: &Instance) -> Self {
+    pub fn for_cluster_bootstrap(
+        config: &PicodataConfig,
+        leader: &Instance,
+    ) -> Result<Self, Error> {
         let mut res = Self {
             // At this point uuids must be valid, it will be impossible to
             // change them until the instance is expelled.
@@ -160,13 +164,16 @@ impl Cfg {
             ..Default::default()
         };
 
-        res.set_core_parameters(config);
-        res
+        res.set_core_parameters(config)?;
+        Ok(res)
     }
 
     /// Initial configuration for the new instance joining to an already
     /// initialized cluster.
-    pub fn for_instance_join(config: &PicodataConfig, resp: &join::Response) -> Self {
+    pub fn for_instance_join(
+        config: &PicodataConfig,
+        resp: &join::Response,
+    ) -> Result<Self, Error> {
         let mut replication_cfg = Vec::with_capacity(resp.box_replication.len());
         let password = crate::pico_service::pico_service_password();
         for address in &resp.box_replication {
@@ -196,11 +203,11 @@ impl Cfg {
             ..Default::default()
         };
 
-        res.set_core_parameters(config);
-        res
+        res.set_core_parameters(config)?;
+        Ok(res)
     }
 
-    pub fn set_core_parameters(&mut self, config: &PicodataConfig) {
+    pub fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
         self.log = config.instance.log.clone();
         self.log_level = Some(config.instance.log_level() as _);
 
@@ -208,8 +215,21 @@ impl Cfg {
         self.memtx_dir = config.instance.data_dir();
         self.vinyl_dir = config.instance.data_dir();
 
+        // FIXME: make the loop below work with default values
         self.other_fields
             .insert("memtx_memory".into(), config.instance.memtx_memory().into());
+
+        #[rustfmt::skip]
+        const MAPPING: &[(&str, &str)] = &[
+        ];
+        for (box_field, picodata_field) in MAPPING {
+            let value = config
+                .get_field_as_rmpv(picodata_field)
+                .map_err(|e| Error::other(format!("internal error: {e}")))?;
+            self.other_fields.insert((*box_field).into(), value);
+        }
+
+        Ok(())
     }
 }
 

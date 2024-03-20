@@ -620,7 +620,7 @@ fn start_discover(
     luamod::setup(config);
     assert!(!tarantool::is_box_configured());
 
-    let cfg = tarantool::Cfg::for_discovery(config);
+    let cfg = tarantool::Cfg::for_discovery(config)?;
     let (storage, raft_storage) = init_common(config, &cfg)?;
     discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
 
@@ -706,7 +706,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     luamod::setup(config);
     assert!(!tarantool::is_box_configured());
 
-    let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance);
+    let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance)?;
     let (storage, raft_storage) = init_common(config, &cfg)?;
 
     let cs = raft::ConfState {
@@ -797,7 +797,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     luamod::setup(config);
     assert!(!tarantool::is_box_configured());
 
-    let cfg = tarantool::Cfg::for_instance_join(config, &resp);
+    let cfg = tarantool::Cfg::for_instance_join(config, &resp)?;
     let (storage, raft_storage) = init_common(config, &cfg)?;
 
     let raft_id = resp.instance.raft_id;
