@@ -752,53 +752,6 @@ impl InstanceConfig {
 )]
 #[serde(deny_unknown_fields)]
 pub struct MemtxSection {
-    /// Enable [transactional manager](https://www.tarantool.io/en/doc/latest/concepts/atomic/txn_mode_mvcc/#txn-mode-transaction-manager)
-    /// if set to true.
-    // pub use_mvcc_engine: Option<bool>,
-
-    /// Specify the allocator that manages memory for memtx tuples. Possible values:
-    /// - `system` – the memory is allocated as needed, checking that the quota
-    ///              is not exceeded. The allocator is based on the `malloc` function.
-    /// - `small` – a slab allocator. The allocator repeatedly uses a memory
-    ///             block to allocate objects of the same type. Note that this allocator is
-    ///             prone to unresolvable fragmentation on specific workloads, so you can
-    ///             switch to system in such cases.
-    ///
-    /// Corresponds to `box.cfg.memtx_allocator`.
-    // pub allocator: Option<MemtxAllocator>,
-
-    /// The multiplier for computing the sizes of memory chunks that tuples are
-    /// stored in. A lower value may result in less wasted memory depending on
-    /// the total amount of memory available and the distribution of item sizes.
-    ///
-    /// Corresponds to `box.cfg.slab_alloc_factor`.
-    pub allocation_factor: Option<f64>,
-
-    /// Specify the granularity (in bytes) of memory allocation in the small
-    /// allocator. The memtx.slab_alloc_granularity value should meet the
-    /// following conditions:
-    /// - The value is a power of two.
-    /// - The value is greater than or equal to 4.
-    ///
-    /// Below are few recommendations on how to adjust the
-    /// memtx.slab_alloc_granularity option:
-    /// - If the tuples in space are small and have about the same size, set the
-    ///   option to 4 bytes to save memory.
-    /// - If the tuples are different-sized, increase the option value to
-    ///   allocate tuples from the same mempool (memory pool).
-    ///
-    /// Corresponds to `box.cfg.slab_alloc_granularity`.
-    // pub allocation_granularity: Option<u64>,
-    // Not supported yet.
-    // Size of the smallest allocation unit. It can be decreased if most of the
-    // tuples are very small.
-    // pub min_tuple_size: Option<u64>,
-
-    // Not supported yet.
-    // Size of the largest allocation unit, for the memtx storage engine. It can
-    // be increased if it is necessary to store large tuples.
-    // pub max_tuple_size: Option<u64>,
-
     /// How much memory is allocated to store tuples. When the limit is
     /// reached, INSERT or UPDATE requests begin failing with error
     /// ER_MEMORY_ISSUE. The server does not go beyond the memtx_memory limit to
@@ -865,62 +818,6 @@ pub struct VinylSection {
     ///
     /// Corresponds to `box.cfg.vinyl_cache`
     pub cache: Option<u64>,
-
-    /// The maximum number of read threads that vinyl can use for some
-    /// concurrent operations, such as I/O and compression.
-    ///
-    /// Corresponds to `box.cfg.vinyl_read_threads`
-    pub read_threads: Option<u64>,
-
-    /// The maximum number of write threads that vinyl can use for some
-    /// concurrent operations, such as I/O and compression.
-    ///
-    /// Corresponds to `box.cfg.vinyl_write_threads`
-    pub write_threads: Option<u64>,
-
-    // pub max_tuple_size: Option<u64>, <- не надо это разрешать пока,
-    /// Enables the deferred DELETE optimization for vinyl spaces by default.
-    ///
-    /// This can also be controlled on a per-table basis in the options for
-    /// `space_object:create_index()` (we don't support this yet in picodata).
-    ///
-    /// Corresponds to `box.cfg.vinyl_defer_deletes`
-    pub default_defer_deletes: Option<bool>,
-
-    /// Page size. Page is a read/write unit for vinyl disk operations.
-    ///
-    /// This can also be controlled on a per-table basis in the options for
-    /// `space_object:create_index()` (we don't support this yet in picodata).
-    ///
-    /// Corresponds to `box.cfg.vinyl_page_size`
-    pub default_page_size: Option<u64>,
-
-    /// The maximal number of runs per level in vinyl LSM tree.
-    /// If this number is exceeded, a new level is created.
-    ///
-    /// This can also be controlled on a per-table basis in the options for
-    /// `space_object:create_index()` (we don't support this yet in picodata).
-    ///
-    /// Corresponds to `box.cfg.vinyl_run_count_per_level`
-    pub default_run_count_per_level: Option<u64>,
-
-    /// Ratio between the sizes of different levels in the LSM tree.
-    ///
-    /// This can also be controlled on a per-table basis in the options for
-    /// `space_object:create_index()` (we don't support this yet in picodata).
-    ///
-    /// Corresponds to `box.cfg.vinyl_run_size_ratio`
-    pub default_run_size_ratio: Option<f64>,
-
-    /// Bloom filter false positive rate – the suitable probability of the bloom
-    /// filter to give a wrong result.
-    ///
-    /// This can also be controlled on a per-table basis in the options for
-    /// `space_object:create_index()` (we don't support this yet in picodata).
-    ///
-    /// Corresponds to `box.cfg.vinyl_bloom_fpr`
-    pub default_bloom_fpr: Option<f64>,
-    // pub vinyl_timeout: Option<f64>, // do we need this also?
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -966,18 +863,6 @@ pub struct IprotoSection {
     ///
     /// Corresponds to `box.cfg.net_msg_max`
     pub max_concurrent_messages: Option<u64>,
-    // /// The size of the read-ahead buffer associated with a client connection.
-    // /// The larger the buffer, the more memory an active connection consumes and
-    // /// the more requests can be read from the operating system buffer in a
-    // /// single system call. The rule of thumb is to make sure the buffer can
-    // /// contain at least a few dozen requests. Therefore, if a typical tuple in
-    // /// a request is large, e.g. a few kilobytes or even megabytes, the
-    // /// read-ahead buffer size should be increased. If batched request
-    // /// processing is not used, it’s prudent to leave this setting at its
-    // /// default.
-    // ///
-    // /// Corresponds to `box.cfg.readahead`
-    // pub readahead_buffer_size: Option<u64>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////

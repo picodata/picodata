@@ -313,20 +313,12 @@ instance:
 
     memtx:
         memory: 0x7777777
-        allocation_factor: 1.7
         checkpoint_count: 8
         checkpoint_interval: 1800
 
     vinyl:
         memory: 0x8888888
         cache: 0x4444444
-        read_threads: 2
-        write_threads: 3
-        default_defer_deletes: true
-        default_page_size: 0x8000
-        default_run_count_per_level: 3
-        default_run_size_ratio: 7
-        default_bloom_fpr: 0.777
 
     iproto:
         max_concurrent_messages: 0x600
@@ -347,18 +339,10 @@ instance:
     assert box_cfg["log_format"] == "json"
 
     assert box_cfg["memtx_memory"] == 0x777_7777
-    assert box_cfg["slab_alloc_factor"] == 1.7
     assert box_cfg["checkpoint_count"] == 8
     assert box_cfg["checkpoint_interval"] == 1800
 
     assert box_cfg["vinyl_memory"] == 0x8888888
     assert box_cfg["vinyl_cache"] == 0x4444444
-    assert box_cfg["vinyl_read_threads"] == 2
-    assert box_cfg["vinyl_write_threads"] == 3
-    assert box_cfg["vinyl_defer_deletes"] == True  # noqa: E712
-    assert box_cfg["vinyl_page_size"] == 0x8000
-    assert box_cfg["vinyl_run_count_per_level"] == 3
-    assert box_cfg["vinyl_run_size_ratio"] == 7
-    assert box_cfg["vinyl_bloom_fpr"] == 0.777
 
     assert box_cfg["net_msg_max"] == 0x600
