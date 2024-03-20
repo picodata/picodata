@@ -602,7 +602,6 @@ pub struct InstanceConfig {
     pub tier: Option<String>,
     pub failure_domain: Option<FailureDomain>,
 
-    // TODO: should this be in `cluster` section?
     pub peers: Option<Vec<Address>>,
     pub advertise_address: Option<Address>,
     pub listen: Option<Address>,
@@ -610,8 +609,6 @@ pub struct InstanceConfig {
     pub admin_socket: Option<String>,
 
     // TODO:
-    // - more nested sections!
-    // - dynamic parameters should be marked dynamic!
     // - sepparate config file for common parameters
     pub plugins: Option<Vec<String>>,
     pub deprecated_script: Option<String>,
@@ -621,86 +618,16 @@ pub struct InstanceConfig {
     pub log: Option<String>,
     pub log_format: Option<String>,
 
+    // box.cfg.background currently doesn't work with our supervisor/child implementation
     // pub background: Option<bool>,
-    // pub pid_file: Option<String>,
 
     //
+    /// Determines wether the .xlog & .snap files should be shredded when
+    /// deleting.
     pub shredding: Option<bool>,
-    // pub core_strip: Option<bool>,
-    // pub core_dump: Option<bool>,
 
-    // pub force_recovery: Option<bool>,
-    // pub too_long_threshold: Option<f64>,
-    // pub hot_standby: Option<bool>,
-    // pub wal_queue_max_size: Option<u64>,
-    // pub wal_max_size: Option<u64>,
-    // pub wal_mode: Option<String>,
-    // pub checkpoint_wal_threshold: Option<f64>,
-    // pub wal_cleanup_delay: Option<f64>,
-    // pub wal_dir_rescan_delay: Option<f64>,
-
-    //
     pub memtx_memory: Option<u64>,
-    // pub memtx_min_tuple_size: Option<u64>,
-    // pub memtx_use_mvcc_engine: Option<bool>,
-    // pub memtx_allocator: Option<String>,
-    // pub memtx_checkpoint_count: Option<u64>,
-    // pub memtx_checkpoint_interval: Option<f64>,
 
-    // pub slab_alloc_factor: Option<u64>,
-    // pub slab_alloc_granularity: Option<u8>,
-
-    // pub vinyl_cache: Option<u64>,
-    // pub vinyl_write_threads: Option<u8>,
-    // pub vinyl_defer_deletes: Option<bool>,
-    // pub vinyl_run_count_per_level: Option<u64>,
-    // pub vinyl_run_size_ratio: Option<f64>,
-    // pub vinyl_memory: Option<u64>,
-    // pub vinyl_read_threads: Option<u8>,
-    // pub vinyl_page_size: Option<u64>,
-    // pub vinyl_bloom_fpr: Option<f64>,
-    // pub vinyl_timeout: Option<f64>,
-
-    // pub txn_isolation: Option<String>,
-    // pub txn_timeout: Option<f64>,
-
-    // pub auth_type: Option<String>,
-    // pub iproto_msg_max: Option<u64>,
-    // pub iproto_readahead: Option<u64>,
-    // pub iproto_threads: Option<u8>,
-
-    // Not configurable currently
-    // pub read_only: Option<bool>,
-    // pub bootstrap_strategy: Option<String>,
-    // pub replication_anon: Option<bool>,
-    // pub replication_connect_timeout: Option<f64>,
-    // pub replication_skip_conflict: Option<bool>,
-    // pub replication_sync_lag: Option<f64>,
-    // pub replication_sync_timeout: Option<f64>,
-    // pub replication_synchro_quorum: Option<String>,
-    // pub replication_synchro_timeout: Option<f64>,
-    // pub replication_timeout: Option<f64>,
-    // pub replication_threads: Option<u8>,
-    // pub election_fencing_mode: Option<String>,
-    // pub election_mode: Option<ElectionMode>,
-    // pub election_timeout: Option<f64>,
-
-    // TODO: correct type
-    // pub metrics: Option<()>,
-
-    // pub feedback_enabled: Option<bool>,
-    // pub feedback_interval: Option<f64>,
-    // pub feedback_host: Option<String>,
-    // pub feedback_send_metrics: Option<bool>,
-    // pub feedback_metrics_collect_interval: Option<f64>,
-    // pub feedback_metrics_limit: Option<u64>,
-    // pub feedback_crashinfo: Option<bool>,
-
-    // pub sql_cache_size: Option<u64>,
-
-    // pub worker_pool_threads: Option<u8>,
-
-    //
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
     #[serde(flatten)]
@@ -786,88 +713,15 @@ impl InstanceConfig {
         }
     }
 
-    // TODO: give a default value for audit
-    // pub fn audit(&self) -> String {}
-
     #[inline]
     pub fn shredding(&self) -> bool {
         self.shredding.unwrap_or(false)
     }
 
-    // TODO
-    // pub core_strip: Option<bool>,
-    // pub core_dump: Option<bool>,
-    // pub force_recovery: Option<bool>,
-
-    // pub net_msg_max: Option<u64>,
-    // pub too_long_threshold: Option<f64>,
-
     #[inline]
     pub fn memtx_memory(&self) -> u64 {
         self.memtx_memory.unwrap_or(64 * 1024 * 1024)
     }
-
-    // TODO
-    // pub memtx_min_tuple_size: Option<u64>,
-    // pub memtx_use_mvcc_engine: Option<bool>,
-    // pub memtx_allocator: Option<String>,
-    // pub memtx_checkpoint_count: Option<u64>,
-    // pub memtx_checkpoint_interval: Option<f64>,
-
-    // pub slab_alloc_factor: Option<u64>,
-
-    // pub vinyl_cache: Option<u64>,
-    // pub vinyl_write_threads: Option<u8>,
-    // pub vinyl_defer_deletes: Option<bool>,
-    // pub vinyl_run_count_per_level: Option<u64>,
-    // pub vinyl_run_size_ratio: Option<f64>,
-    // pub vinyl_memory: Option<u64>,
-    // pub vinyl_read_threads: Option<u8>,
-    // pub vinyl_page_size: Option<u64>,
-    // pub vinyl_bloom_fpr: Option<f64>,
-
-    // pub replication_skip_conflict: Option<bool>,
-    // pub wal_queue_max_size: Option<u64>,
-    // pub replication_anon: Option<bool>,
-    // pub replication_sync_lag: Option<f64>,
-    // pub wal_max_size: Option<u64>,
-    // pub background: Option<bool>,
-    // pub feedback_send_metrics: Option<bool>,
-    // pub txn_isolation: Option<String>,
-    // pub replication_synchro_quorum: Option<String>,
-    // pub wal_mode: Option<String>,
-    // pub checkpoint_wal_threshold: Option<u64>,
-    // pub replication_sync_timeout: Option<f64>,
-    // pub readahead: Option<u64>,
-
-    // pub feedback_host: Option<String>,
-    // pub feedback_metrics_collect_interval: Option<f64>,
-    // // FIXME TODO:
-    // pub metrics: Option<()>,
-    // pub feedback_crashinfo: Option<bool>,
-    // pub feedback_enabled: Option<bool>,
-    // pub feedback_interval: Option<f64>,
-    // pub feedback_metrics_limit: Option<u64>,
-
-    // pub replication_connect_timeout: Option<f64>,
-    // pub replication_timeout: Option<f64>,
-    // pub auth_type: Option<String>,
-    // pub election_timeout: Option<f64>,
-    // pub election_fencing_mode: Option<String>,
-    // pub election_mode: Option<String>,
-    // pub wal_cleanup_delay: Option<f64>,
-    // pub vinyl_timeout: Option<f64>,
-    // pub bootstrap_strategy: Option<String>,
-    // pub worker_pool_threads: Option<u8>,
-    // pub txn_timeout: Option<f64>,
-    // pub slab_alloc_granularity: Option<u8>,
-    // pub replication_synchro_timeout: Option<f64>,
-    // pub hot_standby: Option<bool>,
-    // pub read_only: Option<bool>,
-    // pub replication_threads: Option<u8>,
-    // pub iproto_threads: Option<u8>,
-    // pub wal_dir_rescan_delay: Option<f64>,
-    // pub sql_cache_size: Option<u64>,
 }
 
 pub fn deserialize_map_forbid_duplicate_keys<'de, D, K, V>(
