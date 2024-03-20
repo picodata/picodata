@@ -247,7 +247,7 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(memtx_memory) = args.memtx_memory {
-            self.instance.memtx_memory = Some(memtx_memory);
+            self.instance.memtx.memory = Some(memtx_memory);
         }
 
         // --config-parameter has higher priority than other command line
@@ -623,11 +623,21 @@ pub struct InstanceConfig {
     /// deleting.
     pub shredding: Option<bool>,
 
-    pub memtx_memory: Option<u64>,
-
     #[serde(default)]
     #[introspection(nested)]
     pub log: LogSection,
+
+    #[serde(default)]
+    #[introspection(nested)]
+    pub memtx: MemtxSection,
+
+    #[serde(default)]
+    #[introspection(nested)]
+    pub vinyl: VinylSection,
+
+    #[serde(default)]
+    #[introspection(nested)]
+    pub iproto: IprotoSection,
 
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
@@ -721,8 +731,253 @@ impl InstanceConfig {
 
     #[inline]
     pub fn memtx_memory(&self) -> u64 {
-        self.memtx_memory.unwrap_or(64 * 1024 * 1024)
+        self.memtx.memory.unwrap_or(64 * 1024 * 1024)
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// MemtxSection
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(
+    PartialEq,
+    Default,
+    Debug,
+    Clone,
+    serde::Deserialize,
+    serde::Serialize,
+    tlua::Push,
+    tlua::PushInto,
+    Introspection,
+)]
+#[serde(deny_unknown_fields)]
+pub struct MemtxSection {
+    /// Enable [transactional manager](https://www.tarantool.io/en/doc/latest/concepts/atomic/txn_mode_mvcc/#txn-mode-transaction-manager)
+    /// if set to true.
+    // pub use_mvcc_engine: Option<bool>,
+
+    /// Specify the allocator that manages memory for memtx tuples. Possible values:
+    /// - `system` – the memory is allocated as needed, checking that the quota
+    ///              is not exceeded. The allocator is based on the `malloc` function.
+    /// - `small` – a slab allocator. The allocator repeatedly uses a memory
+    ///             block to allocate objects of the same type. Note that this allocator is
+    ///             prone to unresolvable fragmentation on specific workloads, so you can
+    ///             switch to system in such cases.
+    ///
+    /// Corresponds to `box.cfg.memtx_allocator`.
+    // pub allocator: Option<MemtxAllocator>,
+
+    /// The multiplier for computing the sizes of memory chunks that tuples are
+    /// stored in. A lower value may result in less wasted memory depending on
+    /// the total amount of memory available and the distribution of item sizes.
+    ///
+    /// Corresponds to `box.cfg.slab_alloc_factor`.
+    pub allocation_factor: Option<f64>,
+
+    /// Specify the granularity (in bytes) of memory allocation in the small
+    /// allocator. The memtx.slab_alloc_granularity value should meet the
+    /// following conditions:
+    /// - The value is a power of two.
+    /// - The value is greater than or equal to 4.
+    ///
+    /// Below are few recommendations on how to adjust the
+    /// memtx.slab_alloc_granularity option:
+    /// - If the tuples in space are small and have about the same size, set the
+    ///   option to 4 bytes to save memory.
+    /// - If the tuples are different-sized, increase the option value to
+    ///   allocate tuples from the same mempool (memory pool).
+    ///
+    /// Corresponds to `box.cfg.slab_alloc_granularity`.
+    // pub allocation_granularity: Option<u64>,
+    // Not supported yet.
+    // Size of the smallest allocation unit. It can be decreased if most of the
+    // tuples are very small.
+    // pub min_tuple_size: Option<u64>,
+
+    // Not supported yet.
+    // Size of the largest allocation unit, for the memtx storage engine. It can
+    // be increased if it is necessary to store large tuples.
+    // pub max_tuple_size: Option<u64>,
+
+    /// How much memory is allocated to store tuples. When the limit is
+    /// reached, INSERT or UPDATE requests begin failing with error
+    /// ER_MEMORY_ISSUE. The server does not go beyond the memtx_memory limit to
+    /// allocate tuples, but there is additional memory used to store indexes
+    /// and connection information.
+    ///
+    /// Minimum is 32MB (32 * 1024 * 1024).
+    ///
+    /// Corresponds to `box.cfg.memtx_memory`.
+    pub memory: Option<u64>,
+
+    /// The maximum number of snapshots that are stored in the memtx_dir
+    /// directory. If the number of snapshots after creating a new one exceeds
+    /// this value, the Tarantool garbage collector deletes old snapshots. If
+    /// the option is set to zero, the garbage collector does not delete old
+    /// snapshots.
+    ///
+    /// Corresponds to `box.cfg.checkpoint_count`.
+    pub checkpoint_count: Option<u64>,
+
+    /// The interval in seconds between actions by the checkpoint daemon. If the
+    /// option is set to a value greater than zero, and there is activity that
+    /// causes change to a database, then the checkpoint daemon calls
+    /// box.snapshot() every checkpoint_interval seconds, creating a new
+    /// snapshot file each time. If the option is set to zero, the checkpoint
+    /// daemon is disabled.
+    ///
+    /// Corresponds to `box.cfg.checkpoint_interval`.
+    pub checkpoint_interval: Option<f64>,
+}
+
+tarantool::define_str_enum! {
+    #[derive(Default)]
+    pub enum MemtxAllocator {
+        #[default]
+        Small = "small",
+        System = "system",
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// VinylSection
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(
+    PartialEq,
+    Default,
+    Debug,
+    Clone,
+    serde::Deserialize,
+    serde::Serialize,
+    tlua::Push,
+    tlua::PushInto,
+    Introspection,
+)]
+#[serde(deny_unknown_fields)]
+pub struct VinylSection {
+    /// The maximum number of in-memory bytes that vinyl uses.
+    ///
+    /// Corresponds to `box.cfg.vinyl_memory`
+    pub memory: Option<u64>,
+
+    /// The cache size for the vinyl storage engine.
+    ///
+    /// Corresponds to `box.cfg.vinyl_cache`
+    pub cache: Option<u64>,
+
+    /// The maximum number of read threads that vinyl can use for some
+    /// concurrent operations, such as I/O and compression.
+    ///
+    /// Corresponds to `box.cfg.vinyl_read_threads`
+    pub read_threads: Option<u64>,
+
+    /// The maximum number of write threads that vinyl can use for some
+    /// concurrent operations, such as I/O and compression.
+    ///
+    /// Corresponds to `box.cfg.vinyl_write_threads`
+    pub write_threads: Option<u64>,
+
+    // pub max_tuple_size: Option<u64>, <- не надо это разрешать пока,
+    /// Enables the deferred DELETE optimization for vinyl spaces by default.
+    ///
+    /// This can also be controlled on a per-table basis in the options for
+    /// `space_object:create_index()` (we don't support this yet in picodata).
+    ///
+    /// Corresponds to `box.cfg.vinyl_defer_deletes`
+    pub default_defer_deletes: Option<bool>,
+
+    /// Page size. Page is a read/write unit for vinyl disk operations.
+    ///
+    /// This can also be controlled on a per-table basis in the options for
+    /// `space_object:create_index()` (we don't support this yet in picodata).
+    ///
+    /// Corresponds to `box.cfg.vinyl_page_size`
+    pub default_page_size: Option<u64>,
+
+    /// The maximal number of runs per level in vinyl LSM tree.
+    /// If this number is exceeded, a new level is created.
+    ///
+    /// This can also be controlled on a per-table basis in the options for
+    /// `space_object:create_index()` (we don't support this yet in picodata).
+    ///
+    /// Corresponds to `box.cfg.vinyl_run_count_per_level`
+    pub default_run_count_per_level: Option<u64>,
+
+    /// Ratio between the sizes of different levels in the LSM tree.
+    ///
+    /// This can also be controlled on a per-table basis in the options for
+    /// `space_object:create_index()` (we don't support this yet in picodata).
+    ///
+    /// Corresponds to `box.cfg.vinyl_run_size_ratio`
+    pub default_run_size_ratio: Option<f64>,
+
+    /// Bloom filter false positive rate – the suitable probability of the bloom
+    /// filter to give a wrong result.
+    ///
+    /// This can also be controlled on a per-table basis in the options for
+    /// `space_object:create_index()` (we don't support this yet in picodata).
+    ///
+    /// Corresponds to `box.cfg.vinyl_bloom_fpr`
+    pub default_bloom_fpr: Option<f64>,
+    // pub vinyl_timeout: Option<f64>, // do we need this also?
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// IprotoSection
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(
+    PartialEq,
+    Default,
+    Debug,
+    Clone,
+    serde::Deserialize,
+    serde::Serialize,
+    tlua::Push,
+    tlua::PushInto,
+    Introspection,
+)]
+#[serde(deny_unknown_fields)]
+pub struct IprotoSection {
+    /// To handle messages, Tarantool allocates fibers. To prevent fiber
+    /// overhead from affecting the whole system, Tarantool restricts how many
+    /// messages the fibers handle, so that some pending requests are blocked.
+    ///
+    /// On powerful systems, increase net_msg_max and the scheduler will
+    /// immediately start processing pending requests.
+    ///
+    /// On weaker systems, decrease net_msg_max and the overhead may decrease
+    /// although this may take some time because the scheduler must wait until
+    /// already-running requests finish.
+    ///
+    /// When net_msg_max is reached, Tarantool suspends processing of incoming
+    /// packages until it has processed earlier messages. This is not a direct
+    /// restriction of the number of fibers that handle network messages, rather
+    /// it is a system-wide restriction of channel bandwidth. This in turn
+    /// causes restriction of the number of incoming network messages that the
+    /// transaction processor thread handles, and therefore indirectly affects
+    /// the fibers that handle network messages. (The number of fibers is
+    /// smaller than the number of messages because messages can be released as
+    /// soon as they are delivered, while incoming requests might not be
+    /// processed until some time after delivery.)
+    ///
+    /// On typical systems, the default value (768) is correct.
+    ///
+    /// Corresponds to `box.cfg.net_msg_max`
+    pub max_concurrent_messages: Option<u64>,
+    // /// The size of the read-ahead buffer associated with a client connection.
+    // /// The larger the buffer, the more memory an active connection consumes and
+    // /// the more requests can be read from the operating system buffer in a
+    // /// single system call. The rule of thumb is to make sure the buffer can
+    // /// contain at least a few dozen requests. Therefore, if a typical tuple in
+    // /// a request is large, e.g. a few kilobytes or even megabytes, the
+    // /// read-ahead buffer size should be increased. If batched request
+    // /// processing is not used, it’s prudent to leave this setting at its
+    // /// default.
+    // ///
+    // /// Corresponds to `box.cfg.readahead`
+    // pub readahead_buffer_size: Option<u64>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1343,13 +1598,13 @@ instance:
             let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
             let args = args::Run::try_parse_from(["run",
                 "-c", "  instance.log .level =debug  ",
-                "--config-parameter", "instance. memtx_memory=  0xdeadbeef",
+                "--config-parameter", "instance. memtx . memory=  0xdeadbeef",
             ]).unwrap();
             config.set_from_args(args).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.cluster_id.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
-            assert_eq!(config.instance.memtx_memory.unwrap(), 0xdead_beef);
+            assert_eq!(config.instance.memtx.memory.unwrap(), 0xdead_beef);
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
             assert_eq!(config.instance.data_dir.unwrap(), ".");
 

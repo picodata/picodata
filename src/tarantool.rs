@@ -223,6 +223,19 @@ impl Cfg {
         const MAPPING: &[(&str, &str)] = &[
             // Other instance.log.* parameters are set explicitly above
             ("log_format",                  "instance.log.format"),
+            ("slab_alloc_factor",           "instance.memtx.allocation_factor"),
+            ("checkpoint_count",            "instance.memtx.checkpoint_count"),
+            ("checkpoint_interval",         "instance.memtx.checkpoint_interval"),
+            ("vinyl_memory",                "instance.vinyl.memory"),
+            ("vinyl_cache",                 "instance.vinyl.cache"),
+            ("vinyl_read_threads",          "instance.vinyl.read_threads"),
+            ("vinyl_write_threads",         "instance.vinyl.write_threads"),
+            ("vinyl_defer_deletes",         "instance.vinyl.default_defer_deletes"),
+            ("vinyl_page_size",             "instance.vinyl.default_page_size"),
+            ("vinyl_run_count_per_level",   "instance.vinyl.default_run_count_per_level"),
+            ("vinyl_run_size_ratio",        "instance.vinyl.default_run_size_ratio"),
+            ("vinyl_bloom_fpr",             "instance.vinyl.default_bloom_fpr"),
+            ("net_msg_max",                 "instance.iproto.max_concurrent_messages"),
         ];
         for (box_field, picodata_field) in MAPPING {
             let value = config

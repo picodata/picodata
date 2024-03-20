@@ -12,7 +12,9 @@ instance:
     cluster_id: test
     instance_id: from-config
     replicaset_id: with-love
-    memtx_memory: 42069
+
+    memtx:
+        memory: 42069
 """
     )
     instance = cluster.add_instance(instance_id=False, wait_online=False)
@@ -90,6 +92,9 @@ instance:
             listen=dict(host=host, port=str(port)),
             log=dict(level="verbose"),
             peers=[dict(host=host, port=str(port))],
+            iproto=[],
+            memtx=[],
+            vinyl=[],
             unknown_parameters=[],
         ),
         unknown_sections=[],
@@ -110,7 +115,8 @@ cluster:
     tiers:
         default:
 instance:
-    memtx_memory: 0xdeadbeef
+    memtx:
+        memory: 0xdeadbeef
             """
         )
     instance.start(cwd=work_dir)
@@ -129,7 +135,8 @@ cluster:
     tiers:
         default:
 instance:
-    memtx_memory: 0xcafebabe
+    memtx:
+        memory: 0xcafebabe
             """
         )
     instance.env["PICODATA_CONFIG_FILE"] = config_path
@@ -270,6 +277,23 @@ cluster:
     assert box_cfg["log_level"] == 6  # means verbose -- set by our testing harness
     assert box_cfg["log_format"] == "plain"
 
+    assert box_cfg["memtx_memory"] == 64 * 1024 * 1024
+    assert box_cfg["slab_alloc_factor"] == 1.05
+    assert box_cfg["checkpoint_count"] == 2
+    assert box_cfg["checkpoint_interval"] == 3600
+
+    assert box_cfg["vinyl_memory"] == 128 * 1024 * 1024
+    assert box_cfg["vinyl_cache"] == 128 * 1024 * 1024
+    assert box_cfg["vinyl_read_threads"] == 1
+    assert box_cfg["vinyl_write_threads"] == 4
+    assert box_cfg["vinyl_defer_deletes"] == False  # noqa: E712
+    assert box_cfg["vinyl_page_size"] == 8 * 1024
+    assert box_cfg["vinyl_run_count_per_level"] == 2
+    assert box_cfg["vinyl_run_size_ratio"] == 3.5
+    assert box_cfg["vinyl_bloom_fpr"] == 0.05
+
+    assert box_cfg["net_msg_max"] == 0x300
+
     #
     # Check explicitly set values
     #
@@ -286,6 +310,26 @@ instance:
         destination: file:/proc/self/fd/2  # this is how you say `stderr` explicitly
         level: debug
         format: json
+
+    memtx:
+        memory: 0x7777777
+        allocation_factor: 1.7
+        checkpoint_count: 8
+        checkpoint_interval: 1800
+
+    vinyl:
+        memory: 0x8888888
+        cache: 0x4444444
+        read_threads: 2
+        write_threads: 3
+        default_defer_deletes: true
+        default_page_size: 0x8000
+        default_run_count_per_level: 3
+        default_run_size_ratio: 7
+        default_bloom_fpr: 0.777
+
+    iproto:
+        max_concurrent_messages: 0x600
 """
     )
 
@@ -301,3 +345,20 @@ instance:
     assert box_cfg["log"] == "file:/proc/self/fd/2"
     assert box_cfg["log_level"] == 7  # means debug
     assert box_cfg["log_format"] == "json"
+
+    assert box_cfg["memtx_memory"] == 0x777_7777
+    assert box_cfg["slab_alloc_factor"] == 1.7
+    assert box_cfg["checkpoint_count"] == 8
+    assert box_cfg["checkpoint_interval"] == 1800
+
+    assert box_cfg["vinyl_memory"] == 0x8888888
+    assert box_cfg["vinyl_cache"] == 0x4444444
+    assert box_cfg["vinyl_read_threads"] == 2
+    assert box_cfg["vinyl_write_threads"] == 3
+    assert box_cfg["vinyl_defer_deletes"] == True  # noqa: E712
+    assert box_cfg["vinyl_page_size"] == 0x8000
+    assert box_cfg["vinyl_run_count_per_level"] == 3
+    assert box_cfg["vinyl_run_size_ratio"] == 7
+    assert box_cfg["vinyl_bloom_fpr"] == 0.777
+
+    assert box_cfg["net_msg_max"] == 0x600
