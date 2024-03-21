@@ -70,10 +70,10 @@ pack-doc:
       fi
   script:
     - echo "Pack picodata doc..."
-    - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee .vars
+    - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee .env
     - DATE=$(date +%Y%m%d%H%M%S)
     - FNAME="picodata-doc-${DATE}-${PICODATA_DOC_VER}-${CI_COMMIT_SHA}.tgz"
-    - echo "FNAME=$FNAME" | tee -a .vars
+    - echo "FNAME=$FNAME" | tee -a .env
     - pipenv run mkdocs build -sd build
     - pushd build
     - tar -cvzf ../$FNAME .
@@ -84,7 +84,7 @@ pack-doc:
     paths:
       - picodata-doc-*.tgz
     reports:
-      dotenv: .vars
+      dotenv: .env
 
 upload-doc-to-binary:
   image: docker.binary.picodata.io/curlimages/curl
