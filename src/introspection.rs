@@ -12,7 +12,8 @@ use crate::traft::error::Error;
 pub use pico_proc_macro::Introspection;
 
 pub trait Introspection {
-    const FIELD_NAMES: &'static [&'static str];
+    /// Information about the struct fields of `Self`.
+    const FIELD_INFOS: &'static [FieldInfo];
 
     /// Assign field of `self` described by `path` to value parsed from a given
     /// `yaml` expression.
@@ -92,6 +93,78 @@ pub trait Introspection {
     fn get_field_as_rmpv(&self, path: &str) -> Result<rmpv::Value, IntrospectionError>;
 }
 
+/// Information about a single struct field. This is the type which is stored
+/// in [`Introspection::FIELD_INFOS`].
+///
+/// Currently this info is used when reporting errors about wrong field names
+/// and for introspecting structs using for example [`leaf_field_paths`].
+#[derive(PartialEq, Eq, Hash)]
+pub struct FieldInfo {
+    pub name: &'static str,
+    pub nested_fields: &'static [FieldInfo],
+}
+
+impl std::fmt::Debug for FieldInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.name)?;
+        if !self.nested_fields.is_empty() {
+            write!(f, ": {:?}", self.nested_fields)?;
+        }
+        Ok(())
+    }
+}
+
+/// Returns an array of period-separated (e.g. `field.sub_field`) paths
+/// to struct fields including subfields of structs.
+///
+/// This is basically just a helper method for recursively walking over
+/// the values from [`Introspection::FIELD_INFOS`] array.
+///
+/// # Examples:
+/// ```
+/// use picodata::introspection::{leaf_field_paths, Introspection};
+///
+/// #[derive(Introspection, Default)]
+/// #[introspection(crate = picodata)]
+/// struct MyStruct {
+///     number: i32,
+///     text: String,
+///     #[introspection(nested)]
+///     nested: NestedStruct,
+/// }
+///
+/// #[derive(Introspection, Default)]
+/// #[introspection(crate = picodata)]
+/// struct NestedStruct {
+///     sub_field: f32,
+/// }
+///
+/// assert_eq!(
+///     leaf_field_paths::<MyStruct>(),
+///     &["number".to_owned(), "text".to_owned(), "nested.sub_field".to_owned()]
+/// );
+/// ```
+pub fn leaf_field_paths<T>() -> Vec<String>
+where
+    T: Introspection,
+{
+    // TODO: do the awful ugly rust thing to cache this value
+    let mut res = Vec::new();
+    recursive_helper("", T::FIELD_INFOS, &mut res);
+    return res;
+
+    fn recursive_helper(prefix: &str, nested_fields: &[FieldInfo], res: &mut Vec<String>) {
+        for field in nested_fields {
+            let name = field.name;
+            if field.nested_fields.is_empty() {
+                res.push(format!("{prefix}{name}"));
+            } else {
+                recursive_helper(&format!("{prefix}{name}."), field.nested_fields, res);
+            }
+        }
+    }
+}
+
 /// A public reimport for use in the derive macro.
 pub use rmpv::Value as RmpvValue;
 
@@ -112,7 +185,7 @@ pub enum IntrospectionError {
     NoSuchField {
         parent: String,
         field: String,
-        expected: &'static [&'static str],
+        expected: &'static [FieldInfo],
     },
 
     #[error("incorrect value for field '{field}': {error}")]
@@ -141,7 +214,7 @@ pub enum IntrospectionError {
 }
 
 impl IntrospectionError {
-    fn no_such_field_error_message(parent: &str, field: &str, expected: &[&str]) -> String {
+    fn no_such_field_error_message(parent: &str, field: &str, expected: &[FieldInfo]) -> String {
         let mut res = String::with_capacity(128);
         if !parent.is_empty() {
             _ = write!(&mut res, "{parent}: ");
@@ -151,9 +224,9 @@ impl IntrospectionError {
 
         let mut fields = expected.iter();
         if let Some(first) = fields.next() {
-            _ = write!(&mut res, ", expected one of `{first}`");
+            _ = write!(&mut res, ", expected one of `{}`", first.name);
             for next in fields {
-                _ = write!(&mut res, ", `{next}`");
+                _ = write!(&mut res, ", `{}`", next.name);
             }
         } else {
             _ = write!(&mut res, ", there are no fields at all");
@@ -432,5 +505,54 @@ mod test {
                 (rmpv::Value::from("empty"), rmpv::Value::Map(vec![])),
             ])
         );
+    }
+
+    #[test]
+    fn nested_field_names() {
+        assert_eq!(
+            S::FIELD_INFOS,
+            &[
+                FieldInfo {
+                    name: "x",
+                    nested_fields: &[]
+                },
+                FieldInfo {
+                    name: "y",
+                    nested_fields: &[]
+                },
+                FieldInfo {
+                    name: "s",
+                    nested_fields: &[]
+                },
+                FieldInfo {
+                    name: "v",
+                    nested_fields: &[]
+                },
+                FieldInfo {
+                    name: "struct",
+                    nested_fields: &[
+                        FieldInfo {
+                            name: "a",
+                            nested_fields: &[]
+                        },
+                        FieldInfo {
+                            name: "b",
+                            nested_fields: &[]
+                        },
+                        FieldInfo {
+                            name: "empty",
+                            nested_fields: &[]
+                        },
+                    ]
+                },
+            ],
+        );
+
+        assert_eq!(
+            leaf_field_paths::<S>(),
+            &["x", "y", "s", "v", "struct.a", "struct.b", "struct.empty"]
+        );
+
+        assert_eq!(leaf_field_paths::<Nested>(), &["a", "b", "empty"]);
     }
 }

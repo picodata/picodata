@@ -3,6 +3,7 @@ use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
+use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetId;
 use crate::storage;
@@ -298,7 +299,7 @@ Using configuration file '{args_path}'.");
             report_unknown_fields(
                 "",
                 &self.unknown_sections,
-                PicodataConfig::FIELD_NAMES,
+                PicodataConfig::FIELD_INFOS,
                 &mut unknown_parameters,
             )
         }
@@ -318,7 +319,7 @@ Using configuration file '{args_path}'.");
             report_unknown_fields(
                 "cluster.",
                 &self.cluster.unknown_parameters,
-                ClusterConfig::FIELD_NAMES,
+                ClusterConfig::FIELD_INFOS,
                 &mut unknown_parameters,
             );
         }
@@ -327,7 +328,7 @@ Using configuration file '{args_path}'.");
             report_unknown_fields(
                 "instance.",
                 &self.instance.unknown_parameters,
-                InstanceConfig::FIELD_NAMES,
+                InstanceConfig::FIELD_INFOS,
                 &mut unknown_parameters,
             );
         }
@@ -474,17 +475,17 @@ struct UnknownFieldInfo<'a> {
 fn report_unknown_fields<'a>(
     prefix: &'static str,
     unknown_fields: &'a HashMap<String, YamlValue>,
-    known_fields: &[&'static str],
+    known_fields: &[FieldInfo],
     report: &mut Vec<UnknownFieldInfo<'a>>,
 ) {
     for name in unknown_fields.keys() {
         debug_assert!(!known_fields.is_empty());
         let mut min_distance = usize::MAX;
         let mut maybe_best_match = None;
-        for &known_field in known_fields {
-            let distance = edit_distance(name, known_field);
+        for known_field in known_fields {
+            let distance = edit_distance(name, known_field.name);
             if distance < min_distance {
-                maybe_best_match = Some(known_field);
+                maybe_best_match = Some(known_field.name);
                 min_distance = distance;
             }
         }

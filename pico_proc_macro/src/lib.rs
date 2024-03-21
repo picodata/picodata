@@ -23,7 +23,6 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
         args,
         fields: vec![],
     };
-    let mut field_names = vec![];
     match input.data {
         syn::Data::Struct(ds) => match ds.fields {
             syn::Fields::Named(fs) => {
@@ -34,10 +33,8 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
                         continue;
                     }
 
-                    let name = field_name(&field);
-                    field_names.push(name.clone());
                     context.fields.push(FieldInfo {
-                        name,
+                        name: field_name(&field),
                         ident: field
                             .ident
                             .clone()
@@ -52,6 +49,7 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
         _ => {}
     }
 
+    let body_for_field_infos = generate_body_for_field_infos(&context);
     let body_for_set_field_from_yaml = generate_body_for_set_field_from_yaml(&context);
     let body_for_get_field_as_rmpv = generate_body_for_get_field_as_rmpv(&context);
 
@@ -59,8 +57,8 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
     quote! {
         #[automatically_derived]
         impl #crate_::introspection::Introspection for #name {
-            const FIELD_NAMES: &'static [&'static str] = &[
-                #( #field_names, )*
+            const FIELD_INFOS: &'static [#crate_::introspection::FieldInfo] = &[
+                #body_for_field_infos
             ];
 
             fn set_field_from_yaml(&mut self, path: &str, yaml: &str) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
@@ -75,6 +73,36 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
         }
     }
     .into()
+}
+
+fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream {
+    let crate_ = &context.args.crate_;
+
+    let mut code = quote! {};
+
+    for field in &context.fields {
+        let name = &field.name;
+        #[allow(non_snake_case)]
+        let Type = &field.field.ty;
+
+        if !field.attrs.nested {
+            code.extend(quote! {
+                #crate_::introspection::FieldInfo {
+                    name: #name,
+                    nested_fields: &[],
+                },
+            });
+        } else {
+            code.extend(quote! {
+                #crate_::introspection::FieldInfo {
+                    name: #name,
+                    nested_fields: #Type::FIELD_INFOS,
+                },
+            });
+        }
+    }
+
+    code
 }
 
 fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::TokenStream {
@@ -117,7 +145,11 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
             error_if_nestable.extend(quote! {
                 #name => return Err(IntrospectionError::AssignToNested {
                     field: path.into(),
-                    example: #Type::FIELD_NAMES.get(0).unwrap_or(&"<actually there's no fields in this struct :(>"),
+                    example: if let Some(field) = #Type::FIELD_INFOS.get(0) {
+                        field.name
+                    } else {
+                        "<actually there's no fields in this struct :(>"
+                    },
                 }),
             })
         }
@@ -158,7 +190,7 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
                         return Err(IntrospectionError::NoSuchField {
                             parent: "".into(),
                             field: head.into(),
-                            expected: Self::FIELD_NAMES,
+                            expected: Self::FIELD_INFOS,
                         });
                     }
                 }
@@ -171,7 +203,7 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
                         return Err(IntrospectionError::NoSuchField {
                             parent: "".into(),
                             field: path.into(),
-                            expected: Self::FIELD_NAMES,
+                            expected: Self::FIELD_INFOS,
                         });
                     }
                 }
@@ -212,11 +244,11 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
             get_whole_nestable.extend(quote! {
                 #name => {
                     use #crate_::introspection::RmpvValue;
-                    let field_names = #Type::FIELD_NAMES;
-                    let mut fields = Vec::with_capacity(field_names.len());
-                    for sub_field in field_names {
-                        let key = RmpvValue::from(*sub_field);
-                        let value = self.#ident.get_field_as_rmpv(sub_field)
+                    let field_infos = #Type::FIELD_INFOS;
+                    let mut fields = Vec::with_capacity(field_infos.len());
+                    for sub_field in field_infos {
+                        let key = RmpvValue::from(sub_field.name);
+                        let value = self.#ident.get_field_as_rmpv(sub_field.name)
                             .map_err(|e| e.with_prepended_prefix(#name))?;
                         fields.push((key, value));
                     }
@@ -269,7 +301,7 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
                         return Err(IntrospectionError::NoSuchField {
                             parent: "".into(),
                             field: head.into(),
-                            expected: Self::FIELD_NAMES,
+                            expected: Self::FIELD_INFOS,
                         });
                     }
                 }
@@ -282,7 +314,7 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
                         return Err(IntrospectionError::NoSuchField {
                             parent: "".into(),
                             field: path.into(),
-                            expected: Self::FIELD_NAMES,
+                            expected: Self::FIELD_INFOS,
                         });
                     }
                 }
