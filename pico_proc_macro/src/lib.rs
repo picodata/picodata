@@ -48,9 +48,22 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
         },
         _ => {}
     }
+    let crate_ = &context.args.crate_;
 
     let body_for_field_infos = generate_body_for_field_infos(&context);
-    let body_for_set_field_from_yaml = generate_body_for_set_field_from_yaml(&context);
+
+    let body_for_set_field_from_yaml = generate_body_for_set_field_from_something(
+        &context,
+        &syn::parse2(quote! { set_field_from_yaml }).unwrap(),
+        &syn::parse2(quote! { serde_yaml::from_str }).unwrap(),
+    );
+
+    let body_for_set_field_from_rmpv = generate_body_for_set_field_from_something(
+        &context,
+        &syn::parse2(quote! { set_field_from_rmpv }).unwrap(),
+        &syn::parse2(quote! { #crate_::introspection::from_rmpv_value }).unwrap(),
+    );
+
     let body_for_get_field_as_rmpv = generate_body_for_get_field_as_rmpv(&context);
 
     let crate_ = &context.args.crate_;
@@ -61,9 +74,14 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
                 #body_for_field_infos
             ];
 
-            fn set_field_from_yaml(&mut self, path: &str, yaml: &str) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
+            fn set_field_from_yaml(&mut self, path: &str, value: &str) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
                 use #crate_::introspection::IntrospectionError;
                 #body_for_set_field_from_yaml
+            }
+
+            fn set_field_from_rmpv(&mut self, path: &str, value: &#crate_::introspection::RmpvValue) -> ::std::result::Result<(), #crate_::introspection::IntrospectionError> {
+                use #crate_::introspection::IntrospectionError;
+                #body_for_set_field_from_rmpv
             }
 
             fn get_field_as_rmpv(&self, path: &str) -> ::std::result::Result<#crate_::introspection::RmpvValue, #crate_::introspection::IntrospectionError> {
@@ -105,7 +123,11 @@ fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream 
     code
 }
 
-fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::TokenStream {
+fn generate_body_for_set_field_from_something(
+    context: &Context,
+    fn_ident: &syn::Ident,
+    conversion_fn: &syn::Path,
+) -> proc_macro2::TokenStream {
     let mut set_non_nestable = quote! {};
     let mut set_nestable = quote! {};
     let mut error_if_nestable = quote! {};
@@ -122,20 +144,22 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
             // Handle assigning to a non-nestable field
             set_non_nestable.extend(quote! {
                 #name => {
-                    match serde_yaml::from_str(yaml) {
+                    match #conversion_fn(value) {
                         Ok(v) => {
                             self.#ident = v;
                             return Ok(());
                         }
-                        Err(error) => return Err(IntrospectionError::FromSerdeYaml { field: path.into(), error }),
+                        Err(error) => {
+                            return Err(IntrospectionError::ConvertToFieldError { field: path.into(), error: error.into() });
+                        }
                     }
                 }
             });
         } else {
-            // Handle assigning to a nested sub-field
+            // Handle assigning to a nested field
             set_nestable.extend(quote! {
                 #name => {
-                    return self.#ident.set_field_from_yaml(tail, yaml)
+                    return self.#ident.#fn_ident(tail, value)
                         .map_err(|e| e.with_prepended_prefix(head));
                 }
             });
@@ -158,11 +182,11 @@ fn generate_body_for_set_field_from_yaml(context: &Context) -> proc_macro2::Toke
     // Handle if a nested path is specified for non-nestable field
     let mut error_if_non_nestable = quote! {};
     if !non_nestable_names.is_empty() {
-        error_if_non_nestable.extend(quote! {
+        error_if_non_nestable = quote! {
             #( #non_nestable_names )|* => {
                 return Err(IntrospectionError::NotNestable { field: head.into() })
             }
-        });
+        };
     }
 
     // Actual generated body:

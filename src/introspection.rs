@@ -46,7 +46,46 @@ pub trait Introspection {
     /// s.set_field_from_yaml("text", "hello world").unwrap();
     /// s.set_field_from_yaml("nested.sub_field", "3.14").unwrap();
     /// ```
+    // TODO: maybe remove in favour of set_field_from_rmpv
     fn set_field_from_yaml(&mut self, path: &str, yaml: &str) -> Result<(), IntrospectionError>;
+
+    /// Assign field of `self` described by `path` to value converted from the
+    /// provided `value`.
+    ///
+    /// When using the `#[derive(Introspection)]` derive macro the implementation
+    /// uses the `rmpv::ext::deserialize_from` to convert to the required type.
+    /// This may change in the future.
+    ///
+    /// # Examples:
+    /// ```
+    /// use picodata::introspection::Introspection;
+    /// use rmpv::Value;
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct MyStruct {
+    ///     number: i32,
+    ///     text: String,
+    ///     #[introspection(nested)]
+    ///     nested: NestedStruct,
+    /// }
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct NestedStruct {
+    ///     sub_field: f32,
+    /// }
+    ///
+    /// let mut s = MyStruct::default();
+    /// s.set_field_from_rmpv("number", &Value::from(420)).unwrap();
+    /// s.set_field_from_rmpv("text", &Value::from("hello world")).unwrap();
+    /// s.set_field_from_rmpv("nested.sub_field", &Value::F32(3.14)).unwrap();
+    /// ```
+    fn set_field_from_rmpv(
+        &mut self,
+        path: &str,
+        value: &rmpv::Value,
+    ) -> Result<(), IntrospectionError>;
 
     /// Get field of `self` described by `path` as a generic msgpack value in
     /// form of [`rmpv::Value`].
@@ -168,6 +207,17 @@ where
 /// A public reimport for use in the derive macro.
 pub use rmpv::Value as RmpvValue;
 
+/// Converts a [`rmpv::Value`] `value` to a generic serde deserializable type.
+/// This function is just needed to be called from the derived
+/// [`Introspection::set_field_from_rmpv`] implementations.
+#[inline(always)]
+pub fn from_rmpv_value<T>(value: &rmpv::Value) -> Result<T, Error>
+where
+    T: for<'de> serde::Deserialize<'de>,
+{
+    rmpv::ext::deserialize_from(value.as_ref()).map_err(Error::other)
+}
+
 /// Converts a generic serde serializable value to [`rmpv::Value`]. This
 /// function is just needed to be called from the derived
 /// [`Introspection::get_field_as_rmpv`] implementations.
@@ -189,9 +239,9 @@ pub enum IntrospectionError {
     },
 
     #[error("incorrect value for field '{field}': {error}")]
-    FromSerdeYaml {
+    ConvertToFieldError {
         field: String,
-        error: serde_yaml::Error,
+        error: Box<dyn std::error::Error>,
     },
 
     #[error("{expected} '{path}'")]
@@ -250,7 +300,7 @@ impl IntrospectionError {
                     *parent = format!("{prefix}.{parent}");
                 }
             }
-            Self::FromSerdeYaml { field, .. } => {
+            Self::ConvertToFieldError { field, .. } => {
                 *field = format!("{prefix}.{field}");
             }
             Self::AssignToNested { field, .. } => {
@@ -269,7 +319,7 @@ mod test {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    #[derive(Default, Debug, Introspection)]
+    #[derive(Default, Debug, Introspection, PartialEq)]
     struct S {
         x: i32,
         y: f32,
@@ -282,7 +332,7 @@ mod test {
         ignored: serde_yaml::Value,
     }
 
-    #[derive(Default, Debug, Introspection)]
+    #[derive(Default, Debug, Introspection, PartialEq)]
     struct Nested {
         a: String,
         b: i64,
@@ -290,7 +340,7 @@ mod test {
         empty: Empty,
     }
 
-    #[derive(Default, Debug, Introspection)]
+    #[derive(Default, Debug, Introspection, PartialEq)]
     struct Empty {}
 
     #[test]
@@ -399,6 +449,62 @@ mod test {
         assert_eq!(s.r#struct.a, "aaaa");
         s.set_field_from_yaml("struct.b", "  0xbbbb  ").unwrap();
         assert_eq!(s.r#struct.b, 0xbbbb);
+    }
+
+    #[test]
+    fn set_field_from_rmpv() {
+        let mut s = S::default();
+
+        //
+        // Error cases
+        //
+        let e = s
+            .set_field_from_rmpv("x", &rmpv::Value::Boolean(true))
+            .unwrap_err();
+        assert_eq!(e.to_string(), "incorrect value for field 'x': error while decoding value: invalid type: boolean `true`, expected i32");
+
+        let e = s
+            .set_field_from_rmpv("struct.a", &rmpv::Value::Nil)
+            .unwrap_err();
+        assert_eq!(e.to_string(), "incorrect value for field 'struct.a': error while decoding value: invalid type: unit value, expected a string");
+
+        let e = s
+            .set_field_from_rmpv("struct", &rmpv::Value::Nil)
+            .unwrap_err();
+        assert_eq!(e.to_string(), "field 'struct' cannot be assigned directly, must choose a sub-field (for example 'struct.a')");
+
+        // Other error cases are mostly the same as in case of `set_field_from_yaml`
+
+        //
+        // Success cases
+        //
+        s.set_field_from_rmpv("x", &rmpv::Value::from(123)).unwrap();
+        s.set_field_from_rmpv("y", &rmpv::Value::F32(3.21)).unwrap();
+        s.set_field_from_rmpv("s", &rmpv::Value::from("ccc"))
+            .unwrap();
+        s.set_field_from_rmpv(
+            "v",
+            &rmpv::Value::Array(vec![rmpv::Value::from("Vv"), rmpv::Value::from("vV")]),
+        )
+        .unwrap();
+
+        s.set_field_from_rmpv("struct.a", &("AaAa".into())).unwrap();
+        s.set_field_from_rmpv("struct.b", &(0xccc.into())).unwrap();
+        assert_eq!(
+            s,
+            S {
+                x: 123,
+                y: 3.21,
+                s: "ccc".into(),
+                v: vec!["Vv".into(), "vV".into()],
+                r#struct: Nested {
+                    a: "AaAa".into(),
+                    b: 0xccc,
+                    empty: Empty {},
+                },
+                ignored: Default::default(),
+            },
+        );
     }
 
     #[test]
