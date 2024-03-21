@@ -76,7 +76,7 @@ def on_files(files: Files, config: MkDocsConfig):
                     log.warning(f"PAGE NOT FOUND @ {svg_path}: {path}")
                     continue
 
-                if url.fragment not in config["anchors"][path]:
+                if url.fragment and url.fragment not in config["anchors"][path]:
                     log.warning(f"BROKEN ANCHOR @ {svg_path}: #{url.fragment}")
                     continue
 
