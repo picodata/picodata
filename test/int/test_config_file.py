@@ -47,7 +47,6 @@ instance:
     instance_id: my-instance
     replicaset_id: my-replicaset
     tier: deluxe
-    audit: {data_dir}/audit.log
     log:
         level: verbose
 """
@@ -57,7 +56,7 @@ instance:
         cwd=cluster.data_dir,
         color=color.cyan,
         config_path=cluster.config_path,
-        audit=False,
+        audit=f"{data_dir}/audit.log",
     )
     cluster.instances.append(instance)
 
@@ -75,29 +74,26 @@ instance:
     assert config == dict(
         cluster=dict(
             tiers=dict(
-                deluxe=dict(
-                    can_vote=True,
-                )
+                value=dict(deluxe=dict(can_vote=True)),
+                source="config_file",
             ),
-            unknown_parameters=[],
         ),
         instance=dict(
-            cluster_id="my-cluster",
-            instance_id="my-instance",
-            replicaset_id="my-replicaset",
-            tier="deluxe",
-            audit=f"{data_dir}/audit.log",
-            config_file=instance.config_path,
-            data_dir=data_dir,
-            listen=dict(host=host, port=str(port)),
-            log=dict(level="verbose"),
-            peers=[dict(host=host, port=str(port))],
-            iproto=[],
-            memtx=[],
-            vinyl=[],
-            unknown_parameters=[],
+            cluster_id=dict(value="my-cluster", source="config_file"),
+            instance_id=dict(value="my-instance", source="config_file"),
+            replicaset_id=dict(value="my-replicaset", source="config_file"),
+            tier=dict(value="deluxe", source="config_file"),
+            audit=dict(
+                value=f"{data_dir}/audit.log", source="commandline_or_environment"
+            ),
+            config_file=dict(
+                value=instance.config_path, source="commandline_or_environment"
+            ),
+            data_dir=dict(value=data_dir, source="config_file"),
+            listen=dict(value=f"{host}:{port}", source="config_file"),
+            log=dict(level=dict(value="verbose", source="commandline_or_environment")),
+            peers=dict(value=[f"{host}:{port}"], source="config_file"),
         ),
-        unknown_sections=[],
     )
 
 

@@ -73,7 +73,6 @@ pub mod to_rmpv_named;
 pub mod traft;
 pub mod util;
 pub mod vshard;
-pub mod yaml_value;
 
 macro_rules! lua_preload {
     ($lua:ident, $module:literal, $path_prefix:literal, $path:literal) => {

@@ -48,7 +48,10 @@ impl Default for Tier {
 )]
 #[serde(deny_unknown_fields)]
 pub struct TierConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub replication_factor: Option<u8>,
 
     /// TODO: This is not yet implemented, currently all tiers can vote

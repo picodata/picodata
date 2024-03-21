@@ -13,6 +13,7 @@ use crate::util::INFINITY;
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{plugin, rpc, sync, tlog};
 use ::tarantool::fiber;
+use ::tarantool::msgpack::ViaMsgpack;
 use ::tarantool::session;
 use ::tarantool::tlua;
 use ::tarantool::tlua::{LuaState, LuaThread, PushOneInto, Void};
@@ -127,10 +128,8 @@ pub(crate) fn setup(config: &PicodataConfig) {
                   - localhost:3301
             ...
         "},
-        tlua::Function::new(move || -> PicodataConfig {
-            // FIXME: currently it only contains explicitly specified parameters,
-            // but default parameters are omitted
-            config.clone()
+        tlua::Function::new(move || -> ViaMsgpack<rmpv::Value> {
+            ViaMsgpack(config.parameters_with_sources_as_rmpv())
         }),
     );
 

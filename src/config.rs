@@ -3,6 +3,7 @@ use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
+use crate::introspection::leaf_field_paths;
 use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::replicaset::ReplicasetId;
@@ -15,7 +16,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftSpaceAccess;
 use crate::util::edit_distance;
 use crate::util::file_exists;
-use crate::yaml_value::YamlValue;
+use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
@@ -31,24 +32,8 @@ pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 // PicodataConfig
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct PicodataConfig {
-    // TODO: add a flag for each parameter specifying where it came from, i.e.:
-    // - default value
-    // - configuration file
-    // - command line arguments
-    // - environment variable
-    // - persisted storage (because some of the values are read from the storage on restart)
     #[serde(default)]
     #[introspection(nested)]
     pub cluster: ClusterConfig,
@@ -60,6 +45,10 @@ pub struct PicodataConfig {
     #[serde(flatten)]
     #[introspection(ignore)]
     pub unknown_sections: HashMap<String, YamlValue>,
+
+    #[serde(skip)]
+    #[introspection(ignore)]
+    pub parameter_sources: ParameterSourcesMap,
 }
 
 fn validate_args(args: &args::Run) -> Result<(), Error> {
@@ -88,7 +77,7 @@ impl PicodataConfig {
         let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new(".")).display();
         let default_path = format!("{cwd}/{DEFAULT_CONFIG_FILE_NAME}");
 
-        let mut config = None;
+        let mut config_from_file = None;
         match (&args.config, file_exists(&default_path)) {
             (Some(args_path), true) => {
                 if args_path != &default_path {
@@ -98,31 +87,43 @@ but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}'
 Using configuration file '{args_path}'.");
                 }
 
-                config = Some((Self::read_yaml_file(args_path)?, args_path));
+                config_from_file = Some((Self::read_yaml_file(args_path)?, args_path));
             }
             (Some(args_path), false) => {
-                config = Some((Self::read_yaml_file(args_path)?, args_path));
+                config_from_file = Some((Self::read_yaml_file(args_path)?, args_path));
             }
             (None, true) => {
                 #[rustfmt::skip]
                 tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{cwd}'.");
-                config = Some((Self::read_yaml_file(&default_path)?, &default_path));
+                config_from_file = Some((Self::read_yaml_file(&default_path)?, &default_path));
             }
             (None, false) => {}
         }
 
-        let mut config = if let Some((mut config, path)) = config {
+        // TODO: set default values
+
+        let mut parameter_sources = ParameterSourcesMap::default();
+        let mut config = if let Some((mut config, path)) = config_from_file {
             config.validate_from_file()?;
+            #[rustfmt::skip]
+            mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
+
+            if args.config.is_some() {
+                #[rustfmt::skip]
+                parameter_sources.insert("instance.config_file".into(), ParameterSource::CommandlineOrEnvironment);
+            }
+
             config.instance.config_file = Some(path.clone());
             config
         } else {
             Default::default()
         };
 
-        config.set_from_args(args)?;
+        config.set_from_args(args, &mut parameter_sources)?;
 
         config.validate_common()?;
 
+        config.parameter_sources = parameter_sources;
         Ok(config)
     }
 
@@ -139,7 +140,13 @@ Using configuration file '{args_path}'.");
         Ok(config)
     }
 
-    pub fn set_from_args(&mut self, args: args::Run) -> Result<(), Error> {
+    pub fn set_from_args(
+        &mut self,
+        args: args::Run,
+        parameter_sources: &mut ParameterSourcesMap,
+    ) -> Result<(), Error> {
+        let mut config_from_args = Self::default();
+
         // TODO: add forbid_conflicts_with_args so that it's considered an error
         // if a parameter is specified both in the config and in the command line
         // arguments
@@ -164,89 +171,90 @@ Using configuration file '{args_path}'.");
                     )));
                 };
 
-                self.set_field_from_yaml(path.trim(), yaml.trim())
+                config_from_args
+                    .set_field_from_yaml(path.trim(), yaml.trim())
                     .map_err(Error::invalid_configuration)?;
             }
         }
 
         if let Some(data_dir) = args.data_dir {
-            self.instance.data_dir = Some(data_dir);
+            config_from_args.instance.data_dir = Some(data_dir);
         }
 
         if let Some(service_password_file) = args.service_password_file {
-            self.instance.service_password_file = Some(service_password_file);
+            config_from_args.instance.service_password_file = Some(service_password_file);
         }
 
         if let Some(cluster_id) = args.cluster_id {
-            self.cluster.cluster_id = Some(cluster_id.clone());
-            self.instance.cluster_id = Some(cluster_id);
+            config_from_args.cluster.cluster_id = Some(cluster_id.clone());
+            config_from_args.instance.cluster_id = Some(cluster_id);
         }
 
         if let Some(instance_id) = args.instance_id {
-            self.instance.instance_id = Some(instance_id);
+            config_from_args.instance.instance_id = Some(instance_id);
         }
 
         if let Some(replicaset_id) = args.replicaset_id {
-            self.instance.replicaset_id = Some(replicaset_id);
+            config_from_args.instance.replicaset_id = Some(replicaset_id);
         }
 
         if let Some(tier) = args.tier {
-            self.instance.tier = Some(tier);
+            config_from_args.instance.tier = Some(tier);
         }
 
         if let Some(init_replication_factor) = args.init_replication_factor {
-            self.cluster.default_replication_factor = Some(init_replication_factor);
+            config_from_args.cluster.default_replication_factor = Some(init_replication_factor);
         }
 
         if !args.failure_domain.is_empty() {
             let map = args.failure_domain.into_iter();
-            self.instance.failure_domain = Some(FailureDomain::from(map));
+            config_from_args.instance.failure_domain = Some(FailureDomain::from(map));
         }
 
         if let Some(address) = args.advertise_address {
-            self.instance.advertise_address = Some(address);
+            config_from_args.instance.advertise_address = Some(address);
         }
 
         if let Some(listen) = args.listen {
-            self.instance.listen = Some(listen);
+            config_from_args.instance.listen = Some(listen);
         }
 
         if let Some(http_listen) = args.http_listen {
-            self.instance.http_listen = Some(http_listen);
+            config_from_args.instance.http_listen = Some(http_listen);
         }
 
         if !args.peers.is_empty() {
-            self.instance.peers = Some(args.peers);
+            config_from_args.instance.peers = Some(args.peers);
         }
 
         if let Some(log_level) = args.log_level {
-            self.instance.log.level = Some(log_level);
+            config_from_args.instance.log.level = Some(log_level);
         }
 
         if let Some(log_destination) = args.log {
-            self.instance.log.destination = Some(log_destination);
+            config_from_args.instance.log.destination = Some(log_destination);
         }
 
         if let Some(audit_destination) = args.audit {
-            self.instance.audit = Some(audit_destination);
+            config_from_args.instance.audit = Some(audit_destination);
         }
 
-        self.instance.plugin_dir = args.plugin_dir;
+        config_from_args.instance.plugin_dir = args.plugin_dir;
 
         if let Some(admin_socket) = args.admin_sock {
             self.instance.admin_socket = Some(admin_socket);
         }
 
         if let Some(script) = args.script {
-            self.instance.deprecated_script = Some(script);
+            config_from_args.instance.deprecated_script = Some(script);
         }
 
         if args.shredding {
-            self.instance.shredding = Some(true);
+            config_from_args.instance.shredding = Some(true);
         }
 
         if let Some(memtx_memory) = args.memtx_memory {
-            self.instance.memtx.memory = Some(memtx_memory);
+            config_from_args.instance.memtx.memory = Some(memtx_memory);
         }
 
         // --config-parameter has higher priority than other command line
@@ -261,9 +269,18 @@ Using configuration file '{args_path}'.");
                     "failed parsing --config-parameter value: expected '=' after '{item}'"
                 )));
             };
-            self.set_field_from_yaml(path.trim(), yaml.trim())
+            config_from_args
+                .set_field_from_yaml(path.trim(), yaml.trim())
                 .map_err(Error::invalid_configuration)?;
         }
+
+        // All of the parameters set above came from CommandlineOrEnvironment
+        #[rustfmt::skip]
+        mark_non_none_field_sources(parameter_sources, &config_from_args, ParameterSource::CommandlineOrEnvironment);
+
+        // Only now after sources are marked we can move the actual values into
+        // our resulting config.
+        self.move_non_none_fields_from(config_from_args);
 
         Ok(())
     }
@@ -464,7 +481,130 @@ Using configuration file '{args_path}'.");
             (None, None) => "demo",
         }
     }
+
+    // TODO: just derive a move_non_default_fields function,
+    // it should be much simpler
+    fn move_non_none_fields_from(&mut self, donor: Self) {
+        for path in &leaf_field_paths::<PicodataConfig>() {
+            let value = donor
+                .get_field_as_rmpv(path)
+                .expect("this should be tested thouroughly");
+
+            if !value_is_specified(path, &value) {
+                continue;
+            }
+
+            self.set_field_from_rmpv(path, &value)
+                .expect("these fields have the same type")
+        }
+    }
+
+    pub fn parameters_with_sources_as_rmpv(&self) -> rmpv::Value {
+        return recursive_helper(self, "", Self::FIELD_INFOS);
+
+        fn recursive_helper(
+            config: &PicodataConfig,
+            prefix: &str,
+            nested_fields: &[FieldInfo],
+        ) -> rmpv::Value {
+            use rmpv::Value;
+            assert!(!nested_fields.is_empty());
+
+            let mut fields = Vec::with_capacity(nested_fields.len());
+            for field in nested_fields {
+                let name = field.name;
+
+                let node;
+                if !field.nested_fields.is_empty() {
+                    let sub_section =
+                        recursive_helper(config, &format!("{prefix}{name}."), field.nested_fields);
+                    if matches!(&sub_section, Value::Map(m) if m.is_empty()) {
+                        // Hide empty sub sections
+                        continue;
+                    }
+                    node = sub_section;
+                } else {
+                    let path = format!("{prefix}{name}");
+
+                    let value = config
+                        .get_field_as_rmpv(&path)
+                        .expect("nested fields should have valid field names");
+                    if value.is_nil() {
+                        // TODO: show default values
+                        continue;
+                    }
+
+                    #[rustfmt::skip]
+                    let source = config.parameter_sources.get(&path).copied().unwrap_or_default();
+
+                    node = Value::Map(vec![
+                        (Value::from("value"), value),
+                        (Value::from("source"), Value::from(source.as_str())),
+                    ]);
+                };
+
+                fields.push((Value::from(name), node));
+            }
+
+            Value::Map(fields)
+        }
+    }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ParameterSource
+////////////////////////////////////////////////////////////////////////////////
+
+type ParameterSourcesMap = HashMap<String, ParameterSource>;
+
+tarantool::define_str_enum! {
+    #[derive(Default)]
+    pub enum ParameterSource {
+        #[default]
+        Default = "default",
+        ConfigFile = "config_file",
+        // TODO: split into 2 sepparate variants
+        CommandlineOrEnvironment = "commandline_or_environment",
+    }
+}
+
+fn mark_non_none_field_sources(
+    parameter_sources: &mut ParameterSourcesMap,
+    config: &PicodataConfig,
+    source: ParameterSource,
+) {
+    for path in leaf_field_paths::<PicodataConfig>() {
+        let value = config
+            .get_field_as_rmpv(&path)
+            .expect("this should be tested thouroughly");
+
+        if !value_is_specified(&path, &value) {
+            continue;
+        }
+
+        parameter_sources.insert(path, source);
+    }
+}
+
+#[inline]
+fn value_is_specified(path: &str, value: &rmpv::Value) -> bool {
+    if value.is_nil() {
+        // Not specified
+        return false;
+    }
+
+    if path == "cluster.tiers" && matches!(&value, rmpv::Value::Map(m) if m.is_empty()) {
+        // Special case: config.tiers has type HashMap
+        // and it must be set explicitly in the config file
+        return false;
+    }
+
+    return true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// UnknownFieldInfo
+////////////////////////////////////////////////////////////////////////////////
 
 struct UnknownFieldInfo<'a> {
     name: &'a str,
@@ -515,17 +655,7 @@ fn report_unknown_fields<'a>(
 // ClusterConfig
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct ClusterConfig {
     pub cluster_id: Option<String>,
 
@@ -579,17 +709,7 @@ impl ClusterConfig {
 // InstanceConfig
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct InstanceConfig {
     pub data_dir: Option<String>,
     pub service_password_file: Option<String>,
@@ -738,17 +858,7 @@ impl InstanceConfig {
 // MemtxSection
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct MemtxSection {
     /// How much memory is allocated to store tuples. When the limit is
@@ -795,17 +905,7 @@ tarantool::define_str_enum! {
 // VinylSection
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct VinylSection {
     /// The maximum number of in-memory bytes that vinyl uses.
@@ -868,17 +968,7 @@ pub struct IprotoSection {
 // LogSection
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(
-    PartialEq,
-    Default,
-    Debug,
-    Clone,
-    serde::Deserialize,
-    serde::Serialize,
-    tlua::Push,
-    tlua::PushInto,
-    Introspection,
-)]
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct LogSection {
     pub level: Option<args::LogLevel>,
@@ -988,6 +1078,7 @@ mod tests {
     use super::*;
     use crate::util::on_scope_exit;
     use clap::Parser as _;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn config_from_yaml() {
@@ -1147,6 +1238,21 @@ instance:
                                          // http port should be something different
     }
 
+    #[track_caller]
+    fn setup_for_tests(yaml: Option<&str>, args: &[&str]) -> Result<PicodataConfig, Error> {
+        let mut config = if let Some(yaml) = yaml {
+            PicodataConfig::read_yaml_contents(yaml).unwrap()
+        } else {
+            PicodataConfig::default()
+        };
+        let args = args::Run::try_parse_from(args).unwrap();
+        let mut parameter_sources = Default::default();
+        mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
+        config.set_from_args(args, &mut parameter_sources)?;
+        config.parameter_sources = parameter_sources;
+        Ok(config)
+    }
+
     #[rustfmt::skip]
     #[test]
     fn parameter_source_precedence() {
@@ -1167,9 +1273,7 @@ instance:
         // Defaults
         //
         {
-            let mut config = PicodataConfig::default();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(None, &["run"]).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1196,39 +1300,29 @@ instance:
 "###;
 
             // only config
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-CONFIG");
 
             // PICODATA_CONFIG_PARAMETERS > config
             std::env::set_var("PICODATA_CONFIG_PARAMETERS", "instance.instance_id=I-ENV-CONF-PARAM");
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-ENV-CONF-PARAM");
 
             // other env > PICODATA_CONFIG_PARAMETERS
             std::env::set_var("PICODATA_INSTANCE_ID", "I-ENVIRON");
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-ENVIRON");
 
             // command line > env
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run", "--instance-id=I-COMMANDLINE"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "--instance-id=I-COMMANDLINE"]).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-COMMANDLINE");
 
             // -c PARAMETER=VALUE > other command line
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run", "-c", "instance.instance_id=I-CLI-CONF-PARAM", "--instance-id=I-COMMANDLINE"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "-c", "instance.instance_id=I-CLI-CONF-PARAM", "--instance-id=I-COMMANDLINE"]).unwrap();
 
             assert_eq!(config.instance.instance_id().unwrap(), "I-CLI-CONF-PARAM");
         }
@@ -1242,9 +1336,7 @@ instance:
 instance:
     peers:
 "###;
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1264,9 +1356,7 @@ instance:
         - bobbert:420
         - tomathan:69
 "###;
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1286,9 +1376,7 @@ instance:
 
             // env > config
             std::env::set_var("PICODATA_PEER", "oops there's a space over here -> <-:13,             maybe we should at least strip these:37");
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1307,12 +1395,10 @@ instance:
             );
 
             // command line > env
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run",
+            let config = setup_for_tests(Some(yaml), &["run",
                 "--peer", "one:1",
                 "--peer", "two:2,    <- same problem here,:3,4"
             ]).unwrap();
-            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1346,11 +1432,9 @@ instance:
             );
 
             // --config-parameter > --peer
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run",
+            let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "instance.peers=[  host:123  , ghost :321, гост:666]",
             ]).unwrap();
-            config.set_from_args(args).unwrap();
 
             assert_eq!(
                 config.instance.peers(),
@@ -1379,9 +1463,7 @@ instance:
         //
         {
             std::env::set_var("PICODATA_LISTEN", "L-ENVIRON");
-            let mut config = PicodataConfig::read_yaml_contents("").unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(""), &["run"]).unwrap();
 
             assert_eq!(config.instance.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "L-ENVIRON:3301");
@@ -1390,16 +1472,12 @@ instance:
 instance:
     advertise_address: A-CONFIG
 "###;
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
             assert_eq!(config.instance.listen().to_host_port(), "L-ENVIRON:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
 
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run", "-l", "L-COMMANDLINE"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "-l", "L-COMMANDLINE"]).unwrap();
 
             assert_eq!(config.instance.listen().to_host_port(), "L-COMMANDLINE:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "A-CONFIG:3301");
@@ -1418,9 +1496,7 @@ instance:
         kconf2: vconf2
         kconf2: vconf2-replaced
 "###;
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([("KCONF1", "VCONF1"), ("KCONF2", "VCONF2-REPLACED")])
@@ -1428,30 +1504,24 @@ instance:
 
             // environment
             std::env::set_var("PICODATA_FAILURE_DOMAIN", "kenv1=venv1,kenv2=venv2,kenv2=venv2-replaced");
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([("KENV1", "VENV1"), ("KENV2", "VENV2-REPLACED")])
             );
 
             // command line
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run", "--failure-domain", "karg1=varg1,karg1=varg1-replaced"]).unwrap();
-            config.set_from_args(args).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "--failure-domain", "karg1=varg1,karg1=varg1-replaced"]).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([("KARG1", "VARG1-REPLACED")])
             );
 
             // command line more complex
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run",
+            let config = setup_for_tests(Some(yaml), &["run",
                 "--failure-domain", "foo=1",
                 "--failure-domain", "bar=2,baz=3"
             ]).unwrap();
-            config.set_from_args(args).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([
@@ -1462,11 +1532,9 @@ instance:
             );
 
             // --config-parameter
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run",
+            let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "instance.failure_domain={foo: '11', bar: '22'}"
             ]).unwrap();
-            config.set_from_args(args).unwrap();
             assert_eq!(
                 config.instance.failure_domain(),
                 FailureDomain::from([
@@ -1488,12 +1556,10 @@ instance:
                 instance.audit=audit.txt ;;
                 ; instance.data_dir=. ;"
             );
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run",
+            let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.log .level =debug  ",
                 "--config-parameter", "instance. memtx . memory=  0xdeadbeef",
             ]).unwrap();
-            config.set_from_args(args).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.cluster_id.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
@@ -1506,11 +1572,9 @@ instance:
             //
             let yaml = r###"
 "###;
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run",
+            let e = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.hoobabooba = malabar  ",
-            ]).unwrap();
-            let e = config.set_from_args(args).unwrap_err();
+            ]).unwrap_err();
             assert!(dbg!(e.to_string()).starts_with("invalid configuration: instance: unknown field `hoobabooba`, expected one of"));
 
             let yaml = r###"
@@ -1520,9 +1584,7 @@ instance:
                 "  cluster.cluster_id=DEF  ;
                   cluster.asdfasdfbasdfbasd = "
             );
-            let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
-            let args = args::Run::try_parse_from(["run"]).unwrap();
-            let e = config.set_from_args(args).unwrap_err();
+            let e = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
             assert!(dbg!(e.to_string()).starts_with("invalid configuration: cluster: unknown field `asdfasdfbasdfbasd`, expected one of"));
         }
     }
