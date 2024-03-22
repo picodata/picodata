@@ -166,6 +166,7 @@ pub struct Run {
 
     /// Filepath to configuration file in yaml format.
     #[clap(
+        hide = true,
         long = "init-cfg",
         value_name = "PATH",
         env = "PICODATA_INIT_CFG",
