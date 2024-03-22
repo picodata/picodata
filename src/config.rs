@@ -6,6 +6,7 @@ use crate::instance::InstanceId;
 use crate::introspection::leaf_field_paths;
 use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
+use crate::pgproto;
 use crate::replicaset::ReplicasetId;
 use crate::storage;
 use crate::tier::Tier;
@@ -884,6 +885,10 @@ pub struct InstanceConfig {
     #[introspection(nested)]
     pub iproto: IprotoSection,
 
+    #[serde(default)]
+    #[introspection(nested)]
+    pub pg: pgproto::Config,
+
     /// Special catch-all field which will be filled by serde with all unknown
     /// fields from the yaml file.
     #[serde(flatten)]
@@ -1203,6 +1208,8 @@ tarantool::define_str_enum! {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::util::on_scope_exit;
     use clap::Parser as _;
@@ -1716,5 +1723,47 @@ instance:
             let e = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
             assert!(dbg!(e.to_string()).starts_with("invalid configuration: cluster: unknown field `asdfasdfbasdfbasd`, expected one of"));
         }
+    }
+
+    #[test]
+    fn pg_config() {
+        let yaml = r###"
+instance:
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        // pg section wasn't specified so it shouldn't be enabled
+        assert!(!config.instance.pg.enabled());
+
+        let yaml = r###"
+instance:
+    pg:
+        listen: "localhost:5432"
+        ssl: true
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let pg = config.instance.pg;
+        assert!(pg.enabled());
+        assert_eq!(&pg.listen().to_host_port(), "localhost:5432");
+        assert!(pg.ssl());
+
+        // test defaults
+        let yaml = r###"
+instance:
+    pg:
+        listen: "localhost:5432"
+"###;
+        let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
+        let pg = config.instance.pg;
+        assert!(pg.enabled());
+        assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert!(!pg.ssl());
+
+        // test config with -c option
+        let config =
+            setup_for_tests(None, &["run", "-c", "instance.pg.listen=localhost:5432"]).unwrap();
+        let pg = config.instance.pg;
+        assert!(pg.enabled());
+        assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert!(!pg.ssl());
     }
 }

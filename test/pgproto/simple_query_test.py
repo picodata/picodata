@@ -5,27 +5,18 @@ from conftest import Postgres
 
 
 def test_simple_query_flow_errors(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "admin"
     password = "P@ssw0rd"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
-
-    with pytest.raises(pg.InterfaceError, match="Server refuses SSL"):
-        pg.Connection(user, password=password, host=host, port=port, ssl_context=True)
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(user, password=password, host=host, port=port)
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
     conn.autocommit = True
     cur = conn.cursor()
 
-    with pytest.raises(
-        pg.DatabaseError, match="expected CreateUser, AlterUser, DropUser"
-    ):
+    with pytest.raises(pg.DatabaseError, match="rule parsing error"):
         cur.execute(
             """
             CREATE TEMPORARY TABLE book (id SERIAL, title TEXT);
@@ -41,18 +32,14 @@ def test_simple_query_flow_errors(postgres: Postgres):
 
 
 def test_simple_flow_session(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "admin"
     password = "P@ssw0rd"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(user, password=password, host=host, port=port)
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -98,18 +85,14 @@ def test_simple_flow_session(postgres: Postgres):
 
 
 def test_explain(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "admin"
     password = "P@ssw0rd"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(user, password=password, host=host, port=port)
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -166,18 +149,14 @@ def test_explain(postgres: Postgres):
 # Aggregates return value type is decimal, which is currently not supported,
 # so an error is expected.
 def test_aggregate_error(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "admin"
     password = "P@ssw0rd"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(user, password=password, host=host, port=port)
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
     conn.autocommit = True
     cur = conn.cursor()
 

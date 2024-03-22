@@ -1,6 +1,6 @@
-use crate::error::PgError;
-use crate::stream::{FeMessage, PgStream};
-use crate::{error::PgResult, helpers, messages};
+use crate::pgproto::error::PgError;
+use crate::pgproto::stream::{FeMessage, PgStream};
+use crate::pgproto::{error::PgResult, helpers, messages};
 use pgwire::messages::startup::{Password, PasswordMessageFamily};
 use std::{io, mem, os::raw::c_int};
 

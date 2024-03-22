@@ -251,11 +251,22 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
         ];
 
         if use_static_build {
+            // In pgproto, we use openssl crate that links to openssl from the system, so we want
+            // tarantool to link to the same library. Otherwise there will be conflicts between
+            // different library versions.
+            //
+            // In theory, the crate can use openssl from tarantool. There is a variable
+            // OPENSSL_DIR that points to the directory with the library. But to use it we need
+            // to build the crate after tarantool, while the order is not determined.
+            // Thus, in practice, openssl crate builds before tarantool and throws an error that it
+            // can't find the library because it wasn't built yet.
+            let args = [&common_args[..], &["-DOPENSSL_USE_STATIC_LIBS=FALSE"]].concat();
+
             // static build is a separate project that uses CMAKE_TARANTOOL_ARGS
             // to forward parameters to tarantool cmake project
             configure_cmd
                 .args(["-S", "tarantool-sys/static-build"])
-                .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", &common_args.join(";")))
+                .arg(format!("-DCMAKE_TARANTOOL_ARGS={}", &args.join(";")))
         } else {
             // for dynamic build we do not use most of the bundled dependencies
             configure_cmd
@@ -424,11 +435,6 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
         rustc::link_search(format!("{tarantool_build}/build/ares/dest/lib"));
         rustc::link_lib_dynamic("cares");
 
-        rustc::link_search(format!("{tarantool_sys}/openssl-prefix/lib"));
-
-        rustc::link_lib_static("ssl");
-        rustc::link_lib_static("crypto");
-
         rustc::link_search(format!("{tarantool_sys}/ncurses-prefix/lib"));
         rustc::link_lib_static("tinfo");
     } else {
@@ -452,6 +458,23 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
         rustc::link_lib_dynamic("ssl");
         rustc::link_lib_dynamic("crypto");
     }
+
+    // Previously in static build mode we used to link both libssl
+    // and libcrypto statically. However with the addition of libssl
+    // support to pgproto we needed to use Rust ssl bindings which
+    // need to link with libssl too. To unify tarantool and rust side
+    // of things we decided to always link libssl dynamically. When
+    // libssl is linked dynamically there is no need to link libcrypto
+    // because it is a dependency of libssl and is already present in
+    // libssl.so:
+    // > ldd /usr/lib64/libssl.so
+    //     libcrypto.so.3 => /lib64/libcrypto.so.3
+    //     ...
+    //
+    // If needed this is the way to link libssl statically:
+    // rustc::link_lib_static("ssl");
+    // rustc::link_lib_static("crypto");
+    rustc::link_lib_dynamic("ssl");
 
     rustc::link_search(format!("{tarantool_sys}/iconv-prefix/lib"));
     if cfg!(target_os = "macos") {

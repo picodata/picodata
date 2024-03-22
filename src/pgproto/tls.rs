@@ -1,4 +1,4 @@
-use crate::error::PgResult;
+use super::error::PgResult;
 use openssl::{
     error::ErrorStack,
     ssl::{self, HandshakeError, SslFiletype, SslMethod, SslStream},
@@ -16,6 +16,14 @@ pub enum TlsError {
 
     #[error("handshake failure")]
     HandshakeFailure,
+
+    // A helper error that indicates that the error happened with a cert file.
+    #[error("cert file error '{0}': {1}")]
+    CertFile(PathBuf, std::io::Error),
+
+    // A helper error that indicates that the error happened with a key file.
+    #[error("key file error '{0}': {1}")]
+    KeyFile(PathBuf, std::io::Error),
 }
 
 impl<S> From<HandshakeError<S>> for TlsError {
@@ -34,11 +42,17 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-    pub fn from_pgdata(pgdata: &Path) -> PgResult<Self> {
-        // We should use the absolute pathes here, because SslContextBuilder::set_certificate_chain_file
-        // fails for relative pathes with an unclear error, represented as an empty error stack.
-        let cert = fs::canonicalize(pgdata.join("server.crt"))?;
-        let key = fs::canonicalize(pgdata.join("server.key"))?;
+    pub fn from_data_dir(data_dir: &Path) -> PgResult<Self> {
+        // We should use the absolute paths here, because SslContextBuilder::set_certificate_chain_file
+        // fails for relative paths with an unclear error, represented as an empty error stack.
+        let cert = data_dir.join("server.crt");
+        let cert = fs::canonicalize(&cert).map_err(|e| TlsError::CertFile(cert, e))?;
+
+        let key = data_dir.join("server.key");
+        let key = fs::canonicalize(&key).map_err(|e| TlsError::KeyFile(key, e))?;
+
+        // TODO: Make sure that the file permissions are set to 0640 or 0600.
+        // See https://www.postgresql.org/docs/current/ssl-tcp.html#SSL-SETUP for details.
         Ok(Self { key, cert })
     }
 }

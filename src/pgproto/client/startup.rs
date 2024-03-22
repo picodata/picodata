@@ -1,7 +1,8 @@
-use crate::error::{PgError, PgResult};
-use crate::messages;
-use crate::stream::{FeMessage, PgStream};
-use crate::tls::TlsAcceptor;
+use crate::pgproto::error::{PgError, PgResult};
+use crate::pgproto::messages;
+use crate::pgproto::stream::{FeMessage, PgStream};
+use crate::pgproto::tls::TlsAcceptor;
+use crate::tlog;
 use pgwire::messages::startup::Startup;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -13,7 +14,7 @@ pub struct ClientParams {
 
 fn parse_startup(mut startup: Startup) -> PgResult<ClientParams> {
     let mut parameters = std::mem::take(startup.parameters_mut());
-    log::debug!("client parameters: {parameters:?}");
+    tlog!(Debug, "client parameters: {parameters:?}");
 
     let Some(username) = parameters.remove("user") else {
         return Err(PgError::ProtocolViolation(

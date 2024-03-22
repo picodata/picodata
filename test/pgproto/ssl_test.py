@@ -2,22 +2,21 @@ import pytest
 import pg8000.dbapi as pg  # type: ignore
 from conftest import Postgres
 import os
+import psycopg
 
 
 def test_ssl_refuse(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "user"
     password = "P@ssw0rd"
-    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
 
     # disable: only try a non-SSL connection
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(user, password=password, host=host, port=port)
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
     conn.close()
 
     # prefer: first try an SSL connection; if that fails,
@@ -25,7 +24,9 @@ def test_ssl_refuse(postgres: Postgres):
     # As ssl is not supported, server will respond to SslRequest with
     # SslRefuse and client will try a non-SSL connection.
     os.environ["PGSSLMODE"] = "prefer"
-    conn = pg.Connection(user, password=password, host=host, port=port)
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
     conn.close()
 
     # require: only try an SSL connection.
@@ -37,28 +38,29 @@ def test_ssl_refuse(postgres: Postgres):
     with pytest.raises(
         pg.DatabaseError, match=f"authentication failed for user '{user}'"
     ):
-        pg.Connection(user, password="wrong password", host=host, port=port)
+        pg.Connection(
+            user, password="wrong password", host=postgres.host, port=postgres.port
+        )
 
 
-def test_ssl_accept(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
+def test_ssl_accept(postgres_with_tls: Postgres):
     # where the server should find .crt and .key files
-    pgdata = "test/pgdata"
-    instance = postgres.instance
-
-    postgres.start(host, port, pgdata)
+    instance = postgres_with_tls.instance
+    host = postgres_with_tls.host
+    port = postgres_with_tls.port
+    ssl_dir = "ssl_dir"
+    assert ssl_dir is not None
 
     user = "user"
     password = "P@ssw0rd"
     instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     # where the client should find his certificate
-    client_cert_file = os.path.join(os.path.abspath(pgdata), "root.crt")
+    client_cert_file = os.path.join(ssl_dir, "root.crt")
     os.environ["SSL_CERT_FILE"] = client_cert_file
 
     os.environ["PGSSLMODE"] = "require"
-    conn = pg.Connection(
-        user, password=password, host=host, port=port, ssl_context=True
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={host} port={port} sslmode=require"
     )
     conn.close()

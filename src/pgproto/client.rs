@@ -1,9 +1,10 @@
-use crate::client::simple_query::process_query_message;
-use crate::error::*;
-use crate::messages;
-use crate::storage::StorageManager;
-use crate::stream::{BeMessage, FeMessage, PgStream};
-use crate::tls::TlsAcceptor;
+use super::client::simple_query::process_query_message;
+use super::error::*;
+use super::messages;
+use super::storage::StorageManager;
+use super::stream::{BeMessage, FeMessage, PgStream};
+use super::tls::TlsAcceptor;
+use crate::tlog;
 use pgwire::messages::startup::*;
 use std::io;
 
@@ -28,16 +29,16 @@ impl<S: io::Read + io::Write> PgClient<S> {
     /// Create a client context by receiving a startup message and authenticating the client.
     pub fn accept(stream: PgStream<S>, tls_acceptor: Option<TlsAcceptor>) -> PgResult<PgClient<S>> {
         let (mut stream, params) = startup::handshake(stream, tls_acceptor.as_ref())?;
-        log::info!("processed startup");
+        tlog!(Info, "processed startup");
 
         let salt = rand::random::<[u8; 20]>();
         auth::authenticate(&mut stream, &salt, &params.username).map_err(|error| {
-            log::info!("failed to establish client connection: {error}");
+            tlog!(Info, "failed to establish client connection: {error}");
             // At this point we don't care about failed writes (best effort approach).
             let _ = stream.write_message(messages::error_response(error.info()));
             error
         })?;
-        log::info!("client authenticated");
+        tlog!(Info, "client authenticated");
 
         Ok(PgClient {
             manager: StorageManager::new(),
@@ -81,7 +82,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
     /// Receive a single message, process it, then send a proper response.
     fn process_message(&mut self) -> PgResult<()> {
         let message = self.stream.read_message()?;
-        log::debug!("received {message:?}");
+        tlog!(Debug, "received {message:?}");
 
         if self.is_running_extended_query() && !extended_query::is_extended_query_message(&message)
         {
@@ -92,17 +93,21 @@ impl<S: io::Read + io::Write> PgClient<S> {
             //
             // See the discussion about getting a Query message while running extended query:
             // https://postgrespro.com/list/thread-id/2416958.
-            log::warn!("got {message:?} message while running extended query");
+            tlog!(
+                Warning,
+                "got {message:?} message while running extended query"
+            );
         }
 
         match message {
             FeMessage::Query(query) => {
-                log::info!("executing simple query: {}", query.query());
+                tlog!(Info, "executing simple query: {}", query.query());
                 process_query_message(&mut self.stream, &self.manager, query)?;
                 self.loop_state = MessageLoopState::ReadyForQuery;
             }
             FeMessage::Parse(parse) => {
-                log::info!(
+                tlog!(
+                    Info,
                     "parsing query \'{}\': {}",
                     parse.name().as_deref().unwrap_or_default(),
                     parse.query(),
@@ -111,7 +116,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 extended_query::process_parse_message(&mut self.stream, &self.manager, parse)?;
             }
             FeMessage::Bind(bind) => {
-                log::info!(
+                tlog!(
+                    Info,
                     "binding statement \'{}\' to portal \'{}\'",
                     bind.statement_name().as_deref().unwrap_or_default(),
                     bind.portal_name().as_deref().unwrap_or_default()
@@ -120,7 +126,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 extended_query::process_bind_message(&mut self.stream, &self.manager, bind)?;
             }
             FeMessage::Execute(execute) => {
-                log::info!(
+                tlog!(
+                    Info,
                     "executing portal \'{}\'",
                     execute.name().as_deref().unwrap_or_default()
                 );
@@ -128,7 +135,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 extended_query::process_execute_message(&mut self.stream, &self.manager, execute)?;
             }
             FeMessage::Describe(describe) => {
-                log::info!(
+                tlog!(
+                    Info,
                     "describing {} \'{}\'",
                     describe.target_type(),
                     describe.name().as_deref().unwrap_or_default()
@@ -141,7 +149,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 )?;
             }
             FeMessage::Close(close) => {
-                log::info!(
+                tlog!(
+                    Info,
                     "closing {} \'{}\'",
                     close.target_type(),
                     close.name().as_deref().unwrap_or_default()
@@ -150,17 +159,17 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 extended_query::process_close_message(&mut self.stream, &self.manager, close)?;
             }
             FeMessage::Flush(_) => {
-                log::info!("flushing");
+                tlog!(Info, "flushing");
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 self.stream.flush()?;
             }
             FeMessage::Sync(_) => {
-                log::info!("syncing");
+                tlog!(Info, "syncing");
                 self.loop_state = MessageLoopState::ReadyForQuery;
                 extended_query::process_sync_mesage(&self.manager)?;
             }
             FeMessage::Terminate(_) => {
-                log::info!("terminating the session");
+                tlog!(Info, "terminating the session");
                 self.loop_state = MessageLoopState::Terminated;
             }
             message => return Err(PgError::FeatureNotSupported(format!("{message:?}"))),
@@ -169,7 +178,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
     }
 
     fn process_error(&mut self, error: PgError) -> PgResult<()> {
-        log::info!("processing error: {error:?}");
+        tlog!(Info, "processing error: {error:?}");
         self.stream
             .write_message(messages::error_response(error.info()))?;
         error.check_fatality()?;
@@ -195,7 +204,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
 
     /// Process incoming client messages until we see an irrecoverable error.
     pub fn process_messages_loop(&mut self) -> PgResult<()> {
-        log::info!("entering the message handling loop");
+        tlog!(Info, "entering the message handling loop");
         while !self.is_terminated() {
             if let MessageLoopState::ReadyForQuery = self.loop_state {
                 self.stream.write_message(messages::ready_for_query())?;

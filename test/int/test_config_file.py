@@ -114,6 +114,10 @@ instance:
             iproto=dict(
                 max_concurrent_messages=dict(value=768, source="default"),
             ),
+            pg=dict(
+                # by default listen is None, so pg is disabled
+                ssl=dict(source="default", value=False),
+            ),
         ),
     )
 

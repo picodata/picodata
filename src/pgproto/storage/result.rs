@@ -2,7 +2,7 @@ use super::{
     describe::{CommandTag, PortalDescribe, QueryType},
     value::{Format, PgValue},
 };
-use crate::error::PgResult;
+use crate::pgproto::error::PgResult;
 use bytes::BytesMut;
 use pgwire::messages::data::{DataRow, RowDescription};
 use std::iter::zip;

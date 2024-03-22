@@ -14,6 +14,7 @@ clap = { version = "3", features = ["derive", "env"] }
 indoc = "2"
 lazy_static = "1.4"
 opentelemetry = "0.17"
+openssl = "0.10.64"
 libc = "0.2.108"
 raft = "0.6.0"
 serde = "1.0"
@@ -46,6 +47,9 @@ abi_stable = "0.11.2"
 picodata-sdk = { path = "./sdk/picodata-sdk" }
 picoplugin = { path = "./picoplugin" }
 smol_str = "0.2.1"
+pgwire = { git = "https://github.com/sunng87/pgwire", rev = "6e653e851703bb743a96ba7a8e0f1fde6a5abeb0" }
+postgres-types = "0.2.6"
+rand = "0.8.5"
 
 [dependencies.protobuf]
 version = "2.27"

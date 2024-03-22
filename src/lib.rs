@@ -7,7 +7,7 @@
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::vec_init_then_push)]
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
@@ -55,6 +55,7 @@ pub mod r#loop;
 mod luamod;
 pub mod mailbox;
 pub mod on_shutdown;
+mod pgproto;
 mod pico_service;
 pub mod plugin;
 pub mod reachability;
@@ -1026,6 +1027,11 @@ fn postjoin(
     }
 
     node.sentinel_loop.on_self_activate();
+
+    let pg_config = &config.instance.pg;
+    if pg_config.enabled() {
+        pgproto::start(pg_config, PathBuf::from(config.instance.data_dir()))?;
+    }
 
     Ok(())
 }

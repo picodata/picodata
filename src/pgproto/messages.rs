@@ -1,4 +1,4 @@
-use crate::stream::BeMessage;
+use super::stream::BeMessage;
 use pgwire::error::ErrorInfo;
 use pgwire::messages::data::{self, DataRow, ParameterDescription, RowDescription};
 use pgwire::messages::extendedquery::{

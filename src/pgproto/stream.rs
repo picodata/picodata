@@ -1,7 +1,8 @@
-use crate::{
+use super::{
     error::{PgError, PgResult},
     tls::{TlsAcceptor, TlsStream},
 };
+use crate::tlog;
 use bytes::{BufMut, BytesMut};
 use pgwire::messages::startup::SslRequest;
 use std::io::{self, ErrorKind::UnexpectedEof, Write};
@@ -99,7 +100,7 @@ impl<S: io::Read + io::Write> PgStream<S> {
 
         // This is done once at connection startup.
         let startup = Startup::decode(&mut self.ibuf)?.map(|x| {
-            log::debug!("received StartupPacket from client");
+            tlog!(Debug, "received StartupPacket from client");
             self.startup_processed = true;
             FeMessage::Startup(x)
         });
@@ -117,7 +118,8 @@ impl<S: io::Read + io::Write> PgStream<S> {
             }
 
             let cnt = read_into_buf(&mut self.socket, &mut self.ibuf)?;
-            log::debug!("received {cnt} bytes from client");
+            tlog!(Debug, "received {cnt} bytes from client");
+
             if cnt == 0 {
                 return Err(io::Error::from(UnexpectedEof).into());
             }

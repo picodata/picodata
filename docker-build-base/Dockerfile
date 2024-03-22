@@ -20,7 +20,8 @@ RUN set -e; \
         libicu-dev \
         libsasl2-dev \
         pkg-config \
-        libldap2-dev && \
+        libldap2-dev \
+        libssl-dev && \
         apt-get clean all
 
 RUN set -e; \

@@ -20,6 +20,8 @@ pexpect = "*"
 pyyaml = "*"
 tomli = {version = ">=1.1.0", markers = "python_version < '3.11'"}
 requests = "*"
+pg8000 = "*"
+psycopg = {extras = ["binary"], version = "*"}
 
 [requires]
 python_version = "3.10"

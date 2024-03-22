@@ -1,5 +1,5 @@
-use crate::storage::StorageManager;
-use crate::{error::PgResult, messages, stream::PgStream};
+use crate::pgproto::storage::StorageManager;
+use crate::pgproto::{error::PgResult, messages, stream::PgStream};
 use pgwire::messages::simplequery::Query;
 use std::io::{Read, Write};
 

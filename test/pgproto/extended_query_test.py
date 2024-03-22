@@ -16,19 +16,14 @@ import psycopg
 
 
 def test_extended_query(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "admin"
     password = "P@ssw0rd"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     os.environ["PGSSLMODE"] = "disable"
-    conn = pg.Connection(user, password=password, host=host, port=port)
-    conn.autocommit = True
+    conn = pg.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
 
     ps = conn.prepare(
         """
@@ -45,7 +40,7 @@ def test_extended_query(postgres: Postgres):
     )
 
     # statement is prepared, but not executed yet
-    with pytest.raises(DatabaseError, match="space TALL not found"):
+    with pytest.raises(DatabaseError, match='table with name "TALL" not found'):
         conn.run(""" select * from tall """)
 
     ps.run()
@@ -100,15 +95,12 @@ def test_extended_query(postgres: Postgres):
 
 
 def test_parameterized_queries(postgres: Postgres):
-    host = "127.0.0.1"
-    port = 5432
-
-    postgres.start(host, port)
-    i1 = postgres.instance
-
     user = "admin"
     password = "P@ssw0rd"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"

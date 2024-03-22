@@ -7,11 +7,12 @@ use std::str::ParseBoolError;
 use std::string::FromUtf8Error;
 use thiserror::Error;
 
-use crate::tls::TlsError;
+use super::tls::TlsError;
+use super::ConfigError;
 
 pub type PgResult<T> = Result<T, PgError>;
 
-/// See https://www.postgresql.org/docs/current/errcodes-appendix.html.
+/// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
 #[derive(Error, Debug)]
 pub enum PgError {
     #[error("protocol violation: {0}")]
@@ -46,6 +47,9 @@ pub enum PgError {
 
     #[error("env error: {0}")]
     EnvError(#[from] env::VarError),
+
+    #[error("config error: {0}")]
+    ConfigError(#[from] ConfigError),
 }
 
 #[derive(Error, Debug)]

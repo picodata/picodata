@@ -2,12 +2,14 @@ import io
 import json
 import os
 import re
+import shutil
 import socket
 import sys
 import time
 import threading
 from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import random
 
 import yaml as yaml_lib  # type: ignore
 import pytest
@@ -39,6 +41,7 @@ from tarantool.error import (  # type: ignore
     DatabaseError,
 )
 from multiprocessing import Process, Queue
+from pathlib import Path
 
 
 # From raft.rs:
@@ -1971,3 +1974,50 @@ class MetricsServer:
         if self.process is None:
             return None
         self.process.kill()
+
+
+@dataclass
+class Postgres:
+    cluster: Cluster
+
+    def __init__(self, cluster: Cluster, ssl: bool = False):
+        # use random port in order to avoid "cannot assign requested address" error
+        self.port = random.randint(2000, 30000)
+        self.host = "localhost"
+        self.cluster = cluster
+        self.ssl = ssl
+
+    def install(self):
+        self.cluster.set_config_file(
+            yaml=f"""
+cluster:
+    cluster_id: test
+    tiers:
+        default:
+instance:
+    pg:
+        listen: "{self.host}:{self.port}"
+        ssl: {self.ssl}
+"""
+        )
+        ssl_dir = Path("test/pgproto/ssl_dir").absolute()
+        instance_dir = Path(self.cluster.data_dir) / "i1"
+        instance_dir.mkdir()
+        shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
+        shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
+        self.cluster.deploy(instance_count=1)
+        return self
+
+    @property
+    def instance(self):
+        return self.cluster.instances[0]
+
+
+@pytest.fixture
+def postgres(cluster: Cluster):
+    return Postgres(cluster).install()
+
+
+@pytest.fixture
+def postgres_with_tls(cluster: Cluster):
+    return Postgres(cluster, ssl=True).install()

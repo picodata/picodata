@@ -9,7 +9,7 @@ use std::error::Error;
 use std::str;
 use tarantool::tlua::{AsLua, Nil, PushInto};
 
-use crate::error::{DecodingError, PgError, PgResult};
+use crate::pgproto::error::{DecodingError, PgError, PgResult};
 
 pub fn type_from_name(name: &str) -> PgResult<Type> {
     match name {
