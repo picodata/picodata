@@ -100,8 +100,6 @@ Using configuration file '{args_path}'.");
             (None, false) => {}
         }
 
-        // TODO: set default values
-
         let mut parameter_sources = ParameterSourcesMap::default();
         let mut config = if let Some((mut config, path)) = config_from_file {
             config.validate_from_file()?;
@@ -120,6 +118,8 @@ Using configuration file '{args_path}'.");
         };
 
         config.set_from_args(args, &mut parameter_sources)?;
+
+        config.set_defaults_explicitly(&parameter_sources);
 
         config.validate_common()?;
 
@@ -242,7 +242,7 @@ Using configuration file '{args_path}'.");
         config_from_args.instance.plugin_dir = args.plugin_dir;
 
         if let Some(admin_socket) = args.admin_sock {
-            self.instance.admin_socket = Some(admin_socket);
+            config_from_args.instance.admin_socket = Some(admin_socket);
         }
 
         if let Some(script) = args.script {
@@ -283,6 +283,36 @@ Using configuration file '{args_path}'.");
         self.move_non_none_fields_from(config_from_args);
 
         Ok(())
+    }
+
+    fn set_defaults_explicitly(&mut self, parameter_sources: &HashMap<String, ParameterSource>) {
+        for path in &leaf_field_paths::<Self>() {
+            if !matches!(
+                parameter_sources.get(path),
+                None | Some(ParameterSource::Default)
+            ) {
+                // Parameter value was already set from a config file, or arugments, etc.
+                continue;
+            }
+
+            let Some(default) = self
+                // This function will use the already specified parameters for
+                // generating defaults for other dependent parameters. However
+                // it doesn't do any sort of topological sorting, so it may
+                // result in a panic if `#[introspection(config_default = ...)]`
+                // expressions contain any unwraps. So we must sort the
+                // parameters manually now
+                .get_field_default_value_as_rmpv(path)
+                .expect("paths are correct")
+            else {
+                continue;
+            };
+
+            self.set_field_from_rmpv(path, &default)
+                .expect("same type, path is correct");
+            // Could do this, but if parameter source is not set, it's implied to be ParameterSource::Default, so...
+            // mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::Default);
+        }
     }
 
     /// Does checks which are applicable to configuration loaded from a file.
@@ -664,6 +694,7 @@ pub struct ClusterConfig {
 
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
+    #[introspection(config_default = 1)]
     pub default_replication_factor: Option<u8>,
 
     #[serde(flatten)]
@@ -701,7 +732,8 @@ impl ClusterConfig {
 
     #[inline]
     pub fn default_replication_factor(&self) -> u8 {
-        self.default_replication_factor.unwrap_or(1)
+        self.default_replication_factor
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }
 
@@ -719,18 +751,44 @@ pub struct InstanceConfig {
     pub cluster_id: Option<String>,
     pub instance_id: Option<String>,
     pub replicaset_id: Option<String>,
+
+    #[introspection(config_default = "default")]
     pub tier: Option<String>,
+
+    #[introspection(config_default = FailureDomain::default())]
     pub failure_domain: Option<FailureDomain>,
 
+    #[introspection(
+        config_default = vec![Address {
+            user: None,
+            host: DEFAULT_LISTEN_HOST.into(),
+            port: DEFAULT_IPROTO_PORT.into(),
+        }]
+    )]
     pub peers: Option<Vec<Address>>,
-    pub advertise_address: Option<Address>,
+
+    #[introspection(
+        config_default = Address {
+            user: None,
+            host: DEFAULT_LISTEN_HOST.into(),
+            port: DEFAULT_IPROTO_PORT.into(),
+        }
+    )]
     pub listen: Option<Address>,
+
+    #[introspection(config_default = self.listen())]
+    pub advertise_address: Option<Address>,
+
     pub http_listen: Option<Address>,
+
+    #[introspection(config_default = format!("{}/admin.sock", self.data_dir.as_ref().unwrap()))]
     pub admin_socket: Option<String>,
 
     // TODO:
     // - sepparate config file for common parameters
     pub plugin_dir: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub deprecated_script: Option<String>,
 
     pub audit: Option<String>,
@@ -741,6 +799,7 @@ pub struct InstanceConfig {
     //
     /// Determines wether the .xlog & .snap files should be shredded when
     /// deleting.
+    #[introspection(config_default = false)]
     pub shredding: Option<bool>,
 
     #[serde(default)]
@@ -766,10 +825,13 @@ pub struct InstanceConfig {
     pub unknown_parameters: HashMap<String, YamlValue>,
 }
 
+// TODO: remove all of the .clone() calls from these methods
 impl InstanceConfig {
     #[inline]
     pub fn data_dir(&self) -> String {
-        self.data_dir.clone().unwrap_or_else(|| ".".to_owned())
+        self.data_dir
+            .clone()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
@@ -784,74 +846,65 @@ impl InstanceConfig {
 
     #[inline]
     pub fn tier(&self) -> &str {
-        self.tier.as_deref().unwrap_or("default")
+        self.tier
+            .as_deref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn failure_domain(&self) -> FailureDomain {
-        self.failure_domain.clone().unwrap_or_default()
+        self.failure_domain
+            .clone()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn peers(&self) -> Vec<Address> {
-        match &self.peers {
-            Some(peers) if !peers.is_empty() => peers.clone(),
-            _ => vec![Address {
-                user: None,
-                host: DEFAULT_LISTEN_HOST.into(),
-                port: DEFAULT_IPROTO_PORT.into(),
-            }],
-        }
+        self.peers
+            .clone()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn advertise_address(&self) -> Address {
-        if let Some(advertise_address) = &self.advertise_address {
-            advertise_address.clone()
-        } else {
-            self.listen()
-        }
+        self.advertise_address
+            .clone()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn listen(&self) -> Address {
-        if let Some(listen) = &self.listen {
-            listen.clone()
-        } else {
-            Address {
-                user: None,
-                host: DEFAULT_LISTEN_HOST.into(),
-                port: DEFAULT_IPROTO_PORT.into(),
-            }
-        }
+        self.listen
+            .clone()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn admin_socket(&self) -> String {
-        if let Some(admin_socket) = &self.admin_socket {
-            admin_socket.to_owned()
-        } else {
-            format!("{}/admin.sock", self.data_dir())
-        }
+        self.admin_socket
+            .clone()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn log_level(&self) -> SayLevel {
-        if let Some(level) = self.log.level {
-            level.into()
-        } else {
-            SayLevel::Info
-        }
+        self.log
+            .level
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+            .into()
     }
 
     #[inline]
     pub fn shredding(&self) -> bool {
-        self.shredding.unwrap_or(false)
+        self.shredding
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
     pub fn memtx_memory(&self) -> u64 {
-        self.memtx.memory.unwrap_or(64 * 1024 * 1024)
+        self.memtx
+            .memory
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 }
 
@@ -871,6 +924,7 @@ pub struct MemtxSection {
     /// Minimum is 32MB (32 * 1024 * 1024).
     ///
     /// Corresponds to `box.cfg.memtx_memory`.
+    #[introspection(config_default = 64 * 1024 * 1024)]
     pub memory: Option<u64>,
 
     /// The maximum number of snapshots that are stored in the memtx_dir
@@ -972,6 +1026,7 @@ pub struct IprotoSection {
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct LogSection {
+    #[introspection(config_default = args::LogLevel::Info)]
     pub level: Option<args::LogLevel>,
 
     /// By default, Picodata sends the log to the standard error stream
@@ -1250,6 +1305,7 @@ instance:
         let mut parameter_sources = Default::default();
         mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
         config.set_from_args(args, &mut parameter_sources)?;
+        config.set_defaults_explicitly(&parameter_sources);
         config.parameter_sources = parameter_sources;
         Ok(config)
     }

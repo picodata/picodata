@@ -77,8 +77,13 @@ instance:
                 value=dict(deluxe=dict(can_vote=True)),
                 source="config_file",
             ),
+            default_replication_factor=dict(value=1, source="default"),
         ),
         instance=dict(
+            admin_socket=dict(value=f"{data_dir}/admin.sock", source="default"),
+            advertise_address=dict(value=f"{host}:{port}", source="default"),
+            failure_domain=dict(value=dict(), source="default"),
+            shredding=dict(value=False, source="default"),
             cluster_id=dict(value="my-cluster", source="config_file"),
             instance_id=dict(value="my-instance", source="config_file"),
             replicaset_id=dict(value="my-replicaset", source="config_file"),
@@ -93,6 +98,9 @@ instance:
             listen=dict(value=f"{host}:{port}", source="config_file"),
             log=dict(level=dict(value="verbose", source="commandline_or_environment")),
             peers=dict(value=[f"{host}:{port}"], source="config_file"),
+            memtx=dict(
+                memory=dict(value=64 * 1024 * 1024, source="default"),
+            ),
         ),
     )
 
