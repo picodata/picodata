@@ -2,6 +2,7 @@ pub mod admin;
 pub mod args;
 pub mod connect;
 pub mod console;
+pub mod default_config;
 pub mod expel;
 pub mod run;
 pub mod tarantool;

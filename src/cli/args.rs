@@ -19,6 +19,8 @@ pub enum Picodata {
     Test(Test),
     Connect(Connect),
     Admin(Admin),
+    #[clap(subcommand)]
+    Config(Config),
 }
 
 pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
@@ -403,7 +405,7 @@ fn try_parse_kv_uppercase(s: &str) -> Result<(Uppercase, Uppercase), String> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Picodata cli
+// Connect
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug, Parser)]
@@ -456,6 +458,10 @@ impl Connect {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Admin
+////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Debug, Parser)]
 #[clap(about = "Connect to the Admin console of a Picodata instance")]
 #[clap(after_help = "SPECIAL COMMANDS:
@@ -481,4 +487,28 @@ impl Admin {
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Config
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, clap::Subcommand)]
+#[clap(about = "Subcommands related to working with the configuration file")]
+pub enum Config {
+    /// Generate a picodata configuration file with default values.
+    Default(ConfigDefault),
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ConfigDefault
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Parser)]
+pub struct ConfigDefault {
+    #[clap(short = 'o', long = "output-file", value_name = "FILENAME")]
+    /// File name for the generated configuration to be written to.
+    /// If this option is omitted or the value of "-" is specified,
+    /// the file contents are written to the standard output.
+    pub output_file: Option<String>,
 }

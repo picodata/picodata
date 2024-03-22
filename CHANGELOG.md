@@ -34,6 +34,8 @@ with the `YY.MINOR.MICRO` scheme.
     - `instance.log` -> `instance.log.destination`
     - `instance.log_level` -> `instance.log.level`
     - `instance.memtx_memory` -> `instance.memtx.memory`
+- New subcommand `picodata config default` for generating contents of the
+  config.yaml file with default parameter values.
 
 - Change _pico_index table structure.
 - Support index creation with SQL.

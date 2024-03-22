@@ -1,5 +1,6 @@
 from conftest import Cluster, Instance, log_crawler, color
 import os
+import subprocess
 
 
 def test_config_works(cluster: Cluster):
@@ -362,3 +363,37 @@ instance:
     assert box_cfg["vinyl_cache"] == 0x4444444
 
     assert box_cfg["net_msg_max"] == 0x600
+
+
+def test_picodata_default_config(cluster: Cluster):
+    # Check generating the default config
+    data = subprocess.check_output([cluster.binary_path, "config", "default"])
+    default_config = data.decode()
+    assert len(default_config) != 0
+
+    # Explicit filename
+    subprocess.call(
+        [cluster.binary_path, "config", "default", "-o", "filename.yaml"],
+        cwd=cluster.data_dir,
+    )
+    with open(f"{cluster.data_dir}/filename.yaml", "r") as f:
+        default_config_2 = f.read()
+    assert default_config.strip() == default_config_2.strip()
+
+    # Explicit stdout
+    data = subprocess.check_output([cluster.binary_path, "config", "default", "-o-"])
+    default_config_3 = data.decode()
+    assert default_config.strip() == default_config_3.strip()
+
+    # Check that running with the generated config file works
+    cluster.set_config_file(yaml=default_config)
+    i = cluster.add_instance(wait_online=False)
+
+    # Default config contains default values for `listen`, `advertise` & `peers`,
+    # but our testing harness overrides the `listen` & `peers` values so that
+    # running tests in parallel doesn't result in binding to conflicting ports.
+    # For this reason we must also specify `advertise` explictily.
+    i.env["PICODATA_ADVERTISE"] = i.listen  # type: ignore
+
+    i.start()
+    i.wait_online()

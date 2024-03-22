@@ -127,6 +127,35 @@ Using configuration file '{args_path}'.");
         Ok(config)
     }
 
+    /// Generates the configuration with parameters set to the default values
+    /// where applicable.
+    ///
+    /// Note that this is different from [`Self::default`], which returns an
+    /// "empty" instance of `Self`, because we need to distinguish between
+    /// paramteres being unspecified and parameters being set to the default
+    /// value explicitly.
+    pub fn with_defaults() -> Self {
+        let mut config = Self::default();
+        config.set_defaults_explicitly(&Default::default());
+
+        // This isn't set by set_defaults_explicitly, because we expect the
+        // tiers to be specified explicitly when the config file is provided.
+        config.cluster.tiers.insert(
+            "default".into(),
+            TierConfig {
+                can_vote: true,
+                replication_factor: Some(1),
+                ..Default::default()
+            },
+        );
+
+        // Same story as with `cluster.tiers`, the cluster_id must be provided
+        // in the config file.
+        config.cluster.cluster_id = Some("demo".into());
+
+        config
+    }
+
     #[inline]
     pub fn read_yaml_file(path: &str) -> Result<Self, Error> {
         let contents = std::fs::read_to_string(path)
@@ -746,9 +775,17 @@ pub struct InstanceConfig {
     #[introspection(config_default = ".")]
     pub data_dir: Option<String>,
     pub service_password_file: Option<String>,
+
+    // Skip serializing, so that default config doesn't contain this option,
+    // which isn't allowed to be set from file.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub config_file: Option<String>,
 
+    // Skip serializing, so that default config doesn't contain duplicate
+    // cluster_id fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cluster_id: Option<String>,
+
     pub instance_id: Option<String>,
     pub replicaset_id: Option<String>,
 
@@ -788,6 +825,8 @@ pub struct InstanceConfig {
     // - sepparate config file for common parameters
     pub plugin_dir: Option<String>,
 
+    // Skip serializing, so that default config doesn't contain this option,
+    // because it's deprecated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deprecated_script: Option<String>,
 
