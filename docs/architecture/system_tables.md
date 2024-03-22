@@ -119,8 +119,8 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `key` (*string*)
-* `value` (*any*)
+* `key`: (_string_)
+* `value`: (_any_)
 
 Индексы:
 
@@ -134,8 +134,8 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `raft_id` (*unsigned*)
-* `address` (*string*)
+* `raft_id`: (_unsigned_)
+* `address`: (_string_)
 
 Индексы:
 
@@ -147,15 +147,15 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `instance_id` (*string*)
-* `instance_uuid` (*string*)
-* `raft_id` (*unsigned*)
-* `replicaset_id` (*string*)
-* `replicaset_uuid` (*string*)
-* `current_grade` (*array*)
-* `target_grade` (*array*)
-* `failure_domain` (*map*)
-* `tier` (*string*)
+* `instance_id`: (_string_)
+* `instance_uuid`: (_string_)
+* `raft_id`: (_unsigned_)
+* `replicaset_id`: (_string_)
+* `replicaset_uuid`: (_string_)
+* `current_grade`: (_array_)
+* `target_grade`: (_array_)
+* `failure_domain`: (_map_)
+* `tier`: (_string_)
 
 Индексы:
 
@@ -169,14 +169,14 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `replicaset_id` (*string*)
-* `replicaset_uuid` (*string*)
-* `current_master_id` (*string*)
-* `target_master_id` (*string*)
-* `tier` (*string*)
-* `weight` (*number*)
-* `weight_origin` (*string*)
-* `state` (*string*, `"ready" | "not-ready"`)
+* `replicaset_id`: (_string_)
+* `replicaset_uuid`: (_string_)
+* `current_master_id`: (_string_)
+* `target_master_id`: (_string_)
+* `tier`: (_string_)
+* `weight`: (_number_)
+* `weight_origin`: (_string_)
+* `state`: (_string_, `"ready" | "not-ready"`)
 
 Индексы:
 
@@ -188,8 +188,8 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `name` (*string*)
-* `replication_factor` (*unsigned*)
+* `name`: (_string_)
+* `replication_factor`: (_unsigned_)
 
 Индексы:
 
@@ -203,12 +203,11 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `id` (*unsigned*)
-* `name` (*string*)
-* `owner` (*unsigned*)
-* `schema_version` (*unsigned*)
-* `auth` (*array*)
-* `type` (*string*, "user" | "role")
+* `id`: (_unsigned_)
+* `name`: (_string_)
+* `schema_version`: (_unsigned_)
+* `auth`: (_array_)
+* `owner`: (_unsigned_)
 
 Индексы:
 
@@ -221,14 +220,14 @@ Picodata 23.06.0-287-ga98dc6919
 
 Поля:
 
-* `grantor_id` (*unsigned*)
-* `grantee_id` (*unsigned*)
-* `object_type` (*string*)
-* `object_id` (*integer*)
-* `privilege` (*string*)
-* `schema_version` (*unsigned*)
+* `privilege`: (_string_)
+* `object_type`: (_string_)
+* `object_id`: (_integer_)
+* `grantee_id`: (_unsigned_)
+* `grantor_id`: (_unsigned_)
+* `schema_version`: (_unsigned_)
 
 Индексы:
 
 * `primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
-* `object` (unique), parts: `[object_type, object_id]`
+* `object` (non-unique), parts: `[object_type, object_id]`
