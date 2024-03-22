@@ -934,6 +934,7 @@ pub struct MemtxSection {
     /// snapshots.
     ///
     /// Corresponds to `box.cfg.checkpoint_count`.
+    #[introspection(config_default = 2)]
     pub checkpoint_count: Option<u64>,
 
     /// The interval in seconds between actions by the checkpoint daemon. If the
@@ -944,6 +945,7 @@ pub struct MemtxSection {
     /// daemon is disabled.
     ///
     /// Corresponds to `box.cfg.checkpoint_interval`.
+    #[introspection(config_default = 3600.0)]
     pub checkpoint_interval: Option<f64>,
 }
 
@@ -966,11 +968,13 @@ pub struct VinylSection {
     /// The maximum number of in-memory bytes that vinyl uses.
     ///
     /// Corresponds to `box.cfg.vinyl_memory`
+    #[introspection(config_default = 128 * 1024 * 1024)]
     pub memory: Option<u64>,
 
     /// The cache size for the vinyl storage engine.
     ///
     /// Corresponds to `box.cfg.vinyl_cache`
+    #[introspection(config_default = 128 * 1024 * 1024)]
     pub cache: Option<u64>,
 }
 
@@ -1016,6 +1020,7 @@ pub struct IprotoSection {
     /// On typical systems, the default value (768) is correct.
     ///
     /// Corresponds to `box.cfg.net_msg_max`
+    #[introspection(config_default = 0x300)]
     pub max_concurrent_messages: Option<u64>,
 }
 
@@ -1036,6 +1041,7 @@ pub struct LogSection {
     /// - system logger
     pub destination: Option<String>,
 
+    #[introspection(config_default = LogFormat::Plain)]
     pub format: Option<LogFormat>,
 }
 

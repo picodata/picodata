@@ -96,10 +96,22 @@ instance:
             ),
             data_dir=dict(value=data_dir, source="config_file"),
             listen=dict(value=f"{host}:{port}", source="config_file"),
-            log=dict(level=dict(value="verbose", source="commandline_or_environment")),
+            log=dict(
+                level=dict(value="verbose", source="commandline_or_environment"),
+                format=dict(value="plain", source="default"),
+            ),
             peers=dict(value=[f"{host}:{port}"], source="config_file"),
             memtx=dict(
                 memory=dict(value=64 * 1024 * 1024, source="default"),
+                checkpoint_count=dict(value=2, source="default"),
+                checkpoint_interval=dict(value=3600, source="default"),
+            ),
+            vinyl=dict(
+                memory=dict(value=128 * 1024 * 1024, source="default"),
+                cache=dict(value=128 * 1024 * 1024, source="default"),
+            ),
+            iproto=dict(
+                max_concurrent_messages=dict(value=768, source="default"),
             ),
         ),
     )
