@@ -1,4 +1,4 @@
-# Конфигурация MkDocsmkd
+# Конфигурация MkDocs
 # https://www.mkdocs.org/user-guide/configuration/
 
 # Общие настройки
@@ -73,7 +73,7 @@ nav:
       - reference/sql/values.md
     - Функции и операторы:
       - reference/sql/aggregate.md
-      - reference/sql/cast.md 
+      - reference/sql/cast.md
   - Справочные материалы:
     - reference/cli.md
     - reference/audit_events.md
