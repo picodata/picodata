@@ -2,7 +2,7 @@ use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
 use tarantool::index::Part;
-use tarantool::index::{Index, IndexId, IndexIterator, IteratorType};
+use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
 use tarantool::msgpack::{ArrayWriter, ValueIter};
 use tarantool::read_view::ReadView;
 use tarantool::read_view::ReadViewIterator;
@@ -22,7 +22,7 @@ use crate::replicaset::Replicaset;
 use crate::schema::{
     Distribution, PrivilegeType, SchemaObjectType, ServiceDef, ServiceRouteItem, ServiceRouteKey,
 };
-use crate::schema::{IndexDef, TableDef};
+use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
@@ -1346,12 +1346,13 @@ impl Properties {
             // Primary index
             id: 0,
             name: "key".into(),
+            itype: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("key")],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            schema_version: INITIAL_SCHEMA_VERSION,
+            owner: ADMIN_ID,
         }]
     }
 
@@ -1604,12 +1605,13 @@ impl Replicasets {
             // Primary index
             id: 0,
             name: "replicaset_id".into(),
+            itype: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("replicaset_id")],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            schema_version: INITIAL_SCHEMA_VERSION,
+            owner: ADMIN_ID,
         }]
     }
 
@@ -1669,12 +1671,13 @@ impl PeerAddresses {
             // Primary index
             id: 0,
             name: "raft_id".into(),
+            itype: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("raft_id")],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            schema_version: INITIAL_SCHEMA_VERSION,
+            owner: ADMIN_ID,
         }]
     }
 
@@ -1778,34 +1781,37 @@ impl Instances {
                 // Primary index
                 id: 0,
                 name: "instance_id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("instance_id")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "raft_id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("raft_id")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 2,
                 name: "replicaset_id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from("replicaset_id")],
-                unique: false,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
         ]
     }
@@ -2147,23 +2153,25 @@ impl Tables {
                 // Primary index
                 id: 0,
                 name: "id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
         ]
     }
@@ -2264,23 +2272,25 @@ impl Indexes {
                 // Primary index
                 id: 0,
                 name: "id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("table_id"), Part::from("id")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("table_id"), Part::from("name")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
         ]
     }
@@ -2708,23 +2718,25 @@ impl Users {
                 // Primary index
                 id: 0,
                 name: "id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
         ]
     }
@@ -2841,28 +2853,30 @@ impl Privileges {
                 // Primary index
                 id: 0,
                 name: "primary".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![
                     Part::from("grantee_id"),
                     Part::from("object_type"),
                     Part::from("object_id"),
                     Part::from("privilege"),
                 ],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "object".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from("object_type"), Part::from("object_id")],
-                unique: false,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
         ]
     }
@@ -3028,12 +3042,13 @@ impl Tiers {
             // Primary index
             id: 0,
             name: "name".into(),
+            itype: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("name")],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
-            schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            schema_version: INITIAL_SCHEMA_VERSION,
+            owner: ADMIN_ID,
         }]
     }
 
@@ -3105,23 +3120,25 @@ impl Routines {
                 // Primary index
                 id: 0,
                 name: "id".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
+                itype: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
-                unique: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
-                schema_version: INITIAL_SCHEMA_VERSION,
                 operable: true,
-                local: true,
+                schema_version: INITIAL_SCHEMA_VERSION,
+                owner: ADMIN_ID,
             },
         ]
     }
@@ -3220,12 +3237,13 @@ impl Plugins {
             table_id: Self::TABLE_ID,
             id: 0,
             name: "name".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("name")],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            owner: ADMIN_ID,
         }]
     }
 
@@ -3282,16 +3300,17 @@ impl Services {
             table_id: Self::TABLE_ID,
             id: 0,
             name: "name".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![
                 Part::from("plugin_name"),
                 Part::from("name"),
                 Part::from("version"),
             ],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            owner: ADMIN_ID,
         }]
     }
 
@@ -3389,16 +3408,17 @@ impl ServiceRouteTable {
             table_id: Self::TABLE_ID,
             id: 0,
             name: "routing_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             parts: vec![
                 Part::from("instance_id"),
                 Part::from("plugin_name"),
                 Part::from("service_name"),
             ],
-            unique: true,
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            local: true,
+            owner: ADMIN_ID,
         }]
     }
 

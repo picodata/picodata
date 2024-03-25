@@ -33,6 +33,8 @@ with the `YY.MINOR.MICRO` scheme.
     - `instance.log_level` -> `instance.log.level`
     - `instance.memtx_memory` -> `instance.memtx.memory`
 
+=======
+- Change _pico_index table structure.
 -->
 
 --------------------------------------------------------------------------------

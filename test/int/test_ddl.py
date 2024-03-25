@@ -3,6 +3,9 @@ import time
 from conftest import Cluster, ReturnError
 
 
+PICO_SERVICE_ID = 32
+
+
 def test_ddl_abort(cluster: Cluster):
     cluster.deploy(instance_count=2)
 
@@ -314,11 +317,12 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         space_id,
         0,
         "primary_key",
-        True,
+        "tree",
+        [dict(unique=True)],
         [[0, "unsigned", None, False, None]],
+        True,
         2,
-        True,
-        True,
+        PICO_SERVICE_ID,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -431,11 +435,12 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         space_id,
         0,
         "primary_key",
-        True,
+        "tree",
+        [dict(unique=True)],
         [[0, "unsigned", None, False, None]],
+        True,
         schema_version,
-        True,
-        True,
+        PICO_SERVICE_ID,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -457,11 +462,12 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         space_id,
         1,
         "bucket_id",
-        True,
+        "tree",
+        [dict(unique=False)],
         [[1, "unsigned", None, False, None]],
-        schema_version,
         True,
-        False,
+        schema_version,
+        PICO_SERVICE_ID,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def
     assert i2.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def

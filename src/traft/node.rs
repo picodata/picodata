@@ -16,7 +16,7 @@ use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
-use crate::schema::{Distribution, IndexDef, TableDef};
+use crate::schema::{Distribution, IndexDef, IndexOption, TableDef};
 use crate::schema::{RoutineDef, ServiceRouteItem};
 use crate::sentinel;
 use crate::storage::acl;
@@ -56,7 +56,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
 use ::tarantool::index::FieldType as IFT;
-use ::tarantool::index::Part;
+use ::tarantool::index::{Part, IndexType};
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
 use ::tarantool::time::Instant;
@@ -1554,15 +1554,15 @@ impl NodeImpl {
                 }
 
                 let primary_key_def = IndexDef {
+                    table_id: id,
                     id: 0,
                     name: "primary_key".into(),
-                    table_id: id,
-                    schema_version,
+                    itype: IndexType::Tree,
+                    opts: vec![IndexOption::Unique(true)],
                     parts: primary_key,
                     operable: false,
-                    // TODO: support other cases
-                    unique: true,
-                    local: true,
+                    schema_version,
+                    owner,
                 };
                 let res = self.storage.indexes.insert(&primary_key_def);
                 if let Err(e) = res {
@@ -1591,17 +1591,17 @@ impl NodeImpl {
                         format.insert(bucket_id_index as _, ("bucket_id", SFT::Unsigned).into());
 
                         let bucket_id_def = IndexDef {
+                            table_id: id,
                             id: 1,
                             name: "bucket_id".into(),
-                            table_id: id,
-                            schema_version,
+                            itype: IndexType::Tree,
+                            opts: vec![IndexOption::Unique(false)],
                             parts: vec![Part::field(bucket_id_index)
                                 .field_type(IFT::Unsigned)
                                 .is_nullable(false)],
                             operable: false,
-                            unique: false,
-                            // TODO: support other cases
-                            local: true,
+                            schema_version,
+                            owner,
                         };
                         let res = self.storage.indexes.insert(&bucket_id_def);
                         if let Err(e) = res {

@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::time::Duration;
+use tarantool::index::{IndexType, RtreeIndexDistanceType};
 
 use tarantool::auth::AuthData;
 use tarantool::auth::AuthDef;
@@ -216,20 +217,56 @@ fn default_bucket_id_field() -> String {
 // IndexDef
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub enum IndexOption {
+    BloomFalsePositiveRate(f64),
+    Dimension(u32),
+    Distance(RtreeIndexDistanceType),
+    Hint(bool),
+    IfNotExists(bool),
+    PageSize(u32),
+    RangeSize(u32),
+    RunCountPerLevel(u32),
+    RunSizeRatio(f64),
+    Unique(bool),
+}
+
+// We can safely derive `Eq` because `f64` is never `NaN`.
+impl Eq for IndexOption {}
+
+impl IndexOption {
+    pub fn as_kv(&self) -> (Cow<'static, str>, Value<'_>) {
+        match self {
+            IndexOption::BloomFalsePositiveRate(rate) => ("bloom_fpr".into(), Value::Double(*rate)),
+            IndexOption::Dimension(dim) => ("dimension".into(), Value::Num(*dim)),
+            IndexOption::Distance(dist) => ("distance".into(), Value::Str(dist.as_str().into())),
+            IndexOption::Hint(hint) => ("hint".into(), Value::Bool(*hint)),
+            IndexOption::IfNotExists(if_not_exists) => ("if_not_exists".into(), Value::Bool(*if_not_exists)),
+            IndexOption::PageSize(size) => ("page_size".into(), Value::Num(*size)),
+            IndexOption::RangeSize(size) => ("range_size".into(), Value::Num(*size)),
+            IndexOption::RunCountPerLevel(count) => {
+                ("run_count_per_level".into(), Value::Num(*count))
+            }
+            IndexOption::RunSizeRatio(ratio) => ("run_size_ratio".into(), Value::Double(*ratio)),
+            IndexOption::Unique(unique) => ("unique".into(), Value::Bool(*unique)),
+        }
+    }
+}
+
 /// Database index definition.
 ///
 /// Describes a user-defined index.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct IndexDef {
     pub table_id: SpaceId,
     pub id: IndexId,
     pub name: String,
-    // TODO: document this field's meaning, for now it seems it's always `true`
-    pub local: bool,
+    pub itype: IndexType,
+    pub opts: Vec<IndexOption>,
     pub parts: Vec<Part>,
-    pub schema_version: u64,
     pub operable: bool,
-    pub unique: bool,
+    pub schema_version: u64,
+    pub owner: UserId,
 }
 
 impl Encode for IndexDef {}
@@ -246,11 +283,12 @@ impl IndexDef {
             Field::from(("table_id", FieldType::Unsigned)),
             Field::from(("id", FieldType::Unsigned)),
             Field::from(("name", FieldType::String)),
-            Field::from(("local", FieldType::Boolean)),
+            Field::from(("itype", FieldType::String)),
+            Field::from(("opts", FieldType::Array)),
             Field::from(("parts", FieldType::Array)),
-            Field::from(("schema_version", FieldType::Unsigned)),
             Field::from(("operable", FieldType::Boolean)),
-            Field::from(("unique", FieldType::Boolean)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("owner", FieldType::Unsigned)),
         ]
     }
 
@@ -261,24 +299,26 @@ impl IndexDef {
             table_id: 10569,
             id: 1,
             name: "secondary".into(),
-            local: true,
+            itype: IndexType::Tree,
+            opts: vec![],
             parts: vec![],
-            schema_version: 420,
             operable: true,
-            unique: false,
+            schema_version: 420,
+            owner: 42,
         }
     }
 
     pub fn to_index_metadata(&self) -> IndexMetadata {
-        use tarantool::index::IndexType;
-
         let mut opts = BTreeMap::new();
-        opts.insert(Cow::from("unique"), Value::Bool(self.unique));
+        for opt in &self.opts {
+            let (key, value) = opt.as_kv();
+            opts.insert(key, value);
+        }
         let index_meta = IndexMetadata {
             space_id: self.table_id,
             index_id: self.id,
             name: self.name.as_str().into(),
-            r#type: IndexType::Tree,
+            r#type: self.itype,
             opts,
             parts: self.parts.clone(),
         };
