@@ -102,6 +102,7 @@ nav:
     ### toc.follow — https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
     ### content.code.copy — https://squidfunk.github.io/mkdocs-material/upgrade/#contentcodecopy
     ### content.action.edit — https://squidfunk.github.io/mkdocs-material/upgrade/#contentaction
+    ### navigation.footer — https://squidfunk.github.io/mkdocs-material/setup/setting-up-the-footer/#navigation
 theme:
   name: material
   custom_dir: overrides
@@ -115,6 +116,7 @@ theme:
     - toc.follow
     - content.code.copy
     - content.action.edit
+    - navigation.footer
 
 # Дополнительные настройки темы Material
   ## analytics — https://squidfunk.github.io/mkdocs-material/setup/setting-up-site-analytics/#setting-up-site-analytics
