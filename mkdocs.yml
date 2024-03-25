@@ -182,9 +182,18 @@ plugins:
   ## https://oprypin.github.io/markdown-callouts/
   ## Описание типов выносок:
   ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#supported-types
+  ## > toc.permalink: true
+  ## Добавляет ссылку на якорь в конце каждого заголовка
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#+toc.permalink
+  ## > toc.permalink_title
+  ## Добавляет описание ссылки на якорь, которое отображается при наведении
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#+toc.permalink_title
 markdown_extensions:
   - attr_list
   - callouts
+  - toc:
+      permalink: true
+      permalink_title: Ссылка на абзац
 
 # Валидация ссылок
 # https://www.mkdocs.org/user-guide/configuration/#validation
