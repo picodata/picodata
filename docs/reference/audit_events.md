@@ -73,7 +73,8 @@
 - [x] создание и удаление БД;
      * (create_local_db, drop_local_db)
 
-- [ ] подключение, восстановление БД;
+- [x] подключение, восстановление БД;
+     * (connect_local_db, recover_local_db)
 
 - [ ] факты нарушения целостности объектов контроля;
      * (todo:integrity_violation)
@@ -286,6 +287,48 @@
 {
      "title": "drop_local_db",
      "message": "local database dropped on `<instance_id>`",
+     "severity": "low",
+     "raft_id": ...,
+     "instance_id": ...,
+     ...
+}
+```
+
+### connect_local_db
+
+Подключение базы данных. Событие фиксируется после инициализации
+локального хранилища, см. [Жизненный цикл инстанса][init_common]
+
+<!--
+start_discover -> recover_local_db + connect_local_db
+start_boot/start_join -> create_local_db + connect_local_db
+-->
+
+[init_common]: ../architecture/instance_lifecycle.md/#fn_init_common
+
+```json
+{
+     "title": "connect_local_db",
+     "message": "local database connected on `<instance_id>`",
+     "severity": "low",
+     "raft_id": ...,
+     "instance_id": ...,
+     ...
+}
+```
+
+### recover_local_db
+
+Восстановление базы данных. Событие фиксируется после инициализации
+локального хранилища в случае если имело место восстановление из
+снапшота, см. [Жизненный цикл инстанса][start_discover].
+
+[start_discover]: ../architecture/instance_lifecycle.md/#fn_start_discover
+
+```json
+{
+     "title": "recover_local_db",
+     "message": "local database recovered on `<instance_id>`",
      "severity": "low",
      "raft_id": ...,
      "instance_id": ...,
