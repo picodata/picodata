@@ -2,7 +2,7 @@
 
 В данном разделе описана ролевая модель управления доступом в Picodata и
 приведены примеры необходимых для ее настройки с помощью [DCL](../reference/sql/dcl.md)
-команд языка SQL. 
+команд языка SQL.
 
 ## Ролевая модель {: #role_model }
 
@@ -276,7 +276,7 @@ GRANT ALTER USER TO <grantee>
 
 ### Удаление {: #drop_user }
 
-Для удаление пользователя необходимо использовать SQL-команду 
+Для удаление пользователя необходимо использовать SQL-команду
 [DROP USER](../reference/sql/drop_user.md).
 
 Пример:
@@ -309,10 +309,10 @@ GRANT DROP USER TO <grantee>
 
 Пример корректного пароля: `T0psecret`
 
+<!--
 Требования к паролю хранятся в системной таблице
 [_pico_property](../architecture/system_tables.md#_pico_property).
 
-<!--
 PasswordEnforceUppercase (default value: true)
 PasswordEnforceLowercase (default value: true)
 PasswordEnforceDigits (default value: true)
