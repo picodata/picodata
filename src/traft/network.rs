@@ -285,7 +285,12 @@ impl PoolWorker {
                 if has_ready {
                     Poll::Ready(())
                 } else {
-                    Poll::Pending
+                    // Must check if there's something in the inbox (actually
+                    // it's more of an outbox, you put stuff in it, which you
+                    // want to be sent to someone else).
+                    let mut f = inbox_ready.changed();
+                    // Don't you just love async rust!
+                    f.poll_unpin(cx).map(|_| ())
                 }
             })
             .await;
