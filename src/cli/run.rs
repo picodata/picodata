@@ -98,8 +98,11 @@ pub fn main(args: args::Run) -> ! {
 
                 let rc = tarantool_main!(
                     tt_args,
+                    // Note that we don't really need to pass the `config` here,
+                    // because it's stored in the global variable which we can access from anywhere.
+                    // But we still pass it explicitly just to make sure it's initialized at this early point.
                     callback_data: (entrypoint, config, to_parent, from_parent),
-                    callback_data_type: (Entrypoint, PicodataConfig, ipc::Sender<IpcMessage>, ipc::Fd),
+                    callback_data_type: (Entrypoint, &PicodataConfig, ipc::Sender<IpcMessage>, ipc::Fd),
                     callback_body: {
                         // We don't want a child to live without a supervisor.
                         //

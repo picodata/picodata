@@ -527,13 +527,13 @@ pub enum Entrypoint {
 impl Entrypoint {
     pub fn exec(
         self,
-        config: PicodataConfig,
+        config: &PicodataConfig,
         to_supervisor: ipc::Sender<IpcMessage>,
     ) -> Result<(), Error> {
         match self {
-            Self::StartDiscover => start_discover(&config, to_supervisor)?,
-            Self::StartBoot => start_boot(&config)?,
-            Self::StartJoin { leader_address } => start_join(&config, leader_address)?,
+            Self::StartDiscover => start_discover(config, to_supervisor)?,
+            Self::StartBoot => start_boot(config)?,
+            Self::StartJoin { leader_address } => start_join(config, leader_address)?,
         }
 
         Ok(())
@@ -629,7 +629,7 @@ fn start_discover(
 ) -> Result<(), Error> {
     tlog!(Info, "entering discovery phase");
 
-    luamod::setup(config);
+    luamod::setup();
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_discovery(config)?;
@@ -715,7 +715,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
 
-    luamod::setup(config);
+    luamod::setup();
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_cluster_bootstrap(config, &instance)?;
@@ -806,7 +806,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         }
     };
 
-    luamod::setup(config);
+    luamod::setup();
     assert!(!tarantool::is_box_configured());
 
     let cfg = tarantool::Cfg::for_instance_join(config, &resp)?;

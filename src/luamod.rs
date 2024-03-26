@@ -42,7 +42,7 @@ fn luamod_set_help_only(l: &LuaThread, name: &str, help: &str) {
     help_table.set(name, help);
 }
 
-pub(crate) fn setup(config: &PicodataConfig) {
+pub(crate) fn setup() {
     let l = ::tarantool::lua_state();
     l.exec(include_str!("luamod.lua")).unwrap();
 
@@ -96,7 +96,6 @@ pub(crate) fn setup(config: &PicodataConfig) {
         "3.1.0",
     );
 
-    let config = config.clone();
     luamod_set(
         &l,
         "config",
@@ -129,7 +128,7 @@ pub(crate) fn setup(config: &PicodataConfig) {
             ...
         "},
         tlua::Function::new(move || -> ViaMsgpack<rmpv::Value> {
-            ViaMsgpack(config.parameters_with_sources_as_rmpv())
+            ViaMsgpack(PicodataConfig::get().parameters_with_sources_as_rmpv())
         }),
     );
 

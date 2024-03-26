@@ -65,12 +65,14 @@ fn validate_args(args: &args::Run) -> Result<(), Error> {
     Ok(())
 }
 
+static mut GLOBAL_CONFIG: Option<Box<PicodataConfig>> = None;
+
 impl PicodataConfig {
     // TODO:
     // fn default() -> Self
     // which returns an instance of config with all the default parameters.
     // Also add a command to generate a default config from command line.
-    pub fn init(args: args::Run) -> Result<Self, Error> {
+    pub fn init(args: args::Run) -> Result<&'static Self, Error> {
         validate_args(&args)?;
 
         let cwd = std::env::current_dir();
@@ -124,7 +126,25 @@ Using configuration file '{args_path}'.");
         config.validate_common()?;
 
         config.parameter_sources = parameter_sources;
-        Ok(config)
+
+        // Safe, because we only initialize config once in a single thread.
+        let config_ref = unsafe {
+            assert!(GLOBAL_CONFIG.is_none());
+            GLOBAL_CONFIG.insert(config)
+        };
+
+        Ok(config_ref)
+    }
+
+    #[inline(always)]
+    pub fn get() -> &'static Self {
+        // Safe, because we only mutate GLOBAL_CONFIG once and
+        // strictly before anybody calls this function.
+        unsafe {
+            GLOBAL_CONFIG
+                .as_ref()
+                .expect("shouldn't be called before config is initialized")
+        }
     }
 
     /// Generates the configuration with parameters set to the default values
@@ -157,15 +177,15 @@ Using configuration file '{args_path}'.");
     }
 
     #[inline]
-    pub fn read_yaml_file(path: &str) -> Result<Self, Error> {
+    pub fn read_yaml_file(path: &str) -> Result<Box<Self>, Error> {
         let contents = std::fs::read_to_string(path)
             .map_err(|e| Error::other(format!("can't read from '{path}': {e}")))?;
         Self::read_yaml_contents(&contents)
     }
 
     #[inline]
-    pub fn read_yaml_contents(contents: &str) -> Result<Self, Error> {
-        let config: Self = serde_yaml::from_str(contents).map_err(Error::invalid_configuration)?;
+    pub fn read_yaml_contents(contents: &str) -> Result<Box<Self>, Error> {
+        let config = serde_yaml::from_str(contents).map_err(Error::invalid_configuration)?;
         Ok(config)
     }
 
@@ -1191,7 +1211,7 @@ mod tests {
         let mut config = PicodataConfig::read_yaml_contents(&yaml).unwrap();
         // By default it deserializes as Value::Mapping for some reason
         config.unknown_sections = Default::default();
-        assert_eq!(config, PicodataConfig::default());
+        assert_eq!(config, Default::default());
 
         let yaml = r###"
 cluster:
@@ -1340,11 +1360,11 @@ instance:
     }
 
     #[track_caller]
-    fn setup_for_tests(yaml: Option<&str>, args: &[&str]) -> Result<PicodataConfig, Error> {
+    fn setup_for_tests(yaml: Option<&str>, args: &[&str]) -> Result<Box<PicodataConfig>, Error> {
         let mut config = if let Some(yaml) = yaml {
             PicodataConfig::read_yaml_contents(yaml).unwrap()
         } else {
-            PicodataConfig::default()
+            Default::default()
         };
         let args = args::Run::try_parse_from(args).unwrap();
         let mut parameter_sources = Default::default();
