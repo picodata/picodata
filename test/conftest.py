@@ -1391,18 +1391,19 @@ class Cluster:
             self.binary_path, "expel",
             "--peer", peer.listen,
             "--cluster-id", target.cluster_id,
-            "--instance-id", target.instance_id,
             "--user", "pico_service",
             "--password-file", self.service_password_file,
+            target.instance_id,
         ]
         # fmt: on
 
-        subprocess.Popen(
+        rc = subprocess.call(
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        assert rc == 0
 
     def raft_wait_index(self, index: int, timeout: float = 3.0):
         """
