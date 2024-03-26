@@ -1385,13 +1385,13 @@ class Cluster:
     def expel(self, target: Instance, peer: Instance | None = None):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
+        assert target.instance_id, "cannot expel without target instance_id"
 
         # fmt: off
-        command = [
+        command: list[str] = [
             self.binary_path, "expel",
-            "--peer", peer.listen,
-            "--cluster-id", target.cluster_id,
-            "--user", "pico_service",
+            "--peer", f"pico_service@{peer.listen}",
+            "--cluster-id", target.cluster_id or "",
             "--password-file", self.service_password_file,
             target.instance_id,
         ]

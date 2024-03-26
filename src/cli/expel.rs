@@ -11,9 +11,9 @@ use tarantool::network::client::AsClient;
 pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     let (client, _) = determine_credentials_and_connect(
         &args.peer_address,
-        Some(&args.user),
+        Some("admin"),
         args.password_file.as_deref(),
-        args.auth_method,
+        tarantool::auth::AuthMethod::ChapSha1,
     )?;
 
     let req = ExpelRequest {
