@@ -71,9 +71,9 @@ picodata run --data-dir i3 --listen :3303
 Пример команд, реализующих безопасный запуск:
 
 ```shell
-echo "Shared_s3cr3t" > secret.txt
+echo "shAreD_s3cr3t" > secret.txt
 chmod 600 secret.txt
-picodata run --service-password-file secret.txt --audit=audit.log --shredding
+picodata run --service-password-file secret.txt --audit audit.log --shredding
 ```
 
 [pwdfile]: ../reference/cli.md#run_service_password_file
