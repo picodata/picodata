@@ -241,7 +241,7 @@ GRANT CREATE USER TO <grantee>
 
 - [Наделение пользователя правами администратора](#db_admin)
 
-### Изменение {: #alter_user }
+### Модификация {: #alter_user }
 
 Для изменения учетных данных пользователя необходимо использовать SQL-команду [ALTER
 USER](../reference/sql/alter_user.md).
