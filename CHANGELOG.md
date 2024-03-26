@@ -17,6 +17,10 @@ with the `YY.MINOR.MICRO` scheme.
   tier a table belongs to.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
+
+- Arguments for `picodata expel` subcommand have changed:
+    - now instance_id is the positional argument
+    - the default user for the rpc connection is now `admin` instead of `guest`
 -->
 
 --------------------------------------------------------------------------------

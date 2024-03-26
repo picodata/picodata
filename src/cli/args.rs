@@ -310,7 +310,7 @@ pub struct Expel {
     /// Name of the cluster from instance should be expelled.
     pub cluster_id: String,
 
-    #[clap(long, value_name = "NAME", default_value = "")]
+    #[clap(value_name = "INSTANCE-ID")]
     /// Name of the instance to expel.
     pub instance_id: InstanceId,
 
@@ -318,7 +318,7 @@ pub struct Expel {
         short = 'u',
         long = "user",
         value_name = "USER",
-        default_value = DEFAULT_USERNAME,
+        default_value = "admin",
         env = "PICODATA_USER"
     )]
     /// The username to connect with. Ignored if provided in `ADDRESS`.
