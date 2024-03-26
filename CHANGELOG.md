@@ -21,6 +21,18 @@ with the `YY.MINOR.MICRO` scheme.
   the same naming scheme as in the config.yaml file.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
+- New configuration parameters:
+    - `instance.memtx.checkpoint_count`
+    - `instance.memtx.checkpoint_interval`
+    - `instance.vinyl.memory`
+    - `instance.vinyl.cache`
+    - `instance.iproto.max_concurrent_messages`
+    - `instance.log.format`
+- Changed configuration parameter names:
+    - `instance.log` -> `instance.log.destination`
+    - `instance.log_level` -> `instance.log.level`
+    - `instance.memtx_memory` -> `instance.memtx.memory`
+
 -->
 
 --------------------------------------------------------------------------------
