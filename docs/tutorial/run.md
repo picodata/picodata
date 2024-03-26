@@ -56,19 +56,19 @@ picodata run --data-dir i3 --listen :3303
 
 ## Безопасный запуск {: #secure_run }
 
-С точки зрения контроля за доступом к инстансу и той информации, которую
-он генерирует во время своей работы, имеет смысл явно задать файл
-[unix-сокета](../reference/cli.md#run_admin_sock) (для последующего
-подключения к инстансу) и указать способ вывода [журнала
-аудита](audit_log.md). Например:
+Для обеспечения мер безопасности рекомендуется при запуске инстанса явно
+задавать параметры `picodata run` [--service-password-file][pwdfile],
+[--audit][audit], [--shredding][shredding]. Например:
 
 ```shell
-picodata run --admin-sock ./i1.sock --audit=/tmp/audit.log
+echo "Shared_s3cr3t" > secret.txt
+chmod 600 secret.txt
+picodata run --service-password-file secret.txt --audit=audit.log --shredding
 ```
 
-Без явного указания этих параметров журнал аудита не будет выводиться, а
-файл unix-сокета будет размещаться в директории с рабочими файлами
-инстанса.
+[pwdfile]: ../reference/cli.md#run_service_password_file
+[audit]: ../reference/cli.md#run_audit
+[shredding]: ../reference/cli.md#run_shredding
 
 ## Безопасное завершение работы {: #secure_stop }
 
