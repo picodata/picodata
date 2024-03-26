@@ -83,10 +83,11 @@
 
 Объектами доступа являются:
 
-- `table` – [таблица](#table), содержащая данные пользователей (аналог `space` в Tarantool)
-- `user` – [пользователь](#user) СУБД
-- `role` – [роль](#role), т.е. объединение пользовательских привилегий
-<!-- - `procedure` – хранимая процедура на языке SQL -->
+<!-- Keep in sync with tutorial/access_control.md#role_model -->
+- `table` – [таблица БД](#table)
+- `user` – учетная запись [пользователя СУБД](#user)
+- `role` – [роль](#role)
+- `procedure` – [процедура](#stored_procedure)
 
 ### Пользователь {: #user }
 
