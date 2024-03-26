@@ -71,7 +71,7 @@ instance:
 
     instance.wait_online()
 
-    config = instance.call("pico.config")
+    config = instance.call(".proc_get_config")
     assert config == dict(
         cluster=dict(
             tiers=dict(

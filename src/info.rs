@@ -1,3 +1,4 @@
+use crate::config::PicodataConfig;
 use crate::instance::Grade;
 use crate::instance::InstanceId;
 use crate::replicaset::ReplicasetId;
@@ -264,4 +265,13 @@ pub fn proc_runtime_info() -> Result<RuntimeInfo<'static>, Error> {
     let node = node::global()?;
 
     RuntimeInfo::try_get(node)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_get_config
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+pub fn proc_get_config() -> Result<rmpv::Value, Error> {
+    Ok(PicodataConfig::get().parameters_with_sources_as_rmpv())
 }
