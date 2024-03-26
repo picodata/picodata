@@ -314,7 +314,10 @@ fn get_replicasets_info(
     let mut res: HashMap<ReplicasetId, ReplicasetInfo> = HashMap::with_capacity(replicasets.len());
 
     for instance in instances {
-        let address = addresses.get(&instance.raft_id).cloned().unwrap_or_default();
+        let address = addresses
+            .get(&instance.raft_id)
+            .cloned()
+            .unwrap_or_default();
         let replicaset_id = instance.replicaset_id;
         let replicaset = replicasets.get(&replicaset_id).unwrap();
         let mut http_address = String::new();
