@@ -58,3 +58,9 @@ ALTER USER andy WITH NOLOGIN;
 ```sql
 ALTER USER andy WITH LOGIN;
 ```
+
+Переименование пользователя:
+
+```sql
+ALTER USER andy RENAME TO sid;
+```
