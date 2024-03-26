@@ -907,10 +907,11 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
 
 /// Predicate tests based on the CaS Design Document.
 mod tests {
+    use tarantool::index::IndexType;
     use tarantool::space::SpaceEngineType;
     use tarantool::tuple::ToTupleBuffer;
 
-    use crate::schema::{Distribution, TableDef, ADMIN_ID};
+    use crate::schema::{Distribution, IndexOption, TableDef, ADMIN_ID};
     use crate::storage::TClusterwideTable as _;
     use crate::storage::{Clusterwide, Properties, PropertyName};
     use crate::traft::op::DdlBuilder;
@@ -952,9 +953,17 @@ mod tests {
         let create_index = builder.with_op(Ddl::CreateIndex {
             space_id,
             index_id,
+            name: "index1".into(),
+            itype: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
             by_fields: vec![],
+            owner: ADMIN_ID,
         });
-        let drop_index = builder.with_op(Ddl::DropIndex { space_id, index_id });
+        let drop_index = builder.with_op(Ddl::DropIndex {
+            space_id,
+            index_id,
+            initiator: ADMIN_ID,
+        });
 
         let commit = Op::DdlCommit;
         let abort = Op::DdlAbort;

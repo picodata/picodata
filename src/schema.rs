@@ -241,7 +241,9 @@ impl IndexOption {
             IndexOption::Dimension(dim) => ("dimension".into(), Value::Num(*dim)),
             IndexOption::Distance(dist) => ("distance".into(), Value::Str(dist.as_str().into())),
             IndexOption::Hint(hint) => ("hint".into(), Value::Bool(*hint)),
-            IndexOption::IfNotExists(if_not_exists) => ("if_not_exists".into(), Value::Bool(*if_not_exists)),
+            IndexOption::IfNotExists(if_not_exists) => {
+                ("if_not_exists".into(), Value::Bool(*if_not_exists))
+            }
             IndexOption::PageSize(size) => ("page_size".into(), Value::Num(*size)),
             IndexOption::RangeSize(size) => ("range_size".into(), Value::Num(*size)),
             IndexOption::RunCountPerLevel(count) => {

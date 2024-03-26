@@ -56,7 +56,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
 use ::tarantool::index::FieldType as IFT;
-use ::tarantool::index::{Part, IndexType};
+use ::tarantool::index::{IndexType, Part};
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
 use ::tarantool::time::Instant;
@@ -1131,8 +1131,51 @@ impl NodeImpl {
                             initiator: initiator_def.name,
                         );
                     }
-                    _ => {
-                        todo!()
+
+                    Ddl::CreateIndex {
+                        index_id,
+                        space_id,
+                        name,
+                        owner,
+                        ..
+                    } => {
+                        self.storage
+                            .indexes
+                            .update_operable(space_id, index_id, true)
+                            .expect("storage shouldn't fail");
+
+                        let initiator_def = user_by_id(owner).expect("user must exist");
+
+                        crate::audit!(
+                            message: "created index `{name}`",
+                            title: "create_index",
+                            severity: Medium,
+                            name: &name,
+                            initiator: initiator_def.name,
+                        );
+                    }
+
+                    Ddl::DropIndex {
+                        space_id,
+                        index_id,
+                        initiator,
+                    } => {
+                        let index = self.storage.indexes.get(space_id, index_id);
+                        let index = index.ok().flatten().expect("index must exist");
+                        let name = &index.name;
+                        self.storage
+                            .indexes
+                            .delete(space_id, index_id)
+                            .expect("storage shouldn't fail");
+                        let initiator_def = user_by_id(initiator).expect("user must exist");
+
+                        crate::audit!(
+                            message: "dropped index `{name}`",
+                            title: "drop_index",
+                            severity: Medium,
+                            name: &index.name,
+                            initiator: initiator_def.name,
+                        );
                     }
                 }
 
@@ -1212,8 +1255,22 @@ impl NodeImpl {
                             .expect("storage shouldn't fail");
                     }
 
-                    _ => {
-                        todo!()
+                    Ddl::CreateIndex {
+                        space_id, index_id, ..
+                    } => {
+                        self.storage
+                            .indexes
+                            .delete(space_id, index_id)
+                            .expect("storage shouldn't fail");
+                    }
+
+                    Ddl::DropIndex {
+                        space_id, index_id, ..
+                    } => {
+                        self.storage
+                            .indexes
+                            .update_operable(space_id, index_id, true)
+                            .expect("storage shouldn't fail");
                     }
                 }
 
@@ -1635,10 +1692,27 @@ impl NodeImpl {
             Ddl::CreateIndex {
                 space_id,
                 index_id,
+                name,
+                itype,
+                opts,
                 by_fields,
+                owner,
             } => {
-                let _ = (space_id, index_id, by_fields);
-                todo!();
+                let index_def = IndexDef {
+                    table_id: space_id,
+                    id: index_id,
+                    name,
+                    itype,
+                    opts,
+                    parts: by_fields,
+                    operable: false,
+                    schema_version,
+                    owner,
+                };
+                self.storage
+                    .indexes
+                    .insert(&index_def)
+                    .expect("storage shouldn't fail");
             }
 
             Ddl::DropTable { id, .. } => {
@@ -1646,9 +1720,13 @@ impl NodeImpl {
                     .expect("storage shouldn't fail");
             }
 
-            Ddl::DropIndex { index_id, space_id } => {
-                let _ = (index_id, space_id);
-                todo!();
+            Ddl::DropIndex {
+                index_id, space_id, ..
+            } => {
+                self.storage
+                    .indexes
+                    .update_operable(space_id, index_id, false)
+                    .expect("storage shouldn't fail");
             }
 
             Ddl::CreateProcedure {

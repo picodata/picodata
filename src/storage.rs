@@ -1,11 +1,12 @@
 use tarantool::auth::AuthDef;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
-use tarantool::index::Part;
 use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
+use tarantool::index::{IndexOptions, Part};
 use tarantool::msgpack::{ArrayWriter, ValueIter};
 use tarantool::read_view::ReadView;
 use tarantool::read_view::ReadViewIterator;
+use tarantool::schema::index::{create_index, drop_index};
 use tarantool::session::UserId;
 use tarantool::space::UpdateOps;
 use tarantool::space::{FieldType, Space, SpaceId, SpaceType, SystemSpace};
@@ -2452,10 +2453,59 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
             set_local_schema_version(version)?;
         }
 
-        _ => {
-            todo!();
+        Ddl::CreateIndex {
+            space_id, index_id, ..
+        } => {
+            sys_index.delete(&[space_id, index_id])?;
+            set_local_schema_version(version)?;
+        }
+
+        Ddl::DropIndex { .. } => {
+            // Actual drop happens only on commit, so there's nothing to abort.
         }
     }
+
+    Ok(())
+}
+
+pub fn ddl_create_index_on_master(
+    storage: &Clusterwide,
+    space_id: SpaceId,
+    index_id: IndexId,
+) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    let pico_index_def = storage
+        .indexes
+        .get(space_id, index_id)?
+        .ok_or_else(|| Error::other(format!("index with id {index_id} not found")))?;
+    let mut opts = IndexOptions::default();
+    opts.r#type = Some(pico_index_def.itype);
+    opts.id = Some(pico_index_def.id);
+    opts.parts = Some(pico_index_def.parts);
+    for opt in pico_index_def.opts {
+        match opt {
+            IndexOption::Unique(unique) => opts.unique = Some(unique),
+            IndexOption::IfNotExists(if_not_exists) => opts.if_not_exists = Some(if_not_exists),
+            IndexOption::Dimension(dim) => opts.dimension = Some(dim),
+            IndexOption::Distance(distance) => opts.distance = Some(distance),
+            IndexOption::BloomFalsePositiveRate(rate) => opts.bloom_fpr = Some(rate as f32),
+            IndexOption::PageSize(size) => opts.page_size = Some(size),
+            IndexOption::RangeSize(size) => opts.range_size = Some(size),
+            IndexOption::RunCountPerLevel(count) => opts.run_count_per_level = Some(count),
+            IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(ratio as f32),
+            IndexOption::Hint(_) => {
+                // FIXME: `hint` option is disabled in Tarantool module.
+            }
+        }
+    }
+    create_index(space_id, &pico_index_def.name, &opts)?;
+
+    Ok(())
+}
+
+pub fn ddl_drop_index_on_master(space_id: SpaceId, index_id: IndexId) -> traft::Result<()> {
+    debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+    drop_index(space_id, index_id)?;
 
     Ok(())
 }

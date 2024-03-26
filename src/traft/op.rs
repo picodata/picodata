@@ -1,7 +1,7 @@
 use crate::plugin;
 use crate::schema::{
-    Distribution, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity, UserDef, ADMIN_ID,
-    GUEST_ID, PUBLIC_ID, SUPER_ID,
+    Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
+    UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
 };
 use crate::storage::Clusterwide;
 use crate::storage::{space_by_name, RoutineId};
@@ -13,6 +13,7 @@ use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use tarantool::index::IndexType;
 use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
 
@@ -164,7 +165,9 @@ impl std::fmt::Display for Op {
             }
             Self::DdlPrepare {
                 schema_version,
-                ddl: Ddl::DropIndex { space_id, index_id },
+                ddl: Ddl::DropIndex {
+                    space_id, index_id, ..
+                },
             } => {
                 write!(
                     f,
@@ -666,11 +669,16 @@ pub enum Ddl {
     CreateIndex {
         space_id: SpaceId,
         index_id: IndexId,
+        name: String,
+        itype: IndexType,
+        opts: Vec<IndexOption>,
         by_fields: Vec<Part>,
+        owner: UserId,
     },
     DropIndex {
         space_id: SpaceId,
         index_id: IndexId,
+        initiator: UserId,
     },
     CreateProcedure {
         id: RoutineId,

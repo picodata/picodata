@@ -1,7 +1,7 @@
 use crate::op::Ddl;
 use crate::storage::{
-    ddl_create_function_on_master, ddl_create_space_on_master, ddl_drop_function_on_master,
-    ddl_drop_space_on_master,
+    ddl_create_function_on_master, ddl_create_index_on_master, ddl_create_space_on_master,
+    ddl_drop_function_on_master, ddl_drop_index_on_master, ddl_drop_space_on_master,
 };
 use crate::storage::{ddl_rename_function_on_master, Clusterwide};
 use crate::storage::{local_schema_version, set_local_schema_version};
@@ -166,8 +166,24 @@ pub fn apply_schema_change(
             }
         }
 
-        _ => {
-            todo!();
+        Ddl::CreateIndex {
+            space_id, index_id, ..
+        } => {
+            if let Err(e) = ddl_create_index_on_master(storage, space_id, index_id) {
+                return Err(Error::Aborted(e.to_string()));
+            }
+        }
+
+        Ddl::DropIndex {
+            space_id, index_id, ..
+        } => {
+            if !is_commit {
+                return Ok(());
+            }
+
+            if let Err(e) = ddl_drop_index_on_master(space_id, index_id) {
+                return Err(Error::Aborted(e.to_string()));
+            }
         }
     }
 
