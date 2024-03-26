@@ -306,41 +306,30 @@ impl Tarantool {
 #[derive(Debug, Parser, tlua::Push)]
 #[clap(about = "Expel node from cluster")]
 pub struct Expel {
-    #[clap(long, value_name = "NAME", default_value = "demo")]
+    #[clap(
+        long,
+        value_name = "NAME",
+        env = "PICODATA_CLUSTER_ID",
+        default_value = "demo"
+    )]
     /// Name of the cluster from instance should be expelled.
     pub cluster_id: String,
 
-    #[clap(value_name = "INSTANCE-ID")]
+    #[clap(value_name = "INSTANCE_ID")]
     /// Name of the instance to expel.
     pub instance_id: InstanceId,
 
     #[clap(
-        short = 'u',
-        long = "user",
-        value_name = "USER",
-        default_value = "admin",
-        env = "PICODATA_USER"
+        long = "peer",
+        value_name = "[HOST][:PORT]",
+        env = "PICODATA_PEER",
+        default_value = "localhost:3301"
     )]
-    /// The username to connect with. Ignored if provided in `ADDRESS`.
-    pub user: String,
-
-    #[clap(
-        short = 'a',
-        long = "auth-type",
-        value_name = "METHOD",
-        default_value = AuthMethod::ChapSha1.as_str(),
-    )]
-    /// The preferred authentication method.
-    pub auth_method: AuthMethod,
-
-    #[clap(long = "peer", value_name = "[USER@][HOST][:PORT]")]
-    /// Address of any picodata instance of the given cluster. It will be used
-    /// to redirect the request to the current raft-leader to execute the actual
-    /// request.
+    /// Address of any picodata instance of the given cluster.
     pub peer_address: Address,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
-    /// Path to a plain-text file with a password.
+    /// Path to a plain-text file with the `admin` password.
     /// If this option isn't provided, the password is prompted from the terminal.
     pub password_file: Option<String>,
 }
