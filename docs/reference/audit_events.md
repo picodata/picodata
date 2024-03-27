@@ -53,7 +53,7 @@
      * (create_user, create_role)
 
 - [x] изменение атрибутов учетных записей пользователей СУБД;
-     * (change_password, todo:rename_user)
+     * (change_password, rename_user)
 
 - [x] успешные и неуспешные попытки аутентификации пользователей СУБД;
      * (auth_ok, auth_fail)
@@ -147,10 +147,10 @@
 ```json
 {
      "title": "rename_user",
-     "message": "name of user `{old_name}` was changed to `{new_name}`",
+     "message": "name of user `<old_name>` was changed to `<new_name>`",
      "severity": "high",
-     "old_name": "old_name",
-     "new_name": "new_name",
+     "old_name": ...,
+     "new_name": ...,
      ...
 }
 ```
