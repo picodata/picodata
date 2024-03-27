@@ -1,4 +1,0 @@
-pytest
-pytest-xdist
-tarantool
-pg8000
