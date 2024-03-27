@@ -189,18 +189,6 @@ fn get_replicasets(
     Ok(i.map(|item| (item.replicaset_id.clone(), item)).collect())
 }
 
-fn get_instances(storage: &Clusterwide) -> Result<Vec<Instance>, Box<dyn Error>> {
-    storage
-        .instances
-        .all_instances()
-        .or(Err(Box::new(HttpError("failed to get".into()))))
-}
-
-fn get_tiers(storage: &Clusterwide) -> Result<Vec<Tier>, Box<dyn Error>> {
-    let i = storage.tiers.iter()?;
-    Ok(i.collect())
-}
-
 fn get_peer_addresses(
     storage: &Clusterwide,
     replicasets: &HashMap<ReplicasetId, Replicaset>,
@@ -303,7 +291,7 @@ fn get_replicasets_info(
     storage: &Clusterwide,
     only_leaders: bool,
 ) -> Result<Vec<ReplicasetInfo>, Box<dyn Error>> {
-    let instances = get_instances(storage)?;
+    let instances = storage.instances.all_instances()?;
     let replicasets = get_replicasets(storage)?;
     let addresses = get_peer_addresses(storage, &replicasets, &instances, only_leaders)?;
     let instances_props: HashMap<u64, InstanceDataResponse> = addresses
@@ -426,11 +414,10 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
 pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
     let storage = Clusterwide::get();
     let replicasets = get_replicasets_info(storage, false)?;
-    let tiers = get_tiers(storage)?;
+    let tiers = storage.tiers.iter()?;
 
     let mut res: HashMap<String, TierInfo> = tiers
-        .iter()
-        .map(|item: &Tier| {
+        .map(|item: Tier| {
             (
                 item.name.clone(),
                 TierInfo {
