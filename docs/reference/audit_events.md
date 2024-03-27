@@ -362,9 +362,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "message": "shredding started for <filename>",
      "severity": "low",
      "filename": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -378,9 +376,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "message": "shredding finished for <filename>",
      "severity": "low",
      "filename": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -395,9 +391,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "severity": "low",
      "filename": ...,
      "error": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -416,9 +410,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      // TODO: "old_grade": ...,
      "new_grade": ...,
      "raft_id": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -438,9 +430,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      // TODO: "old_grade": ...,
      "new_grade": ...,
      "raft_id": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -486,9 +476,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "severity": "high",
      "key": ...,
      "value": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...
 }
 ```
 
@@ -502,9 +490,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "message": "created table `<name>`",
      "severity": "medium",
      "name": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -518,9 +504,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "message": "dropped table `<name>`",
      "severity": "medium",
      "name": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...
 }
 ```
 
@@ -534,9 +518,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "message": "created procedure `<name>`",
      "severity": "medium",
      "name": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...
 }
 ```
 
@@ -551,9 +533,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "severity": "medium",
      "old_name": ...,
      "new_name": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...
 }
 ```
 
@@ -567,9 +547,7 @@ start_boot/start_join -> create_local_db + connect_local_db
      "message": "dropped procedure `<name>`",
      "severity": "medium",
      "name": ...,
-     "initiator": ...,
-     "time": ...,
-     "id": ...,
+     ...
 }
 ```
 
@@ -591,12 +569,10 @@ new field: user == initiator
           to <object_type> `<object>`
           is denied for user `<user>`",
      "severity": "medium",
-     "privilege" ...,
-     "object_type" ...,
-     "object" ...,
-     "initiator" ...,
-     "time" ...,
-     "id" ...
+     "privilege": ...,
+     "object_type": ...,
+     "object": ...,
+     ...
 }
 ```
 
@@ -609,8 +585,7 @@ new field: user == initiator
      "title": "local_startup",
      "message": "instance is starting",
      "severity": "low",
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
@@ -627,8 +602,7 @@ new field: reason
      "title": "local_shutdown",
      "message": "instance is shutting down",
      "severity": "high",
-     "time": ...,
-     "id": ...
+     ...
 }
 ```
 
