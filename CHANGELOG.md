@@ -35,6 +35,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 =======
 - Change _pico_index table structure.
+
+### SQL
+
+- Support index creation with SQL.
 -->
 
 --------------------------------------------------------------------------------
