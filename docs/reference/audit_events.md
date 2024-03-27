@@ -59,7 +59,7 @@
      * (auth_ok, auth_fail)
 
 - [x] запуск и остановка СУБД с указанием причины остановки;
-     * (local_startup, local_shutdown, change_current_grade)
+     * (init_audit, local_startup, local_shutdown, change_current_grade)
 
 - [x] изменение конфигурации СУБД;
      * (change_config, join_instance, expel_instance)
@@ -578,7 +578,8 @@ new field: user == initiator
 
 ### local_startup
 
-Запуск инстанса.
+Запуск инстанса. Событие фиксируется после инициализации журнала аудита,
+см. [init_audit](#init_audit).
 
 ```json
 {
@@ -618,6 +619,20 @@ new field: reason
      "title": "integrity_violation",
      "message": "integrity violation detected",
      "severity": "high",
+     ...
+}
+```
+
+### init_audit
+
+Инициализация журнала аудита. Событие предшествует запуску инстанса, см.
+[local_startup](#local_startup).
+
+```json
+{
+     "title": "init_audit",
+     "message": "audit log is ready",
+     "severity": "low",
      ...
 }
 ```
