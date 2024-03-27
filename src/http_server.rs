@@ -318,8 +318,18 @@ fn get_replicasets_info(
             .get(&instance.raft_id)
             .cloned()
             .unwrap_or_default();
+
         let replicaset_id = instance.replicaset_id;
-        let replicaset = replicasets.get(&replicaset_id).unwrap();
+        let mut is_leader = false;
+        let mut replicaset_uuid = Default::default();
+        let mut tier = instance.tier.clone();
+        if let Some(replicaset) = replicasets.get(&replicaset_id) {
+            is_leader = replicaset.current_master_id == instance.instance_id;
+            replicaset_uuid = replicaset.replicaset_uuid.clone();
+            debug_assert_eq!(replicaset.tier, instance.tier);
+            tier = replicaset.tier.clone();
+        }
+
         let mut http_address = String::new();
         let mut version = String::new();
         let mut mem_usable: u64 = 0u64;
@@ -335,38 +345,38 @@ fn get_replicasets_info(
             http_address,
             version,
             failure_domain: instance.failure_domain.data,
-            is_leader: instance.instance_id == replicaset.current_master_id,
+            is_leader,
             current_grade: instance.current_grade.variant,
             target_grade: instance.target_grade.variant,
             name: instance.instance_id.clone(),
             binary_address: address,
         };
 
-        let mut replica = res.get(&replicaset_id).cloned().unwrap_or(ReplicasetInfo {
-            version: instance_info.version.clone(),
-            grade: instance_info.current_grade,
-            instance_count: 0,
-            uuid: replicaset.replicaset_uuid.clone(),
-            capacity_usage: 0_f64,
-            instances: Vec::new(),
-            memory: MemoryInfo { usable: 0, used: 0 },
-            id: replicaset_id.clone(),
-            tier: replicaset.tier.to_string(),
-        });
+        let replicaset_info = res
+            .entry(replicaset_id)
+            .or_insert_with_key(|replicaset_id| ReplicasetInfo {
+                version: instance_info.version.clone(),
+                grade: instance_info.current_grade,
+                instance_count: 0,
+                uuid: replicaset_uuid,
+                capacity_usage: 0_f64,
+                instances: Vec::new(),
+                memory: MemoryInfo { usable: 0, used: 0 },
+                id: replicaset_id.clone(),
+                tier,
+            });
 
-        if instance.instance_id == replicaset.current_master_id {
-            replica.capacity_usage = if mem_usable == 0 {
+        if is_leader {
+            replicaset_info.capacity_usage = if mem_usable == 0 {
                 0_f64
             } else {
                 ((mem_used as f64) / (mem_usable as f64) * 10000_f64).round() / 100_f64
             };
-            replica.memory.usable = mem_usable;
-            replica.memory.used = mem_used;
+            replicaset_info.memory.usable = mem_usable;
+            replicaset_info.memory.used = mem_used;
         }
-        replica.instances.push(instance_info);
-        replica.instance_count += 1;
-
-        res.insert(replicaset_id, replica);
+        replicaset_info.instances.push(instance_info);
+        replicaset_info.instance_count += 1;
     }
 
     Ok(res.into_values().collect())
@@ -437,12 +447,19 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
         .collect();
 
     for replicaset in replicasets {
-        let tier_name = replicaset.tier.clone();
-        let mut tier = res.get(&replicaset.tier).cloned().unwrap();
+        let Some(tier) = res.get_mut(&replicaset.tier) else {
+            tlog!(
+                Warning,
+                "replicaset `{}` is assigned tier `{}`, which is not found in _pico_tier",
+                replicaset.id,
+                replicaset.tier
+            );
+            continue;
+        };
+
         tier.replicaset_count += 1;
         tier.instance_count += replicaset.instances.len();
         tier.replicasets.push(replicaset);
-        res.insert(tier_name, tier);
     }
 
     Ok(res.into_values().collect())
