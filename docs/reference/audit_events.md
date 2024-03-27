@@ -482,7 +482,7 @@ start_boot/start_join -> create_local_db + connect_local_db
 
 ### create_table
 
-Создание таблицы.
+Создание таблицы БД.
 
 ```json
 {
@@ -496,7 +496,7 @@ start_boot/start_join -> create_local_db + connect_local_db
 
 ### drop_table
 
-Удаление таблицы.
+Удаление таблицы БД.
 
 ```json
 {
