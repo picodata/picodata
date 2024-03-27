@@ -76,8 +76,8 @@
 - [x] подключение, восстановление БД;
      * (connect_local_db, recover_local_db)
 
-- [ ] факты нарушения целостности объектов контроля;
-     * (todo:integrity_violation)
+- [x] факты нарушения целостности объектов контроля;
+     * (integrity_violation)
 
 - [x] создание и изменение процедур (программного кода), хранимых в БД, и представлений.
      * (create_procedure, drop_procedure, rename_procedure)
@@ -608,5 +608,16 @@ new field: reason
 
 ### integrity_violation
 
+Нарушение целостности объектов контроля, см. [Контроль
+целостности][integrity].
+
+[integrity]: ../security/integrity.md
+
 ```json
+{
+     "title": "integrity_violation",
+     "message": "integrity violation detected",
+     "severity": "high",
+     ...
+}
 ```
