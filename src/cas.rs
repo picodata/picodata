@@ -954,7 +954,7 @@ mod tests {
             space_id,
             index_id,
             name: "index1".into(),
-            itype: IndexType::Tree,
+            ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             by_fields: vec![],
             owner: ADMIN_ID,

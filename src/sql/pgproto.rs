@@ -583,6 +583,7 @@ pub enum QueryType {
 pub enum CommandTag {
     AlterRole = 0,
     CallProcedure = 16,
+    CreateIndex = 18,
     CreateProcedure = 14,
     CreateRole = 1,
     CreateTable = 2,
@@ -614,6 +615,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::RevokeRole => QueryType::Acl,
             CommandTag::DropTable
             | CommandTag::CreateTable
+            | CommandTag::CreateIndex
             | CommandTag::CreateProcedure
             | CommandTag::RenameRoutine
             | CommandTag::DropProcedure => QueryType::Ddl,
@@ -654,6 +656,7 @@ impl TryFrom<&Node> for CommandTag {
                 Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),
                 Ddl::DropProc { .. } => Ok(CommandTag::DropProcedure),
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
+                Ddl::CreateIndex { .. } => Ok(CommandTag::CreateIndex),
             },
             Node::Relational(rel) => match rel {
                 Relational::Delete { .. } => Ok(CommandTag::Delete),

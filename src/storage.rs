@@ -1,4 +1,5 @@
 use tarantool::auth::AuthDef;
+use tarantool::decimal::Decimal;
 use tarantool::error::{Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
 use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
@@ -15,6 +16,7 @@ use tarantool::tlua::{self, LuaError};
 use tarantool::tuple::KeyDef;
 use tarantool::tuple::{Decode, DecodeOwned, Encode};
 use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
+use tarantool::util::NumOrStr;
 
 use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::failure_domain::FailureDomain;
@@ -50,6 +52,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::str::FromStr;
 use std::time::Duration;
 
 use self::acl::{on_master_drop_role, on_master_drop_user};
@@ -1347,7 +1350,7 @@ impl Properties {
             // Primary index
             id: 0,
             name: "key".into(),
-            itype: IndexType::Tree,
+            ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("key")],
             // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1606,7 +1609,7 @@ impl Replicasets {
             // Primary index
             id: 0,
             name: "replicaset_id".into(),
-            itype: IndexType::Tree,
+            ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("replicaset_id")],
             // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1672,7 +1675,7 @@ impl PeerAddresses {
             // Primary index
             id: 0,
             name: "raft_id".into(),
-            itype: IndexType::Tree,
+            ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("raft_id")],
             // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1782,7 +1785,7 @@ impl Instances {
                 // Primary index
                 id: 0,
                 name: "instance_id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("instance_id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1794,7 +1797,7 @@ impl Instances {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "raft_id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("raft_id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1806,7 +1809,7 @@ impl Instances {
                 table_id: Self::TABLE_ID,
                 id: 2,
                 name: "replicaset_id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from("replicaset_id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2154,7 +2157,7 @@ impl Tables {
                 // Primary index
                 id: 0,
                 name: "id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2166,7 +2169,7 @@ impl Tables {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2273,7 +2276,7 @@ impl Indexes {
                 // Primary index
                 id: 0,
                 name: "id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("table_id"), Part::from("id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2285,7 +2288,7 @@ impl Indexes {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("table_id"), Part::from("name")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2474,25 +2477,35 @@ pub fn ddl_create_index_on_master(
     index_id: IndexId,
 ) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
-    let pico_index_def = storage
+    let mut pico_index_def = storage
         .indexes
         .get(space_id, index_id)?
         .ok_or_else(|| Error::other(format!("index with id {index_id} not found")))?;
-    let mut opts = IndexOptions::default();
-    opts.r#type = Some(pico_index_def.itype);
-    opts.id = Some(pico_index_def.id);
+    let mut opts = IndexOptions {
+        r#type: Some(pico_index_def.ty),
+        id: Some(pico_index_def.id),
+        ..Default::default()
+    };
+    // We use LUA to create indexes, so we need to switch from C 0-based to LUA 1-based
+    // part enumeration in options.
+    for part in pico_index_def.parts.iter_mut() {
+        let NumOrStr::Num(ref mut num) = part.field else {
+            unreachable!("index part field should be a number");
+        };
+        *num += 1;
+    }
     opts.parts = Some(pico_index_def.parts);
+    let dec_to_f32 = |d: Decimal| f32::from_str(&d.to_string()).expect("decimal to f32");
     for opt in pico_index_def.opts {
         match opt {
             IndexOption::Unique(unique) => opts.unique = Some(unique),
-            IndexOption::IfNotExists(if_not_exists) => opts.if_not_exists = Some(if_not_exists),
             IndexOption::Dimension(dim) => opts.dimension = Some(dim),
             IndexOption::Distance(distance) => opts.distance = Some(distance),
-            IndexOption::BloomFalsePositiveRate(rate) => opts.bloom_fpr = Some(rate as f32),
+            IndexOption::BloomFalsePositiveRate(rate) => opts.bloom_fpr = Some(dec_to_f32(rate)),
             IndexOption::PageSize(size) => opts.page_size = Some(size),
             IndexOption::RangeSize(size) => opts.range_size = Some(size),
             IndexOption::RunCountPerLevel(count) => opts.run_count_per_level = Some(count),
-            IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(ratio as f32),
+            IndexOption::RunSizeRatio(ratio) => opts.run_size_ratio = Some(dec_to_f32(ratio)),
             IndexOption::Hint(_) => {
                 // FIXME: `hint` option is disabled in Tarantool module.
             }
@@ -2768,7 +2781,7 @@ impl Users {
                 // Primary index
                 id: 0,
                 name: "id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2780,7 +2793,7 @@ impl Users {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -2903,7 +2916,7 @@ impl Privileges {
                 // Primary index
                 id: 0,
                 name: "primary".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![
                     Part::from("grantee_id"),
@@ -2920,7 +2933,7 @@ impl Privileges {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "object".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from("object_type"), Part::from("object_id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -3092,7 +3105,7 @@ impl Tiers {
             // Primary index
             id: 0,
             name: "name".into(),
-            itype: IndexType::Tree,
+            ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("name")],
             // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -3170,7 +3183,7 @@ impl Routines {
                 // Primary index
                 id: 0,
                 name: "id".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -3182,7 +3195,7 @@ impl Routines {
                 table_id: Self::TABLE_ID,
                 id: 1,
                 name: "name".into(),
-                itype: IndexType::Tree,
+                ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -4533,8 +4546,6 @@ mod tests {
 
     #[track_caller]
     fn get_field_index(part: &Part, space_fields: &[tarantool::space::Field]) -> usize {
-        use tarantool::util::NumOrStr;
-
         match &part.field {
             NumOrStr::Num(index) => {
                 return *index as _;

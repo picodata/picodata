@@ -426,7 +426,7 @@ Insert({_pico_user}, [31,"super",0,null,1,"role"]))|
 Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_table},0,"id","tree",[{{"unique":true}}],[["id",null,null,null,null]],true,0,1]),
 Insert({_pico_index}, [{_pico_table},1,"name","tree",[{{"unique":true}}],[["name",null,null,null,null]],true,0,1]),
-Insert({_pico_table}, [{_pico_index},"_pico_index",["global"],[["table_id","unsigned",false],["id","unsigned",false],["name","string",false],["itype","string",false],["opts","array",false],["parts","array",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_table}, [{_pico_index},"_pico_index",["global"],[["table_id","unsigned",false],["id","unsigned",false],["name","string",false],["type","string",false],["opts","array",false],["parts","array",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_index},0,"id","tree",[{{"unique":true}}],[["table_id",null,null,null,null],["id",null,null,null,null]],true,0,1]),
 Insert({_pico_index}, [{_pico_index},1,"name","tree",[{{"unique":true}}],[["table_id",null,null,null,null],["name",null,null,null,null]],true,0,1]),
 Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",["global"],[["raft_id","unsigned",false],["address","string",false]],0,true,"memtx",1]),

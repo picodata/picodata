@@ -323,6 +323,27 @@ def test_role(instance: Instance):
     assert drop_role["initiator"] == "bubba"
 
 
+def test_index(instance: Instance):
+    instance.start()
+    instance.sql(
+        """
+        create table "foo" ("val" int not null, primary key ("val"))
+        distributed by ("val")
+        """
+    )
+    instance.sql(""" create index "foo_idx" on "foo" ("val") """)
+    instance.terminate()
+
+    events = AuditFile(instance.audit_flag_value).events()
+
+    create_index = take_until_title(events, "create_index")
+    assert create_index is not None
+    assert create_index["name"] == "foo_idx"
+    assert create_index["message"] == f"created index `{create_index['name']}`"
+    assert create_index["severity"] == "medium"
+    assert create_index["initiator"] == "pico_service"
+
+
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
     info = instance.call(".proc_instance_info", expelled_instance.instance_id)
     grades = (info["current_grade"]["variant"], info["target_grade"]["variant"])

@@ -1,9 +1,6 @@
 import pytest
 import time
-from conftest import Cluster, ReturnError
-
-
-PICO_SERVICE_ID = 32
+from conftest import PICO_SERVICE_ID, Cluster, ReturnError
 
 
 def test_ddl_abort(cluster: Cluster):
@@ -83,7 +80,7 @@ def test_ddl_lua_api(cluster: Cluster):
         )
     )
     space_id = 1027
-    initiator_id = 32  # pico_service
+    initiator_id = PICO_SERVICE_ID
     pico_space_def = [
         space_id,
         "space 2",
@@ -280,7 +277,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     assert i4.next_schema_version() == 3
 
     # Space was created and is operable
-    initiator_id = 32  # pico_service
+    initiator_id = PICO_SERVICE_ID
     pico_space_def = [
         space_id,
         "stuff",
@@ -392,7 +389,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
     ############################################################################
     # Space was created and is operable
-    initiator_id = 32  # pico_service
+    initiator_id = PICO_SERVICE_ID
     pico_space_def = [
         space_id,
         "stuff",
@@ -739,7 +736,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
         ),
     )
 
-    initiator_id = 32  # pico_service,
+    initiator_id = PICO_SERVICE_ID
     tt_space_def = [
         space_id,
         initiator_id,
@@ -823,7 +820,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
 
-    initiator_id = 32  # pico_service
+    initiator_id = PICO_SERVICE_ID
     tt_space_def = [
         space_id,
         initiator_id,

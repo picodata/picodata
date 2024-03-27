@@ -47,6 +47,7 @@ BASE_PORT = 3300
 PORT_RANGE = 200
 
 MAX_LOGIN_ATTEMPTS = 4
+PICO_SERVICE_ID = 32
 
 
 def eprint(*args, **kwargs):

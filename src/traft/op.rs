@@ -670,7 +670,7 @@ pub enum Ddl {
         space_id: SpaceId,
         index_id: IndexId,
         name: String,
-        itype: IndexType,
+        ty: IndexType,
         opts: Vec<IndexOption>,
         by_fields: Vec<Part>,
         owner: UserId,

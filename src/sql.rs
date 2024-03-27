@@ -2,9 +2,10 @@
 
 use crate::access_control::UserMetadataKind;
 use crate::schema::{
-    wait_for_ddl_commit, CreateProcParams, CreateTableParams, DistributionParam, Field,
-    PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef, RoutineLanguage, RoutineParamDef,
-    RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
+    wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DistributionParam,
+    Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef,
+    RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn,
+    UserDef, ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals_mut, Portal, PortalDescribe, Statement, StatementDescribe, UserPortalNames,
@@ -899,6 +900,61 @@ fn reenterable_schema_change_request(
 
     // Check parameters
     let params = match ir_node {
+        IrNode::Ddl(Ddl::CreateIndex {
+            name,
+            table_name,
+            columns,
+            unique,
+            index_type,
+            bloom_fpr,
+            page_size,
+            range_size,
+            run_count_per_level,
+            run_size_ratio,
+            dimension,
+            distance,
+            hint,
+            ..
+        }) => {
+            let mut opts: Vec<IndexOption> = Vec::with_capacity(9);
+            opts.push(IndexOption::Unique(unique));
+            if let Some(bloom_fpr) = bloom_fpr {
+                opts.push(IndexOption::BloomFalsePositiveRate(bloom_fpr));
+            }
+            if let Some(page_size) = page_size {
+                opts.push(IndexOption::PageSize(page_size));
+            }
+            if let Some(range_size) = range_size {
+                opts.push(IndexOption::RangeSize(range_size));
+            }
+            if let Some(run_count_per_level) = run_count_per_level {
+                opts.push(IndexOption::RunCountPerLevel(run_count_per_level));
+            }
+            if let Some(run_size_ratio) = run_size_ratio {
+                opts.push(IndexOption::RunSizeRatio(run_size_ratio));
+            }
+            if let Some(dimension) = dimension {
+                opts.push(IndexOption::Dimension(dimension));
+            }
+            if let Some(distance) = distance {
+                opts.push(IndexOption::Distance(distance));
+            }
+            if let Some(hint) = hint {
+                opts.push(IndexOption::Hint(hint));
+            }
+            opts.shrink_to_fit();
+
+            let params = CreateIndexParams {
+                name,
+                space_name: table_name,
+                columns,
+                ty: index_type,
+                opts,
+                owner: current_user,
+            };
+            params.validate(storage)?;
+            Params::CreateIndex(params)
+        }
         IrNode::Ddl(Ddl::CreateProc {
             name,
             params: args,
@@ -1072,6 +1128,17 @@ fn reenterable_schema_change_request(
 
         // Check for conflicts and make the op
         let op = match &params {
+            Params::CreateIndex(params) => {
+                if params.index_exists() {
+                    // Index already exists, no op needed.
+                    return Ok(ConsumerResult { row_count: 0 });
+                }
+                let ddl = params.into_ddl(storage)?;
+                Op::DdlPrepare {
+                    schema_version,
+                    ddl,
+                }
+            }
             Params::CreateProcedure(params) => {
                 if params.func_exists() {
                     // Function already exists, no op needed.
@@ -1477,6 +1544,7 @@ fn reenterable_schema_change_request(
         RenameRoutine(RenameRoutineParams),
         CreateProcedure(CreateProcParams),
         DropProcedure(String, Option<Vec<ParamDef>>),
+        CreateIndex(CreateIndexParams),
     }
 }
 

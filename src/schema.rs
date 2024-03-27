@@ -1,9 +1,12 @@
+use ahash::{AHashMap, AHashSet};
 use sbroad::ir::ddl::{Language, ParamDef};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
+use std::str::FromStr;
 use std::time::Duration;
-use tarantool::index::{IndexType, RtreeIndexDistanceType};
+use tarantool::decimal::Decimal;
+use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, RtreeIndexDistanceType};
 
 use tarantool::auth::AuthData;
 use tarantool::auth::AuthDef;
@@ -17,13 +20,13 @@ use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
 use tarantool::transaction::{transaction, TransactionError};
 use tarantool::{
+    index::IndexId,
     index::IteratorType,
     index::Metadata as IndexMetadata,
-    index::{IndexId, Part},
     space::SpaceId,
     tlua::{self, LuaRead},
     tuple::Encode,
-    util::Value,
+    util::{NumOrStr, Value},
 };
 
 use sbroad::ir::value::Value as IrValue;
@@ -217,40 +220,100 @@ fn default_bucket_id_field() -> String {
 // IndexDef
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+/// Picodata index options.
+///
+/// While tarantool module already includes an `IndexOptions` structure
+/// for local indexes, the current enum is designed for picodata ones.
+/// Currently, these options coincide, but we intend to introduce a
+/// REDISTRIBUTION option for secondary indexes. It will be implemented
+/// using materialized views instead of tarantool indexes. Therefore,
+/// it's important to maintain a distinction between these features,
+/// emphasizing that it is specific to picodata.
+#[derive(Clone, Debug, Deserialize, Serialize, Hash, PartialEq, Eq)]
 pub enum IndexOption {
-    BloomFalsePositiveRate(f64),
+    /// Vinyl only. The false positive rate for the bloom filter.
+    #[serde(rename = "bloom_fpr")]
+    BloomFalsePositiveRate(Decimal),
+    /// The RTREE index dimension.
+    #[serde(rename = "dimension")]
     Dimension(u32),
+    /// The RTREE index distance type.
+    #[serde(rename = "distance")]
     Distance(RtreeIndexDistanceType),
+    /// Specify whether hint optimization is enabled for the TREE index.
+    /// If true, the index works faster, if false, the index size is reduced by half.
+    #[serde(rename = "hint")]
+    // FIXME: this option is disabled in the current version of the module.
     Hint(bool),
-    IfNotExists(bool),
+    /// Vinyl only. The page size in bytes used for read and write disk operations.
+    #[serde(rename = "page_size")]
     PageSize(u32),
+    /// Vinyl only. The range size in bytes used for vinyl index.
+    #[serde(rename = "range_size")]
     RangeSize(u32),
+    /// Vinyl only. The number of runs per level in the LSM tree.
+    #[serde(rename = "run_count_per_level")]
     RunCountPerLevel(u32),
-    RunSizeRatio(f64),
+    /// Vinyl only. The ratio between the size of different levels in the LSM tree.
+    #[serde(rename = "run_size_ratio")]
+    RunSizeRatio(Decimal),
+    /// Specify whether the index is unique. When true, the index cannot contain duplicate values.
+    #[serde(rename = "unique")]
     Unique(bool),
 }
 
-// We can safely derive `Eq` because `f64` is never `NaN`.
-impl Eq for IndexOption {}
-
 impl IndexOption {
     pub fn as_kv(&self) -> (Cow<'static, str>, Value<'_>) {
+        let dec_to_f64 = |d: Decimal| f64::from_str(&d.to_string()).expect("decimal to f64");
         match self {
-            IndexOption::BloomFalsePositiveRate(rate) => ("bloom_fpr".into(), Value::Double(*rate)),
+            IndexOption::BloomFalsePositiveRate(rate) => {
+                ("bloom_fpr".into(), Value::Double(dec_to_f64(*rate)))
+            }
             IndexOption::Dimension(dim) => ("dimension".into(), Value::Num(*dim)),
             IndexOption::Distance(dist) => ("distance".into(), Value::Str(dist.as_str().into())),
             IndexOption::Hint(hint) => ("hint".into(), Value::Bool(*hint)),
-            IndexOption::IfNotExists(if_not_exists) => {
-                ("if_not_exists".into(), Value::Bool(*if_not_exists))
-            }
             IndexOption::PageSize(size) => ("page_size".into(), Value::Num(*size)),
             IndexOption::RangeSize(size) => ("range_size".into(), Value::Num(*size)),
             IndexOption::RunCountPerLevel(count) => {
                 ("run_count_per_level".into(), Value::Num(*count))
             }
-            IndexOption::RunSizeRatio(ratio) => ("run_size_ratio".into(), Value::Double(*ratio)),
+            IndexOption::RunSizeRatio(ratio) => {
+                ("run_size_ratio".into(), Value::Double(dec_to_f64(*ratio)))
+            }
             IndexOption::Unique(unique) => ("unique".into(), Value::Bool(*unique)),
+        }
+    }
+
+    pub fn is_vinyl(&self) -> bool {
+        matches!(
+            self,
+            IndexOption::BloomFalsePositiveRate(_)
+                | IndexOption::PageSize(_)
+                | IndexOption::RangeSize(_)
+                | IndexOption::RunCountPerLevel(_)
+                | IndexOption::RunSizeRatio(_)
+        )
+    }
+
+    pub fn is_rtree(&self) -> bool {
+        matches!(self, IndexOption::Dimension(_) | IndexOption::Distance(_))
+    }
+
+    pub fn is_tree(&self) -> bool {
+        matches!(self, IndexOption::Hint(_))
+    }
+
+    pub fn type_name(&self) -> &str {
+        match self {
+            IndexOption::BloomFalsePositiveRate(_) => "bloom_fpr",
+            IndexOption::Dimension(_) => "dimension",
+            IndexOption::Distance(_) => "distance",
+            IndexOption::Hint(_) => "hint",
+            IndexOption::PageSize(_) => "page_size",
+            IndexOption::RangeSize(_) => "range_size",
+            IndexOption::RunCountPerLevel(_) => "run_count_per_level",
+            IndexOption::RunSizeRatio(_) => "run_size_ratio",
+            IndexOption::Unique(_) => "unique",
         }
     }
 }
@@ -263,7 +326,8 @@ pub struct IndexDef {
     pub table_id: SpaceId,
     pub id: IndexId,
     pub name: String,
-    pub itype: IndexType,
+    #[serde(rename = "type")]
+    pub ty: IndexType,
     pub opts: Vec<IndexOption>,
     pub parts: Vec<Part>,
     pub operable: bool,
@@ -285,7 +349,7 @@ impl IndexDef {
             Field::from(("table_id", FieldType::Unsigned)),
             Field::from(("id", FieldType::Unsigned)),
             Field::from(("name", FieldType::String)),
-            Field::from(("itype", FieldType::String)),
+            Field::from(("type", FieldType::String)),
             Field::from(("opts", FieldType::Array)),
             Field::from(("parts", FieldType::Array)),
             Field::from(("operable", FieldType::Boolean)),
@@ -301,7 +365,7 @@ impl IndexDef {
             table_id: 10569,
             id: 1,
             name: "secondary".into(),
-            itype: IndexType::Tree,
+            ty: IndexType::Tree,
             opts: vec![],
             parts: vec![],
             operable: true,
@@ -320,12 +384,25 @@ impl IndexDef {
             space_id: self.table_id,
             index_id: self.id,
             name: self.name.as_str().into(),
-            r#type: self.itype,
+            r#type: self.ty,
             opts,
             parts: self.parts.clone(),
         };
 
         index_meta
+    }
+
+    pub fn opts_equal(&self, opts: &[IndexOption]) -> bool {
+        let mut set: AHashSet<&IndexOption> = AHashSet::with_capacity(opts.len());
+        for opt in &self.opts {
+            set.insert(opt);
+        }
+        for opt in opts {
+            if !set.contains(opt) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -1321,6 +1398,8 @@ pub enum DdlError {
     NoPendingDdl,
     #[error("{0}")]
     CreateRoutine(#[from] CreateRoutineError),
+    #[error("{0}")]
+    CreateIndex(#[from] CreateIndexError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1346,6 +1425,40 @@ pub enum CreateTableError {
 impl From<CreateTableError> for Error {
     fn from(err: CreateTableError) -> Self {
         DdlError::CreateTable(err).into()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CreateIndexError {
+    #[error("index {name} already exists with a different signature")]
+    IndexAlreadyExists { name: String },
+    #[error("table {table_name} not found")]
+    TableNotFound { table_name: String },
+    #[error("table {table_name} is not operable")]
+    TableNotOperable { table_name: String },
+    #[error("no field with name: {name}")]
+    FieldUndefined { name: String },
+    #[error("table engine {engine} does not support option {option}")]
+    IncompatibleTableEngineOption { engine: String, option: String },
+    #[error("index type {ty} does not support option {option}")]
+    IncompatibleIndexTypeOption { ty: String, option: String },
+    #[error("index type {ty} does not support column type {ctype}")]
+    IncompatibleIndexColumnType { ty: String, ctype: String },
+    #[error("index type {ty} does not support nullable columns")]
+    IncompatipleNullableColumn { ty: String },
+    #[error("unique index for the sharded table must duplicate its sharding key columns")]
+    IncompatibleUniqueIndexColumns,
+    #[error("index type {ty} does not support unique indexes")]
+    UniqueIndexType { ty: String },
+    #[error("index type {ty} does not support non-unique indexes")]
+    NonUniqueIndexType { ty: String },
+    #[error("index type {ty} does not support multiple columns")]
+    IncompatibleIndexMultipleColumns { ty: String },
+}
+
+impl From<CreateIndexError> for Error {
+    fn from(err: CreateIndexError) -> Self {
+        DdlError::CreateIndex(err).into()
     }
 }
 
@@ -1464,6 +1577,276 @@ impl CreateProcParams {
                 return Err(CreateRoutineError::ExistsWithDifferentOwner { name: def.name })?;
             }
         }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CreateIndexParams {
+    pub(crate) name: String,
+    pub(crate) space_name: String,
+    pub(crate) columns: Vec<String>,
+    pub(crate) ty: IndexType,
+    pub(crate) opts: Vec<IndexOption>,
+    pub(crate) owner: UserId,
+}
+
+impl CreateIndexParams {
+    pub fn index_exists(&self) -> bool {
+        let sys_index = Space::from(SystemSpace::Index);
+        let name_idx = sys_index
+            .index_cached("name")
+            .expect("_index should have an index by table_id and name");
+        let Some(space) = Space::find_cached(&self.space_name) else {
+            return false;
+        };
+        let idx = name_idx
+            .get(&(&space.id(), &self.name))
+            .expect("reading from _index shouldn't fail");
+        idx.is_some()
+    }
+
+    pub fn table(&self, storage: &Clusterwide) -> traft::Result<TableDef> {
+        let table = with_su(ADMIN_ID, || storage.tables.by_name(&self.space_name))??;
+        let Some(table) = table else {
+            return Err(CreateIndexError::TableNotFound {
+                table_name: self.space_name.clone(),
+            })?;
+        };
+        Ok(table)
+    }
+
+    pub fn next_index_id(&self) -> traft::Result<IndexId> {
+        let Some(space) = Space::find_cached(&self.space_name) else {
+            return Err(CreateIndexError::TableNotFound {
+                table_name: self.space_name.clone(),
+            })?;
+        };
+        // The logic is taken from the box.schema.index.create function
+        // (box/lua/schema.lua).
+        let sys_vindex = Space::from(SystemSpace::VIndex);
+        let mut iter = sys_vindex
+            .primary_key()
+            .select(IteratorType::LE, &[space.id()])?;
+        let Some(tuple) = iter.next() else {
+            panic!("no primary key found for space {}", self.space_name);
+        };
+        let id: IndexId = tuple.get(1).expect("index id should be present");
+        Ok(id + 1)
+    }
+
+    pub fn parts(&self, storage: &Clusterwide) -> traft::Result<Vec<Part>> {
+        let table = self.table(storage)?;
+        let mut parts = Vec::with_capacity(self.columns.len());
+
+        type Position = u32;
+        let mut positions: AHashMap<&str, Position> = AHashMap::with_capacity(table.format.len());
+        for (i, field) in table.format.iter().enumerate() {
+            positions.insert(field.name.as_str(), i as Position);
+        }
+        for column_name in &self.columns {
+            let position = positions.get(column_name.as_str()).cloned();
+            let position = position.ok_or_else(|| CreateIndexError::FieldUndefined {
+                name: column_name.clone(),
+            })?;
+            let column = &table.format[position as usize];
+            let index_field_type = try_space_field_type_to_index_field_type(column.field_type)
+                .ok_or_else(|| CreateIndexError::IncompatibleIndexColumnType {
+                    ty: self.ty.to_string(),
+                    ctype: column.field_type.to_string(),
+                })?;
+            let part = Part {
+                field: NumOrStr::Num(position),
+                r#type: Some(index_field_type),
+                collation: None,
+                is_nullable: Some(column.is_nullable),
+                path: None,
+            };
+            parts.push(part);
+        }
+        Ok(parts)
+    }
+
+    fn is_duplicate(&self, table_id: SpaceId, index: IndexDef) -> bool {
+        table_id == index.table_id
+            && self.name == index.name
+            && self.ty == index.ty
+            && index.opts_equal(self.opts.as_slice())
+    }
+
+    pub fn into_ddl(&self, storage: &Clusterwide) -> Result<Ddl, Error> {
+        let table = self.table(storage)?;
+        let by_fields = self.parts(storage)?;
+        let index_id = self.next_index_id()?;
+        let ddl = Ddl::CreateIndex {
+            space_id: table.id,
+            index_id,
+            name: self.name.clone(),
+            ty: self.ty,
+            by_fields,
+            opts: self.opts.clone(),
+            owner: self.owner,
+        };
+        Ok(ddl)
+    }
+
+    pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {
+        let table = self.table(storage)?;
+        if !table.operable {
+            return Err(CreateIndexError::TableNotOperable {
+                table_name: self.space_name.clone(),
+            })?;
+        }
+        let mut filed_names: AHashSet<&str> = AHashSet::with_capacity(table.format.len());
+        for field in &table.format {
+            filed_names.insert(field.name.as_str());
+        }
+        for column in &self.columns {
+            if !filed_names.contains(column.as_str()) {
+                return Err(CreateIndexError::FieldUndefined {
+                    name: column.clone(),
+                })?;
+            }
+        }
+
+        for opt in &self.opts {
+            if table.engine != SpaceEngineType::Vinyl && opt.is_vinyl() {
+                return Err(CreateIndexError::IncompatibleTableEngineOption {
+                    engine: table.engine.to_string(),
+                    option: opt.type_name().into(),
+                })?;
+            }
+            if self.ty != IndexType::Rtree && opt.is_rtree() {
+                return Err(CreateIndexError::IncompatibleIndexTypeOption {
+                    ty: self.ty.to_string(),
+                    option: opt.type_name().into(),
+                })?;
+            }
+            if self.ty != IndexType::Tree && opt.is_tree() {
+                return Err(CreateIndexError::IncompatibleIndexTypeOption {
+                    ty: self.ty.to_string(),
+                    option: opt.type_name().into(),
+                })?;
+            }
+            if let &IndexOption::Unique(false) = opt {
+                if self.ty == IndexType::Hash {
+                    return Err(CreateIndexError::NonUniqueIndexType {
+                        ty: self.ty.to_string(),
+                    })?;
+                }
+            }
+            if let &IndexOption::Unique(true) = opt {
+                if self.ty == IndexType::Rtree || self.ty == IndexType::Bitset {
+                    return Err(CreateIndexError::UniqueIndexType {
+                        ty: self.ty.to_string(),
+                    })?;
+                }
+                // Unique index for the sharded table must duplicate its sharding key columns.
+                if let Distribution::ShardedImplicitly { sharding_key, .. } = &table.distribution {
+                    if sharding_key.len() != self.columns.len() {
+                        return Err(CreateIndexError::IncompatibleUniqueIndexColumns)?;
+                    }
+                    for (sharding_key, column) in sharding_key.iter().zip(&self.columns) {
+                        if sharding_key != column {
+                            return Err(CreateIndexError::IncompatibleUniqueIndexColumns)?;
+                        }
+                    }
+                }
+            }
+        }
+
+        let check_multipart = |parts: &[Part]| -> Result<(), CreateIndexError> {
+            if parts.len() > 1 {
+                return Err(CreateIndexError::IncompatibleIndexMultipleColumns {
+                    ty: self.ty.to_string(),
+                })?;
+            }
+            Ok(())
+        };
+        let check_part_nullability = |part: &Part| -> Result<(), CreateIndexError> {
+            if part.is_nullable == Some(true) {
+                return Err(CreateIndexError::IncompatipleNullableColumn {
+                    ty: self.ty.to_string(),
+                })?;
+            }
+            Ok(())
+        };
+        let check_part_type = |part: &Part,
+                               eq: bool,
+                               types: &[Option<IndexFieldType>]|
+         -> Result<(), CreateIndexError> {
+            let ctype = part
+                .r#type
+                .as_ref()
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| "unknown".into());
+            if eq {
+                if !types.iter().any(|t| t == &part.r#type) {
+                    return Err(CreateIndexError::IncompatibleIndexColumnType {
+                        ty: self.ty.to_string(),
+                        ctype,
+                    })?;
+                }
+            } else if types.iter().any(|t| t == &part.r#type) {
+                return Err(CreateIndexError::IncompatibleIndexColumnType {
+                    ty: self.ty.to_string(),
+                    ctype,
+                })?;
+            }
+            Ok(())
+        };
+        let parts = self.parts(storage)?;
+        match self.ty {
+            IndexType::Bitset => {
+                check_multipart(&parts)?;
+                for part in &parts {
+                    check_part_nullability(part)?;
+                    check_part_type(
+                        part,
+                        true,
+                        &[
+                            Some(IndexFieldType::Unsigned),
+                            Some(IndexFieldType::String),
+                            Some(IndexFieldType::Varbinary),
+                        ],
+                    )?;
+                }
+            }
+            IndexType::Rtree => {
+                check_multipart(&parts)?;
+                for part in &parts {
+                    check_part_nullability(part)?;
+                    check_part_type(part, true, &[Some(IndexFieldType::Array)])?;
+                }
+            }
+            IndexType::Hash => {
+                for part in &parts {
+                    check_part_nullability(part)?;
+                    check_part_type(
+                        part,
+                        false,
+                        &[Some(IndexFieldType::Array), Some(IndexFieldType::Datetime)],
+                    )?;
+                }
+            }
+            IndexType::Tree => {
+                for part in &parts {
+                    check_part_type(part, false, &[Some(IndexFieldType::Array)])?;
+                }
+            }
+        }
+
+        let index = with_su(ADMIN_ID, || {
+            storage.indexes.by_name(table.id, self.name.clone())
+        })??;
+        if let Some(index) = index {
+            if self.is_duplicate(table.id, index) {
+                return Err(CreateIndexError::IndexAlreadyExists {
+                    name: self.name.clone(),
+                })?;
+            }
+        }
+
         Ok(())
     }
 }

@@ -3123,3 +3123,128 @@ box error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'.\
     # Check that we can create a new user "boba" after rename him
     i1.create_user(with_name=boba, with_password=password)
     assert boba in names_from_pico_user_table()
+
+
+def test_index(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    # Sharded memtx table
+    ddl = i1.sql(
+        """
+        create table t (a text not null, b text not null, c text, primary key (a))
+        using memtx
+        distributed by (a)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Global table
+    ddl = i1.sql(
+        """
+        create table g (a int not null, b text not null, c text, primary key (a))
+        distributed globally
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Sharded vinyl table
+    ddl = i1.sql(
+        """
+        create table v (a int not null, b text not null, c text, primary key (a))
+        using vinyl
+        distributed by (a)
+        option (timeout = 3)
+        """
+    )
+
+    # Check that created index appears in _pico_index table.
+    ddl = i1.sql(""" create index i0 on t (a) """)
+    assert ddl["row_count"] == 1
+    data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
+    assert data["rows"] != []
+
+    # Successful tree index creation with default options
+    ddl = i1.sql(""" create index i1 on t (a, b) """)
+    assert ddl["row_count"] == 1
+
+    # Unique index can be created only on the sharding key for sharded tables.
+    invalid_unique = (
+        "unique index for the sharded table must duplicate its sharding key columns"
+    )
+    with pytest.raises(ReturnError, match=invalid_unique):
+        i1.sql(""" create unique index i2 on t using tree (b) """)
+
+    # Successful unique tree index creation on the sharding key.
+    ddl = i1.sql(""" create unique index i2 on t using tree (a) """)
+    assert ddl["row_count"] == 1
+
+    # No restrictions on unique index for globally distributed tables.
+    ddl = i1.sql(""" create unique index i3 on g using tree (b) """)
+
+    # Successful create a tree index with corresponding options.
+    ddl = i1.sql(""" create index i4 on t using tree (c) with (hint = true) """)
+    assert ddl["row_count"] == 1
+
+    # Fail to create a tree index with wrong options.
+    invalid_tree_option = "index type tree does not support option"
+    with pytest.raises(ReturnError, match=invalid_tree_option):
+        i1.sql(""" create index i5 on t using tree (c) with (distance = euclid) """)
+    with pytest.raises(ReturnError, match=invalid_tree_option):
+        i1.sql(""" create index i6 on t using tree (c) with (dimension = 42) """)
+
+    # RTree indexes can't be created via SQL at the moment as they require array columns
+    # that are not supported yet.
+    non_array_rtree = "index type rtree does not support column type"
+    with pytest.raises(ReturnError, match=non_array_rtree):
+        i1.sql(""" create index i11 on t using rtree (b) """)
+
+    # Fail to create an rtree index from nullable columns.
+    nullable_rtree = "index type rtree does not support nullable columns"
+    with pytest.raises(ReturnError, match=nullable_rtree):
+        i1.sql(""" create index i12 on t using rtree (c) """)
+
+    # Fail to create an rtree index with wrong options.
+    invalid_rtree_option = "index type rtree does not support option"
+    with pytest.raises(ReturnError, match=invalid_rtree_option):
+        i1.sql(""" create index i13 on t using rtree (b) with (hint = true) """)
+
+    # Successful bitset index creation.
+    ddl = i1.sql(""" create index i14 on t using bitset (b) """)
+
+    # Fail to create a bitset index from nullable columns.
+    nullable_bitset = "index type bitset does not support nullable columns"
+    with pytest.raises(ReturnError, match=nullable_bitset):
+        i1.sql(""" create index i15 on t using bitset (c) """)
+
+    # Fail to create unique bitset index.
+    unique_bitset = "index type bitset does not support unique indexes"
+    with pytest.raises(ReturnError, match=unique_bitset):
+        i1.sql(""" create unique index i16 on t using bitset (a) """)
+
+    # Fail to create bitset index with column types other then string, number or varbinary.
+    invalid_bitset = "index type bitset does not support column type"
+    with pytest.raises(ReturnError, match=invalid_bitset):
+        i1.sql(""" create index i17 on v using bitset (a) """)
+
+    # Successful hash index creation.
+    ddl = i1.sql(""" create unique index i17 on t using hash (a) """)
+    assert ddl["row_count"] == 1
+
+    # Fail to create a non-unique hash index.
+    non_unique_hash = "index type hash does not support non-unique indexes"
+    with pytest.raises(ReturnError, match=non_unique_hash):
+        i1.sql(""" create index i18 on t using hash (c) """)
+
+    # Fail to create an index on memtex table with vinyl options.
+    invalid_memtx = "table engine memtx does not support option"
+    with pytest.raises(ReturnError, match=invalid_memtx):
+        i1.sql(""" create index i7 on t (b) with (page_size = 42) """)
+    with pytest.raises(ReturnError, match=invalid_memtx):
+        i1.sql(""" create index i8 on t (b) with (range_size = 42) """)
+    with pytest.raises(ReturnError, match=invalid_memtx):
+        i1.sql(""" create index i9 on t (b) with (run_count_per_level = 42) """)
+    with pytest.raises(ReturnError, match=invalid_memtx):
+        i1.sql(""" create index i10 on t (b) with (run_size_ratio = 0.1) """)
