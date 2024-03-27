@@ -140,6 +140,21 @@
 }
 ```
 
+### rename_user
+
+Переименование учетной записи пользователя СУБД.
+
+```json
+{
+     "title": "rename_user",
+     "message": "name of user `{old_name}` was changed to `{new_name}`",
+     "severity": "high",
+     "old_name": "old_name",
+     "new_name": "new_name",
+     ...
+}
+```
+
 ### change_password
 
 Изменение атрибутов учетных записей пользователей СУБД:
