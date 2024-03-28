@@ -499,6 +499,9 @@ def test_connect_connection_info_and_help(i1: Instance):
 
 def test_admin_connection_info_and_help(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
+
+    socket_path = f"{i1.data_dir}/explicit.sock"
+    i1.env["PICODATA_ADMIN_SOCK"] = socket_path
     i1.start()
     i1.wait_online()
 
@@ -512,13 +515,13 @@ def test_admin_connection_info_and_help(cluster: Cluster):
         # We were unable to debug it quickly and used cwd as a workaround
         cwd=i1.data_dir,
         command=i1.binary_path,
-        args=["admin", "./admin.sock"],
+        args=["admin", socket_path],
         encoding="utf-8",
         timeout=1,
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
+    cli.expect_exact(f'Connected to admin console by socket path "{socket_path}"')
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
