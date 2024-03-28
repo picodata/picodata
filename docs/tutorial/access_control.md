@@ -426,29 +426,26 @@ REVOKE <priv> ON TABLE <table name> FROM <grantee>
 - модификация, удаление, исполнение.
 -->
 
-Для того, чтобы пользователь в Picodata мог создавать
-[процедуры](../overview/glossary.md#stored_procedure), ему требуется
-соответствующая привилегия от Администратора СУБД:
+Picodata позволяет задавать разрешение пользователям СУБД
+выполнять следующие операции в отношении процедур: создание,
+модификация, удаление, исполнение.
 
+Для наделения пользователя указанными привилегиями используйте
+SQL-команду [GRANT](../reference/sql/grant.md):
+
+<!-- Keep in sync with #db_user -->
 ```sql
 GRANT CREATE PROCEDURE TO <grantee>
+GRANT ALTER ON PROCEDURE <procedure name> TO <grantee>
+GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
+GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
 ```
 
-После этого <grantee> сможет не только создавать, но и управлять своими
-процедурами. При этом, можно выдать привилегии для отдельных действий с процедурами,
-например на их исполнение и удаление. Это может быть полезно для настройки доступа
-к процедурам, созданным другими пользователями:
+Отозвать привилегию можно SQL-командой
+[REVOKE](../reference/sql/revoke.md):
 
 ```sql
-GRANT EXECUTE PROCEDURE TO <grantee>
-GRANT DROP PROCEDURE TO <grantee>
-```
-
-Как и в остальных случаях, отозвать выданные привилегии можно при помощи команды `REVOKE`:
-
-```sql
-REVOKE EXECUTE PROCEDURE FROM <grantee>
-REVOKE DROP PROCEDURE FROM <grantee>
+REVOKE <priv> ON PROCEDURE <procedure name> FROM <grantee>
 ```
 
 ## Дополнительные примеры SQL-запросов {: #sql_examples }
