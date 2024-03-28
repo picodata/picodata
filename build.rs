@@ -86,6 +86,14 @@ fn set_git_describe_env_var() {
     );
     let git_describe = std::str::from_utf8(&output.stdout).unwrap();
     println!("cargo:rustc-env=GIT_DESCRIBE={git_describe}");
+
+    // We use output from `git describe` to generate picodata version info, so
+    // we must rerun this build script every time that output changes. We can't
+    // express this requirement explicitly using cargo's commands, but we can
+    // ask cargo to rerun every time one of the important .git/* files changes,
+    // which seems to do the trick for the most part.
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/refs");
 }
 
 fn generate_export_stubs(out_dir: &str) {
