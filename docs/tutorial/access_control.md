@@ -208,6 +208,22 @@ Picodata позволяет наделить пользователя БД сл�
 - создавать и манипулировать хранимыми процедурами
 - выполнять хранимые процедуры
 
+Для этого используйте следующие SQL-команды:
+
+```sql
+GRANT CREATE TABLE TO <grantee>
+GRANT ALTER ON TABLE <table name> TO <grantee>
+GRANT DROP ON TABLE <table name> TO <grantee>
+GRANT READ ON TABLE <table name> TO <grantee>
+GRANT WRITE ON TABLE <table name> TO <grantee>
+
+GRANT CREATE PROCEDURE TO <grantee>
+GRANT ALTER ON PROCEDURE <procedure name> TO <grantee>
+GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
+
+GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
+```
+
 ### Роли {: #roles }
 
 Роль представляет собой именованную группу привилегий, что позволяет
