@@ -392,26 +392,23 @@ REVOKE <role name> FROM <grantee>
 удаление, чтение.
 -->
 
-В Picodata доступно создание и удаление таблиц. Над таблицами можно
-совершать операции чтения и записи. Для ограничения доступа к операциям
-с таблицами в Picodata доступны привилегии `CREATE`, `DROP`, `READ`,
-`WRITE` и `ALTER`. Все привилегии (кроме `CREATE`) могут быть выданы на
-конкретную таблицу или на все таблицы сразу. Привилегия `CREATE` может быть
-выдана только глобально.
+Picodata позволяет задавать разрешение пользователям и процедурам
+выполнять следующие операции в отношении таблиц БД: создание,
+модификация, удаление, чтение.
 
-Выдача привилегий осуществляется командой `GRANT`. На все таблицы:
+Для наделения пользователя и созданных им процедур указанными
+привилегиями используйте SQL-команду [GRANT](../reference/sql/grant.md):
 
+<!-- Keep in sync with #db_user -->
 ```sql
-GRANT <priv> TABLE TO <grantee>
+GRANT CREATE TABLE TO <grantee>
+GRANT ALTER ON TABLE <table name> TO <grantee>
+GRANT DROP ON TABLE <table name> TO <grantee>
+GRANT READ ON TABLE <table name> TO <grantee>
 ```
 
-На конкретную таблицу:
-
-```sql
-GRANT <priv> ON TABLE <table name> TO <grantee>
-```
-
-Отозвать выданные привилегии можно при помощи команды `REVOKE`:
+Отозвать привилегию можно SQL-командой
+[REVOKE](../reference/sql/revoke.md):
 
 ```sql
 REVOKE <priv> ON TABLE <table name> FROM <grantee>
