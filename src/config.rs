@@ -204,6 +204,10 @@ Using configuration file '{args_path}'.");
             self.instance.plugins = Some(args.plugins);
         }
 
+        if let Some(admin_socket) = args.admin_sock {
+            self.instance.admin_socket = Some(admin_socket);
+        }
+
         if let Some(script) = args.script {
             self.instance.deprecated_script = Some(script);
         }
