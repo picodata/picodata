@@ -78,9 +78,16 @@ impl PicodataConfig {
         let cwd = std::env::current_dir();
         let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new(".")).display();
         let default_path = format!("{cwd}/{DEFAULT_CONFIG_FILE_NAME}");
+        let args_path = args.config.clone().map(|path| {
+            if Path::new(&path).is_absolute() {
+                path
+            } else {
+                format!("{cwd}/{path}")
+            }
+        });
 
         let mut config_from_file = None;
-        match (&args.config, file_exists(&default_path)) {
+        match (&args_path, file_exists(&default_path)) {
             (Some(args_path), true) => {
                 if args_path != &default_path {
                     #[rustfmt::skip]

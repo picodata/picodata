@@ -187,9 +187,9 @@ error: option `--init-cfg` is removed, use `--config` instead
 def test_config_file_enoent(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.env.update({"PICODATA_CONFIG_FILE": "./unexisting_dir/trash.yaml"})
-    err = """\
-can't read from './unexisting_dir/trash.yaml': No such file or directory (os error 2)
-"""
+    err = f"""\
+can't read from '{cluster.data_dir}/./unexisting_dir/trash.yaml': No such file or directory (os error 2)
+"""  # noqa: E501
     crawler = log_crawler(i1, err)
 
     i1.fail_to_start()
