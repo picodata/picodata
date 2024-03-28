@@ -44,6 +44,7 @@ nav:
   - Справочные материалы:
     - reference/cli.md
     - Язык SQL:
+      - Оглавление: sql_index.md
       - reference/sql/dcl.md
       - reference/sql/ddl.md
       - reference/sql/dml.md

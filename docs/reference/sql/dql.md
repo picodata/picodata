@@ -1,4 +1,4 @@
-# DQL
+# Data Query Language
 
 Data Query Language - команды языка SQL, читающие данные (как сгенерированные, так и уже
 лежащие в таблицах).

@@ -1,4 +1,4 @@
-# DML
+# Data Manipulation Language
 
 Data Manipulation Language - команды языка SQL, изменяющие данные в таблицах кластера
 (как в пользовательских, так и в системных).

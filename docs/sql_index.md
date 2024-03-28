@@ -1,14 +1,14 @@
 # Язык SQL
 
-* [DCL](reference/sql/dcl.md)
-* [DDL](reference/sql/ddl.md)
-* [DML](reference/sql/dml.md)
-* [DQL](reference/sql/dql.md)
+* [Data Control Language](reference/sql/dcl.md) (DCL)
+* [Data Definition Language](reference/sql/ddl.md) (DDL)
+* [Data Manipulation Language](reference/sql/dml.md) (DML)
+* [Data Query Language](reference/sql/dql.md) (DQL)
 * [Неблокирующие запросы](reference/sql/non_block.md)
-* [Объекты](reference/sql/object.md)
-* [Типы](reference/sql_types.md)
-* [Параметризированные запросы](reference/sql/parametrization.md)
-* [Соответствие ANSI](reference/ansi_sql.md)
+* [Именование объектов](reference/sql/object.md)
+* [Типы данных](reference/sql_types.md)
+* [Параметризованные запросы](reference/sql/parametrization.md)
+* [Совместимость с ANSI](reference/ansi_sql.md)
 
 ## Команды {: #commands }
 

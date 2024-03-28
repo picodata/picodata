@@ -1,4 +1,4 @@
-# DCL
+# Data Control Language
 
 Data Control Language - команды языка SQL для управления доступом в кластере (роли,
 пользователи или привилегии).
