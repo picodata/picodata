@@ -4,7 +4,7 @@ use postgres_types::Type;
 use postgres_types::{FromSql, ToSql};
 use postgres_types::{IsNull, Oid};
 use serde_json::Value;
-use serde_repr::Deserialize_repr;
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::error::Error;
 use std::str;
 use tarantool::tlua::{AsLua, Nil, PushInto};
@@ -27,7 +27,7 @@ pub fn type_from_name(name: &str) -> PgResult<Type> {
 /// This type is used to send Format over the wire.
 pub type RawFormat = i16;
 
-#[derive(Debug, Clone, Copy, Deserialize_repr)]
+#[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr)]
 #[repr(i16)]
 pub enum Format {
     Text = 0,

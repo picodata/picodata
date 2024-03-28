@@ -1,8 +1,8 @@
 use super::{
+    backend::describe::{PortalDescribe, QueryType, StatementDescribe},
     client::ClientId,
     error::{PgError, PgResult},
     storage::{
-        describe::{PortalDescribe, QueryType, StatementDescribe},
         result::ExecuteResult,
         value::{Format, PgValue},
     },

@@ -1,21 +1,14 @@
+use super::describe::{Describe, PortalDescribe, StatementDescribe};
 use crate::pgproto::error::{PgError, PgResult};
+use crate::pgproto::storage::value::Format;
 use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::traft::node;
 use ::tarantool::tuple::Tuple;
 use rmpv::Value;
-use sbroad::errors::{Entity, SbroadError};
 use sbroad::executor::ir::ExecutionPlan;
-use sbroad::executor::result::MetadataColumn;
 use sbroad::executor::Query;
-use sbroad::ir::acl::{Acl, GrantRevokeType};
-use sbroad::ir::block::Block;
-use sbroad::ir::ddl::Ddl;
-use sbroad::ir::expression::Expression;
-use sbroad::ir::operator::Relational;
-use sbroad::ir::{Node, Plan};
+use sbroad::ir::Plan;
 use serde::{Deserialize, Serialize};
-use serde_repr::Serialize_repr;
-use smol_str::format_smolstr;
 use std::cell::{Cell, RefCell};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -339,22 +332,6 @@ impl Drop for StatementHolder {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct StatementDescribe {
-    #[serde(flatten)]
-    describe: Describe,
-    param_oids: Vec<Oid>,
-}
-
-impl StatementDescribe {
-    fn new(describe: Describe, param_oids: Vec<Oid>) -> Self {
-        Self {
-            describe,
-            param_oids,
-        }
-    }
-}
-
 // TODO: use const from pgwire once pgproto is merged to picodata
 const TEXT_OID: u32 = 25;
 
@@ -431,7 +408,7 @@ fn take_rows(rows: &mut IntoIter<Value>, max_rows: usize) -> PgResult<Tuple> {
 }
 
 impl Portal {
-    pub fn new(plan: Plan, statement: Statement, output_format: Vec<u8>) -> PgResult<Self> {
+    pub fn new(plan: Plan, statement: Statement, output_format: Vec<Format>) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
         Ok(Self {
@@ -496,225 +473,6 @@ impl Portal {
 
     pub fn statement(&self) -> &Statement {
         &self.statement
-    }
-}
-
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct PortalDescribe {
-    #[serde(flatten)]
-    describe: Describe,
-    output_format: Vec<u8>,
-}
-
-impl PortalDescribe {
-    fn new(describe: Describe, output_format: Vec<u8>) -> Self {
-        Self {
-            describe,
-            output_format,
-        }
-    }
-}
-
-/// Get an output format from the dql query plan.
-fn dql_output_format(ir: &Plan) -> Result<Vec<MetadataColumn>, SbroadError> {
-    // Get metadata (column types) from the top node's output tuple.
-    let top_id = ir.get_top()?;
-    let top_output_id = ir.get_relation_node(top_id)?.output();
-    let columns = ir.get_row_list(top_output_id)?;
-    let mut metadata = Vec::with_capacity(columns.len());
-    for col_id in columns {
-        let column = ir.get_expression_node(*col_id)?;
-        let column_type = column.calculate_type(ir)?.to_string();
-        let column_name = if let Expression::Alias { name, .. } = column {
-            name.clone()
-        } else {
-            return Err(SbroadError::Invalid(
-                Entity::Expression,
-                Some(format_smolstr!("expected alias, got {column:?}")),
-            ));
-        };
-        metadata.push(MetadataColumn::new(column_name.to_string(), column_type));
-    }
-    Ok(metadata)
-}
-
-/// Get the output format of explain message.
-fn explain_output_format() -> Vec<MetadataColumn> {
-    vec![MetadataColumn::new("QUERY PLAN".into(), "string".into())]
-}
-
-#[derive(Debug, Clone, Default, Serialize_repr)]
-#[repr(u8)]
-pub enum QueryType {
-    Acl = 0,
-    Ddl = 1,
-    Dml = 2,
-    #[default]
-    Dql = 3,
-    Explain = 4,
-}
-
-#[derive(Clone, Debug, Default, Serialize_repr)]
-#[repr(u8)]
-pub enum CommandTag {
-    AlterRole = 0,
-    CallProcedure = 16,
-    CreateIndex = 18,
-    CreateProcedure = 14,
-    CreateRole = 1,
-    CreateTable = 2,
-    DropIndex = 19,
-    DropProcedure = 15,
-    DropRole = 3,
-    DropTable = 4,
-    Delete = 5,
-    Explain = 6,
-    Grant = 7,
-    GrantRole = 8,
-    Insert = 9,
-    RenameRoutine = 17,
-    Revoke = 10,
-    RevokeRole = 11,
-    #[default]
-    Select = 12,
-    Update = 13,
-}
-
-impl From<CommandTag> for QueryType {
-    fn from(command_tag: CommandTag) -> Self {
-        match command_tag {
-            CommandTag::AlterRole
-            | CommandTag::DropRole
-            | CommandTag::CreateRole
-            | CommandTag::Grant
-            | CommandTag::GrantRole
-            | CommandTag::Revoke
-            | CommandTag::RevokeRole => QueryType::Acl,
-            CommandTag::DropTable
-            | CommandTag::CreateTable
-            | CommandTag::DropIndex
-            | CommandTag::CreateIndex
-            | CommandTag::CreateProcedure
-            | CommandTag::RenameRoutine
-            | CommandTag::DropProcedure => QueryType::Ddl,
-            CommandTag::Delete
-            | CommandTag::Insert
-            | CommandTag::Update
-            | CommandTag::CallProcedure => QueryType::Dml,
-            CommandTag::Explain => QueryType::Explain,
-            CommandTag::Select => QueryType::Dql,
-        }
-    }
-}
-
-impl TryFrom<&Node> for CommandTag {
-    type Error = SbroadError;
-
-    fn try_from(node: &Node) -> Result<Self, Self::Error> {
-        match node {
-            Node::Acl(acl) => match acl {
-                Acl::DropRole { .. } | Acl::DropUser { .. } => Ok(CommandTag::DropRole),
-                Acl::CreateRole { .. } | Acl::CreateUser { .. } => Ok(CommandTag::CreateRole),
-                Acl::AlterUser { .. } => Ok(CommandTag::AlterRole),
-                Acl::GrantPrivilege { grant_type, .. } => match grant_type {
-                    GrantRevokeType::RolePass { .. } => Ok(CommandTag::GrantRole),
-                    _ => Ok(CommandTag::Grant),
-                },
-                Acl::RevokePrivilege { revoke_type, .. } => match revoke_type {
-                    GrantRevokeType::RolePass { .. } => Ok(CommandTag::RevokeRole),
-                    _ => Ok(CommandTag::Revoke),
-                },
-            },
-            Node::Block(block) => match block {
-                Block::Procedure { .. } => Ok(CommandTag::CallProcedure),
-            },
-            Node::Ddl(ddl) => match ddl {
-                Ddl::DropTable { .. } => Ok(CommandTag::DropTable),
-                Ddl::CreateTable { .. } => Ok(CommandTag::CreateTable),
-                Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),
-                Ddl::DropProc { .. } => Ok(CommandTag::DropProcedure),
-                Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
-                Ddl::CreateIndex { .. } => Ok(CommandTag::CreateIndex),
-                Ddl::DropIndex { .. } => Ok(CommandTag::DropIndex),
-            },
-            Node::Relational(rel) => match rel {
-                Relational::Delete { .. } => Ok(CommandTag::Delete),
-                Relational::Insert { .. } => Ok(CommandTag::Insert),
-                Relational::Update { .. } => Ok(CommandTag::Update),
-                Relational::Except { .. }
-                | Relational::Join { .. }
-                | Relational::Motion { .. }
-                | Relational::Projection { .. }
-                | Relational::Intersect { .. }
-                | Relational::ScanCte { .. }
-                | Relational::ScanRelation { .. }
-                | Relational::ScanSubQuery { .. }
-                | Relational::Selection { .. }
-                | Relational::GroupBy { .. }
-                | Relational::OrderBy { .. }
-                | Relational::Having { .. }
-                | Relational::Union { .. }
-                | Relational::UnionAll { .. }
-                | Relational::Values { .. }
-                | Relational::ValuesRow { .. } => Ok(CommandTag::Select),
-            },
-            Node::Expression(_) | Node::Parameter => Err(SbroadError::Invalid(
-                Entity::Node,
-                Some(format_smolstr!("{node:?} can't be converted to CommandTag")),
-            )),
-        }
-    }
-}
-
-/// Contains a query description used by pgproto.
-#[derive(Debug, Clone, Default, Serialize)]
-pub struct Describe {
-    pub command_tag: CommandTag,
-    pub query_type: QueryType,
-    /// Output columns format.
-    pub metadata: Vec<MetadataColumn>,
-}
-
-impl Describe {
-    #[inline]
-    pub fn with_command_tag(mut self, command_tag: CommandTag) -> Self {
-        self.command_tag = command_tag.clone();
-        self.query_type = command_tag.into();
-        self
-    }
-
-    #[inline]
-    pub fn with_metadata(mut self, metadata: Vec<MetadataColumn>) -> Self {
-        self.metadata = metadata;
-        self
-    }
-
-    pub fn new(plan: &Plan) -> PgResult<Self> {
-        let command_tag = if plan.is_explain() {
-            CommandTag::Explain
-        } else {
-            let top = plan.get_top()?;
-            let node = plan.get_node(top)?;
-            CommandTag::try_from(node)?
-        };
-        let query_type = command_tag.clone().into();
-        match query_type {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml => {
-                Ok(Describe::default().with_command_tag(command_tag))
-            }
-            QueryType::Dql => Ok(Describe::default()
-                .with_command_tag(command_tag)
-                .with_metadata(dql_output_format(plan)?)),
-            QueryType::Explain => Ok(Describe::default()
-                .with_command_tag(command_tag)
-                .with_metadata(explain_output_format())),
-        }
-    }
-}
-
-impl Return for Describe {
-    fn ret(self, ctx: FunctionCtx) -> c_int {
-        ReturnMsgpack(self).ret(ctx)
     }
 }
 

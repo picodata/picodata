@@ -1,15 +1,14 @@
 use crate::tlog;
 
-use self::describe::{PortalDescribe, StatementDescribe};
 use self::result::ExecuteResult;
 use self::value::{Format, PgValue};
+use super::backend::describe::{PortalDescribe, StatementDescribe};
 use super::client::ClientId;
 use super::entrypoints::PG_ENTRYPOINTS;
 use super::error::PgResult;
 use postgres_types::Oid;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub mod describe;
 pub mod result;
 pub mod value;
 

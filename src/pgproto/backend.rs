@@ -1,9 +1,11 @@
+use self::describe::{PortalDescribe, StatementDescribe};
 use self::storage::{
-    with_portals_mut, Portal, PortalDescribe, Statement, StatementDescribe, UserPortalNames,
-    UserStatementNames, PG_PORTALS, PG_STATEMENTS,
+    with_portals_mut, Portal, Statement, UserPortalNames, UserStatementNames, PG_PORTALS,
+    PG_STATEMENTS,
 };
 use super::client::ClientId;
 use super::error::{PgError, PgResult};
+use crate::pgproto::storage::value::Format;
 use crate::schema::ADMIN_ID;
 use crate::sql::otm::TracerKind;
 use crate::sql::router::RouterRuntime;
@@ -27,6 +29,7 @@ use std::rc::Rc;
 use tarantool::session::with_su;
 use tarantool::tuple::Tuple;
 
+pub mod describe;
 mod storage;
 
 struct BindArgs {
@@ -109,7 +112,11 @@ pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
                 plan.apply_options()?;
                 plan.optimize()?;
             }
-            Portal::new(plan, statement.clone(), output_format)
+            let format = output_format
+                .into_iter()
+                .map(|raw| Format::try_from(raw as i16).unwrap())
+                .collect();
+            Portal::new(plan, statement.clone(), format)
         },
     )?;
 

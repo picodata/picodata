@@ -1,7 +1,5 @@
-use super::{
-    describe::{CommandTag, PortalDescribe, QueryType},
-    value::{Format, PgValue},
-};
+use super::value::{Format, PgValue};
+use crate::pgproto::backend::describe::{CommandTag, PortalDescribe, QueryType};
 use crate::pgproto::error::PgResult;
 use bytes::BytesMut;
 use pgwire::messages::data::{DataRow, RowDescription};
