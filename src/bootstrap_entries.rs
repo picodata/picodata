@@ -5,10 +5,10 @@ use ::tarantool::msgpack;
 
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
+use crate::pgproto;
 use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::ADMIN_ID;
-use crate::sql::pgproto;
 use crate::storage;
 use crate::storage::ClusterwideTable;
 use crate::storage::PropertyName;

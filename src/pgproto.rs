@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
 
+mod backend;
 mod client;
 mod entrypoints;
 mod error;
@@ -16,6 +17,9 @@ mod server;
 mod storage;
 mod stream;
 mod tls;
+
+pub const DEFAULT_MAX_PG_STATEMENTS: usize = 50;
+pub const DEFAULT_MAX_PG_PORTALS: usize = 50;
 
 /// Main postgres server configuration.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]

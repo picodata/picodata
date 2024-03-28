@@ -7,10 +7,6 @@ use crate::schema::{
     RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn,
     UserDef, ADMIN_ID,
 };
-use crate::sql::pgproto::{
-    with_portals_mut, Portal, PortalDescribe, Statement, StatementDescribe, UserPortalNames,
-    UserStatementNames, PG_PORTALS, PG_STATEMENTS,
-};
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::storage::space_by_name;
@@ -21,18 +17,14 @@ use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or};
 
-use opentelemetry::sdk::trace::Tracer;
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
 use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{decode_msgpack, normalize_name_for_space_api};
-use sbroad::executor::engine::{QueryCache, Router, TableVersionMap};
-use sbroad::executor::lru::Cache;
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
-use sbroad::frontend::Ast;
 use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::block::Block;
 use sbroad::ir::ddl::{Ddl, ParamDef};
@@ -40,15 +32,13 @@ use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
-use sbroad::ir::value::{LuaValue, Value};
+use sbroad::ir::value::Value;
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
-use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
-use serde::Deserialize;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use sbroad::otm::query_span;
+use smol_str::{format_smolstr, SmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
 
-use self::pgproto::{ClientId, Oid};
 use crate::storage::Clusterwide;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
@@ -57,14 +47,11 @@ use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
-use sbroad::utils::MutexLike;
-use std::rc::Rc;
 use std::str::FromStr;
 use tarantool::session;
 
 pub mod otm;
 
-pub mod pgproto;
 pub mod router;
 pub mod storage;
 use otm::TracerKind;
@@ -190,7 +177,7 @@ fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
     Ok(())
 }
 
-fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
+pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top().map_err(Error::from)?;
@@ -330,231 +317,6 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
         &ctx,
         &params.pattern,
         dispatch,
-    )
-}
-
-struct BindArgs {
-    id: ClientId,
-    stmt_name: String,
-    portal_name: String,
-    params: Vec<Value>,
-    encoding_format: Vec<u8>,
-    traceable: bool,
-}
-
-impl<'de> Deserialize<'de> for BindArgs {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct EncodedBindArgs(
-            ClientId,
-            String,
-            String,
-            Option<Vec<LuaValue>>,
-            Vec<u8>,
-            Option<bool>,
-        );
-
-        let EncodedBindArgs(id, stmt_name, portal_name, params, encoding_format, traceable) =
-            EncodedBindArgs::deserialize(deserializer)?;
-
-        let params = params
-            .unwrap_or_default()
-            .into_iter()
-            .map(Value::from)
-            .collect::<Vec<Value>>();
-
-        Ok(Self {
-            id,
-            stmt_name,
-            portal_name,
-            params,
-            encoding_format,
-            traceable: traceable.unwrap_or(false),
-        })
-    }
-}
-
-// helper function to get `TracerRef`
-fn get_tracer_param(traceable: bool) -> &'static Tracer {
-    let kind = TracerKind::from_traceable(traceable);
-    kind.get_tracer()
-}
-
-#[proc(packed_args)]
-pub fn proc_pg_bind(args: BindArgs) -> traft::Result<()> {
-    let BindArgs {
-        id,
-        stmt_name,
-        portal_name,
-        params,
-        encoding_format: output_format,
-        traceable,
-    } = args;
-    let key = (id, stmt_name.into());
-    let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
-        return Err(Error::Other(
-            format!("Couldn't find statement \'{}\'.", key.1).into(),
-        ));
-    };
-    let mut plan = statement.plan().clone();
-    let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
-    let portal = query_span::<traft::Result<_>, _>(
-        "\"api.router.bind\"",
-        statement.id(),
-        get_tracer_param(traceable),
-        &ctx,
-        statement.query_pattern(),
-        || {
-            if !plan.is_ddl()? && !plan.is_acl()? {
-                plan.bind_params(params)?;
-                plan.apply_options()?;
-                plan.optimize()?;
-            }
-            Portal::new(plan, statement.clone(), output_format)
-        },
-    )?;
-
-    PG_PORTALS.with(|storage| storage.borrow_mut().put((id, portal_name.into()), portal))?;
-    Ok(())
-}
-
-#[proc]
-pub fn proc_pg_statements(id: ClientId) -> UserStatementNames {
-    UserStatementNames::new(id)
-}
-
-#[proc]
-pub fn proc_pg_portals(id: ClientId) -> UserPortalNames {
-    UserPortalNames::new(id)
-}
-
-#[proc]
-pub fn proc_pg_close_stmt(id: ClientId, name: String) {
-    // Close can't cause an error in PG.
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
-}
-
-#[proc]
-pub fn proc_pg_close_portal(id: ClientId, name: String) {
-    // Close can't cause an error in PG.
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
-}
-
-#[proc]
-pub fn proc_pg_close_client_stmts(id: ClientId) {
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
-}
-
-#[proc]
-pub fn proc_pg_close_client_portals(id: ClientId) {
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
-}
-
-#[proc]
-pub fn proc_pg_describe_stmt(id: ClientId, name: String) -> Result<StatementDescribe, Error> {
-    let key = (id, name.into());
-    let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
-        return Err(Error::Other(
-            format!("Couldn't find statement \'{}\'.", key.1).into(),
-        ));
-    };
-    Ok(statement.describe().clone())
-}
-
-#[proc]
-pub fn proc_pg_describe_portal(id: ClientId, name: String) -> traft::Result<PortalDescribe> {
-    with_portals_mut((id, name.into()), |portal| Ok(portal.describe().clone()))
-}
-
-#[proc]
-pub fn proc_pg_execute(
-    id: ClientId,
-    name: String,
-    max_rows: i64,
-    traceable: bool,
-) -> traft::Result<Tuple> {
-    let max_rows = if max_rows <= 0 { i64::MAX } else { max_rows };
-    let name = Rc::from(name);
-
-    let statement = with_portals_mut((id, Rc::clone(&name)), |portal| {
-        // We are cloning Rc here.
-        Ok(portal.statement().clone())
-    })?;
-    with_portals_mut((id, name), |portal| {
-        let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
-        query_span::<traft::Result<Tuple>, _>(
-            "\"api.router.execute\"",
-            statement.id(),
-            get_tracer_param(traceable),
-            &ctx,
-            statement.query_pattern(),
-            || portal.execute(max_rows as usize),
-        )
-    })
-}
-
-#[proc]
-pub fn proc_pg_parse(
-    cid: ClientId,
-    name: String,
-    query: String,
-    param_oids: Vec<Oid>,
-    traceable: bool,
-) -> traft::Result<()> {
-    let id = query_id(&query);
-    // Keep the query patterns for opentelemetry spans short enough.
-    let sql = query
-        .char_indices()
-        .filter_map(|(i, c)| if i <= OTM_CHAR_LIMIT { Some(c) } else { None })
-        .collect::<String>();
-    let ctx = with_tracer(Context::new(), TracerKind::from_traceable(traceable));
-    query_span::<traft::Result<()>, _>(
-        "\"api.router.parse\"",
-        &id.clone(),
-        get_tracer_param(traceable),
-        &ctx,
-        &sql.clone(),
-        || {
-            let runtime = RouterRuntime::new().map_err(Error::from)?;
-            let mut cache = runtime.cache().lock();
-            let cache_entry = with_su(ADMIN_ID, || cache.get(&query.to_smolstr()))??;
-            if let Some(plan) = cache_entry {
-                let statement =
-                    Statement::new(id.to_string(), sql.clone(), plan.clone(), param_oids)?;
-                PG_STATEMENTS
-                    .with(|cache| cache.borrow_mut().put((cid, name.into()), statement))?;
-                return Ok(());
-            }
-            let metadata = &*runtime.metadata().lock();
-            let plan = with_su(ADMIN_ID, || -> traft::Result<IrPlan> {
-                let mut plan =
-                    <RouterRuntime as Router>::ParseTree::transform_into_plan(&query, metadata)
-                        .map_err(Error::from)?;
-                if runtime.provides_versions() {
-                    let mut table_version_map =
-                        TableVersionMap::with_capacity(plan.relations.tables.len());
-                    for table in plan.relations.tables.keys() {
-                        let normalized = normalize_name_for_space_api(table);
-                        let version = runtime
-                            .get_table_version(normalized.as_str())
-                            .map_err(Error::from)?;
-                        table_version_map.insert(normalized, version);
-                    }
-                    plan.version_map = table_version_map;
-                }
-                Ok(plan)
-            })??;
-            if !plan.is_ddl()? && !plan.is_acl()? {
-                cache.put(query.to_smolstr(), plan.clone())?;
-            }
-            let statement = Statement::new(id.to_string(), sql, plan, param_oids)?;
-            PG_STATEMENTS
-                .with(|storage| storage.borrow_mut().put((cid, name.into()), statement))?;
-            Ok(())
-        },
     )
 }
 

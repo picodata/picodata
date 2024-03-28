@@ -5,6 +5,8 @@ use std::io;
 use std::num::{ParseFloatError, ParseIntError};
 use std::str::ParseBoolError;
 use std::string::FromUtf8Error;
+use tarantool::error::BoxError;
+use tarantool::error::IntoBoxError;
 use thiserror::Error;
 
 pub type PgResult<T> = Result<T, PgError>;
@@ -41,6 +43,21 @@ pub enum PgError {
 
     #[error("tls error: {0}")]
     TlsError(#[from] TlsError),
+
+    #[error("sbroad error: {0}")]
+    SbroadError(#[from] sbroad::errors::SbroadError),
+
+    #[error("traft error: {0}")]
+    TraftError(Box<crate::traft::error::Error>),
+
+    #[error("tarantool error: {0}")]
+    TarantoolError(#[from] tarantool::error::Error),
+
+    #[error("encoding error: {0}")]
+    RmpSerdeEncode(#[from] rmp_serde::encode::Error),
+
+    #[error("{0}")]
+    Other(Box<dyn error::Error>),
 }
 
 #[derive(Error, Debug)]
@@ -59,6 +76,12 @@ pub enum DecodingError {
 
     #[error("decoding error: {0}")]
     Other(Box<dyn error::Error>),
+}
+
+impl From<crate::traft::error::Error> for PgError {
+    fn from(value: crate::traft::error::Error) -> Self {
+        PgError::TraftError(value.into())
+    }
 }
 
 /// Build error info from PgError.
@@ -83,5 +106,11 @@ impl PgError {
             // TODO: make the code depending on the error kind
             _otherwise => "XX000",
         }
+    }
+}
+
+impl IntoBoxError for PgError {
+    fn into_box_error(self) -> BoxError {
+        self.to_string().into_box_error()
     }
 }

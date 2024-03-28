@@ -21,6 +21,7 @@ use tarantool::util::NumOrStr;
 use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
+use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::replicaset::Replicaset;
 use crate::schema::{
     Distribution, PrivilegeType, SchemaObjectType, ServiceDef, ServiceRouteItem, ServiceRouteKey,
@@ -29,7 +30,6 @@ use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
-use crate::sql::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::tier::Tier;
 use crate::traft;
 use crate::traft::error::Error;

@@ -1,7 +1,6 @@
-//! PostgreSQL protocol.
-
-use crate::traft::error::Error;
-use crate::traft::{self, node};
+use crate::pgproto::error::{PgError, PgResult};
+use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
+use crate::traft::node;
 use ::tarantool::tuple::Tuple;
 use rmpv::Value;
 use sbroad::errors::{Entity, SbroadError};
@@ -27,11 +26,8 @@ use std::vec::IntoIter;
 use tarantool::proc::{Return, ReturnMsgpack};
 use tarantool::tuple::FunctionCtx;
 
-use super::dispatch;
-use super::router::RouterRuntime;
-
-pub const DEFAULT_MAX_PG_STATEMENTS: usize = 50;
-pub const DEFAULT_MAX_PG_PORTALS: usize = 50;
+use crate::sql::dispatch;
+use crate::sql::router::RouterRuntime;
 
 pub type ClientId = u32;
 
@@ -54,9 +50,10 @@ impl<S> PgStorage<S> {
         }
     }
 
-    pub fn put(&mut self, key: (ClientId, Rc<str>), value: S) -> traft::Result<()> {
+    pub fn put(&mut self, key: (ClientId, Rc<str>), value: S) -> PgResult<()> {
         if self.len() >= self.capacity() {
-            return Err(Error::Other("Statement storage is full".into()));
+            // TODO: it should be configuration_limit_exceeded error
+            return Err(PgError::Other("Statement storage is full".into()));
         }
 
         if key.1.is_empty() {
@@ -68,7 +65,8 @@ impl<S> PgStorage<S> {
         match self.map.entry(key) {
             Entry::Occupied(entry) => {
                 let (id, name) = entry.key();
-                Err(Error::Other(
+                // TODO: it should be duplicate_cursor or duplicate_prepared_statement error
+                Err(PgError::Other(
                     format!("Duplicated name \'{name}\' for client {id}").into(),
                 ))
             }
@@ -102,10 +100,6 @@ impl<S> PgStorage<S> {
         self.map.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
     pub fn capacity(&self) -> usize {
         self.capacity
     }
@@ -129,7 +123,7 @@ impl StatementStorage {
         }
     }
 
-    pub fn put(&mut self, key: (ClientId, Rc<str>), statement: Statement) -> traft::Result<()> {
+    pub fn put(&mut self, key: (ClientId, Rc<str>), statement: Statement) -> PgResult<()> {
         self.0.put(key, StatementHolder(statement))
     }
 
@@ -151,14 +145,6 @@ impl StatementStorage {
 
     pub fn len(&self) -> usize {
         self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.0.capacity()
     }
 }
 
@@ -186,7 +172,7 @@ impl PortalStorage {
         }
     }
 
-    pub fn put(&mut self, key: (ClientId, Rc<str>), portal: Portal) -> traft::Result<()> {
+    pub fn put(&mut self, key: (ClientId, Rc<str>), portal: Portal) -> PgResult<()> {
         self.0.put(key, portal)?;
         Ok(())
     }
@@ -212,14 +198,6 @@ impl PortalStorage {
     pub fn len(&self) -> usize {
         self.0.len()
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn capacity(&self) -> usize {
-        self.0.capacity()
-    }
 }
 
 impl Default for PortalStorage {
@@ -233,12 +211,12 @@ thread_local! {
     pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
 }
 
-pub fn with_portals_mut<T, F>(key: (ClientId, Rc<str>), f: F) -> traft::Result<T>
+pub fn with_portals_mut<T, F>(key: (ClientId, Rc<str>), f: F) -> PgResult<T>
 where
-    F: FnOnce(&mut Portal) -> traft::Result<T>,
+    F: FnOnce(&mut Portal) -> PgResult<T>,
 {
     let mut portal: Portal = PG_PORTALS.with(|storage| {
-        storage.borrow_mut().remove(&key).ok_or(Error::Other(
+        storage.borrow_mut().remove(&key).ok_or(PgError::Other(
             format!("Couldn't find portal \'{}\'.", key.1).into(),
         ))
     })?;
@@ -275,7 +253,7 @@ impl StatementInner {
         query_pattern: String,
         plan: Plan,
         specified_param_oids: Vec<u32>,
-    ) -> Result<Self, Error> {
+    ) -> PgResult<Self> {
         let param_oids = derive_param_oids(&plan, specified_param_oids)?;
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
         Ok(Self {
@@ -317,7 +295,7 @@ impl Statement {
         sql: String,
         plan: Plan,
         specified_param_oids: Vec<u32>,
-    ) -> Result<Self, Error> {
+    ) -> PgResult<Self> {
         Ok(Self(Rc::new(StatementInner::new(
             id,
             sql,
@@ -380,17 +358,14 @@ impl StatementDescribe {
 // TODO: use const from pgwire once pgproto is merged to picodata
 const TEXT_OID: u32 = 25;
 
-fn derive_param_oids(plan: &Plan, mut param_oids: Vec<Oid>) -> Result<Vec<Oid>, Error> {
+fn derive_param_oids(plan: &Plan, mut param_oids: Vec<Oid>) -> PgResult<Vec<Oid>> {
     let params_count = plan.get_param_set().len();
     if params_count < param_oids.len() {
-        return Err(Error::Other(
-            format!(
-                "query has {} parameters, but {} were given",
-                params_count,
-                param_oids.len()
-            )
-            .into(),
-        ));
+        return Err(PgError::ProtocolViolation(format!(
+            "query has {} parameters, but {} were given",
+            params_count,
+            param_oids.len()
+        )));
     }
 
     // Postgres derives oids of unspecified parameters depending on the context.
@@ -441,7 +416,7 @@ fn tuple_as_rows(tuple: &Tuple) -> Option<Vec<Value>> {
     None
 }
 
-fn take_rows(rows: &mut IntoIter<Value>, max_rows: usize) -> traft::Result<Tuple> {
+fn take_rows(rows: &mut IntoIter<Value>, max_rows: usize) -> PgResult<Tuple> {
     let is_finished = rows.len() <= max_rows;
     let rows = rows.take(max_rows).collect();
     #[derive(Serialize)]
@@ -450,13 +425,13 @@ fn take_rows(rows: &mut IntoIter<Value>, max_rows: usize) -> traft::Result<Tuple
         is_finished: bool,
     }
     let result = RunningResult { rows, is_finished };
-    let mp = rmp_serde::to_vec_named(&vec![result]).map_err(|e| Error::Other(e.into()))?;
-    let ret = Tuple::try_from_slice(&mp).map_err(|e| Error::Other(e.into()))?;
+    let mp = rmp_serde::to_vec_named(&vec![result])?;
+    let ret = Tuple::try_from_slice(&mp)?;
     Ok(ret)
 }
 
 impl Portal {
-    pub fn new(plan: Plan, statement: Statement, output_format: Vec<u8>) -> Result<Self, Error> {
+    pub fn new(plan: Plan, statement: Statement, output_format: Vec<u8>) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
         Ok(Self {
@@ -467,7 +442,7 @@ impl Portal {
         })
     }
 
-    pub fn execute(&mut self, max_rows: usize) -> traft::Result<Tuple> {
+    pub fn execute(&mut self, max_rows: usize) -> PgResult<Tuple> {
         loop {
             match &mut self.state {
                 PortalState::NotStarted => self.start()?,
@@ -485,7 +460,7 @@ impl Portal {
                     return Ok(res);
                 }
                 _ => {
-                    return Err(Error::Other(
+                    return Err(PgError::Other(
                         format!("Can't execute portal in state {:?}", self.state).into(),
                     ))
                 }
@@ -493,8 +468,8 @@ impl Portal {
         }
     }
 
-    fn start(&mut self) -> traft::Result<()> {
-        let runtime = RouterRuntime::new().map_err(Error::from)?;
+    fn start(&mut self) -> PgResult<()> {
+        let runtime = RouterRuntime::new()?;
         let query = Query::from_parts(
             self.plan.is_explain(),
             // XXX: the router runtime cache contains only unbinded IR plans to
@@ -714,7 +689,7 @@ impl Describe {
         self
     }
 
-    pub fn new(plan: &Plan) -> Result<Self, SbroadError> {
+    pub fn new(plan: &Plan) -> PgResult<Self> {
         let command_tag = if plan.is_explain() {
             CommandTag::Explain
         } else {
