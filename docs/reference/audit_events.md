@@ -83,74 +83,92 @@
      * (create_procedure, drop_procedure, rename_procedure)
 -->
 
-### create_user
+### access_denied
 
-Создание учетной записи пользователя СУБД.
+Неавторизованный запрос к БД.
+
+<!--
+TODO:
+privilege_type -> privilege
+object_name -> object
+new field: user == initiator
+-->
 
 ```json
 {
-     "title": "create_user",
-     "message": "created user `<user>`",
+     "title": "access_denied",
+     "message": "<privilege> access
+          to <object_type> `<object>`
+          is denied for user `<user>`",
+     "severity": "medium",
+     "privilege": ...,
+     "object_type": ...,
+     "object": ...,
+     ...
+}
+```
+
+### auth_fail
+
+Неуспешная попытка аутентификации.
+
+```json
+{
+     "title": "auth_fail",
+     "message": "failed to authenticate user `<user>`",
      "severity": "high",
      "user": ...,
-     "auth_type": ...,
-     ...
+     "verdict": ...,
+     ...,
 }
 ```
 
-### create_role
+### auth_ok
 
-Создание роли СУБД.
+Успешная попытка аутентификации.
 
 ```json
 {
-     "title": "create_role",
-     "message": "created role `<role>`",
+     "title": "auth_ok",
+     "message": "successfully authenticated user `<user>`",
      "severity": "high",
-     "role": ...,
-     ...
-}
-```
-
-### drop_user
-
-Удаление учетной записи пользователя СУБД.
-
-```json
-{
-     "title": "drop_user",
-     "message": "dropped user `<user>`",
-     "severity": "medium",
      "user": ...,
+     "verdict": ...,
      ...
 }
 ```
 
-### drop_role
+### change_config
 
-Удаление роли СУБД.
-
-```json
-{
-     "title": "drop_role",
-     "message": "dropped role `<role>`",
-     "severity": "medium",
-     "role": ...,
-     ...
-}
-```
-
-### rename_user
-
-Переименование учетной записи пользователя СУБД.
+Изменение конфигурации СУБД связанное с изменением в системной таблице
+[_pico_property](../architecture/system_tables.md#_pico_property).
 
 ```json
 {
-     "title": "rename_user",
-     "message": "name of user `<old_name>` was changed to `<new_name>`",
+     "title": "change_config",
+     "message": "property `<key>` was changed to <value>",
      "severity": "high",
-     "old_name": ...,
-     "new_name": ...,
+     "key": ...,
+     "value": ...,
+     ...
+}
+```
+
+### change_current_grade
+
+Изменение текущего [грейда](../overview/glossary.md#grade) инстанса.
+
+```json
+{
+     "title": "change_current_grade",
+     "message": "current grade
+          of instance `<instance_id>`
+          changed to <new_grade>",
+     "severity": "medium",
+     "instance_id": ...,
+     // TODO: "old_grade": ...,
+     "new_grade": ...,
+     "raft_id": ...,
      ...
 }
 ```
@@ -173,138 +191,21 @@
 }
 ```
 
-### grant_privilege
+### change_target_grade
 
-Выдача привилегии пользователю СУБД.
-
-```json
-{
-     "title": "grant_privilege",
-     "message": "granted privilege <privilege>
-          on <object_type> `<object>`
-          to <grantee_type> `<grantee>`",
-     "severity": "high",
-     "privilege": ...,
-     "object_type": ...,
-     "object": ...,
-     "grantee_type": ...,
-     "grantee": ...,
-     ...
-}
-```
-
-### revoke_privilege
-
-Отзыв привилегии у пользователя СУБД.
+Изменение целевого [грейда](../overview/glossary.md#grade) инстанса.
 
 ```json
 {
-     "title": "revoke_privilege",
-     "message": "revoked privilege <privilege>
-          on <object_type> `<object>`
-          from <grantee_type> `<grantee>`",
-     "severity": "high",
-     "privilege": ...,
-     "object_type": ...,
-     "object": ...,
-     "grantee_type": ...,
-     "grantee": ...,
-     ...
-}
-```
-
-### grant_role
-
-Назначение роли пользователю СУБД или другой роли.
-
-```json
-{
-     "title": "grant_role",
-     "message": "granted role `<role>` to <grantee_type> `<grantee>`",
-     "severity": "high",
-     "role": ...,
-     "grantee_type": ...,
-     "grantee": ...,
-     ...
-}
-```
-
-### revoke_role
-
-Отзыв роли у пользователя СУБД или у другой роли.
-
-```json
-{
-     "title": "revoke_role",
-     "message": "revoked role `<role>` from <grantee_type> `<grantee>`",
-     "severity": "high",
-     "role": ...,
-     "grantee_type": ...,
-     "grantee": ...,
-     ...
-}
-```
-
-### auth_ok
-
-Успешная попытка аутентификации.
-
-```json
-{
-     "title": "auth_ok",
-     "message": "successfully authenticated user `<user>`",
-     "severity": "high",
-     "user": ...,
-     "verdict": ...,
-     ...
-}
-```
-
-### auth_fail
-
-Неуспешная попытка аутентификации.
-
-```json
-{
-     "title": "auth_fail",
-     "message": "failed to authenticate user `<user>`",
-     "severity": "high",
-     "user": ...,
-     "verdict": ...,
-     ...,
-}
-```
-
-### create_local_db
-
-Создание базы данных. Событие фиксируется после добавления инстанса в
-кластер, см. [join_instance](#join_instance). Событие фиксируется на
-всех узлах кластера, включая добавляемый.
-
-```json
-{
-     "title": "create_local_db",
-     "message": "local database created on `<instance_id>`",
+     "title": "change_target_grade",
+     "message": "target grade
+          of instance `<instance_id>`
+          changed to <new_grade>",
      "severity": "low",
-     "raft_id": ...,
      "instance_id": ...,
-     ...
-}
-```
-
-### drop_local_db
-
-Удаление базы данных. Событие фиксируется после удаления инстанса из
-кластера, см. [expel_instance](#expel_instance). Событие фиксируется на
-всех узлах кластера.
-
-```json
-{
-     "title": "drop_local_db",
-     "message": "local database dropped on `<instance_id>`",
-     "severity": "low",
+     // TODO: "old_grade": ...,
+     "new_grade": ...,
      "raft_id": ...,
-     "instance_id": ...,
      ...
 }
 ```
@@ -332,18 +233,16 @@ start_boot/start_join -> create_local_db + connect_local_db
 }
 ```
 
-### recover_local_db
+### create_local_db
 
-Восстановление базы данных. Событие фиксируется после инициализации
-локального хранилища в случае если имело место восстановление из
-снапшота, см. [Жизненный цикл инстанса][start_discover].
-
-[start_discover]: ../architecture/instance_lifecycle.md/#fn_start_discover
+Создание базы данных. Событие фиксируется после добавления инстанса в
+кластер, см. [join_instance](#join_instance). Событие фиксируется на
+всех узлах кластера, включая добавляемый.
 
 ```json
 {
-     "title": "recover_local_db",
-     "message": "local database recovered on `<instance_id>`",
+     "title": "create_local_db",
+     "message": "local database created on `<instance_id>`",
      "severity": "low",
      "raft_id": ...,
      "instance_id": ...,
@@ -351,100 +250,132 @@ start_boot/start_join -> create_local_db + connect_local_db
 }
 ```
 
-### shredding_started
+### create_procedure
 
-Начало безопасного удаления рабочих файлов инстанса путем многократной
-перезаписи специальными битовыми последовательностями.
-
-```json
-{
-     "title": "shredding_started",
-     "message": "shredding started for <filename>",
-     "severity": "low",
-     "filename": ...,
-     ...
-}
-```
-
-### shredding_finished
-
-Успешное удаление рабочих файлов инстанса.
+Создание хранимой процедуры.
 
 ```json
 {
-     "title": "shredding_finished",
-     "message": "shredding finished for <filename>",
-     "severity": "low",
-     "filename": ...,
-     ...
-}
-```
-
-### shredding_failed
-
-Ошибка безопасного удалении рабочих файлов инстанса.
-
-```json
-{
-     "title": "shredding_failed",
-     "message": "shredding failed for <filename>",
-     "severity": "low",
-     "filename": ...,
-     "error": ...,
-     ...
-}
-```
-
-### change_current_grade
-
-Изменение текущего [грейда](../overview/glossary.md#grade) инстанса.
-
-```json
-{
-     "title": "change_current_grade",
-     "message": "current grade
-          of instance `<instance_id>`
-          changed to <new_grade>",
+     "title": "create_procedure",
+     "message": "created procedure `<name>`",
      "severity": "medium",
-     "instance_id": ...,
-     // TODO: "old_grade": ...,
-     "new_grade": ...,
-     "raft_id": ...,
+     "name": ...,
      ...
 }
 ```
 
+### create_role
 
-### change_target_grade
-
-Изменение целевого [грейда](../overview/glossary.md#grade) инстанса.
+Создание роли СУБД.
 
 ```json
 {
-     "title": "change_target_grade",
-     "message": "target grade
-          of instance `<instance_id>`
-          changed to <new_grade>",
-     "severity": "low",
-     "instance_id": ...,
-     // TODO: "old_grade": ...,
-     "new_grade": ...,
-     "raft_id": ...,
+     "title": "create_role",
+     "message": "created role `<role>`",
+     "severity": "high",
+     "role": ...,
      ...
 }
 ```
 
-### join_instance
+### create_table
 
-Изменение конфигурации СУБД связанное с добавлением инстанса в кластер.
+Создание таблицы БД.
 
 ```json
 {
-     "title": "join_instance",
-     "message": "a new instance `<instance_id>` joined the cluster",
+     "title": "create_table",
+     "message": "created table `<name>`",
+     "severity": "medium",
+     "name": ...,
+     ...
+}
+```
+
+### create_user
+
+Создание учетной записи пользователя СУБД.
+
+```json
+{
+     "title": "create_user",
+     "message": "created user `<user>`",
+     "severity": "high",
+     "user": ...,
+     "auth_type": ...,
+     ...
+}
+```
+
+### drop_local_db
+
+Удаление базы данных. Событие фиксируется после удаления инстанса из
+кластера, см. [expel_instance](#expel_instance). Событие фиксируется на
+всех узлах кластера.
+
+```json
+{
+     "title": "drop_local_db",
+     "message": "local database dropped on `<instance_id>`",
      "severity": "low",
-     "instance_id": ...,
      "raft_id": ...,
+     "instance_id": ...,
+     ...
+}
+```
+
+### drop_procedure
+
+Удаление хранимой процедуры.
+
+```json
+{
+     "title": "drop_procedure",
+     "message": "dropped procedure `<name>`",
+     "severity": "medium",
+     "name": ...,
+     ...
+}
+```
+
+### drop_role
+
+Удаление роли СУБД.
+
+```json
+{
+     "title": "drop_role",
+     "message": "dropped role `<role>`",
+     "severity": "medium",
+     "role": ...,
+     ...
+}
+```
+
+### drop_table
+
+Удаление таблицы БД.
+
+```json
+{
+     "title": "drop_table",
+     "message": "dropped table `<name>`",
+     "severity": "medium",
+     "name": ...,
+     ...
+}
+```
+
+### drop_user
+
+Удаление учетной записи пользователя СУБД.
+
+```json
+{
+     "title": "drop_user",
+     "message": "dropped user `<user>`",
+     "severity": "medium",
+     "user": ...,
      ...
 }
 ```
@@ -464,128 +395,83 @@ start_boot/start_join -> create_local_db + connect_local_db
 }
 ```
 
-### change_config
+### grant_privilege
 
-Изменение конфигурации СУБД связанное с изменением в системной таблице
-[_pico_property](../architecture/system_tables.md#_pico_property).
+Выдача привилегии пользователю СУБД.
 
 ```json
 {
-     "title": "change_config",
-     "message": "property `<key>` was changed to <value>",
+     "title": "grant_privilege",
+     "message": "granted privilege <privilege>
+          on <object_type> `<object>`
+          to <grantee_type> `<grantee>`",
      "severity": "high",
-     "key": ...,
-     "value": ...,
-     ...
-}
-```
-
-### create_table
-
-Создание таблицы БД.
-
-```json
-{
-     "title": "create_table",
-     "message": "created table `<name>`",
-     "severity": "medium",
-     "name": ...,
-     ...
-}
-```
-
-### drop_table
-
-Удаление таблицы БД.
-
-```json
-{
-     "title": "drop_table",
-     "message": "dropped table `<name>`",
-     "severity": "medium",
-     "name": ...,
-     ...
-}
-```
-
-### create_procedure
-
-Создание хранимой процедуры.
-
-```json
-{
-     "title": "create_procedure",
-     "message": "created procedure `<name>`",
-     "severity": "medium",
-     "name": ...,
-     ...
-}
-```
-
-### rename_procedure
-
-Переименование хранимой процедуры.
-
-```json
-{
-     "title": "rename_procedure",
-     "message": "renamed procedure `<old_name>` to `<new_name>`",
-     "severity": "medium",
-     "old_name": ...,
-     "new_name": ...,
-     ...
-}
-```
-
-### drop_procedure
-
-Удаление хранимой процедуры.
-
-```json
-{
-     "title": "drop_procedure",
-     "message": "dropped procedure `<name>`",
-     "severity": "medium",
-     "name": ...,
-     ...
-}
-```
-
-### access_denied
-
-Неавторизованный запрос к БД.
-
-<!--
-TODO:
-privilege_type -> privilege
-object_name -> object
-new field: user == initiator
--->
-
-```json
-{
-     "title": "access_denied",
-     "message": "<privilege> access
-          to <object_type> `<object>`
-          is denied for user `<user>`",
-     "severity": "medium",
      "privilege": ...,
      "object_type": ...,
      "object": ...,
+     "grantee_type": ...,
+     "grantee": ...,
      ...
 }
 ```
 
-### local_startup
+### grant_role
 
-Запуск инстанса. Событие фиксируется после инициализации журнала аудита,
-см. [init_audit](#init_audit).
+Назначение роли пользователю СУБД или другой роли.
 
 ```json
 {
-     "title": "local_startup",
-     "message": "instance is starting",
+     "title": "grant_role",
+     "message": "granted role `<role>` to <grantee_type> `<grantee>`",
+     "severity": "high",
+     "role": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     ...
+}
+```
+
+### init_audit
+
+Инициализация журнала аудита. Событие предшествует запуску инстанса, см.
+[local_startup](#local_startup).
+
+```json
+{
+     "title": "init_audit",
+     "message": "audit log is ready",
      "severity": "low",
+     ...
+}
+```
+
+### integrity_violation
+
+Нарушение целостности объектов контроля, см. [Контроль
+целостности][integrity].
+
+[integrity]: ../security/integrity.md
+
+```json
+{
+     "title": "integrity_violation",
+     "message": "integrity violation detected",
+     "severity": "high",
+     ...
+}
+```
+
+### join_instance
+
+Изменение конфигурации СУБД связанное с добавлением инстанса в кластер.
+
+```json
+{
+     "title": "join_instance",
+     "message": "a new instance `<instance_id>` joined the cluster",
+     "severity": "low",
+     "instance_id": ...,
+     "raft_id": ...,
      ...
 }
 ```
@@ -607,32 +493,145 @@ new field: reason
 }
 ```
 
-### integrity_violation
+### local_startup
 
-Нарушение целостности объектов контроля, см. [Контроль
-целостности][integrity].
-
-[integrity]: ../security/integrity.md
+Запуск инстанса. Событие фиксируется после инициализации журнала аудита,
+см. [init_audit](#init_audit).
 
 ```json
 {
-     "title": "integrity_violation",
-     "message": "integrity violation detected",
-     "severity": "high",
+     "title": "local_startup",
+     "message": "instance is starting",
+     "severity": "low",
      ...
 }
 ```
 
-### init_audit
+### recover_local_db
 
-Инициализация журнала аудита. Событие предшествует запуску инстанса, см.
-[local_startup](#local_startup).
+Восстановление базы данных. Событие фиксируется после инициализации
+локального хранилища в случае если имело место восстановление из
+снапшота, см. [Жизненный цикл инстанса][start_discover].
+
+[start_discover]: ../architecture/instance_lifecycle.md/#fn_start_discover
 
 ```json
 {
-     "title": "init_audit",
-     "message": "audit log is ready",
+     "title": "recover_local_db",
+     "message": "local database recovered on `<instance_id>`",
      "severity": "low",
+     "raft_id": ...,
+     "instance_id": ...,
+     ...
+}
+```
+
+### rename_procedure
+
+Переименование хранимой процедуры.
+
+```json
+{
+     "title": "rename_procedure",
+     "message": "renamed procedure `<old_name>` to `<new_name>`",
+     "severity": "medium",
+     "old_name": ...,
+     "new_name": ...,
+     ...
+}
+```
+
+### rename_user
+
+Переименование учетной записи пользователя СУБД.
+
+```json
+{
+     "title": "rename_user",
+     "message": "name of user `<old_name>` was changed to `<new_name>`",
+     "severity": "high",
+     "old_name": ...,
+     "new_name": ...,
+     ...
+}
+```
+
+### revoke_privilege
+
+Отзыв привилегии у пользователя СУБД.
+
+```json
+{
+     "title": "revoke_privilege",
+     "message": "revoked privilege <privilege>
+          on <object_type> `<object>`
+          from <grantee_type> `<grantee>`",
+     "severity": "high",
+     "privilege": ...,
+     "object_type": ...,
+     "object": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     ...
+}
+```
+
+### revoke_role
+
+Отзыв роли у пользователя СУБД или у другой роли.
+
+```json
+{
+     "title": "revoke_role",
+     "message": "revoked role `<role>` from <grantee_type> `<grantee>`",
+     "severity": "high",
+     "role": ...,
+     "grantee_type": ...,
+     "grantee": ...,
+     ...
+}
+```
+
+### shredding_failed
+
+Ошибка безопасного удалении рабочих файлов инстанса.
+
+```json
+{
+     "title": "shredding_failed",
+     "message": "shredding failed for <filename>",
+     "severity": "low",
+     "filename": ...,
+     "error": ...,
+     ...
+}
+```
+
+### shredding_finished
+
+Успешное удаление рабочих файлов инстанса.
+
+```json
+{
+     "title": "shredding_finished",
+     "message": "shredding finished for <filename>",
+     "severity": "low",
+     "filename": ...,
+     ...
+}
+```
+
+### shredding_started
+
+Начало безопасного удаления рабочих файлов инстанса путем многократной
+перезаписи специальными битовыми последовательностями.
+
+```json
+{
+     "title": "shredding_started",
+     "message": "shredding started for <filename>",
+     "severity": "low",
+     "filename": ...,
      ...
 }
 ```
