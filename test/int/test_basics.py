@@ -311,10 +311,12 @@ def test_raft_log(instance: Instance):
                 # don't care about the vertical lines
                 continue
 
+            # these are the hacks used to make pretty tables work in tarantool's console
+            line = line.replace("\u01c0", "|")
+            line = line.replace("\u00a0", " ")
+
             columns = line.split("|")
             columns = [c.strip() for c in columns]
-            # This is what's to the left of first '|' and it's a special '\u200b' character
-            columns[0] = ""
 
             # blank out the index column so we don't need to manually update it
             if columns[1].isdigit():

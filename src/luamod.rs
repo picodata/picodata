@@ -904,40 +904,37 @@ pub(crate) fn setup(config: &PicodataConfig) {
                 let row_sep = |buf: &mut Vec<u8>| {
                     match justify_contents {
                         Justify::Left => {
-                            // NOTE: here and later a special unicode character \u{200b} is used.
-                            // This is a ZERO WIDTH SPACE and it helps with the tarantool's console.
-                            // The way it works is that tarantool's console when printing the values
-                            // returned from a function will surround string values with quotes if
-                            // for instance they start with a '|' pipe character, which is our case.
-                            // Adding a space before '|' doesn't help but a ZERO WIDTH SPACE
-                            // for what ever reason does. So this is basically a crutch,
-                            // but if it's good enough for tarantool developers, it's good enough for us.
-                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-<cw$}+", "")
+                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-<cw$}+", "")
                         }
                         Justify::Center => {
-                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:-^cw$}+", "")
+                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:-^cw$}+", "")
                         }
                         Justify::Right => {
-                            writeln!(buf, "\u{200b}+{0:-^iw$}+{0:-^tw$}+{0:->cw$}+", "")
+                            writeln!(buf, "+{0:-^iw$}+{0:-^tw$}+{0:->cw$}+", "")
                         }
                     }
                     .unwrap()
                 };
                 row_sep(&mut buf);
-                write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|").unwrap();
+                // NOTE: here and later we use the special uincode \u{01c0} symbol.
+                // It looks like this `ǀ` (exactly like `|`). We do this,
+                // because tarantool's yaml handler has special behavior when it
+                // sees a pipe character at the start of the string. This is the
+                // same thing as what tarantool's `index:fselect()` is doing.
+                write!(buf, "\u{01c0}{index: ^iw$}|{term: ^tw$}|").unwrap();
                 write_contents(&mut buf, contents).unwrap();
                 row_sep(&mut buf);
                 for [index, term, contents] in rows {
-                    if contents.len() <= cw {
-                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|").unwrap();
+                    if contents.chars().count() <= cw {
+                        write!(buf, "\u{01c0}{index: ^iw$}|{term: ^tw$}|").unwrap();
                         write_contents(&mut buf, &contents).unwrap();
                     } else {
-                        write!(buf, "\u{200b}|{index: ^iw$}|{term: ^tw$}|").unwrap();
+                        write!(buf, "\u{01c0}{index: ^iw$}|{term: ^tw$}|").unwrap();
                         write_contents(&mut buf, &contents[..cw]).unwrap();
                         let mut rest = &contents[cw..];
                         while !rest.is_empty() {
                             let clamped_cw = usize::min(rest.len(), cw);
-                            write!(buf, "\u{200b}|{blank: ^iw$}|{blank: ^tw$}|", blank = "~",)
+                            write!(buf, "\u{01c0}{blank: ^iw$}|{blank: ^tw$}|", blank = "~",)
                                 .unwrap();
                             write_contents(&mut buf, &rest[..clamped_cw]).unwrap();
                             rest = &rest[clamped_cw..];
@@ -949,7 +946,11 @@ pub(crate) fn setup(config: &PicodataConfig) {
                 let s = String::from_utf8_lossy(&buf);
                 let mut res = vec![];
                 for line in s.lines() {
-                    res.push(line.into());
+                    // replace all spaces with the non-breaking space character
+                    // to prevent tarantool's yaml handler from breaking the
+                    // rows which we tried so hard to format correctly
+                    let line = line.replace(' ', "\u{a0}");
+                    res.push(line);
                 }
                 Ok(Some(res))
             },
