@@ -727,17 +727,21 @@ impl NodeImpl {
 
     fn wake_governor_if_needed(&self, op: &Op) {
         let wake_governor = match &op {
-            Op::Dml(op) => {
-                matches!(
-                    op.space().try_into(),
-                    Ok(ClusterwideTable::Property
-                        | ClusterwideTable::Replicaset
-                        | ClusterwideTable::Instance)
-                )
-            }
+            Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
+            Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
             _ => false,
         };
+
+        #[inline(always)]
+        fn dml_is_governor_wakeup_worthy(op: &Dml) -> bool {
+            matches!(
+                op.space().try_into(),
+                Ok(ClusterwideTable::Property
+                    | ClusterwideTable::Replicaset
+                    | ClusterwideTable::Instance)
+            )
+        }
 
         // NOTE: this may be premature, because the dml may fail to apply and/or
         // the transaction may be rolled back, but we ignore this for the sake

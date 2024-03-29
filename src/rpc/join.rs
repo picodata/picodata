@@ -126,17 +126,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         }
         // Only in this order - so that when instance exists - address will always be there.
         handle_result!(cas::compare_and_swap(
-            Op::Dml(op_addr),
-            cas::Predicate {
-                index: raft_storage.applied()?,
-                term: raft_storage.term()?,
-                ranges: ranges.clone(),
+            Op::BatchDml {
+                ops: vec![op_addr, op_instance],
             },
-            ADMIN_ID,
-            deadline.duration_since(fiber::clock()),
-        ));
-        handle_result!(cas::compare_and_swap(
-            Op::Dml(op_instance),
             cas::Predicate {
                 index: raft_storage.applied()?,
                 term: raft_storage.term()?,

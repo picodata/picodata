@@ -18,9 +18,9 @@ def test_bootstrap_from_snapshot(cluster: Cluster):
     # Ensure i2 bootstraps from a snapshot
     i2 = cluster.add_instance(wait_online=True)
     # Whenever a snapshot is applied, all preceeding raft log is
-    # implicitly compacted. Adding an instance implies appending 3
+    # implicitly compacted. Adding an instance implies appending 2
     # entries to the raft log. i2 catches them via a snapshot.
-    assert i2.raft_first_index() == i1.raft_first_index() + 3
+    assert i2.raft_first_index() == i1.raft_first_index() + 2
 
     # Ensure new instance replicates the property
     assert i2.call("box.space._pico_property:get", "animal") == ["animal", "horse"]
