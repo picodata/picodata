@@ -126,23 +126,6 @@ Picodata предоставляет несколько встроенных уч
 - управлять конфигурацией СУБД
 - создавать, подключать БД
 
-Данный набор привилегий эквивалентен SQL-командам:
-
-```sql
-GRANT CREATE TABLE TO "admin"
-GRANT ALTER TABLE TO "admin"
-GRANT DROP TABLE TO "admin"
-GRANT READ TABLE TO "admin"
-GRANT WRITE TABLE TO "admin"
-
-GRANT CREATE USER TO "admin"
-GRANT ALTER USER TO "admin"
-GRANT DROP USER TO "admin"
-
-GRANT CREATE ROLE TO "admin"
-GRANT DROP ROLE TO "admin"
-```
-
 #### Администратор БД {: #db_admin }
 
 <!--
