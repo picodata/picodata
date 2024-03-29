@@ -17,11 +17,23 @@ with the `YY.MINOR.MICRO` scheme.
   tier a table belongs to.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
-
-- Arguments for `picodata expel` subcommand have changed:
-    - now instance_id is the positional argument
-    - the default user for the rpc connection is now `admin` instead of `guest`
 -->
+
+--------------------------------------------------------------------------------
+## [24.2.2] - 2024-04-03
+
+- Fix panic after `CREATE USER alice; DROP ROLE alice;`
+
+- Refine audit log [events][audit_events] list: remove
+ 'new_database_created', add 'create_local_db', 'drop_local_db',
+ 'connect_local_db', 'recover_local_db', 'integrity_violation'
+
+- Revise [picodata expel][cli_expel] command-line arguments and
+  [tutorial][tutorial_expel]
+
+[audit_events]: https://docs.picodata.io/picodata/devel/reference/audit_events/
+[cli_expel]: https://docs.picodata.io/picodata/24.2/reference/cli/#expel
+[tutorial_expel]: https://docs.picodata.io/picodata/24.2/tutorial/deploy/#expel
 
 --------------------------------------------------------------------------------
 ## [24.2.1] - 2024-03-20
@@ -149,6 +161,7 @@ with the `YY.MINOR.MICRO` scheme.
 - The current version is NOT compatible with prior releases. It cannot
   be started with the old snapshots.
 
+--------------------------------------------------------------------------------
 ## [23.12.1] - 2023-12-21
 
 ### Fixes
