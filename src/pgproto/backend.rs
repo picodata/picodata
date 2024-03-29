@@ -1,8 +1,5 @@
 use self::describe::{PortalDescribe, StatementDescribe};
-use self::storage::{
-    with_portals_mut, Portal, Statement, UserPortalNames, UserStatementNames, PG_PORTALS,
-    PG_STATEMENTS,
-};
+use self::storage::{with_portals_mut, Portal, Statement, PG_PORTALS, PG_STATEMENTS};
 use super::client::ClientId;
 use super::error::{PgError, PgResult};
 use crate::pgproto::storage::value::Format;
@@ -11,7 +8,6 @@ use crate::sql::otm::TracerKind;
 use crate::sql::router::RouterRuntime;
 use crate::sql::with_tracer;
 use crate::traft::error::Error;
-use ::tarantool::proc;
 use opentelemetry::sdk::trace::Tracer;
 use opentelemetry::Context;
 use postgres_types::Oid;
@@ -19,62 +15,19 @@ use sbroad::executor::engine::helpers::normalize_name_for_space_api;
 use sbroad::executor::engine::{QueryCache, Router, TableVersionMap};
 use sbroad::executor::lru::Cache;
 use sbroad::frontend::Ast;
-use sbroad::ir::value::{LuaValue, Value};
+use sbroad::ir::value::Value;
 use sbroad::ir::Plan as IrPlan;
 use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
 use sbroad::utils::MutexLike;
-use serde::Deserialize;
 use smol_str::ToSmolStr;
 use std::rc::Rc;
 use tarantool::session::with_su;
 use tarantool::tuple::Tuple;
 
-pub mod describe;
+mod pgproc;
 mod storage;
 
-struct BindArgs {
-    id: ClientId,
-    stmt_name: String,
-    portal_name: String,
-    params: Vec<Value>,
-    encoding_format: Vec<u8>,
-    traceable: bool,
-}
-
-impl<'de> Deserialize<'de> for BindArgs {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct EncodedBindArgs(
-            ClientId,
-            String,
-            String,
-            Option<Vec<LuaValue>>,
-            Vec<u8>,
-            Option<bool>,
-        );
-
-        let EncodedBindArgs(id, stmt_name, portal_name, params, encoding_format, traceable) =
-            EncodedBindArgs::deserialize(deserializer)?;
-
-        let params = params
-            .unwrap_or_default()
-            .into_iter()
-            .map(Value::from)
-            .collect::<Vec<Value>>();
-
-        Ok(Self {
-            id,
-            stmt_name,
-            portal_name,
-            params,
-            encoding_format,
-            traceable: traceable.unwrap_or(false),
-        })
-    }
-}
+pub mod describe;
 
 // helper function to get `TracerRef`
 fn get_tracer_param(traceable: bool) -> &'static Tracer {
@@ -82,17 +35,15 @@ fn get_tracer_param(traceable: bool) -> &'static Tracer {
     kind.get_tracer()
 }
 
-#[proc(packed_args)]
-pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
-    let BindArgs {
-        id,
-        stmt_name,
-        portal_name,
-        params,
-        encoding_format: output_format,
-        traceable,
-    } = args;
-    let key = (id, stmt_name.into());
+pub fn bind(
+    client_id: ClientId,
+    stmt_name: String,
+    portal_name: String,
+    params: Vec<Value>,
+    output_format: Vec<u8>,
+    traceable: bool,
+) -> PgResult<()> {
+    let key = (client_id, stmt_name.into());
     let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
         return Err(PgError::Other(
             format!("Couldn't find statement \'{}\'.", key.1).into(),
@@ -120,65 +71,15 @@ pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
         },
     )?;
 
-    PG_PORTALS.with(|storage| storage.borrow_mut().put((id, portal_name.into()), portal))?;
+    PG_PORTALS.with(|storage| {
+        storage
+            .borrow_mut()
+            .put((client_id, portal_name.into()), portal)
+    })?;
     Ok(())
 }
 
-#[proc]
-pub fn proc_pg_statements(id: ClientId) -> UserStatementNames {
-    UserStatementNames::new(id)
-}
-
-#[proc]
-pub fn proc_pg_portals(id: ClientId) -> UserPortalNames {
-    UserPortalNames::new(id)
-}
-
-#[proc]
-pub fn proc_pg_close_stmt(id: ClientId, name: String) {
-    // Close can't cause an error in PG.
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
-}
-
-#[proc]
-pub fn proc_pg_close_portal(id: ClientId, name: String) {
-    // Close can't cause an error in PG.
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
-}
-
-#[proc]
-pub fn proc_pg_close_client_stmts(id: ClientId) {
-    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
-}
-
-#[proc]
-pub fn proc_pg_close_client_portals(id: ClientId) {
-    PG_PORTALS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
-}
-
-#[proc]
-pub fn proc_pg_describe_stmt(id: ClientId, name: String) -> PgResult<StatementDescribe> {
-    let key = (id, name.into());
-    let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
-        return Err(PgError::Other(
-            format!("Couldn't find statement \'{}\'.", key.1).into(),
-        ));
-    };
-    Ok(statement.describe().clone())
-}
-
-#[proc]
-pub fn proc_pg_describe_portal(id: ClientId, name: String) -> PgResult<PortalDescribe> {
-    with_portals_mut((id, name.into()), |portal| Ok(portal.describe().clone()))
-}
-
-#[proc]
-pub fn proc_pg_execute(
-    id: ClientId,
-    name: String,
-    max_rows: i64,
-    traceable: bool,
-) -> PgResult<Tuple> {
+pub fn execute(id: ClientId, name: String, max_rows: i64, traceable: bool) -> PgResult<Tuple> {
     let max_rows = if max_rows <= 0 { i64::MAX } else { max_rows };
     let name = Rc::from(name);
 
@@ -199,8 +100,7 @@ pub fn proc_pg_execute(
     })
 }
 
-#[proc]
-pub fn proc_pg_parse(
+pub fn parse(
     cid: ClientId,
     name: String,
     query: String,
@@ -257,4 +157,36 @@ pub fn proc_pg_parse(
             Ok(())
         },
     )
+}
+
+pub fn describe_stmt(id: ClientId, name: String) -> PgResult<StatementDescribe> {
+    let key = (id, name.into());
+    let Some(statement) = PG_STATEMENTS.with(|storage| storage.borrow().get(&key)) else {
+        return Err(PgError::Other(
+            format!("Couldn't find statement \'{}\'.", key.1).into(),
+        ));
+    };
+    Ok(statement.describe().clone())
+}
+
+pub fn describe_portal(id: ClientId, name: String) -> PgResult<PortalDescribe> {
+    with_portals_mut((id, name.into()), |portal| Ok(portal.describe().clone()))
+}
+
+pub fn close_stmt(id: ClientId, name: String) {
+    // Close can't cause an error in PG.
+    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
+}
+
+pub fn close_portal(id: ClientId, name: String) {
+    // Close can't cause an error in PG.
+    PG_PORTALS.with(|storage| storage.borrow_mut().remove(&(id, name.into())));
+}
+
+pub fn close_client_stmts(id: ClientId) {
+    PG_STATEMENTS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
+}
+
+pub fn close_client_portals(id: ClientId) {
+    PG_PORTALS.with(|storage| storage.borrow_mut().remove_by_client_id(id))
 }
