@@ -117,6 +117,11 @@ def test_exit_after_persist_before_commit(cluster2: Cluster):
     # Make sure i1 is raft leader
     i1.promote_or_fail()
 
+    # Reduce the maximum interval between heartbeats, so that we don't have to
+    # wait for eternity
+    index = i1.cas("replace", "_pico_property", ["max_heartbeat_period", 0.5])
+    i1.raft_wait_index(index)
+
     i2.call("pico._inject_error", "EXIT_AFTER_RAFT_PERSISTS_ENTRIES", True)
 
     index = cluster2.cas("insert", "_pico_property", ["foo", "bar"])
