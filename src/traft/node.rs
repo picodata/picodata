@@ -863,11 +863,21 @@ impl NodeImpl {
                 // Check if we're handling a "new node joined" event:
                 // * Either there's no tuple for this node in the storage;
                 // * Or its raft id has changed, meaning it's no longer the same node.
+                // WARN: this condition will not pass on the joining instance
+                // as it preemptively puts itself into `_pico_instance` table.
                 if old.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
                     let instance_id = &new.instance_id;
                     crate::audit!(
                         message: "a new instance `{instance_id}` joined the cluster",
                         title: "join_instance",
+                        severity: Low,
+                        instance_id: %instance_id,
+                        raft_id: %new.raft_id,
+                        initiator: &initiator_def.name,
+                    );
+                    crate::audit!(
+                        message: "local database created on `{instance_id}`",
+                        title: "create_local_db",
                         severity: Low,
                         instance_id: %instance_id,
                         raft_id: %new.raft_id,
@@ -908,6 +918,14 @@ impl NodeImpl {
                     crate::audit!(
                         message: "instance `{instance_id}` was expelled from the cluster",
                         title: "expel_instance",
+                        severity: Low,
+                        instance_id: %instance_id,
+                        raft_id: %new.raft_id,
+                        initiator: &initiator_def.name,
+                    );
+                    crate::audit!(
+                        message: "local database dropped on `{instance_id}`",
+                        title: "drop_local_db",
                         severity: Low,
                         instance_id: %instance_id,
                         raft_id: %new.raft_id,

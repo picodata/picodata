@@ -90,22 +90,29 @@ def test_startup(instance: Instance):
     assert event["initiator"] == "admin"
 
 
-def test_new_database_created(cluster: Cluster):
-    (i1, i2) = cluster.deploy(instance_count=2)
+def test_recover_database(instance: Instance):
+    instance.start()
+    instance.wait_online()
 
-    events = list(AuditFile(i1.audit_flag_value).events())
+    instance.restart()
+    instance.wait_online()
+    instance.terminate()
 
-    event = take_until_title(iter(events), "new_database_created")
+    events = AuditFile(instance.audit_flag_value).events()
+
+    # At first local db (data storage) is initialized
+    create_db = take_until_title(events, "create_local_db")
+    assert create_db is not None
+    assert create_db["initiator"] == "admin"
+    assert create_db["instance_id"] == "i1"
+    assert create_db["raft_id"] == "1"
+
+    # On restart instance recovers it's local data
+    event = take_until_title(iter(events), "recover_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
     assert event["instance_id"] == "i1"
     assert event["raft_id"] == "1"
-
-    events = list(AuditFile(i2.audit_flag_value).events())
-    event = take_until_title(iter(events), "new_database_created")
-    assert event is None
-
-    cluster.terminate()
 
 
 def test_create_drop_table(instance: Instance):
@@ -297,6 +304,14 @@ def test_join_expel_instance(cluster: Cluster):
     assert join_instance["severity"] == "low"
     assert join_instance["initiator"] == "admin"
 
+    # Joining of a new instance is treated as creation of a local database on it
+    create_db = take_until_title(events, "create_local_db")
+    assert create_db is not None
+    assert create_db["instance_id"] == "i2"
+    assert create_db["raft_id"] == str(i2.raft_id)
+    assert create_db["severity"] == "low"
+    assert create_db["initiator"] == "admin"
+
     cluster.expel(i2)
     retrying(lambda: assert_instance_expelled(i2, i1))
 
@@ -306,6 +321,48 @@ def test_join_expel_instance(cluster: Cluster):
     assert expel_instance["raft_id"] == str(i2.raft_id)
     assert expel_instance["severity"] == "low"
     assert expel_instance["initiator"] == "admin"
+
+    # Expelling an instance is treated as removal of a local database on it
+    drop_db = take_until_title(events, "drop_local_db")
+    assert drop_db is not None
+    assert drop_db["instance_id"] == "i2"
+    assert drop_db["raft_id"] == str(i2.raft_id)
+    assert drop_db["severity"] == "low"
+    assert drop_db["initiator"] == "admin"
+
+
+def test_join_connect_instance(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    i2 = cluster.add_instance(instance_id="i2")
+    i2.terminate()
+
+    events = AuditFile(i2.audit_flag_value).events()
+
+    create_db = take_until_title(events, "create_local_db")
+    assert create_db is not None
+    assert create_db["instance_id"] == "i1"
+    assert create_db["raft_id"] == str(i1.raft_id)
+    assert create_db["severity"] == "low"
+    assert create_db["initiator"] == "admin"
+
+    create_db = take_until_title(events, "create_local_db")
+    assert create_db is not None
+    assert create_db["instance_id"] == "i2"
+    assert create_db["raft_id"] == str(i2.raft_id)
+    assert create_db["severity"] == "low"
+    assert create_db["initiator"] == "admin"
+
+    # Joining instance should emit 'connect_local_db' audit event.
+    # connect_local_db is a local event as only joining instance emits it
+    # in contrast to create_local_db
+    connect_db = take_until_title(events, "connect_local_db")
+    assert connect_db is not None
+    assert connect_db["instance_id"] == "i2"
+    assert connect_db["raft_id"] == str(i2.raft_id)
+    assert connect_db["severity"] == "low"
+    assert connect_db["initiator"] == "admin"
 
 
 def test_auth(instance: Instance):
