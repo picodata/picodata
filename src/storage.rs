@@ -3436,6 +3436,7 @@ pub mod acl {
         let old_name = &user_with_old_name.name;
         storage.users.update_name(user_id, new_name)?;
 
+        // TODO: missing initiator, should it be a required field?
         crate::audit!(
             message: "name of user `{old_name}` was changed to `{new_name}`",
             title: "rename_user",

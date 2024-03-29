@@ -603,10 +603,22 @@ fn start_discover(
     let (storage, raft_storage) = init_common(config, &cfg)?;
     discovery::init_global(config.instance.peers().iter().map(|a| a.to_host_port()));
 
-    if raft_storage.raft_id().unwrap().is_some() {
+    if let Some(raft_id) = raft_storage.raft_id()? {
         // This is a restart, go to postjoin immediately.
-        tarantool::set_cfg_field("read_only", true).unwrap();
-        return postjoin(config, storage, raft_storage);
+        tarantool::set_cfg_field("read_only", true)?;
+        let instance_id = raft_storage
+            .instance_id()?
+            .expect("instance_id should be already set");
+        postjoin(config, storage, raft_storage)?;
+        crate::audit!(
+            message: "local database recovered on `{instance_id}`",
+            title: "recover_local_db",
+            severity: Low,
+            instance_id: %instance_id,
+            raft_id: %raft_id,
+            initiator: "admin",
+        );
+        return Ok(());
     }
 
     // Start listenning only after we've checked if this is a restart.
@@ -697,17 +709,6 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 
     postjoin(config, storage, raft_storage)?;
 
-    let db_name = config.cluster_id();
-    let instance_id = instance.instance_id.as_ref();
-    crate::audit!(
-        message: "a new database `{db_name}` was created",
-        title: "new_database_created",
-        severity: Low,
-        initiator: "admin",
-        instance_id: %instance_id,
-        raft_id: %raft_id,
-    );
-
     Ok(())
 }
 
@@ -779,7 +780,25 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     })
     .unwrap();
 
-    postjoin(config, storage, raft_storage)
+    let instance_id = resp.instance.instance_id;
+    postjoin(config, storage, raft_storage)?;
+    crate::audit!(
+        message: "local database created on `{instance_id}`",
+        title: "create_local_db",
+        severity: Low,
+        instance_id: %instance_id,
+        raft_id: %raft_id,
+        initiator: "admin",
+    );
+    crate::audit!(
+        message: "local database connected on `{instance_id}`",
+        title: "connect_local_db",
+        severity: Low,
+        instance_id: %instance_id,
+        raft_id: %raft_id,
+        initiator: "admin",
+    );
+    Ok(())
 }
 
 fn postjoin(
