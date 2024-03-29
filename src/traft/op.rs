@@ -86,43 +86,19 @@ impl std::fmt::Display for Op {
         return match self {
             Self::Nop => f.write_str("Nop"),
             Self::BatchDml { ops } => {
-                for op in ops {
-                    match op {
-                        Dml::Insert { table, tuple, .. } => {
-                            writeln!(f, "Insert({table}, {})", DisplayAsJson(tuple))?;
-                        }
-                        Dml::Replace { table, tuple, .. } => {
-                            writeln!(f, "Replace({table}, {})", DisplayAsJson(tuple))?;
-                        }
-                        Dml::Update {
-                            table, key, ops, ..
-                        } => {
-                            let key = DisplayAsJson(key);
-                            let ops = DisplayAsJson(&**ops);
-                            writeln!(f, "Update({table}, {key}, {ops})")?;
-                        }
-                        Dml::Delete { table, key, .. } => {
-                            writeln!(f, "Delete({table}, {})", DisplayAsJson(key))?;
-                        }
-                    }
+                write!(f, "BatchDml(")?;
+                let mut ops = ops.iter();
+                if let Some(first) = ops.next() {
+                    write!(f, "{}", DisplayDml(first))?;
                 }
+                for next in ops {
+                    write!(f, ", {}", DisplayDml(next))?;
+                }
+                write!(f, ")")?;
                 Ok(())
             }
-            Self::Dml(Dml::Insert { table, tuple, .. }) => {
-                write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
-            }
-            Self::Dml(Dml::Replace { table, tuple, .. }) => {
-                write!(f, "Replace({table}, {})", DisplayAsJson(tuple))
-            }
-            Self::Dml(Dml::Update {
-                table, key, ops, ..
-            }) => {
-                let key = DisplayAsJson(key);
-                let ops = DisplayAsJson(&**ops);
-                write!(f, "Update({table}, {key}, {ops})")
-            }
-            Self::Dml(Dml::Delete { table, key, .. }) => {
-                write!(f, "Delete({table}, {})", DisplayAsJson(key))
+            Self::Dml(dml) => {
+                write!(f, "{}", DisplayDml(dml))
             }
             Self::DdlPrepare {
                 schema_version,
@@ -271,6 +247,30 @@ impl std::fmt::Display for Op {
                     privilege = priv_def.privilege(),)
             }
         };
+
+        struct DisplayDml<'a>(&'a Dml);
+        impl std::fmt::Display for DisplayDml<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                match self.0 {
+                    Dml::Insert { table, tuple, .. } => {
+                        write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
+                    }
+                    Dml::Replace { table, tuple, .. } => {
+                        write!(f, "Replace({table}, {})", DisplayAsJson(tuple))
+                    }
+                    Dml::Update {
+                        table, key, ops, ..
+                    } => {
+                        let key = DisplayAsJson(key);
+                        let ops = DisplayAsJson(&**ops);
+                        write!(f, "Update({table}, {key}, {ops})")
+                    }
+                    Dml::Delete { table, key, .. } => {
+                        write!(f, "Delete({table}, {})", DisplayAsJson(key))
+                    }
+                }
+            }
+        }
 
         struct DisplayAsJson<T>(pub T);
 
