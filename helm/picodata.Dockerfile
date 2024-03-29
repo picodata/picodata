@@ -2,7 +2,10 @@ FROM rockylinux:8 AS builder
 
 RUN dnf -y install dnf-plugins-core \
     && dnf config-manager --set-enabled powertools \
-    && dnf install -y gcc gcc-c++ make cmake git libstdc++-static libtool \
+    && dnf module -y enable nodejs:20 \
+    && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
+    && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
+    && dnf install -y gcc gcc-c++ make cmake git libstdc++-static libtool nodejs yarn \
     && dnf clean all
 
 RUN set -e; \
@@ -12,7 +15,7 @@ ENV PATH=/root/.cargo/bin:${PATH}
 
 WORKDIR /build/picodata
 COPY . .
-RUN cargo build --locked --release
+RUN cargo build --locked --release --features webui
 
 FROM rockylinux:8
 
