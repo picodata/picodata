@@ -3,6 +3,7 @@ use protobuf::Message;
 
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
+use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::ADMIN_ID;
 use crate::sql::pgproto;
@@ -39,6 +40,7 @@ pub(super) fn prepare(
     //
     // Populate "_pico_address" and "_pico_instance" with info about the first instance
     //
+    // TODO: these could all go into a single op::BatchDml
     init_entries_push_op(op::Dml::replace(
         ClusterwideTable::Address,
         &traft::PeerAddress {
@@ -50,6 +52,12 @@ pub(super) fn prepare(
     init_entries_push_op(op::Dml::insert(
         ClusterwideTable::Instance,
         &instance,
+        ADMIN_ID,
+    ));
+    let replicaset = Replicaset::with_one_instance(instance);
+    init_entries_push_op(op::Dml::insert(
+        ClusterwideTable::Replicaset,
+        &replicaset,
         ADMIN_ID,
     ));
 

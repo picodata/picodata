@@ -7,6 +7,7 @@ use crate::has_grades;
 use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
+use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
@@ -92,43 +93,34 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
         };
-        let op_addr = Dml::replace(ClusterwideTable::Address, &peer_address, ADMIN_ID)
-            .expect("encoding should not fail");
-        let op_instance = Dml::replace(ClusterwideTable::Instance, &instance, ADMIN_ID)
-            .expect("encoding should not fail");
+
+        let mut ops = Vec::with_capacity(3);
+        ops.push(
+            Dml::replace(ClusterwideTable::Address, &peer_address, ADMIN_ID)
+                .expect("encoding should not fail"),
+        );
+        ops.push(
+            Dml::replace(ClusterwideTable::Instance, &instance, ADMIN_ID)
+                .expect("encoding should not fail"),
+        );
+
+        if storage.replicasets.get(&instance.replicaset_id)?.is_none() {
+            let replicaset = Replicaset::with_one_instance(&instance);
+            ops.push(
+                Dml::insert(ClusterwideTable::Replicaset, &replicaset, ADMIN_ID)
+                    .expect("encoding should not fail"),
+            );
+        }
+
         let ranges = vec![
             cas::Range::new(ClusterwideTable::Instance),
             cas::Range::new(ClusterwideTable::Address),
             cas::Range::new(ClusterwideTable::Tier),
+            cas::Range::new(ClusterwideTable::Replicaset),
         ];
-        macro_rules! handle_result {
-            ($res:expr) => {
-                match $res {
-                    Ok((index, term)) => {
-                        node.wait_index(index, deadline.duration_since(fiber::clock()))?;
-                        if term != raft::Storage::term(raft_storage, index)? {
-                            // leader switched - retry
-                            node.wait_status();
-                            continue;
-                        }
-                    }
-                    Err(err) => {
-                        if err.is_cas_err() | err.is_term_mismatch_err() {
-                            // cas error - retry
-                            fiber::sleep(Duration::from_millis(500));
-                            continue;
-                        } else {
-                            return Err(err);
-                        }
-                    }
-                }
-            };
-        }
         // Only in this order - so that when instance exists - address will always be there.
-        handle_result!(cas::compare_and_swap(
-            Op::BatchDml {
-                ops: vec![op_addr, op_instance],
-            },
+        let res = cas::compare_and_swap(
+            Op::BatchDml { ops },
             cas::Predicate {
                 index: raft_storage.applied()?,
                 term: raft_storage.term()?,
@@ -136,7 +128,26 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             },
             ADMIN_ID,
             deadline.duration_since(fiber::clock()),
-        ));
+        );
+        match res {
+            Ok((index, term)) => {
+                node.wait_index(index, deadline.duration_since(fiber::clock()))?;
+                if term != raft::Storage::term(raft_storage, index)? {
+                    // leader switched - retry
+                    node.wait_status();
+                    continue;
+                }
+            }
+            Err(err) => {
+                if err.is_cas_err() | err.is_term_mismatch_err() {
+                    // cas error - retry
+                    fiber::sleep(Duration::from_millis(500));
+                    continue;
+                } else {
+                    return Err(err);
+                }
+            }
+        }
         node.main_loop.wakeup();
 
         // A joined instance needs to communicate with other nodes.

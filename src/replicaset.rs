@@ -1,4 +1,5 @@
 use super::instance::InstanceId;
+use crate::instance::Instance;
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
 
@@ -49,6 +50,20 @@ pub struct Replicaset {
 impl Encode for Replicaset {}
 
 impl Replicaset {
+    #[inline]
+    pub fn with_one_instance(master: &Instance) -> Replicaset {
+        Replicaset {
+            replicaset_id: master.replicaset_id.clone(),
+            replicaset_uuid: master.replicaset_uuid.clone(),
+            current_master_id: master.instance_id.clone(),
+            target_master_id: master.instance_id.clone(),
+            weight: 0.,
+            weight_origin: WeightOrigin::Auto,
+            state: ReplicasetState::NotReady,
+            tier: master.tier.clone(),
+        }
+    }
+
     /// Format of the _pico_replicaset global table.
     #[inline(always)]
     pub fn format() -> Vec<::tarantool::space::Field> {

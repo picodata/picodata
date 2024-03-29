@@ -249,35 +249,6 @@ impl Loop {
                 }
             }
 
-            Plan::CreateReplicaset(CreateReplicaset {
-                master_id,
-                replicaset_id,
-                rpc,
-                op,
-            }) => {
-                set_status(governor_status, "create new replicaset");
-                governor_step! {
-                    "promoting new replicaset master" [
-                        "master_id" => %master_id,
-                        "replicaset_id" => %replicaset_id,
-                    ]
-                    async {
-                        pool.call(master_id, &rpc, Self::RPC_TIMEOUT)?
-                            .timeout(Duration::from_secs(3))
-                            .await?
-                    }
-                }
-
-                governor_step! {
-                    "creating new replicaset" [
-                        "replicaset_id" => %replicaset_id,
-                    ]
-                    async {
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
-                    }
-                }
-            }
-
             Plan::Replication(Replication {
                 targets,
                 master_id,

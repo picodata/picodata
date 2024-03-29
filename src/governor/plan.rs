@@ -102,42 +102,6 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // create new replicaset
-    let to_create_replicaset = instances
-        .iter()
-        .filter(|instance| has_grades!(instance, Offline -> Online) || instance.is_reincarnated())
-        .find(|instance| replicasets.get(&instance.replicaset_id).is_none());
-    if let Some(Instance {
-        instance_id: master_id,
-        replicaset_id,
-        replicaset_uuid,
-        tier,
-        ..
-    }) = to_create_replicaset
-    {
-        let rpc = rpc::replication::SyncAndPromoteRequest {
-            vclock: None,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
-        let op = Dml::insert(
-            ClusterwideTable::Replicaset,
-            &Replicaset {
-                replicaset_id: replicaset_id.clone(),
-                replicaset_uuid: replicaset_uuid.clone(),
-                current_master_id: master_id.clone(),
-                target_master_id: master_id.clone(),
-                weight: 0.,
-                weight_origin: WeightOrigin::Auto,
-                state: ReplicasetState::NotReady,
-                tier: tier.clone(),
-            },
-            ADMIN_ID,
-        )?;
-        #[rustfmt::skip]
-        return Ok(CreateReplicaset { master_id, replicaset_id, rpc, op }.into());
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
     // update target replicaset master
     let new_target_master = get_new_replicaset_master_if_needed(instances, replicasets);
     if let Some(to) = new_target_master {
@@ -451,13 +415,6 @@ pub mod stage {
 
         pub struct Downgrade {
             pub req: rpc::update_instance::Request,
-        }
-
-        pub struct CreateReplicaset<'i> {
-            pub master_id: &'i InstanceId,
-            pub replicaset_id: &'i ReplicasetId,
-            pub rpc: rpc::replication::SyncAndPromoteRequest,
-            pub op: Dml,
         }
 
         pub struct Replication<'i> {
