@@ -15,7 +15,7 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
 
-use ::tarantool::fiber;
+use tarantool::fiber;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
