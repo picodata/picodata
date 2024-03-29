@@ -1,6 +1,6 @@
 # Data Definition Language
 
-Data Definition Language - команды языка SQL для изменения объектов в кластере.
+Data Definition Language — команды языка SQL для изменения объектов в кластере.
 
 ## Синтаксис {: #syntax }
 
