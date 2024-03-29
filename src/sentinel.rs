@@ -35,7 +35,7 @@ impl Loop {
         }: &mut State,
     ) -> ControlFlow<()> {
         if status.get() == SentinelStatus::Initial || node::global().is_err() {
-            tlog!(Info, "waiting until initialized...");
+            tlog!(Debug, "waiting until initialized...");
             _ = status.changed().timeout(Self::SENTINEL_LONG_SLEEP).await;
             return ControlFlow::Continue(());
         }
