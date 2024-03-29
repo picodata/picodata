@@ -448,9 +448,9 @@ start_boot/start_join -> create_local_db + connect_local_db
 ### integrity_violation
 
 Нарушение целостности объектов контроля, см. [Контроль
-целостности][integrity].
+целостности](../security/integrity.md).
 
-[integrity]: ../security/integrity.md
+<!-- TODO: new field: error -->
 
 ```json
 {
