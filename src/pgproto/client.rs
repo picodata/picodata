@@ -1,7 +1,7 @@
+use super::backend::Backend;
 use super::client::simple_query::process_query_message;
 use super::error::*;
 use super::messages;
-use super::storage::StorageManager;
 use super::stream::{BeMessage, FeMessage, PgStream};
 use super::tls::TlsAcceptor;
 use crate::tlog;
@@ -17,8 +17,8 @@ pub type ClientId = u32;
 
 /// Postgres client representation.
 pub struct PgClient<S> {
-    // The portal and statement storage manager.
-    manager: StorageManager,
+    /// Postgres backend that handles queries.
+    backend: Backend,
     /// Stream for network communication.
     stream: PgStream<S>,
 
@@ -40,7 +40,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
         tlog!(Info, "client authenticated");
 
         Ok(PgClient {
-            manager: StorageManager::new(),
+            backend: Backend::new(),
             loop_state: MessageLoopState::ReadyForQuery,
             stream,
         })
@@ -101,7 +101,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
         match message {
             FeMessage::Query(query) => {
                 tlog!(Info, "executing simple query: {}", query.query);
-                process_query_message(&mut self.stream, &self.manager, query)?;
+                process_query_message(&mut self.stream, &self.backend, query)?;
                 self.loop_state = MessageLoopState::ReadyForQuery;
             }
             FeMessage::Parse(parse) => {
@@ -112,7 +112,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                     parse.query,
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
-                extended_query::process_parse_message(&mut self.stream, &self.manager, parse)?;
+                extended_query::process_parse_message(&mut self.stream, &self.backend, parse)?;
             }
             FeMessage::Bind(bind) => {
                 tlog!(
@@ -122,7 +122,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                     bind.portal_name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
-                extended_query::process_bind_message(&mut self.stream, &self.manager, bind)?;
+                extended_query::process_bind_message(&mut self.stream, &self.backend, bind)?;
             }
             FeMessage::Execute(execute) => {
                 tlog!(
@@ -131,7 +131,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                     execute.name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
-                extended_query::process_execute_message(&mut self.stream, &self.manager, execute)?;
+                extended_query::process_execute_message(&mut self.stream, &self.backend, execute)?;
             }
             FeMessage::Describe(describe) => {
                 tlog!(
@@ -143,7 +143,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 extended_query::process_describe_message(
                     &mut self.stream,
-                    &self.manager,
+                    &self.backend,
                     describe,
                 )?;
             }
@@ -155,7 +155,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                     close.name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
-                extended_query::process_close_message(&mut self.stream, &self.manager, close)?;
+                extended_query::process_close_message(&mut self.stream, &self.backend, close)?;
             }
             FeMessage::Flush(_) => {
                 tlog!(Info, "flushing");
@@ -165,7 +165,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             FeMessage::Sync(_) => {
                 tlog!(Info, "syncing");
                 self.loop_state = MessageLoopState::ReadyForQuery;
-                extended_query::process_sync_mesage(&self.manager)?;
+                extended_query::process_sync_mesage(&self.backend);
             }
             FeMessage::Terminate(_) => {
                 tlog!(Info, "terminating the session");
@@ -185,7 +185,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             loop {
                 if let FeMessage::Sync(_) = self.stream.read_message()? {
                     self.loop_state = MessageLoopState::ReadyForQuery;
-                    extended_query::process_sync_mesage(&self.manager)?;
+                    extended_query::process_sync_mesage(&self.backend);
                     break;
                 }
             }

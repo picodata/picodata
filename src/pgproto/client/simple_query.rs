@@ -1,14 +1,14 @@
-use crate::pgproto::storage::StorageManager;
+use crate::pgproto::backend::Backend;
 use crate::pgproto::{error::PgResult, messages, stream::PgStream};
 use pgwire::messages::simplequery::Query;
 use std::io::{Read, Write};
 
 pub fn process_query_message(
     stream: &mut PgStream<impl Read + Write>,
-    manager: &StorageManager,
+    backend: &Backend,
     query: Query,
 ) -> PgResult<()> {
-    let mut query_result = manager.simple_query(&query.query)?;
+    let mut query_result = backend.simple_query(query.query)?;
 
     if let Some(row_description) = query_result.row_description()? {
         let row_description = messages::row_description(row_description);

@@ -1,5 +1,5 @@
 use crate::pgproto::error::PgResult;
-use crate::pgproto::storage::value::{self, Format};
+use crate::pgproto::value::{self, Format};
 use pgwire::messages::data::{FieldDescription, RowDescription};
 use postgres_types::{Oid, Type};
 use sbroad::errors::{Entity, SbroadError};
@@ -177,12 +177,13 @@ impl TryFrom<&Node> for CommandTag {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct MetadataColumn {
     name: String,
-    r#type: String,
+    #[serde(rename = "type")]
+    ty: String,
 }
 
 impl MetadataColumn {
     fn new(name: String, ty: String) -> Self {
-        Self { name, r#type: ty }
+        Self { name, ty }
     }
 }
 
@@ -305,7 +306,7 @@ impl Describe {
                     .metadata
                     .iter()
                     .map(|col| {
-                        let type_str = col.r#type.as_str();
+                        let type_str = col.ty.as_str();
                         value::type_from_name(type_str)
                             .map(|ty| field_description(col.name.clone(), ty, Format::Text))
                     })
@@ -369,7 +370,7 @@ impl PortalDescribe {
                 let output_format = &self.output_format;
                 let row_description = zip(metadata, output_format)
                     .map(|(col, format)| {
-                        let type_str = col.r#type.as_str();
+                        let type_str = col.ty.as_str();
                         value::type_from_name(type_str)
                             .map(|ty| field_description(col.name.clone(), ty, *format))
                     })
@@ -389,16 +390,5 @@ impl PortalDescribe {
 
     pub fn output_format(&self) -> &[Format] {
         &self.output_format
-    }
-
-    // Enforce use of the text format for output rows. We use it for simple query, as it supports only the text format.
-    pub fn set_text_output_format(&mut self) {
-        let mut output_format = Vec::new();
-        output_format.resize(self.ncolumns(), Format::Text);
-        self.output_format = output_format;
-    }
-
-    pub fn ncolumns(&self) -> usize {
-        self.describe.metadata.len()
     }
 }

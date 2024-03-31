@@ -1,16 +1,12 @@
-use crate::pgproto::storage::value::{Format, PgValue, RawFormat};
+use crate::pgproto::backend::Backend;
 use crate::pgproto::stream::{BeMessage, FeMessage};
 use crate::pgproto::{
     error::{PgError, PgResult},
     messages,
-    storage::StorageManager,
     stream::PgStream,
 };
-use bytes::Bytes;
 use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
-use postgres_types::Oid;
 use std::io::{Read, Write};
-use std::iter::zip;
 
 fn use_tarantool_parameter_placeholders(sql: &str) -> String {
     // TODO: delete it after the pg parameters are supported,
@@ -23,98 +19,42 @@ fn use_tarantool_parameter_placeholders(sql: &str) -> String {
 
 pub fn process_parse_message(
     stream: &mut PgStream<impl Read + Write>,
-    manager: &StorageManager,
+    backend: &Backend,
     parse: Parse,
 ) -> PgResult<()> {
     let query = use_tarantool_parameter_placeholders(&parse.query);
-    manager.parse(parse.name.as_deref(), &query, &parse.type_oids)?;
+    backend.parse(parse.name, query, parse.type_oids)?;
     stream.write_message_noflush(messages::parse_complete())?;
     Ok(())
 }
 
-/// Map any encoding format to per-column or per-parameter format just like pg does it in
-/// [exec_bind_message](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/postgres.c#L1840-L1845)
-/// or [PortalSetResultFormat](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/pquery.c#L623).
-fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Format>> {
-    if formats.len() == n {
-        // format specified for each column
-        formats.iter().map(|i| Format::try_from(*i)).collect()
-    } else if formats.len() == 1 {
-        // single format specified, use it for each column
-        Ok(vec![Format::try_from(formats[0])?; n])
-    } else if formats.is_empty() {
-        // no format specified, use the default for each column
-        Ok(vec![Format::Text; n])
-    } else {
-        Err(PgError::ProtocolViolation(format!(
-            "got {} format codes for {} items",
-            formats.len(),
-            n
-        )))
-    }
-}
-
-fn decode_parameter_values(
-    params: &[Option<Bytes>],
-    param_oids: &[Oid],
-    formats: &[RawFormat],
-) -> PgResult<Vec<PgValue>> {
-    let formats = prepare_encoding_format(formats, params.len())?;
-    if params.len() != param_oids.len() {
-        return Err(PgError::ProtocolViolation(format!(
-            "got {} parameters, {} oids and {} formats",
-            params.len(),
-            param_oids.len(),
-            formats.len()
-        )));
-    }
-
-    zip(zip(params, param_oids), formats)
-        .map(|((bytes, oid), format)| PgValue::decode(bytes.as_ref(), *oid, format))
-        .collect()
-}
-
 pub fn process_bind_message(
     stream: &mut PgStream<impl Read + Write>,
-    manager: &StorageManager,
+    backend: &Backend,
     bind: Bind,
 ) -> PgResult<()> {
-    let describe = manager.describe_statement(bind.statement_name.as_deref())?;
-    let params = decode_parameter_values(
-        &bind.parameters,
-        &describe.param_oids,
+    backend.bind(
+        bind.statement_name,
+        bind.portal_name,
+        bind.parameters,
         &bind.parameter_format_codes,
+        &bind.result_column_format_codes,
     )?;
-    let result_format =
-        prepare_encoding_format(&bind.result_column_format_codes, describe.ncolumns())?;
 
-    manager.bind(
-        bind.statement_name.as_deref(),
-        bind.portal_name.as_deref(),
-        params,
-        result_format,
-    )?;
     stream.write_message_noflush(messages::bind_complete())?;
     Ok(())
 }
 
 pub fn process_execute_message(
     stream: &mut PgStream<impl Read + Write>,
-    manager: &StorageManager,
+    backend: &Backend,
     execute: Execute,
 ) -> PgResult<()> {
-    let mut count = execute.max_rows as i64;
-    let mut execute_result = manager.execute(execute.name.as_deref())?;
-    if count <= 0 {
-        count = std::i64::MAX;
-    }
+    let max_rows = execute.max_rows as i64;
+    let mut execute_result = backend.execute(execute.name, max_rows)?;
 
-    for _ in 0..count {
-        if let Some(row) = execute_result.next() {
-            stream.write_message_noflush(messages::data_row(row))?;
-        } else {
-            break;
-        }
+    for row in execute_result.by_ref() {
+        stream.write_message_noflush(messages::data_row(row))?;
     }
 
     if execute_result.is_portal_finished() {
@@ -129,10 +69,10 @@ pub fn process_execute_message(
 }
 
 fn describe_statement(
-    manager: &StorageManager,
+    backend: &Backend,
     statement: Option<&str>,
 ) -> PgResult<(BeMessage, BeMessage)> {
-    let stmt_describe = manager.describe_statement(statement)?;
+    let stmt_describe = backend.describe_statement(statement)?;
     let param_oids = stmt_describe.param_oids;
     let describe = stmt_describe.describe;
 
@@ -147,8 +87,8 @@ fn describe_statement(
     }
 }
 
-fn describe_portal(manager: &StorageManager, portal: Option<&str>) -> PgResult<BeMessage> {
-    let describe = manager.describe_portal(portal)?;
+fn describe_portal(backend: &Backend, portal: Option<&str>) -> PgResult<BeMessage> {
+    let describe = backend.describe_portal(portal)?;
     if let Some(row_description) = describe.row_description()? {
         Ok(messages::row_description(row_description))
     } else {
@@ -158,19 +98,19 @@ fn describe_portal(manager: &StorageManager, portal: Option<&str>) -> PgResult<B
 
 pub fn process_describe_message(
     stream: &mut PgStream<impl Read + Write>,
-    manager: &StorageManager,
+    backend: &Backend,
     describe: Describe,
 ) -> PgResult<()> {
     let name = describe.name.as_deref();
     match describe.target_type {
         b'S' => {
-            let (params_desc, rows_desc) = describe_statement(manager, name)?;
+            let (params_desc, rows_desc) = describe_statement(backend, name)?;
             stream.write_message_noflush(params_desc)?;
             stream.write_message_noflush(rows_desc)?;
             Ok(())
         }
         b'P' => {
-            let rows_desc = describe_portal(manager, name)?;
+            let rows_desc = describe_portal(backend, name)?;
             stream.write_message_noflush(rows_desc)?;
             Ok(())
         }
@@ -183,13 +123,13 @@ pub fn process_describe_message(
 
 pub fn process_close_message(
     stream: &mut PgStream<impl Read + Write>,
-    manager: &StorageManager,
+    backend: &Backend,
     close: Close,
 ) -> PgResult<()> {
     let name = close.name.as_deref();
     match close.target_type {
-        b'S' => manager.close_statement(name)?,
-        b'P' => manager.close_portal(name)?,
+        b'S' => backend.close_statement(name),
+        b'P' => backend.close_portal(name),
         _ => {
             return Err(PgError::ProtocolViolation(format!(
                 "unknown close type \'{}\'",
@@ -201,13 +141,13 @@ pub fn process_close_message(
     Ok(())
 }
 
-pub fn process_sync_mesage(manager: &StorageManager) -> PgResult<()> {
+pub fn process_sync_mesage(backend: &Backend) {
     // By default, PG runs in autocommit mode, which means that every statement is ran inside its own transaction.
     // In simple query statement means the query inside a Query message.
     // In extended query statement means everything before a Sync message.
     // When PG gets a Sync mesage it finishes the current transaction by calling finish_xact_command,
     // which drops all non-holdable portals. We close all portals here because we don't have the holdable portals.
-    manager.close_all_portals()
+    backend.close_all_portals()
 }
 
 pub fn is_extended_query_message(message: &FeMessage) -> bool {

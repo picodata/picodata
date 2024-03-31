@@ -24,7 +24,7 @@ def test_extended_ddl(pg_client: PgClient):
     pg_client.bind("", "portal", [], [])
     assert len(pg_client.portals["available"]) == 1
     data = pg_client.execute("portal")
-    assert data["row_count"] == 1
+    assert data["row_count"] is None
     assert len(pg_client.statements["available"]) == 1
 
     pg_client.close_stmt("")
@@ -421,12 +421,12 @@ def test_interactive_portals(pg_client: PgClient):
     assert len(data["rows"]) == 1
     assert [
         """projection ("t"."key"::integer -> "key", "t"."value"::string -> "value")"""
-    ] == data["rows"]
+    ] == data["rows"][0]
     assert data["is_finished"] is False
     data = pg_client.execute("", -1)
     assert len(data["rows"]) == 4
-    assert """    scan "t\"""" in data["rows"]
-    assert """execution options:""" in data["rows"]
-    assert """sql_vdbe_max_steps = 45000""" in data["rows"]
-    assert """vtable_max_rows = 5000""" in data["rows"]
+    assert ["""    scan "t\""""] == data["rows"][0]
+    assert ["""execution options:"""] == data["rows"][1]
+    assert ["""sql_vdbe_max_steps = 45000"""] == data["rows"][2]
+    assert ["""vtable_max_rows = 5000"""] == data["rows"][3]
     assert data["is_finished"] is True

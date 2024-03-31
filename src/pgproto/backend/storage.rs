@@ -1,6 +1,8 @@
+use super::describe::QueryType;
 use super::describe::{Describe, PortalDescribe, StatementDescribe};
+use super::result::ExecuteResult;
 use crate::pgproto::error::{PgError, PgResult};
-use crate::pgproto::storage::value::Format;
+use crate::pgproto::value::{Format, PgValue};
 use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::traft::node;
 use ::tarantool::tuple::Tuple;
@@ -370,41 +372,50 @@ pub struct Portal {
 enum PortalState {
     #[default]
     NotStarted,
-    Running(IntoIter<Value>),
-    Finished(Option<Tuple>),
+    Running(IntoIter<Vec<PgValue>>),
+    Finished(Option<ExecuteResult>),
 }
 
-/// Try to get rows from the query execution result.
-/// Some is returned for dql-like queires (dql or explain), otherwise None is returned.
-fn tuple_as_rows(tuple: &Tuple) -> Option<Vec<Value>> {
+fn mp_row_into_pg_row(mp: Vec<Value>) -> PgResult<Vec<PgValue>> {
+    mp.into_iter().map(PgValue::try_from).collect()
+}
+
+fn mp_rows_into_pg_rows(mp: Vec<Vec<Value>>) -> PgResult<Vec<Vec<PgValue>>> {
+    mp.into_iter().map(mp_row_into_pg_row).collect()
+}
+
+/// Get rows from dql-like(dql or explain) query execution result.
+fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<PgValue>>> {
     #[derive(Deserialize, Default, Debug)]
     struct DqlResult {
-        rows: Vec<Value>,
+        rows: Vec<Vec<Value>>,
     }
     if let Ok(Some(res)) = tuple.field::<DqlResult>(0) {
-        return Some(res.rows);
+        return mp_rows_into_pg_rows(res.rows);
     }
 
     // Try to parse explain result.
     if let Ok(Some(res)) = tuple.field::<Vec<Value>>(0) {
-        return Some(res);
+        let rows = res.into_iter().map(|row| vec![row]).collect();
+        return mp_rows_into_pg_rows(rows);
     }
 
-    None
+    Err(PgError::InternalError(
+        "couldn't get rows from the result tuple".into(),
+    ))
 }
 
-fn take_rows(rows: &mut IntoIter<Value>, max_rows: usize) -> PgResult<Tuple> {
-    let is_finished = rows.len() <= max_rows;
-    let rows = rows.take(max_rows).collect();
-    #[derive(Serialize)]
-    struct RunningResult {
-        rows: Vec<Value>,
-        is_finished: bool,
+/// Get row_count from result tuple.
+fn get_row_count_from_tuple(tuple: &Tuple) -> PgResult<usize> {
+    #[derive(Deserialize)]
+    struct RowCount {
+        row_count: usize,
     }
-    let result = RunningResult { rows, is_finished };
-    let mp = rmp_serde::to_vec_named(&vec![result])?;
-    let ret = Tuple::try_from_slice(&mp)?;
-    Ok(ret)
+    let res: RowCount = tuple.field(0)?.ok_or(PgError::InternalError(
+        "couldn't get row count from the result tuple".into(),
+    ))?;
+
+    Ok(res.row_count)
 }
 
 impl Portal {
@@ -419,27 +430,30 @@ impl Portal {
         })
     }
 
-    pub fn execute(&mut self, max_rows: usize) -> PgResult<Tuple> {
+    pub fn execute(&mut self, max_rows: usize) -> PgResult<ExecuteResult> {
         loop {
             match &mut self.state {
                 PortalState::NotStarted => self.start()?,
-                PortalState::Finished(Some(res)) => {
-                    // clone only increments tuple's refcounter
-                    let res = res.clone();
-                    self.state = PortalState::Finished(None);
-                    return Ok(res);
+                PortalState::Finished(Some(_)) => {
+                    let state = std::mem::replace(&mut self.state, PortalState::Finished(None));
+                    match state {
+                        PortalState::Finished(Some(result)) => return Ok(result),
+                        _ => unreachable!(),
+                    }
                 }
                 PortalState::Running(ref mut rows) => {
-                    let res = take_rows(rows, max_rows)?;
+                    let taken = rows.take(max_rows).collect();
                     if rows.len() == 0 {
                         self.state = PortalState::Finished(None);
                     }
-                    return Ok(res);
+                    let is_finished = matches!(self.state, PortalState::Finished(_));
+                    return Ok(ExecuteResult::new(0, self.describe().clone())
+                        .with_rows(taken, is_finished));
                 }
                 _ => {
                     return Err(PgError::Other(
                         format!("Can't execute portal in state {:?}", self.state).into(),
-                    ))
+                    ));
                 }
             }
         }
@@ -458,12 +472,20 @@ impl Portal {
             &runtime,
             HashMap::new(),
         );
-        let res = dispatch(query)?;
-        if let Some(rows) = tuple_as_rows(&res) {
-            self.state = PortalState::Running(rows.into_iter());
-        } else {
-            self.state = PortalState::Finished(Some(res));
-        }
+        let tuple = dispatch(query)?;
+        self.state = match self.describe().query_type() {
+            QueryType::Dml => {
+                let row_count = get_row_count_from_tuple(&tuple)?;
+                PortalState::Finished(Some(ExecuteResult::new(row_count, self.describe().clone())))
+            }
+            QueryType::Acl | QueryType::Ddl => {
+                PortalState::Finished(Some(ExecuteResult::new(0, self.describe().clone())))
+            }
+            QueryType::Dql | QueryType::Explain => {
+                let rows = get_rows_from_tuple(&tuple)?.into_iter();
+                PortalState::Running(rows)
+            }
+        };
         Ok(())
     }
 

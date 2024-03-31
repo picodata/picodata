@@ -7,7 +7,6 @@ use sbroad::ir::value::Value;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::error::Error;
 use std::str;
-use tarantool::tlua::{AsLua, Nil, PushInto};
 
 use crate::pgproto::error::{DecodingError, PgError, PgResult};
 
@@ -27,20 +26,12 @@ pub fn type_from_name(name: &str) -> PgResult<Type> {
 /// This type is used to send Format over the wire.
 pub type RawFormat = i16;
 
-#[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Clone, Copy, Default, Serialize_repr, Deserialize_repr)]
 #[repr(i16)]
 pub enum Format {
+    #[default]
     Text = 0,
     Binary = 1,
-}
-
-impl<L: AsLua> PushInto<L> for Format {
-    type Err = tarantool::tlua::Void;
-
-    fn push_into_lua(self, lua: L) -> Result<tarantool::tlua::PushGuard<L>, (Self::Err, L)> {
-        let value = self as RawFormat;
-        value.push_into_lua(lua)
-    }
 }
 
 impl TryFrom<RawFormat> for Format {
@@ -60,6 +51,10 @@ impl TryFrom<RawFormat> for Format {
 pub struct PgValue(sbroad::ir::value::Value);
 
 impl PgValue {
+    pub fn into_inner(self) -> Value {
+        self.0
+    }
+
     fn integer(value: i64) -> Self {
         Self(Value::Integer(value))
     }
@@ -81,30 +76,39 @@ impl PgValue {
     }
 }
 
-impl TryFrom<serde_json::Value> for PgValue {
+impl TryFrom<rmpv::Value> for PgValue {
     type Error = PgError;
 
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let ret = match value {
-            serde_json::Value::Number(number) => {
-                if number.is_f64() {
-                    PgValue::float(number.as_f64().unwrap())
-                } else if number.is_i64() {
-                    PgValue::integer(number.as_i64().unwrap())
+    fn try_from(value: rmpv::Value) -> Result<Self, Self::Error> {
+        match value {
+            rmpv::Value::Nil => Ok(PgValue::null()),
+            rmpv::Value::Boolean(v) => Ok(PgValue::boolean(v)),
+            rmpv::Value::F32(v) => Ok(PgValue::float(v.into())),
+            rmpv::Value::F64(v) => Ok(PgValue::float(v)),
+            rmpv::Value::Integer(v) => {
+                let i = if v.is_i64() {
+                    v.as_i64().unwrap()
+                } else if v.is_u64() {
+                    // NOTE: u64::MAX can't be converted into i64
+                    i64::try_from(v.as_u64().unwrap())
+                        .map_err(|e| PgError::EncodingError(e.into()))?
                 } else {
-                    Err(PgError::FeatureNotSupported(format!(
-                        "unsupported type {number}"
-                    )))?
-                }
+                    Err(PgError::EncodingError(
+                        format!("couldn't encode integer: {v:?}").into(),
+                    ))?
+                };
+                Ok(PgValue::integer(i))
             }
-            serde_json::Value::String(string) => PgValue::text(string),
-            serde_json::Value::Bool(bool) => PgValue::boolean(bool),
-            serde_json::Value::Null => PgValue::null(),
-            _ => Err(PgError::FeatureNotSupported(format!(
-                "unsupported type {value}"
-            )))?,
-        };
-        Ok(ret)
+            rmpv::Value::String(v) => {
+                let Some(s) = v.as_str() else {
+                    Err(PgError::EncodingError(
+                        format!("couldn't encode string: {v:?}").into(),
+                    ))?
+                };
+                Ok(PgValue::text(s.to_owned()))
+            }
+            value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
+        }
     }
 }
 
@@ -221,23 +225,6 @@ impl PgValue {
         match format {
             Format::Binary => Self::decode_binary(bytes, ty),
             Format::Text => Self::decode_text(bytes, ty),
-        }
-    }
-}
-
-impl<L: AsLua> PushInto<L> for PgValue {
-    type Err = tarantool::tlua::Void;
-
-    fn push_into_lua(self, lua: L) -> Result<tarantool::tlua::PushGuard<L>, (Self::Err, L)> {
-        match self.0 {
-            Value::Boolean(value) => value.push_into_lua(lua),
-            Value::String(value) => value.push_into_lua(lua),
-            Value::Integer(value) => value.push_into_lua(lua),
-            Value::Double(double) => double.value.push_into_lua(lua),
-            Value::Null => PushInto::push_into_lua(Nil, lua),
-            // Let's just panic for now. Anyway, we will get rid of this PushInto impl after
-            // we get rid of the lua entrypoints in the next merge request.
-            _ => panic!("unsupported value"),
         }
     }
 }

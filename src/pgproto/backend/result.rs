@@ -1,6 +1,6 @@
-use super::value::{Format, PgValue};
 use crate::pgproto::backend::describe::{CommandTag, PortalDescribe, QueryType};
 use crate::pgproto::error::PgResult;
+use crate::pgproto::value::{Format, PgValue};
 use bytes::BytesMut;
 use pgwire::messages::data::{DataRow, RowDescription};
 use std::iter::zip;
@@ -13,6 +13,7 @@ fn encode_row(values: Vec<PgValue>, formats: &[Format], buf: &mut BytesMut) -> D
     DataRow::new(row)
 }
 
+#[derive(Debug)]
 pub struct ExecuteResult {
     describe: PortalDescribe,
     values_stream: IntoIter<Vec<PgValue>>,
@@ -22,28 +23,25 @@ pub struct ExecuteResult {
 }
 
 impl ExecuteResult {
-    pub fn new(
-        rows: Vec<Vec<PgValue>>,
-        describe: PortalDescribe,
-        is_portal_finished: bool,
-    ) -> Self {
-        let values_stream = rows.into_iter();
-        Self {
-            values_stream,
-            describe,
-            row_count: 0,
-            is_portal_finished,
-            buf: BytesMut::default(),
-        }
-    }
-
-    pub fn empty(row_count: usize, describe: PortalDescribe) -> Self {
+    /// Create a new finished result. It is used for non-dql queries.
+    pub fn new(row_count: usize, describe: PortalDescribe) -> Self {
         Self {
             values_stream: Default::default(),
             describe,
             row_count,
             is_portal_finished: true,
             buf: BytesMut::default(),
+        }
+    }
+
+    /// Create a query result with rows. It is used for dql-like queries.
+    pub fn with_rows(self, rows: Vec<Vec<PgValue>>, is_portal_finished: bool) -> Self {
+        let values_stream = rows.into_iter();
+        Self {
+            values_stream,
+            row_count: 0,
+            is_portal_finished,
+            ..self
         }
     }
 
@@ -64,6 +62,16 @@ impl ExecuteResult {
             QueryType::Dml | QueryType::Dql | QueryType::Explain => Some(self.row_count),
             _ => None,
         }
+    }
+}
+
+impl ExecuteResult {
+    pub fn query_type(&self) -> &QueryType {
+        self.describe.describe.query_type()
+    }
+
+    pub fn into_values_stream(self) -> IntoIter<Vec<PgValue>> {
+        self.values_stream
     }
 }
 

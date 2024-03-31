@@ -1,19 +1,21 @@
-use super::describe::{PortalDescribe, StatementDescribe};
+use super::describe::{PortalDescribe, QueryType, StatementDescribe};
 use super::storage::{UserPortalNames, UserStatementNames};
 use crate::pgproto::backend;
+use crate::pgproto::error::DecodingError;
+use crate::pgproto::value::Format;
 use crate::pgproto::{client::ClientId, error::PgResult};
 use ::tarantool::proc;
 use postgres_types::Oid;
 use sbroad::ir::value::{LuaValue, Value};
-use serde::Deserialize;
-use tarantool::tuple::Tuple;
+use serde::{Deserialize, Serialize};
+use tarantool::tuple::{Encode, Tuple};
 
 struct BindArgs {
     id: ClientId,
     stmt_name: String,
     portal_name: String,
     params: Vec<Value>,
-    encoding_format: Vec<u8>,
+    encoding_format: Vec<Format>,
     traceable: bool,
 }
 
@@ -28,7 +30,7 @@ impl<'de> Deserialize<'de> for BindArgs {
             String,
             String,
             Option<Vec<LuaValue>>,
-            Vec<u8>,
+            Vec<i16>,
             Option<bool>,
         );
 
@@ -41,12 +43,17 @@ impl<'de> Deserialize<'de> for BindArgs {
             .map(Value::from)
             .collect::<Vec<Value>>();
 
+        let format: Vec<_> = encoding_format
+            .into_iter()
+            .map(|raw| Format::try_from(raw).unwrap_or_default())
+            .collect();
+
         Ok(Self {
             id,
             stmt_name,
             portal_name,
             params,
-            encoding_format,
+            encoding_format: format,
             traceable: traceable.unwrap_or(false),
         })
     }
@@ -68,12 +75,12 @@ pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
 
 #[proc]
 pub fn proc_pg_describe_stmt(id: ClientId, name: String) -> PgResult<StatementDescribe> {
-    backend::describe_stmt(id, name)
+    backend::describe_statement(id, &name)
 }
 
 #[proc]
 pub fn proc_pg_describe_portal(id: ClientId, name: String) -> PgResult<PortalDescribe> {
-    backend::describe_portal(id, name)
+    backend::describe_portal(id, &name)
 }
 
 #[proc]
@@ -83,7 +90,46 @@ pub fn proc_pg_execute(
     max_rows: i64,
     traceable: bool,
 ) -> PgResult<Tuple> {
-    backend::execute(id, name, max_rows, traceable)
+    let result = backend::execute(id, name, max_rows, traceable)?;
+    let bytes = match result.query_type() {
+        QueryType::Explain | QueryType::Dql => {
+            #[derive(Serialize)]
+            struct ProcResult {
+                rows: Vec<Vec<LuaValue>>,
+                is_finished: bool,
+            }
+            impl Encode for ProcResult {}
+
+            let is_finished = result.is_portal_finished();
+            let rows = result
+                .into_values_stream()
+                .map(|values| {
+                    values
+                        .into_iter()
+                        .map(|v| LuaValue::from(v.into_inner()))
+                        .collect()
+                })
+                .collect();
+            let result = ProcResult { rows, is_finished };
+            rmp_serde::to_vec_named(&vec![result])
+        }
+        QueryType::Acl | QueryType::Ddl | QueryType::Dml => {
+            #[derive(Serialize)]
+            struct ProcResult {
+                row_count: Option<usize>,
+            }
+            impl Encode for ProcResult {}
+
+            let result = ProcResult {
+                row_count: result.row_count(),
+            };
+            rmp_serde::to_vec_named(&vec![result])
+        }
+    };
+
+    let bytes = bytes.map_err(|e| DecodingError::Other(e.into()))?;
+    let tuple = Tuple::try_from_slice(&bytes).map_err(|e| DecodingError::Other(e.into()))?;
+    Ok(tuple)
 }
 
 #[proc]
@@ -99,17 +145,17 @@ pub fn proc_pg_parse(
 
 #[proc]
 pub fn proc_pg_close_stmt(id: ClientId, name: String) {
-    backend::close_stmt(id, name)
+    backend::close_statement(id, &name)
 }
 
 #[proc]
 pub fn proc_pg_close_portal(id: ClientId, name: String) {
-    backend::close_portal(id, name)
+    backend::close_portal(id, &name)
 }
 
 #[proc]
 pub fn proc_pg_close_client_stmts(id: ClientId) {
-    backend::close_client_stmts(id)
+    backend::close_client_statements(id)
 }
 
 #[proc]

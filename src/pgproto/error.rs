@@ -14,6 +14,9 @@ pub type PgResult<T> = Result<T, PgError>;
 /// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
 #[derive(Error, Debug)]
 pub enum PgError {
+    #[error("internal error: {0}")]
+    InternalError(String),
+
     #[error("protocol violation: {0}")]
     ProtocolViolation(String),
 
@@ -26,6 +29,7 @@ pub enum PgError {
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 
+    // Server could not encode value into client's format.
     #[error("encoding error: {0}")]
     EncodingError(Box<dyn error::Error>),
 
@@ -38,6 +42,7 @@ pub enum PgError {
     #[error("json error: {0}")]
     JsonError(#[from] serde_json::Error),
 
+    // Server could not decode value recieved from client.
     #[error("{0}")]
     DecodingError(#[from] DecodingError),
 
@@ -99,6 +104,7 @@ impl PgError {
     fn code(&self) -> &str {
         use PgError::*;
         match self {
+            InternalError(_) => "XX000",
             ProtocolViolation(_) => "08P01",
             FeatureNotSupported(_) => "0A000",
             InvalidPassword(_) => "28P01",
