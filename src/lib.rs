@@ -553,6 +553,22 @@ fn init_common(
     tlog::set_core_logger_is_initialized(true);
 
     if let Err(e) = tarantool::set_cfg(cfg) {
+        let tnt_err = ::tarantool::error::TarantoolError::last();
+        let err_ty = tnt_err.error_type();
+        if err_ty == "XlogError" {
+            if let Some(config) = &config.instance.audit {
+                // Init log with stab values for raft_id and gen.
+                // We need to log the 'integrity_violation' event and
+                // there is nowhere to take raft state from at the moment.
+                audit::init(config, 0, 0);
+                crate::audit!(
+                    message: "integrity violation detected",
+                    title: "integrity_violation",
+                    severity: High,
+                    error: format!("{err_ty}: {}", tnt_err.message()),
+                )
+            }
+        }
         tlog::set_core_logger_is_initialized(false);
         return Err(Error::other(format!("core initialization failed: {e}")));
     }

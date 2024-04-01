@@ -90,6 +90,31 @@ def test_startup(instance: Instance):
     assert event["initiator"] == "admin"
 
 
+def test_integrity_violation(instance: Instance):
+    # Instance was up for some time
+    instance.start()
+    instance.terminate()
+
+    # Then data files were modified and instance restarted
+    snap_name = f"{instance.data_dir}/00000000000000000000.snap"
+    with open(snap_name, "w") as snap:
+        snap.write("abc")
+
+    # Instance should fail to start
+    instance.fail_to_start()
+
+    # Instance should  detect integrity violation
+    events = list(AuditFile(instance.audit_flag_value).events())
+    event = take_until_title(iter(events), "integrity_violation")
+    assert event is not None
+    assert event["message"] == "integrity violation detected"
+    assert event["severity"] == "high"
+    assert (
+        event["error"]
+        == "XlogError: Unexpected end of file, run with 'force_recovery = true'"
+    )
+
+
 def test_recover_database(instance: Instance):
     instance.start()
     instance.wait_online()
