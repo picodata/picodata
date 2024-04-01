@@ -107,11 +107,11 @@
 Дальше перечислены ответственности губернатора.
 
 
-### Автоматическое переключение узлов голосующих в raft {: #governor_raft_failover }
+### Автоматическое переключение узлов, голосующих в raft {: #governor_raft_failover }
 
 Governor следит за выполнение ограничений, описанных [здесь](./raft_failover.md#raft_voter_failover).
 
-
+<!--
 ### Автоматическое назначение мастеров репликасетов {: #replicaset_master_switchover }
 
 Work in progress
@@ -130,7 +130,7 @@ Work in progress
 ### Автоматическое изменение конфигурации vshard {: #governor_vshard_cfg }
 
 Work in progress
-
+-->
 
 ### Применение изменений кластерной схемы данных {: #governor_schema_change }
 
