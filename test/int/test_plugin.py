@@ -3,7 +3,7 @@ import time
 import os
 import sys
 import shutil
-from conftest import Cluster, ReturnError
+from conftest import Cluster, ReturnError, retrying
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -28,7 +28,7 @@ def get_route(needle_instance_id, plugin_name, service_name, instance):
     return route
 
 
-def assert_plugin_exists(plugin, services, *instances):
+def assert_plugin_exist(plugin, services, *instances):
     for i in instances:
         plugins = i.eval("return box.space._pico_plugin:select(...)", plugin)
         assert len(plugins) == 1
@@ -37,7 +37,14 @@ def assert_plugin_exists(plugin, services, *instances):
                 "return box.space._pico_service:select({...})", plugin, service
             )
             assert len(svcs) == 1
-        # instance have all routing information
+
+
+def assert_plugin_enabled(plugin, services, *instances):
+    for i in instances:
+        plugins = i.eval("return box.space._pico_plugin:select(...)", plugin)
+        assert len(plugins) == 1
+        assert plugins[0][1]
+
         for service in services:
             for neighboring_i in instances:
                 route = get_route(neighboring_i.instance_id, plugin, service, i)
@@ -54,23 +61,16 @@ def assert_plugin_not_exists(plugin, services, *instances):
             )
             assert len(svcs) == 0
 
-        # instance have all routing information
+
+def assert_plugin_disabled(plugin, services, *instances):
+    for i in instances:
+        plugins = i.eval("return box.space._pico_plugin:select(...)", plugin)
+        assert len(plugins) == 1
+        assert not plugins[0][1]
         for service in services:
             for neighboring_i in instances:
                 route = get_route(neighboring_i.instance_id, plugin, service, i)
                 assert route is None
-
-
-def assert_plugin_record(expected, *instances, timeout=_3_SEC):
-    plugins = None
-    attempts = timeout
-    for _ in range(attempts):
-        for i in instances:
-            plugins = i.eval("return box.space._pico_plugin:select()")
-            if plugins == expected:
-                return
-        time.sleep(1)
-    assert plugins == expected
 
 
 def assert_cb_called(service, callback, called_times, *instances):
@@ -146,66 +146,204 @@ def test_invalid_manifest_plugin(cluster: Cluster):
     with pytest.raises(
         ReturnError, match="Error while discovering manifest for plugin"
     ):
-        i1.call("pico.create_plugin", "non-existent")
+        i1.call("pico.install_plugin", "non-existent")
+    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     # try to use invalid manifest (with undefined plugin name)
     with pytest.raises(ReturnError, match="missing field `name`"):
-        i1.call("pico.create_plugin", "testplug_broken_manifest_1")
+        i1.call("pico.install_plugin", "testplug_broken_manifest_1")
+    assert_plugin_not_exists("testplug_broken_manifest_1", _PLUGIN_SERVICES, i1, i2)
 
     # try to use invalid manifest (with invalid default configuration)
-    with pytest.raises(ReturnError, match="Error while load plugin"):
-        i1.call("pico.create_plugin", "testplug_broken_manifest_2")
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        i1.call("pico.install_plugin", "testplug_broken_manifest_2")
+        i1.call("pico.enable_plugin", "testplug_broken_manifest_2")
+    assert_plugin_exist("testplug_broken_manifest_2", _PLUGIN_SERVICES, i1, i2)
+    assert_plugin_disabled("testplug_broken_manifest_2", _PLUGIN_SERVICES, i1, i2)
 
-    # try to use invalid manifest (with non-existed extra service)
-    with pytest.raises(ReturnError, match="Error while load plugin"):
-        i1.call("pico.create_plugin", "testplug_broken_manifest_3")
-
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # # try to use invalid manifest (with non-existed extra service)
+    with pytest.raises(ReturnError, match="Error while install the plugin"):
+        i1.call("pico.install_plugin", "testplug_broken_manifest_3")
+    assert_plugin_not_exists(
+        "testplug_broken_manifest_3",
+        ["testservice_1", "testservice_2", "testservice_3"],
+        i1,
+        i2,
+    )
     assert_cb_called("testservice_1", "on_start", None, i1, i2)
 
 
-def test_plugin_load(cluster: Cluster):
+def install_and_enable_plugin(instance, plugin, timeout=_3_SEC):
+    instance.call("pico.install_plugin", plugin, timeout=timeout)
+    instance.call("pico.enable_plugin", plugin, timeout=timeout)
+
+
+def assert_plugin_exist_and_enabled(plugin, services, *instances):
+    assert_plugin_exist(_PLUGIN, _PLUGIN_SERVICES, *instances)
+    assert_plugin_enabled(_PLUGIN, _PLUGIN_SERVICES, *instances)
+
+
+def test_plugin_install(cluster: Cluster):
+    """
+    plugin installation must be full idempotence:
+    install non-installed plugin - default behavior
+    install already disabled plugin - do nothing
+    install already enabled plugin - do nothing
+    """
+
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
 
-    # assert that system tables are filled
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # check default behaviour
+    i1.call("pico.install_plugin", _PLUGIN)
+    assert_plugin_exist(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
+    # check install already disabled plugin
+    i1.call("pico.install_plugin", _PLUGIN)
+    assert_plugin_exist(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+    # enable plugin and check installation of already enabled plugin
+    i1.call("pico.enable_plugin", _PLUGIN)
+    assert_plugin_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+    i1.call("pico.install_plugin", _PLUGIN)
+    assert_plugin_exist(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    assert_plugin_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+
+def test_plugin_enable(cluster: Cluster):
+    """
+    plugin enabling behaviour:
+    enabling of installed and disabled plugin - default behavior
+    enabling of already enabled plugin - do nothing
+    enabling of non-installed plugin - error occurred
+    """
+
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    # check default behaviour
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
     # assert that on_start callbacks successfully called
     assert_cb_called("testservice_1", "on_start", 1, i1, i2)
     assert_cb_called("testservice_2", "on_start", 1, i1, i2)
 
+    # check enable already enabled plugin
+    i1.call("pico.enable_plugin", _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # assert that `on_start` don't call twice
+    assert_cb_called("testservice_1", "on_start", 1, i1, i2)
+    assert_cb_called("testservice_2", "on_start", 1, i1, i2)
 
-def test_two_plugin_load(cluster: Cluster):
+    # check that enabling of non-installed plugin return error
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        i1.call("pico.enable_plugin", _PLUGIN_SMALL)
+
+
+def test_plugin_disable(cluster: Cluster):
+    """
+    plugin disabling behaviour:
+    disabling of enabled plugin - default behavior
+    disabling of disabled plugin - do nothing
+    disabling of non-installed plugin - error occurred
+    """
+
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    i1.call("pico.create_plugin", _PLUGIN_SMALL, timeout=_3_SEC)
+
+    # check default behaviour
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    i1.call("pico.disable_plugin", _PLUGIN)
+
+    assert_plugin_exist(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # retrying, cause routing table update asynchronously
+    retrying(lambda: assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2))
+
+    # assert that `on_stop` callbacks successfully called
+    assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
+    assert_cb_called("testservice_2", "on_stop", 1, i1, i2)
+
+    # check disabling of already disabled plugin
+    i1.call("pico.disable_plugin", _PLUGIN)
+    assert_plugin_exist(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # assert that `on_stop` callbacks don't call twice
+    assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
+    assert_cb_called("testservice_2", "on_stop", 1, i1, i2)
+
+    # check that disabling of non-installed plugin return error
+    with pytest.raises(
+        ReturnError, match="Plugin `testplug_small` not found at instance"
+    ):
+        i1.call("pico.disable_plugin", _PLUGIN_SMALL)
+
+
+def test_plugin_remove(cluster: Cluster):
+    """
+    plugin removing behaviour:
+    removing of disabling plugin - default behavior
+    removing of non-installed plugin - do nothing
+    removing of already enabled plugin - error occurred
+    """
+
+    i1, i2 = cluster.deploy(instance_count=2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+    # check that removing non-disabled plugin return error
+    with pytest.raises(ReturnError, match="Remove of enabled plugin is forbidden"):
+        i1.call("pico.remove_plugin", _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+    i1.call("pico._inject_error", "PLUGIN_EXIST_AND_ENABLED", True)
+    # same, but error not returned to a client
+    i1.call("pico.remove_plugin", _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    i1.call("pico._inject_error", "PLUGIN_EXIST_AND_ENABLED", False)
+
+    # check default behaviour
+    i1.call("pico.disable_plugin", _PLUGIN)
+    # retrying, cause routing table update asynchronously
+    retrying(lambda: assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2))
+    i1.call("pico.remove_plugin", _PLUGIN)
+    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+    # check removing non-installed plugin
+    i1.call("pico.remove_plugin", _PLUGIN)
+    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+
+
+def test_two_plugin_install_and_enable(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    install_and_enable_plugin(i1, _PLUGIN_SMALL)
 
     # assert that system tables are filled
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
-    assert_plugin_exists(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    assert_plugin_exist_and_enabled(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2)
 
     # assert that on_start callbacks successfully called
     assert_cb_called("testservice_1", "on_start", 2, i1, i2)
     assert_cb_called("testservice_2", "on_start", 1, i1, i2)
 
 
-def test_plugin_load_at_new_instance(cluster: Cluster):
+def test_plugin_install_and_enable_at_new_instance(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     i3 = cluster.add_instance(wait_online=True)
-    assert_plugin_exists("testplug", _PLUGIN_SERVICES, i1, i2, i3)
+    assert_plugin_exist_and_enabled("testplug", _PLUGIN_SERVICES, i1, i2, i3)
 
     assert_cb_called("testservice_1", "on_start", 1, i1, i2, i3)
     assert_cb_called("testservice_2", "on_start", 1, i1, i2, i3)
 
 
-def test_plugin_stop(cluster: Cluster):
+def test_instance_with_plugin_shutdown(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     i2.restart()
     i2.wait_online()
@@ -217,56 +355,25 @@ def test_plugin_stop(cluster: Cluster):
 
 def test_instance_with_plugin_expel(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
     cluster.expel(i2)
     # assert that expel doesn't affect plugins
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i2)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i2)
 
 
-def test_plugin_remove(cluster: Cluster):
+def test_plugin_disable_error_on_stop(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
-
-    i1.call("pico.remove_plugin", _PLUGIN, timeout=_3_SEC)
-    # sleep cause routing table update asynchronously
-    time.sleep(_3_SEC)
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
-
-    assert_cb_called("testservice_1", "on_start", 1, i1, i2)
-    assert_cb_called("testservice_2", "on_start", 1, i1, i2)
-    assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
-    assert_cb_called("testservice_2", "on_stop", 1, i1, i2)
-
-
-def test_plugin_double_remove(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
-
-    i1.eval(
-        f'pico.remove_plugin("{_PLUGIN}") return pico.remove_plugin("{_PLUGIN}")',
-        timeout=_3_SEC,
-    )
-
-    # check that remove plugin is idempotence operation
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
-    assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
-    assert_cb_called("testservice_2", "on_stop", 1, i1, i2)
-
-
-def test_plugin_remove_error_on_stop(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     inject_error("testservice_1", "on_stop", True, i2)
     inject_error("testservice_2", "on_stop", True, i2)
 
+    i1.call("pico.disable_plugin", _PLUGIN, timeout=_3_SEC)
+    # retrying, cause routing table update asynchronously
+    retrying(lambda: assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2))
     i1.call("pico.remove_plugin", _PLUGIN, timeout=_3_SEC)
-    # sleep cause routing table update asynchronously
-    time.sleep(_3_SEC)
     assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     assert_cb_called("testservice_1", "on_start", 1, i1, i2)
@@ -277,26 +384,28 @@ def test_plugin_remove_error_on_stop(cluster: Cluster):
     assert_cb_called("testservice_2", "on_stop", None, i2)
 
 
-def test_plugin_not_load_if_error_on_start(cluster: Cluster):
+def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     # inject error into second instance
     inject_error("testservice_1", "on_start", True, i2)
 
     # assert that plugin not loaded and on_stop called on both instances
-    with pytest.raises(ReturnError, match="Error while load plugin"):
-        i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        install_and_enable_plugin(i1, _PLUGIN)
 
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # plugin installed but disabled
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
     assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
 
     # inject error into both instances
     inject_error("testservice_1", "on_start", True, i1)
 
     # assert that plugin not loaded and on_stop called on both instances
-    with pytest.raises(ReturnError, match="Error while load plugin"):
-        i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        install_and_enable_plugin(i1, _PLUGIN)
 
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # plugin installed but disabled
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
     assert_cb_called("testservice_1", "on_stop", 2, i1, i2)
 
     # remove errors
@@ -304,41 +413,43 @@ def test_plugin_not_load_if_error_on_start(cluster: Cluster):
     inject_error("testservice_1", "on_start", False, i2)
 
     # assert plugin loaded now
-    i1.call("pico.create_plugin", "testplug")
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
 
-def test_plugin_not_load_if_on_start_timeout(cluster: Cluster):
+def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     # inject timeout into second instance
     inject_error("testservice_1", "on_start_sleep_sec", 3, i2)
 
-    with pytest.raises(ReturnError, match="Error while load plugin"):
-        i1.call("pico.create_plugin", _PLUGIN, {"on_start_timeout": 2}, timeout=_3_SEC)
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        i1.call("pico.install_plugin", _PLUGIN)
+        i1.call("pico.enable_plugin", _PLUGIN, {"on_start_timeout": 2}, timeout=4)
     # need to wait until sleep at i2 called asynchronously
     time.sleep(2)
 
-    # assert that plugin not loaded and on_stop called on both instances
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # assert that plugin installed, disabled and on_stop called on both instances
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
     assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
 
     # inject timeout into both instances
     inject_error("testservice_1", "on_start_sleep_sec", 3, i1)
 
-    with pytest.raises(ReturnError, match="Error while load plugin"):
-        i1.call("pico.create_plugin", _PLUGIN, {"on_start_timeout": 2}, timeout=_3_SEC)
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        i1.call("pico.install_plugin", _PLUGIN)
+        i1.call("pico.enable_plugin", _PLUGIN, {"on_start_timeout": 2}, timeout=4)
     # need to wait until sleep at i1 and i2 called asynchronously
     time.sleep(2)
 
-    # assert that plugin not loaded and on_stop called on both instances
-    assert_plugin_not_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    # assert that plugin installed, disabled and on_stop called on both instances
+    assert_plugin_disabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
     assert_cb_called("testservice_1", "on_stop", 2, i1, i2)
 
 
 def test_config_validation(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     inject_error("testservice_1", "on_cfg_validate", "test error", i1)
     with pytest.raises(
@@ -371,8 +482,8 @@ def assert_config(plugin, service, expected_cfg, *instances):
 
 def test_on_config_update(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     assert_config(_PLUGIN, "testservice_1", _DEFAULT_CFG, i1, i2)
 
@@ -380,13 +491,14 @@ def test_on_config_update(cluster: Cluster):
         "pico.update_plugin_config('testplug', 'testservice_1', {foo = "
         "true, bar = 102, baz = {'a', 'b'}})"
     )
-    assert_config(_PLUGIN, "testservice_1", _NEW_CFG, i1, i2)
+    # retrying, cause new service configuration callback call asynchronously
+    retrying(lambda: assert_config(_PLUGIN, "testservice_1", _NEW_CFG, i1, i2))
 
 
 def test_plugin_double_config_update(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     i1.eval(
         'pico.update_plugin_config("testplug", "testservice_1", {foo = '
@@ -395,7 +507,8 @@ def test_plugin_double_config_update(cluster: Cluster):
         '{foo = false, bar = 102, baz = {"a", "b"}})'
     )
     # both configs were applied
-    assert_cb_called("testservice_1", "on_config_change", 2, i1, i2)
+    # retrying, cause callback call asynchronously
+    retrying(lambda: assert_cb_called("testservice_1", "on_config_change", 2, i1, i2))
     assert_config(_PLUGIN, "testservice_1", _NEW_CFG_2, i1, i2)
 
     i1.eval(
@@ -407,7 +520,8 @@ def test_plugin_double_config_update(cluster: Cluster):
         'true, bar = 102, baz = {"a", "b"}})'
     )
     # both configs were applied and result config may be any of applied
-    assert_cb_called("testservice_1", "on_config_change", 4, i1, i2)
+    # retrying, cause callback call asynchronously
+    retrying(lambda: assert_cb_called("testservice_1", "on_config_change", 4, i1, i2))
 
 
 def assert_poisoned(poison_instance_id, plugin, service, *instances):
@@ -426,8 +540,8 @@ def assert_not_poisoned(poison_instance_id, plugin, service, *instances):
 
 def test_error_on_config_update(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     assert_config(_PLUGIN, "testservice_1", _DEFAULT_CFG, i1, i2)
 
@@ -444,18 +558,21 @@ def test_error_on_config_update(cluster: Cluster):
     assert cfg_space == _NEW_CFG
     cfg_seen = get_seen_config("testservice_1", i1)
     assert cfg_seen == _DEFAULT_CFG
-    assert_config(_PLUGIN, "testservice_1", _NEW_CFG, i2)
+    retrying(lambda: assert_config(_PLUGIN, "testservice_1", _NEW_CFG, i2))
 
     # assert that the first instance now has a poison service
     # and the second instance is not poisoned
-    assert_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2)
-    assert_not_poisoned(i2.instance_id, _PLUGIN, "testservice_1", i1, i2)
+    # retrying, cause routing table update asynchronously
+    retrying(lambda: assert_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2))
+    retrying(
+        lambda: assert_not_poisoned(i2.instance_id, _PLUGIN, "testservice_1", i1, i2)
+    )
 
 
 def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     assert_config(_PLUGIN, "testservice_1", _DEFAULT_CFG, i1, i2)
     inject_error("testservice_1", "on_cfg_change", "test error", i1)
@@ -466,7 +583,8 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     )
 
     # assert that the first instance now has a poison service
-    assert_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2)
+    # retrying, cause routing table update asynchronously
+    retrying(lambda: assert_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2))
 
     remove_error("testservice_1", "on_cfg_change", i1)
 
@@ -475,7 +593,10 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
         "false, bar = 102, baz = {'a', 'b'}})"
     )
 
-    assert_not_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2)
+    # retrying, cause routing table update asynchronously
+    retrying(
+        lambda: assert_not_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2)
+    )
     assert_config(_PLUGIN, "testservice_1", _NEW_CFG_2, i1, i2)
 
 
@@ -487,8 +608,8 @@ def test_on_leader_change(cluster: Cluster):
     masters = [i for i in cluster.instances if not i.eval("return box.info.ro")]
     assert masters[0] == i1
 
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
 
     assert_last_seen_ctx("testservice_1", {"is_master": True}, i1)
     assert_last_seen_ctx("testservice_1", {"is_master": False}, i2, i3)
@@ -521,8 +642,8 @@ def test_error_on_leader_change(cluster: Cluster):
     masters = [i for i in cluster.instances if not i.eval("return box.info.ro")]
     assert masters[0] == i1
 
-    i1.call("pico.create_plugin", _PLUGIN, timeout=_3_SEC)
-    assert_plugin_exists(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    install_and_enable_plugin(i1, _PLUGIN)
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
 
     inject_error("testservice_1", "on_leader_change", True, i1)
 
@@ -543,3 +664,61 @@ def test_error_on_leader_change(cluster: Cluster):
     # and the second instance is not poisoned
     assert_poisoned(i1.instance_id, _PLUGIN, "testservice_1", i1, i2)
     assert_not_poisoned(i2.instance_id, _PLUGIN, "testservice_1", i1, i2)
+
+
+def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
+    i1, i2, i3, i4 = cluster.deploy(instance_count=4)
+    # install and enable two plugins
+    install_and_enable_plugin(i1, _PLUGIN)
+    install_and_enable_plugin(i1, _PLUGIN_SMALL)
+
+    # assert that system tables are filled
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3, i4)
+    assert_plugin_exist_and_enabled(
+        _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2, i3, i4
+    )
+
+    # assert that on_start callbacks successfully called
+    assert_cb_called("testservice_1", "on_start", 2, i1, i2, i3, i4)
+    assert_cb_called("testservice_2", "on_start", 1, i1, i2, i3, i4)
+
+    i4.terminate()
+
+    # add third plugin
+    install_and_enable_plugin(i1, "testplug_small_svc2")
+    # update first plugin config
+    i1.eval(
+        'pico.update_plugin_config("testplug", "testservice_1", {foo = '
+        'true, bar = 102, baz = {"a", "b"}})'
+    )
+    # disable second plugin
+    i1.call("pico.disable_plugin", _PLUGIN_SMALL)
+    time.sleep(1)
+
+    if compact_raft_log:
+        # Compact raft log to trigger snapshot with an unfinished schema change.
+        i1.raft_compact_log()
+        i2.raft_compact_log()
+        i3.raft_compact_log()
+
+    i4.start()
+    i4.wait_online()
+
+    # check that 1st and 3rd plugin enabled at all instances
+    assert_plugin_exist_and_enabled(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3, i4)
+    assert_plugin_exist_and_enabled(
+        "testplug_small_svc2", "testplug_small_duplicate", i1, i2, i3, i4
+    )
+    # assert first plugin configuration update at all instances
+    assert_config(_PLUGIN, "testservice_1", _NEW_CFG, i1, i2, i3, i4)
+    # assert second plugin disabled at all instances
+    assert_plugin_exist(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2, i3, i4)
+    assert_plugin_disabled(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2, i3, i4)
+
+
+def test_four_plugin_install_and_enable(cluster: Cluster):
+    _test_plugin_lifecycle(cluster, compact_raft_log=False)
+
+
+def test_four_plugin_install_and_enable2(cluster: Cluster):
+    _test_plugin_lifecycle(cluster, compact_raft_log=True)

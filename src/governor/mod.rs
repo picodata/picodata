@@ -21,14 +21,13 @@ use crate::traft::node::Status;
 use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
+use plan::action_plan;
+use plan::stage::*;
 
 use futures::future::try_join_all;
 
 pub(crate) mod cc;
 pub(crate) mod plan;
-
-use plan::action_plan;
-use plan::stage::*;
 
 impl Loop {
     const RPC_TIMEOUT: Duration = Duration::from_secs(1);
@@ -104,10 +103,38 @@ impl Loop {
             .pending_schema_change()
             .expect("storage should never fail");
         let has_pending_schema_change = pending_schema_change.is_some();
-        let new_plugin_loaded = storage
+        let install_plugin = storage
             .properties
-            .pending_plugin_load()
-            .expect("storage should never fail");
+            .plugin_install()
+            .expect("storage should never fail")
+            .map(|manifest| {
+                let installed_plugin = storage
+                    .plugin
+                    .get(&manifest.name)
+                    .expect("storage should not fail");
+                (installed_plugin, manifest)
+            });
+        let enable_plugin = storage
+            .properties
+            .pending_plugin_enable()
+            .expect("storage should never fail")
+            .map(|(plugin_name, services, timeout)| {
+                let installed_plugin = storage
+                    .plugin
+                    .get(&plugin_name)
+                    .expect("storage should not fail");
+                (plugin_name, installed_plugin, services, timeout)
+            });
+        let disable_plugin = storage
+            .properties
+            .pending_plugin_disable()
+            .expect("storage should never fail")
+            .map(|plugin_to_disable| {
+                storage
+                    .service_route_table
+                    .get_by_plugin(&plugin_to_disable)
+                    .expect("storage should not fail")
+            });
 
         let plan = action_plan(
             term,
@@ -124,7 +151,9 @@ impl Loop {
             &target_vshard_config,
             vshard_bootstrapped,
             has_pending_schema_change,
-            new_plugin_loaded.as_ref(),
+            install_plugin.as_ref(),
+            enable_plugin.as_ref(),
+            disable_plugin.as_deref(),
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -393,7 +422,12 @@ impl Loop {
                 }
             }
 
-            Plan::ToOnline(ToOnline { target, rpc, req }) => {
+            Plan::ToOnline(ToOnline {
+                target,
+                rpc,
+                plugin_rpc,
+                req,
+            }) => {
                 set_status(governor_status, "update instance grade to online");
                 if let Some(rpc) = rpc {
                     governor_step! {
@@ -407,6 +441,19 @@ impl Loop {
                         }
                     }
                 }
+
+                governor_step! {
+                    "enable plugins on instance" [
+                        "instance_id" => %target,
+                    ]
+                    async {
+                        pool.call(target, &plugin_rpc, Self::RPC_TIMEOUT)?
+                            // TODO looks like we need a big timeout here
+                            .timeout(Duration::from_secs(10))
+                            .await?
+                    }
+                }
+
                 let current_grade = req.current_grade.expect("must be set");
                 governor_step! {
                     "handling instance grade change" [
@@ -477,29 +524,83 @@ impl Loop {
                 }
             }
 
-            Plan::LoadPlugin(LoadPlugin {
+            Plan::InstallPlugin(InstallPlugin {
+                install_substep,
+                finalize_op,
+            }) => {
+                set_status(governor_status, "install new plugin");
+
+                if let Some((targets, rpc, op)) = install_substep {
+                    governor_step! {
+                    "checking if plugin is ready for installation on instances"
+                        async {
+                            let mut fs = vec![];
+                            for instance_id in targets {
+                                tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_id" => %instance_id);
+                                let resp = pool.call(instance_id, &rpc, Duration::from_secs(5))?;
+                                fs.push(async move {
+                                    match resp.await {
+                                        Ok(_) => {
+                                            tlog!(Info, "instance is ready to install plugin";
+                                                "instance_id" => %instance_id,
+                                            );
+                                            Ok(())
+                                        }
+                                        Err(e) => {
+                                            tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
+                                                "instance_id" => %instance_id
+                                            );
+                                            Err(OnError::Abort)
+                                        }
+                                    }
+                                });
+                            }
+
+                            if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
+                                tlog!(Error, "Plugin installation aborted: {e:?}");
+                                return Ok(());
+                            }
+
+                            node.propose_and_wait(op, Duration::from_secs(3))?;
+                        }
+                    }
+                }
+
+                governor_step! {
+                    "finalizing plugin installing"
+                    async {
+                        node.propose_and_wait(finalize_op, Duration::from_secs(3))?;
+                    }
+                }
+            }
+
+            Plan::EnablePlugin(EnablePlugin {
                 targets,
                 rpc,
+                rollback_op,
                 on_start_timeout,
+                success_dml,
+                finalize_dml,
             }) => {
-                set_status(governor_status, "load new plugin");
-                let mut next_op = Op::Nop;
+                set_status(governor_status, "enable plugin");
+                let mut next_ops = vec![finalize_dml];
+
                 governor_step! {
-                    "load new plugin"
+                    "enable plugin"
                     async {
                         let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling proc_load_plugin"; "instance_id" => %instance_id);
+                        for &instance_id in &targets {
+                            tlog!(Info, "calling enable_plugin"; "instance_id" => %instance_id);
                             let resp = pool.call(instance_id, &rpc, on_start_timeout)?;
                             fs.push(async move {
                                 match resp.await {
-                                    Ok(rpc::load_plugin::Response::Ok) => {
+                                    Ok(rpc::enable_plugin::Response::Ok) => {
                                         tlog!(Info, "load plugin on instance";
                                             "instance_id" => %instance_id,
                                         );
                                         Ok(())
                                     }
-                                    Ok(rpc::load_plugin::Response::Abort { reason }) => {
+                                    Ok(rpc::enable_plugin::Response::Abort { reason }) => {
                                         tlog!(Error, "failed to load plugin at instance: {reason}";
                                             "instance_id" => %instance_id,
                                         );
@@ -521,26 +622,34 @@ impl Loop {
                             });
                         }
 
-                        let res = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort)) = res {
-                            next_op = Op::PluginLoadAbort;
+                        let enable_result = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
+                        if let Err(TimeoutError::Failed(OnError::Abort)) = enable_result {
+                            node.propose_and_wait(rollback_op, Duration::from_secs(3))?;
                             return Ok(());
                         }
 
-                        res?;
+                        enable_result?;
 
-                        next_op = Op::PluginLoadCommit;
+                        next_ops.extend(success_dml);
                     }
                 }
 
-                let op_name = next_op.to_string();
                 governor_step! {
-                    "finalizing plugin loading" [
-                        "op" => &op_name,
-                    ]
+                    "finalizing plugin enabling"
                     async {
-                        assert!(matches!(next_op, Op::PluginLoadAbort | Op::PluginLoadCommit));
-                        node.propose_and_wait(next_op, Duration::from_secs(3))?;
+                        node.propose_and_wait(Op::BatchDml {
+                            ops: next_ops,
+                        }, Duration::from_secs(3))?;
+                    }
+                }
+            }
+
+            Plan::DisablePlugin(DisablePlugin { op }) => {
+                set_status(governor_status, "update plugin routing table");
+                governor_step! {
+                    "updating plugin routing table"
+                    async {
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }

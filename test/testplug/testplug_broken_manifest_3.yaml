@@ -1,6 +1,6 @@
 # invalid manifest with extra service
 description: plugin for test purposes
-name: testplug
+name: testplug_broken_manifest_3
 version: 0.1.0
 services:
   - name: testservice_1

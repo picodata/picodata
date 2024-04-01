@@ -4,6 +4,7 @@ use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, AD
 use libloading::Library;
 use once_cell::unsync;
 use picoplugin::interface::ServiceBox;
+use serde::de::Error;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io;
@@ -15,12 +16,13 @@ use tarantool::time::Instant;
 
 use crate::cas::{compare_and_swap, Range};
 use crate::info::InstanceInfo;
-use crate::storage::{ClusterwideTable, PropertyName};
+use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
+use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
 use crate::traft::node::Node;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
-use crate::{cas, traft};
+use crate::{cas, error_injection, traft};
 
 const DEFAULT_PLUGIN_DIR: &'static str = "/usr/share/picodata/";
 
@@ -38,8 +40,10 @@ pub fn set_plugin_dir(path: &Path) {
 
 #[derive(thiserror::Error, Debug)]
 pub enum PluginError {
-    #[error("Error while load plugin")]
-    LoadAborted,
+    #[error("Error while install the plugin")]
+    InstallationAborted,
+    #[error("Error while enable the plugin")]
+    EnablingAborted,
     #[error("Error while discovering manifest for plugin `{0}`: {1}")]
     ManifestNotFound(String, io::Error),
     #[error("Error while parsing manifest `{0}`, reason: {1}")]
@@ -54,8 +58,8 @@ pub enum PluginError {
     PartialLoad,
     #[error("Callback: {0}")]
     Callback(#[from] PluginCallbackError),
-    #[error("Attempt to call non active plugin")]
-    PluginInactive,
+    #[error("Attempt to call a disabled plugin")]
+    PluginDisabled,
     #[error(transparent)]
     Tarantool(#[from] tarantool::error::Error),
     #[error("Plugin async events queue is full")]
@@ -66,6 +70,8 @@ pub enum PluginError {
     ServiceNotFound(String, String),
     #[error("Remote call error: {0}")]
     RemoteError(String),
+    #[error("Remove of enabled plugin is forbidden")]
+    RemoveOfEnabledPlugin,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -121,17 +127,53 @@ impl Manifest {
             PluginError::ManifestNotFound(manifest_path.to_string_lossy().to_string(), e)
         })?;
 
-        let manifest = serde_yaml::from_reader(file).map_err(|e| {
+        let manifest: Manifest = serde_yaml::from_reader(file).map_err(|e| {
             PluginError::InvalidManifest(manifest_path.to_string_lossy().to_string(), e)
         })?;
+        if manifest.name != plugin_name {
+            return Err(PluginError::InvalidManifest(
+                manifest_path.to_string_lossy().to_string(),
+                serde_yaml::Error::custom("plugin name should be equal to manifest name"),
+            ));
+        }
+
         Ok(manifest)
+    }
+
+    /// Create manifest from data in system tables `_pico_plugin` and `_pico_service`.
+    pub fn from_system_tables(storage: &Clusterwide, plugin_name: &str) -> Result<Self> {
+        let plugin = storage
+            .plugin
+            .get(plugin_name)?
+            .ok_or_else(|| PluginNotFound(plugin_name.to_string()))?;
+
+        let services = storage
+            .service
+            .get_by_plugin_and_version(&plugin.name, &plugin.version)?;
+
+        // build manifest using information form system tables _pico_plugin and _pico_service
+        let manifest_services = services
+            .into_iter()
+            .map(|srv| ServiceManifest {
+                name: srv.name,
+                description: String::default(),
+                default_configuration: srv.configuration,
+            })
+            .collect();
+
+        Ok(Manifest {
+            name: plugin.name.clone(),
+            description: String::default(),
+            version: plugin.version,
+            services: manifest_services,
+        })
     }
 
     /// Return plugin defenition built from manifest.
     pub fn plugin_def(&self) -> PluginDef {
         PluginDef {
             name: self.name.to_string(),
-            running: false,
+            enabled: false,
             services: self
                 .services
                 .iter()
@@ -161,8 +203,8 @@ impl Manifest {
 /// and which plugins should respond to.
 #[derive(Clone, PartialEq, Debug)]
 pub enum PluginEvent<'a> {
-    /// New picodata instance started.
-    InstanceStart { join: bool },
+    /// Picodata instance goes online.
+    InstanceOnline,
     /// Picodata instance shutdown (shutdown trigger is called).
     InstanceShutdown,
     /// New plugin load at instance.
@@ -170,6 +212,8 @@ pub enum PluginEvent<'a> {
         name: &'a str,
         service_defs: &'a [ServiceDef],
     },
+    /// Error occurred while the plugin loaded.
+    PluginLoadError { name: &'a str },
     /// Request for update service configuration received.
     BeforeServiceConfigurationUpdated {
         plugin: &'a str,
@@ -188,8 +232,6 @@ pub enum PluginEvent<'a> {
 /// Asynchronous events needed when fired side can't yield while event handled by plugins,
 /// for example, if event fired in transaction.
 pub enum PluginAsyncEvent {
-    /// Error occurred while the plugin loaded.
-    PluginLoadError { name: String },
     /// Plugin service configuration is updated.
     ServiceConfigurationUpdated {
         plugin: String,
@@ -198,35 +240,7 @@ pub enum PluginAsyncEvent {
         new_raw: Vec<u8>,
     },
     /// Plugin removed at instance.
-    PluginRemoved { name: String },
-}
-
-/// Wait until [`Op::PluginLoadCommit`] or [`Op::PluginLoadAbort`] is coming.
-fn wait_for_plugin_commit(
-    node: &Node,
-    prepare_commit: RaftIndex,
-    timeout: Duration,
-) -> traft::Result<()> {
-    let raft_storage = &node.raft_storage;
-    let deadline = fiber::clock().saturating_add(timeout);
-    let last_seen = prepare_commit;
-    loop {
-        let cur_applied = node.get_index();
-        let new_entries = raft_storage.entries(last_seen + 1, cur_applied + 1, None)?;
-        for entry in new_entries {
-            if entry.entry_type != raft::prelude::EntryType::EntryNormal {
-                continue;
-            }
-
-            match entry.into_op() {
-                Some(Op::PluginLoadCommit) => return Ok(()),
-                Some(Op::PluginLoadAbort) => return Err(PluginError::LoadAborted.into()),
-                _ => (),
-            }
-        }
-
-        node.wait_index(cur_applied + 1, deadline.duration_since(fiber::clock()))?;
-    }
+    PluginDisabled { name: String },
 }
 
 /// Perform clusterwide CAS operation related to plugin routing table.
@@ -403,9 +417,45 @@ fn do_plugin_cas(
 // External plugin interface
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Create a new plugin.
-// FIXME: in future there is two operation instead this one: install_plugin and enable_plugin
-pub fn create_plugin(
+/// Install plugin:
+/// 1) check that plugin is ready for run at all instances
+/// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
+pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
+    let deadline = Instant::now().saturating_add(timeout);
+    let node = node::global()?;
+    let manifest = Manifest::load(name)?;
+
+    let dml = Dml::replace(
+        ClusterwideTable::Property,
+        &(&PropertyName::PluginInstall, manifest),
+        effective_user_id(),
+    )?;
+
+    let mut index = do_plugin_cas(
+        node,
+        Op::Dml(dml),
+        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PluginInstall])],
+        Some(|node| Ok(node.storage.properties.plugin_install()?.is_some())),
+        deadline,
+    )?;
+
+    while node.storage.properties.plugin_install()?.is_some() {
+        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+        index = node.read_index(deadline.duration_since(Instant::now()))?;
+    }
+
+    if !node.storage.plugin.contains(name)? {
+        return Err(PluginError::InstallationAborted.into());
+    }
+
+    Ok(())
+}
+
+/// Enable plugin:
+/// 1) call `on_start` at all instances (and `on_stop` if something happened wrong)
+/// 2) set `_pico_plugin.enable` to `true`
+/// 3) update routes in `_pico_service_route`
+pub fn enable_plugin(
     name: &str,
     on_start_timeout: Duration,
     timeout: Duration,
@@ -413,21 +463,36 @@ pub fn create_plugin(
     let deadline = Instant::now().saturating_add(timeout);
 
     let node = node::global()?;
-    let manifest = Manifest::load(name)?;
-    let op = Op::PluginLoadPrepare {
-        manifest,
+
+    let op = Op::PluginEnable {
+        plugin_name: name.to_string(),
         on_start_timeout,
     };
 
-    let index = do_plugin_cas(
+    let mut index = do_plugin_cas(
         node,
         op,
-        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginLoad])],
-        Some(|node| Ok(node.storage.properties.pending_plugin_load()?.is_some())),
+        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginEnable])],
+        Some(|node| Ok(node.storage.properties.pending_plugin_enable()?.is_some())),
         deadline,
     )?;
 
-    wait_for_plugin_commit(node, index, deadline.duration_since(Instant::now()))
+    while node.storage.properties.pending_plugin_enable()?.is_some() {
+        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+        index = node.read_index(deadline.duration_since(Instant::now()))?;
+    }
+
+    let plugin = node
+        .storage
+        .plugin
+        .get(name)?
+        .ok_or(PluginError::EnablingAborted)?;
+
+    if !plugin.enabled {
+        return Err(PluginError::EnablingAborted.into());
+    }
+
+    Ok(())
 }
 
 /// Update plugin service configuration.
@@ -464,19 +529,69 @@ pub fn update_plugin_service_configuration(
     .map(|_| ())
 }
 
-/// Remove plugin.
-// FIXME: in future there is two operation instead this one: disable_plugin and remove_plugin
-pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> {
+/// Disable plugin:
+/// 1) call `on_stop` for each service in plugin
+/// 2) update routes in `_pico_service_route`
+/// 3) set `_pico_plugin.enable` to `false`
+pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> {
     let deadline = Instant::now().saturating_add(timeout);
     let node = node::global()?;
     let op = Op::PluginDisable {
         name: plugin_name.to_string(),
     };
 
-    do_plugin_cas(
+    // it is ok to return error here based on local state,
+    // we expect that in small count of cases
+    // when "plugin does not exist in local state but exist on leader"
+    // user will retry disable manually
+    if !node.storage.plugin.contains(plugin_name)? {
+        return Err(PluginNotFound(plugin_name.to_string()).into());
+    }
+
+    let mut index = do_plugin_cas(
         node,
         op,
         vec![Range::new(ClusterwideTable::Plugin).eq([plugin_name])],
+        Some(|node| Ok(node.storage.properties.pending_plugin_disable()?.is_some())),
+        deadline,
+    )?;
+
+    while node.storage.properties.pending_plugin_disable()?.is_some() {
+        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+        index = node.read_index(deadline.duration_since(Instant::now()))?;
+    }
+
+    Ok(())
+}
+
+/// Remove plugin: clear records from `_pico_plugin` and `_pico_service` system tables.
+pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> {
+    let deadline = Instant::now().saturating_add(timeout);
+
+    let node = node::global()?;
+    // we check this condition on any instance, this will allow
+    // to return an error in most situations, but there are still
+    // situations when instance is a follower and has not yet received up-to-date
+    // information from the leader - in this case,
+    // the error will not be returned to client and raft op
+    // must be applied on instances correctly (op should ignore removing if
+    // plugin exists and enabled)
+    let plugin_exists_and_enabled =
+        node.storage.plugin.get(plugin_name)?.map(|p| p.enabled) == Some(true);
+    if plugin_exists_and_enabled && !error_injection::is_enabled("PLUGIN_EXIST_AND_ENABLED") {
+        return Err(RemoveOfEnabledPlugin.into());
+    }
+    let op = Op::PluginRemove {
+        name: plugin_name.to_string(),
+    };
+
+    do_plugin_cas(
+        node,
+        op,
+        vec![
+            Range::new(ClusterwideTable::Plugin).eq([plugin_name]),
+            Range::new(ClusterwideTable::Service).eq([plugin_name]),
+        ],
         None,
         deadline,
     )

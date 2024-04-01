@@ -14,10 +14,10 @@ use crate::loop_start;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
+use crate::schema::RoutineDef;
 use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, IndexOption, TableDef};
-use crate::schema::{RoutineDef, ServiceRouteItem};
 use crate::sentinel;
 use crate::storage::acl;
 use crate::storage::ddl_meta_drop_routine;
@@ -751,7 +751,7 @@ impl NodeImpl {
             Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
             Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
-            Op::PluginLoadPrepare { .. } => true,
+            Op::PluginEnable { .. } | Op::PluginDisable { .. } => true,
             _ => false,
         };
 
@@ -1284,80 +1284,21 @@ impl NodeImpl {
                     .expect("storage should not fail");
             }
 
-            Op::PluginLoadCommit => {
-                let (manifest, _) = storage_properties
-                    .pending_plugin_load()
-                    .expect("storage should not fail")
-                    .expect("manifest should exist");
-
-                let plugin_def = manifest.plugin_def();
-                let service_defs = manifest.service_defs();
-
-                let mut all_instances = self
-                    .storage
-                    .instances
-                    .all_instances()
-                    .expect("storage should not fail");
-
-                self.storage
-                    .plugin
-                    .put(&plugin_def)
-                    .expect("storage should not fail");
-                for service_def in service_defs {
-                    self.storage
-                        .service
-                        .put(&service_def)
-                        .expect("storage should not fail");
-
-                    // FIXME: currently we attach all services to all instances
-                    // this should be changed when plugins support topology
-                    for instance in all_instances.iter_mut() {
-                        self.storage
-                            .service_route_table
-                            .put(&ServiceRouteItem::new_healthy(
-                                instance.instance_id.clone(),
-                                &service_def.plugin_name,
-                                &service_def.name,
-                            ))
-                            .expect("storage should not fail");
-                    }
-                }
-
-                self.plugin_manager.activate(&manifest.name);
-
-                storage_properties
-                    .delete(PropertyName::PendingPluginLoad)
-                    .expect("storage should not fail");
-            }
-
-            Op::PluginLoadAbort => {
-                let (manifest, _) = storage_properties
-                    .pending_plugin_load()
-                    .expect("storage should not fail")
-                    .expect("manifest should exist");
-                storage_properties
-                    .delete(PropertyName::PendingPluginLoad)
-                    .expect("storage should not fail");
-
-                if let Err(e) =
-                    self.plugin_manager
-                        .handle_event_async(PluginAsyncEvent::PluginLoadError {
-                            name: manifest.name,
-                        })
-                {
-                    tlog!(Warning, "{e}");
-                }
-            }
-
-            Op::PluginLoadPrepare {
-                manifest,
+            Op::PluginEnable {
+                plugin_name,
                 on_start_timeout,
             } => {
+                let services = self
+                    .storage
+                    .service
+                    .get_by_plugin(&plugin_name)
+                    .expect("storage should not fail");
+
                 self.storage
                     .properties
                     .put(
-                        PropertyName::PendingPluginLoad,
-                        &(manifest, on_start_timeout),
+                        PropertyName::PendingPluginEnable,
+                        &(plugin_name, services, on_start_timeout),
                     )
                     .expect("storage should not fail");
             }
@@ -1367,13 +1308,13 @@ impl NodeImpl {
                 service_name,
                 config,
             } => {
-                let mb_service = self
+                let maybe_service = self
                     .storage
                     .service
                     .get_any_version(&plugin_name, &service_name)
                     .expect("storage should not fail");
 
-                if let Some(mut svc) = mb_service {
+                if let Some(mut svc) = maybe_service {
                     svc.configuration = config;
                     self.storage
                         .service
@@ -1399,28 +1340,60 @@ impl NodeImpl {
             }
 
             Op::PluginDisable { name } => {
-                let services = self
-                    .storage
-                    .service
-                    .get_by_plugin(&name)
+                self.storage
+                    .properties
+                    .put(PropertyName::PendingPluginDisable, &name)
                     .expect("storage should not fail");
 
-                for svc_def in services {
+                let plugin = self
+                    .storage
+                    .plugin
+                    .get(&name)
+                    .expect("storage should not fail");
+
+                if let Some(mut plugin) = plugin {
+                    plugin.enabled = false;
                     self.storage
-                        .service
-                        .delete(&svc_def.plugin_name, &svc_def.name, &svc_def.version)
+                        .plugin
+                        .put(&plugin)
                         .expect("storage should not fail");
                 }
-                self.storage
-                    .plugin
-                    .delete(&name)
-                    .expect("storage should not fail");
 
                 if let Err(e) = self
                     .plugin_manager
-                    .handle_event_async(PluginAsyncEvent::PluginRemoved { name })
+                    .handle_event_async(PluginAsyncEvent::PluginDisabled { name })
                 {
                     tlog!(Warning, "async plugin event: {e}");
+                }
+            }
+
+            Op::PluginRemove { name } => {
+                let maybe_plugin = self
+                    .storage
+                    .plugin
+                    .get(&name)
+                    .expect("storage should not fail");
+
+                if let Some(plugin) = maybe_plugin {
+                    if plugin.enabled {
+                        return EntryApplied;
+                    }
+
+                    let services = self
+                        .storage
+                        .service
+                        .get_by_plugin(&plugin.name)
+                        .expect("storage should not fail");
+                    for svc in services {
+                        self.storage
+                            .service
+                            .delete(&svc.plugin_name, &svc.name, &svc.version)
+                            .expect("storage should not fail");
+                    }
+                    self.storage
+                        .plugin
+                        .delete(&plugin.name)
+                        .expect("storage should not fail");
                 }
             }
 

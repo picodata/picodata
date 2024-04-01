@@ -421,25 +421,31 @@ impl IndexDef {
 pub struct PluginDef {
     /// Plugin name.
     pub name: String,
-    /// Indicates plugin running or not.
-    // FIXME: for future improvements
-    pub running: bool,
+    /// Indicates plugin enabled or not.
+    pub enabled: bool,
     /// List of plugin services.
     pub services: Vec<String>,
     /// Plugin version.
+    // TODO currently this version is unused,
+    // expect service loading algorithm (when version from .so file
+    // should be equal with plugin version from manifest).
+    // This would be change in future, with API breaking changes and plugin rolling update feature.
     pub version: String,
 }
 
 impl Encode for PluginDef {}
 
 impl PluginDef {
+    /// Index (0-based) of field "enable" in the _pico_plugin table format.
+    pub const FIELD_ENABLE: usize = 1;
+
     /// Format of the _pico_plugin global table.
     #[inline(always)]
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
             Field::from(("name", FieldType::String)),
-            Field::from(("running", FieldType::Boolean)),
+            Field::from(("enabled", FieldType::Boolean)),
             Field::from(("services", FieldType::Array)),
             Field::from(("version", FieldType::String)),
         ]
@@ -449,7 +455,7 @@ impl PluginDef {
     pub fn for_tests() -> Self {
         Self {
             name: "plugin".into(),
-            running: false,
+            enabled: false,
             services: vec!["service_1".to_string(), "service_2".to_string()],
             version: "0.0.1".into(),
         }
@@ -464,6 +470,10 @@ pub struct ServiceDef {
     /// Service name.
     pub name: String,
     /// Service version must be the same as a plugin version.
+    // TODO currently version is unused,
+    // expect service loading algorithm (when version from .so file
+    // should be equal with plugin version from manifest).
+    // This would be change in future, with API breaking changes and plugin rolling update feature.
     pub version: String,
     /// List of tiers where service must be running.
     // FIXME: for future improvements
@@ -566,6 +576,14 @@ impl ServiceRouteItem {
             plugin_name: "plugin".to_string(),
             service_name: "service".to_string(),
             poison: false,
+        }
+    }
+
+    pub fn key(&self) -> ServiceRouteKey {
+        ServiceRouteKey {
+            instance_id: &self.instance_id,
+            plugin_name: &self.plugin_name,
+            service_name: &self.service_name,
         }
     }
 }
@@ -1493,7 +1511,8 @@ impl From<CreateRoutineError> for Error {
 // TODO: Add `LuaRead` to tarantool::space::Field and use it
 #[derive(Clone, Debug, LuaRead)]
 pub struct Field {
-    pub name: String, // TODO(gmoshkin): &str
+    pub name: String,
+    // TODO(gmoshkin): &str
     pub r#type: FieldType,
     pub is_nullable: bool,
 }
@@ -1967,7 +1986,7 @@ impl CreateTableParams {
                 }
                 (None, None) => return Err(CreateTableError::ShardingPolicyUndefined.into()),
                 (Some(_), Some(_)) => {
-                    return Err(CreateTableError::ConflictingShardingPolicy.into())
+                    return Err(CreateTableError::ConflictingShardingPolicy.into());
                 }
             }
         } else {
@@ -2180,7 +2199,7 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
         let index = node.get_index();
         let term = raft::Storage::term(&node.raft_storage, index)?;
         #[rustfmt::skip]
-        let predicate = cas::Predicate {
+            let predicate = cas::Predicate {
             index,
             term,
             ranges: vec![
@@ -2484,7 +2503,7 @@ mod test {
     #[rustfmt::skip]
     fn space_def_matches_format() {
         use ::tarantool::msgpack;
-        
+
         let i = TableDef::for_tests();
         let tuple_data = msgpack::encode(&i);
         let format = TableDef::format();

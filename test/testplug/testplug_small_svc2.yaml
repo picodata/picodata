@@ -1,0 +1,9 @@
+description: same as testplug_small but with service 2, for test purposes
+name: testplug_small_svc2
+version: 0.1.0
+services:
+  - name: testservice_2
+    description: testservice_2 descr
+    default_configuration:
+
+

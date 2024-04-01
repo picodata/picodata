@@ -1,3 +1,4 @@
+use crate::plugin::Manifest;
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
@@ -5,7 +6,7 @@ use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
 
 crate::define_rpc_request! {
-    /// Forces the target instance to actually load the plugin locally.
+    /// Forces the target instance to actually enable the plugin locally.
     ///
     /// Should be called by a governor on every instance in the cluster.
     ///
@@ -16,22 +17,23 @@ crate::define_rpc_request! {
     /// 4. Request has an incorrect term - leader changed
     /// 5. Can't load plugin services from shared objects
     /// 6. One or more services return errors in `on_start` callback
-    fn proc_load_plugin(req: Request) -> crate::traft::Result<Response> {
+    fn proc_enable_plugin(req: Request) -> crate::traft::Result<Response> {
         let node = node::global()?;
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
         let storage = &node.storage;
 
-        let (manifest, _) = storage.properties.pending_plugin_load()?
+        let (plugin_name, _, _) = storage.properties.pending_plugin_enable()?
             .ok_or_else(|| TraftError::other("pending plugin not found"))?;
 
+        let manifest = Manifest::from_system_tables(&node.storage, &plugin_name)?;
         let load_result = node.plugin_manager.try_load(&manifest);
 
         match load_result {
              Ok(()) => Ok(Response::Ok),
              Err(err) => {
-                tlog!(Warning, "plugin loading aborted: {err}");
+                tlog!(Warning, "plugin enabling aborted: {err}");
                 Ok(Response::Abort { reason: err.to_string() })
             }
         }

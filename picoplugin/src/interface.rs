@@ -339,4 +339,10 @@ impl ServiceRegistry {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
         self.services.get(&ident).map(|factory| factory.make())
     }
+
+    /// Return true if registry contains needle service, false elsewhere.
+    pub fn contains(&self, service_name: &str, version: &str) -> bool {
+        let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
+        self.services.contains_key(&ident)
+    }
 }

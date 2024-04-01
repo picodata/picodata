@@ -27,7 +27,6 @@ use crate::address::Address;
 use crate::instance::Grade;
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
-use crate::plugin::*;
 use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
@@ -642,7 +641,7 @@ fn start_discover(
         let instance_id = raft_storage
             .instance_id()?
             .expect("instance_id should be already set");
-        postjoin(config, storage, raft_storage, false)?;
+        postjoin(config, storage, raft_storage)?;
         crate::audit!(
             message: "local database recovered on `{instance_id}`",
             title: "recover_local_db",
@@ -748,7 +747,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     })
     .unwrap();
 
-    postjoin(config, storage, raft_storage, false)?;
+    postjoin(config, storage, raft_storage)?;
     // In this case `create_local_db` is logged in postjoin
     crate::audit!(
         message: "local database connected on `{instance_id}`",
@@ -831,7 +830,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     .unwrap();
 
     let instance_id = resp.instance.instance_id;
-    postjoin(config, storage, raft_storage, true)?;
+    postjoin(config, storage, raft_storage)?;
     crate::audit!(
         message: "local database created on `{instance_id}`",
         title: "create_local_db",
@@ -855,7 +854,6 @@ fn postjoin(
     config: &PicodataConfig,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
-    from_join: bool,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
 
@@ -1028,10 +1026,6 @@ fn postjoin(
     }
 
     node.sentinel_loop.on_self_activate();
-
-    node.plugin_manager
-        .handle_event_sync(PluginEvent::InstanceStart { join: from_join })
-        .expect("failed initializing plugin system");
 
     Ok(())
 }

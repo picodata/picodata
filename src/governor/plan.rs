@@ -5,11 +5,11 @@ use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
-use crate::schema::ADMIN_ID;
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ADMIN_ID};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::tier::Tier;
 use crate::tlog;
-use crate::traft::op::Dml;
+use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
@@ -37,7 +37,9 @@ pub(super) fn action_plan<'i>(
     target_vshard_config: &VshardConfig,
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
-    new_plugin: Option<&(plugin::Manifest, Duration)>,
+    install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
+    enable_plugin: Option<&'i (String, Option<PluginDef>, Vec<ServiceDef>, Duration)>,
+    disable_plugin: Option<&'i [ServiceRouteItem]>,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -308,9 +310,20 @@ pub(super) fn action_plan<'i>(
                 do_reconfigure: false,
             });
         }
+        let plugin_rpc = rpc::enable_all_plugins::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_grade(Grade::new(Online, target_grade.incarnation));
-        return Ok(ToOnline { target, rpc, req }.into());
+        return Ok(ToOnline {
+            target,
+            rpc,
+            plugin_rpc,
+            req,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -348,24 +361,144 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // plugin
-    if let Some((_, on_start_timeout)) = new_plugin {
-        let mut targets = Vec::with_capacity(instances.len());
-        for i in instances {
-            if i.may_respond() {
-                targets.push(&i.instance_id);
-            }
+    if let Some((maybe_existing_plugin, manifest)) = install_plugin {
+        // if plugin already exists and already enabled - do nothing
+        let should_install = maybe_existing_plugin
+            .as_ref()
+            .map(|p| !p.enabled)
+            .unwrap_or(true);
+
+        let install_substep = should_install
+            .then(|| -> tarantool::Result<_> {
+                let rpc = rpc::load_plugin_dry_run::Request {
+                    term,
+                    applied,
+                    timeout: Loop::SYNC_TIMEOUT,
+                };
+
+                let mut targets = Vec::with_capacity(instances.len());
+                for i in instances {
+                    if i.may_respond() {
+                        targets.push(&i.instance_id);
+                    }
+                }
+                let plugin_def = manifest.plugin_def();
+                let mut ops = vec![Dml::replace(
+                    ClusterwideTable::Plugin,
+                    &plugin_def,
+                    ADMIN_ID,
+                )?];
+
+                for service_def in manifest.service_defs() {
+                    ops.push(Dml::replace(
+                        ClusterwideTable::Service,
+                        &service_def,
+                        ADMIN_ID,
+                    )?)
+                }
+
+                Ok((targets, rpc, Op::BatchDml { ops }))
+            })
+            .transpose()?;
+
+        return Ok(InstallPlugin {
+            install_substep,
+            finalize_op: Op::Dml(Dml::delete(
+                ClusterwideTable::Property,
+                &[PropertyName::PluginInstall],
+                ADMIN_ID,
+            )?),
         }
-        let rpc = rpc::load_plugin::Request {
+        .into());
+    }
+    if let Some((plugin_name, installed_plugin, services, on_start_timeout)) = enable_plugin {
+        let rpc = rpc::enable_plugin::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        return Ok(LoadPlugin {
+        let rollback_op = Op::PluginDisable {
+            name: plugin_name.to_string(),
+        };
+
+        let mut targets = vec![];
+        let mut success_dml = vec![];
+
+        match installed_plugin {
+            Some(plugin) if plugin.enabled => {
+                // plugin already exists - do nothing
+            }
+            None => {
+                // plugin isn't installed - do nothing
+                tlog!(Error, "Trying to enable a non-installed plugin");
+            }
+            Some(plugin) => {
+                targets = Vec::with_capacity(instances.len());
+                for i in instances {
+                    if i.may_respond() {
+                        targets.push(&i.instance_id);
+                    }
+                }
+
+                let mut enable_ops = UpdateOps::new();
+                enable_ops.assign(PluginDef::FIELD_ENABLE, true)?;
+
+                success_dml = vec![Dml::update(
+                    ClusterwideTable::Plugin,
+                    &[&plugin.name],
+                    enable_ops,
+                    ADMIN_ID,
+                )?];
+
+                for service_def in services {
+                    // FIXME: currently we attach all services to all instances
+                    // this should be changed when plugins support topology
+                    for i in instances {
+                        success_dml.push(Dml::replace(
+                            ClusterwideTable::ServiceRouteTable,
+                            &ServiceRouteItem::new_healthy(
+                                i.instance_id.clone(),
+                                &service_def.plugin_name,
+                                &service_def.name,
+                            ),
+                            ADMIN_ID,
+                        )?);
+                    }
+                }
+            }
+        };
+
+        return Ok(EnablePlugin {
             rpc,
             targets,
             on_start_timeout: *on_start_timeout,
+            rollback_op,
+            success_dml,
+            finalize_dml: Dml::delete(
+                ClusterwideTable::Property,
+                &[PropertyName::PendingPluginEnable],
+                ADMIN_ID,
+            )?,
         }
         .into());
+    }
+    if let Some(routes) = disable_plugin {
+        let routing_keys_to_del = routes.iter().map(|route| route.key()).collect::<Vec<_>>();
+        let mut ops: Vec<_> = routing_keys_to_del
+            .iter()
+            .map(|routing_key| {
+                Dml::delete(ClusterwideTable::ServiceRouteTable, &routing_key, ADMIN_ID)
+                    .expect("encoding should not fail")
+            })
+            .collect();
+        ops.push(Dml::delete(
+            ClusterwideTable::Property,
+            &[PropertyName::PendingPluginDisable],
+            ADMIN_ID,
+        )?);
+
+        let op = Op::BatchDml { ops };
+        return Ok(DisablePlugin { op }.into());
     }
 
     Ok(Plan::None)
@@ -468,6 +601,7 @@ pub mod stage {
         pub struct ToOnline<'i> {
             pub target: &'i InstanceId,
             pub rpc: Option<rpc::sharding::Request>,
+            pub plugin_rpc: rpc::enable_all_plugins::Request,
             pub req: rpc::update_instance::Request,
         }
 
@@ -476,10 +610,22 @@ pub mod stage {
             pub rpc: rpc::ddl_apply::Request,
         }
 
-        pub struct LoadPlugin<'i> {
+        pub struct InstallPlugin<'i> {
+            pub install_substep: Option<(Vec<&'i InstanceId>, rpc::load_plugin_dry_run::Request, Op)>,
+            pub finalize_op: Op,
+        }
+
+        pub struct EnablePlugin<'i> {
             pub targets: Vec<&'i InstanceId>,
-            pub rpc: rpc::load_plugin::Request,
+            pub rpc: rpc::enable_plugin::Request,
+            pub rollback_op: Op,
             pub on_start_timeout: Duration,
+            pub success_dml: Vec<Dml>,
+            pub finalize_dml: Dml,
+        }
+
+        pub struct DisablePlugin {
+            pub op: Op,
         }
     }
 }

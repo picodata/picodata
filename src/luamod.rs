@@ -1514,16 +1514,50 @@ pub(crate) fn setup() {
     #[rustfmt::skip]
     luamod_set(
         &l,
-        "create_plugin",
+        "install_plugin",
         indoc! {"
-        pico.create_plugin(name, [opts])
+        pico.install_plugin(name, [opts])
         =================
 
-        Create a new plugin.
+        Install a new plugin on cluster.
 
         Params:
 
             1. name - plugin name, manifest with same name must exists in plugin_dir
+            2. opts (optional table)
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::install_plugin(&name, timeout)
+            })
+        },
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
+        "enable_plugin",
+        indoc! {"
+        pico.enable_plugin(name, [opts])
+        =================
+
+        Enable plugin in cluster.
+
+        Params:
+
+            1. name - plugin name, plugin should already be installed with `pico.install_plugin` command
             2. opts (optional table)
                 - on_start_timeout (optional number), in seconds, default: 5
                 - timeout (optional number), in seconds, default: 10
@@ -1545,7 +1579,7 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::create_plugin(&name, on_start_timeout, timeout)
+                plugin::enable_plugin(&name, on_start_timeout, timeout)
             })
         },
     );
@@ -1571,7 +1605,7 @@ pub(crate) fn setup() {
         "},
         {
             use tarantool::tlua::AnyLuaString;
-            
+
             #[derive(::tarantool::tlua::LuaRead)]
             struct Opts {
                 timeout: Option<f64>,
@@ -1592,6 +1626,40 @@ pub(crate) fn setup() {
     #[rustfmt::skip]
     luamod_set(
         &l,
+        "disable_plugin",
+        indoc! {"
+        pico.disable_plugin(name, [opts])
+        =================
+
+        Disable plugin on cluster, `on_stop` callbacks will be called.
+
+        Params:
+
+            1. name - plugin name to be disabled
+            2. opts (optional table)
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::disable_plugin(&name, timeout)
+            })
+        },
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
         "remove_plugin",
         indoc! {"
         pico.remove_plugin(name, [opts])
@@ -1601,7 +1669,7 @@ pub(crate) fn setup() {
 
         Params:
 
-            1. name - plugin name to be removed from system
+            1. name - plugin name to be removed from a system
             2. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},

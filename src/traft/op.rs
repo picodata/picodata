@@ -1,4 +1,3 @@
-use crate::plugin;
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
@@ -49,23 +48,14 @@ pub enum Op {
     DdlAbort,
     /// Cluster-wide access control list change operation.
     Acl(Acl),
-    /// Start a new plugin loading operation.
-    /// Should load plugin using plugin manifest.
+    /// Enable a plugin.
     ///
     /// Provided operation will be set as pending.
     /// Only one operation can exist at the same time.
-    PluginLoadPrepare {
-        manifest: plugin::Manifest,
+    PluginEnable {
+        plugin_name: String,
         on_start_timeout: Duration,
     },
-    /// Commit the pending plugin load operation.
-    ///
-    /// Only one pending plugin load operation can exist at the same time.
-    PluginLoadCommit,
-    /// Abort the pending plugin load operation.
-    ///
-    /// Only one pending plugin load operation can exist at the same time.
-    PluginLoadAbort,
     /// Update plugin service configuration.
     PluginConfigUpdate {
         plugin_name: String,
@@ -74,6 +64,8 @@ pub enum Op {
     },
     /// Disable selected plugin.
     PluginDisable { name: String },
+    /// Remove selected plugin.
+    PluginRemove { name: String },
 }
 
 impl Eq for Op {}
@@ -278,18 +270,8 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(),)
             }
-            Op::PluginLoadPrepare { manifest, .. } => {
-                write!(
-                    f,
-                    "PluginLoadPrepare({}, {})",
-                    manifest.name, manifest.version
-                )
-            }
-            Op::PluginLoadCommit => {
-                write!(f, "PluginLoadCommit")
-            }
-            Op::PluginLoadAbort => {
-                write!(f, "PluginLoadAbort")
+            Op::PluginEnable { plugin_name, .. } => {
+                write!(f, "PluginEnablePrepare({})", plugin_name)
             }
             Op::PluginConfigUpdate {
                 plugin_name,
@@ -300,6 +282,9 @@ impl std::fmt::Display for Op {
             }
             Op::PluginDisable { name } => {
                 write!(f, "PluginDisable({name})")
+            }
+            Op::PluginRemove { name } => {
+                write!(f, "PluginRemove({name})")
             }
         };
 
@@ -421,11 +406,10 @@ impl Op {
             | Self::DdlAbort
             | Self::DdlCommit
             | Self::BatchDml { .. }
-            | Self::PluginLoadPrepare { .. }
-            | Self::PluginLoadAbort
-            | Self::PluginLoadCommit
+            | Self::PluginEnable { .. }
             | Self::PluginConfigUpdate { .. }
-            | Self::PluginDisable { .. } => false,
+            | Self::PluginDisable { .. }
+            | Self::PluginRemove { .. } => false,
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
         }
     }

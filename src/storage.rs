@@ -1093,12 +1093,17 @@ impl From<ClusterwideTable> for SpaceId {
     pub enum PropertyName {
         VshardBootstrapped = "vshard_bootstrapped",
 
-        /// Pending plugin load operation which is to be either committed or aborted.
+        /// Pending plugin installation.
         /// Contains new plugin manifest.
-        ///
-        /// Is only present during the time between the last plugin load prepare
-        /// operation and the corresponding plugin load commit or plugin load abort operation.
-        PendingPluginLoad = "pending_plugin_load",
+        PluginInstall = "plugin_install",
+
+        /// Pending plugin enabling operation.
+        /// Contains plugin name.
+        PendingPluginEnable = "pending_plugin_enable",
+
+        /// Pending update plugin routing table operation.
+        /// Contains plugin name.
+        PendingPluginDisable = "pending_plugin_disable",
 
         /// Pending ddl operation which is to be either committed or aborted.
         ///
@@ -1269,10 +1274,16 @@ impl PropertyName {
                 // Check it decodes into Ddl.
                 _ = new.field::<Ddl>(1).map_err(map_err)?;
             }
-            PropertyName::PendingPluginLoad => {
+            PropertyName::PendingPluginEnable => {
                 _ = new
-                    .field::<(plugin::Manifest, Duration)>(1)
+                    .field::<(String, Vec<ServiceDef>, Duration)>(1)
                     .map_err(map_err)?;
+            }
+            PropertyName::PluginInstall => {
+                _ = new.field::<plugin::Manifest>(1).map_err(map_err)?;
+            }
+            PropertyName::PendingPluginDisable => {
+                _ = new.field::<String>(1).map_err(map_err)?;
             }
         }
 
@@ -1497,8 +1508,20 @@ impl Properties {
     }
 
     #[inline]
-    pub fn pending_plugin_load(&self) -> tarantool::Result<Option<(plugin::Manifest, Duration)>> {
-        self.get(PropertyName::PendingPluginLoad)
+    pub fn pending_plugin_enable(
+        &self,
+    ) -> tarantool::Result<Option<(String, Vec<ServiceDef>, Duration)>> {
+        self.get(PropertyName::PendingPluginEnable)
+    }
+
+    #[inline]
+    pub fn pending_plugin_disable(&self) -> tarantool::Result<Option<String>> {
+        self.get(PropertyName::PendingPluginDisable)
+    }
+
+    #[inline]
+    pub fn plugin_install(&self) -> tarantool::Result<Option<plugin::Manifest>> {
+        self.get(PropertyName::PluginInstall)
     }
 
     #[inline]
@@ -3374,11 +3397,27 @@ impl Plugins {
     }
 
     #[inline]
-    pub fn all(&self) -> tarantool::Result<Vec<PluginDef>> {
-        self.space
-            .select(IteratorType::All, &())?
-            .map(|tuple| tuple.decode::<PluginDef>())
-            .collect()
+    pub fn contains(&self, plugin_name: &str) -> tarantool::Result<bool> {
+        Ok(self.space.get(&(plugin_name,))?.is_some())
+    }
+
+    #[inline]
+    pub fn get(&self, plugin_name: &str) -> tarantool::Result<Option<PluginDef>> {
+        let plugin = self.space.get(&(plugin_name,))?;
+        plugin.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn all_enabled(&self) -> tarantool::Result<Vec<PluginDef>> {
+        let it = self.space.select(IteratorType::All, &())?;
+        let mut result = vec![];
+        for tuple in it {
+            let def = tuple.decode::<PluginDef>()?;
+            if def.enabled {
+                result.push(def);
+            }
+        }
+        Ok(result)
     }
 }
 
@@ -3545,6 +3584,18 @@ impl ServiceRouteTable {
     pub fn get(&self, key: &ServiceRouteKey) -> tarantool::Result<Option<ServiceRouteItem>> {
         let item = self.space.get(key)?;
         item.as_ref().map(Tuple::decode).transpose()
+    }
+
+    pub fn get_by_plugin(&self, plugin: &str) -> tarantool::Result<Vec<ServiceRouteItem>> {
+        let all_routes = self.space.select(IteratorType::All, &())?;
+        let mut result = vec![];
+        for tuple in all_routes {
+            let svc = tuple.decode::<ServiceRouteItem>()?;
+            if svc.plugin_name == plugin {
+                result.push(svc)
+            }
+        }
+        Ok(result)
     }
 }
 

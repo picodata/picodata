@@ -1,7 +1,7 @@
 use crate::info::InstanceInfo;
 use crate::plugin::{
-    remove_routes, replace_routes, Manifest, PluginAsyncEvent, PluginCallbackError, PluginError,
-    PluginEvent, Result, Service, ServiceManifest, PLUGIN_DIR,
+    replace_routes, Manifest, PluginAsyncEvent, PluginCallbackError, PluginError, PluginEvent,
+    Result, Service, PLUGIN_DIR,
 };
 use crate::schema::{ServiceDef, ServiceRouteItem, ServiceRouteKey};
 use crate::traft::node;
@@ -25,8 +25,6 @@ type PluginServices = Box<[Rc<fiber::Mutex<Service>>]>;
 
 /// Represent loaded part of a plugin - services and flag of plugin activation.
 struct PluginState {
-    /// Plugin activated and ready to handle all events.
-    active: bool,
     /// List of running services.
     services: PluginServices,
 }
@@ -70,24 +68,10 @@ impl PluginManager {
         }
     }
 
-    /// Load plugin into instance.
-    /// How plugins are loaded:
-    /// 1) Extract from a manifest list of services that must be loaded (load-list).
-    /// 2) Read all files from `plugin_dir`.
-    /// 3) From each .so file try to load services from load-list.
-    /// If service can be loaded - remove it from load-list.
-    /// 4) After scanning all files - checks that load-list is empty - plugin fully load now.
-    /// 5) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
-    /// 6) Return error if any of the previous steps failed with error.
-    ///
-    /// After loading plugin is not-active,
-    /// this means that plugin can't handle a database events.
-    /// Plugin state must be set to active manually.
-    ///
-    /// # Arguments
-    ///
-    /// * `manifest`: plugin manifest
-    pub fn try_load(&self, manifest: &Manifest) -> Result<()> {
+    /// Load plugin into instance using plugin manifest.
+    /// Support `dry_run` -
+    /// means that plugin is not being loaded but the possibility of loading is checked.
+    fn try_load_inner(&self, manifest: &Manifest, dry_run: bool) -> Result<()> {
         let mut loaded_services = Vec::with_capacity(manifest.services.len());
 
         unsafe fn get_sym<'a, T>(
@@ -102,6 +86,8 @@ impl PluginManager {
 
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
         let entries = fs::read_dir(plugin_dir)?;
+        // TODO filter files before try open it as dynamic lib
+        // TODO what if two or more dynamic libs contains suitable for requirements service?
         for dir_entry in entries {
             let path = dir_entry?.path();
             let Ok(lib) = (unsafe { Library::new(path) }) else {
@@ -123,6 +109,10 @@ impl PluginManager {
             });
 
             service_defs_to_load.retain(|service_def| {
+                if dry_run {
+                    return !registry.contains(&service_def.name, &manifest.version);
+                }
+
                 if let Some(service_inner) = registry.make(&service_def.name, &manifest.version) {
                     let service = Service {
                         _lib: lib.clone(),
@@ -137,14 +127,19 @@ impl PluginManager {
             });
         }
 
-        if loaded_services.len() != manifest.services.len() {
+        if !service_defs_to_load.is_empty() {
             return Err(PluginError::PartialLoad);
         }
+
+        if dry_run {
+            return Ok(());
+        }
+
+        debug_assert!(loaded_services.len() == manifest.services.len());
 
         self.plugins.lock().insert(
             manifest.name.clone(),
             PluginState {
-                active: false,
                 services: loaded_services.into_boxed_slice(),
             },
         );
@@ -157,21 +152,37 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Activate selected plugin, now it can handle all events.
+    /// Load plugin into instance using plugin manifest.
+    ///
+    /// How plugins are loaded:
+    /// 1) Extract list of services to load from a manifest (load-list).
+    /// 2) Read all files from `plugin_dir`.
+    /// 3) From each .so file try to load services from load-list.
+    /// If service can be loaded - remove it from load-list.
+    /// 4) After scanning all files - check that load-list is empty - plugin is fully loaded now.
+    /// 5) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
+    /// 6) Return error if any of the previous steps failed with error.
     ///
     /// # Arguments
     ///
-    /// * `plugin`: plugin name
-    pub fn activate(&self, plugin: &str) {
-        if let Some(state) = self.plugins.lock().get_mut(plugin) {
-            state.active = true;
-        }
+    /// * `manifest`: plugin manifest
+    pub fn try_load(&self, manifest: &Manifest) -> Result<()> {
+        self.try_load_inner(manifest, false)
     }
 
-    /// Load and start all plugins and services that must be loaded.
-    fn handle_instance_start(&self, update_routing_table: bool) -> Result<()> {
+    /// Check the possibility of loading plugin into instance.
+    /// Doesn't create an instances of plugin services and doesn't call any events.
+    ///
+    /// Return error if services from plugin manifest can't be loaded from shared libraries in
+    /// `plugin_dir`.
+    pub fn try_load_dry_run(&self, manifest: &Manifest) -> Result<()> {
+        self.try_load_inner(manifest, true)
+    }
+
+    /// Load and start all enabled plugins and services that must be loaded.
+    fn handle_instance_online(&self) -> Result<()> {
         let node = node::global().expect("node must be already initialized");
-        let plugins = node.storage.plugin.all()?;
+        let enabled_plugins = node.storage.plugin.all_enabled()?;
 
         let instance_id = node
             .raft_storage
@@ -179,55 +190,30 @@ impl PluginManager {
             .expect("storage should never fail")
             .expect("should be persisted before Node is initialized");
 
-        for plugin in plugins {
-            let services = node
-                .storage
-                .service
-                .get_by_plugin_and_version(&plugin.name, &plugin.version)?;
+        for plugin in enabled_plugins {
+            let manifest = Manifest::from_system_tables(&node.storage, &plugin.name)?;
 
-            // build manifest using information form system tables _pico_plugin and _pico_service
-            let manifest_services = services
-                .iter()
-                .map(|svc| ServiceManifest {
-                    name: svc.name.clone(),
-                    description: String::default(),
-                    default_configuration: svc.configuration.clone(),
-                })
-                .collect();
-
-            let manifest = Manifest {
-                name: plugin.name.clone(),
-                description: String::default(),
-                version: plugin.version,
-                services: manifest_services,
-            };
-
-            self.try_load(&manifest)?;
-            // plugin can be activated immediately because it was defined in system spaces
-            self.activate(&plugin.name);
-
-            if update_routing_table {
-                let items = services
-                    .iter()
-                    .map(|svc| {
-                        ServiceRouteItem::new_healthy(
-                            instance_id.clone(),
-                            &svc.plugin_name,
-                            &svc.name,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-
-                replace_routes(&items, Duration::from_secs(10))
-                    .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
+            // no need to load already loaded plugins
+            if self.plugins.lock().get(&plugin.name).is_none() {
+                self.try_load(&manifest)?;
             }
+
+            let items = manifest
+                .services
+                .iter()
+                .map(|svc| {
+                    ServiceRouteItem::new_healthy(instance_id.clone(), &manifest.name, &svc.name)
+                })
+                .collect::<Vec<_>>();
+            replace_routes(&items, Duration::from_secs(10))
+                .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
         }
 
         Ok(())
     }
 
     /// Call `on_stop` callback at services and remove plugin from managed.
-    fn handle_plugin_removed(
+    fn handle_plugin_disabled(
         plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>>,
         plugin_name: &str,
     ) -> traft::Result<()> {
@@ -251,32 +237,6 @@ impl PluginManager {
                     );
                 }
             }
-
-            // remove all services in instance information
-            let instance_id = node
-                .raft_storage
-                .instance_id()
-                .expect("storage should never fail")
-                .expect("should be persisted before Node is initialized");
-
-            let routing_keys_to_del = plugin_state
-                .services
-                .iter()
-                .map(|svc| {
-                    let service = svc.lock();
-                    service.name.clone()
-                })
-                .collect::<Vec<_>>();
-            let routing_keys_to_del = routing_keys_to_del
-                .iter()
-                .map(|service_name| ServiceRouteKey {
-                    instance_id: &instance_id,
-                    plugin_name,
-                    service_name,
-                })
-                .collect::<Vec<_>>();
-
-            remove_routes(&routing_keys_to_del, Duration::from_secs(10))?;
         }
 
         Ok(())
@@ -288,13 +248,7 @@ impl PluginManager {
         let ctx = context_from_node(node);
 
         let plugins = self.plugins.lock();
-        let services_to_stop = plugins.values().filter_map(|plugin_state| {
-            if plugin_state.active {
-                Some(&plugin_state.services)
-            } else {
-                None
-            }
-        });
+        let services_to_stop = plugins.values().map(|state| &state.services);
 
         for services in services_to_stop {
             for service in services.iter() {
@@ -323,14 +277,10 @@ impl PluginManager {
         let ctx = context_from_node(node);
         let storage = &node.storage;
 
-        let mb_service = {
+        let maybe_service = {
             let lock = plugins.lock();
             lock.get(plugin)
                 .and_then(|plugin_state| {
-                    // plugin must be active,
-                    // but this already checks at a validation step
-                    debug_assert!(plugin_state.active);
-
                     plugin_state
                         .services
                         .iter()
@@ -339,7 +289,7 @@ impl PluginManager {
                 .cloned()
         };
 
-        let service = mb_service
+        let service = maybe_service
             .ok_or_else(|| PluginError::ServiceNotFound(service.to_string(), plugin.to_string()))?;
 
         let mut service = service.lock();
@@ -399,8 +349,9 @@ impl PluginManager {
         let instance_info = InstanceInfo::try_get(node, None)?;
         let mut routes_to_replace = vec![];
 
-        for plugin_state in self.plugins.lock().values() {
-            if !plugin_state.active {
+        for (plugin_name, plugin_state) in self.plugins.lock().iter() {
+            let plugin_def = node.storage.plugin.get(plugin_name)?;
+            if plugin_def.map(|def| def.enabled) != Some(true) {
                 continue;
             }
 
@@ -485,14 +436,35 @@ impl PluginManager {
         Ok(())
     }
 
-    fn get_active_plugin_services(&self, plugin: &str) -> Result<PluginServices> {
+    fn handle_plugin_load_error(&self, plugin: &str) -> Result<()> {
+        let node = node::global().expect("must be initialized");
+        let ctx = context_from_node(node);
+
+        let maybe_plugin_state = {
+            let mut lock = self.plugins.lock();
+            lock.remove(plugin)
+        };
+
+        if let Some(plugin_state) = maybe_plugin_state {
+            for service in plugin_state.services.iter() {
+                let mut service = service.lock();
+                service.inner.on_stop(&ctx);
+            }
+        }
+        Ok(())
+    }
+
+    fn get_enabled_plugin_services(&self, plugin: &str) -> Result<PluginServices> {
+        let node = node::global().expect("must be initialized");
+        let plugin_def = node.storage.plugin.get(plugin)?;
+        if plugin_def.map(|def| def.enabled) != Some(true) {
+            return Err(PluginError::PluginDisabled);
+        }
+
         let plugins = self.plugins.lock();
         let state = plugins
             .get(plugin)
             .ok_or_else(|| PluginError::PluginNotFound(plugin.to_string()))?;
-        if !state.active {
-            return Err(PluginError::PluginInactive);
-        }
         Ok(state.services.clone())
     }
 
@@ -503,7 +475,7 @@ impl PluginManager {
         service_name: &str,
         new_cfg_raw: &[u8],
     ) -> Result<()> {
-        let services = self.get_active_plugin_services(plugin)?;
+        let services = self.get_enabled_plugin_services(plugin)?;
 
         for service in services.iter() {
             let service = service.lock();
@@ -530,14 +502,17 @@ impl PluginManager {
     /// * `event`: upcoming event
     pub fn handle_event_sync(&self, event: PluginEvent) -> Result<()> {
         match event {
-            PluginEvent::InstanceStart { join } => {
-                self.handle_instance_start(join)?;
+            PluginEvent::InstanceOnline => {
+                self.handle_instance_online()?;
             }
             PluginEvent::InstanceShutdown => {
                 self.handle_instance_shutdown();
             }
             PluginEvent::PluginLoad { name, service_defs } => {
                 self.handle_plugin_load(name, service_defs)?;
+            }
+            PluginEvent::PluginLoadError { name } => {
+                self.handle_plugin_load_error(name)?;
             }
             PluginEvent::BeforeServiceConfigurationUpdated {
                 plugin,
@@ -597,25 +572,7 @@ impl Loop {
     }
 
     fn handle_event(&self, event: PluginAsyncEvent) -> traft::Result<()> {
-        let node = node::global().expect("must be initialized");
-        let ctx = context_from_node(node);
-
         match event {
-            PluginAsyncEvent::PluginLoadError {
-                name: plugin_to_stop,
-            } => {
-                let mb_plugin_state = {
-                    let mut lock = self.plugins.lock();
-                    lock.remove(&plugin_to_stop)
-                };
-
-                if let Some(plugin_state) = mb_plugin_state {
-                    for service in plugin_state.services.iter() {
-                        let mut service = service.lock();
-                        service.inner.on_stop(&ctx);
-                    }
-                }
-            }
             PluginAsyncEvent::ServiceConfigurationUpdated {
                 plugin,
                 service,
@@ -629,9 +586,9 @@ impl Loop {
                     tlog!(Error, "plugin {plugin} service {service}, apply new plugin configuration error: {e}");
                 }
             }
-            PluginAsyncEvent::PluginRemoved { name } => {
+            PluginAsyncEvent::PluginDisabled { name } => {
                 let plugins = self.plugins.clone();
-                if let Err(e) = PluginManager::handle_plugin_removed(plugins, &name) {
+                if let Err(e) = PluginManager::handle_plugin_disabled(plugins, &name) {
                     tlog!(Error, "plugin {name} remove error: {e}");
                 }
             }

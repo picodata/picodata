@@ -606,7 +606,10 @@ pub(super) fn access_check_op(
             }
             Ok(())
         }
-        Op::PluginLoadPrepare { .. } | Op::PluginConfigUpdate { .. } | Op::PluginDisable { .. } => {
+        Op::PluginEnable { .. }
+        | Op::PluginConfigUpdate { .. }
+        | Op::PluginDisable { .. }
+        | Op::PluginRemove { .. } => {
             // FIXME: currently access here is not checked explicitly, but check
             // dml into system space _pico_property.
             // Same behaviour also using for check access of update and remove plugin operations.
@@ -615,18 +618,6 @@ pub(super) fn access_check_op(
                 &Dml::replace(ClusterwideTable::Property, &(), as_user).expect("infallible"),
                 as_user,
             )
-        }
-        Op::PluginLoadCommit | Op::PluginLoadAbort => {
-            if as_user != ADMIN_ID {
-                let sys_user = user_by_id(as_user)?;
-                return Err(make_access_denied(
-                    "plugin",
-                    PicoSchemaObjectType::Universe,
-                    "",
-                    sys_user.name,
-                ));
-            }
-            Ok(())
         }
         Op::Acl(acl) => access_check_acl(storage, acl, as_user),
     }

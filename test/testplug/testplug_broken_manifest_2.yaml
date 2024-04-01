@@ -1,6 +1,6 @@
 # manifest with invalid `testservice_1` default configuration
 description: plugin for test purposes
-name: testplug
+name: testplug_broken_manifest_2
 version: 0.1.0
 services:
   - name: testservice_1
