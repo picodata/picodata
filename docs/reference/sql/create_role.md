@@ -1,6 +1,6 @@
 # CREATE ROLE
 
-[DCL](dcl.md) команда `CREATE ROLE` используется для создания новой
+[DCL](dcl.md)-команда `CREATE ROLE` используется для создания новой
 [роли](../../tutorial/access_control.md#roles).
 
 ## Синтаксис {: #syntax }
@@ -9,10 +9,10 @@
 
 ## Параметры {: #params }
 
-* **ROLE** — имя роли. Соответствует правилам имен для всех [объектов](object.md)
-  в кластере.
+* **ROLE** — имя роли. Соответствует правилам имен для всех
+  [объектов](object.md) в кластере.
 
-## Примеры  {: #examples }
+## Примеры {: #examples }
 
 ```sql
 CREATE ROLE toy OPTION (TIMEOUT = 3.0);

@@ -1,7 +1,7 @@
 # CAST
 
-Функция `CAST` используется в [DQL](dql.md) командах для приведения выражения к
-определенному [типу](../sql_types.md).
+Функция `CAST` используется в [DQL](dql.md)-командах для приведения
+выражения к определенному [типу](../sql_types.md).
 
 ## Синтаксис {: #syntax }
 
@@ -13,7 +13,7 @@
 ![Expression](../../images/ebnf/expression.svg)
 </p></details>
 
-### Литерал  {: #literal }
+### Литерал {: #literal }
 
 <details><summary>Диаграмма</summary><p>
 ![Literal](../../images/ebnf/literal.svg)
@@ -39,7 +39,7 @@
 SELECT "score" FROM "scoring";
 ---
   'metadata': [
-   {'name': 'score', 'type': 'decimal'}],
+  {'name': 'score', 'type': 'decimal'}],
   'rows': [
     [78.33],
     [84.61],
@@ -53,7 +53,7 @@ SELECT "score" FROM "scoring";
 SELECT CAST("score" AS INT) FROM "scoring";
 ---
   'metadata': [
-  {'name': 'COL_1', 'type': 'integer'}],
+ {'name': 'COL_1', 'type': 'integer'}],
   'rows': [
   [78],
   [84],
