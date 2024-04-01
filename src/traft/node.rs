@@ -523,7 +523,7 @@ impl NodeImpl {
         let leader_doesnt_exist = self.raw_node.raft.leader_id == INVALID_ID;
         let term_just_started = // ...
             self.raw_node.raft.state == RaftStateRole::Leader
-            && !self.raw_node.raft.commit_to_current_term();
+                && !self.raw_node.raft.commit_to_current_term();
 
         if leader_doesnt_exist || term_just_started {
             return Err(RaftError::ProposalDropped);
@@ -751,7 +751,9 @@ impl NodeImpl {
             Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
             Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
-            Op::PluginEnable { .. } | Op::PluginDisable { .. } => true,
+            Op::PluginEnable { .. }
+            | Op::PluginDisable { .. }
+            | Op::PluginUpdateTopology { .. } => true,
             _ => false,
         };
 
@@ -1395,6 +1397,20 @@ impl NodeImpl {
                         .delete(&plugin.name)
                         .expect("storage should not fail");
                 }
+            }
+
+            Op::PluginUpdateTopology {
+                plugin_name,
+                service_name,
+                tiers,
+            } => {
+                self.storage
+                    .properties
+                    .put(
+                        PropertyName::PendingPluginTopologyUpdate,
+                        &(plugin_name, service_name, tiers),
+                    )
+                    .expect("storage should not fail");
             }
 
             Op::Acl(acl) => {

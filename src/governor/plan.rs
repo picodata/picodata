@@ -5,7 +5,7 @@ use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ADMIN_ID};
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::tier::Tier;
 use crate::tlog;
@@ -16,6 +16,7 @@ use crate::vshard::VshardConfig;
 use crate::{has_grades, plugin};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
+use std::mem;
 use std::time::Duration;
 
 use super::cc::raft_conf_change;
@@ -40,6 +41,7 @@ pub(super) fn action_plan<'i>(
     install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
     enable_plugin: Option<&'i (String, Option<PluginDef>, Vec<ServiceDef>, Duration)>,
     disable_plugin: Option<&'i [ServiceRouteItem]>,
+    update_plugin_topology: Option<(PluginDef, ServiceDef, Vec<String>)>,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -450,23 +452,27 @@ pub(super) fn action_plan<'i>(
                     ADMIN_ID,
                 )?];
 
-                for service_def in services {
-                    // FIXME: currently we attach all services to all instances
-                    // this should be changed when plugins support topology
-                    for i in instances {
+                for i in instances {
+                    let topology_ctx = TopologyContext::for_instance(i);
+
+                    let active_services = services
+                        .iter()
+                        .filter(|svc| topology::probe_service(&topology_ctx, svc));
+
+                    for svc in active_services {
                         success_dml.push(Dml::replace(
                             ClusterwideTable::ServiceRouteTable,
                             &ServiceRouteItem::new_healthy(
                                 i.instance_id.clone(),
-                                &service_def.plugin_name,
-                                &service_def.name,
+                                &svc.plugin_name,
+                                &svc.name,
                             ),
                             ADMIN_ID,
                         )?);
                     }
                 }
             }
-        };
+        }
 
         return Ok(EnablePlugin {
             rpc,
@@ -499,6 +505,86 @@ pub(super) fn action_plan<'i>(
 
         let op = Op::BatchDml { ops };
         return Ok(DisablePlugin { op }.into());
+    }
+    if let Some((plugin_def, mut service_def, new_tiers)) = update_plugin_topology {
+        let mut enable_targets = Vec::with_capacity(instances.len());
+        let mut disable_targets = Vec::with_capacity(instances.len());
+        let mut on_success_dml = vec![];
+
+        let old_tiers = mem::replace(&mut service_def.tiers, new_tiers);
+        let new_tiers = &service_def.tiers;
+
+        // note: no need to enable/disable service and update routing table if plugin disabled
+        if plugin_def.enabled {
+            for i in instances {
+                if !i.may_respond() {
+                    continue;
+                }
+
+                // if instance in both new and old tiers - do nothing
+                if new_tiers.contains(&i.tier) && old_tiers.contains(&i.tier) {
+                    continue;
+                }
+
+                if new_tiers.contains(&i.tier) {
+                    enable_targets.push(&i.instance_id);
+                    on_success_dml.push(Dml::replace(
+                        ClusterwideTable::ServiceRouteTable,
+                        &ServiceRouteItem::new_healthy(
+                            i.instance_id.clone(),
+                            &plugin_def.name,
+                            &service_def.name,
+                        ),
+                        ADMIN_ID,
+                    )?);
+                }
+
+                if old_tiers.contains(&i.tier) {
+                    disable_targets.push(&i.instance_id);
+                    let key = ServiceRouteKey {
+                        instance_id: &i.instance_id,
+                        plugin_name: &plugin_def.name,
+                        service_name: &service_def.name,
+                    };
+                    on_success_dml.push(Dml::delete(
+                        ClusterwideTable::ServiceRouteTable,
+                        &key,
+                        ADMIN_ID,
+                    )?);
+                }
+            }
+        }
+
+        on_success_dml.push(Dml::replace(
+            ClusterwideTable::Service,
+            &service_def,
+            ADMIN_ID,
+        )?);
+
+        let enable_rpc = rpc::enable_service::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+        let disable_rpc = rpc::disable_service::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+
+        return Ok(UpdatePluginTopology {
+            enable_targets,
+            disable_targets,
+            enable_rpc,
+            disable_rpc,
+            success_dml: on_success_dml,
+            finalize_dml: Dml::delete(
+                ClusterwideTable::Property,
+                &[PropertyName::PendingPluginTopologyUpdate],
+                ADMIN_ID,
+            )?,
+        }
+        .into());
     }
 
     Ok(Plan::None)
@@ -534,7 +620,10 @@ macro_rules! define_plan {
     }
 }
 
+use crate::plugin::topology;
+use crate::plugin::topology::TopologyContext;
 use stage::*;
+
 pub mod stage {
     use super::*;
     use std::time::Duration;
@@ -626,6 +715,15 @@ pub mod stage {
 
         pub struct DisablePlugin {
             pub op: Op,
+        }
+
+        pub struct UpdatePluginTopology<'i> {
+            pub enable_targets: Vec<&'i InstanceId>,
+            pub disable_targets: Vec<&'i InstanceId>,
+            pub enable_rpc: rpc::enable_service::Request,
+            pub disable_rpc: rpc::disable_service::Request,
+            pub success_dml: Vec<Dml>,
+            pub finalize_dml: Dml,
         }
     }
 }

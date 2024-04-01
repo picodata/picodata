@@ -158,6 +158,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
             | Op::PluginConfigUpdate { .. }
             | Op::PluginDisable { .. }
             | Op::PluginRemove { .. }
+            | Op::PluginUpdateTopology { .. }
     ) {
         return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(req.op))));
     }
@@ -645,7 +646,8 @@ impl Predicate {
                 | Op::PluginEnable { .. }
                 | Op::PluginConfigUpdate { .. }
                 | Op::PluginDisable { .. }
-                | Op::PluginRemove { .. } => {
+                | Op::PluginRemove { .. }
+                | Op::PluginUpdateTopology { .. } => {
                     let space = ClusterwideTable::Property.id();
                     if space != range.table {
                         continue;

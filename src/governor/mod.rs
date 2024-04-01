@@ -135,6 +135,23 @@ impl Loop {
                     .get_by_plugin(&plugin_to_disable)
                     .expect("storage should not fail")
             });
+        let update_plugin_topology = storage
+            .properties
+            .pending_plugin_topology_update()
+            .expect("storage should never fail")
+            .and_then(|(plugin, service, new_tiers)| {
+                let plugin_def = storage
+                    .plugin
+                    .get(&plugin)
+                    .expect("storage should not fail")?;
+
+                let service_def = storage
+                    .service
+                    .get_any_version(&plugin, &service)
+                    .expect("storage should not fail")?;
+
+                Some((plugin_def, service_def, new_tiers))
+            });
 
         let plan = action_plan(
             term,
@@ -154,6 +171,7 @@ impl Loop {
             install_plugin.as_ref(),
             enable_plugin.as_ref(),
             disable_plugin.as_deref(),
+            update_plugin_topology,
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -586,7 +604,7 @@ impl Loop {
                 let mut next_ops = vec![finalize_dml];
 
                 governor_step! {
-                    "enable plugin"
+                    "enabling plugin"
                     async {
                         let mut fs = vec![];
                         for &instance_id in &targets {
@@ -650,6 +668,75 @@ impl Loop {
                     "updating plugin routing table"
                     async {
                         node.propose_and_wait(op, Duration::from_secs(3))?;
+                    }
+                }
+            }
+
+            Plan::UpdatePluginTopology(UpdatePluginTopology {
+                enable_targets,
+                disable_targets,
+                enable_rpc,
+                disable_rpc,
+                success_dml,
+                finalize_dml,
+            }) => {
+                set_status(governor_status, "update plugin service topology");
+                let mut next_ops = vec![finalize_dml];
+
+                governor_step! {
+                    "enabling/disabling service at new tiers"
+                    async {
+                        let mut fs = vec![];
+                        for &instance_id in &enable_targets {
+                            tlog!(Info, "calling proc_enable_service"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, &enable_rpc, Duration::from_secs(5))?;
+                            fs.push(async move {
+                                match resp.await {
+                                    Ok(_) => {
+                                        tlog!(Info, "instance enable service"; "instance_id" => %instance_id);
+                                        Ok(())
+                                    }
+                                    Err(e) => {
+                                        tlog!(Error, "failed to call proc_enable_service: {e}";
+                                            "instance_id" => %instance_id
+                                        );
+                                        Err(e)
+                                    }
+                                }
+                            });
+                        }
+
+                        if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
+                            tlog!(Error, "Enabling plugins fail with: {e}, rollback and abort");
+                            // try to disable plugins at all instances
+                            // where it was enabled previously
+                            let mut fs = vec![];
+                            for instance_id in enable_targets {
+                                let resp = pool.call(instance_id, &disable_rpc, Duration::from_secs(5))?;
+                                fs.push(resp);
+                            }
+                            _ = try_join_all(fs).timeout(Duration::from_secs(5)).await;
+                            return Ok(());
+                        }
+
+                        let mut fs = vec![];
+                        for instance_id in disable_targets {
+                            tlog!(Info, "calling proc_disable_service"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, &disable_rpc, Duration::from_secs(5))?;
+                            fs.push(resp);
+                        }
+                        try_join_all(fs).timeout(Duration::from_secs(5)).await?;
+
+                        next_ops.extend(success_dml);
+                    }
+                }
+
+                governor_step! {
+                    "finalizing topology update"
+                    async {
+                        node.propose_and_wait(Op::BatchDml {
+                            ops: next_ops,
+                        }, Duration::from_secs(3))?;
                     }
                 }
             }

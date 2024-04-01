@@ -17,8 +17,10 @@ use std::io;
 use serde::de::DeserializeOwned;
 
 pub mod ddl_apply;
+pub mod disable_service;
 pub mod enable_all_plugins;
 pub mod enable_plugin;
+pub mod enable_service;
 pub mod expel;
 pub mod join;
 pub mod load_plugin_dry_run;

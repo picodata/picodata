@@ -66,6 +66,12 @@ pub enum Op {
     PluginDisable { name: String },
     /// Remove selected plugin.
     PluginRemove { name: String },
+    /// Update topology of a plugin service.
+    PluginUpdateTopology {
+        plugin_name: String,
+        service_name: String,
+        tiers: Vec<String>,
+    },
 }
 
 impl Eq for Op {}
@@ -286,6 +292,13 @@ impl std::fmt::Display for Op {
             Op::PluginRemove { name } => {
                 write!(f, "PluginRemove({name})")
             }
+            Op::PluginUpdateTopology {
+                plugin_name,
+                service_name,
+                ..
+            } => {
+                write!(f, "PluginUpdateTopology({plugin_name}, {service_name})")
+            }
         };
 
         struct DisplayDml<'a>(&'a Dml);
@@ -409,7 +422,8 @@ impl Op {
             | Self::PluginEnable { .. }
             | Self::PluginConfigUpdate { .. }
             | Self::PluginDisable { .. }
-            | Self::PluginRemove { .. } => false,
+            | Self::PluginRemove { .. }
+            | Self::PluginUpdateTopology { .. } => false,
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
         }
     }

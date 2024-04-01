@@ -554,6 +554,9 @@ class Instance:
     def __repr__(self):
         return f"Instance({self.instance_id}, listen={self.listen})"
 
+    def __hash__(self):
+        return hash((self.cluster_id, self.instance_id))
+
     @contextmanager
     def connect(
         self, timeout: int | float, user: str | None = None, password: str | None = None
@@ -1758,7 +1761,7 @@ def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
 
     has_webui = bool(pytestconfig.getoption("--with-webui"))
     if has_webui:
-        listen = f"{cluster.base_host}:{cluster.base_port+80}"
+        listen = f"{cluster.base_host}:{cluster.base_port + 80}"
         instance.env["PICODATA_HTTP_LISTEN"] = listen
 
     password_file = f"{cluster.data_dir}/password.txt"

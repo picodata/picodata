@@ -1105,6 +1105,10 @@ impl From<ClusterwideTable> for SpaceId {
         /// Contains plugin name.
         PendingPluginDisable = "pending_plugin_disable",
 
+        /// Pending topology update of plugin service.
+        /// Contains plugin name, service name, and list of new tiers.
+        PendingPluginTopologyUpdate = "pending_plugin_topology_update",
+
         /// Pending ddl operation which is to be either committed or aborted.
         ///
         /// Is only present during the time between the last ddl prepare
@@ -1284,6 +1288,11 @@ impl PropertyName {
             }
             PropertyName::PendingPluginDisable => {
                 _ = new.field::<String>(1).map_err(map_err)?;
+            }
+            PropertyName::PendingPluginTopologyUpdate => {
+                _ = new
+                    .field::<(String, String, Vec<String>)>(1)
+                    .map_err(map_err)?;
             }
         }
 
@@ -1517,6 +1526,13 @@ impl Properties {
     #[inline]
     pub fn pending_plugin_disable(&self) -> tarantool::Result<Option<String>> {
         self.get(PropertyName::PendingPluginDisable)
+    }
+
+    #[inline]
+    pub fn pending_plugin_topology_update(
+        &self,
+    ) -> tarantool::Result<Option<(String, String, Vec<String>)>> {
+        self.get(PropertyName::PendingPluginTopologyUpdate)
     }
 
     #[inline]
@@ -3496,7 +3512,7 @@ impl Services {
 
     #[inline]
     pub fn get_by_plugin(&self, plugin: &str) -> tarantool::Result<Vec<ServiceDef>> {
-        let it = self.space.select(IteratorType::All, &(plugin,))?;
+        let it = self.space.select(IteratorType::Eq, &(plugin,))?;
         it.map(|t| {
             let svc = t.decode::<ServiceDef>()?;
             Ok(svc)
@@ -3510,7 +3526,7 @@ impl Services {
         plugin: &str,
         version: &str,
     ) -> tarantool::Result<Vec<ServiceDef>> {
-        let it = self.space.select(IteratorType::All, &(plugin,))?;
+        let it = self.space.select(IteratorType::Eq, &(plugin,))?;
 
         let mut result = vec![];
         for tuple in it {
@@ -3596,6 +3612,14 @@ impl ServiceRouteTable {
             }
         }
         Ok(result)
+    }
+
+    pub fn get_by_instance(
+        &self,
+        i: &instance::InstanceId,
+    ) -> tarantool::Result<Vec<ServiceRouteItem>> {
+        let all_routes = self.space.select(IteratorType::Eq, &(i,))?;
+        all_routes.map(|t| t.decode()).collect()
     }
 }
 

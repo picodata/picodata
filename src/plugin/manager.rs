@@ -1,9 +1,10 @@
 use crate::info::InstanceInfo;
+use crate::plugin::PluginError::PluginNotFound;
 use crate::plugin::{
-    replace_routes, Manifest, PluginAsyncEvent, PluginCallbackError, PluginError, PluginEvent,
-    Result, Service, PLUGIN_DIR,
+    remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
+    PluginError, PluginEvent, Result, Service, PLUGIN_DIR,
 };
-use crate::schema::{ServiceDef, ServiceRouteItem, ServiceRouteKey};
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
 use crate::traft::node;
 use crate::traft::node::Node;
 use crate::{tlog, traft};
@@ -21,7 +22,7 @@ fn context_from_node(node: &Node) -> PicoContext {
     PicoContext::new(!node.is_readonly())
 }
 
-type PluginServices = Box<[Rc<fiber::Mutex<Service>>]>;
+type PluginServices = Vec<Rc<fiber::Mutex<Service>>>;
 
 /// Represent loaded part of a plugin - services and flag of plugin activation.
 struct PluginState {
@@ -68,11 +69,15 @@ impl PluginManager {
         }
     }
 
-    /// Load plugin into instance using plugin manifest.
+    /// Load plugin services into instance using plugin and service definitions.
     /// Support `dry_run` -
     /// means that plugin is not being loaded but the possibility of loading is checked.
-    fn try_load_inner(&self, manifest: &Manifest, dry_run: bool) -> Result<()> {
-        let mut loaded_services = Vec::with_capacity(manifest.services.len());
+    fn try_load_inner(
+        plugin_def: &PluginDef,
+        service_defs: &[ServiceDef],
+        dry_run: bool,
+    ) -> Result<Vec<Service>> {
+        let mut loaded_services = Vec::with_capacity(service_defs.len());
 
         unsafe fn get_sym<'a, T>(
             l: &'a Library,
@@ -81,8 +86,7 @@ impl PluginManager {
             l.get(symbol.as_bytes())
         }
 
-        let service_defs = manifest.service_defs();
-        let mut service_defs_to_load = service_defs.clone();
+        let mut service_defs_to_load = service_defs.to_vec();
 
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
         let entries = fs::read_dir(plugin_dir)?;
@@ -110,17 +114,17 @@ impl PluginManager {
 
             service_defs_to_load.retain(|service_def| {
                 if dry_run {
-                    return !registry.contains(&service_def.name, &manifest.version);
+                    return !registry.contains(&service_def.name, &plugin_def.version);
                 }
 
-                if let Some(service_inner) = registry.make(&service_def.name, &manifest.version) {
+                if let Some(service_inner) = registry.make(&service_def.name, &plugin_def.version) {
                     let service = Service {
                         _lib: lib.clone(),
                         name: service_def.name.to_string(),
                         inner: service_inner,
-                        plugin_name: manifest.name.to_string(),
+                        plugin_name: plugin_def.name.to_string(),
                     };
-                    loaded_services.push(Rc::new(fiber::Mutex::new(service)));
+                    loaded_services.push(service);
                     return false;
                 }
                 true
@@ -132,42 +136,66 @@ impl PluginManager {
         }
 
         if dry_run {
-            return Ok(());
+            return Ok(vec![]);
         }
 
-        debug_assert!(loaded_services.len() == manifest.services.len());
+        debug_assert!(loaded_services.len() == service_defs.len());
+        Ok(loaded_services)
+    }
+
+    /// Load plugin into instance.
+    ///
+    /// How plugins are loaded:
+    /// 1) Extract list of services to load from a `_pico_service` system table.
+    /// 2) Filter services by plugin topology.
+    /// 3) Read all files from `plugin_dir`.
+    /// 4) From each .so file try to load services from load-list.
+    /// If service can be loaded - remove it from load-list.
+    /// 5) After scanning all files - check that load-list is empty - plugin is fully loaded now.
+    /// 6) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
+    /// 7) Return error if any of the previous steps failed with error.
+    ///
+    /// # Arguments
+    ///
+    /// * `plugin_name`: plugin name
+    pub fn try_load(&self, plugin_name: &str) -> Result<()> {
+        let node = node::global().expect("node must be already initialized");
+        let plugin_def = node
+            .storage
+            .plugin
+            .get(plugin_name)
+            .expect("storage should not fail")
+            .ok_or_else(|| PluginNotFound(plugin_name.to_string()))?;
+
+        let service_defs = node
+            .storage
+            .service
+            .get_by_plugin(plugin_name)
+            .expect("storage should not fail");
+
+        // filter services according to topology
+        let topology_ctx = topology::TopologyContext::current()?;
+        let service_defs = service_defs
+            .into_iter()
+            .filter(|svc_def| topology::probe_service(&topology_ctx, svc_def))
+            .collect::<Vec<_>>();
+
+        let loaded_services = Self::try_load_inner(&plugin_def, &service_defs, false)?;
 
         self.plugins.lock().insert(
-            manifest.name.clone(),
+            plugin_def.name.clone(),
             PluginState {
-                services: loaded_services.into_boxed_slice(),
+                services: loaded_services
+                    .into_iter()
+                    .map(|svc| Rc::new(fiber::Mutex::new(svc)))
+                    .collect(),
             },
         );
 
         self.handle_event_sync(PluginEvent::PluginLoad {
-            name: &manifest.name,
+            name: &plugin_def.name,
             service_defs: &service_defs,
-        })?;
-
-        Ok(())
-    }
-
-    /// Load plugin into instance using plugin manifest.
-    ///
-    /// How plugins are loaded:
-    /// 1) Extract list of services to load from a manifest (load-list).
-    /// 2) Read all files from `plugin_dir`.
-    /// 3) From each .so file try to load services from load-list.
-    /// If service can be loaded - remove it from load-list.
-    /// 4) After scanning all files - check that load-list is empty - plugin is fully loaded now.
-    /// 5) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
-    /// 6) Return error if any of the previous steps failed with error.
-    ///
-    /// # Arguments
-    ///
-    /// * `manifest`: plugin manifest
-    pub fn try_load(&self, manifest: &Manifest) -> Result<()> {
-        self.try_load_inner(manifest, false)
+        })
     }
 
     /// Check the possibility of loading plugin into instance.
@@ -176,13 +204,14 @@ impl PluginManager {
     /// Return error if services from plugin manifest can't be loaded from shared libraries in
     /// `plugin_dir`.
     pub fn try_load_dry_run(&self, manifest: &Manifest) -> Result<()> {
-        self.try_load_inner(manifest, true)
+        let plugin_def = manifest.plugin_def();
+        let service_defs = manifest.service_defs();
+        Self::try_load_inner(&plugin_def, &service_defs, true).map(|_| ())
     }
 
     /// Load and start all enabled plugins and services that must be loaded.
     fn handle_instance_online(&self) -> Result<()> {
         let node = node::global().expect("node must be already initialized");
-        let enabled_plugins = node.storage.plugin.all_enabled()?;
 
         let instance_id = node
             .raft_storage
@@ -190,21 +219,36 @@ impl PluginManager {
             .expect("storage should never fail")
             .expect("should be persisted before Node is initialized");
 
-        for plugin in enabled_plugins {
-            let manifest = Manifest::from_system_tables(&node.storage, &plugin.name)?;
+        // first, clear all routes handled by this instances
+        let instance_routes = node
+            .storage
+            .service_route_table
+            .get_by_instance(&instance_id)
+            .expect("storage should not fail");
+        let routing_keys: Vec<_> = instance_routes.iter().map(|r| r.key()).collect();
+        remove_routes(&routing_keys, Duration::from_secs(10))
+            .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
 
+        // now plugins can be enabled and routing table filled again
+        let enabled_plugins = node.storage.plugin.all_enabled()?;
+
+        for plugin in enabled_plugins {
             // no need to load already loaded plugins
             if self.plugins.lock().get(&plugin.name).is_none() {
-                self.try_load(&manifest)?;
+                self.try_load(&plugin.name)?;
             }
 
-            let items = manifest
+            let items: Vec<_> = self.plugins.lock()[&plugin.name]
                 .services
                 .iter()
                 .map(|svc| {
-                    ServiceRouteItem::new_healthy(instance_id.clone(), &manifest.name, &svc.name)
+                    ServiceRouteItem::new_healthy(
+                        instance_id.clone(),
+                        &plugin.name,
+                        &svc.lock().name,
+                    )
                 })
-                .collect::<Vec<_>>();
+                .collect();
             replace_routes(&items, Duration::from_secs(10))
                 .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
         }
@@ -398,6 +442,90 @@ impl PluginManager {
         Ok(())
     }
 
+    pub fn handle_service_enabled(&self, plugin: &str, service: &str) -> Result<()> {
+        let node = node::global().expect("node must be already initialized");
+        let storage = &node.storage;
+
+        let plugin_def = storage
+            .plugin
+            .get(plugin)?
+            .ok_or_else(|| PluginNotFound(plugin.to_string()))?;
+        let service_def = storage
+            .service
+            .get_any_version(plugin, service)?
+            .ok_or_else(|| PluginError::ServiceNotFound(service.to_string(), plugin.to_string()))?;
+
+        let service_defs = [service_def];
+
+        let mut loaded_services = Self::try_load_inner(&plugin_def, &service_defs, false)?;
+        debug_assert!(loaded_services.len() == 1);
+        let mut new_service = loaded_services
+            .pop()
+            .ok_or_else(|| PluginError::ServiceNotFound(service.to_string(), plugin.to_string()))?;
+
+        // call `on_start` callback
+        let ctx = context_from_node(node);
+        let cfg_raw =
+            rmp_serde::encode::to_vec_named(&service_defs[0].configuration).expect("out of memory");
+        if let RErr(e) = new_service
+            .inner
+            .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
+        {
+            // !IMPORTANT
+            // Why error clone to string here and go back to error?
+            // Reason is that original error
+            // points into memory allocated from .so file,
+            // but, unlike other places,
+            // error here means a drop of [`plugin::Service`],
+            // and a drop of service may lead to a drop of [`libloading::safe::Library`].
+            // If it happens - original error will point to a freed memory.
+            let err_str = e.to_string();
+            return Err(PluginError::Callback(PluginCallbackError::OnStart(
+                err_str.into(),
+            )));
+        }
+
+        // append new service to a plugin
+        let mut plugins = self.plugins.lock();
+        let entry = plugins
+            .entry(plugin_def.name)
+            .or_insert(PluginState { services: vec![] });
+        entry.services.push(Rc::new(fiber::Mutex::new(new_service)));
+
+        Ok(())
+    }
+
+    fn handle_service_disabled(&self, plugin: &str, service: &str) {
+        let node = node::global().expect("node must be already initialized");
+
+        // remove service from runtime
+        let mut plugins = self.plugins.lock();
+        let Some(state) = plugins.get_mut(plugin) else {
+            return;
+        };
+        let Some(svc_idx) = state
+            .services
+            .iter()
+            .position(|svc| svc.lock().name == service)
+        else {
+            return;
+        };
+        let service_to_del = state.services.swap_remove(svc_idx);
+        drop(plugins);
+
+        // call `on_stop` callback and drop service
+        let ctx = context_from_node(node);
+        let mut service = service_to_del.lock();
+        if let RErr(e) = service.inner.on_stop(&ctx) {
+            tlog!(
+                Error,
+                "plugin {} service {} `on_stop` error: {e}",
+                service.plugin_name,
+                service.name
+            );
+        }
+    }
+
     fn get_plugin_services(&self, plugin: &str) -> Result<PluginServices> {
         let plugins = self.plugins.lock();
         let state = plugins
@@ -525,6 +653,12 @@ impl PluginManager {
                 if let Err(e) = self.handle_rs_leader_change() {
                     tlog!(Error, "on_leader_change error: {e}");
                 }
+            }
+            PluginEvent::ServiceEnabled { plugin, service } => {
+                self.handle_service_enabled(plugin, service)?;
+            }
+            PluginEvent::ServiceDisabled { plugin, service } => {
+                self.handle_service_disabled(plugin, service);
             }
         }
 

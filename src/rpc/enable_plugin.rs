@@ -1,4 +1,3 @@
-use crate::plugin::Manifest;
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
@@ -27,8 +26,7 @@ crate::define_rpc_request! {
         let (plugin_name, _, _) = storage.properties.pending_plugin_enable()?
             .ok_or_else(|| TraftError::other("pending plugin not found"))?;
 
-        let manifest = Manifest::from_system_tables(&node.storage, &plugin_name)?;
-        let load_result = node.plugin_manager.try_load(&manifest);
+        let load_result = node.plugin_manager.try_load(&plugin_name);
 
         match load_result {
              Ok(()) => Ok(Response::Ok),

@@ -1,4 +1,5 @@
 pub mod manager;
+pub mod topology;
 
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use libloading::Library;
@@ -17,7 +18,7 @@ use tarantool::time::Instant;
 use crate::cas::{compare_and_swap, Range};
 use crate::info::InstanceInfo;
 use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
-use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
+use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::node::Node;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
@@ -44,6 +45,8 @@ pub enum PluginError {
     InstallationAborted,
     #[error("Error while enable the plugin")]
     EnablingAborted,
+    #[error("Error while update plugin topology")]
+    TopologyUpdateAborted,
     #[error("Error while discovering manifest for plugin `{0}`: {1}")]
     ManifestNotFound(String, io::Error),
     #[error("Error while parsing manifest `{0}`, reason: {1}")]
@@ -66,12 +69,14 @@ pub enum PluginError {
     AsyncEventQueueFull,
     #[error("Plugin `{0}` not found at instance")]
     PluginNotFound(String),
-    #[error("Service {0} for plugin `{1}` not found at instance")]
+    #[error("Service `{0}` for plugin `{1}` not found at instance")]
     ServiceNotFound(String, String),
     #[error("Remote call error: {0}")]
     RemoteError(String),
     #[error("Remove of enabled plugin is forbidden")]
     RemoveOfEnabledPlugin,
+    #[error("Topology: {0}")]
+    TopologyError(String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -140,35 +145,6 @@ impl Manifest {
         Ok(manifest)
     }
 
-    /// Create manifest from data in system tables `_pico_plugin` and `_pico_service`.
-    pub fn from_system_tables(storage: &Clusterwide, plugin_name: &str) -> Result<Self> {
-        let plugin = storage
-            .plugin
-            .get(plugin_name)?
-            .ok_or_else(|| PluginNotFound(plugin_name.to_string()))?;
-
-        let services = storage
-            .service
-            .get_by_plugin_and_version(&plugin.name, &plugin.version)?;
-
-        // build manifest using information form system tables _pico_plugin and _pico_service
-        let manifest_services = services
-            .into_iter()
-            .map(|srv| ServiceManifest {
-                name: srv.name,
-                description: String::default(),
-                default_configuration: srv.configuration,
-            })
-            .collect();
-
-        Ok(Manifest {
-            name: plugin.name.clone(),
-            description: String::default(),
-            version: plugin.version,
-            services: manifest_services,
-        })
-    }
-
     /// Return plugin defenition built from manifest.
     pub fn plugin_def(&self) -> PluginDef {
         PluginDef {
@@ -224,6 +200,10 @@ pub enum PluginEvent<'a> {
     InstanceDemote,
     /// Instance promote as a replicaset leader.
     InstancePromote,
+    /// Plugin service enabled at instance.
+    ServiceEnabled { plugin: &'a str, service: &'a str },
+    /// Plugin service disabled at instance.
+    ServiceDisabled { plugin: &'a str, service: &'a str },
 }
 
 /// Events that may be fired at picodata
@@ -596,4 +576,73 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> 
         deadline,
     )
     .map(|_| ())
+}
+
+/// Update a tier list of plugin service.
+pub fn update_tiers(
+    plugin_name: &str,
+    service_name: &str,
+    tiers: &[String],
+    timeout: Duration,
+) -> traft::Result<()> {
+    let deadline = Instant::now().saturating_add(timeout);
+    let node = node::global()?;
+
+    let mb_service = node
+        .storage
+        .service
+        .get_any_version(plugin_name, service_name)?;
+
+    if mb_service.is_none() {
+        return Err(PluginError::ServiceNotFound(
+            service_name.to_string(),
+            plugin_name.to_string(),
+        )
+        .into());
+    }
+
+    let op = Op::PluginUpdateTopology {
+        plugin_name: plugin_name.to_string(),
+        service_name: service_name.to_string(),
+        tiers: tiers.to_vec(),
+    };
+
+    let mut index = do_plugin_cas(
+        node,
+        op,
+        vec![
+            Range::new(ClusterwideTable::Plugin).eq([plugin_name]),
+            Range::new(ClusterwideTable::Service).eq([plugin_name, service_name]),
+        ],
+        Some(|node| {
+            Ok(node
+                .storage
+                .properties
+                .pending_plugin_topology_update()?
+                .is_some())
+        }),
+        deadline,
+    )?;
+
+    while node
+        .storage
+        .properties
+        .pending_plugin_topology_update()?
+        .is_some()
+    {
+        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+        index = node.read_index(deadline.duration_since(Instant::now()))?;
+    }
+
+    let service = node
+        .storage
+        .service
+        .get_any_version(plugin_name, service_name)?
+        .ok_or(PluginError::TopologyUpdateAborted)?;
+
+    if service.tiers != tiers {
+        return Err(PluginError::TopologyUpdateAborted.into());
+    }
+
+    Ok(())
 }

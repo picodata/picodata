@@ -1588,6 +1588,42 @@ pub(crate) fn setup() {
     #[rustfmt::skip]
     luamod_set(
         &l,
+        "update_plugin_tiers",
+        indoc! {"
+        pico.update_plugin_tiers(plugin_name, service_name, tiers, [opts])
+        =================
+
+        Update or set tiers for plugin service.
+
+        Params:
+
+            1. plugin_name - plugin name, plugin should already be installed with `pico.install_plugin` command
+            2. service_name - service name
+            3. tiers - list of tiers where service must be enabled
+            4. opts (optional table)
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::function4(|plugin_name: String, service_name: String, tiers: Vec<String>, opts: Option<Opts>| -> traft::Result<()> {
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::update_tiers(&plugin_name, &service_name, &tiers, timeout)
+            })
+        },
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
         "_update_plugin_config",
         indoc! {"
         pico._update_plugin_config(plugin_name, service_name, new_config, [opts])
