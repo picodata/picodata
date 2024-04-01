@@ -299,17 +299,30 @@ def test_pico_instance_info(instance: Instance):
 
 
 def test_raft_log(instance: Instance):
-    raft_log = instance.call("pico.raft_log", dict(max_width=1024))
+    raft_log = instance.call("pico.raft_log", dict(max_width=9000))
 
     raft_log = str.join("\n", raft_log)
 
     def preprocess(s: str):
         res = []
-        for line in s.splitlines():
+        tail = s
+        while tail:
+            line, *ltail = tail.split("\n", 1)
+            tail = ltail[0] if ltail else ""
+
             line = line.strip()
             if line.endswith("-+"):
                 # don't care about the vertical lines
                 continue
+
+            # generated output should only contain endlines after "+" (handled
+            # above) or "|", but in our expected string we may add linebreaks
+            # for readability. Here we join these artifically broken up lines.
+            # Notice how "\n" is replaced with " ", so keep this in mind when
+            # editting the expected string.
+            while tail and not line.endswith("|"):
+                next_piece, tail = tail.split("\n", 1)
+                line += " " + next_piece
 
             # these are the hacks used to make pretty tables work in tarantool's console
             line = line.replace("\u01c0", "|")
@@ -322,83 +335,121 @@ def test_raft_log(instance: Instance):
             if columns[1].isdigit():
                 columns[1] = "69"
 
-            res.append(str.join("|", columns))
+            # now let's break up the gigantic raft log rows with long BatchDml
+            # entries into several lines, so that each sub operation is on it's
+            # own line.
+            # That way when you run pytest with `-vv` option the diff
+            # is understandable enough.
+            # By the way you probaly want to also add `--no-showlocals` flag
+            # when running this test.
+            contents = columns[3]
+            if contents.startswith("BatchDml("):
+                res.append(str.join("|", columns[0:3] + ["BatchDml("]))
+                cursor = len("BatchDml(")
+                op_start = cursor
+                paren_depth = 0
+                while cursor < len(contents):
+                    if contents[cursor] == "(":
+                        paren_depth += 1
+                    elif contents[cursor] == ")":
+                        paren_depth -= 1
+                        if paren_depth == 0:
+                            # eat also the ", " after the current argument
+                            if contents[cursor + 1 : cursor + 3] == ", ":  # noqa: E203
+                                cursor += 2
+                            res.append(
+                                contents[op_start : cursor + 1].strip()  # noqa: E203
+                            )
+                            op_start = cursor + 1
+                    cursor += 1
+                # append the rest, this is probably just ")|"
+                res.append(contents[op_start:].strip())
+            else:
+                res.append(str.join("|", columns))
 
         return str.join("\n", res)
 
     def space_id(space_name: str):
         return instance.eval("return box.space[...].id", space_name)
 
+    #
+    # NOTE: run pytest with `-vv --no-showlocals` options for managable output
+    #       in case of test failure
+    #
     expected = """\
 +-----+----+--------+
 |index|term|contents|
 +-----+----+--------+
-|  0  | 1  |Replace({_pico_peer_address}, [1,"127.0.0.1:{p}"])|
-|  0  | 1  |Insert({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"])|
-|  0  | 1  |Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"])|
-|  0  | 1  |Insert({_pico_tier}, ["default",1])|
-|  0  | 1  |Insert({_pico_property}, ["global_schema_version",0])|
-|  0  | 1  |Insert({_pico_property}, ["next_schema_version",1])|
-|  0  | 1  |Insert({_pico_property}, ["password_min_length",8])|
-|  0  | 1  |Insert({_pico_property}, ["password_enforce_uppercase",true])|
-|  0  | 1  |Insert({_pico_property}, ["password_enforce_lowercase",true])|
-|  0  | 1  |Insert({_pico_property}, ["password_enforce_digits",true])|
-|  0  | 1  |Insert({_pico_property}, ["password_enforce_specialchars",false])|
-|  0  | 1  |Insert({_pico_property}, ["auto_offline_timeout",5.0])|
-|  0  | 1  |Insert({_pico_property}, ["max_heartbeat_period",5.0])|
-|  0  | 1  |Insert({_pico_property}, ["max_pg_statements",50])|
-|  0  | 1  |Insert({_pico_property}, ["max_pg_portals",50])|
-|  0  | 1  |Insert({_pico_property}, ["snapshot_chunk_max_size",16777216])|
-|  0  | 1  |Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0])|
-|  0  | 1  |Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"])|
-|  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,0,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["execute","role",2,0,1,0])|
-|  0  | 1  |Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1,"user"])|
-|  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["execute","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["create","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,1,1,0])|
-|  0  | 1  |Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","WMA2zaUdjou7vy+epavxEa2kRPA="],1,"user"])|
-|  0  | 1  |Insert({_pico_privilege}, ["read","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["write","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["execute","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["login","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["create","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,32,1,0])|
-|  0  | 1  |Insert({_pico_privilege}, ["execute","role",3,32,1,0])|
-|  0  | 1  |Insert({_pico_user}, [2,"public",0,null,1,"role"])|
-|  0  | 1  |Insert({_pico_user}, [31,"super",0,null,1,"role"])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_table},0,"id",true,[["id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_table},1,"name",true,[["name",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_index},"_pico_index",["global"],[["table_id","unsigned",false],["id","unsigned",false],["name","string",false],["local","boolean",false],["parts","array",false],["schema_version","unsigned",false],["operable","boolean",false],["unique","boolean",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_index},0,"id",true,[["table_id",null,null,null,null],["id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_index},1,"name",true,[["table_id",null,null,null,null],["name",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",["global"],[["raft_id","unsigned",false],["address","string",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_peer_address},0,"raft_id",true,[["raft_id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_instance},"_pico_instance",["global"],[["instance_id","string",false],["instance_uuid","string",false],["raft_id","unsigned",false],["replicaset_id","string",false],["replicaset_uuid","string",false],["current_grade","array",false],["target_grade","array",false],["failure_domain","map",false],["tier","string",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_instance},0,"instance_id",true,[["instance_id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_instance},1,"raft_id",true,[["raft_id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_instance},2,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,false])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_property},"_pico_property",["global"],[["key","string",false],["value","any",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_property},0,"key",true,[["key",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_replicaset},"_pico_replicaset",["global"],[["replicaset_id","string",false],["replicaset_uuid","string",false],["current_master_id","string",false],["target_master_id","string",false],["tier","string",false],["weight","number",false],["weight_origin","string",false],["state","string",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_replicaset},0,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_user},"_pico_user",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["auth","array",true],["owner","unsigned",false],["type","string",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_user},0,"id",true,[["id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_user},1,"name",true,[["name",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",["global"],[["privilege","string",false],["object_type","string",false],["object_id","integer",false],["grantee_id","unsigned",false],["grantor_id","unsigned",false],["schema_version","unsigned",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_privilege},0,"primary",true,[["grantee_id",null,null,null,null],["object_type",null,null,null,null],["object_id",null,null,null,null],["privilege",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_privilege},1,"object",true,[["object_type",null,null,null,null],["object_id",null,null,null,null]],0,true,false])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_tier},"_pico_tier",["global"],[["name","string",false],["replication_factor","unsigned",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_tier},0,"name",true,[["name",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_routine},0,"id",true,[["id",null,null,null,null]],0,true,true])|
-|  0  | 1  |Insert({_pico_index}, [{_pico_routine},1,"name",true,[["name",null,null,null,null]],0,true,true])|
+|  0  | 1  |BatchDml(
+Replace({_pico_peer_address}, [1,"127.0.0.1:{p}"]),
+Insert({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
+Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"]))|
+|  0  | 1  |BatchDml(Insert({_pico_tier}, ["default",1]))|
+|  0  | 1  |BatchDml(
+Insert({_pico_property}, ["global_schema_version",0]),
+Insert({_pico_property}, ["next_schema_version",1]),
+Insert({_pico_property}, ["password_min_length",8]),
+Insert({_pico_property}, ["password_enforce_uppercase",true]),
+Insert({_pico_property}, ["password_enforce_lowercase",true]),
+Insert({_pico_property}, ["password_enforce_digits",true]),
+Insert({_pico_property}, ["password_enforce_specialchars",false]),
+Insert({_pico_property}, ["auto_offline_timeout",5.0]),
+Insert({_pico_property}, ["max_heartbeat_period",5.0]),
+Insert({_pico_property}, ["max_pg_statements",50]),
+Insert({_pico_property}, ["max_pg_portals",50]),
+Insert({_pico_property}, ["snapshot_chunk_max_size",16777216]),
+Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0]))|
+|  0  | 1  |BatchDml(
+Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"]),
+Insert({_pico_privilege}, ["login","universe",0,0,1,0]),
+Insert({_pico_privilege}, ["execute","role",2,0,1,0]),
+Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1,"user"]),
+Insert({_pico_privilege}, ["read","universe",0,1,1,0]),
+Insert({_pico_privilege}, ["write","universe",0,1,1,0]),
+Insert({_pico_privilege}, ["execute","universe",0,1,1,0]),
+Insert({_pico_privilege}, ["login","universe",0,1,1,0]),
+Insert({_pico_privilege}, ["create","universe",0,1,1,0]),
+Insert({_pico_privilege}, ["drop","universe",0,1,1,0]),
+Insert({_pico_privilege}, ["alter","universe",0,1,1,0]),
+Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","WMA2zaUdjou7vy+epavxEa2kRPA="],1,"user"]),
+Insert({_pico_privilege}, ["read","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["write","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["execute","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["login","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["create","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["drop","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["alter","universe",0,32,1,0]),
+Insert({_pico_privilege}, ["execute","role",3,32,1,0]),
+Insert({_pico_user}, [2,"public",0,null,1,"role"]),
+Insert({_pico_user}, [31,"super",0,null,1,"role"]))|
+|  0  | 1  |BatchDml(
+Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_table},0,"id",true,[["id",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_table},1,"name",true,[["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_index},"_pico_index",["global"],[["table_id","unsigned",false],["id","unsigned",false],["name","string",false],["local","boolean",false],["parts","array",false],["schema_version","unsigned",false],["operable","boolean",false],["unique","boolean",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_index},0,"id",true,[["table_id",null,null,null,null],["id",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_index},1,"name",true,[["table_id",null,null,null,null],["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",["global"],[["raft_id","unsigned",false],["address","string",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_peer_address},0,"raft_id",true,[["raft_id",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_instance},"_pico_instance",["global"],[["instance_id","string",false],["instance_uuid","string",false],["raft_id","unsigned",false],["replicaset_id","string",false],["replicaset_uuid","string",false],["current_grade","array",false],["target_grade","array",false],["failure_domain","map",false],["tier","string",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_instance},0,"instance_id",true,[["instance_id",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_instance},1,"raft_id",true,[["raft_id",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_instance},2,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,false]),
+Insert({_pico_table}, [{_pico_property},"_pico_property",["global"],[["key","string",false],["value","any",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_property},0,"key",true,[["key",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_replicaset},"_pico_replicaset",["global"],[["replicaset_id","string",false],["replicaset_uuid","string",false],["current_master_id","string",false],["target_master_id","string",false],["tier","string",false],["weight","number",false],["weight_origin","string",false],["state","string",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_replicaset},0,"replicaset_id",true,[["replicaset_id",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_user},"_pico_user",["global"],[["id","unsigned",false],["name","string",false],["schema_version","unsigned",false],["auth","array",true],["owner","unsigned",false],["type","string",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_user},0,"id",true,[["id",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_user},1,"name",true,[["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",["global"],[["privilege","string",false],["object_type","string",false],["object_id","integer",false],["grantee_id","unsigned",false],["grantor_id","unsigned",false],["schema_version","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_privilege},0,"primary",true,[["grantee_id",null,null,null,null],["object_type",null,null,null,null],["object_id",null,null,null,null],["privilege",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_privilege},1,"object",true,[["object_type",null,null,null,null],["object_id",null,null,null,null]],0,true,false]),
+Insert({_pico_table}, [{_pico_tier},"_pico_tier",["global"],[["name","string",false],["replication_factor","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_tier},0,"name",true,[["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_routine},0,"id",true,[["id",null,null,null,null]],0,true,true]),
+Insert({_pico_index}, [{_pico_routine},1,"name",true,[["name",null,null,null,null]],0,true,true]))|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
