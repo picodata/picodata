@@ -1,0 +1,21 @@
+# invalid manifest with extra service
+description: plugin for test purposes
+name: testplug
+version: 0.1.0
+services:
+  - name: testservice_1
+    description: testservice_1 descr
+    default_configuration:
+      foo: true
+      bar: 101
+      baz:
+        - "one"
+        - "two"
+        - "three"
+  - name: testservice_2
+    description: testservice_2 descr
+    default_configuration:
+  - name: testservice_3
+    description: testservice_3 descr
+    default_configuration:
+

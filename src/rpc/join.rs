@@ -215,6 +215,7 @@ pub fn build_instance(
         failure_domain.clone(),
         tier,
     );
+
     Ok(instance)
 }
 

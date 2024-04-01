@@ -97,7 +97,7 @@ dependencies = [
  "mime",
  "percent-encoding",
  "pin-project-lite",
- "rand",
+ "rand 0.8.5",
  "sha1",
  "smallvec",
  "tokio",
@@ -265,7 +265,7 @@ dependencies = [
  "getrandom",
  "once_cell",
  "version_check",
- "zerocopy",
+ "zerocopy 0.7.32",
 ]
 
 [[package]]
@@ -1227,7 +1227,7 @@ dependencies = [
  "filetime",
  "indicatif",
  "number2name",
- "rand",
+ "rand 0.8.5",
  "structopt",
 ]
 
@@ -1398,6 +1398,18 @@ checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
+]
+
+[[package]]
+name = "gensym"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "913dce4c5f06c2ea40fc178c06f777ac89fc6b1383e90c254fafb1abe4ba3c82"
+dependencies = [
+ "proc-macro2 1.0.79",
+ "quote 1.0.35",
+ "syn 2.0.58",
+ "uuid 1.8.0",
 ]
 
 [[package]]
@@ -2218,7 +2230,7 @@ dependencies = [
  "lazy_static",
  "percent-encoding",
  "pin-project",
- "rand",
+ "rand 0.8.5",
  "thiserror",
 ]
 
@@ -2350,10 +2362,11 @@ dependencies = [
  "opentelemetry",
  "pico_proc_macro",
  "picodata-sdk",
+ "picoplugin",
  "pretty_assertions 0.6.1",
  "protobuf",
  "raft",
- "rand",
+ "rand 0.8.5",
  "rmp",
  "rmp-serde",
  "rmpv",
@@ -2366,7 +2379,7 @@ dependencies = [
  "serde_repr",
  "serde_yaml 0.9.34+deprecated",
  "slog",
- "tarantool",
+ "tarantool 5.0.0",
  "tempfile",
  "thiserror",
  "uuid 1.8.0",
@@ -2378,6 +2391,30 @@ name = "picodata-sdk"
 version = "0.1.0"
 dependencies = [
  "libloading 0.8.3",
+]
+
+[[package]]
+name = "picoplugin"
+version = "0.1.0"
+dependencies = [
+ "abi_stable",
+ "gensym",
+ "linkme 0.3.25",
+ "picoplugin_gen",
+ "rmp",
+ "rmp-serde",
+ "serde",
+ "tarantool 5.0.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
+]
+
+[[package]]
+name = "picoplugin_gen"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2 1.0.79",
+ "quote 1.0.35",
+ "syn 1.0.109",
+ "tarantool 5.0.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
 ]
 
 [[package]]
@@ -2588,7 +2625,7 @@ dependencies = [
  "getset",
  "protobuf",
  "raft-proto",
- "rand",
+ "rand 0.8.5",
  "slog",
  "slog-envlogger",
  "slog-stdlog",
@@ -2614,8 +2651,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
  "libc",
- "rand_chacha",
- "rand_core",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
+version = "0.9.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d31e63ea85be51c423e52ba8f2e68a3efd53eed30203ee029dd09947333693e"
+dependencies = [
+ "rand_chacha 0.9.0-alpha.1",
+ "rand_core 0.9.0-alpha.1",
+ "zerocopy 0.8.0-alpha.6",
 ]
 
 [[package]]
@@ -2625,7 +2673,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.9.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78674ef918c19451dbd250f8201f8619b494f64c9aa6f3adb28fd8a0f1f6da46"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.9.0-alpha.1",
 ]
 
 [[package]]
@@ -2635,6 +2693,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.9.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc89dffba8377c5ec847d12bb41492bda235dba31a25e8b695cd0fe6589eb8c9"
+dependencies = [
+ "getrandom",
+ "zerocopy 0.8.0-alpha.6",
 ]
 
 [[package]]
@@ -2927,13 +2995,13 @@ dependencies = [
  "pest",
  "pest_derive",
  "pretty_assertions 1.4.0",
- "rand",
+ "rand 0.8.5",
  "rmp-serde",
  "sbroad-proc",
  "serde",
  "serde_yaml 0.8.26",
  "smol_str",
- "tarantool",
+ "tarantool 5.0.0",
  "uuid 1.8.0",
 ]
 
@@ -3415,14 +3483,45 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc",
+ "tarantool-proc 3.0.0",
  "tempfile",
  "tester",
  "thiserror",
  "time",
  "time-macros",
- "tlua",
+ "tlua 3.1.0",
  "tokio",
+ "uuid 0.8.2",
+ "va_list",
+]
+
+[[package]]
+name = "tarantool"
+version = "5.0.0"
+source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
+dependencies = [
+ "async-trait",
+ "base64 0.13.1",
+ "bitflags 1.3.2",
+ "dec",
+ "dlopen",
+ "futures",
+ "libc",
+ "linkme 0.2.10",
+ "log",
+ "once_cell",
+ "refpool",
+ "rmp",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha-1",
+ "tarantool-proc 3.0.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
+ "thiserror",
+ "time",
+ "tlua 3.1.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
  "uuid 0.8.2",
  "va_list",
 ]
@@ -3430,6 +3529,18 @@ dependencies = [
 [[package]]
 name = "tarantool-proc"
 version = "3.0.0"
+dependencies = [
+ "darling",
+ "proc-macro-error",
+ "proc-macro2 1.0.79",
+ "quote 1.0.35",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "tarantool-proc"
+version = "3.0.0"
+source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
 dependencies = [
  "darling",
  "proc-macro-error",
@@ -3489,6 +3600,16 @@ dependencies = [
  "getopts",
  "libc",
  "term 0.6.1",
+]
+
+[[package]]
+name = "testplug"
+version = "0.0.0"
+dependencies = [
+ "linkme 0.3.25",
+ "picoplugin",
+ "rand 0.9.0-alpha.1",
+ "serde",
 ]
 
 [[package]]
@@ -3589,12 +3710,33 @@ dependencies = [
  "serde",
  "tester",
  "thiserror",
- "tlua-derive",
+ "tlua-derive 0.2.0",
+]
+
+[[package]]
+name = "tlua"
+version = "3.1.0"
+source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
+dependencies = [
+ "libc",
+ "serde",
+ "thiserror",
+ "tlua-derive 0.2.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
 ]
 
 [[package]]
 name = "tlua-derive"
 version = "0.2.0"
+dependencies = [
+ "proc-macro2 1.0.79",
+ "quote 1.0.35",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "tlua-derive"
+version = "0.2.0"
+source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
 dependencies = [
  "proc-macro2 1.0.79",
  "quote 1.0.35",
@@ -3820,7 +3962,7 @@ checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
 dependencies = [
  "getrandom",
  "md-5",
- "rand",
+ "rand 0.8.5",
  "uuid-macro-internal",
 ]
 
@@ -4153,7 +4295,16 @@ version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74d4d3961e53fa4c9a25a8637fc2bfaf2595b3d3ae34875568a5cf64787716be"
 dependencies = [
- "zerocopy-derive",
+ "zerocopy-derive 0.7.32",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.0-alpha.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db678a6ee512bd06adf35c35be471cae2f9c82a5aed2b5d15e03628c98bddd57"
+dependencies = [
+ "zerocopy-derive 0.8.0-alpha.6",
 ]
 
 [[package]]
@@ -4161,6 +4312,17 @@ name = "zerocopy-derive"
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
+dependencies = [
+ "proc-macro2 1.0.79",
+ "quote 1.0.35",
+ "syn 2.0.58",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.0-alpha.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "201585ea96d37ee69f2ac769925ca57160cef31acb137c16f38b02b76f4c1e62"
 dependencies = [
  "proc-macro2 1.0.79",
  "quote 1.0.35",

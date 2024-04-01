@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::ControlFlow;
+use std::ops::{Add, ControlFlow};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -104,6 +104,10 @@ impl Loop {
             .pending_schema_change()
             .expect("storage should never fail");
         let has_pending_schema_change = pending_schema_change.is_some();
+        let new_plugin_loaded = storage
+            .properties
+            .pending_plugin_load()
+            .expect("storage should never fail");
 
         let plan = action_plan(
             term,
@@ -120,6 +124,7 @@ impl Loop {
             &target_vshard_config,
             vshard_bootstrapped,
             has_pending_schema_change,
+            new_plugin_loaded.as_ref(),
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -144,6 +149,20 @@ impl Loop {
                     waker.mark_seen();
                     _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
                     return ControlFlow::Continue(());
+                }
+            }
+        }
+
+        #[derive(Debug)]
+        enum OnError {
+            Retry(Error),
+            Abort,
+        }
+        impl From<OnError> for Error {
+            fn from(e: OnError) -> Error {
+                match e {
+                    OnError::Retry(e) => e,
+                    OnError::Abort => Error::other("schema change was aborted"),
                 }
             }
         }
@@ -443,16 +462,6 @@ impl Loop {
                         res?;
 
                         next_op = Op::DdlCommit;
-
-                        enum OnError { Retry(Error), Abort }
-                        impl From<OnError> for Error {
-                            fn from(e: OnError) -> Error {
-                                match e {
-                                    OnError::Retry(e) => e,
-                                    OnError::Abort => Error::other("schema change was aborted"),
-                                }
-                            }
-                        }
                     }
                 }
 
@@ -463,6 +472,74 @@ impl Loop {
                     ]
                     async {
                         assert!(matches!(next_op, Op::DdlAbort | Op::DdlCommit));
+                        node.propose_and_wait(next_op, Duration::from_secs(3))?;
+                    }
+                }
+            }
+
+            Plan::LoadPlugin(LoadPlugin {
+                targets,
+                rpc,
+                on_start_timeout,
+            }) => {
+                set_status(governor_status, "load new plugin");
+                let mut next_op = Op::Nop;
+                governor_step! {
+                    "load new plugin"
+                    async {
+                        let mut fs = vec![];
+                        for instance_id in targets {
+                            tlog!(Info, "calling proc_load_plugin"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, &rpc, on_start_timeout)?;
+                            fs.push(async move {
+                                match resp.await {
+                                    Ok(rpc::load_plugin::Response::Ok) => {
+                                        tlog!(Info, "load plugin on instance";
+                                            "instance_id" => %instance_id,
+                                        );
+                                        Ok(())
+                                    }
+                                    Ok(rpc::load_plugin::Response::Abort { reason }) => {
+                                        tlog!(Error, "failed to load plugin at instance: {reason}";
+                                            "instance_id" => %instance_id,
+                                        );
+                                        Err(OnError::Abort)
+                                    }
+                                    Err(Error::Timeout) => {
+                                        tlog!(Error, "failed to load plugin at instance: timeout";
+                                            "instance_id" => %instance_id,
+                                        );
+                                        Err(OnError::Abort)
+                                    }
+                                    Err(e) => {
+                                        tlog!(Warning, "failed calling proc_load_plugin: {e}";
+                                            "instance_id" => %instance_id
+                                        );
+                                        Err(OnError::Retry(e))
+                                    }
+                                }
+                            });
+                        }
+
+                        let res = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
+                        if let Err(TimeoutError::Failed(OnError::Abort)) = res {
+                            next_op = Op::PluginLoadAbort;
+                            return Ok(());
+                        }
+
+                        res?;
+
+                        next_op = Op::PluginLoadCommit;
+                    }
+                }
+
+                let op_name = next_op.to_string();
+                governor_step! {
+                    "finalizing plugin loading" [
+                        "op" => &op_name,
+                    ]
+                    async {
+                        assert!(matches!(next_op, Op::PluginLoadAbort | Op::PluginLoadCommit));
                         node.propose_and_wait(next_op, Duration::from_secs(3))?;
                     }
                 }

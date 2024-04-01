@@ -1,4 +1,3 @@
-use crate::has_grades;
 use crate::instance::grade::Grade;
 use crate::instance::grade::GradeVariant::*;
 use crate::instance::{Instance, InstanceId};
@@ -14,8 +13,10 @@ use crate::traft::op::Dml;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
+use crate::{has_grades, plugin};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use super::cc::raft_conf_change;
 use super::Loop;
@@ -36,6 +37,7 @@ pub(super) fn action_plan<'i>(
     target_vshard_config: &VshardConfig,
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
+    new_plugin: Option<&(plugin::Manifest, Duration)>,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -344,6 +346,28 @@ pub(super) fn action_plan<'i>(
         return Ok(ApplySchemaChange { rpc, targets }.into());
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    // plugin
+    if let Some((_, on_start_timeout)) = new_plugin {
+        let mut targets = Vec::with_capacity(instances.len());
+        for i in instances {
+            if i.may_respond() {
+                targets.push(&i.instance_id);
+            }
+        }
+        let rpc = rpc::load_plugin::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+        return Ok(LoadPlugin {
+            rpc,
+            targets,
+            on_start_timeout: *on_start_timeout,
+        }
+        .into());
+    }
+
     Ok(Plan::None)
 }
 
@@ -380,6 +404,7 @@ macro_rules! define_plan {
 use stage::*;
 pub mod stage {
     use super::*;
+    use std::time::Duration;
 
     define_plan! {
         pub struct ConfChange {
@@ -449,6 +474,12 @@ pub mod stage {
         pub struct ApplySchemaChange<'i> {
             pub targets: Vec<&'i InstanceId>,
             pub rpc: rpc::ddl_apply::Request,
+        }
+
+        pub struct LoadPlugin<'i> {
+            pub targets: Vec<&'i InstanceId>,
+            pub rpc: rpc::load_plugin::Request,
+            pub on_start_timeout: Duration,
         }
     }
 }

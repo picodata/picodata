@@ -1,3 +1,4 @@
+use crate::plugin;
 use crate::schema::{
     Distribution, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity, UserDef, ADMIN_ID,
     GUEST_ID, PUBLIC_ID, SUPER_ID,
@@ -11,12 +12,13 @@ use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// The operation on the raft state machine.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "kind")]
 pub enum Op {
@@ -46,7 +48,34 @@ pub enum Op {
     DdlAbort,
     /// Cluster-wide access control list change operation.
     Acl(Acl),
+    /// Start a new plugin loading operation.
+    /// Should load plugin using plugin manifest.
+    ///
+    /// Provided operation will be set as pending.
+    /// Only one operation can exist at the same time.
+    PluginLoadPrepare {
+        manifest: plugin::Manifest,
+        on_start_timeout: Duration,
+    },
+    /// Commit the pending plugin load operation.
+    ///
+    /// Only one pending plugin load operation can exist at the same time.
+    PluginLoadCommit,
+    /// Abort the pending plugin load operation.
+    ///
+    /// Only one pending plugin load operation can exist at the same time.
+    PluginLoadAbort,
+    /// Update plugin service configuration.
+    PluginConfigUpdate {
+        plugin_name: String,
+        service_name: String,
+        config: rmpv::Value,
+    },
+    /// Disable selected plugin.
+    PluginDisable { name: String },
 }
+
+impl Eq for Op {}
 
 /// Helper struct for serializing subarray of dml
 /// commands to avoid copying. It must serialize
@@ -246,6 +275,29 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(),)
             }
+            Op::PluginLoadPrepare { manifest, .. } => {
+                write!(
+                    f,
+                    "PluginLoadPrepare({}, {})",
+                    manifest.name, manifest.version
+                )
+            }
+            Op::PluginLoadCommit => {
+                write!(f, "PluginLoadCommit")
+            }
+            Op::PluginLoadAbort => {
+                write!(f, "PluginLoadAbort")
+            }
+            Op::PluginConfigUpdate {
+                plugin_name,
+                service_name,
+                ..
+            } => {
+                write!(f, "PluginConfigUpdate({plugin_name}, {service_name})")
+            }
+            Op::PluginDisable { name } => {
+                write!(f, "PluginDisable({name})")
+            }
         };
 
         struct DisplayDml<'a>(&'a Dml);
@@ -361,9 +413,16 @@ impl Op {
     #[inline]
     pub fn is_schema_change(&self) -> bool {
         match self {
-            Self::Nop | Self::Dml(_) | Self::DdlAbort | Self::DdlCommit | Self::BatchDml { .. } => {
-                false
-            }
+            Self::Nop
+            | Self::Dml(_)
+            | Self::DdlAbort
+            | Self::DdlCommit
+            | Self::BatchDml { .. }
+            | Self::PluginLoadPrepare { .. }
+            | Self::PluginLoadAbort
+            | Self::PluginLoadCommit
+            | Self::PluginConfigUpdate { .. }
+            | Self::PluginDisable { .. } => false,
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
         }
     }

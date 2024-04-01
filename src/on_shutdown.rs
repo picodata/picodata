@@ -7,14 +7,21 @@ use crate::tlog;
 use crate::traft::node;
 use crate::unwrap_ok_or;
 
-use picodata_sdk::*;
+use crate::plugin::PluginEvent;
 
-pub async fn callback(plugin_list: &'static [Plugin]) {
+pub async fn callback() {
     let node = node::global().unwrap();
 
     // 1. Wake up the sentinel so it starts trying to set target grade Offline.
     node.sentinel_loop.on_shut_down();
-    plugin_list.iter().for_each(|plugin| plugin.stop());
+
+    if let Err(e) = node
+        .plugin_manager
+        .handle_event_sync(PluginEvent::InstanceShutdown)
+    {
+        tlog!(Error, "plugin `on_stop` error: {e}");
+    };
+
     fiber::reschedule();
 
     // 2. Meanwhile, wait until either it succeeds or there is no quorum.

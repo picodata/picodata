@@ -1,9 +1,10 @@
 use crate::pico_service::pico_service_password;
+use crate::plugin::PluginEvent;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tarantool::set_cfg_field;
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::Result;
+use crate::traft::{node, Result};
 use std::time::Duration;
 use tarantool::tlua;
 use tarantool::vclock::Vclock;
@@ -90,6 +91,9 @@ crate::define_rpc_request! {
             return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
         }
 
+        // errors ignored because it must be already handled by plugin manager itself
+        _ = node::global()?.plugin_manager.handle_event_sync(PluginEvent::InstancePromote);
+
         Ok(SyncAndPromoteResponse {})
     }
 
@@ -114,6 +118,10 @@ crate::define_rpc_request! {
         let _ = req;
         // TODO: find a way to guard against stale governor requests.
         crate::tarantool::exec("box.cfg { read_only = true }")?;
+
+        // errors ignored because it must be already handled by plugin manager itself
+        _ = node::global()?.plugin_manager.handle_event_sync(PluginEvent::InstanceDemote);
+
         let vclock = Vclock::current();
         Ok(DemoteResponse { vclock })
     }

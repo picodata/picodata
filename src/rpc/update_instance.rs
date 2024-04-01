@@ -133,6 +133,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             cas::Range::new(ClusterwideTable::Address),
             cas::Range::new(ClusterwideTable::Tier),
         ];
+
         let res = cas::compare_and_swap(
             Op::Dml(dml),
             cas::Predicate {

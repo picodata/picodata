@@ -41,6 +41,8 @@ use tarantool::{
     tuple::Encode,
 };
 
+use crate::storage::ClusterwideTable;
+use crate::traft::op::Dml;
 use crate::{
     schema::{
         PrivilegeDef, PrivilegeType, SchemaObjectType as PicoSchemaObjectType, ADMIN_ID,
@@ -595,6 +597,28 @@ pub(super) fn access_check_op(
                 let sys_user = user_by_id(as_user)?;
                 return Err(make_access_denied(
                     "ddl",
+                    PicoSchemaObjectType::Universe,
+                    "",
+                    sys_user.name,
+                ));
+            }
+            Ok(())
+        }
+        Op::PluginLoadPrepare { .. } | Op::PluginConfigUpdate { .. } | Op::PluginDisable { .. } => {
+            // FIXME: currently access here is not checked explicitly, but check
+            // dml into system space _pico_property.
+            // Same behaviour also using for check access of update and remove plugin operations.
+            // This will be fixed later by adding special rights for plugin system.
+            access_check_dml(
+                &Dml::replace(ClusterwideTable::Property, &(), as_user).expect("infallible"),
+                as_user,
+            )
+        }
+        Op::PluginLoadCommit | Op::PluginLoadAbort => {
+            if as_user != ADMIN_ID {
+                let sys_user = user_by_id(as_user)?;
+                return Err(make_access_denied(
+                    "plugin",
                     PicoSchemaObjectType::Universe,
                     "",
                     sys_user.name,

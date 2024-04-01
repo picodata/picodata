@@ -149,7 +149,15 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     // Other operation types are not used with CaS
     if !matches!(
         req.op,
-        Op::Acl(..) | Op::Dml(..) | Op::DdlPrepare { .. } | Op::DdlAbort | Op::BatchDml { .. }
+        Op::Acl(..)
+            | Op::Dml(..)
+            | Op::DdlPrepare { .. }
+            | Op::DdlAbort
+            | Op::BatchDml { .. }
+            | Op::PluginLoadPrepare { .. }
+            | Op::PluginLoadAbort
+            | Op::PluginConfigUpdate { .. }
+            | Op::PluginDisable { .. }
     ) {
         return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(req.op))));
     }
@@ -630,7 +638,15 @@ impl Predicate {
                         check_dml(dml, dml.space(), range)?
                     }
                 }
-                Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort | Op::Acl { .. } => {
+                Op::DdlPrepare { .. }
+                | Op::DdlCommit
+                | Op::DdlAbort
+                | Op::Acl { .. }
+                | Op::PluginLoadPrepare { .. }
+                | Op::PluginLoadCommit
+                | Op::PluginLoadAbort
+                | Op::PluginConfigUpdate { .. }
+                | Op::PluginDisable { .. } => {
                     let space = ClusterwideTable::Property.id();
                     if space != range.table {
                         continue;

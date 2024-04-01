@@ -19,14 +19,15 @@ use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
-use crate::schema::INITIAL_SCHEMA_VERSION;
-use crate::schema::{Distribution, PrivilegeType, SchemaObjectType};
+use crate::schema::{
+    Distribution, PrivilegeType, SchemaObjectType, ServiceDef, ServiceRouteItem, ServiceRouteKey,
+};
 use crate::schema::{IndexDef, TableDef};
+use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::sql::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::tier::Tier;
-use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
@@ -38,6 +39,7 @@ use crate::traft::Result;
 use crate::util::Uppercase;
 use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
+use crate::{plugin, tlog};
 
 use std::borrow::Cow;
 use std::cell::{RefCell, UnsafeCell};
@@ -357,6 +359,36 @@ define_clusterwide_tables! {
                 #[primary]
                 index_id: Index => "id",
                 index_name: Index => "name",
+            }
+        }
+        Plugin = 526, "_pico_plugin" => {
+            Clusterwide::plugin;
+
+            /// A struct for accessing info of all known plugins.
+            pub struct Plugins {
+                space: Space,
+                #[primary]
+                index_name: Index => "name",
+            }
+        }
+        Service = 527, "_pico_service" => {
+            Clusterwide::service;
+
+            /// A struct for accessing info of all known plugin services.
+            pub struct Services {
+                space: Space,
+                #[primary]
+                index_name: Index => "name",
+            }
+        }
+        ServiceRouteTable = 528, "_pico_service_route" => {
+            Clusterwide::service_route_table;
+
+            /// A struct for accessing info of plugin services routing table.
+            pub struct ServiceRouteTable {
+                space: Space,
+                #[primary]
+                index_name: Index => "routing_key",
             }
         }
     }
@@ -1057,6 +1089,13 @@ impl From<ClusterwideTable> for SpaceId {
     pub enum PropertyName {
         VshardBootstrapped = "vshard_bootstrapped",
 
+        /// Pending plugin load operation which is to be either committed or aborted.
+        /// Contains new plugin manifest.
+        ///
+        /// Is only present during the time between the last plugin load prepare
+        /// operation and the corresponding plugin load commit or plugin load abort operation.
+        PendingPluginLoad = "pending_plugin_load",
+
         /// Pending ddl operation which is to be either committed or aborted.
         ///
         /// Is only present during the time between the last ddl prepare
@@ -1225,6 +1264,11 @@ impl PropertyName {
             Self::PendingSchemaChange => {
                 // Check it decodes into Ddl.
                 _ = new.field::<Ddl>(1).map_err(map_err)?;
+            }
+            PropertyName::PendingPluginLoad => {
+                _ = new
+                    .field::<(plugin::Manifest, Duration)>(1)
+                    .map_err(map_err)?;
             }
         }
 
@@ -1445,6 +1489,11 @@ impl Properties {
             .get(PropertyName::MaxLoginAttempts)?
             .unwrap_or(DEFAULT_MAX_LOGIN_ATTEMPTS);
         Ok(res)
+    }
+
+    #[inline]
+    pub fn pending_plugin_load(&self) -> tarantool::Result<Option<(plugin::Manifest, Duration)>> {
+        self.get(PropertyName::PendingPluginLoad)
     }
 
     #[inline]
@@ -3138,6 +3187,234 @@ pub fn make_routine_not_found(routine_id: RoutineId) -> tarantool::error::Tarant
 pub type RoutineId = u32;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Plugins
+////////////////////////////////////////////////////////////////////////////////
+
+impl Plugins {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("name")
+            .unique(true)
+            .part("name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, index_name })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        PluginDef::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "name".into(),
+            parts: vec![Part::from("name")],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
+    }
+
+    #[inline]
+    pub fn put(&self, plugin: &PluginDef) -> tarantool::Result<()> {
+        self.space.replace(plugin)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn delete(&self, plugin_name: &str) -> tarantool::Result<()> {
+        self.space.delete(&(plugin_name,))?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn all(&self) -> tarantool::Result<Vec<PluginDef>> {
+        self.space
+            .select(IteratorType::All, &())?
+            .map(|tuple| tuple.decode::<PluginDef>())
+            .collect()
+    }
+}
+
+impl Services {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("name")
+            .unique(true)
+            .part("plugin_name")
+            .part("name")
+            .part("version")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, index_name })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        ServiceDef::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "name".into(),
+            parts: vec![
+                Part::from("plugin_name"),
+                Part::from("name"),
+                Part::from("version"),
+            ],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
+    }
+
+    #[inline]
+    pub fn put(&self, service: &ServiceDef) -> tarantool::Result<()> {
+        self.space.replace(service)?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn get(
+        &self,
+        plugin: &str,
+        name: &str,
+        version: &str,
+    ) -> tarantool::Result<Option<ServiceDef>> {
+        let service = self.space.get(&(&plugin, name, version))?;
+        service.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn get_any_version(
+        &self,
+        plugin: &str,
+        name: &str,
+    ) -> tarantool::Result<Option<ServiceDef>> {
+        let service = self.space.select(IteratorType::Eq, &(plugin, name))?.next();
+        service.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn get_by_plugin(&self, plugin: &str) -> tarantool::Result<Vec<ServiceDef>> {
+        let it = self.space.select(IteratorType::All, &(plugin,))?;
+        it.map(|t| {
+            let svc = t.decode::<ServiceDef>()?;
+            Ok(svc)
+        })
+        .collect::<tarantool::Result<Vec<ServiceDef>>>()
+    }
+
+    #[inline]
+    pub fn get_by_plugin_and_version(
+        &self,
+        plugin: &str,
+        version: &str,
+    ) -> tarantool::Result<Vec<ServiceDef>> {
+        let it = self.space.select(IteratorType::All, &(plugin,))?;
+
+        let mut result = vec![];
+        for tuple in it {
+            let svc = tuple.decode::<ServiceDef>()?;
+            if svc.version == version {
+                result.push(svc)
+            }
+        }
+        Ok(result)
+    }
+
+    #[inline]
+    pub fn delete(&self, plugin: &str, service: &str, version: &str) -> tarantool::Result<()> {
+        self.space.delete(&[plugin, service, version])?;
+        Ok(())
+    }
+}
+
+impl ServiceRouteTable {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("routing_key")
+            .unique(true)
+            .part("instance_id")
+            .part("plugin_name")
+            .part("service_name")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, index_name })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        ServiceRouteItem::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "routing_key".into(),
+            parts: vec![
+                Part::from("instance_id"),
+                Part::from("plugin_name"),
+                Part::from("service_name"),
+            ],
+            unique: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+            local: true,
+        }]
+    }
+
+    #[inline]
+    pub fn put(&self, routing_item: &ServiceRouteItem) -> tarantool::Result<()> {
+        self.space.replace(routing_item)?;
+        Ok(())
+    }
+
+    pub fn get(&self, key: &ServiceRouteKey) -> tarantool::Result<Option<ServiceRouteItem>> {
+        let item = self.space.get(key)?;
+        item.as_ref().map(Tuple::decode).transpose()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // SchemaDef
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -3907,13 +4184,13 @@ mod tests {
 
         for instance in vec![
             // r1
-            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER,),
-            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER,),
+            ("i1", "i1-uuid", 1u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
+            ("i2", "i2-uuid", 2u64, "r1", "r1-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
             // r2
-            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER,),
-            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER,),
+            ("i3", "i3-uuid", 3u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
+            ("i4", "i4-uuid", 4u64, "r2", "r2-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
             // r3
-            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER,),
+            ("i5", "i5-uuid", 5u64, "r3", "r3-uuid", (Online, 0), (Online, 0), &faildom, DEFAULT_TIER),
         ] {
             storage.space_by_name(ClusterwideTable::Instance).unwrap().put(&instance).unwrap();
             let (_, _, raft_id, ..) = instance;

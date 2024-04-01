@@ -11,7 +11,7 @@ use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::str_eq;
 use crate::util::INFINITY;
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{rpc, sync, tlog};
+use crate::{plugin, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::session;
 use ::tarantool::tlua;
@@ -789,7 +789,7 @@ pub(crate) fn setup(config: &PicodataConfig) {
             Ok(())
         }),
     )
-    .unwrap();
+        .unwrap();
     l.exec_with(
         "pico.log.clear_highlight = ...",
         tlua::function0(tlog::clear_highlight),
@@ -1510,6 +1510,118 @@ pub(crate) fn setup(config: &PicodataConfig) {
         tlua::Function::new(|msg: String| -> bool {
             crate::traft::error::is_retriable_error_message(&msg)
         }),
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
+        "create_plugin",
+        indoc! {"
+        pico.create_plugin(name, [opts])
+        =================
+
+        Create a new plugin.
+
+        Params:
+
+            1. name - plugin name, manifest with same name must exists in plugin_dir
+            2. opts (optional table)
+                - on_start_timeout (optional number), in seconds, default: 5
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+                on_start_timeout: Option<f64>,
+            }
+            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+                let mut on_start_timeout = Duration::from_secs(5);
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.on_start_timeout {
+                        on_start_timeout = duration_from_secs_f64_clamped(t);
+                    }
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::create_plugin(&name, on_start_timeout, timeout)
+            })
+        },
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
+        "_update_plugin_config",
+        indoc! {"
+        pico._update_plugin_config(plugin_name, service_name, new_config, [opts])
+        =================
+
+        Internal API, see src/luamod.rs for the details.
+
+        Params:
+
+            1. plugin_name - plugin name
+            2. service_name - service name
+            3. new_config - new configuration
+            4. opts (optional table)
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            use tarantool::tlua::AnyLuaString;
+            
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::function4(|plugin_name: String, service_name: String, new_cfg_raw: AnyLuaString, opts: Option<Opts>| -> traft::Result<()> {
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::update_plugin_service_configuration(&plugin_name, &service_name, new_cfg_raw.as_bytes(), timeout)
+            })
+        },
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
+        "remove_plugin",
+        indoc! {"
+        pico.remove_plugin(name, [opts])
+        =================
+
+        Remove a plugin.
+
+        Params:
+
+            1. name - plugin name to be removed from system
+            2. opts (optional table)
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::remove_plugin(&name, timeout)
+            })
+        },
     );
 
     #[cfg(feature = "error_injection")]

@@ -169,15 +169,9 @@ pub struct Run {
     // TODO: rename to admin_socket
     pub admin_sock: Option<String>,
 
-    #[clap(
-        long,
-        value_name = "PATH",
-        env = "PICODATA_PLUGINS",
-        require_value_delimiter = true,
-        use_value_delimiter = true
-    )]
-    /// Path to `some_plugin_name.so`
-    pub plugins: Vec<String>,
+    #[clap(long, value_name = "PATH", env = "PICODATA_PLUGIN_DIR")]
+    /// Path to directory with plugin files
+    pub plugin_dir: Option<String>,
 
     #[clap(long = "tier", value_name = "TIER", env = "PICODATA_INSTANCE_TIER")]
     /// Name of the tier to which the instance will belong.

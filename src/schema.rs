@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::access_control::UserMetadataKind;
 use crate::cas::{self, compare_and_swap};
+use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
 use crate::storage::{self, RoutineId};
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
@@ -285,6 +286,176 @@ impl IndexDef {
         index_meta
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Plugin
+////////////////////////////////////////////////////////////////////////////////
+
+/// Plugin defenition in _pico_plugin system table.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginDef {
+    /// Plugin name.
+    pub name: String,
+    /// Indicates plugin running or not.
+    // FIXME: for future improvements
+    pub running: bool,
+    /// List of plugin services.
+    pub services: Vec<String>,
+    /// Plugin version.
+    pub version: String,
+}
+
+impl Encode for PluginDef {}
+
+impl PluginDef {
+    /// Format of the _pico_plugin global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("name", FieldType::String)),
+            Field::from(("running", FieldType::Boolean)),
+            Field::from(("services", FieldType::Array)),
+            Field::from(("version", FieldType::String)),
+        ]
+    }
+
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self {
+            name: "plugin".into(),
+            running: false,
+            services: vec!["service_1".to_string(), "service_2".to_string()],
+            version: "0.0.1".into(),
+        }
+    }
+}
+
+/// Plugin service defenition in _pico_service system table.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ServiceDef {
+    /// Plugin name.
+    pub plugin_name: String,
+    /// Service name.
+    pub name: String,
+    /// Service version must be the same as a plugin version.
+    pub version: String,
+    /// List of tiers where service must be running.
+    // FIXME: for future improvements
+    pub tiers: Vec<String>,
+    /// Current service configuration.
+    pub configuration: rmpv::Value,
+    /// Schema version.
+    // FIXME: for future improvements
+    pub schema_version: u64,
+}
+
+impl Encode for ServiceDef {}
+
+impl ServiceDef {
+    /// Format of the _pico_service global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("plugin_name", FieldType::String)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("version", FieldType::String)),
+            Field::from(("tiers", FieldType::Array)),
+            Field::from(("configuration", FieldType::Any)),
+            Field::from(("schema_version", FieldType::Unsigned)),
+        ]
+    }
+
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self {
+            plugin_name: "plugin".to_string(),
+            name: "service".into(),
+            version: "0.0.1".into(),
+            tiers: vec!["t1".to_string(), "t2".to_string()],
+            configuration: rmpv::Value::Boolean(false),
+            schema_version: 1,
+        }
+    }
+}
+
+/// Single route definition in _pico_service_route system table.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ServiceRouteItem {
+    /// Instance id.
+    pub instance_id: InstanceId,
+    /// Plugin name.
+    pub plugin_name: String,
+    /// Service name.
+    pub service_name: String,
+    /// `true` if route is poisoned, `false` otherwise.
+    pub poison: bool,
+}
+
+impl Encode for ServiceRouteItem {}
+
+impl ServiceRouteItem {
+    pub fn new_healthy(
+        instance_id: InstanceId,
+        plugin_name: impl ToString,
+        service_name: impl ToString,
+    ) -> Self {
+        Self {
+            instance_id,
+            plugin_name: plugin_name.to_string(),
+            service_name: service_name.to_string(),
+            poison: false,
+        }
+    }
+
+    pub fn new_poison(
+        instance_id: InstanceId,
+        plugin_name: impl ToString,
+        service_name: impl ToString,
+    ) -> Self {
+        Self {
+            instance_id,
+            plugin_name: plugin_name.to_string(),
+            service_name: service_name.to_string(),
+            poison: true,
+        }
+    }
+
+    /// Format of the _pico_service_route global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("instance_id", FieldType::String)),
+            Field::from(("plugin_name", FieldType::String)),
+            Field::from(("service_name", FieldType::String)),
+            Field::from(("poison", FieldType::Boolean)),
+        ]
+    }
+
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self {
+            instance_id: InstanceId("i1".to_string()),
+            plugin_name: "plugin".to_string(),
+            service_name: "service".to_string(),
+            poison: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ServiceRouteKey<'a> {
+    /// Instance id.
+    pub instance_id: &'a InstanceId,
+    /// Plugin name.
+    pub plugin_name: &'a str,
+    /// Service name.
+    pub service_name: &'a str,
+}
+
+impl<'a> Encode for ServiceRouteKey<'a> {}
 
 ////////////////////////////////////////////////////////////////////////////////
 // UserDef
@@ -1986,5 +2157,32 @@ mod test {
         let tuple_data = i.to_tuple_buffer().unwrap();
         let format = RoutineDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "RoutineDef::format");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn plugin_def_matches_format() {
+        let p = PluginDef::for_tests();
+        let tuple_data = p.to_tuple_buffer().unwrap();
+        let format = PluginDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PluginDef::format");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn service_def_matches_format() {
+        let s = ServiceDef::for_tests();
+        let tuple_data = s.to_tuple_buffer().unwrap();
+        let format = ServiceDef::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "ServiceDef::format");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn service_route_item_matches_format() {
+        let s = ServiceRouteItem::for_tests();
+        let tuple_data = s.to_tuple_buffer().unwrap();
+        let format = ServiceRouteItem::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "ServiceRouteItem::format");
     }
 }

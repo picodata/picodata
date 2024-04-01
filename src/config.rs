@@ -230,9 +230,7 @@ Using configuration file '{args_path}'.");
             self.instance.audit = Some(audit_destination);
         }
 
-        if !args.plugins.is_empty() {
-            self.instance.plugins = Some(args.plugins);
-        }
+        self.instance.plugin_dir = args.plugin_dir;
 
         if let Some(admin_socket) = args.admin_sock {
             self.instance.admin_socket = Some(admin_socket);
@@ -610,7 +608,7 @@ pub struct InstanceConfig {
 
     // TODO:
     // - sepparate config file for common parameters
-    pub plugins: Option<Vec<String>>,
+    pub plugin_dir: Option<String>,
     pub deprecated_script: Option<String>,
 
     pub audit: Option<String>,

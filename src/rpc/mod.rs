@@ -19,6 +19,7 @@ use serde::de::DeserializeOwned;
 pub mod ddl_apply;
 pub mod expel;
 pub mod join;
+pub mod load_plugin;
 pub mod replication;
 pub mod sharding;
 pub mod snapshot;

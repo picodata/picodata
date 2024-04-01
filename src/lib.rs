@@ -7,6 +7,7 @@
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::vec_init_then_push)]
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
@@ -634,7 +635,7 @@ fn start_discover(
         let instance_id = raft_storage
             .instance_id()?
             .expect("instance_id should be already set");
-        postjoin(config, storage, raft_storage)?;
+        postjoin(config, storage, raft_storage, false)?;
         crate::audit!(
             message: "local database recovered on `{instance_id}`",
             title: "recover_local_db",
@@ -740,7 +741,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     })
     .unwrap();
 
-    postjoin(config, storage, raft_storage)?;
+    postjoin(config, storage, raft_storage, false)?;
     // In this case `create_local_db` is logged in postjoin
     crate::audit!(
         message: "local database connected on `{instance_id}`",
@@ -823,7 +824,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     .unwrap();
 
     let instance_id = resp.instance.instance_id;
-    postjoin(config, storage, raft_storage)?;
+    postjoin(config, storage, raft_storage, true)?;
     crate::audit!(
         message: "local database created on `{instance_id}`",
         title: "create_local_db",
@@ -847,6 +848,7 @@ fn postjoin(
     config: &PicodataConfig,
     storage: Clusterwide,
     raft_storage: RaftSpaceAccess,
+    from_join: bool,
 ) -> Result<(), Error> {
     tlog!(Info, "entering post-join phase");
 
@@ -861,8 +863,8 @@ fn postjoin(
         audit::init(config, raft_id, gen);
     }
 
-    if let Some(plugins) = &config.instance.plugins {
-        PluginList::global_init(plugins);
+    if let Some(ref plugin_dir) = config.instance.plugin_dir {
+        plugin::set_plugin_dir(Path::new(plugin_dir));
     }
 
     if let Some(addr) = &config.instance.http_listen {
@@ -909,9 +911,7 @@ fn postjoin(
     let lua = ::tarantool::lua_state();
     lua.exec_with(r#"require('console').listen(...)"#, &socket_uri)?;
 
-    if let Err(e) =
-        tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback(PluginList::get())))
-    {
+    if let Err(e) = tarantool::on_shutdown(move || fiber::block_on(on_shutdown::callback())) {
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
@@ -1016,9 +1016,9 @@ fn postjoin(
 
     node.sentinel_loop.on_self_activate();
 
-    PluginList::get().iter().for_each(|plugin| {
-        plugin.start();
-    });
+    node.plugin_manager
+        .handle_event_sync(PluginEvent::InstanceStart { join: from_join })
+        .expect("failed initializing plugin system");
 
     Ok(())
 }

@@ -1,0 +1,12 @@
+description: additional test plugin, for test purposes
+name: testplug_small
+version: 0.1.0
+services:
+  - name: testservice_1
+    description: testservice_1 descr
+    default_configuration:
+      foo: false
+      bar: 105
+      baz:
+        - "one"
+

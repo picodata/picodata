@@ -14,10 +14,10 @@ use crate::loop_start;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
-use crate::schema::RoutineDef;
 use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, TableDef};
+use crate::schema::{RoutineDef, ServiceRouteItem};
 use crate::sentinel;
 use crate::storage::acl;
 use crate::storage::ddl_meta_drop_routine;
@@ -65,6 +65,8 @@ use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::{Decode, Tuple};
 use protobuf::Message as _;
 
+use crate::plugin::manager::PluginManager;
+use crate::plugin::PluginAsyncEvent;
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -153,6 +155,8 @@ pub struct Node {
     /// Should be locked during join and update instance request
     /// to avoid costly cas conflicts during concurrent requests.
     pub instances_update: Mutex<()>,
+    /// Manage plugins loaded or must be loaded at this node.
+    pub plugin_manager: Rc<PluginManager>,
 }
 
 impl std::fmt::Debug for Node {
@@ -188,8 +192,14 @@ impl Node {
         let instance_reachability = instance_reachability_manager(storage.clone());
         pool.instance_reachability = instance_reachability.clone();
         let pool = Rc::new(pool);
+        let plugin_manager = Rc::new(PluginManager::new());
 
-        let node_impl = NodeImpl::new(pool.clone(), storage.clone(), raft_storage.clone())?;
+        let node_impl = NodeImpl::new(
+            pool.clone(),
+            storage.clone(),
+            raft_storage.clone(),
+            plugin_manager.clone(),
+        )?;
 
         let raft_id = node_impl.raft_id();
         let status = node_impl.status.subscribe();
@@ -224,6 +234,7 @@ impl Node {
             status,
             applied,
             instances_update: Mutex::new(()),
+            plugin_manager,
         };
 
         unsafe { RAFT_NODE = Some(Box::new(node)) };
@@ -419,6 +430,11 @@ impl Node {
     pub fn all_traft_entries(&self) -> ::tarantool::Result<Vec<traft::Entry>> {
         self.raft_storage.all_traft_entries()
     }
+
+    #[inline]
+    pub fn is_readonly(&self) -> bool {
+        self.node_impl.lock().is_readonly()
+    }
 }
 
 pub(crate) struct NodeImpl {
@@ -432,6 +448,7 @@ pub(crate) struct NodeImpl {
     status: watch::Sender<Status>,
     applied: watch::Sender<RaftIndex>,
     instance_reachability: InstanceReachabilityManagerRef,
+    plugin_manager: Rc<PluginManager>,
 }
 
 impl NodeImpl {
@@ -439,6 +456,7 @@ impl NodeImpl {
         pool: Rc<ConnectionPool>,
         storage: Clusterwide,
         raft_storage: RaftSpaceAccess,
+        plugin_manager: Rc<PluginManager>,
     ) -> Result<Self, RaftError> {
         let box_err = |e| StorageError::Other(Box::new(e));
 
@@ -485,6 +503,7 @@ impl NodeImpl {
             lc,
             status,
             applied,
+            plugin_manager,
         })
     }
 
@@ -730,6 +749,7 @@ impl NodeImpl {
             Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
             Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
+            Op::PluginLoadPrepare { .. } => true,
             _ => false,
         };
 
@@ -1205,6 +1225,146 @@ impl NodeImpl {
                     .expect("storage should not fail");
             }
 
+            Op::PluginLoadCommit => {
+                let (manifest, _) = storage_properties
+                    .pending_plugin_load()
+                    .expect("storage should not fail")
+                    .expect("manifest should exist");
+
+                let plugin_def = manifest.plugin_def();
+                let service_defs = manifest.service_defs();
+
+                let mut all_instances = self
+                    .storage
+                    .instances
+                    .all_instances()
+                    .expect("storage should not fail");
+
+                self.storage
+                    .plugin
+                    .put(&plugin_def)
+                    .expect("storage should not fail");
+                for service_def in service_defs {
+                    self.storage
+                        .service
+                        .put(&service_def)
+                        .expect("storage should not fail");
+
+                    // FIXME: currently we attach all services to all instances
+                    // this should be changed when plugins support topology
+                    for instance in all_instances.iter_mut() {
+                        self.storage
+                            .service_route_table
+                            .put(&ServiceRouteItem::new_healthy(
+                                instance.instance_id.clone(),
+                                &service_def.plugin_name,
+                                &service_def.name,
+                            ))
+                            .expect("storage should not fail");
+                    }
+                }
+
+                self.plugin_manager.activate(&manifest.name);
+
+                storage_properties
+                    .delete(PropertyName::PendingPluginLoad)
+                    .expect("storage should not fail");
+            }
+
+            Op::PluginLoadAbort => {
+                let (manifest, _) = storage_properties
+                    .pending_plugin_load()
+                    .expect("storage should not fail")
+                    .expect("manifest should exist");
+                storage_properties
+                    .delete(PropertyName::PendingPluginLoad)
+                    .expect("storage should not fail");
+
+                if let Err(e) =
+                    self.plugin_manager
+                        .handle_event_async(PluginAsyncEvent::PluginLoadError {
+                            name: manifest.name,
+                        })
+                {
+                    tlog!(Warning, "{e}");
+                }
+            }
+
+            Op::PluginLoadPrepare {
+                manifest,
+                on_start_timeout,
+            } => {
+                self.storage
+                    .properties
+                    .put(
+                        PropertyName::PendingPluginLoad,
+                        &(manifest, on_start_timeout),
+                    )
+                    .expect("storage should not fail");
+            }
+
+            Op::PluginConfigUpdate {
+                plugin_name,
+                service_name,
+                config,
+            } => {
+                let mb_service = self
+                    .storage
+                    .service
+                    .get_any_version(&plugin_name, &service_name)
+                    .expect("storage should not fail");
+
+                if let Some(mut svc) = mb_service {
+                    svc.configuration = config;
+                    self.storage
+                        .service
+                        .put(&svc)
+                        .expect("storage should not fail");
+
+                    let new_raw_cfg =
+                        rmp_serde::encode::to_vec_named(&svc.configuration).expect("out of memory");
+                    let old_cfg_raw =
+                        rmp_serde::encode::to_vec_named(&svc.configuration).expect("out of memory");
+
+                    if let Err(e) = self.plugin_manager.handle_event_async(
+                        PluginAsyncEvent::ServiceConfigurationUpdated {
+                            plugin: svc.plugin_name,
+                            service: svc.name,
+                            old_raw: old_cfg_raw,
+                            new_raw: new_raw_cfg,
+                        },
+                    ) {
+                        tlog!(Warning, "async plugin event: {e}");
+                    }
+                }
+            }
+
+            Op::PluginDisable { name } => {
+                let services = self
+                    .storage
+                    .service
+                    .get_by_plugin(&name)
+                    .expect("storage should not fail");
+
+                for svc_def in services {
+                    self.storage
+                        .service
+                        .delete(&svc_def.plugin_name, &svc_def.name, &svc_def.version)
+                        .expect("storage should not fail");
+                }
+                self.storage
+                    .plugin
+                    .delete(&name)
+                    .expect("storage should not fail");
+
+                if let Err(e) = self
+                    .plugin_manager
+                    .handle_event_async(PluginAsyncEvent::PluginRemoved { name })
+                {
+                    tlog!(Warning, "async plugin event: {e}");
+                }
+            }
+
             Op::Acl(acl) => {
                 let v_local = local_schema_version().expect("storage shoudl not fail");
                 let v_pending = acl.schema_version();
@@ -1655,7 +1815,7 @@ impl NodeImpl {
         entry_id: RaftEntryId,
     ) -> traft::Result<()> {
         #[rustfmt::skip]
-        let mut position = snapshot_data.next_chunk_position
+            let mut position = snapshot_data.next_chunk_position
             .expect("shouldn't be None if this function is called");
         let space_dumps = &mut snapshot_data.space_dumps;
         #[cfg(debug_assertions)]

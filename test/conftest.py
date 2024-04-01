@@ -461,6 +461,7 @@ class Instance:
     cwd: str
     color: Callable[[str], str]
 
+    plugin_dir: str | None = None
     cluster_id: str | None = None
     _data_dir: str | None = None
     peers: list[str] = field(default_factory=list)
@@ -528,6 +529,7 @@ class Instance:
             *([f"--instance-id={self.instance_id}"] if self.instance_id else []),
             *([f"--replicaset-id={self.replicaset_id}"] if self.replicaset_id else []),
             *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
+            *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
             *([f"--listen={self.listen}"] if self.listen else []),
             *([f"--peer={str.join(',', self.peers)}"] if self.peers else []),
             *(f"--failure-domain={k}={v}" for k, v in self.failure_domain.items()),
@@ -1215,6 +1217,7 @@ class Cluster:
     binary_path: str
     id: str
     data_dir: str
+    plugin_dir: str
     base_host: str
     base_port: int
     max_port: int
@@ -1325,6 +1328,7 @@ class Cluster:
             instance_id=generated_instance_id,
             replicaset_id=replicaset_id,
             _data_dir=f"{self.data_dir}/i{i}",
+            plugin_dir=self.plugin_dir,
             host=self.base_host,
             port=port,
             peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
@@ -1684,11 +1688,13 @@ def cluster(
     binary_path, tmpdir, cluster_ids, port_range
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
+    plugin_dir = os.getcwd() + "/test/testplug"
     base_port, max_port = port_range
     cluster = Cluster(
         binary_path=binary_path,
         id=next(cluster_ids),
         data_dir=tmpdir,
+        plugin_dir=plugin_dir,
         base_host=BASE_HOST,
         base_port=base_port,
         max_port=max_port,

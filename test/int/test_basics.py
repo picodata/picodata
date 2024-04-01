@@ -449,7 +449,14 @@ Insert({_pico_table}, [{_pico_tier},"_pico_tier",["global"],[["name","string",fa
 Insert({_pico_index}, [{_pico_tier},0,"name",true,[["name",null,null,null,null]],0,true,true]),
 Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_routine},0,"id",true,[["id",null,null,null,null]],0,true,true]),
-Insert({_pico_index}, [{_pico_routine},1,"name",true,[["name",null,null,null,null]],0,true,true]))|
+Insert({_pico_index}, [{_pico_routine},1,"name",true,[["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [526,"_pico_plugin",["global"],[["name","string",false],["running","boolean",false],["services","array",false],["version","string",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [526,0,"name",true,[["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [527,"_pico_service",["global"],[["plugin_name","string",false],["name","string",false],["version","string",false],["tiers","array",false],["configuration","any",false],["schema_version","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [527,0,"name",true,[["plugin_name",null,null,null,null],["name",null,null,null,null],["version",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [528,"_pico_service_route",["global"],[["instance_id","string",false],["plugin_name","string",false],["service_name","string",false],["poison","boolean",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [528,0,"routing_key",true,[["instance_id",null,null,null,null],["plugin_name",null,null,null,null],["service_name",null,null,null,null]],0,true,true])
+)|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|

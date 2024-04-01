@@ -1255,5 +1255,27 @@ function pico.drop_table(table, opts)
     return fin_index
 end
 
+help.update_plugin_config = [[
+pico.drop_table(plugin_name, service_name, new_config, [opts])
+======================
+
+Update a plugin service configuration.
+
+Params:
+        1. plugin_name - plugin name
+
+        2. service_name - service name
+
+        3. new_config - new configuration
+
+        4. opts (optional table)
+            - timeout (optional number), in seconds, default: 10
+]]
+function pico.update_plugin_config(plugin_name, service_name, new_config, opts)
+    local raw_new_config = require'msgpack'.encode(new_config)
+    return pico._update_plugin_config(plugin_name, service_name, raw_new_config, opts)
+end
+
+
 _G.pico = pico
 package.loaded.pico = pico

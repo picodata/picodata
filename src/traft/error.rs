@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 
 use crate::instance::InstanceId;
+use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
 use tarantool::error::{BoxError, IntoBoxError};
 use tarantool::fiber::r#async::timeout;
@@ -80,6 +81,9 @@ pub enum Error {
 
     #[error("invalid configuration: {0}")]
     InvalidConfiguration(String),
+
+    #[error(transparent)]
+    Plugin(#[from] PluginError),
 
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),
