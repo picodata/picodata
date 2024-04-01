@@ -1,4 +1,4 @@
-use crate::traft::{LogicalClock, RaftSpaceAccess};
+use crate::traft::LogicalClock;
 use once_cell::sync::OnceCell;
 use std::ffi::{CStr, CString};
 use tarantool::{error::TarantoolError, log::SayLevel};
