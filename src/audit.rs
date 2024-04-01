@@ -386,20 +386,13 @@ macro_rules! audit(
 /// Initialize audit log.
 /// Unique id generation depends on the raft machine's state.
 /// Note: `config` will be parsed by tarantool's core (see `say.c`).
-pub fn init(config: &str, raft_storage: &RaftSpaceAccess) {
-    // Raft-related stuff should be ready at this point.
-    let raft_id = raft_storage
-        .raft_id()
-        .expect("failed to get raft_id for audit log")
-        .expect("found zero raft_id during audit log init");
-    let gen = raft_storage.gen().expect("failed to get gen for audit log");
-
+pub fn init(config: &str, raft_id: u64, raft_gen: u64) {
     // Note: this'll only fail if the cell's already set (shouldn't be possible).
     // SAFETY: this is the first time we access this variable, and it's
     // always done from the main (TX) thread.
     unsafe {
         CLOCK
-            .set(LogicalClock::new(raft_id, gen))
+            .set(LogicalClock::new(raft_id, raft_gen))
             .expect("failed to initialize global audit event id generator");
     }
 

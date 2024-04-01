@@ -811,7 +811,12 @@ fn postjoin(
     config.validate_storage(&storage, &raft_storage)?;
 
     if let Some(config) = &config.instance.audit {
-        audit::init(config, &raft_storage);
+        let raft_id = raft_storage
+            .raft_id()
+            .expect("failed to get raft_id for audit log")
+            .expect("found zero raft_id during audit log init");
+        let gen = raft_storage.gen().expect("failed to get gen for audit log");
+        audit::init(config, raft_id, gen);
     }
 
     if let Some(plugins) = &config.instance.plugins {
