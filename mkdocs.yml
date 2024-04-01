@@ -33,6 +33,7 @@ nav:
     - tutorial/install.md
     - tutorial/run.md
     - tutorial/deploy.md
+    - tutorial/deploy_ansible.md
     - tutorial/connecting.md
     - tutorial/sql_examples.md
     - tutorial/webui.md

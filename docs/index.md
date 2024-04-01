@@ -23,6 +23,7 @@ Picodata — это распределенная система промышле
 * [Установка Picodata](tutorial/install.md)
 * [Запуск Picodata](tutorial/run.md)
 * [Создание кластера](tutorial/deploy.md)
+* [Развертывание кластера через ansible](tutorial/deploy_ansible.md)
 * [Подключение и работа в консоли](tutorial/connecting.md)
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
