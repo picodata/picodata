@@ -1,7 +1,6 @@
 use crate::ffi::datetime as ffi;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 use std::fmt::Display;
 use std::os::raw::c_char;
 use time::{Duration, UtcOffset};
@@ -43,13 +42,16 @@ impl Datetime {
     /// Convert an array of bytes (internal tarantool msgpack ext)
     /// in the little endian order into a `DateTime`.
     #[inline(always)]
-    fn from_bytes_tt(bytes: &[u8; 16]) -> Result<Self, Error> {
+    fn from_bytes_tt(bytes: &[u8]) -> Result<Self, Error> {
         let mut sec_bytes: [u8; 8] = [0; 8];
         sec_bytes.copy_from_slice(&bytes[0..8]);
         let mut nsec_bytes: [u8; 4] = [0; 4];
-        nsec_bytes.copy_from_slice(&bytes[8..12]);
         let mut tzoffest_bytes: [u8; 2] = [0; 2];
-        tzoffest_bytes.copy_from_slice(&bytes[12..14]);
+
+        if bytes.len() == 16 {
+            nsec_bytes.copy_from_slice(&bytes[8..12]);
+            tzoffest_bytes.copy_from_slice(&bytes[12..14]);
+        }
 
         let secs = i64::from_le_bytes(sec_bytes);
         let nsecs = u32::from_le_bytes(nsec_bytes);
@@ -156,14 +158,14 @@ impl<'de> serde::Deserialize<'de> for Datetime {
         }
 
         let data = bytes.as_slice();
-        let data = data.try_into().map_err(|_| {
-            serde::de::Error::custom(format!(
-                "Not enough bytes for Datetime: expected 16, got {}",
+        if data.len() != 8 && data.len() != 16 {
+            return Err(serde::de::Error::custom(format!(
+                "Unexpected number of bytes for Datetime: expected 8 or 16, got {}",
                 data.len()
-            ))
-        })?;
+            )));
+        }
 
-        Self::from_bytes_tt(&data)
+        Self::from_bytes_tt(data)
             .map_err(|_| serde::de::Error::custom("Error decoding msgpack bytes"))
     }
 }
@@ -254,6 +256,12 @@ mod tests {
         let data: &[u8] = &[
             216, 4, 23, 11, 79, 101, 0, 0, 0, 0, 208, 208, 28, 21, 76, 255, 0, 0,
         ];
+        let result = rmp_serde::from_slice(data).unwrap();
+
+        assert_eq!(exp, result);
+
+        let exp: Datetime = datetime!(2023-11-11 0:00:0.0000 -0).into();
+        let data: &[u8] = &[215, 4, 0, 196, 78, 101, 0, 0, 0, 0];
         let result = rmp_serde::from_slice(data).unwrap();
 
         assert_eq!(exp, result);
