@@ -367,8 +367,8 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |Insert({_pico_privilege}, ["drop","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["alter","universe",0,32,1,0])|
 |  0  | 1  |Insert({_pico_privilege}, ["execute","role",3,32,1,0])|
-|  0  | 1  |Insert({_pico_user}, [2,"public",0,["ldap",""],1,"role"])|
-|  0  | 1  |Insert({_pico_user}, [31,"super",0,["ldap",""],1,"role"])|
+|  0  | 1  |Insert({_pico_user}, [2,"public",0,["chap-sha1",""],1,"role"])|
+|  0  | 1  |Insert({_pico_user}, [31,"super",0,["chap-sha1",""],1,"role"])|
 |  0  | 1  |Insert({_pico_table}, [{_pico_table},"_pico_table",["global"],[["id","unsigned",false],["name","string",false],["distribution","array",false],["format","array",false],["schema_version","unsigned",false],["operable","boolean",false],["engine","string",false],["owner","unsigned",false]],0,true,"memtx",1])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_table},0,"id",true,[["id",null,null,null,null]],0,true,true])|
 |  0  | 1  |Insert({_pico_index}, [{_pico_table},1,"name",true,[["name",null,null,null,null]],0,true,true])|
