@@ -7,9 +7,9 @@ use std::rc::Rc;
 
 use crate::error::Error;
 use crate::fiber::{Latch, LatchGuard};
-use crate::index::IteratorType;
+use crate::index::{self, IteratorType};
 use crate::network::protocol;
-use crate::space::{SystemSpace, SYSTEM_ID_MAX};
+use crate::space::{self, SystemSpace, SYSTEM_ID_MAX};
 use crate::tuple::Tuple;
 
 use super::inner::ConnInner;
@@ -79,15 +79,18 @@ impl ConnSchema {
         self.is_updating.set(true);
         let (spaces_data, actual_schema_version) = self.fetch_schema_spaces(conn_inner)?;
         for row in spaces_data {
-            let (id, _, name) = row.decode::<(u32, u32, String)>()?;
-            self.space_ids.borrow_mut().insert(name, id);
+            let metadata = row.decode::<space::Metadata>()?;
+            self.space_ids
+                .borrow_mut()
+                .insert(metadata.name.to_string(), metadata.id);
         }
 
         for row in self.fetch_schema_indexes(conn_inner)? {
-            let (space_id, index_id, name) = row.decode::<(u32, u32, String)>()?;
-            self.index_ids
-                .borrow_mut()
-                .insert((space_id, name), index_id);
+            let metadata = row.decode::<index::Metadata>()?;
+            self.index_ids.borrow_mut().insert(
+                (metadata.space_id, metadata.name.to_string()),
+                metadata.index_id,
+            );
         }
 
         self.version.set(Some(actual_schema_version));

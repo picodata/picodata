@@ -116,7 +116,7 @@ pub fn get() {
 
 pub fn select() {
     let space = Space::find("test_s2").unwrap();
-    let result: Vec<S1Record> = space
+    let result: Vec<S2Record> = space
         .primary_key()
         .select(IteratorType::LE, &(5,))
         .unwrap()
@@ -125,25 +125,40 @@ pub fn select() {
     assert_eq!(
         result,
         vec![
-            S1Record {
+            S2Record {
                 id: 5,
-                text: "key_5".to_string()
+                key: "key_5".to_string(),
+                value: "value_5".to_string(),
+                a: 0,
+                b: 1
             },
-            S1Record {
+            S2Record {
                 id: 4,
-                text: "key_4".to_string()
+                key: "key_4".to_string(),
+                value: "value_4".to_string(),
+                a: 4,
+                b: 0
             },
-            S1Record {
+            S2Record {
                 id: 3,
-                text: "key_3".to_string()
+                key: "key_3".to_string(),
+                value: "value_3".to_string(),
+                a: 3,
+                b: 0
             },
-            S1Record {
+            S2Record {
                 id: 2,
-                text: "key_2".to_string()
+                key: "key_2".to_string(),
+                value: "value_2".to_string(),
+                a: 2,
+                b: 0
             },
-            S1Record {
+            S2Record {
                 id: 1,
-                text: "key_1".to_string()
+                key: "key_1".to_string(),
+                value: "value_1".to_string(),
+                a: 1,
+                b: 0
             }
         ]
     );
@@ -858,28 +873,17 @@ pub fn space_create_is_sync() {
     };
 
     let result = Space::create("new_space_8", &opts);
-    assert_eq!(result.is_ok(), true);
+    assert!(result.is_ok());
+    let space = result.unwrap();
 
-    let info = Space::from(SystemSpace::Space)
-        .index("name")
-        .unwrap()
-        .select(IteratorType::Eq, &("new_space_8",))
-        .unwrap()
-        .next()
-        .expect("space info not found");
+    let info = space.meta().unwrap();
 
-    #[derive(serde::Deserialize)]
-    pub struct Info {
-        _id: u64,
-        _owner: u64,
-        _name: String,
-        _engine: String,
-        _field_count: u64,
-        flags: BTreeMap<String, bool>,
-    }
-
-    let info = info.decode::<Info>().unwrap();
-    assert_eq!(info.flags.get("is_sync"), Some(&true));
+    let is_sync_value = info.flags.get("is_sync").unwrap();
+    assert!(matches!(is_sync_value, tarantool::util::Value::Bool(_)));
+    match is_sync_value {
+        tarantool::util::Value::Bool(v) => assert!(v),
+        _ => unreachable!("value is bool"),
+    };
 
     drop_space("new_space_8");
 }

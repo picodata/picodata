@@ -343,7 +343,7 @@ pub fn select() {
     let conn = test_user_conn();
     let space = conn.space("test_s2").unwrap().unwrap();
 
-    let result: Vec<S1Record> = space
+    let result: Vec<S2Record> = space
         .select(IteratorType::LE, &(2,), &Options::default())
         .unwrap()
         .map(|x| x.decode().unwrap())
@@ -352,13 +352,19 @@ pub fn select() {
     assert_eq!(
         result,
         vec![
-            S1Record {
+            S2Record {
                 id: 2,
-                text: "key_2".to_string()
+                key: "key_2".to_string(),
+                value: "value_2".to_string(),
+                a: 2,
+                b: 0,
             },
-            S1Record {
+            S2Record {
                 id: 1,
-                text: "key_1".to_string()
+                key: "key_1".to_string(),
+                value: "value_1".to_string(),
+                a: 1,
+                b: 0,
             }
         ]
     );

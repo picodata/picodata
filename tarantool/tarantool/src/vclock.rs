@@ -414,14 +414,14 @@ mod tests {
         assert_eq!(mp, b"\x81\x03\x1e"); // {[3] = 30}
 
         // Deserialize
-        let vc: Vclock = rmp_serde::from_read_ref(&mp).unwrap();
+        let vc: Vclock = rmp_serde::from_slice(&mp).unwrap();
         assert_eq!(vc, Vclock::from([0, 0, 0, 30]));
 
         // Serialize
         assert_eq!(rmp_serde::to_vec(&vc).unwrap(), mp);
 
         let invalid_mp = b"\x81\x00\xa0"; // {[0] = ""}
-        let err: Result<Vclock, _> = rmp_serde::from_read_ref(invalid_mp);
+        let err: Result<Vclock, _> = rmp_serde::from_slice(invalid_mp);
         assert_eq!(
             err.unwrap_err().to_string(),
             "invalid type: string \"\", expected u64"
