@@ -929,15 +929,83 @@ pub(crate) fn setup(config: &PicodataConfig) {
                         write!(buf, "\u{01c0}{index: ^iw$}|{term: ^tw$}|").unwrap();
                         write_contents(&mut buf, &contents).unwrap();
                     } else {
-                        write!(buf, "\u{01c0}{index: ^iw$}|{term: ^tw$}|").unwrap();
-                        write_contents(&mut buf, &contents[..cw]).unwrap();
-                        let mut rest = &contents[cw..];
-                        while !rest.is_empty() {
-                            let clamped_cw = usize::min(rest.len(), cw);
-                            write!(buf, "\u{01c0}{blank: ^iw$}|{blank: ^tw$}|", blank = "~",)
-                                .unwrap();
-                            write_contents(&mut buf, &rest[..clamped_cw]).unwrap();
-                            rest = &rest[clamped_cw..];
+                        // use crate::util::TokenType::*;
+                        let mut lexer = crate::util::Lexer::new(&contents);
+                        let first_token = *lexer.peek_token().expect("contents is not empyt");
+
+                        // Do some extra handling for BatchDml entries so that they look better
+                        let mut args_on_separate_rows = false;
+                        let mut paren_depth = 0;
+                        if first_token.text == "BatchDml" {
+                            args_on_separate_rows = true;
+                        }
+
+                        let mut prev_token = first_token;
+                        loop {
+                            let mut start = 0;
+                            let mut end = 0;
+                            let mut utf8_len = 0;
+                            let mut first = true;
+                            while let Some(&token) = lexer.peek_token() {
+                                let mut added_chars = token.utf8_count;
+                                if first {
+                                    first = false;
+                                    start = token.start;
+                                } else {
+                                    // also count the spaces between this and previous token
+                                    added_chars += token.start - prev_token.end;
+                                }
+
+                                // XXX: currently if a token is longer then the
+                                // allotted width, we'll just ingore the contraint
+                                // and make an ugly row. We could subdivide such tokens
+                                // even further, but I don't want to make this code
+                                // even more complicated than it already is...
+                                if utf8_len + added_chars > cw && start != end {
+                                    break;
+                                }
+
+                                match token.text {
+                                    "(" => paren_depth += 1,
+                                    ")" => paren_depth -= 1,
+                                    _ => {}
+                                }
+
+                                if args_on_separate_rows && paren_depth == 0 && token.text == ")" {
+                                    break;
+                                }
+
+                                utf8_len += added_chars;
+                                end = token.end;
+                                _ = lexer.next_token();
+
+                                // If we had `defer` this would've been so much cleaner...
+                                let prev_token_ = prev_token;
+                                // Must be assigned before `break`
+                                prev_token = token;
+
+                                if args_on_separate_rows && paren_depth == 1 {
+                                    if token.text == "(" {
+                                        break;
+                                    }
+
+                                    if prev_token_.text == ")" {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if start == 0 {
+                                write!(buf, "\u{01c0}{index: ^iw$}|{term: ^tw$}|").unwrap();
+                            } else {
+                                write!(buf, "\u{01c0}{blank: ^iw$}|{blank: ^tw$}|", blank = "~",)
+                                    .unwrap();
+                            }
+
+                            write_contents(&mut buf, &contents[start..end]).unwrap();
+                            if end == contents.len() {
+                                break;
+                            }
                         }
                     }
                 }
