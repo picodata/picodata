@@ -303,10 +303,12 @@ pub struct UserDef {
 }
 
 pub fn auth_for_role_definition() -> AuthDef {
-    AuthDef {
-        method: AuthMethod::Ldap,
-        data: String::new(),
-    }
+    // This place slightly differs from the tarantool
+    // implementation. In vanilla tarantool the auth_def is an empty
+    // MP_MAP. Here for simplicity given available module api we
+    // use ChapSha with invalid password (its impossible to get
+    // empty string as output of sha1)
+    AuthDef::new(AuthMethod::ChapSha1, "".into())
 }
 
 impl Encode for UserDef {}
