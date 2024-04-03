@@ -634,6 +634,14 @@ fn start_discover(
             raft_id: %raft_id,
             initiator: "admin",
         );
+        crate::audit!(
+            message: "local database connected on `{instance_id}`",
+            title: "connect_local_db",
+            severity: Low,
+            instance_id: %instance_id,
+            raft_id: %raft_id,
+            initiator: "admin",
+        );
         return Ok(());
     }
 
@@ -724,6 +732,15 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     .unwrap();
 
     postjoin(config, storage, raft_storage)?;
+    // In this case `create_local_db` is logged in postjoin
+    crate::audit!(
+        message: "local database connected on `{instance_id}`",
+        title: "connect_local_db",
+        severity: Low,
+        instance_id: %instance_id,
+        raft_id: %raft_id,
+        initiator: "admin",
+    );
 
     Ok(())
 }

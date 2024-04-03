@@ -89,6 +89,18 @@ def test_startup(instance: Instance):
     assert event is not None
     assert event["initiator"] == "admin"
 
+    create_db = take_until_title(events, "create_local_db")
+    assert create_db is not None
+    assert create_db["initiator"] == "admin"
+    assert create_db["instance_id"] == "i1"
+    assert create_db["raft_id"] == "1"
+
+    event = take_until_title(events, "connect_local_db")
+    assert event is not None
+    assert event["initiator"] == "admin"
+    assert event["instance_id"] == "i1"
+    assert event["raft_id"] == "1"
+
 
 def test_integrity_violation(instance: Instance):
     # Instance was up for some time
@@ -134,6 +146,12 @@ def test_recover_database(instance: Instance):
 
     # On restart instance recovers it's local data
     event = take_until_title(iter(events), "recover_local_db")
+    assert event is not None
+    assert event["initiator"] == "admin"
+    assert event["instance_id"] == "i1"
+    assert event["raft_id"] == "1"
+
+    event = take_until_title(events, "connect_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
     assert event["instance_id"] == "i1"
