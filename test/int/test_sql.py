@@ -228,34 +228,70 @@ def test_select(cluster: Cluster):
     assert data["rows"] == [[2, 2]]
 
 
-def test_select_uuid(cluster: Cluster):
+# test is checking create virtual table with type uuid and cast uuid to text#
+def test_uuid(
+    cluster: Cluster,
+):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
-    id1 = "e4166fc5-e113-46c5-8ae9-970882ca8842"
-    id2 = "6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1"
+    # declaration uuid for test
+    t1_id1 = "7055211c-826d-4da2-921b-7133811239f0"
+    t1_id2 = "5bc3cc1c-1819-4ab7-adfe-ee0fa2c0cde0"
+    t2_id1 = "e4166fc5-e113-46c5-8ae9-970882ca8842"
+    t2_id2 = "6f2ba4c4-0a4c-4d79-86ae-43d4f84b70e1"
 
+    # first table with uuid is creating
     ddl = i1.sql(
         """
-        create table t (a uuid not null, primary key (a))
+        create table t1 (id uuid not null, primary key (id))
         using memtx
-        distributed by (a)
+        distributed by (id)
         option (timeout = 3)
     """
     )
+    # check the creation of the first table
     assert ddl["row_count"] == 1
 
-    data = i1.sql("""insert into t values(?);""", id1)
+    # second table has reference by first table
+    ddl = i1.sql(
+        """
+        create table t2 (id uuid not null,t1_id uuid not null, primary key (id))
+        using memtx
+        distributed by (id)
+        option (timeout = 3)
+    """
+    )
+    # check the creation of the second table
+    assert ddl["row_count"] == 1
+
+    # table is filling with uuid
+    # start
+    data = i1.sql("""insert into t1 values(?);""", t1_id1)
     assert data["row_count"] == 1
 
-    i1.sql("""insert into t values(?);""", id2)
-    data = i1.sql("""select * from t where a = ?""", uuid.UUID(id2))
-    assert data["rows"] == [[uuid.UUID(id2)]]
+    i1.sql("""insert into t1 values(?);""", t1_id2)
+    assert data["row_count"] == 1
 
-    data = i1.sql("""select cast(a as Text) from t""")
+    data = i1.sql("""insert into t2 values(?,?);""", t2_id1, t1_id1)
+    assert data["row_count"] == 1
+
+    data = i1.sql("""insert into t2 values(?,?);""", t2_id2, t1_id2)
+    assert data["row_count"] == 1
+    # end
+
+    # checking virtual table creation
+    data = i1.sql(
+        """select * from t1 where id in (select t1_id from t2 where id = (?))""",
+        uuid.UUID(t2_id1),
+    )
+    assert data["rows"] == [[uuid.UUID(t1_id1)]]
+
+    # checking cast uuid as text
+    data = i1.sql("""select cast(id as Text) from t1""", t1_id1)
     assert data == {
         "metadata": [{"name": "COL_1", "type": "string"}],
-        "rows": [[id2], [id1]],
+        "rows": [[t1_id2], [t1_id1]],
     }
 
 
