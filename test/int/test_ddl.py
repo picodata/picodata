@@ -166,7 +166,10 @@ def test_ddl_lua_api(cluster: Cluster):
     # Ok by name.
     cluster.drop_table("some_name")
     for i in cluster.instances:
-        assert i.call("box.space._pico_table.index.name:get", "some_name") is None
+        assert (
+            i.call("box.space._pico_table.index._pico_table_name:get", "some_name")
+            is None
+        )
 
     # Ok by id.
     cluster.drop_table(space_id)
@@ -313,7 +316,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     pico_pk_def = [
         space_id,
         0,
-        "primary_key",
+        "stuff_pkey",
         "tree",
         [dict(unique=True)],
         [[0, "unsigned", None, False, None]],
@@ -329,7 +332,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "primary_key",
+        "stuff_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -431,7 +434,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     pico_pk_def = [
         space_id,
         0,
-        "primary_key",
+        "stuff_pkey",
         "tree",
         [dict(unique=True)],
         [[0, "unsigned", None, False, None]],
@@ -445,7 +448,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "primary_key",
+        "stuff_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -587,9 +590,9 @@ def test_ddl_create_table_abort(cluster: Cluster):
         )
 
     assert i1.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i1, space_id) == ["primary_key", "bucket_id"]
+    assert get_index_names(i1, space_id) == [f"{space_name}_pkey", "bucket_id"]
     assert i2.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i2, space_id) == ["primary_key", "bucket_id"]
+    assert get_index_names(i2, space_id) == [f"{space_name}_pkey", "bucket_id"]
 
     # Wake the instance so that governor finds out there's a conflict
     # and aborts the ddl op.
@@ -755,7 +758,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "primary_key",
+        "stuff_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -836,7 +839,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     tt_pk_def = [
         space_id,
         0,
-        "primary_key",
+        "stuff_pkey",
         "tree",
         dict(unique=True),
         [[0, "unsigned", None, False, None]],
@@ -990,13 +993,16 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
 
     # But the space is marked not operable.
     assert not i1.eval(
-        "return box.space._pico_table.index.name:get(...).operable", space_name
+        "return box.space._pico_table.index._pico_table_name:get(...).operable",
+        space_name,
     )
     assert not i2.eval(
-        "return box.space._pico_table.index.name:get(...).operable", space_name
+        "return box.space._pico_table.index._pico_table_name:get(...).operable",
+        space_name,
     )
     assert not i3.eval(
-        "return box.space._pico_table.index.name:get(...).operable", space_name
+        "return box.space._pico_table.index._pico_table_name:get(...).operable",
+        space_name,
     )
 
     # TODO: test manual ddl abort

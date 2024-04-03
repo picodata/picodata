@@ -332,6 +332,7 @@ def test_index(instance: Instance):
         """
     )
     instance.sql(""" create index "foo_idx" on "foo" ("val") """)
+    instance.sql(""" drop index "foo_idx" """)
     instance.terminate()
 
     events = AuditFile(instance.audit_flag_value).events()
@@ -342,6 +343,13 @@ def test_index(instance: Instance):
     assert create_index["message"] == f"created index `{create_index['name']}`"
     assert create_index["severity"] == "medium"
     assert create_index["initiator"] == "pico_service"
+
+    drop_index = take_until_title(events, "drop_index")
+    assert drop_index is not None
+    assert drop_index["name"] == "foo_idx"
+    assert drop_index["message"] == f"dropped index `{drop_index['name']}`"
+    assert drop_index["severity"] == "medium"
+    assert drop_index["initiator"] == "pico_service"
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):

@@ -358,7 +358,7 @@ function pico.change_password(user, password, opts)
     local auth_data = box.internal.prepare_auth(auth_type, password, user)
     local function make_op_if_needed()
         -- TODO: allow `user` to be a user id instead of name
-        local user_def = box.space._pico_user.index.name:get(user)
+        local user_def = box.space._pico_user.index._pico_user_name:get(user)
         if user_def == nil then
             box.error(box.error.NO_SUCH_USER, user)
         end
@@ -431,7 +431,7 @@ function pico.drop_user(user, opts)
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
     local function make_op_if_needed()
-        local user_def = box.space._pico_user.index.name:get(user)
+        local user_def = box.space._pico_user.index._pico_user_name:get(user)
         if user_def == nil then
             -- User doesn't exists, request is satisfied, no op needed
             return nil
@@ -578,7 +578,7 @@ function pico.drop_role(role, opts)
     -- XXX: we construct this closure every time the function is called,
     -- which is bad for performance/jit. Refactor if problems are discovered.
     local function make_op_if_needed()
-        local role_def = box.space._pico_user.index.name:get(role)
+        local role_def = box.space._pico_user.index._pico_user_name:get(role)
         if role_def == nil then
             -- Role doesn't exists, request is satisfied, no op needed
             return nil
@@ -860,7 +860,7 @@ function pico.grant_privilege(grantee, privilege, object_type, object_name, opts
     local function make_op_if_needed()
         -- This is being checked after raft_read_index, so enough time has
         -- passed for any required entities to be created
-        local grantee_def = box.space._pico_user.index.name:get(grantee)
+        local grantee_def = box.space._pico_user.index._pico_user_name:get(grantee)
         if grantee_def == nil then
             box.error(box.error.NO_SUCH_USER, grantee)
         end
@@ -960,7 +960,7 @@ function pico.revoke_privilege(grantee, privilege, object_type, object_name, opt
     local function make_op_if_needed()
         -- This is being checked after raft_read_index, so enough time has
         -- passed for any required entities to be created
-        local grantee_def = box.space._pico_user.index.name:get(grantee)
+        local grantee_def = box.space._pico_user.index._pico_user_name:get(grantee)
         if grantee_def == nil then
             box.error(box.error.NO_SUCH_USER, grantee)
         end
@@ -1217,7 +1217,7 @@ function pico.drop_table(table, opts)
     local function make_op_if_needed()
         local space_def = nil
         if type(table) == 'string' then
-            space_def = box.space._pico_table.index.name:get(table)
+            space_def = box.space._pico_table.index._pico_table_name:get(table)
         elseif type(table) == 'number' then
             space_def = box.space._pico_table:get(table)
         end

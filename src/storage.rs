@@ -263,8 +263,8 @@ define_clusterwide_tables! {
             pub struct Tables {
                 space: Space,
                 #[primary]
-                index_id: Index => "id",
-                index_name: Index => "name",
+                index_id:   Index => "_pico_table_id",
+                index_name: Index => "_pico_table_name",
             }
         }
         Index = 513, "_pico_index" => {
@@ -274,8 +274,8 @@ define_clusterwide_tables! {
             pub struct Indexes {
                 space: Space,
                 #[primary]
-                index_id: Index => "id",
-                index_name: Index => "name",
+                index_id:   Index => "_pico_index_id",
+                index_name: Index => "_pico_index_name",
             }
         }
         Address = 514, "_pico_peer_address" => {
@@ -285,7 +285,7 @@ define_clusterwide_tables! {
             pub struct PeerAddresses {
                 space: Space,
                 #[primary]
-                index: Index => "raft_id",
+                index: Index => "_pico_peer_address_raft_id",
             }
         }
         Instance = 515, "_pico_instance" => {
@@ -295,9 +295,9 @@ define_clusterwide_tables! {
             pub struct Instances {
                 space: Space,
                 #[primary]
-                index_instance_id:   Index => "instance_id",
-                index_raft_id:       Index => "raft_id",
-                index_replicaset_id: Index => "replicaset_id",
+                index_instance_id:   Index => "_pico_instance_id",
+                index_raft_id:       Index => "_pico_instance_raft_id",
+                index_replicaset_id: Index => "_pico_instance_replicaset_id",
             }
         }
         Property = 516, "_pico_property" => {
@@ -307,7 +307,7 @@ define_clusterwide_tables! {
             pub struct Properties {
                 space: Space,
                 #[primary]
-                index: Index => "key",
+                index: Index => "_pico_property_key",
             }
         }
         Replicaset = 517, "_pico_replicaset" => {
@@ -317,7 +317,7 @@ define_clusterwide_tables! {
             pub struct Replicasets {
                 space: Space,
                 #[primary]
-                index: Index => "replicaset_id",
+                index: Index => "_pico_replicaset_id",
             }
         }
 
@@ -328,8 +328,8 @@ define_clusterwide_tables! {
             pub struct Users {
                 space: Space,
                 #[primary]
-                index_id: Index => "id",
-                index_name: Index => "name",
+                index_id:   Index => "_pico_user_id",
+                index_name: Index => "_pico_user_name",
             }
         }
         Privilege = 521, "_pico_privilege" => {
@@ -340,8 +340,8 @@ define_clusterwide_tables! {
             pub struct Privileges {
                 space: Space,
                 #[primary]
-                primary_key: Index => "primary",
-                object_idx: Index => "object",
+                primary_key: Index => "_pico_privileges_primary",
+                object_idx:  Index => "_pico_privileges_object",
             }
         }
         Tier = 523, "_pico_tier" => {
@@ -351,7 +351,7 @@ define_clusterwide_tables! {
             pub struct Tiers {
                 space: Space,
                 #[primary]
-                index_name: Index => "name",
+                index_name: Index => "_pico_tier_name",
             }
         }
         Routine = 524, "_pico_routine" => {
@@ -361,8 +361,8 @@ define_clusterwide_tables! {
             pub struct Routines {
                 space: Space,
                 #[primary]
-                index_id: Index => "id",
-                index_name: Index => "name",
+                index_id:   Index => "_pico_routine_id",
+                index_name: Index => "_pico_routine_name",
             }
         }
         Plugin = 526, "_pico_plugin" => {
@@ -1323,7 +1323,7 @@ impl Properties {
             .create()?;
 
         let index = space
-            .index_builder("key")
+            .index_builder("_pico_property_key")
             .unique(true)
             .part("key")
             .if_not_exists(true)
@@ -1349,7 +1349,7 @@ impl Properties {
             table_id: Self::TABLE_ID,
             // Primary index
             id: 0,
-            name: "key".into(),
+            name: "_pico_property_key".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("key")],
@@ -1588,7 +1588,7 @@ impl Replicasets {
             .create()?;
 
         let index = space
-            .index_builder("replicaset_id")
+            .index_builder("_pico_replicaset_id")
             .unique(true)
             .part("replicaset_id")
             .if_not_exists(true)
@@ -1608,7 +1608,7 @@ impl Replicasets {
             table_id: Self::TABLE_ID,
             // Primary index
             id: 0,
-            name: "replicaset_id".into(),
+            name: "_pico_replicaset_id".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("replicaset_id")],
@@ -1650,7 +1650,7 @@ impl PeerAddresses {
             .create()?;
 
         let index = space
-            .index_builder("raft_id")
+            .index_builder("_pico_peer_address_raft_id")
             .unique(true)
             .part("raft_id")
             .if_not_exists(true)
@@ -1674,7 +1674,7 @@ impl PeerAddresses {
             table_id: Self::TABLE_ID,
             // Primary index
             id: 0,
-            name: "raft_id".into(),
+            name: "_pico_peer_address_raft_id".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("raft_id")],
@@ -1744,21 +1744,21 @@ impl Instances {
             .create()?;
 
         let index_instance_id = space_instances
-            .index_builder("instance_id")
+            .index_builder("_pico_instance_id")
             .unique(true)
             .part("instance_id")
             .if_not_exists(true)
             .create()?;
 
         let index_raft_id = space_instances
-            .index_builder("raft_id")
+            .index_builder("_pico_instance_raft_id")
             .unique(true)
             .part("raft_id")
             .if_not_exists(true)
             .create()?;
 
         let index_replicaset_id = space_instances
-            .index_builder("replicaset_id")
+            .index_builder("_pico_instance_replicaset_id")
             .unique(false)
             .part("replicaset_id")
             .if_not_exists(true)
@@ -1784,7 +1784,7 @@ impl Instances {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "instance_id".into(),
+                name: "_pico_instance_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("instance_id")],
@@ -1796,7 +1796,7 @@ impl Instances {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "raft_id".into(),
+                name: "_pico_instance_raft_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("raft_id")],
@@ -1808,7 +1808,7 @@ impl Instances {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 2,
-                name: "replicaset_id".into(),
+                name: "_pico_instance_replicaset_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from("replicaset_id")],
@@ -2124,14 +2124,14 @@ impl Tables {
             .create()?;
 
         let index_id = space
-            .index_builder("id")
+            .index_builder("_pico_table_id")
             .unique(true)
             .part("id")
             .if_not_exists(true)
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_table_name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -2156,7 +2156,7 @@ impl Tables {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "id".into(),
+                name: "_pico_table_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
@@ -2168,7 +2168,7 @@ impl Tables {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "name".into(),
+                name: "_pico_table_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
@@ -2241,7 +2241,7 @@ impl Indexes {
             .create()?;
 
         let index_id = space
-            .index_builder("id")
+            .index_builder("_pico_index_id")
             .unique(true)
             .part("table_id")
             .part("id")
@@ -2249,9 +2249,8 @@ impl Indexes {
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_index_name")
             .unique(true)
-            .part("table_id")
             .part("name")
             .if_not_exists(true)
             .create()?;
@@ -2275,7 +2274,7 @@ impl Indexes {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "id".into(),
+                name: "_pico_index_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("table_id"), Part::from("id")],
@@ -2287,7 +2286,7 @@ impl Indexes {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "name".into(),
+                name: "_pico_index_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("table_id"), Part::from("name")],
@@ -2336,8 +2335,8 @@ impl Indexes {
     }
 
     #[inline]
-    pub fn by_name(&self, space_id: SpaceId, name: String) -> tarantool::Result<Option<IndexDef>> {
-        let tuple = self.index_name.get(&(space_id, name))?;
+    pub fn by_name(&self, name: &str) -> tarantool::Result<Option<IndexDef>> {
+        let tuple = self.index_name.get(&[name])?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
 
@@ -2748,14 +2747,14 @@ impl Users {
             .create()?;
 
         let index_id = space
-            .index_builder("id")
+            .index_builder("_pico_user_id")
             .unique(true)
             .part("id")
             .if_not_exists(true)
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_user_name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -2780,7 +2779,7 @@ impl Users {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "id".into(),
+                name: "_pico_user_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
@@ -2792,7 +2791,7 @@ impl Users {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "name".into(),
+                name: "_pico_user_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
@@ -2882,14 +2881,14 @@ impl Privileges {
             .create()?;
 
         let primary_key = space
-            .index_builder("primary")
+            .index_builder("_pico_privilege_primary")
             .unique(true)
             .parts(["grantee_id", "object_type", "object_id", "privilege"])
             .if_not_exists(true)
             .create()?;
 
         let object_idx = space
-            .index_builder("object")
+            .index_builder("_pico_privilege_object")
             .unique(false)
             .part("object_type")
             .part("object_id")
@@ -2915,7 +2914,7 @@ impl Privileges {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "primary".into(),
+                name: "_pico_privilege_primary".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![
@@ -2932,7 +2931,7 @@ impl Privileges {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "object".into(),
+                name: "_pico_privilege_object".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
                 parts: vec![Part::from("object_type"), Part::from("object_id")],
@@ -3084,7 +3083,7 @@ impl Tiers {
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_tier_name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -3104,7 +3103,7 @@ impl Tiers {
             table_id: Self::TABLE_ID,
             // Primary index
             id: 0,
-            name: "name".into(),
+            name: "_pico_tier_name".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("name")],
@@ -3150,14 +3149,14 @@ impl Routines {
             .create()?;
 
         let index_id = space
-            .index_builder("id")
+            .index_builder("_pico_routine_id")
             .unique(true)
             .part("id")
             .if_not_exists(true)
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_routine_name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -3182,7 +3181,7 @@ impl Routines {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "id".into(),
+                name: "_pico_routine_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("id")],
@@ -3194,7 +3193,7 @@ impl Routines {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 1,
-                name: "name".into(),
+                name: "_pico_routine_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from("name")],
@@ -3280,7 +3279,7 @@ impl Plugins {
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_plugin_name")
             .unique(true)
             .part("name")
             .if_not_exists(true)
@@ -3299,7 +3298,7 @@ impl Plugins {
         vec![IndexDef {
             table_id: Self::TABLE_ID,
             id: 0,
-            name: "name".into(),
+            name: "_pico_plugin_name".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from("name")],
@@ -3341,7 +3340,7 @@ impl Services {
             .create()?;
 
         let index_name = space
-            .index_builder("name")
+            .index_builder("_pico_service_name")
             .unique(true)
             .part("plugin_name")
             .part("name")
@@ -3362,7 +3361,7 @@ impl Services {
         vec![IndexDef {
             table_id: Self::TABLE_ID,
             id: 0,
-            name: "name".into(),
+            name: "_pico_service_name".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![
@@ -3449,7 +3448,7 @@ impl ServiceRouteTable {
             .create()?;
 
         let index_name = space
-            .index_builder("routing_key")
+            .index_builder("_pico_service_routing_key")
             .unique(true)
             .part("instance_id")
             .part("plugin_name")
@@ -3470,7 +3469,7 @@ impl ServiceRouteTable {
         vec![IndexDef {
             table_id: Self::TABLE_ID,
             id: 0,
-            name: "routing_key".into(),
+            name: "_pico_service_routing_key".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![
@@ -4297,7 +4296,7 @@ mod tests {
                 concat!(
                     "box error:",
                     " TupleFound: Duplicate key exists",
-                    " in unique index \"raft_id\"",
+                    " in unique index \"_pico_instance_raft_id\"",
                     " in space \"_pico_instance\"",
                     " with old tuple",
                     r#" - ["i1", "i1-uuid", 1, "r1", "r1-uuid", ["{gon}", 0], ["{tgon}", 0], {{"A": "B"}}, "default"]"#,
@@ -4667,6 +4666,12 @@ mod tests {
                 let parts_as_known_by_picodata = std::mem::take(&mut index_def.parts);
                 let parts_as_known_by_tarantool = std::mem::take(&mut tt_index_def.parts);
 
+                // The only exception is the `_pico_index_name` index. In comparison to
+                // tarantool `_index`'s `name` index, it has only one part as we need
+                // index name uniqueness in picodata.
+                if index_def.name == "_pico_index_name" {
+                    continue;
+                }
                 check_index_parts_match(
                     &parts_as_known_by_picodata,
                     &parts_as_known_by_tarantool,
@@ -4674,7 +4679,12 @@ mod tests {
                 );
 
                 // Check "_index" agrees with `ClusterwideTable.index_definitions`
-                assert_eq!(index_def.to_index_metadata(), tt_index_def);
+                let pico_index_def = index_def.to_index_metadata();
+                assert_eq!(pico_index_def.space_id, tt_index_def.space_id);
+                assert_eq!(pico_index_def.index_id, tt_index_def.index_id);
+                assert_eq!(pico_index_def.r#type, tt_index_def.r#type);
+                assert_eq!(pico_index_def.opts, tt_index_def.opts);
+                assert_eq!(pico_index_def.parts, tt_index_def.parts);
             }
         }
     }

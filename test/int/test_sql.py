@@ -1521,7 +1521,9 @@ def test_sql_acl_users_roles(cluster: Cluster):
     """
     )
     assert acl["row_count"] == 1
-    assert i1.call("box.space._pico_user.index.name:get", username) is not None
+    assert (
+        i1.call("box.space._pico_user.index._pico_user_name:get", username) is not None
+    )
 
     # Dropping user that doesn't exist should return 0.
     acl = i1.sql(f"drop user {upper_username}")
@@ -1530,7 +1532,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Dropping user that does exist should return 1.
     acl = i1.sql(f'drop user "{username}"')
     assert acl["row_count"] == 1
-    assert i1.call("box.space._pico_user.index.name:get", username) is None
+    assert i1.call("box.space._pico_user.index._pico_user_name:get", username) is None
 
     # All the usernames below should match the same user.
     # * Upcasted username in double parentheses shouldn't change.
@@ -1643,19 +1645,19 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
     users_auth_was = user_def[3]
     # * Password and method aren't changed -> update nothing.
     acl = i1.sql(f"alter user {username} with password '{password}' using md5")
     assert acl["row_count"] == 0
-    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
     users_auth_became = user_def[3]
     assert users_auth_was == users_auth_became
 
     # * Password is changed -> update hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using md5")
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
     users_auth_became = user_def[3]
     assert users_auth_was[0] == users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
@@ -1665,14 +1667,14 @@ def test_sql_acl_users_roles(cluster: Cluster):
         f"alter user {username} with password '{another_password}' using chap-sha1"
     )
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
     users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
     # * LDAP should ignore password -> update method and hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using ldap")
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index.name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
     users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_became[1] == ""
@@ -1712,12 +1714,14 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Creation of the role that already exists shouldn't do anything.
     acl = i1.sql(f'create role "{rolename}"')
     assert acl["row_count"] == 0
-    assert i1.call("box.space._pico_user.index.name:get", rolename) is not None
+    assert (
+        i1.call("box.space._pico_user.index._pico_user_name:get", rolename) is not None
+    )
 
     # Dropping role that does exist should return 1.
     acl = i1.sql(f'drop role "{rolename}"')
     assert acl["row_count"] == 1
-    assert i1.call("box.space._pico_user.index.name:get", rolename) is None
+    assert i1.call("box.space._pico_user.index._pico_user_name:get", rolename) is None
 
     # All the rolenames below should match the same role.
     acl = i1.sql(f'create role "{upper_rolename}"')
@@ -3161,7 +3165,7 @@ def test_index(cluster: Cluster):
     )
 
     # Check that created index appears in _pico_index table.
-    ddl = i1.sql(""" create index i0 on t (a) """)
+    ddl = i1.sql(""" create index i0 on t (a) option (timeout = 3) """)
     assert ddl["row_count"] == 1
     data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
     assert data["rows"] != []
@@ -3248,3 +3252,15 @@ def test_index(cluster: Cluster):
         i1.sql(""" create index i9 on t (b) with (run_count_per_level = 42) """)
     with pytest.raises(ReturnError, match=invalid_memtx):
         i1.sql(""" create index i10 on t (b) with (run_size_ratio = 0.1) """)
+
+    # Successful index drop.
+    ddl = i1.sql(""" drop index i0 """)
+    assert ddl["row_count"] == 1
+
+    # Check that the index is actually dropped.
+    data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
+    assert data["rows"] == []
+
+    # Drop non-existing index.
+    ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
+    assert ddl["row_count"] == 0

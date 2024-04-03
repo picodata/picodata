@@ -248,7 +248,7 @@ def test_acl_lua_api(cluster: Cluster):
         "_pico_property",
     )
 
-    dave_id = i1.call("box.space._pico_user.index.name:get", "Dave")[0]
+    dave_id = i1.call("box.space._pico_user.index._pico_user_name:get", "Dave")[0]
 
     pico_property_id = i1.eval("return box.space._pico_property.id")
     priv = i1.call(

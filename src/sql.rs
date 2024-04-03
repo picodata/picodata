@@ -1021,6 +1021,10 @@ fn reenterable_schema_change_request(
             params.validate()?;
             Params::CreateTable(params)
         }
+        IrNode::Ddl(Ddl::DropIndex { name, .. }) => {
+            // Nothing to check
+            Params::DropIndex(name)
+        }
         IrNode::Ddl(Ddl::DropProc { name, params, .. }) => {
             // Nothing to check
             Params::DropProcedure(name, params)
@@ -1134,6 +1138,21 @@ fn reenterable_schema_change_request(
                     return Ok(ConsumerResult { row_count: 0 });
                 }
                 let ddl = params.into_ddl(storage)?;
+                Op::DdlPrepare {
+                    schema_version,
+                    ddl,
+                }
+            }
+            Params::DropIndex(name) => {
+                let Some(index) = storage.indexes.by_name(name)? else {
+                    // Index doesn't exist yet, no op needed
+                    return Ok(ConsumerResult { row_count: 0 });
+                };
+                let ddl = OpDdl::DropIndex {
+                    space_id: index.table_id,
+                    index_id: index.id,
+                    initiator: current_user,
+                };
                 Op::DdlPrepare {
                     schema_version,
                     ddl,
@@ -1545,6 +1564,7 @@ fn reenterable_schema_change_request(
         CreateProcedure(CreateProcParams),
         DropProcedure(String, Option<Vec<ParamDef>>),
         CreateIndex(CreateIndexParams),
+        DropIndex(String),
     }
 }
 

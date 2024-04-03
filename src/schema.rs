@@ -380,6 +380,7 @@ impl IndexDef {
             let (key, value) = opt.as_kv();
             opts.insert(key, value);
         }
+
         let index_meta = IndexMetadata {
             space_id: self.table_id,
             index_id: self.id,
@@ -1836,9 +1837,7 @@ impl CreateIndexParams {
             }
         }
 
-        let index = with_su(ADMIN_ID, || {
-            storage.indexes.by_name(table.id, self.name.clone())
-        })??;
+        let index = with_su(ADMIN_ID, || storage.indexes.by_name(&self.name))??;
         if let Some(index) = index {
             if self.is_duplicate(table.id, index) {
                 return Err(CreateIndexError::IndexAlreadyExists {

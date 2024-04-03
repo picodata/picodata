@@ -35,6 +35,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Change _pico_index table structure.
 - Support index creation with SQL.
+- Support index drop with SQL.
+- Primary indexes change there naming convention: now it is "{table_name}_pkey".
 -->
 
 --------------------------------------------------------------------------------
