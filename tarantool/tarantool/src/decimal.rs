@@ -38,6 +38,18 @@ impl Decimal {
         Self { inner }
     }
 
+    #[inline(always)]
+    #[allow(clippy::wrong_self_convention)]
+    fn to_ffi(&self) -> ffi::decNumber {
+        let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
+        ffi::decNumber {
+            digits: digits as _,
+            exponent,
+            bits,
+            lsu,
+        }
+    }
+
     unsafe fn from_inner_unchecked(inner: DecimalImpl) -> Self {
         Self { inner }
     }
@@ -591,6 +603,7 @@ static CTID_DECIMAL: Lazy<u32> = Lazy::new(|| {
 });
 
 unsafe impl tlua::AsCData for ffi::decNumber {
+    #[inline(always)]
     fn ctypeid() -> tlua::ffi::CTypeID {
         *CTID_DECIMAL
     }
@@ -600,6 +613,7 @@ impl<L> tlua::LuaRead<L> for Decimal
 where
     L: tlua::AsLua,
 {
+    #[inline]
     fn lua_read_at_position(lua: L, index: std::num::NonZeroI32) -> tlua::ReadResult<Self, L> {
         let tlua::CData(dec) = lua.read_at_nz(index)?;
         unsafe { Ok(Self::from_raw(dec)) }
@@ -609,15 +623,9 @@ where
 impl<L: tlua::AsLua> tlua::Push<L> for Decimal {
     type Err = tlua::Void;
 
+    #[inline]
     fn push_to_lua(&self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
-        let dec = ffi::decNumber {
-            digits: digits as _,
-            exponent,
-            bits,
-            lsu,
-        };
-        Ok(lua.push_one(tlua::CData(dec)))
+        Ok(lua.push_one(tlua::CData(self.to_ffi())))
     }
 }
 
@@ -626,15 +634,9 @@ impl<L: tlua::AsLua> tlua::PushOne<L> for Decimal {}
 impl<L: tlua::AsLua> tlua::PushInto<L> for Decimal {
     type Err = tlua::Void;
 
+    #[inline]
     fn push_into_lua(self, lua: L) -> Result<tlua::PushGuard<L>, (Self::Err, L)> {
-        let (digits, exponent, bits, lsu) = self.inner.to_raw_parts();
-        let dec = ffi::decNumber {
-            digits: digits as _,
-            exponent,
-            bits,
-            lsu,
-        };
-        Ok(lua.push_one(tlua::CData(dec)))
+        Ok(lua.push_one(tlua::CData(self.to_ffi())))
     }
 }
 
