@@ -2,10 +2,9 @@
 
 use crate::access_control::UserMetadataKind;
 use crate::schema::{
-    auth_for_role_definition, wait_for_ddl_commit, CreateProcParams, CreateTableParams,
-    DistributionParam, Field, PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef,
-    RoutineLanguage, RoutineParamDef, RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn,
-    UserDef, ADMIN_ID,
+    wait_for_ddl_commit, CreateProcParams, CreateTableParams, DistributionParam, Field,
+    PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef, RoutineLanguage, RoutineParamDef,
+    RoutineParams, RoutineSecurity, SchemaObjectType, ShardingFn, UserDef, ADMIN_ID,
 };
 use crate::sql::pgproto::{
     with_portals_mut, Portal, PortalDescribe, Statement, StatementDescribe, UserPortalNames,
@@ -1190,7 +1189,11 @@ fn reenterable_schema_change_request(
                         return Err(Error::Other(format!("Role {name} already exists").into()));
                     }
                     Some(user_def) => {
-                        if user_def.auth != *auth {
+                        if user_def
+                            .auth
+                            .expect("user always should have non empty auth")
+                            != *auth
+                        {
                             return Err(Error::Other(
                                 format!("User {name} already exists with different auth method")
                                     .into(),
@@ -1205,7 +1208,7 @@ fn reenterable_schema_change_request(
                             id,
                             name: name.clone(),
                             schema_version,
-                            auth: auth.clone(),
+                            auth: Some(auth.clone()),
                             owner: current_user,
                             ty: UserMetadataKind::User,
                         };
@@ -1245,7 +1248,11 @@ fn reenterable_schema_change_request(
 
                 match alter_option_param {
                     AlterOptionParam::ChangePassword(auth) => {
-                        if &user_def.auth == auth {
+                        if user_def
+                            .auth
+                            .expect("user always should have non empty auth")
+                            == *auth
+                        {
                             // Password is already the one given, no op needed.
                             return Ok(ConsumerResult { row_count: 0 });
                         }
@@ -1330,7 +1337,7 @@ fn reenterable_schema_change_request(
                     // This field will be updated later.
                     schema_version,
                     owner: current_user,
-                    auth: auth_for_role_definition(),
+                    auth: None,
                     ty: UserMetadataKind::Role,
                 };
                 Op::Acl(OpAcl::CreateRole { role_def })

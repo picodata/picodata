@@ -612,10 +612,7 @@ mod tests {
     use super::{access_check_acl, access_check_ddl, user_by_id};
     use crate::{
         access_control::{access_check_op, UserMetadataKind},
-        schema::{
-            auth_for_role_definition, Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType,
-            UserDef, ADMIN_ID,
-        },
+        schema::{Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType, UserDef, ADMIN_ID},
         storage::{
             acl::{
                 global_create_role, global_grant_privilege, on_master_create_role,
@@ -666,7 +663,7 @@ mod tests {
             id,
             name,
             schema_version: 0,
-            auth: dummy_auth_def(),
+            auth: Some(dummy_auth_def()),
             owner: owner.unwrap_or_else(|| session::uid().unwrap()),
             ty: UserMetadataKind::User,
         }
@@ -1322,7 +1319,7 @@ mod tests {
             name: String::from(role_name),
             schema_version: 0,
             owner: ADMIN_ID,
-            auth: auth_for_role_definition(),
+            auth: None,
             ty: UserMetadataKind::Role,
         };
         on_master_create_role(&role_def).expect("create role shouldnt fail");
@@ -1334,7 +1331,7 @@ mod tests {
                 name: String::from("role_to_be_created"),
                 schema_version: 0,
                 owner: user_id,
-                auth: auth_for_role_definition(),
+                auth: None,
                 ty: UserMetadataKind::Role,
             };
 
@@ -1470,7 +1467,7 @@ mod tests {
                 name: role_name_grant.clone(),
                 schema_version: 0,
                 owner: user_id,
-                auth: auth_for_role_definition(),
+                auth: None,
                 ty: UserMetadataKind::Role,
             };
             on_master_create_role(&role_def).expect("create role shouldn't fail");
@@ -1520,7 +1517,7 @@ mod tests {
                 name: String::from(name),
                 schema_version: 0,
                 owner: ADMIN_ID,
-                auth: auth_for_role_definition(),
+                auth: None,
                 ty: UserMetadataKind::Role,
             };
 

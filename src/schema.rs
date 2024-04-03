@@ -296,19 +296,10 @@ pub struct UserDef {
     pub id: UserId,
     pub name: String,
     pub schema_version: u64,
-    pub auth: AuthDef,
+    pub auth: Option<AuthDef>,
     pub owner: UserId,
     #[serde(rename = "type")]
     pub ty: UserMetadataKind,
-}
-
-pub fn auth_for_role_definition() -> AuthDef {
-    // This place slightly differs from the tarantool
-    // implementation. In vanilla tarantool the auth_def is an empty
-    // MP_MAP. Here for simplicity given available module api we
-    // use ChapSha with invalid password (its impossible to get
-    // empty string as output of sha1)
-    AuthDef::new(AuthMethod::ChapSha1, "".into())
 }
 
 impl Encode for UserDef {}
@@ -335,7 +326,7 @@ impl UserDef {
             Field::from(("id", FieldType::Unsigned)),
             Field::from(("name", FieldType::String)),
             Field::from(("schema_version", FieldType::Unsigned)),
-            Field::from(("auth", FieldType::Array)),
+            Field::from(("auth", FieldType::Array)).is_nullable(true),
             Field::from(("owner", FieldType::Unsigned)),
             Field::from(("type", FieldType::String)),
         ]
@@ -348,7 +339,10 @@ impl UserDef {
             id: 69,
             name: "david".into(),
             schema_version: 421,
-            auth: AuthDef::new(tarantool::auth::AuthMethod::ChapSha1, "".into()),
+            auth: Some(AuthDef::new(
+                tarantool::auth::AuthMethod::ChapSha1,
+                "".into(),
+            )),
             owner: 42,
             ty: UserMetadataKind::User,
         }
@@ -685,10 +679,10 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             name: "guest".into(),
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
-            auth: AuthDef::new(
+            auth: Some(AuthDef::new(
                 AuthMethod::ChapSha1,
                 AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
-            ),
+            )),
             owner: initiator,
             ty: UserMetadataKind::User,
         };
@@ -729,7 +723,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             // MP_MAP. Here for simplicity given available module api we
             // use ChapSha with invalid password (its impossible to get
             // empty string as output of sha1)
-            auth: AuthDef::new(AuthMethod::ChapSha1, "".into()),
+            auth: Some(AuthDef::new(AuthMethod::ChapSha1, "".into())),
             owner: initiator,
             ty: UserMetadataKind::User,
         };
@@ -758,7 +752,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             name: PICO_SERVICE_USER_NAME.into(),
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
-            auth: AuthDef::new(
+            auth: Some(AuthDef::new(
                 AuthMethod::ChapSha1,
                 tarantool::auth::AuthData::new(
                     &AuthMethod::ChapSha1,
@@ -766,7 +760,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
                     pico_service_password(),
                 )
                 .into_string(),
-            ),
+            )),
             owner: initiator,
             ty: UserMetadataKind::User,
         };
@@ -811,7 +805,7 @@ pub fn system_role_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
         // This means the local schema is already up to date and main loop doesn't need to do anything
         schema_version: INITIAL_SCHEMA_VERSION,
         owner: ADMIN_ID,
-        auth: auth_for_role_definition(),
+        auth: None,
         ty: UserMetadataKind::Role,
     };
     let public_privs = vec![
@@ -827,7 +821,7 @@ pub fn system_role_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
         // This means the local schema is already up to date and main loop doesn't need to do anything
         schema_version: INITIAL_SCHEMA_VERSION,
         owner: ADMIN_ID,
-        auth: auth_for_role_definition(),
+        auth: None,
         ty: UserMetadataKind::Role,
     };
     let super_privs = vec![
@@ -1620,7 +1614,7 @@ mod tests {
                 id: ADMIN_ID,
                 name: String::from("admin"),
                 schema_version: 0,
-                auth: AuthDef::new(AuthMethod::ChapSha1, String::from("")),
+                auth: Some(AuthDef::new(AuthMethod::ChapSha1, String::from(""))),
                 owner: ADMIN_ID,
                 ty: UserMetadataKind::User,
             })

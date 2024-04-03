@@ -3388,7 +3388,7 @@ pub mod acl {
             message: "created user `{user}`",
             title: "create_user",
             severity: High,
-            auth_type: user_def.auth.method.as_str(),
+            auth_type: user_def.auth.as_ref().expect("user always should have non empty auth").method.as_str(),
             user: user,
             initiator: owner_def.name,
         );
@@ -3651,9 +3651,14 @@ pub mod acl {
         // This implementation was copied from box.schema.user.create excluding the
         // password hashing.
 
+        let auth_def = user_def
+            .auth
+            .as_ref()
+            .expect("user always should have non empty auth");
+
         // Tarantool expects auth info to be a map of form `{ method: data }`,
         // and currently the simplest way to achieve this is to use a HashMap.
-        let auth_map = HashMap::from([(user_def.auth.method, &user_def.auth.data)]);
+        let auth_map = HashMap::from([(auth_def.method, &auth_def.data)]);
         sys_user.insert(&(
             user_id,
             user_def.owner,
