@@ -17,12 +17,20 @@ with the `YY.MINOR.MICRO` scheme.
   tier a table belongs to.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
+
+### SQL
+
 -->
 
 --------------------------------------------------------------------------------
 ## [24.2.2] - 2024-04-03
 
 - Fix panic after `CREATE USER alice; DROP ROLE alice;`
+
+- Fix SQL chain of joins without sub-queries
+  `SELECT * FROM ... JOIN ... JOIN ...`
+
+- Fix SQL grammar support for `table.*`
 
 - Refine audit log [events][audit_events] list: remove
  'new_database_created', add 'create_local_db', 'drop_local_db',
