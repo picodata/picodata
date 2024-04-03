@@ -1963,6 +1963,7 @@ dependencies = [
  "sbroad-proc",
  "serde",
  "serde_yaml 0.8.26",
+ "smol_str",
  "tarantool",
  "uuid 1.7.0",
 ]
@@ -2169,6 +2170,15 @@ name = "smallvec"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6ecd384b10a64542d77071bd64bd7b231f4ed5940fba55e98c3de13824cf3d7"
+
+[[package]]
+name = "smol_str"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6845563ada680337a52d43bb0b29f396f2d911616f6573012645b9e3d048a49"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "static_assertions"
