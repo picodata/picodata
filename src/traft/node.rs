@@ -865,6 +865,7 @@ impl NodeImpl {
                 // * Or its raft id has changed, meaning it's no longer the same node.
                 // WARN: this condition will not pass on the joining instance
                 // as it preemptively puts itself into `_pico_instance` table.
+                // Locally it's logged in src/lib.rs.
                 if old.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
                     let instance_id = &new.instance_id;
                     crate::audit!(
