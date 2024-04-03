@@ -1252,8 +1252,13 @@ impl NodeImpl {
                         acl::global_create_user(&self.storage, user_def)
                             .expect("persisting a user definition shouldn't fail");
                     }
-                    Acl::RenameUser { user_id, name, .. } => {
-                        acl::global_rename_user(&self.storage, *user_id, name)
+                    Acl::RenameUser {
+                        user_id,
+                        name,
+                        initiator,
+                        ..
+                    } => {
+                        acl::global_rename_user(&self.storage, *user_id, name, *initiator)
                             .expect("persisting a user definition shouldn't fail");
                     }
                     Acl::ChangeAuth {

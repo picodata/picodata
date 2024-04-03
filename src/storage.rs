@@ -3431,18 +3431,21 @@ pub mod acl {
         storage: &Clusterwide,
         user_id: UserId,
         new_name: &str,
+        initiator: UserId,
     ) -> tarantool::Result<()> {
         let user_with_old_name = storage.users.by_id(user_id)?.expect("failed to get user");
         let old_name = &user_with_old_name.name;
         storage.users.update_name(user_id, new_name)?;
 
-        // TODO: missing initiator, should it be a required field?
+        let initiator_def = user_by_id(initiator)?;
+
         crate::audit!(
             message: "name of user `{old_name}` was changed to `{new_name}`",
             title: "rename_user",
             severity: High,
             old_name: old_name,
             new_name: new_name,
+            initiator: initiator_def.name,
         );
 
         Ok(())
