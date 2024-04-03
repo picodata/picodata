@@ -8,18 +8,17 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-<!--
 ## Unreleased
 
+- Fix `picodata admin` 100\% CPU usage when server closes the socket
+
+<!--
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
-
-### SQL
-
 -->
 
 --------------------------------------------------------------------------------
