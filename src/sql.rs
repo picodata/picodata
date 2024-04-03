@@ -1282,6 +1282,7 @@ fn reenterable_schema_change_request(
                             None => Op::Acl(OpAcl::RenameUser {
                                 user_id: user_def.id,
                                 name: new_name.into(),
+                                initiator: current_user,
                                 schema_version,
                             }),
                         }

@@ -211,6 +211,7 @@ impl std::fmt::Display for Op {
                 user_id,
                 name,
                 schema_version,
+                ..
             }) => {
                 write!(f, r#"RenameUser({schema_version}, {user_id}, "{name}")"#,)
             }
@@ -685,6 +686,7 @@ pub enum Acl {
     RenameUser {
         user_id: UserId,
         name: String,
+        initiator: UserId,
         schema_version: u64,
     },
 

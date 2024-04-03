@@ -1168,6 +1168,7 @@ mod tests {
                 &Acl::RenameUser {
                     user_id: user_under_test_id,
                     name: "new_name".into(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -1194,6 +1195,7 @@ mod tests {
                 &Acl::RenameUser {
                     user_id: user_under_test_id,
                     name: "new_name".into(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 actor_user_id,
@@ -1206,6 +1208,7 @@ mod tests {
                 &Acl::RenameUser {
                     user_id: user_under_test_id,
                     name: "new_name".into(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 user_under_test_id,
@@ -1225,6 +1228,7 @@ mod tests {
                 &Acl::RenameUser {
                     user_id: user_under_test_id,
                     name: "new_name".into(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 user_under_test_id,
@@ -1237,6 +1241,7 @@ mod tests {
                 &Acl::RenameUser {
                     user_id: user_under_test_id,
                     name: "new_name".into(),
+                    initiator: actor_user_id,
                     schema_version: 0,
                 },
                 ADMIN_ID,
