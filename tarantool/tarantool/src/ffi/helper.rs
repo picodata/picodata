@@ -68,6 +68,42 @@ macro_rules! c_ptr {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// offset_of!
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns an offset of the struct or tuple member in bytes.
+///
+/// Returns a constant which can be used at compile time.
+///
+/// # Example
+/// ```rust
+/// # use tarantool::offset_of;
+/// #[repr(C)]
+/// struct MyStruct { a: u8, b: u8 }
+/// assert_eq!(offset_of!(MyStruct, a), 0);
+/// assert_eq!(offset_of!(MyStruct, b), 1);
+///
+/// // Also works with tuples:
+/// assert_eq!(offset_of!((i32, i32), 0), 0);
+/// assert_eq!(offset_of!((i32, i32), 1), 4);
+/// ```
+#[macro_export]
+macro_rules! offset_of {
+    ($type:ty, $field:tt) => {{
+        const RESULT: usize = unsafe {
+            let dummy = ::core::mem::MaybeUninit::<$type>::uninit();
+            let dummy_ptr = dummy.as_ptr();
+            let field_ptr = ::std::ptr::addr_of!((*dummy_ptr).$field);
+
+            let field_ptr = field_ptr.cast::<u8>();
+            let dummy_ptr = dummy_ptr.cast::<u8>();
+            field_ptr.offset_from(dummy_ptr) as usize
+        };
+        RESULT
+    }};
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // static_assert!
 ////////////////////////////////////////////////////////////////////////////////
 
