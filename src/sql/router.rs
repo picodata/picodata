@@ -9,7 +9,7 @@ use sbroad::executor::engine::helpers::vshard::{
 };
 use sbroad::executor::engine::helpers::{dispatch_impl, explain_format, materialize_motion};
 use sbroad::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
-use sbroad::executor::engine::{QueryCache, Router, Vshard};
+use sbroad::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
 use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sbroad::executor::protocol::Binary;
@@ -418,7 +418,7 @@ pub struct RouterMetadata {
     pub jaeger_agent_port: u16,
 
     /// IR functions
-    pub functions: HashMap<String, Function>,
+    pub functions: HashMap<SmolStr, Function>,
 }
 
 impl Default for RouterMetadata {
@@ -427,24 +427,22 @@ impl Default for RouterMetadata {
     }
 }
 
-fn functions() -> HashMap<String, Function> {
-    let functions = [(
-        "\"TRIM\"".into(),
-        Function::new_stable("trim".into(), Type::String),
-    )];
-    functions.into_iter().collect()
-}
-
 impl RouterMetadata {
     #[must_use]
     pub fn new() -> Self {
+        let builtins = get_builtin_functions();
+        let mut functions = HashMap::with_capacity(builtins.len());
+        for f in builtins {
+            functions.insert(f.name.clone(), f.clone());
+        }
+
         RouterMetadata {
             waiting_timeout: 360,
             cache_capacity: DEFAULT_CAPACITY,
             jaeger_agent_host: DEFAULT_JAEGER_AGENT_HOST,
             jaeger_agent_port: DEFAULT_JAEGER_AGENT_PORT,
             sharding_column: DEFAULT_BUCKET_COLUMN.to_string(),
-            functions: functions(),
+            functions,
         }
     }
 
@@ -609,7 +607,7 @@ impl Metadata for RouterMetadata {
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
         let name = normalize_name_from_sql(fn_name);
-        match self.functions.get(&name.to_string()) {
+        match self.functions.get(&name) {
             Some(v) => Ok(v),
             None => Err(SbroadError::NotFound(Entity::SQLFunction, name)),
         }

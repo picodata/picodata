@@ -2,6 +2,9 @@ import pytest
 import re
 import uuid
 
+# mypy: disable-error-code="attr-defined"
+from tarantool import Datetime as tt_datetime
+
 from conftest import Cluster, Instance, KeyDef, KeyPart, ReturnError, Retriable
 
 
@@ -360,6 +363,123 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "tier", "type": "string"},
     ]
     assert len(data["rows"]) == instance_count
+
+
+def test_datetime(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table t (a int not null, d datetime not null, primary key (a))
+        using memtx
+        distributed by (a)
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    data = i1.sql(
+        """
+        insert into t select cast(COLUMN_5 as int), to_date(COLUMN_6, '%Y %d %m') from (values
+            (1, '2010 10 10'),
+            (2, '2020 20 02'),
+            (3, '2010 10 10')
+        )
+        """
+    )
+    assert data["row_count"] == 3
+
+    data = i1.sql("""select d from t""")
+    assert data["rows"] == [
+        [tt_datetime(year=2010, month=10, day=10)],
+        [tt_datetime(year=2020, month=2, day=20)],
+        [tt_datetime(year=2010, month=10, day=10)],
+    ]
+
+    # invalid format
+    # FIXME: better error message
+    with pytest.raises(ReturnError, match="could not parse"):
+        i1.sql("""select to_date('2020/20/20', '%Y/%d/%m') from t where a = 1""")
+
+    # check we can group on datetime column
+    data = i1.sql("""select d from t group by d""")
+    assert data["rows"] == [
+        [tt_datetime(year=2010, month=10, day=10)],
+        [tt_datetime(year=2020, month=2, day=20)],
+    ]
+
+    # check we can compare on datetime column
+    data = i1.sql("""select d from t where d < to_date('2015/01/01', '%Y/%m/%d')""")
+    assert data["rows"] == [
+        [tt_datetime(year=2010, month=10, day=10)],
+        [tt_datetime(year=2010, month=10, day=10)],
+    ]
+
+    data = i1.sql("""select d from t where d = to_date('2020/02/20', '%Y/%m/%d')""")
+    assert data["rows"] == [
+        [tt_datetime(year=2020, month=2, day=20)],
+    ]
+
+    data = i1.sql("""select d from t where d > to_date('2010/12/10', '%Y/%m/%d')""")
+    assert data["rows"] == [
+        [tt_datetime(year=2020, month=2, day=20)],
+    ]
+
+    # without format argument
+    # TODO: tarantool does not allow to skip arguments in sql of a stored procedure,
+    # but passing '' looks awful, maybe there is a better approach?
+    data = i1.sql("""select to_date('1970-01-01T10:10:10 -3', '') from t where a = 1""")
+    assert data["rows"] == [[tt_datetime(year=1970, month=1, day=1, tzoffset=-180)]]
+
+    # check we can use arbitrary expressions returning string inside to_date
+    data = i1.sql(
+        """select to_date(cast('1970-01-01T10:10:10 -3' as string), '' || '')
+                  from t where a = 1"""
+    )
+    assert data["rows"] == [[tt_datetime(year=1970, month=1, day=1, tzoffset=-180)]]
+
+    # check we can create table sharded by datetime column
+    ddl = i1.sql(
+        """
+        create table t2 (a int not null, d datetime not null, primary key (a))
+        using memtx
+        distributed by (d)
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    # check we can insert min/max date
+    data = i1.sql(
+        """
+        insert into t2 select cast(COLUMN_3 as int), to_date(COLUMN_4, '') from (values
+            (1, '-9999-12-31T23:59:59Z'),
+            (2, '9999-12-31T23:59:59Z')
+        )
+        """
+    )
+    assert data["row_count"] == 2
+
+    # check we can't insert out of limits date
+    # FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/639
+    with pytest.raises(ReturnError, match="failed to decode tuple"):
+        i1.sql(
+            """
+            insert into t2 select cast(COLUMN_1 as int), to_date(COLUMN_2, '') from (values
+                (1, '-10000-01-01T00:00:00Z')
+            )
+            """
+        )
+
+    with pytest.raises(ReturnError, match="failed to decode tuple"):
+        i1.sql(
+            """
+            insert into t2 select cast(COLUMN_1 as int), to_date(COLUMN_2, '') from (values
+                (2, '10000-01-01T00:00:00Z')
+            )
+            """
+        )
 
 
 def test_subqueries_on_global_tbls(cluster: Cluster):

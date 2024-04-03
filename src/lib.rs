@@ -128,6 +128,7 @@ fn init_sbroad() {
     preload!("pgproto", "src/sql/pgproto.lua");
     preload!("sbroad", "src/sql/init.lua");
     preload!("sbroad.helper", "sbroad/sbroad-core/src/helper.lua");
+    preload!("sbroad.builtins", "sbroad/sbroad-core/src/builtins.lua");
     preload!(
         "sbroad.core-router",
         "sbroad/sbroad-core/src/core-router.lua"
@@ -161,6 +162,13 @@ fn init_sbroad() {
         );
         lua.exec(&program).unwrap();
     }
+
+    lua.exec(
+        r#"
+        require('sbroad.builtins').init()        
+    "#,
+    )
+    .unwrap();
 }
 
 #[link(name = "httpd")]
