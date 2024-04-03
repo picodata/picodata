@@ -45,9 +45,9 @@ impl Datetime {
     fn from_bytes_tt(bytes: &[u8]) -> Result<Self, Error> {
         let mut sec_bytes: [u8; 8] = [0; 8];
         sec_bytes.copy_from_slice(&bytes[0..8]);
+
         let mut nsec_bytes: [u8; 4] = [0; 4];
         let mut tzoffest_bytes: [u8; 2] = [0; 2];
-
         if bytes.len() == 16 {
             nsec_bytes.copy_from_slice(&bytes[8..12]);
             tzoffest_bytes.copy_from_slice(&bytes[12..14]);
@@ -132,11 +132,14 @@ impl serde::Serialize for Datetime {
         S: serde::Serializer,
     {
         #[derive(Serialize)]
-        struct _ExtStruct((c_char, serde_bytes::ByteBuf));
+        struct _ExtStruct<'a>((c_char, &'a serde_bytes::Bytes));
 
         let data = self.as_bytes_tt();
-        _ExtStruct((ffi::MP_DATETIME, serde_bytes::ByteBuf::from(&data as &[_])))
-            .serialize(serializer)
+        let mut data = data.as_slice();
+        if data[8..] == [0, 0, 0, 0, 0, 0, 0, 0] {
+            data = &data[..8];
+        }
+        _ExtStruct((ffi::MP_DATETIME, serde_bytes::Bytes::new(data))).serialize(serializer)
     }
 }
 
@@ -240,30 +243,28 @@ mod tests {
     use time_macros::datetime;
 
     #[test]
-    pub fn serialize() {
-        let exp = [
-            216, 4, 23, 11, 79, 101, 0, 0, 0, 0, 208, 208, 28, 21, 76, 255, 0, 0,
-        ];
-        let dt: Datetime = datetime!(2023-11-11 2:03:19.35421 -3).into();
-        let result = rmp_serde::to_vec(&dt).unwrap();
+    fn serialize() {
+        let datetime: Datetime = datetime!(2023-11-11 2:03:19.35421 -3).into();
+        let data = rmp_serde::to_vec(&datetime).unwrap();
+        let expected = b"\xd8\x04\x17\x0b\x4f\x65\x00\x00\x00\x00\xd0\xd0\x1c\x15\x4c\xff\x00\x00";
+        assert_eq!(data, expected);
 
-        assert_eq!(result, &exp);
+        let only_date: Datetime = datetime!(1993-05-19 0:00:0.0000 +0).into();
+        let data = rmp_serde::to_vec(&only_date).unwrap();
+        let expected = b"\xd7\x04\x80\x78\xf9\x2b\x00\x00\x00\x00";
+        assert_eq!(data, expected);
     }
 
     #[test]
-    pub fn deserialize() {
-        let exp: Datetime = datetime!(2023-11-11 2:03:19.35421 -3).into();
-        let data: &[u8] = &[
-            216, 4, 23, 11, 79, 101, 0, 0, 0, 0, 208, 208, 28, 21, 76, 255, 0, 0,
-        ];
-        let result = rmp_serde::from_slice(data).unwrap();
+    fn deserialize() {
+        let data = b"\xd8\x04\x46\x9f\r\x66\x00\x00\x00\x00\x50\x41\x7e\x3b\x4c\xff\x00\x00";
+        let datetime: Datetime = rmp_serde::from_slice(data).unwrap();
+        let expected: Datetime = datetime!(2024-04-03 15:26:14.99813 -3).into();
+        assert_eq!(datetime, expected);
 
-        assert_eq!(exp, result);
-
-        let exp: Datetime = datetime!(2023-11-11 0:00:0.0000 -0).into();
-        let data: &[u8] = &[215, 4, 0, 196, 78, 101, 0, 0, 0, 0];
-        let result = rmp_serde::from_slice(data).unwrap();
-
-        assert_eq!(exp, result);
+        let data = b"\xd7\x04\x00\xc4\x4e\x65\x00\x00\x00\x00";
+        let only_date: Datetime = rmp_serde::from_slice(data).unwrap();
+        let expected: Datetime = datetime!(2023-11-11 0:00:0.0000 -0).into();
+        assert_eq!(only_date, expected);
     }
 }
