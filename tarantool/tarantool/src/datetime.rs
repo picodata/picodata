@@ -268,3 +268,46 @@ mod tests {
         assert_eq!(only_date, expected);
     }
 }
+
+#[cfg(feature = "internal_test")]
+mod test {
+    use super::*;
+
+    unsafe fn encode_via_ffi(datetime: &Datetime) -> Vec<u8> {
+        let ffi_datetime = datetime.as_ffi_dt();
+        let capacity = crate::ffi::datetime::tnt_mp_sizeof_datetime(&ffi_datetime);
+        let mut buffer = Vec::with_capacity(capacity as _);
+        let end = crate::ffi::datetime::tnt_mp_encode_datetime(buffer.as_mut_ptr(), &ffi_datetime);
+        buffer.set_len(end.offset_from(buffer.as_ptr()) as _);
+        buffer
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn datetime_encoding_matches() {
+        if !crate::ffi::has_datetime() {
+            return;
+        }
+
+        let datetime: Datetime = Inner::UNIX_EPOCH
+            .replace_date(time::Date::from_ordinal_date(2000, 1).unwrap())
+            .replace_time(time::Time::from_hms_micro(1, 2, 3, 4).unwrap())
+            .replace_offset(time::UtcOffset::from_whole_seconds(42069).unwrap())
+            .into();
+
+        let tnt_data = unsafe { encode_via_ffi(&datetime) };
+        assert_eq!(tnt_data.len(), 18);
+
+        let our_data = rmp_serde::to_vec(&datetime).unwrap();
+        assert_eq!(tnt_data, our_data);
+
+        let datetime: Datetime = Inner::UNIX_EPOCH
+            .replace_date(time::Date::from_ordinal_date(1968, 158).unwrap())
+            .into();
+
+        let tnt_data = unsafe { encode_via_ffi(&datetime) };
+        assert_eq!(tnt_data.len(), 10);
+
+        let our_data = rmp_serde::to_vec(&datetime).unwrap();
+        assert_eq!(tnt_data, our_data);
+    }
+}

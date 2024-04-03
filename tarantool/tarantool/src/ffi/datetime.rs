@@ -10,6 +10,18 @@ pub struct datetime {
     pub tzindex: i16,
 }
 
+crate::define_dlsym_reloc! {
+    /// Returns the number of bytes required to store a msgpack encoding for `date`.
+    pub fn tnt_mp_sizeof_datetime(date: *const datetime) -> u32;
+
+    /// Encodes `date` into msgpack, writes the result into the buffer pointed
+    /// to by `data`, which must have at least `tnt_mp_sizeof_datetime(date)`
+    /// bytes allocated in it.
+    ///
+    /// Returns a pointer to the first byte after the encoded data.
+    pub fn tnt_mp_encode_datetime(data: *mut u8, date: *const datetime) -> *mut u8;
+}
+
 #[cfg(feature = "internal_test")]
 mod test {
     use super::*;

@@ -1,12 +1,11 @@
-use tarantool::{datetime::Datetime, tlua::LuaFunction, tuple::Tuple};
+use tarantool::{datetime::Datetime, tuple::Tuple};
 use time_macros::datetime;
 
 pub fn to_tuple() {
     let dt: Datetime = datetime!(2023-11-11 6:10:20.10010 -7).into();
     let t = Tuple::new(&[dt]).unwrap();
     let lua = tarantool::lua_state();
-    let f: LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
-    let result: Datetime = f.call_with_args(&t).unwrap();
+    let result: Datetime = lua.eval_with("return box.tuple.unpack(...)", &t).unwrap();
     assert_eq!(dt, result);
 }
 
@@ -23,10 +22,9 @@ pub fn from_tuple() {
 
 pub fn to_lua() {
     let lua = tarantool::lua_state();
-    let tostring: LuaFunction<_> = lua.eval("return tostring").unwrap();
-    let dt: Datetime = datetime!(2023-11-11 6:10:20.10010 -7).into();
-    let s: String = tostring.call_with_args(dt).unwrap();
-    assert_eq!(s, "2023-11-11T06:10:20.100100-0700");
+    let dt: Datetime = datetime!(2006-8-13 21:45:13.042069 +3).into();
+    let s: String = lua.eval_with("return tostring(...)", &dt).unwrap();
+    assert_eq!(s, "2006-08-13T21:45:13.042069+0300");
 }
 
 pub fn from_lua() {
