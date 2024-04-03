@@ -145,6 +145,11 @@ impl UnixClient {
         let mut pos = 0;
         loop {
             let read = match self.socket.read(&mut self.buffer[pos..]) {
+                Ok(0) => {
+                    return Err(UnixClientError::Io(io::Error::other(
+                        "server probably is closed, try to reconnect",
+                    )))
+                }
                 Ok(n) => n,
                 Err(ref e) if e.kind() == ErrorKind::Interrupted => {
                     continue;
@@ -340,7 +345,7 @@ mod tests {
         let output = client.read();
         match output {
             Err(UnixClientError::DeserializeMessageError(_)) => (),
-            _ => panic!(),
+            _ => assert!(false),
         }
     }
 
@@ -365,5 +370,19 @@ mod tests {
         assert!(output.is_ok());
         assert!(client.buffer.len() > initial_buf_size);
         assert!(client.buffer.len() == initial_buf_size * 2);
+    }
+
+    #[test]
+    fn server_die() {
+        let (mut client, server) = setup_client_server();
+        drop(server);
+        let output = client.read();
+        match output {
+            Err(UnixClientError::Io(err)) => assert_eq!(
+                err.to_string(),
+                "server probably is closed, try to reconnect"
+            ),
+            _ => assert!(false),
+        }
     }
 }
