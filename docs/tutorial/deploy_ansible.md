@@ -1,7 +1,8 @@
-# Развертывание кластера через ansible {: #ansible }
+# Развертывание кластера через Ansible {: #ansible }
 
 В данном разделе приведена информация по развертыванию кластера Picodata
-из нескольких инстансов, запущенных на разных серверах посредством роли [ansible](https://git.picodata.io/picodata/picodata/picodata-ansible).
+из нескольких инстансов, запущенных на разных серверах посредством роли
+[picodata-ansible](https://git.picodata.io/picodata/picodata/picodata-ansible).
 
 ## Кластер на нескольких серверах {: #distributed_cluster }
 
@@ -11,24 +12,31 @@
 Предположим, что таких серверов два: `192.168.0.1` и
 `192.168.0.2`. Порядок действий будет следующим:
 
-Устанавливаем роль из репозитория через ansible-galaxy:
+### Установка роли {: #install_role }
+
+Установите роль из репозитория через `ansible-galaxy`:
 
 ```shell
 ansible-galaxy install git+https://git.picodata.io/picodata/picodata/picodata-ansible.git
 ```
 
-в текущем каталоге создаем подкаталоги - это нужно для отделения инвентарных файлов от сценариев (плэйбуков):
+### Создание каталогов {: #make_dirs }
+
+В текущем каталоге создайте подкаталоги — это нужно для отделения
+инвентарных файлов от сценариев (плэйбуков):
 
 ```shell
 mkdir {hosts,playbooks}
 ```
 
-Создаем инвентарный файл hosts/demo.yml следующего содержания:
+### Создание файла инвентаря {: #create_inventory_file }
+
+Создайте инвентарный файл `hosts/demo.yml` следующего содержания:
 
 ```yaml
 all:
   vars:
-    ansible_user: vagrant                            # пользователь для ssh-доступа к серверам           
+    ansible_user: vagrant                            # пользователь для ssh-доступа к серверам
     install_packages: true                           # для установки пакета picodata из репозитория
     cluster_id: demo                                 # имя кластера
     first_bin_port: 13301                            # начальный бинарный порт для первого инстанса (он же main_peer)
@@ -46,7 +54,10 @@ DC1:                                                 # Имя датацентр
       ansible_host: 192.168.0.2                      # IP адрес или fqdn если не совпадает с предыдущей строкой
 ```
 
-Создаем плэйбук playbooks/cluster_up.yml, который подключает роль следующего содержания:
+### Создание плейбука {: #create_playbook }
+
+Создайте плэйбук `playbooks/cluster_up.yml`, который подключает роль
+следующего содержания:
 
 ```yaml
 ---
@@ -61,13 +72,17 @@ DC1:                                                 # Имя датацентр
       name: picodata-ansible
 ```
 
-Выполняем установку кластера командой:
+### Установка кластера {: #install_cluster }
+
+Выполните установку кластера командой:
 
 ```shell
 ansible-playbook -i hosts/demo.yml playbooks/cluster_up.yml
 ```
 
-Более подробно о доступным переменных в инвентарном файле можно узнать в [git-репозитории роли](https://git.picodata.io/picodata/picodata/picodata-ansible).
+Более подробно о доступным переменных в инвентарном файле можно узнать в
+[git-репозитории
+роли](https://git.picodata.io/picodata/picodata/picodata-ansible).
 
 См. также:
 
