@@ -25,7 +25,7 @@ def on_files(files: Files, config: MkDocsConfig):
 
         markdown: str = file.page.markdown
         lines: list[str] = re.sub("<!--.*?-->", "", markdown, flags=re.DOTALL).split("\n")
-        images: list[str] = list(filter(lambda line: re.match(r"^!\[", line), lines))
+        images: list[str] = list(filter(lambda line: re.match(r"^\s*!\[", line), lines))
 
         hrefs: list[str] = re.findall(r"(?<=\()(.*?\.svg)", " ".join(images))
 
