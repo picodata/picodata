@@ -60,7 +60,7 @@ where
     Ok(rmp_serde::to_vec(val)?)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, tlua::Push, tlua::LuaRead, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum NumOrStr {
     Num(u32),
