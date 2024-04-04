@@ -94,11 +94,10 @@ impl VshardConfig {
                     ..Default::default()
                 });
 
-            let password = pico_service_password();
             replicaset.replicas.insert(
                 peer.instance_uuid.clone(),
                 ReplicaSpec {
-                    uri: format!("{PICO_SERVICE_USER_NAME}:{password}@{address}"),
+                    uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
                     master: r.current_master_id == peer.instance_id,
                     name: peer.instance_id.to_string(),
                 },
@@ -122,6 +121,31 @@ impl VshardConfig {
             listen: None,
             sharding,
             discovery_mode: DiscoveryMode::On,
+        }
+    }
+
+    /// Set the `pico_service` password in the uris of all the replicas in this
+    /// config. This is needed, because currently we store this config in a
+    /// global table, but we don't want to store the passwords in plain text, so
+    /// we only set them after the config is deserialized and before the config
+    /// is applied.
+    pub fn set_password_in_uris(&mut self) {
+        let password = pico_service_password();
+
+        for replicaset in self.sharding.values_mut() {
+            for replica in replicaset.replicas.values_mut() {
+                // FIXME: this is kinda stupid, we could as easily store the
+                // username and address in separate fields, or even not store
+                // the username at all, because it's always `pico_service`,
+                // but this also works... for now.
+                let Some((username, address)) = replica.uri.split_once('@') else {
+                    continue;
+                };
+                if username != PICO_SERVICE_USER_NAME {
+                    continue;
+                }
+                replica.uri = format!("{username}:{password}@{address}");
+            }
         }
     }
 }
