@@ -1707,6 +1707,12 @@ def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
         listen = f"{cluster.base_host}:{cluster.base_port+80}"
         instance.env["PICODATA_HTTP_LISTEN"] = listen
 
+    password_file = f"{cluster.data_dir}/password.txt"
+    with open(password_file, "w") as f:
+        print("s3cr3t", file=f)
+    os.chmod(password_file, 0o600)
+    instance.service_password_file = password_file
+
     instance.start()
     instance.wait_online()
     yield instance

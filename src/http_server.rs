@@ -236,6 +236,7 @@ fn get_instance_data(full_address: &String) -> InstanceDataResponse {
         full_address,
         ConnOptions {
             user: PICO_USER.to_string(),
+            password: crate::pico_service::pico_service_password().into(),
             ..ConnOptions::default()
         },
         None,
