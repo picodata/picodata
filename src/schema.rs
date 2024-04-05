@@ -1687,7 +1687,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(
             err.to_string(),
-            "tarantool error: CreateSpace: Failed to create space 'friends_of_peppa': space id 0 is reserved"
+            "box error: CreateSpace: Failed to create space 'friends_of_peppa': space id 0 is reserved"
         );
     }
 

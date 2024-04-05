@@ -765,7 +765,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Create access to space 'space_to_be_created' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: Create access to space 'space_to_be_created' is denied for user '{user_name}'"),
             );
 
             grant(
@@ -793,7 +793,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Drop access to space '{space_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: Drop access to space '{space_name}' is denied for user '{user_name}'"),
             );
 
             grant(
@@ -836,7 +836,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Drop access to space '{space_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: Drop access to space '{space_name}' is denied for user '{user_name}'"),
             );
 
             grant(
@@ -901,7 +901,7 @@ mod tests {
 
                 assert_eq!(
                     e.to_string(),
-                    format!("tarantool error: AccessDenied: {privilege_name} access to space '{space_name_grant}' is denied for user '{grantee_user_name}'"),
+                    format!("box error: AccessDenied: {privilege_name} access to space '{space_name_grant}' is denied for user '{grantee_user_name}'"),
                 );
 
                 // grant permission on behalf of the user owning the space
@@ -948,7 +948,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Create access to user 'user_to_be_created' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: Create access to user 'user_to_be_created' is denied for user '{actor_user_name}'"),
             );
 
             grant(
@@ -989,7 +989,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Drop access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: Drop access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
             );
 
             grant(
@@ -1029,7 +1029,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
             );
 
             grant(
@@ -1084,7 +1084,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Drop access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: Drop access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
             );
 
             grant(
@@ -1124,7 +1124,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
             );
 
             grant(
@@ -1174,7 +1174,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
+                format!("box error: AccessDenied: Alter access to user '{user_under_test_name}' is denied for user '{actor_user_name}'"),
             );
 
             grant(
@@ -1287,7 +1287,7 @@ mod tests {
 
                 assert_eq!(
                     e.to_string(),
-                    format!("tarantool error: AccessDenied: {privilege_name} access to user '{user_name_grant}' is denied for user '{grantee_user_name}'"),
+                    format!("box error: AccessDenied: {privilege_name} access to user '{user_name_grant}' is denied for user '{grantee_user_name}'"),
                 );
 
                 // grant permission on behalf of the user owning the user
@@ -1346,7 +1346,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Create access to role 'role_to_be_created' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: Create access to role 'role_to_be_created' is denied for user '{user_name}'"),
             );
 
             grant(
@@ -1383,7 +1383,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
             );
 
             grant(
@@ -1430,7 +1430,7 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
+                format!("box error: AccessDenied: Drop access to role '{role_name}' is denied for user '{user_name}'"),
             );
 
             grant(
@@ -1488,7 +1488,7 @@ mod tests {
 
             assert_eq!(
                     e.to_string(),
-                    format!("tarantool error: AccessDenied: Drop access to role '{role_name_grant}' is denied for user '{grantee_user_name}'"),
+                    format!("box error: AccessDenied: Drop access to role '{role_name_grant}' is denied for user '{grantee_user_name}'"),
                 );
 
             // grant permission on behalf of the user owning the role
@@ -1575,7 +1575,9 @@ mod tests {
 
             assert_eq!(
                 e.to_string(),
-                format!("tarantool error: RoleLoop: Granting role Parent to role Child would create a loop"),
+                format!(
+                    "box error: RoleLoop: Granting role Parent to role Child would create a loop"
+                ),
             );
         }
     }

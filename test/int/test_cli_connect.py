@@ -100,7 +100,6 @@ def test_wrong_pass(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Badpa5s")
 
-    cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
     cli.expect_exact(pexpect.EOF)
 
@@ -154,7 +153,6 @@ def test_connect_auth_type_wrong(i1: Instance):
     cli.expect_exact("Enter password for testuser: ")
     cli.sendline("Testpa55")
 
-    cli.expect_exact("service responded with error")
     cli.expect_exact("User not found or supplied credentials are invalid")
     cli.expect_exact(pexpect.EOF)
 
