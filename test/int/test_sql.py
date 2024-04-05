@@ -3086,7 +3086,7 @@ def test_rename_user(cluster: Cluster):
     with pytest.raises(
         ReturnError,
         match="""\
-tarantool error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'.\
+box error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'.\
 """,
     ):
         data = i1.sql(

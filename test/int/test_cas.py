@@ -105,7 +105,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args == (
         "ER_PROC_C",
-        "tarantool error: FieldType: Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
+        "box error: FieldType: Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
     )
 
     # Delete of undeletable property
@@ -117,7 +117,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args == (
         "ER_PROC_C",
-        "tarantool error: ProcLua: property next_schema_version cannot be deleted",  # noqa: E501
+        "box error: ProcLua: property next_schema_version cannot be deleted",  # noqa: E501
     )
 
     # Incorrect type of builtin property
@@ -129,7 +129,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args == (
         "ER_PROC_C",
-        """tarantool error: ProcLua: incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
+        """box error: ProcLua: incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
     )
 
     # Too many values for builtin property
@@ -141,7 +141,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args == (
         "ER_PROC_C",
-        "tarantool error: ProcLua: too many fields: got 3, expected 2",
+        "box error: ProcLua: too many fields: got 3, expected 2",
     )
 
     # Not enough values for builtin property
@@ -153,7 +153,7 @@ def test_cas_errors(instance: Instance):
         )
     assert error.value.args == (
         "ER_PROC_C",
-        "tarantool error: FieldMissing: Tuple field 2 (value) required by space format is missing",  # noqa: E501
+        "box error: FieldMissing: Tuple field 2 (value) required by space format is missing",  # noqa: E501
     )
 
 

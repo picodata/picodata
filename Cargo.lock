@@ -1848,9 +1848,9 @@ dependencies = [
 
 [[package]]
 name = "rmp-serde"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3eedffbfcc6a428f230c04baf8f59bd73c1781361e4286111fe900849aaddaf"
+checksum = "25786b0d276110195fa3d6f3f31299900cf71dfbd6c28450f3f58a0e7f7a347e"
 dependencies = [
  "byteorder",
  "rmp",
@@ -2467,7 +2467,7 @@ dependencies = [
 
 [[package]]
 name = "tlua"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "libc",
  "linkme 0.2.10",

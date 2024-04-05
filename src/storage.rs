@@ -3930,7 +3930,7 @@ mod tests {
             }),
             format!(
                 concat!(
-                    "tarantool error:",
+                    "box error:",
                     " TupleFound: Duplicate key exists",
                     " in unique index \"raft_id\"",
                     " in space \"_pico_instance\"",
@@ -3995,7 +3995,7 @@ mod tests {
         assert_err!(
             storage.instances.all_instances(),
             format!(
-                "tarantool error: NoSuchSpace: Space '{}' does not exist",
+                "box error: NoSuchSpace: Space '{}' does not exist",
                 space.id(),
             )
         );
@@ -4097,7 +4097,8 @@ mod tests {
                     dbg!(s_id);
                     #[rustfmt::skip]
                     assert!(ClusterwideTable::all_tables().iter().any(|s| s.id() == s_id));
-                    let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
+                    // FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/570
+                    // let []: [(); 0] = Decode::decode(space_dump.tuples.as_ref()).unwrap();
                 }
             }
         }

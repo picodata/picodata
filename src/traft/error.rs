@@ -2,8 +2,9 @@ use std::fmt::{Debug, Display};
 
 use crate::instance::InstanceId;
 use crate::traft::{RaftId, RaftTerm};
-use ::tarantool::fiber::r#async::timeout;
-use ::tarantool::tlua::LuaError;
+use tarantool::error::{BoxError, IntoBoxError};
+use tarantool::fiber::r#async::timeout;
+use tarantool::tlua::LuaError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -174,5 +175,11 @@ where
 {
     fn from(err: tarantool::tlua::CallError<V>) -> Self {
         Self::Lua(err.into())
+    }
+}
+
+impl IntoBoxError for Error {
+    fn into_box_error(self) -> BoxError {
+        self.to_string().into_box_error()
     }
 }

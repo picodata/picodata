@@ -850,7 +850,7 @@ mod tests {
             S::entries(&storage, first, last + 1, u64::MAX),
             concat!(
                 "unknown error",
-                " tarantool error:",
+                " box error:",
                 " NoSuchIndexID:",
                 " No index #0 is defined in space '_raft_log'"
             )
@@ -862,7 +862,7 @@ mod tests {
             format!(
                 concat!(
                     "unknown error",
-                    " tarantool error:",
+                    " box error:",
                     " NoSuchSpace:",
                     " Space '{}' does not exist",
                 ),
@@ -985,7 +985,7 @@ mod tests {
         assert_err!(
             storage.persist_raft_id(32),
             concat!(
-                "tarantool error:",
+                "box error:",
                 " TupleFound:",
                 " Duplicate key exists in unique index \"pk\" in space \"_raft_state\"",
                 " with old tuple - [\"raft_id\", 16]",
@@ -997,11 +997,7 @@ mod tests {
         assert_err!(
             storage.commit(),
             format!(
-                concat!(
-                    "tarantool error:",
-                    " NoSuchSpace:",
-                    " Space '{}' does not exist",
-                ),
+                concat!("box error:", " NoSuchSpace:", " Space '{}' does not exist",),
                 storage.space_raft_state.id()
             )
         );
