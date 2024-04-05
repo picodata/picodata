@@ -44,6 +44,7 @@ use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
 use serde::Deserialize;
+use smol_str::{format_smolstr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
 
@@ -161,7 +162,7 @@ fn routine_by_name(name: &str) -> traft::Result<RoutineDef> {
             .ok_or_else(|| {
                 Error::Sbroad(SbroadError::Invalid(
                     Entity::Routine,
-                    Some(format!("routine {name} not found")),
+                    Some(format_smolstr!("routine {name} not found")),
                 ))
             })?;
         Ok(routine)
@@ -213,7 +214,7 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 if routine.params.len() != values.len() {
                     return Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Routine,
-                        Some(format!(
+                        Some(format_smolstr!(
                             "expected {} parameter(s), got {}",
                             routine.params.len(),
                             values.len(),
@@ -233,7 +234,7 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                         _ => {
                             return Err(Error::Sbroad(SbroadError::Invalid(
                                 Entity::Expression,
-                                Some(format!("expected constant, got {constant_node:?}")),
+                                Some(format_smolstr!("expected constant, got {constant_node:?}")),
                             )))
                         }
                     };
@@ -245,7 +246,7 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                     if !value.get_type().is_castable_to(&param_type) {
                         return Err(Error::Sbroad(SbroadError::Invalid(
                             Entity::Routine,
-                            Some(format!(
+                            Some(format_smolstr!(
                                 "expected {} for parameter on position {pos}, got {}",
                                 param_def.r#type,
                                 value.get_type(),
@@ -282,7 +283,7 @@ fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                     Err(Error::from(SbroadError::FailedTo(
                         Action::Decode,
                         None,
-                        format!("tuple {any_tuple:?}"),
+                        format_smolstr!("tuple {any_tuple:?}"),
                     )))
                 }
             }
@@ -521,8 +522,9 @@ pub fn proc_pg_parse(
                 .cache()
                 .try_borrow_mut()
                 .map_err(|e| Error::Other(format!("runtime query cache: {e:?}").into()))?;
-            if let Some(plan) = cache.get(&query)? {
-                let statement = Statement::new(id, sql.clone(), plan.clone(), param_oids)?;
+            if let Some(plan) = cache.get(&query.to_smolstr())? {
+                let statement =
+                    Statement::new(id.to_string(), sql.clone(), plan.clone(), param_oids)?;
                 PG_STATEMENTS
                     .with(|cache| cache.borrow_mut().put((cid, name.into()), statement))?;
                 return Ok(());
@@ -547,9 +549,9 @@ pub fn proc_pg_parse(
                 Ok(plan)
             })??;
             if !plan.is_ddl()? && !plan.is_acl()? {
-                cache.put(query, plan.clone())?;
+                cache.put(query.to_smolstr(), plan.clone())?;
             }
-            let statement = Statement::new(id, sql, plan, param_oids)?;
+            let statement = Statement::new(id.to_string(), sql, plan, param_oids)?;
             PG_STATEMENTS
                 .with(|storage| storage.borrow_mut().put((cid, name.into()), statement))?;
             Ok(())
@@ -653,7 +655,7 @@ impl TraftNode {
                 privilege,
                 user_name,
             } => {
-                if let Some(user_id) = self.get_user_or_role_id(user_name) {
+                if let Some(user_id) = self.get_user_or_role_id(&user_name.to_string()) {
                     Ok((
                         SchemaObjectType::User,
                         privilege.try_into()?,
@@ -662,7 +664,7 @@ impl TraftNode {
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("There is no user with name {user_name}")),
+                        Some(format_smolstr!("There is no user with name {user_name}")),
                     )))
                 }
             }
@@ -673,7 +675,7 @@ impl TraftNode {
                 privilege,
                 role_name,
             } => {
-                if let Some(role_id) = self.get_user_or_role_id(role_name) {
+                if let Some(role_id) = self.get_user_or_role_id(&role_name.to_string()) {
                     Ok((
                         SchemaObjectType::Role,
                         privilege.try_into()?,
@@ -682,7 +684,7 @@ impl TraftNode {
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("There is no role with name {role_name}")),
+                        Some(format_smolstr!("There is no role with name {role_name}")),
                     )))
                 }
             }
@@ -693,7 +695,7 @@ impl TraftNode {
                 privilege,
                 table_name,
             } => {
-                if let Some(table_id) = self.get_table_id(table_name) {
+                if let Some(table_id) = self.get_table_id(&table_name.to_string()) {
                     Ok((
                         SchemaObjectType::Table,
                         privilege.try_into()?,
@@ -702,7 +704,7 @@ impl TraftNode {
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("There is no table with name {table_name}")),
+                        Some(format_smolstr!("There is no table with name {table_name}")),
                     )))
                 }
             }
@@ -726,12 +728,12 @@ impl TraftNode {
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("There is no routine with name {proc_name}")),
+                        Some(format_smolstr!("There is no routine with name {proc_name}")),
                     )))
                 }
             }
             GrantRevokeType::RolePass { role_name } => {
-                if let Some(role_id) = self.get_user_or_role_id(role_name) {
+                if let Some(role_id) = self.get_user_or_role_id(&role_name.to_string()) {
                     Ok((
                         SchemaObjectType::Role,
                         PrivilegeType::Execute,
@@ -740,7 +742,7 @@ impl TraftNode {
                 } else {
                     Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("There is no role with name {role_name}")),
+                        Some(format_smolstr!("There is no role with name {role_name}")),
                     )))
                 }
             }
@@ -825,7 +827,7 @@ fn get_grantee_id(storage: &Clusterwide, grantee_name: &String) -> traft::Result
         // No existing user or role found.
         Err(Error::Sbroad(SbroadError::Invalid(
             Entity::Acl,
-            Some(format!(
+            Some(format_smolstr!(
                 "Nor user, neither role with name {grantee_name} exists"
             )),
         )))
@@ -973,10 +975,10 @@ fn reenterable_schema_change_request(
             let security = RoutineSecurity::default();
 
             let params = CreateProcParams {
-                name,
+                name: name.to_string(),
                 params: args,
                 language,
-                body,
+                body: body.to_string(),
                 security,
                 owner: current_user,
             };
@@ -995,7 +997,7 @@ fn reenterable_schema_change_request(
             let format = format
                 .into_iter()
                 .map(|f| Field {
-                    name: f.name,
+                    name: f.name.to_string(),
                     r#type: FieldType::from(&f.data_type),
                     is_nullable: f.is_nullable,
                 })
@@ -1005,9 +1007,14 @@ fn reenterable_schema_change_request(
             } else {
                 DistributionParam::Global
             };
+
+            let primary_key = primary_key.iter().cloned().map(String::from).collect();
+            let sharding_key =
+                sharding_key.map(|sh_key| sh_key.iter().cloned().map(String::from).collect());
+
             let params = CreateTableParams {
                 id: None,
-                name,
+                name: name.to_string(),
                 format,
                 primary_key,
                 distribution,
@@ -1027,11 +1034,11 @@ fn reenterable_schema_change_request(
         }
         IrNode::Ddl(Ddl::DropProc { name, params, .. }) => {
             // Nothing to check
-            Params::DropProcedure(name, params)
+            Params::DropProcedure(name.to_string(), params)
         }
         IrNode::Ddl(Ddl::DropTable { name, .. }) => {
             // Nothing to check
-            Params::DropTable(name)
+            Params::DropTable(name.to_string())
         }
         IrNode::Ddl(Ddl::RenameRoutine {
             old_name,
@@ -1040,23 +1047,23 @@ fn reenterable_schema_change_request(
             ..
         }) => {
             let params = RenameRoutineParams {
-                new_name,
-                old_name,
+                new_name: new_name.to_string(),
+                old_name: old_name.to_string(),
                 params,
             };
             Params::RenameRoutine(params)
         }
         IrNode::Acl(Acl::DropUser { name, .. }) => {
             // Nothing to check
-            Params::DropUser(name)
+            Params::DropUser(name.to_string())
         }
         IrNode::Acl(Acl::CreateRole { name, .. }) => {
             // Nothing to check
-            Params::CreateRole(name)
+            Params::CreateRole(name.to_string())
         }
         IrNode::Acl(Acl::DropRole { name, .. }) => {
             // Nothing to check
-            Params::DropRole(name)
+            Params::DropRole(name.to_string())
         }
         IrNode::Acl(Acl::CreateUser {
             name,
@@ -1069,7 +1076,7 @@ fn reenterable_schema_change_request(
             validate_password(&password, &method, node)?;
             let data = AuthData::new(&method, &name, &password);
             let auth = AuthDef::new(method, data.into_string());
-            Params::CreateUser(name, auth)
+            Params::CreateUser(name.to_string(), auth)
         }
         IrNode::Acl(Acl::AlterUser {
             name, alter_option, ..
@@ -1089,9 +1096,9 @@ fn reenterable_schema_change_request(
                 }
                 AlterOption::Login => AlterOptionParam::Login,
                 AlterOption::NoLogin => AlterOptionParam::NoLogin,
-                AlterOption::Rename { new_name } => AlterOptionParam::Rename(new_name),
+                AlterOption::Rename { new_name } => AlterOptionParam::Rename(new_name.to_string()),
             };
-            Params::AlterUser(name, alter_option_param)
+            Params::AlterUser(name.to_string(), alter_option_param)
         }
         IrNode::Acl(Acl::GrantPrivilege {
             grant_type,
@@ -1099,7 +1106,7 @@ fn reenterable_schema_change_request(
             ..
         }) => {
             // Nothing to check
-            Params::GrantPrivilege(grant_type, grantee_name)
+            Params::GrantPrivilege(grant_type, grantee_name.to_string())
         }
         IrNode::Acl(Acl::RevokePrivilege {
             revoke_type,
@@ -1107,7 +1114,7 @@ fn reenterable_schema_change_request(
             ..
         }) => {
             // Nothing to check
-            Params::RevokePrivilege(revoke_type, grantee_name)
+            Params::RevokePrivilege(revoke_type, grantee_name.to_string())
         }
         n => {
             unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
@@ -1390,7 +1397,7 @@ fn reenterable_schema_change_request(
                 if user_def.is_role() {
                     return Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("Role {name} exists. Unable to drop role.")),
+                        Some(format_smolstr!("Role {name} exists. Unable to drop role.")),
                     )));
                 }
 
@@ -1410,7 +1417,7 @@ fn reenterable_schema_change_request(
                     if entry_type == "user" {
                         return Err(Error::Sbroad(SbroadError::Invalid(
                             Entity::Acl,
-                            Some(format!("Unable to create role {name}. User with the same name already exists")),
+                            Some(format_smolstr!("Unable to create role {name}. User with the same name already exists")),
                         )));
                     } else {
                         return Ok(ConsumerResult { row_count: 0 });
@@ -1436,7 +1443,7 @@ fn reenterable_schema_change_request(
                 if !role_def.is_role() {
                     return Err(Error::Sbroad(SbroadError::Invalid(
                         Entity::Acl,
-                        Some(format!("User {name} exists. Unable to drop user.")),
+                        Some(format_smolstr!("User {name} exists. Unable to drop user.")),
                     )));
                 }
 
@@ -1593,7 +1600,7 @@ pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
                     Err(Error::from(SbroadError::FailedTo(
                         Action::Decode,
                         None,
-                        format!("tuple {any_tuple:?}"),
+                        format_smolstr!("tuple {any_tuple:?}"),
                     )))
                 }
             }
@@ -1608,7 +1615,7 @@ pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
             TracerKind::from_str(&value.as_str()).map_err(|_| {
                 Error::from(SbroadError::Invalid(
                     Entity::RequiredData,
-                    Some(format!("unknown tracer: {}", value.as_str())),
+                    Some(format_smolstr!("unknown tracer: {}", value.as_str())),
                 ))
             })?
         } else {

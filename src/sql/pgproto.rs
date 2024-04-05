@@ -16,6 +16,7 @@ use sbroad::ir::operator::Relational;
 use sbroad::ir::{Node, Plan};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
+use smol_str::format_smolstr;
 use std::cell::{Cell, RefCell};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -554,10 +555,10 @@ fn dql_output_format(ir: &Plan) -> Result<Vec<MetadataColumn>, SbroadError> {
         } else {
             return Err(SbroadError::Invalid(
                 Entity::Expression,
-                Some(format!("expected alias, got {column:?}")),
+                Some(format_smolstr!("expected alias, got {column:?}")),
             ));
         };
-        metadata.push(MetadataColumn::new(column_name, column_type));
+        metadata.push(MetadataColumn::new(column_name.to_string(), column_type));
     }
     Ok(metadata)
 }
@@ -681,7 +682,7 @@ impl TryFrom<&Node> for CommandTag {
             },
             Node::Expression(_) | Node::Parameter => Err(SbroadError::Invalid(
                 Entity::Node,
-                Some(format!("{node:?} can't be converted to CommandTag")),
+                Some(format_smolstr!("{node:?} can't be converted to CommandTag")),
             )),
         }
     }

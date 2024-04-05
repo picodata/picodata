@@ -16,6 +16,7 @@ use sbroad::executor::protocol::Binary;
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::ir::value::{MsgPackValue, Value};
 use sbroad::ir::Plan;
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use std::any::Any;
 use std::cell::{Ref, RefCell};
@@ -45,7 +46,7 @@ use tarantool::space::Space;
 use tarantool::tuple::{KeyDef, Tuple};
 use tarantool::util::Value as TarantoolValue;
 
-pub type VersionMap = HashMap<String, u64>;
+pub type VersionMap = HashMap<SmolStr, u64>;
 
 thread_local! {
     static PLAN_CACHE: Rc<RefCell<PicoRouterCache >> = Rc::new(
@@ -65,18 +66,18 @@ pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
 /// - errors on access to system space
 /// - space with given name not found
 pub fn get_table_version(space_name: &str) -> Result<u64, SbroadError> {
-    let node = node::global()
-        .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
+    let node = node::global().map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+    })?;
     let storage_tables = &node.storage.tables;
-    if let Some(space_def) = storage_tables
-        .by_name(space_name)
-        .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e)))?
-    {
+    if let Some(space_def) = storage_tables.by_name(space_name).map_err(|e| {
+        SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
+    })? {
         Ok(space_def.schema_version)
     } else {
         Err(SbroadError::NotFound(
             Entity::SpaceMetadata,
-            format!("for space: {}", space_name),
+            format_smolstr!("for space: {}", space_name),
         ))
     }
 }
@@ -105,7 +106,7 @@ impl RouterRuntime {
     }
 }
 
-pub type PlanCache = LRUCache<String, Plan>;
+pub type PlanCache = LRUCache<SmolStr, Plan>;
 
 /// Wrapper around default LRU cache, that
 /// checks schema version.
@@ -125,7 +126,7 @@ impl PicoRouterCache {
     }
 }
 
-impl Cache<String, Plan> for PicoRouterCache {
+impl Cache<SmolStr, Plan> for PicoRouterCache {
     fn new(capacity: usize, evict_fn: Option<EvictFn<Plan>>) -> Result<Self, SbroadError>
     where
         Self: Sized,
@@ -135,13 +136,14 @@ impl Cache<String, Plan> for PicoRouterCache {
         })
     }
 
-    fn get(&mut self, key: &String) -> Result<Option<&Plan>, SbroadError> {
+    fn get(&mut self, key: &SmolStr) -> Result<Option<&Plan>, SbroadError> {
         let Some(ir) = self.inner.get(key)? else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
-        let node = node::global()
-            .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
         let storage_tables = &node.storage.tables;
         for (tbl_name, tbl) in &ir.relations.tables {
             if tbl.is_system() {
@@ -151,11 +153,11 @@ impl Cache<String, Plan> for PicoRouterCache {
             let cached_version = *ir.version_map.get(space_name.as_str()).ok_or_else(|| {
                 SbroadError::NotFound(
                     Entity::Table,
-                    format!("in version map with name: {}", space_name),
+                    format_smolstr!("in version map with name: {}", space_name),
                 )
             })?;
             let Some(space_def) = storage_tables.by_name(space_name.as_str()).map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
+                SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
             })?
             else {
                 return Ok(None);
@@ -170,7 +172,7 @@ impl Cache<String, Plan> for PicoRouterCache {
         Ok(Some(ir))
     }
 
-    fn put(&mut self, key: String, value: Plan) -> Result<(), SbroadError> {
+    fn put(&mut self, key: SmolStr, value: Plan) -> Result<(), SbroadError> {
         self.inner.put(key, value)
     }
 
@@ -190,13 +192,15 @@ impl QueryCache for RouterRuntime {
         Ok(self
             .ir_cache
             .try_borrow()
-            .map_err(|e| SbroadError::FailedTo(Action::Get, Some(Entity::Cache), format!("{e:?}")))?
+            .map_err(|e| {
+                SbroadError::FailedTo(Action::Get, Some(Entity::Cache), format_smolstr!("{e:?}"))
+            })?
             .capacity())
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
         *self.ir_cache.try_borrow_mut().map_err(|e| {
-            SbroadError::FailedTo(Action::Clear, Some(Entity::Cache), format!("{e:?}"))
+            SbroadError::FailedTo(Action::Clear, Some(Entity::Cache), format_smolstr!("{e:?}"))
         })? = Self::Cache::new(self.cache_capacity()?)?;
         Ok(())
     }
@@ -216,7 +220,11 @@ impl Router for RouterRuntime {
 
     fn metadata(&self) -> Result<Ref<Self::MetadataProvider>, SbroadError> {
         self.metadata.try_borrow().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, Some(Entity::Metadata), format!("{e:?}"))
+            SbroadError::FailedTo(
+                Action::Get,
+                Some(Entity::Metadata),
+                format_smolstr!("{e:?}"),
+            )
         })
     }
 
@@ -238,24 +246,28 @@ impl Router for RouterRuntime {
         dispatch_impl(self, plan, top_id, buckets)
     }
 
-    fn explain_format(&self, explain: String) -> Result<Box<dyn std::any::Any>, SbroadError> {
+    fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn std::any::Any>, SbroadError> {
         explain_format(&explain)
     }
 
     fn extract_sharding_key_from_map<'rec>(
         &self,
-        space: String,
-        args: &'rec HashMap<String, Value>,
+        space: SmolStr,
+        args: &'rec HashMap<SmolStr, Value>,
     ) -> Result<Vec<&'rec Value>, SbroadError> {
         let metadata = self.metadata.try_borrow().map_err(|e| {
-            SbroadError::FailedTo(Action::Borrow, Some(Entity::Metadata), format!("{e:?}"))
+            SbroadError::FailedTo(
+                Action::Borrow,
+                Some(Entity::Metadata),
+                format_smolstr!("{e:?}"),
+            )
         })?;
         sharding_key_from_map(&*metadata, &space, args)
     }
 
     fn extract_sharding_key_from_tuple<'rec>(
         &self,
-        space: String,
+        space: SmolStr,
         args: &'rec [Value],
     ) -> Result<Vec<&'rec Value>, SbroadError> {
         sharding_key_from_tuple(&*self.metadata()?, &space, args)
@@ -268,7 +280,11 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
         .map(|v| MsgPackValue::from(*v))
         .collect::<Vec<_>>();
     let tnt_tuple = Tuple::new(&wrapped_tuple).map_err(|e| {
-        SbroadError::FailedTo(Action::Create, Some(Entity::Tuple), format!("{e:?}"))
+        SbroadError::FailedTo(
+            Action::Create,
+            Some(Entity::Tuple),
+            format_smolstr!("{e:?}"),
+        )
     })?;
     let mut key_parts = Vec::with_capacity(tuple.len());
     for (pos, value) in tuple.iter().enumerate() {
@@ -276,13 +292,17 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
             SbroadError::FailedTo(
                 Action::Create,
                 Some(Entity::KeyDef),
-                "Tuple is too long".to_string(),
+                "Tuple is too long".to_smolstr(),
             )
         })?;
         key_parts.push(value.as_key_def_part(pos));
     }
     let key = KeyDef::new(key_parts.as_slice()).map_err(|e| {
-        SbroadError::FailedTo(Action::Create, Some(Entity::KeyDef), format!("{e:?}"))
+        SbroadError::FailedTo(
+            Action::Create,
+            Some(Entity::KeyDef),
+            format_smolstr!("{e:?}"),
+        )
     })?;
     Ok(u64::from(key.hash(&tnt_tuple)) % bucket_count + 1)
 }
@@ -430,26 +450,26 @@ impl RouterMetadata {
     fn get_shard_cols(
         name: &str,
         meta: &tarantool::space::Metadata,
-    ) -> Result<Vec<String>, SbroadError> {
+    ) -> Result<Vec<SmolStr>, SbroadError> {
         let pico_space = space_by_name(&ClusterwideTable::Table)
-            .map_err(|e| SbroadError::NotFound(Entity::Space, format!("{e:?}")))?;
+            .map_err(|e| SbroadError::NotFound(Entity::Space, format_smolstr!("{e:?}")))?;
         let tuple = pico_space.get(&[meta.id]).map_err(|e| {
             SbroadError::FailedTo(
                 Action::Get,
                 Some(Entity::ShardingKey),
-                format!("space id {}: {e}", meta.id),
+                format_smolstr!("space id {}: {e}", meta.id),
             )
         })?;
         let tuple =
-            tuple.ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_string()))?;
+            tuple.ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_smolstr()))?;
         let space_def: TableDef = tuple.decode().map_err(|e| {
             SbroadError::FailedTo(
                 Action::Deserialize,
                 Some(Entity::SpaceMetadata),
-                format!("serde error: {e}"),
+                format_smolstr!("serde error: {e}"),
             )
         })?;
-        let shard_cols: Vec<String> = match &space_def.distribution {
+        let shard_cols: Vec<SmolStr> = match &space_def.distribution {
             Distribution::Global => {
                 vec![]
             }
@@ -460,7 +480,7 @@ impl RouterMetadata {
                 if !matches!(sharding_fn, ShardingFn::Murmur3) {
                     return Err(SbroadError::NotImplemented(
                         Entity::Distribution,
-                        format!("by hash function {sharding_fn}"),
+                        format_smolstr!("by hash function {sharding_fn}"),
                     ));
                 }
                 sharding_key
@@ -471,7 +491,7 @@ impl RouterMetadata {
             Distribution::ShardedByField { field } => {
                 return Err(SbroadError::NotImplemented(
                     Entity::Distribution,
-                    format!("explicitly by field '{field}'"),
+                    format_smolstr!("explicitly by field '{field}'"),
                 ));
             }
         };
@@ -487,9 +507,9 @@ impl Metadata for RouterMetadata {
 
         // // Get the space columns and engine of the space.
         let space = Space::find(&name)
-            .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_string()))?;
+            .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_smolstr()))?;
         let meta = space.meta().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, Some(Entity::SpaceMetadata), e.to_string())
+            SbroadError::FailedTo(Action::Get, Some(Entity::SpaceMetadata), e.to_smolstr())
         })?;
         let engine = meta.engine;
         let mut columns: Vec<Column> = Vec::with_capacity(meta.format.len());
@@ -498,7 +518,7 @@ impl Metadata for RouterMetadata {
                 SbroadError::FailedTo(
                     Action::Get,
                     Some(Entity::SpaceMetadata),
-                    format!("column name not found in the space format: {column_meta:?}"),
+                    format_smolstr!("column name not found in the space format: {column_meta:?}"),
                 )
             })?;
             let col_name = if let TarantoolValue::Str(name) = name_value {
@@ -507,7 +527,7 @@ impl Metadata for RouterMetadata {
                 return Err(SbroadError::FailedTo(
                     Action::Get,
                     Some(Entity::SpaceMetadata),
-                    format!("column name is not a string: {name_value:?}"),
+                    format_smolstr!("column name is not a string: {name_value:?}"),
                 ));
             };
             let is_nullable_value =
@@ -515,7 +535,7 @@ impl Metadata for RouterMetadata {
                     SbroadError::FailedTo(
                         Action::Get,
                         Some(Entity::SpaceMetadata),
-                        format!(
+                        format_smolstr!(
                             "column nullability attribute was not found in the space metadata: {column_meta:?}"
                         ),
                     )
@@ -526,14 +546,16 @@ impl Metadata for RouterMetadata {
                 return Err(SbroadError::FailedTo(
                     Action::Get,
                     Some(Entity::SpaceMetadata),
-                    format!("column nullability attribute is not a boolean: {is_nullable_value:?}"),
+                    format_smolstr!(
+                        "column nullability attribute is not a boolean: {is_nullable_value:?}"
+                    ),
                 ));
             };
             let type_value = column_meta.get(&Cow::from("type")).ok_or_else(|| {
                 SbroadError::FailedTo(
                     Action::Get,
                     Some(Entity::SpaceMetadata),
-                    format!("column type not found in the space format: {column_meta:?}"),
+                    format_smolstr!("column type not found in the space format: {column_meta:?}"),
                 )
             })?;
             let col_type: Type = if let TarantoolValue::Str(col_type) = type_value {
@@ -542,7 +564,7 @@ impl Metadata for RouterMetadata {
                 return Err(SbroadError::FailedTo(
                     Action::Get,
                     Some(Entity::SpaceMetadata),
-                    format!("column type is not a string: {type_value:?}"),
+                    format_smolstr!("column type is not a string: {type_value:?}"),
                 ));
             };
             let role = if col_name == DEFAULT_BUCKET_COLUMN {
@@ -561,7 +583,7 @@ impl Metadata for RouterMetadata {
 
         let normalized_name = normalize_name_from_sql(table_name);
         let pk_cols = space_pk_columns(&name, &columns)?;
-        let pk_cols_str: &[&str] = &pk_cols.iter().map(String::as_str).collect::<Vec<_>>();
+        let pk_cols_str: &[&str] = &pk_cols.iter().map(SmolStr::as_str).collect::<Vec<_>>();
 
         // Try to find the sharding columns of the space in "_pico_table".
         // If nothing found then the space is local and we can't query it with
@@ -579,7 +601,7 @@ impl Metadata for RouterMetadata {
         }
         let sharding_columns_str: &[&str] = &sharded_columns
             .iter()
-            .map(String::as_str)
+            .map(SmolStr::as_str)
             .collect::<Vec<_>>();
         Table::new_sharded(
             &normalized_name,
@@ -592,7 +614,7 @@ impl Metadata for RouterMetadata {
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {
         let name = normalize_name_from_sql(fn_name);
-        match self.functions.get(&name) {
+        match self.functions.get(&name.to_string()) {
             Some(v) => Ok(v),
             None => Err(SbroadError::NotFound(Entity::SQLFunction, name)),
         }
@@ -608,7 +630,7 @@ impl Metadata for RouterMetadata {
     }
 
     /// Get sharding key's column names by a space name
-    fn sharding_key_by_space(&self, space: &str) -> Result<Vec<String>, SbroadError> {
+    fn sharding_key_by_space(&self, space: &str) -> Result<Vec<SmolStr>, SbroadError> {
         let table = self.table(space)?;
         table.get_sharding_column_names()
     }

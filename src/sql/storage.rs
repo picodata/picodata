@@ -21,6 +21,7 @@ use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sbroad::ir::tree::Snapshot;
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::{any::Any, cell::RefCell, rc::Rc};
 
@@ -39,7 +40,7 @@ pub struct StorageRuntime {
     cache: Rc<RefCell<PicoStorageCache>>,
 }
 
-pub struct PicoStorageCache(LRUCache<String, (PreparedStmt, VersionMap)>);
+pub struct PicoStorageCache(LRUCache<SmolStr, (PreparedStmt, VersionMap)>);
 
 impl PicoStorageCache {
     pub fn new(
@@ -65,26 +66,27 @@ impl PicoStorageCache {
 impl StorageCache for PicoStorageCache {
     fn put(
         &mut self,
-        plan_id: String,
+        plan_id: SmolStr,
         stmt: PreparedStmt,
         schema_info: &SchemaInfo,
     ) -> Result<(), SbroadError> {
-        let mut version_map: HashMap<String, u64> =
+        let mut version_map: HashMap<SmolStr, u64> =
             HashMap::with_capacity(schema_info.router_version_map.len());
-        let node = node::global()
-            .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
         let storage_tables = &node.storage.tables;
         for table_name in schema_info.router_version_map.keys() {
             let space_name = normalize_name_for_space_api(table_name);
             let current_version = if let Some(space_def) =
                 storage_tables.by_name(space_name.as_str()).map_err(|e| {
-                    SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
+                    SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
                 })? {
                 space_def.schema_version
             } else {
                 return Err(SbroadError::NotFound(
                     Entity::SpaceMetadata,
-                    format!("for space: {}", space_name),
+                    format_smolstr!("for space: {}", space_name),
                 ));
             };
             version_map.insert(space_name, current_version);
@@ -93,18 +95,19 @@ impl StorageCache for PicoStorageCache {
         self.0.put(plan_id, (stmt, version_map))
     }
 
-    fn get(&mut self, plan_id: &String) -> Result<Option<&PreparedStmt>, SbroadError> {
+    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<&PreparedStmt>, SbroadError> {
         let Some((ir, version_map)) = self.0.get(plan_id)? else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
-        let node = node::global()
-            .map_err(|e| SbroadError::FailedTo(Action::Get, None, format!("raft node: {}", e)))?;
+        let node = node::global().map_err(|e| {
+            SbroadError::FailedTo(Action::Get, None, format_smolstr!("raft node: {}", e))
+        })?;
         let storage_tables = &node.storage.tables;
         for (table_name, cached_version) in version_map {
             let space_name = normalize_name_for_space_api(table_name);
             let Some(space_def) = storage_tables.by_name(space_name.as_str()).map_err(|e| {
-                SbroadError::FailedTo(Action::Get, None, format!("space_def: {}", e))
+                SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
             })?
             else {
                 return Ok(None);
@@ -136,14 +139,18 @@ impl QueryCache for StorageRuntime {
             .cache()
             .try_borrow()
             .map_err(|e| {
-                SbroadError::FailedTo(Action::Borrow, Some(Entity::Cache), format!("{e:?}"))
+                SbroadError::FailedTo(
+                    Action::Borrow,
+                    Some(Entity::Cache),
+                    format_smolstr!("{e:?}"),
+                )
             })?
             .capacity())
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
         *self.cache.try_borrow_mut().map_err(|e| {
-            SbroadError::FailedTo(Action::Clear, Some(Entity::Cache), format!("{e:?}"))
+            SbroadError::FailedTo(Action::Clear, Some(Entity::Cache), format_smolstr!("{e:?}"))
         })? = Self::Cache::new(DEFAULT_CAPACITY, None)?;
         Ok(())
     }
@@ -168,7 +175,7 @@ impl Vshard for StorageRuntime {
     ) -> Result<Box<dyn Any>, SbroadError> {
         Err(SbroadError::Unsupported(
             Entity::Runtime,
-            Some("exec_ir_on_all is not supported on the storage".to_string()),
+            Some("exec_ir_on_all is not supported on the storage".to_smolstr()),
         ))
     }
 
@@ -191,7 +198,7 @@ impl Vshard for StorageRuntime {
     ) -> Result<Box<dyn Any>, SbroadError> {
         Err(SbroadError::Unsupported(
             Entity::Runtime,
-            Some("exec_ir_on_some is not supported on the storage".to_string()),
+            Some("exec_ir_on_some is not supported on the storage".to_smolstr()),
         ))
     }
 
