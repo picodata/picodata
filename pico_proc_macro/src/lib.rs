@@ -522,8 +522,28 @@ impl Args {
 
 #[derive(Default)]
 struct FieldAttrs {
+    /// Looks like this in the source code: `#[introspection(ignore)]`.
+    ///
+    /// If specified, the field is invisible to the derive macro, i.e. it is not
+    /// present in `FIELD_INFOS` and is not settable/gettable by the
+    /// setter/getter methods.
     ignore: bool,
+
+    /// Looks like this in the source code: `#[introspection(nested)]`.
+    ///
+    /// If specified, the field is treated as a nested substruct for the
+    /// purposes of setting/getting nested fields. The type of this field also
+    /// will be required to implement the `Introspection` trait.
+    ///
+    /// Basically for the paths like `"foo.bar.baz"` to work with the setters and getters
+    /// both `foo` field and `foo.bar` field must be marked with `#[introspection(nested)]` attribute.
     nested: bool,
+
+    /// Looks like this in the source code: `#[introspection(config_default = <expr>)]`.
+    ///
+    /// If specified, the provided expression is associated with the given field
+    /// as a default configuration parameter value. See also doc comments of
+    /// `Introspection::get_field_default_value_as_rmpv` for more details.
     config_default: Option<syn::Expr>,
 }
 
