@@ -2,7 +2,7 @@ import pytest
 import re
 import uuid
 
-from conftest import Cluster, KeyDef, KeyPart, ReturnError, Retriable
+from conftest import Cluster, Instance, KeyDef, KeyPart, ReturnError, Retriable
 
 
 def test_pico_sql(cluster: Cluster):
@@ -935,6 +935,43 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         assert sorted(data["rows"], key=lambda x: x[0]) == [[2, 2], [2, 9]]
 
     Retriable(rps=5, timeout=6).call(check_complex_segment_child)
+
+
+def test_trim(instance: Instance):
+    instance.sql(
+        """
+        create table t (s string not null, primary key (s))
+        using memtx
+        distributed by (s)
+        """
+    )
+
+    instance.sql(""" insert into t values (' aabb ') """)
+
+    # basic trim test
+    data = instance.sql(""" select trim(s) from t """)
+    assert data["rows"][0] == ["aabb"]
+
+    # trim inside trim
+    data = instance.sql(""" select trim(trim(s)) from t """)
+    assert data["rows"][0] == ["aabb"]
+
+    # trim with removal chars
+    data = instance.sql(""" select trim('a' from trim(s)) from t """)
+    assert data["rows"][0] == ["bb"]
+
+    data = instance.sql(""" select trim(trim(s) from trim(s)) from t """)
+    assert data["rows"][0] == [""]
+
+    # trim with modifiers
+    data = instance.sql(""" select trim(leading 'a' from trim(s)) from t """)
+    assert data["rows"][0] == ["bb"]
+
+    data = instance.sql(""" select trim(trailing 'b' from trim(s)) from t """)
+    assert data["rows"][0] == ["aa"]
+
+    data = instance.sql(""" select trim(both 'ab' from trim(s)) from t """)
+    assert data["rows"][0] == [""]
 
 
 def test_except_on_global_tbls(cluster: Cluster):

@@ -406,6 +406,14 @@ impl Default for RouterMetadata {
     }
 }
 
+fn functions() -> HashMap<String, Function> {
+    let functions = [(
+        "\"TRIM\"".into(),
+        Function::new_stable("trim".into(), Type::String),
+    )];
+    functions.into_iter().collect()
+}
+
 impl RouterMetadata {
     #[must_use]
     pub fn new() -> Self {
@@ -415,7 +423,7 @@ impl RouterMetadata {
             jaeger_agent_host: DEFAULT_JAEGER_AGENT_HOST,
             jaeger_agent_port: DEFAULT_JAEGER_AGENT_PORT,
             sharding_column: DEFAULT_BUCKET_COLUMN.to_string(),
-            functions: HashMap::new(),
+            functions: functions(),
         }
     }
 

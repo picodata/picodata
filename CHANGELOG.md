@@ -11,6 +11,7 @@ with the `YY.MINOR.MICRO` scheme.
 ## Unreleased
 
 - Fix `picodata admin` 100\% CPU usage when server closes the socket
+- SQL supports `trim` function.
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
