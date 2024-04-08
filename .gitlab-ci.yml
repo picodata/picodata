@@ -3,6 +3,7 @@ stages:
   - test
   - pack
   - docker
+  - stress-test
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
@@ -428,3 +429,33 @@ deploy-docker:
         docker --config $CI_PROJECT_DIR/.docker push ${REGISTRY}/${image}:${BASE_IMAGE_LATEST}
         ci-log-section end "deploy-docker-${image}"
       done
+
+# Stages of independent stress testing in downstream pipeline
+
+# We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
+upload-picodata-to-binary:
+  stage: stress-test
+  tags:
+    - picodata-docker
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
+  variables:
+    VER: $CI_COMMIT_SHORT_SHA
+    GIT_DEPTH: 100
+    GIT_SUBMODULE_STRATEGY: recursive
+  script:
+    - cargo build --locked --release --features webui
+    - mv target/release/picodata target/release/picodata-$VER
+    - curl -v --upload-file target/release/picodata-$VER $RAW_NT_REGISTRY
+
+downstream-stress-test:
+# See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
+  stage: stress-test
+  trigger:
+    project: picodata/devops/proxmox/sbroad-nt
+    branch: main
+    strategy: depend
+  variables:
+    VER: $CI_COMMIT_SHORT_SHA
+  needs:
+    - job: upload-picodata-to-binary
