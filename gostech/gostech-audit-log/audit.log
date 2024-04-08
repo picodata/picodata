@@ -1,0 +1,13 @@
+{"id":"1.0.1","message":"audit log is ready","severity":"low","time":"2024-03-26T13:02:22.053+0300","title":"init_audit"}
+{"id":"1.0.2","message":"instance is starting","severity":"low","time":"2024-03-26T13:02:22.057+0300","title":"local_startup"}
+{"id":"1.0.3","initiator":"admin","instance_id":"i1","message":"a new instance `i1` joined the cluster","raft_id":"1","severity":"low","time":"2024-03-26T13:02:22.122+0300","title":"join_instance"}
+{"id":"1.0.4","initiator":"admin","instance_id":"i1","message":"current grade of instance `i1` changed to Offline(0)","new_grade":"Offline(0)","raft_id":"1","severity":"medium","time":"2024-03-26T13:02:22.122+0300","title":"change_current_grade"}
+{"id":"1.0.5","initiator":"admin","instance_id":"i1","message":"target grade of instance `i1` changed to Offline(0)","new_grade":"Offline(0)","raft_id":"1","severity":"low","time":"2024-03-26T13:02:22.122+0300","title":"change_target_grade"}
+{"id":"1.0.6","initiator":"admin","key":"password_min_length","message":"property `password_min_length` was changed to 8","severity":"high","time":"2024-03-26T13:02:22.123+0300","title":"change_config","value":"8"}
+{"id":"1.0.7","initiator":"admin","key":"max_pg_portals","message":"property `max_pg_portals` was changed to 50","severity":"high","time":"2024-03-26T13:02:22.123+0300","title":"change_config","value":"50"}
+{"id":"1.0.8","initiator":"admin","key":"snapshot_chunk_max_size","message":"property `snapshot_chunk_max_size` was changed to 16777216","severity":"high","time":"2024-03-26T13:02:22.123+0300","title":"change_config","value":"16777216"}
+{"id":"1.0.9","initiator":"admin","instance_id":"i1","message":"target grade of instance `i1` changed to Online(1)","new_grade":"Online(1)","raft_id":"1","severity":"low","time":"2024-03-26T13:02:22.231+0300","title":"change_target_grade"}
+{"id":"1.0.10","initiator":"admin","instance_id":"i1","message":"current grade of instance `i1` changed to Replicated(1)","new_grade":"Replicated(1)","raft_id":"1","severity":"medium","time":"2024-03-26T13:02:22.348+0300","title":"change_current_grade"}
+{"id":"1.0.11","initiator":"guest","message":"successfully authenticated user `guest`","severity":"high","time":"2024-03-26T13:02:22.367+0300","title":"auth_ok","user":"guest","verdict":"user is not blocked"}
+{"id":"1.0.12","initiator":"guest","message":"successfully authenticated user `guest`","severity":"high","time":"2024-03-26T13:02:22.367+0300","title":"auth_ok","user":"guest","verdict":"user is not blocked"}
+{"id":"1.0.13","initiator":"admin","instance_id":"i1","message":"current grade of instance `i1` changed to Online(1)","new_grade":"Online(1)","raft_id":"1","severity":"medium","time":"2024-03-26T13:02:22.485+0300","title":"change_current_grade"}
