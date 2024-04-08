@@ -67,7 +67,7 @@ sudo dnf install yarn nodejs
 Установка общих зависимостей для сборки:
 
 ```bash
-sudo apt-get install build-essential git cmake -y
+sudo apt-get install build-essential git cmake autoconf libtool -y
 ```
 
 Установка NodeJS и Yarn (для веб-интерфейса):
