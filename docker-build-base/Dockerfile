@@ -9,7 +9,7 @@ RUN set -e; \
         python3 \
         python3-yaml \
         python3-six \
-        python3-gevent \   
+        python3-gevent \
         python3-pip \
         libzstd-dev \
         libyaml-dev \
@@ -19,6 +19,7 @@ RUN set -e; \
         libreadline-dev \
         libicu-dev \
         libsasl2-dev \
+        pkg-config \
         libldap2-dev && \
         apt-get clean all
 

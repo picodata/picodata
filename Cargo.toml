@@ -10,7 +10,7 @@ rust-version = "1.76.0"
 [dependencies]
 ahash = "0.7"
 bytes = "1.1"
-clap = {version = "3", features = ["derive", "env"]}
+clap = { version = "3", features = ["derive", "env"] }
 indoc = "2"
 lazy_static = "1.4"
 opentelemetry = "0.17"
@@ -26,7 +26,7 @@ rmp = "*"
 tempfile = "3.8"
 thiserror = "1.0"
 nix = { version = "0.26.4", features = ["fs", "term", "process", "signal"] }
-uuid = {version = "1.0", features = ["v3"]}
+uuid = { version = "1.0", features = ["v3"] }
 futures = "0.3.25"
 once_cell = "1.17.1"
 blake3 = "=1.3.3"
@@ -43,7 +43,7 @@ linkme = "0.3.14"
 libloading = "0.8"
 abi_stable = "0.11.2"
 
-picodata-sdk = {path = "./sdk/picodata-sdk"}
+picodata-sdk = { path = "./sdk/picodata-sdk" }
 
 [dependencies.protobuf]
 version = "2.27"
@@ -93,9 +93,11 @@ harness = false
 
 [workspace]
 members = [
-        ".",
-        "pico_proc_macro",
-        "sdk/picodata-sdk", # picodata / plugins etc. it is temporary naming
-        "sdk/plugin-example",
-        "sdk/plugin-example2",
+    ".",
+    "pico_proc_macro",
+    "sdk/picodata-sdk",          # picodata / plugins etc. it is temporary naming
+    "sdk/plugin-example",
+    "sdk/plugin-example2",
+    "gostech/gostech-audit-log",
+    "gostech/gostech-metrics",
 ]
