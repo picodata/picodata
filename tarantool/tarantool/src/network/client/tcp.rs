@@ -18,14 +18,13 @@
 
 use std::cell::Cell;
 use std::ffi::{CString, NulError};
-use std::future::Future;
+use std::io;
 use std::mem::{self, MaybeUninit};
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use std::{io, ptr};
 
 #[cfg(feature = "async-std")]
 use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
@@ -33,8 +32,8 @@ use async_std::io::{Read as AsyncRead, Write as AsyncWrite};
 use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
+use crate::fiber;
 use crate::fiber::r#async::context::ContextExt;
-use crate::fiber::{self, r#async};
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
@@ -300,41 +299,6 @@ unsafe fn resolve_addr(
     Ok((ipv4_addresses, ipv6_addresses))
 }
 
-async unsafe fn get_address_info(url: &str) -> Result<*mut libc::addrinfo, Error> {
-    struct GetAddrInfo(r#async::coio::GetAddrInfo);
-
-    impl Future for GetAddrInfo {
-        type Output = Result<*mut libc::addrinfo, ()>;
-
-        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            unsafe {
-                if self.0.err.get() {
-                    return Poll::Ready(Err(()));
-                }
-                if self.0.res.get().is_null() {
-                    ContextExt::set_coio_getaddrinfo(cx, self.0.clone());
-                    Poll::Pending
-                } else {
-                    Poll::Ready(Ok(self.0.res.get()))
-                }
-            }
-        }
-    }
-
-    let host = CString::new(url).map_err(Error::ConstructCString)?;
-    let mut hints = MaybeUninit::<libc::addrinfo>::zeroed().assume_init();
-    hints.ai_family = libc::AF_UNSPEC;
-    hints.ai_socktype = libc::SOCK_STREAM;
-    GetAddrInfo(r#async::coio::GetAddrInfo {
-        host,
-        hints,
-        res: Rc::new(Cell::new(ptr::null_mut())),
-        err: Rc::new(Cell::new(false)),
-    })
-    .await
-    .map_err(|()| Error::ResolveAddress(url.into()))
-}
-
 impl AsyncWrite for TcpStream {
     fn poll_write(
         self: Pin<&mut Self>,
@@ -522,13 +486,6 @@ mod tests {
     const _0_SEC: Duration = Duration::from_secs(0);
 
     #[crate::test(tarantool = "crate")]
-    fn resolve_address() {
-        unsafe {
-            let _ = fiber::block_on(get_address_info("localhost").timeout(_10_SEC)).unwrap();
-        }
-    }
-
-    #[crate::test(tarantool = "crate")]
     async fn get_libc_addrs() {
         let (addrs_v4, addrs_v6) =
             unsafe { resolve_addr("example.org", 80, _10_SEC.as_secs_f64()).unwrap() };
@@ -563,16 +520,6 @@ mod tests {
         };
 
         assert_eq!(err, "failed to resolve domain name 'invalid domain name'");
-    }
-
-    #[crate::test(tarantool = "crate")]
-    fn resolve_address_error() {
-        unsafe {
-            let err = fiber::block_on(get_address_info("invalid domain name").timeout(_10_SEC))
-                .unwrap_err()
-                .to_string();
-            assert_eq!(err, "failed to resolve domain name 'invalid domain name'");
-        }
     }
 
     #[crate::test(tarantool = "crate")]

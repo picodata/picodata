@@ -115,24 +115,7 @@ mod waker {
     }
 }
 
-pub(crate) mod coio {
-    use std::cell::Cell;
-    use std::ffi::CString;
-    use std::rc::Rc;
-
-    /// Request for address resolution. After being set in [`super::context::ContextExt`] it will be executed by `block_on`.
-    /// See [coio_getaddrinfo](crate::ffi::tarantool::coio_getaddrinfo) for low level details.
-    #[derive(Clone, Debug)]
-    pub struct GetAddrInfo {
-        pub host: CString,
-        pub hints: libc::addrinfo,
-        pub res: Rc<Cell<*mut libc::addrinfo>>,
-        pub err: Rc<Cell<bool>>,
-    }
-}
-
 pub(crate) mod context {
-    use super::coio::GetAddrInfo;
     use std::os::unix::io::RawFd;
     use std::task::Context;
     use std::task::Waker;
@@ -158,10 +141,6 @@ pub(crate) mod context {
         /// Wait an event on a file descriptor rather than on a
         /// `fiber::Cond` (that is under the hood of a `Waker`).
         pub(super) coio_wait: Option<(RawFd, ffi::CoIOFlags)>,
-
-        /// Wait for address resolution rather than on a
-        /// `fiber::Cond` (that is under the hood of a `Waker`).
-        pub(super) coio_getaddrinfo: Option<GetAddrInfo>,
     }
 
     impl<'a> ContextExt<'a> {
@@ -171,7 +150,6 @@ pub(crate) mod context {
                 cx: Context::from_waker(waker),
                 deadline: None,
                 coio_wait: None,
-                coio_getaddrinfo: None,
             }
         }
 
@@ -204,12 +182,6 @@ pub(crate) mod context {
         pub unsafe fn set_coio_wait(cx: &mut Context<'_>, fd: RawFd, event: ffi::CoIOFlags) {
             let cx = Self::as_context_ext(cx);
             cx.coio_wait = Some((fd, event));
-        }
-
-        /// SAFETY: `cx` must really be the `ContextExt`
-        pub unsafe fn set_coio_getaddrinfo(cx: &mut Context<'_>, v: GetAddrInfo) {
-            let cx = Self::as_context_ext(cx);
-            cx.coio_getaddrinfo = Some(v);
         }
     }
 }
@@ -287,20 +259,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
             None => Duration::MAX,
         };
 
-        if let Some(getaddrinfo) = cx.coio_getaddrinfo {
-            let mut res = std::ptr::null_mut();
-            let out = unsafe {
-                crate::ffi::tarantool::coio_getaddrinfo(
-                    getaddrinfo.host.as_ptr(),
-                    std::ptr::null(),
-                    &getaddrinfo.hints as *const _,
-                    &mut res as *mut _,
-                    timeout.as_secs_f64(),
-                )
-            };
-            getaddrinfo.err.set(out != 0);
-            getaddrinfo.res.set(res);
-        } else if let Some((fd, event)) = cx.coio_wait {
+        if let Some((fd, event)) = cx.coio_wait {
             unsafe {
                 crate::ffi::tarantool::coio_wait(fd, event.bits(), timeout.as_secs_f64());
             }
