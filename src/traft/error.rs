@@ -155,8 +155,8 @@ where
     }
 }
 
-impl From<::tarantool::network::Error> for Error {
-    fn from(err: ::tarantool::network::Error) -> Self {
+impl From<::tarantool::network::ClientError> for Error {
+    fn from(err: ::tarantool::network::ClientError) -> Self {
         Self::Tarantool(err.into())
     }
 }

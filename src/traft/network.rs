@@ -20,8 +20,8 @@ use ::tarantool::fiber::r#async::timeout::Error as TOError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 use ::tarantool::network::AsClient as _;
+use ::tarantool::network::ClientError;
 use ::tarantool::network::Config;
-use ::tarantool::network::Error as NetError;
 use ::tarantool::network::ReconnClient;
 use ::tarantool::tuple::{ToTupleBuffer, Tuple, TupleBuffer};
 use ::tarantool::util::IntoClones;
@@ -240,12 +240,12 @@ impl PoolWorker {
                         let is_connected;
                         match result {
                             Ok(_)
-                            | Err(TOError::Failed(NetError::ErrorResponse(_)))
-                            | Err(TOError::Failed(NetError::RequestEncode(_)))
-                            | Err(TOError::Failed(NetError::ResponseDecode(_))) => {
+                            | Err(TOError::Failed(ClientError::ErrorResponse(_)))
+                            | Err(TOError::Failed(ClientError::RequestEncode(_)))
+                            | Err(TOError::Failed(ClientError::ResponseDecode(_))) => {
                                 is_connected = true;
                             }
-                            Err(TOError::Failed(NetError::ConnectionClosed(_)))
+                            Err(TOError::Failed(ClientError::ConnectionClosed(_)))
                             | Err(TOError::Expired) => {
                                 is_connected = false;
                             }

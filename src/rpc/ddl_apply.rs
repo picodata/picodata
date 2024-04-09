@@ -41,7 +41,7 @@ crate::define_rpc_request! {
         }
 
         if crate::tarantool::eval("return box.info.ro")? {
-            let e = tarantool::set_and_get_error!(
+            let e = tarantool::error::BoxError::new(
                 TarantoolErrorCode::Readonly,
                 "cannot apply schema change on a read only instance"
             );

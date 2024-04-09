@@ -9,7 +9,7 @@ use std::process;
 use rustyline::config::Configurer;
 use rustyline::Helper;
 use rustyline::{error::ReadlineError, history::FileHistory, Editor};
-use tarantool::network::client;
+use tarantool::network::ClientError;
 
 use super::admin::LuaHelper;
 use super::admin::UnixClientError;
@@ -17,7 +17,7 @@ use super::admin::UnixClientError;
 #[derive(thiserror::Error, Debug)]
 pub enum ReplError {
     #[error("{0}")]
-    Client(#[from] client::Error),
+    Client(#[from] ClientError),
 
     #[error("{0}")]
     UnixClient(#[from] UnixClientError),
