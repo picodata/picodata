@@ -3447,3 +3447,131 @@ def test_index(cluster: Cluster):
     # Drop non-existing index.
     ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
     assert ddl["row_count"] == 0
+
+
+def test_order_by(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    ddl = i1.sql(
+        """
+        create table "null_t" ("na" integer not null, "nb" int, "nc" int, primary key ("na"))
+        distributed by ("na")
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into "null_t" values
+            (1, 2, 1),
+            (2, NULL, 3),
+            (3, 2, 3),
+            (4, 3, 1),
+            (5, 1, 5),
+            (6, -1, 3),
+            (7, 1, 1),
+            (8, NULL, -1)
+    """
+    )
+    assert dml["row_count"] == 8
+
+    expected_ordering_by_1 = [
+        [1, 2, 1],
+        [2, None, 3],
+        [3, 2, 3],
+        [4, 3, 1],
+        [5, 1, 5],
+        [6, -1, 3],
+        [7, 1, 1],
+        [8, None, -1],
+    ]
+    data = i1.sql(""" select * from "null_t" order by "na" """)
+    assert data["rows"] == expected_ordering_by_1
+    data = i1.sql(""" select * from "null_t" order by 1 """)
+    assert data["rows"] == expected_ordering_by_1
+    data = i1.sql(""" select * from "null_t" order by 1 asc """)
+    assert data["rows"] == expected_ordering_by_1
+    data = i1.sql(""" select * from "null_t" order by "na" asc """)
+    assert data["rows"] == expected_ordering_by_1
+    data = i1.sql(""" select * from "null_t" order by 1, 2 """)
+    assert data["rows"] == expected_ordering_by_1
+
+    expected_ordering_by_2 = [
+        [2, None, 3],
+        [8, None, -1],
+        [6, -1, 3],
+        [5, 1, 5],
+        [7, 1, 1],
+        [1, 2, 1],
+        [3, 2, 3],
+        [4, 3, 1],
+    ]
+    data = i1.sql(""" select * from "null_t" order by "nb" """)
+    assert data["rows"] == expected_ordering_by_2
+    data = i1.sql(""" select * from "null_t" order by "nb" asc """)
+    assert data["rows"] == expected_ordering_by_2
+    data = i1.sql(""" select * from "null_t" order by 2 """)
+    assert data["rows"] == expected_ordering_by_2
+
+    data = i1.sql(""" select * from "null_t" order by 1 desc """)
+    assert data["rows"] == [
+        [8, None, -1],
+        [7, 1, 1],
+        [6, -1, 3],
+        [5, 1, 5],
+        [4, 3, 1],
+        [3, 2, 3],
+        [2, None, 3],
+        [1, 2, 1],
+    ]
+
+    expected_ordering_by_2_desc = [
+        [4, 3, 1],
+        [1, 2, 1],
+        [3, 2, 3],
+        [5, 1, 5],
+        [7, 1, 1],
+        [6, -1, 3],
+        [2, None, 3],
+        [8, None, -1],
+    ]
+    data = i1.sql(""" select * from "null_t" order by "nb" desc """)
+    assert data["rows"] == expected_ordering_by_2_desc
+    data = i1.sql(""" select * from "null_t" order by "nb" * 2 + 42 * "nb" desc """)
+    assert data["rows"] == expected_ordering_by_2_desc
+
+    data = i1.sql(""" select * from "null_t" order by "nb" desc, "na" desc """)
+    assert data["rows"] == [
+        [4, 3, 1],
+        [3, 2, 3],
+        [1, 2, 1],
+        [7, 1, 1],
+        [5, 1, 5],
+        [6, -1, 3],
+        [8, None, -1],
+        [2, None, 3],
+    ]
+
+    data = i1.sql(""" select * from "null_t" order by 2 asc, 1 desc, 2 desc, 1 asc """)
+    assert data["rows"] == [
+        [8, None, -1],
+        [2, None, 3],
+        [6, -1, 3],
+        [7, 1, 1],
+        [5, 1, 5],
+        [3, 2, 3],
+        [1, 2, 1],
+        [4, 3, 1],
+    ]
+
+    with pytest.raises(
+        ReturnError,
+        match="Ordering index \\(4\\) is bigger than child projection output length \\(3\\)",
+    ):
+        i1.sql(""" select * from "null_t" order by 4 """)
+    with pytest.raises(
+        ReturnError,
+        match="Using parameter as a standalone ORDER BY expression doesn't influence sorting",
+    ):
+        i1.sql(""" select * from "null_t" order by ? """)

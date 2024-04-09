@@ -675,6 +675,7 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::ScanSubQuery { .. }
                 | Relational::Selection { .. }
                 | Relational::GroupBy { .. }
+                | Relational::OrderBy { .. }
                 | Relational::Having { .. }
                 | Relational::UnionAll { .. }
                 | Relational::Values { .. }

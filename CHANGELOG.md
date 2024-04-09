@@ -13,6 +13,7 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix `picodata admin` 100\% CPU usage when server closes the socket
 - SQL supports `trim` function.
 - SQL supports `to_char`, `to_date` functions.
+- SQL supports `ORDER BY` clause.
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
