@@ -34,7 +34,6 @@ use futures::{AsyncRead, AsyncWrite};
 
 use crate::ffi::tarantool as ffi;
 use crate::fiber::r#async::context::ContextExt;
-use crate::fiber::r#async::timeout::IntoTimeout;
 use crate::fiber::{self, r#async};
 
 #[derive(thiserror::Error, Debug)]
@@ -508,7 +507,8 @@ mod tests {
     use super::*;
 
     use crate::fiber;
-    use crate::fiber::r#async::timeout::{self};
+    use crate::fiber::r#async::timeout;
+    use crate::fiber::r#async::timeout::IntoTimeout as _;
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
