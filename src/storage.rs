@@ -2531,11 +2531,12 @@ pub fn ddl_create_space_on_master(
 
     let res = (|| -> tarantool::Result<()> {
         if tt_pk_def.parts.is_empty() {
-            return Err(tarantool::set_and_get_error!(
+            return Err(tarantool::error::BoxError::new(
                 tarantool::error::TarantoolErrorCode::ModifyIndex,
-                "can't create index '{}' in space '{}': parts list cannot be empty",
-                tt_pk_def.name,
-                tt_space_def.name,
+                format!(
+                    "can't create index '{}' in space '{}': parts list cannot be empty",
+                    tt_pk_def.name, tt_space_def.name,
+                ),
             )
             .into());
         }

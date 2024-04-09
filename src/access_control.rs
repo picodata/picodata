@@ -310,11 +310,12 @@ fn detect_role_grant_cycles(
     }
 
     if visited.contains(&(granted_role.id as i64)) {
-        let err = tarantool::set_and_get_error!(
+        let err = tarantool::error::BoxError::new(
             tarantool::error::TarantoolErrorCode::RoleLoop,
-            "Granting role {} to role {} would create a loop",
-            granted_role.name,
-            grantee_name
+            format!(
+                "Granting role {} to role {} would create a loop",
+                granted_role.name, grantee_name
+            ),
         );
         return Err(err.into());
     }
