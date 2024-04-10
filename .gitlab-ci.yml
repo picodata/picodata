@@ -224,6 +224,22 @@ test-linux:
 
     - make lint
 
+    # Now do the same thing as above but for release mode.
+    # TODO: cleanup the copypasta
+    - cargo build --locked --release
+    - cargo build -p testplug --release
+    - cp ./target/release/libtestplug.so ./test/testplug/.
+    - cargo test --locked --release
+
+    - cargo build --features webui,error_injection --locked --release
+
+    # -vv shows extended diff for failures
+    - >
+      BUILD_PROFILE=release pipenv run pytest -vv
+      --numprocesses auto
+      --junitxml=junit_pytest.xml
+      --with-webui
+
   artifacts:
     when: always
     paths:
