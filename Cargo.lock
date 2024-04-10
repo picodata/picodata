@@ -2379,12 +2379,8 @@ dependencies = [
  "serde_repr",
  "serde_yaml 0.9.34+deprecated",
  "slog",
-<<<<<<< HEAD
- "tarantool 5.0.0",
-=======
  "smol_str",
- "tarantool",
->>>>>>> cb3554b2 (Change String to SmolStr to fit in with sbroad)
+ "tarantool 5.0.0",
  "tempfile",
  "thiserror",
  "uuid 1.8.0",

@@ -43,13 +43,9 @@ linkme = "0.3.14"
 libloading = "0.8"
 abi_stable = "0.11.2"
 
-<<<<<<< HEAD
 picodata-sdk = { path = "./sdk/picodata-sdk" }
 picoplugin = { path = "./picoplugin" }
-=======
-picodata-sdk = {path = "./sdk/picodata-sdk"}
 smol_str = "0.2.1"
->>>>>>> cb3554b2 (Change String to SmolStr to fit in with sbroad)
 
 [dependencies.protobuf]
 version = "2.27"

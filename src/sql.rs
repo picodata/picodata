@@ -44,7 +44,7 @@ use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
 use serde::Deserialize;
-use smol_str::{format_smolstr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
 
@@ -946,9 +946,11 @@ fn reenterable_schema_change_request(
             }
             opts.shrink_to_fit();
 
+            let columns = columns.iter().cloned().map(String::from).collect();
+
             let params = CreateIndexParams {
-                name,
-                space_name: table_name,
+                name: name.to_string(),
+                space_name: table_name.to_string(),
                 columns,
                 ty: index_type,
                 opts,
@@ -1034,11 +1036,11 @@ fn reenterable_schema_change_request(
         }
         IrNode::Ddl(Ddl::DropProc { name, params, .. }) => {
             // Nothing to check
-            Params::DropProcedure(name.to_string(), params)
+            Params::DropProcedure(name, params)
         }
         IrNode::Ddl(Ddl::DropTable { name, .. }) => {
             // Nothing to check
-            Params::DropTable(name.to_string())
+            Params::DropTable(name)
         }
         IrNode::Ddl(Ddl::RenameRoutine {
             old_name,
@@ -1055,7 +1057,7 @@ fn reenterable_schema_change_request(
         }
         IrNode::Acl(Acl::DropUser { name, .. }) => {
             // Nothing to check
-            Params::DropUser(name.to_string())
+            Params::DropUser(name)
         }
         IrNode::Acl(Acl::CreateRole { name, .. }) => {
             // Nothing to check
@@ -1063,7 +1065,7 @@ fn reenterable_schema_change_request(
         }
         IrNode::Acl(Acl::DropRole { name, .. }) => {
             // Nothing to check
-            Params::DropRole(name.to_string())
+            Params::DropRole(name)
         }
         IrNode::Acl(Acl::CreateUser {
             name,
@@ -1559,19 +1561,19 @@ fn reenterable_schema_change_request(
     // THOUGHT: should `owner_id` be part of `CreateUser`, `CreateRole` params?
     enum Params {
         CreateTable(CreateTableParams),
-        DropTable(String),
+        DropTable(SmolStr),
         CreateUser(String, AuthDef),
         AlterUser(String, AlterOptionParam),
-        DropUser(String),
+        DropUser(SmolStr),
         CreateRole(String),
-        DropRole(String),
+        DropRole(SmolStr),
         GrantPrivilege(GrantRevokeType, String),
         RevokePrivilege(GrantRevokeType, String),
         RenameRoutine(RenameRoutineParams),
         CreateProcedure(CreateProcParams),
-        DropProcedure(String, Option<Vec<ParamDef>>),
+        DropProcedure(SmolStr, Option<Vec<ParamDef>>),
         CreateIndex(CreateIndexParams),
-        DropIndex(String),
+        DropIndex(SmolStr),
     }
 }
 
