@@ -1,5 +1,6 @@
 #![allow(clippy::redundant_allocation)]
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::rc::Rc;
+use std::time::Duration;
 
 use tarantool::fiber::{fiber_yield, is_cancelled, sleep, Cond, Fiber, FiberAttr};
 
@@ -53,43 +54,6 @@ pub fn fiber_wake() {
     sleep(Duration::from_millis(10));
     fiber.wakeup();
     fiber.join();
-}
-
-pub fn fiber_wake_multiple() {
-    let res = Rc::new(RefCell::new(vec![]));
-    let mut fibers = vec![];
-    for (i, c) in (1..).zip(&['a', 'b', 'c']) {
-        let mut fiber = Fiber::new(&format!("test_fiber_{}", c), &mut |r: Box<
-            Rc<RefCell<Vec<i32>>>,
-        >| {
-            fiber_yield();
-            r.borrow_mut().push(i);
-            0
-        });
-        fiber.start(res.clone());
-        fiber.wakeup();
-        fibers.push(fiber);
-    }
-
-    for f in &mut fibers {
-        f.set_joinable(true);
-    }
-
-    res.borrow_mut().push(0);
-    for f in fibers {
-        f.join();
-    }
-    res.borrow_mut().push(4);
-
-    let res = res.borrow().iter().copied().collect::<Vec<_>>();
-    // This is what we want:
-    // assert_eq(res, vec![0, 1, 2, 3, 4]);
-    // This is what we get:
-    assert_eq!(res, vec![0, 3, 3, 3, 4]);
-    // Because `Fiber` doesn't work with closures. `i` is passed by reference
-    // and by the time the first fiber starts executing, it is equal to 3.
-    // This is actually undefined behavior, so adding this test is probably a
-    // bad idea
 }
 
 pub fn fiber_cond_signal() {

@@ -407,7 +407,7 @@ mod tests {
     use super::*;
     use crate::fiber;
 
-    #[crate::test(tarantool = "crate", should_panic)]
+    #[crate::test(tarantool = "crate", should_panic = cfg!(debug_assertions))]
     fn no_yields_guard_panic_in_drop() {
         let guard = NoYieldsGuard::new();
         fiber::reschedule();
@@ -428,7 +428,7 @@ mod tests {
         std::mem::forget(guard);
     }
 
-    #[crate::test(tarantool = "crate", should_panic)]
+    #[crate::test(tarantool = "crate", should_panic = cfg!(debug_assertions))]
     fn no_yields_ref_cell_yield_when_borrowed() {
         let cell = NoYieldsRefCell::new(());
         let r = cell.borrow();
@@ -437,7 +437,7 @@ mod tests {
         drop(r);
     }
 
-    #[crate::test(tarantool = "crate", should_panic)]
+    #[crate::test(tarantool = "crate", should_panic = cfg!(debug_assertions))]
     fn no_yields_ref_cell_yield_when_borrowed_mut() {
         let cell = NoYieldsRefCell::new(());
         let r = cell.borrow_mut();

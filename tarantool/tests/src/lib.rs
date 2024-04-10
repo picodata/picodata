@@ -313,8 +313,12 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::values::cdata_numbers,
                 tlua::values::push_cdata,
                 tlua::values::cdata_on_stack,
-                #[should_panic]
+            ]);
+            tests.append(&mut tests![
+                [should_panic_if: cfg!(debug_assertions)]
                 tlua::values::as_cdata_wrong_size,
+            ]);
+            tests.append(&mut tests![
                 tlua::values::readwrite_floats,
                 tlua::values::readwrite_bools,
                 tlua::values::readwrite_strings,
@@ -330,7 +334,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 fiber::old::fiber_arg,
                 fiber::old::fiber_cancel,
                 fiber::old::fiber_wake,
-                fiber::old::fiber_wake_multiple,
                 fiber::old::fiber_cond_signal,
                 fiber::old::fiber_cond_broadcast,
                 fiber::old::fiber_cond_timeout,

@@ -29,10 +29,13 @@ pub fn debug() {
 
     let (file, line, mut guard) = (file!(), line!(), m.lock());
 
-    assert_eq!(
-        start(|| format!("{:?}", m)).join(),
+    let expected = if cfg!(debug_assertions) {
         format!("Mutex {{ data: <locked at {file}:{line}>, .. }}")
-    );
+    } else {
+        "Mutex { data: <locked>, .. }".to_owned()
+    };
+    let mutex_debug_repr = start(|| format!("{:?}", m)).join();
+    assert_eq!(mutex_debug_repr, expected);
 
     *guard = 13;
     drop(guard);
