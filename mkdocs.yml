@@ -75,6 +75,8 @@ nav:
         - reference/sql/select.md
         - reference/sql/update.md
         - reference/sql/values.md
+      - Синтаксис:
+        - reference/sql/join.md
       - Функции и операторы:
         - reference/sql/aggregate.md
         - reference/sql/cast.md

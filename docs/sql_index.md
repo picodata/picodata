@@ -32,6 +32,10 @@
 * [UPDATE](reference/sql/update.md)
 * [VALUES](reference/sql/values.md)
 
+## Синтаксис {: #syntax }
+
+* [Использование JOIN](reference/sql/join.md)
+
 ## Функции и операторы {: #functions }
 
 * [Агрегатные функции](reference/sql/aggregate.md)
