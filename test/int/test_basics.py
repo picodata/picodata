@@ -450,12 +450,12 @@ Insert({_pico_index}, [{_pico_tier},0,"name",true,[["name",null,null,null,null]]
 Insert({_pico_table}, [{_pico_routine},"_pico_routine",["global"],[["id","unsigned",false],["name","string",false],["kind","string",false],["params","array",false],["returns","array",false],["language","string",false],["body","string",false],["security","string",false],["operable","boolean",false],["schema_version","unsigned",false],["owner","unsigned",false]],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_routine},0,"id",true,[["id",null,null,null,null]],0,true,true]),
 Insert({_pico_index}, [{_pico_routine},1,"name",true,[["name",null,null,null,null]],0,true,true]),
-Insert({_pico_table}, [526,"_pico_plugin",["global"],[["name","string",false],["running","boolean",false],["services","array",false],["version","string",false]],0,true,"memtx",1]),
-Insert({_pico_index}, [526,0,"name",true,[["name",null,null,null,null]],0,true,true]),
-Insert({_pico_table}, [527,"_pico_service",["global"],[["plugin_name","string",false],["name","string",false],["version","string",false],["tiers","array",false],["configuration","any",false],["schema_version","unsigned",false]],0,true,"memtx",1]),
-Insert({_pico_index}, [527,0,"name",true,[["plugin_name",null,null,null,null],["name",null,null,null,null],["version",null,null,null,null]],0,true,true]),
-Insert({_pico_table}, [528,"_pico_service_route",["global"],[["instance_id","string",false],["plugin_name","string",false],["service_name","string",false],["poison","boolean",false]],0,true,"memtx",1]),
-Insert({_pico_index}, [528,0,"routing_key",true,[["instance_id",null,null,null,null],["plugin_name",null,null,null,null],["service_name",null,null,null,null]],0,true,true])
+Insert({_pico_table}, [{_pico_plugin},"_pico_plugin",["global"],[["name","string",false],["running","boolean",false],["services","array",false],["version","string",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_plugin},0,"name",true,[["name",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_service},"_pico_service",["global"],[["plugin_name","string",false],["name","string",false],["version","string",false],["tiers","array",false],["configuration","any",false],["schema_version","unsigned",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_service},0,"name",true,[["plugin_name",null,null,null,null],["name",null,null,null,null],["version",null,null,null,null]],0,true,true]),
+Insert({_pico_table}, [{_pico_service_route},"_pico_service_route",["global"],[["instance_id","string",false],["plugin_name","string",false],["service_name","string",false],["poison","boolean",false]],0,true,"memtx",1]),
+Insert({_pico_index}, [{_pico_service_route},0,"routing_key",true,[["instance_id",null,null,null,null],["plugin_name",null,null,null,null],["service_name",null,null,null,null]],0,true,true])
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
@@ -480,6 +480,9 @@ Insert({_pico_index}, [528,0,"routing_key",true,[["instance_id",null,null,null,n
         _pico_user=space_id("_pico_user"),
         _pico_table=space_id("_pico_table"),
         _pico_index=space_id("_pico_index"),
+        _pico_plugin=space_id("_pico_plugin"),
+        _pico_service=space_id("_pico_service"),
+        _pico_service_route=space_id("_pico_service_route"),
     )
     try:
         assert preprocess(raft_log) == preprocess(expected)
