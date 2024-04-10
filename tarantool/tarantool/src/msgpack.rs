@@ -517,7 +517,8 @@ where
             // Anyway we have to `forget` it because of the stupid parametric
             // polymorphism, because it's type doesn't match the return type of
             // this function.
-            debug_assert_eq!(res_guard.forget(), 1);
+            let size = res_guard.forget();
+            debug_assert_eq!(size, 1);
 
             Ok(tlua::PushGuard::new(lua, 1))
         }

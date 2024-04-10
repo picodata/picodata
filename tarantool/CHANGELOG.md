@@ -64,6 +64,7 @@
 - `tarantool::set_error` used to do undefined behaviour when the message
   contained formatting sequences of %n sort.
 - Used to panic when logging messages which contained nul-bytes.
+- Pushing `ViaMsgpack` didn't work in release mode.
 
 ### Deprecated
 
