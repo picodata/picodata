@@ -156,9 +156,9 @@ build-base-image-fork-on-trigger:
       fi
   script:
     - cargo -V
-    - cargo build --features "${CARGO_FEATURES}" --all
-    - cargo test --no-default-features -p tarantool
-    - cargo test --features "${CARGO_FEATURES}"
+    - cargo build --profile "${CARGO_PROFILE}" --features "${CARGO_FEATURES}" --all
+    - cargo test --profile "${CARGO_PROFILE}" --no-default-features -p tarantool
+    - cargo test --profile "${CARGO_PROFILE}" --features "${CARGO_FEATURES}"
     - |
       # Save cache
       if [ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]; then
@@ -185,12 +185,25 @@ lint-vanilla:
     - cargo clippy --version
     - cargo clippy --features "${CARGO_FEATURES}" --workspace --tests -- --deny warnings
 
-test-vanilla:
+test-vanilla-debug:
   extends: .test
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
     CARGO_FEATURES: default
+    # This variable tells tests/run_tests.lua which version of the library to use for testing
+    TARANTOOL_MODULE_BUILD_MODE: debug
+    CARGO_PROFILE: dev
+
+test-vanilla-release:
+  extends: .test
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/vanilla-release-cache.tar
+    BASE_IMAGE_NAME: ${BASE_IMAGE_VANILLA}
+    CARGO_FEATURES: default
+    # This variable tells tests/run_tests.lua which version of the library to use for testing
+    TARANTOOL_MODULE_BUILD_MODE: release
+    CARGO_PROFILE: release
 
 bench-vanilla:
   extends: .test
@@ -210,14 +223,27 @@ lint-fork:
     - cargo clippy --version
     - cargo clippy --features "${CARGO_FEATURES}" --workspace --tests -- --deny warnings
 
-test-fork:
+test-fork-debug:
   extends: .test
   variables:
     CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     CARGO_FEATURES: picodata,tokio_components
+    # This variable tells tests/run_tests.lua which version of the library to use for testing
+    TARANTOOL_MODULE_BUILD_MODE: debug
+    CARGO_PROFILE: dev
 
-test-fork-on-trigger:
+test-fork-release:
+  extends: .test
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-release-cache.tar
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    CARGO_FEATURES: picodata,tokio_components
+    # This variable tells tests/run_tests.lua which version of the library to use for testing
+    TARANTOOL_MODULE_BUILD_MODE: release
+    CARGO_PROFILE: release
+
+test-fork-debug-on-trigger:
   extends: .test
   rules: # overrides whole section from .test
     - <<: *if-triggered
@@ -226,6 +252,9 @@ test-fork-on-trigger:
     BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
     BASE_IMAGE_TAG: ${CI_COMMIT_SHA}-triggered
     CARGO_FEATURES: picodata,tokio_components
+    # This variable tells tests/run_tests.lua which version of the library to use for testing
+    TARANTOOL_MODULE_BUILD_MODE: debug
+    CARGO_PROFILE: dev
 
 test-macos-vanilla:
   extends: .test
