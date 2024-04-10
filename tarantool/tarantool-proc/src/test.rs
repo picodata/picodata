@@ -61,7 +61,7 @@ struct Context {
     tarantool: syn::Path,
     section: syn::Path,
     linkme: syn::Path,
-    should_panic: bool,
+    should_panic: syn::Expr,
 }
 
 impl Context {
@@ -69,7 +69,7 @@ impl Context {
         let mut tarantool = syn::parse_quote! { ::tarantool };
         let mut linkme = None;
         let mut section = None;
-        let mut should_panic = false;
+        let mut should_panic = syn::parse_quote! { false };
 
         syn::parse::Parser::parse2(
             |input: syn::parse::ParseStream| -> Result<(), syn::Error> {
@@ -88,7 +88,11 @@ impl Context {
                         let value: syn::LitStr = input.parse()?;
                         section = Some(value.parse()?);
                     } else if ident == "should_panic" {
-                        should_panic = true;
+                        if input.parse::<syn::Token![=]>().is_ok() {
+                            should_panic = input.parse()?;
+                        } else {
+                            should_panic = syn::parse_quote! { true };
+                        }
                     } else {
                         return Err(syn::Error::new(
                             ident.span(),

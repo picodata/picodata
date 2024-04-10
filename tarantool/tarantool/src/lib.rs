@@ -377,6 +377,16 @@ pub use linkme;
 /// }
 /// ```
 ///
+/// You can also have tests which should panic only in certain conditions.
+/// This is done by specifying a constant expression as an argument to the
+/// `should_panic` keyword. Here's an example:
+/// ```no_run
+/// #[tarantool::test(should_panic = cfg!(debug_assertions))]
+/// fn only_panics_in_debug_mode() {
+///     debug_assert!(false);
+/// }
+/// ```
+///
 /// You can also use `#[tarantool::test]` with `async` functions, in which case
 /// the body of the test will be wrapped inside `fiber::block_on(async {})`
 /// block. The following two tests are equivalent:

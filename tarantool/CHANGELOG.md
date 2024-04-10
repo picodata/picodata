@@ -33,6 +33,8 @@
   structured error info from stored procedures defined with `#[tarantool::proc]`,
   or just use `BoxError` directly.
 - `network::client::tcp::TcpStream::connect_timeout` method.
+- Now `test` attribute supports adding a compile time conditional expression for
+  the `should_panic` argument, i.e. `#[tarantool::test(should_panic = cfg!(debug_assertions))]`
 
 ### Changed
 
