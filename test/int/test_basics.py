@@ -481,7 +481,14 @@ Insert({_pico_index}, [528,0,"routing_key",true,[["instance_id",null,null,null,n
         _pico_table=space_id("_pico_table"),
         _pico_index=space_id("_pico_index"),
     )
-    assert preprocess(raft_log) == preprocess(expected)
+    try:
+        assert preprocess(raft_log) == preprocess(expected)
+    except AssertionError as e:
+        # hide the huge string variables from the verbose pytest output enabled
+        # by the `--showlocals` option
+        del raft_log
+        del expected
+        raise e from e
 
 
 def test_governor_notices_restarts(instance: Instance):
