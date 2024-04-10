@@ -1671,12 +1671,23 @@ class PgClient:
         return self.storage.parse(self.id, name, sql, param_oids)
 
 
+def build_profile() -> str:
+    return os.environ.get("BUILD_PROFILE", "dev")
+
+
 @pytest.fixture(scope="session")
 def binary_path(cargo_build: None) -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
-    return os.path.realpath(os.path.join(target, "debug/picodata"))
+
+    profile = build_profile()
+    # Note: rust names the debug profile `dev`, but puts the binaries into the
+    # `debug` directory.
+    if profile == "dev":
+        profile = "debug"
+
+    return os.path.realpath(os.path.join(target, f"{profile}/picodata"))
 
 
 @pytest.fixture(scope="session")
@@ -1695,7 +1706,13 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
     if bool(pytestconfig.getoption("--with-webui")):
         features.append("webui")
 
-    cmd = ["cargo", "build", "--features", ",".join(features)]
+    # fmt: off
+    cmd = [
+        "cargo", "build",
+        "--profile", build_profile(),
+        "--features", ",".join(features),
+    ]
+    # fmt: on
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build failed"
 
