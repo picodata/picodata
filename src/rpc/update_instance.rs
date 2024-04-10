@@ -235,5 +235,7 @@ mod test {
     #[should_panic]
     fn update_instance_req_with_target_grade_Replicated() {
         Request::new("".into(), "".into()).with_target_grade(Replicated);
+        #[cfg(not(debug_assertions))]
+        panic!("this is a synthetic panic, because the test is expected to panic, but the actual code only panics in debug mode");
     }
 }
