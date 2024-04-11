@@ -433,7 +433,9 @@ impl Node {
 
     #[inline]
     pub fn is_readonly(&self) -> bool {
-        self.node_impl.lock().is_readonly()
+        let is_ro: bool = crate::tarantool::eval("return box.info.ro")
+            .expect("checking read-onlyness should never fail");
+        is_ro
     }
 }
 
