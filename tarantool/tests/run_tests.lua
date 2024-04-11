@@ -3,6 +3,7 @@ json = require('json')
 
 local fio = require('fio')
 local fiber = require('fiber')
+local log = require('log')
 
 local tmpdir = fio.tempdir()
 
@@ -12,6 +13,8 @@ box.cfg{
     wal_mode = 'none',
     memtx_dir = tmpdir,
 }
+
+log.info("version: " .. box.info.version)
 
 fio.rmtree(tmpdir)
 
