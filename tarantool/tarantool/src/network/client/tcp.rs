@@ -477,7 +477,8 @@ mod tests {
     use crate::test::util::listen_port;
 
     use std::collections::HashSet;
-    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, ToSocketAddrs};
+    use std::net;
+    use std::net::TcpListener;
     use std::thread;
     use std::time::Duration;
 
@@ -486,30 +487,44 @@ mod tests {
     const _10_SEC: Duration = Duration::from_secs(10);
     const _0_SEC: Duration = Duration::from_secs(0);
 
+    #[inline(always)]
+    fn to_socket_addr_v4(sockaddr: libc::sockaddr_in) -> net::SocketAddrV4 {
+        net::SocketAddrV4::new(
+            net::Ipv4Addr::from(u32::from_be(sockaddr.sin_addr.s_addr)),
+            u16::from_be(sockaddr.sin_port),
+        )
+    }
+
+    #[inline(always)]
+    fn to_socket_addr_v6(sockaddr: libc::sockaddr_in6) -> net::SocketAddrV6 {
+        // Safety: safe because sizes match
+        let be_addr = unsafe { std::mem::transmute_copy(&sockaddr.sin6_addr.s6_addr) };
+        net::SocketAddrV6::new(
+            net::Ipv6Addr::from(u128::from_be(be_addr)),
+            u16::from_be(sockaddr.sin6_port),
+            sockaddr.sin6_flowinfo,
+            sockaddr.sin6_scope_id,
+        )
+    }
+
     #[crate::test(tarantool = "crate")]
     async fn get_libc_addrs() {
         let (addrs_v4, addrs_v6) =
             unsafe { resolve_addr("example.org", 80, _10_SEC.as_secs_f64()).unwrap() };
 
-        assert_eq!(addrs_v4.len(), 1);
-        assert_eq!(addrs_v6.len(), 1);
+        let mut our_addrs = HashSet::<net::SocketAddr>::new();
+        for v4 in addrs_v4 {
+            our_addrs.insert(to_socket_addr_v4(v4).into());
+        }
+        for v6 in addrs_v6 {
+            our_addrs.insert(to_socket_addr_v6(v6).into());
+        }
 
-        let expected_addr = match ToSocketAddrs::to_socket_addrs("example.org:80")
+        let addrs_from_std: HashSet<_> = net::ToSocketAddrs::to_socket_addrs(&("example.org", 80))
             .unwrap()
-            .collect::<Vec<_>>()
-            .first()
-            .unwrap()
-            .to_owned()
-        {
-            SocketAddr::V4(v) => v,
-            other => panic!("Expected v4 addr, got {:?}", other),
-        };
-        let received_addr = SocketAddrV4::new(
-            Ipv4Addr::from(u32::from_be(addrs_v4[0].sin_addr.s_addr)),
-            u16::from_be(addrs_v4[0].sin_port),
-        );
+            .collect();
 
-        assert_eq!(expected_addr, received_addr);
+        assert_eq!(our_addrs, addrs_from_std);
     }
 
     #[crate::test(tarantool = "crate")]
