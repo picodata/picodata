@@ -7,6 +7,8 @@ tmp/
 *.rustfmt
 tags
 test/manual/sql/*.json
+**/libtestplug.so
+**/libtestplug.dylib
 venv
 .direnv
 .envrc
