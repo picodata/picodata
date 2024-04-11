@@ -25,8 +25,8 @@ use std::rc::Rc;
 
 use crate::sql::DEFAULT_BUCKET_COUNT;
 
-use crate::schema::{Distribution, ShardingFn, TableDef};
-use crate::storage::{space_by_name, ClusterwideTable};
+use crate::schema::{Distribution, ShardingFn};
+use crate::storage::{Clusterwide, ClusterwideTable};
 
 use sbroad::executor::engine::helpers::storage::meta::{
     DEFAULT_JAEGER_AGENT_HOST, DEFAULT_JAEGER_AGENT_PORT,
@@ -43,7 +43,6 @@ use std::borrow::Cow;
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
 
-use ::tarantool::msgpack;
 use ::tarantool::space::Space;
 use ::tarantool::tuple::{KeyDef, Tuple};
 use ::tarantool::util::Value as TarantoolValue;
@@ -453,24 +452,18 @@ impl RouterMetadata {
         name: &str,
         meta: &tarantool::space::Metadata,
     ) -> Result<Vec<SmolStr>, SbroadError> {
-        let pico_space = space_by_name(&ClusterwideTable::Table)
-            .map_err(|e| SbroadError::NotFound(Entity::Space, format_smolstr!("{e:?}")))?;
-        let tuple = pico_space.get(&[meta.id]).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Get,
-                Some(Entity::ShardingKey),
-                format_smolstr!("space id {}: {e}", meta.id),
-            )
-        })?;
-        let tuple =
-            tuple.ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_smolstr()))?;
-        let table_def: TableDef = msgpack::decode(&tuple.to_vec()).map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Deserialize,
-                Some(Entity::SpaceMetadata),
-                format_smolstr!("serde error: {e}"),
-            )
-        })?;
+        let storage = Clusterwide::try_get(false).expect("storage should be initialized");
+        let table_def = storage
+            .tables
+            .get(meta.id)
+            .map_err(|e| {
+                SbroadError::FailedTo(
+                    Action::Get,
+                    Some(Entity::ShardingKey),
+                    format_smolstr!("space id {}: {e}", meta.id),
+                )
+            })?
+            .ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_smolstr()))?;
         let shard_cols: Vec<SmolStr> = match &table_def.distribution {
             Distribution::Global => {
                 vec![]
