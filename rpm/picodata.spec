@@ -1,3 +1,9 @@
+%global _lto_cflags %{_lto_cflags} -Wno-lto-type-mismatch
+
+%if 0%{?fedora} >= 33
+%global build_ldflags -Wl,-z,relro -Wl,--as-needed  -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1  -Wl,--build-id=sha1   -Wa,--noexecstack -Wa,--generate-missing-build-notes=yes -DPURIFY
+%endif
+
 %define use_cmake3 0%{?rhel} == 7
 
 Name: picodata
@@ -17,7 +23,7 @@ Source0: %name-%version.tar.gz
 BuildRequires: cmake3
 %endif
 
-%if 0%{?rhel} == 8 || 0%{?redos} > 0
+%if 0%{?rhel} == 8 || 0%{?redos} > 0 || 0%{?fedora} >= 33
 BuildRequires: libstdc++-static
 %endif
 
@@ -39,9 +45,11 @@ BuildRequires: libcurl-devel
 BuildRequires: libicu-devel
 BuildRequires: libyaml-devel
 BuildRequires: libzstd-devel
-#BuildRequires: luajit-devel
 %endif
 
+%if 0%{?fedora} >= 33
+BuildRequires: perl-FindBin
+%endif
 
 %description
 Picodata is a high performance in-memory NoSQL database and Rust
