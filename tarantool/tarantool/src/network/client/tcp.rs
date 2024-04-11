@@ -525,6 +525,26 @@ mod tests {
             .collect();
 
         assert_eq!(our_addrs, addrs_from_std);
+
+        //
+        // check what happens with "localhost"
+        //
+        let (addrs_v4, addrs_v6) =
+            unsafe { resolve_addr("localhost", 1337, _10_SEC.as_secs_f64()).unwrap() };
+
+        let mut our_addrs = HashSet::<net::SocketAddr>::new();
+        for v4 in addrs_v4 {
+            our_addrs.insert(to_socket_addr_v4(v4).into());
+        }
+        for v6 in addrs_v6 {
+            our_addrs.insert(to_socket_addr_v6(v6).into());
+        }
+
+        let addrs_from_std: HashSet<_> = net::ToSocketAddrs::to_socket_addrs(&("localhost", 1337))
+            .unwrap()
+            .collect();
+
+        assert_eq!(our_addrs, addrs_from_std);
     }
 
     #[crate::test(tarantool = "crate")]
