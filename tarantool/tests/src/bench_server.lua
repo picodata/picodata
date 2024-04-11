@@ -1,5 +1,5 @@
 box.cfg{
-    listen = 3301,
+    listen = '127.0.0.1:3301',
     memtx_memory = 1024 * 1024 * 1024,
     net_msg_max = 500000,
     readahead = 1024 * 1024,
