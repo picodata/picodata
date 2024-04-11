@@ -480,6 +480,32 @@ def test_datetime(cluster: Cluster):
             )
             """
         )
+    # test to_char builtin function
+    data = i1.sql("""select to_char(d, '%Y-%m-%d') from t""")
+    assert sorted(data["rows"], key=lambda e: e[0]) == [
+        ["2010-10-10"],
+        ["2010-10-10"],
+        ["2020-02-20"],
+    ]
+
+    # check to_char with timezone specified
+    data = i1.sql(
+        """select to_char(to_date(COLUMN_1, ''), '%Y-%m-%d')
+                  from (values (('1970-01-01T10:10:10 -3')))"""
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [["1970-01-01"]]
+
+    data = i1.sql(
+        """select to_char(to_date(COLUMN_1, ''), '%Y-%Y-%Y')
+                  from (values (('1970-01-01T10:10:10 -3')))"""
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [["1970-1970-1970"]]
+
+    data = i1.sql(
+        """select to_char(to_date(COLUMN_1, ''), '%Y-%m-%d %z')
+                  from (values (('1970-01-01T10:10:10 -3')))"""
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [["1970-01-01 -0300"]]
 
 
 def test_subqueries_on_global_tbls(cluster: Cluster):
