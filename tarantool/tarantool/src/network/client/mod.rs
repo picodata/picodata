@@ -687,7 +687,14 @@ mod tests {
 
         let client = test_client().await;
 
+        // Note: tarantool on macos has a bug where it will try to read more
+        // data than macos allows to be read at once.
+        #[cfg(target_os = "macos")]
+        const N: u32 = 0x1fff_ff69;
+
+        #[cfg(not(target_os = "macos"))]
         const N: u32 = 0x6fff_ff69;
+
         // SAFETY: this is basically a generation of a random array
         #[allow(clippy::uninit_vec)]
         let s = unsafe {
