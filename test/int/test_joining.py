@@ -7,6 +7,7 @@ from conftest import (
     Retriable,
     TarantoolError,
     log_crawler,
+    ProcessDead,
 )
 
 
@@ -381,3 +382,55 @@ def test_pico_service_invalid_password(cluster: Cluster):
     lc.matched = False
     i2.fail_to_start()
     assert lc.matched
+
+
+def test_join_with_duplicate_instance_id(cluster: Cluster):
+    [leader, quorum_helper] = cluster.deploy(instance_count=2)
+
+    namesakes = []
+    log_crawlers = []
+    for _ in range(5):
+        i = cluster.add_instance(wait_online=False, instance_id="original-name")
+        lc = log_crawler(i, "`original-name` is already joined")
+        log_crawlers.append(lc)
+        namesakes.append(i)
+
+    for i in namesakes:
+        i.start()
+
+    sole_survivor = None
+    for i, lc in zip(namesakes, log_crawlers):
+        try:
+            i.wait_online()
+            assert sole_survivor is None
+            sole_survivor = i
+        except ProcessDead:
+            assert lc.matched
+    assert sole_survivor
+
+    sole_survivor.terminate()
+    cluster.expel(sole_survivor, leader)
+
+    #
+    # After the instance got expelled it's ok to join a new one with the same name
+    #
+    namesakes = []
+    log_crawlers = []
+    for _ in range(5):
+        i = cluster.add_instance(wait_online=False, instance_id="original-name")
+        lc = log_crawler(i, "`original-name` is already joined")
+        log_crawlers.append(lc)
+        namesakes.append(i)
+
+    for i in namesakes:
+        i.start()
+
+    sole_survivor = None
+    for i, lc in zip(namesakes, log_crawlers):
+        try:
+            i.wait_online()
+            assert sole_survivor is None
+            sole_survivor = i
+        except ProcessDead:
+            assert lc.matched
+    assert sole_survivor

@@ -460,6 +460,10 @@ class Connection(tarantool.Connection):  # type: ignore
         return ret
 
 
+class ProcessDead(Exception):
+    pass
+
+
 @dataclass
 class Instance:
     binary_path: str
@@ -1016,9 +1020,6 @@ class Instance:
         Raises:
             AssertionError: if doesn't succeed
         """
-
-        class ProcessDead(Exception):
-            pass
 
         if self.process is None:
             raise ProcessDead("process was not started")

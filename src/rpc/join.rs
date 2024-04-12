@@ -180,10 +180,20 @@ pub fn build_instance(
     tier: &str,
 ) -> std::result::Result<Instance, String> {
     if let Some(id) = instance_id {
-        let existing_instance = storage.instances.get(id);
-        if matches!(existing_instance, Ok(instance) if has_grades!(instance, Online -> *)) {
-            let e = format!("{} is already joined", id);
-            return Err(e);
+        if let Ok(existing_instance) = storage.instances.get(id) {
+            let is_expelled = has_grades!(existing_instance, Expelled -> *);
+            if is_expelled {
+                // The instance was expelled explicitly, it's ok to replace it
+            } else {
+                // NOTE: We used to allow the so called "auto expel", i.e.
+                // joining an instance with the same name as an existing but
+                // offline instance. But we no longer allow this, because it
+                // could lead to race conditions, because when an instance is
+                // joined it has both grades Offline, which means it may be
+                // replaced by another one of the name before it sends a request
+                // for self activation.
+                return Err(format!("`{}` is already joined", id));
+            }
         }
     }
     let Some(tier) = storage

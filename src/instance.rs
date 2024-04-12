@@ -242,7 +242,7 @@ mod tests {
         let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
             Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(2), Some("i2"), Some("r2-original"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(2), Some("i2"), Some("r2-original"), Grade::new(Expelled, 0), Grade::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
         ],
         2);
 
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(
             build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER)
                 .unwrap_err(),
-            "i1 is already joined",
+            "`i1` is already joined",
         );
 
         // join::Request with a given instance_id offline (or unreachable).
