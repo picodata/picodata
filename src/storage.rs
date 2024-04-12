@@ -450,13 +450,9 @@ impl Clusterwide {
     }
 
     fn open_read_view(&self, entry_id: RaftEntryId) -> Result<SnapshotReadView> {
-        use ::tarantool::msgpack;
-
         let mut space_indexes = Vec::with_capacity(32);
 
-        for space_def in self.tables.index_iter()? {
-            let space_def: TableDef =
-                msgpack::decode(&space_def.to_vec()).map_err(TntError::from)?;
+        for space_def in self.tables.iter()? {
             if !matches!(space_def.distribution, Distribution::Global) {
                 continue;
             }
@@ -700,8 +696,6 @@ impl Clusterwide {
     #[allow(rustdoc::private_intra_doc_links)]
     /// [`NodeImpl::advance`]: crate::traft::node::NodeImpl::advance
     pub fn apply_snapshot_data(&self, data: &SnapshotData, is_master: bool) -> Result<()> {
-        use ::tarantool::msgpack;
-
         debug_assert!(unsafe { ::tarantool::ffi::tarantool::box_txn() });
 
         // These need to be saved before we truncate the corresponding spaces.
@@ -709,8 +703,7 @@ impl Clusterwide {
         let mut old_user_versions = HashMap::new();
         let mut old_priv_versions = HashMap::new();
 
-        for def in self.tables.index_iter()? {
-            let def: TableDef = msgpack::decode(&def.to_vec()).map_err(TntError::from)?;
+        for def in self.tables.iter()? {
             old_table_versions.insert(def.id, def.schema_version);
         }
         for def in self.users.iter()? {
@@ -774,11 +767,7 @@ impl Clusterwide {
         if is_master && v_local < v_snapshot {
             let t0 = std::time::Instant::now();
 
-            let tables = self.tables.index_iter()?.map(|tuple| {
-                msgpack::decode::<TableDef>(&tuple.to_vec())
-                    .expect("entry should be decoded correctly")
-            });
-            self.apply_schema_changes_on_master(tables, &old_table_versions)?;
+            self.apply_schema_changes_on_master(self.tables.iter()?, &old_table_versions)?;
             // TODO: secondary indexes
             self.apply_schema_changes_on_master(self.users.iter()?, &old_user_versions)?;
             self.apply_schema_changes_on_master(self.privileges.iter()?, &old_priv_versions)?;
@@ -1638,7 +1627,7 @@ impl Replicasets {
     }
 }
 
-impl ToEntryIter for Replicasets {
+impl ToEntryIter<MP_SERDE> for Replicasets {
     type Entry = Replicaset;
 
     #[inline(always)]
@@ -1732,7 +1721,7 @@ impl PeerAddresses {
     }
 }
 
-impl ToEntryIter for PeerAddresses {
+impl ToEntryIter<MP_SERDE> for PeerAddresses {
     type Entry = traft::PeerAddress;
 
     #[inline(always)]
@@ -1883,7 +1872,7 @@ impl Instances {
     pub fn replicaset_instances(
         &self,
         replicaset_id: &str,
-    ) -> tarantool::Result<EntryIter<Instance>> {
+    ) -> tarantool::Result<EntryIter<Instance, MP_SERDE>> {
         let iter = self
             .index_replicaset_id
             .select(IteratorType::Eq, &[replicaset_id])?;
@@ -1921,7 +1910,7 @@ impl Instances {
     }
 }
 
-impl ToEntryIter for Instances {
+impl ToEntryIter<MP_SERDE> for Instances {
     type Entry = Instance;
 
     #[inline(always)]
@@ -1964,30 +1953,42 @@ impl InstanceId for instance::InstanceId {
 // EntryIter
 ////////////////////////////////////////////////////////////////////////////////
 
+// In the current Rust version it is not possible to use negative
+// trait bounds so we have to rely on const generics to allow
+// both encode implementations.
+/// Msgpack encoder/decoder implementation.
+type MpImpl = bool;
+/// rmp-serde based implementation.
+const MP_SERDE: MpImpl = false;
+/// Custom implementation from [`::tarantool::msgpack`]
+const MP_CUSTOM: MpImpl = true;
+
 /// This trait is implemented for storage structs for iterating over the entries
 /// from that storage.
-pub trait ToEntryIter {
+pub trait ToEntryIter<const MP: MpImpl> {
     /// Target type for entry deserialization.
+    /// Entry should be encoded with the selected `MP` implementation.
     type Entry;
 
     fn index_iter(&self) -> tarantool::Result<IndexIterator>;
 
     #[inline(always)]
-    fn iter(&self) -> tarantool::Result<EntryIter<Self::Entry>> {
+    fn iter(&self) -> tarantool::Result<EntryIter<Self::Entry, MP>> {
         Ok(EntryIter::new(self.index_iter()?))
     }
 }
 
 /// An iterator struct for automatically deserializing tuples into a given type.
+/// Tuples should be encoded with the selected `MP` implementation.
 ///
 /// # Panics
 /// Will panic in case deserialization fails on a given iteration.
-pub struct EntryIter<T> {
+pub struct EntryIter<T, const MP: MpImpl> {
     iter: IndexIterator,
     marker: PhantomData<T>,
 }
 
-impl<T> EntryIter<T> {
+impl<T, const MP: MpImpl> EntryIter<T, MP> {
     pub fn new(iter: IndexIterator) -> Self {
         Self {
             iter,
@@ -1996,18 +1997,32 @@ impl<T> EntryIter<T> {
     }
 }
 
-impl<T> Iterator for EntryIter<T>
+impl<T> Iterator for EntryIter<T, MP_SERDE>
 where
     T: DecodeOwned,
 {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        let res = self.iter.next().as_ref().map(Tuple::decode);
-        res.map(|res| res.expect("entry should decode correctly"))
+        let tuple = self.iter.next()?;
+        let entry = Tuple::decode(&tuple).expect("entry should decode correctly");
+        Some(entry)
     }
 }
 
-impl<T> std::fmt::Debug for EntryIter<T> {
+impl<T> Iterator for EntryIter<T, MP_CUSTOM>
+where
+    T: ::tarantool::msgpack::Decode,
+{
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        let tuple = self.iter.next()?;
+        let entry =
+            ::tarantool::msgpack::decode(&tuple.to_vec()).expect("entry should decode correctly");
+        Some(entry)
+    }
+}
+
+impl<T, const MP: MpImpl> std::fmt::Debug for EntryIter<T, MP> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct(std::any::type_name::<Self>())
             .finish_non_exhaustive()
@@ -2248,7 +2263,7 @@ impl Tables {
     }
 }
 
-impl ToEntryIter for Tables {
+impl ToEntryIter<MP_CUSTOM> for Tables {
     type Entry = TableDef;
 
     #[inline(always)]
@@ -2371,13 +2386,16 @@ impl Indexes {
     }
 
     #[inline]
-    pub fn by_space_id(&self, space_id: SpaceId) -> tarantool::Result<EntryIter<IndexDef>> {
+    pub fn by_space_id(
+        &self,
+        space_id: SpaceId,
+    ) -> tarantool::Result<EntryIter<IndexDef, MP_SERDE>> {
         let iter = self.space.select(IteratorType::Eq, &[space_id])?;
         Ok(EntryIter::new(iter))
     }
 }
 
-impl ToEntryIter for Indexes {
+impl ToEntryIter<MP_SERDE> for Indexes {
     type Entry = IndexDef;
 
     #[inline(always)]
@@ -2889,7 +2907,7 @@ impl Users {
     }
 }
 
-impl ToEntryIter for Users {
+impl ToEntryIter<MP_SERDE> for Users {
     type Entry = UserDef;
 
     #[inline(always)]
@@ -2989,7 +3007,10 @@ impl Privileges {
     }
 
     #[inline(always)]
-    pub fn by_grantee_id(&self, grantee_id: UserId) -> tarantool::Result<EntryIter<PrivilegeDef>> {
+    pub fn by_grantee_id(
+        &self,
+        grantee_id: UserId,
+    ) -> tarantool::Result<EntryIter<PrivilegeDef, MP_SERDE>> {
         let iter = self.primary_key.select(IteratorType::Eq, &[grantee_id])?;
         Ok(EntryIter::new(iter))
     }
@@ -2999,7 +3020,7 @@ impl Privileges {
         &self,
         object_type: SchemaObjectType,
         object_id: i64,
-    ) -> tarantool::Result<EntryIter<PrivilegeDef>> {
+    ) -> tarantool::Result<EntryIter<PrivilegeDef, MP_SERDE>> {
         let iter = self
             .object_idx
             .select(IteratorType::Eq, &(object_type, object_id))?;
@@ -3092,7 +3113,7 @@ impl Privileges {
     }
 }
 
-impl ToEntryIter for Privileges {
+impl ToEntryIter<MP_SERDE> for Privileges {
     type Entry = PrivilegeDef;
 
     #[inline(always)]
@@ -3158,7 +3179,7 @@ impl Tiers {
     }
 }
 
-impl ToEntryIter for Tiers {
+impl ToEntryIter<MP_SERDE> for Tiers {
     type Entry = Tier;
 
     #[inline(always)]
@@ -3277,7 +3298,7 @@ impl Routines {
     }
 }
 
-impl ToEntryIter for Routines {
+impl ToEntryIter<MP_SERDE> for Routines {
     type Entry = RoutineDef;
 
     #[inline(always)]
