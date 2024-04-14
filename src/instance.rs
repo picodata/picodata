@@ -627,7 +627,14 @@ mod tests {
         assert_eq!(
             build_instance(None, None, &faildoms! {planet: 5}, &storage, "noexistent_tier")
                 .unwrap_err(),
-            "tier \"noexistent_tier\" for current instance should exists",
+            r#"tier "noexistent_tier" doesn't exist"#,
+        );
+
+        // gl589
+        assert_eq!(
+            build_instance(None, Some(&ReplicasetId::from("just to skip choose_replicaset function call")), &faildoms! {planet: 5}, &storage, "noexistent_tier")
+                .unwrap_err(),
+            r#"tier "noexistent_tier" doesn't exist"#,
         );
     }
 }

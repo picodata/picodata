@@ -12,6 +12,7 @@ use crate::replicaset::ReplicasetId;
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::storage::{Clusterwide, ToEntryIter as _};
+use crate::tier::Tier;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
@@ -185,6 +186,13 @@ pub fn build_instance(
             return Err(e);
         }
     }
+    let Some(tier) = storage
+        .tiers
+        .by_name(tier)
+        .expect("storage should not fail")
+    else {
+        return Err(format!(r#"tier "{}" doesn't exist"#, tier));
+    };
 
     let existing_fds = storage
         .instances
@@ -203,7 +211,7 @@ pub fn build_instance(
         .unwrap_or_else(|| choose_instance_id(raft_id, storage));
     let replicaset_id = match replicaset_id {
         Some(replicaset_id) => replicaset_id.clone(),
-        None => choose_replicaset_id(failure_domain, storage, tier)?,
+        None => choose_replicaset_id(failure_domain, storage, &tier)?,
     };
 
     let instance = Instance::new(
@@ -213,7 +221,7 @@ pub fn build_instance(
         Grade::new(Offline, 0),
         Grade::new(Offline, 0),
         failure_domain.clone(),
-        tier,
+        &tier.name,
     );
 
     Ok(instance)
@@ -246,20 +254,15 @@ fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
 fn choose_replicaset_id(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
-    tier: &str,
+    Tier {
+        replication_factor,
+        name: tier_name,
+    }: &Tier,
 ) -> core::result::Result<ReplicasetId, String> {
-    let replication_factor = storage
-        .tiers
-        .by_name(tier)
-        .expect("storage should not fail")
-        .ok_or(format!(
-            "tier \"{tier}\" for current instance should exists"
-        ))?
-        .replication_factor
-        .into();
     // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.
     // E.g. if both "r1" and "r2" are suitable, "r1" will always be prefered.
     let mut replicasets: BTreeMap<_, Vec<_>> = BTreeMap::new();
+    let replication_factor = (*replication_factor).into();
     for instance in storage
         .instances
         .all_instances()
@@ -277,7 +280,7 @@ fn choose_replicaset_id(
                 .first()
                 .expect("should not fail, each replicaset consists of at least one instance")
                 .tier
-                == tier
+                == *tier_name
         {
             for instance in instances {
                 if instance.failure_domain.intersects(failure_domain) {
