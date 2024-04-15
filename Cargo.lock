@@ -2305,7 +2305,7 @@ dependencies = [
  "dlopen",
  "futures",
  "libc",
- "linkme 0.2.10",
+ "linkme 0.3.25",
  "log",
  "once_cell",
  "pretty_assertions 1.4.0",
