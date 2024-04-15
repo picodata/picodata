@@ -924,6 +924,13 @@ fn postjoin(
 
     // Activates instance
     loop {
+        let now = fiber::clock();
+        if now > activation_deadline {
+            return Err(Error::other(
+                "failed to activate myself: timeout, shutting down...",
+            ));
+        }
+
         let Ok(instance) = storage.instances.get(&raft_id) else {
             // This can happen if for example a snapshot arrives
             // and we truncate _pico_instance (read uncommitted btw).
@@ -957,7 +964,6 @@ fn postjoin(
         let req = update_instance::Request::new(instance.instance_id, cluster_id)
             .with_target_grade(Online)
             .with_failure_domain(config.instance.failure_domain());
-        let now = Instant::now();
         let fut = rpc::network_call(&leader_address, &req).timeout(activation_deadline - now);
         match fiber::block_on(fut) {
             Ok(update_instance::Response {}) => {
