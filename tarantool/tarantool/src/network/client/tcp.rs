@@ -123,13 +123,15 @@ impl TcpStream {
             error: e,
             address: format!("{url}:{port}"),
         })?;
+        // Put the fd into a `TcpStream` immediately, so it's closed in case of error.
+        let result = Self {
+            fd: Rc::new(Cell::new(Some(fd))),
+        };
 
         // SAFETY: it is just simple sys call
         let mut io_error = match cvt(unsafe { libc::connect(fd, addr, addr_len) }) {
             Ok(_) => {
-                return Ok(Self {
-                    fd: Rc::new(Cell::new(Some(fd))),
-                })
+                return Ok(result);
             }
             Err(e) => e,
         };
@@ -144,9 +146,7 @@ impl TcpStream {
         io_error = match crate::coio::coio_wait(fd, ffi::CoIOFlags::WRITE, timeout.as_secs_f64()) {
             Ok(_) => match unsafe { check_socket_error(fd) } {
                 Ok(_) => {
-                    return Ok(Self {
-                        fd: Rc::new(Cell::new(Some(fd))),
-                    })
+                    return Ok(result);
                 }
                 Err(e) => e,
             },
@@ -476,6 +476,7 @@ mod tests {
     use crate::test::util::always_pending;
     use crate::test::util::listen_port;
 
+    use std::collections::HashSet;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, ToSocketAddrs};
     use std::thread;
     use std::time::Duration;
@@ -736,5 +737,34 @@ mod tests {
 
         // Cleanup
         unsafe { libc::close(fd) };
+    }
+
+    fn get_fds() -> HashSet<u32> {
+        let mut res = HashSet::new();
+        for entry in std::fs::read_dir("/dev/fd/").unwrap() {
+            // Yay rust!
+            let entry = entry.unwrap();
+            let fd_path = entry.path();
+            let fd_str = fd_path.file_name().unwrap();
+            let fd: u32 = fd_str.to_str().unwrap().parse().unwrap();
+            res.insert(fd);
+        }
+        res
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn no_leaks_when_failing_to_connect() {
+        let fds_before = get_fds();
+
+        for _ in 0..10 {
+            TcpStream::connect_timeout("localhost", 0, _10_SEC).unwrap_err();
+        }
+
+        let fds_after = get_fds();
+
+        // XXX: this is a bit unreliable, because tarantool is spawning a bunch
+        // of other threads which may or may not be creating and closing fds,
+        // so we may want to remove this test at some point
+        assert_eq!(fds_before, fds_after)
     }
 }
