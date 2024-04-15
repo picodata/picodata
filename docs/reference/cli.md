@@ -19,12 +19,12 @@ OPTIONS:
     -V, --version    Print version information
 
 SUBCOMMANDS:
-    admin        Connect to admin console of a Picodata instance
-    connect      Сonnect to a Picodata instance and start interactive SQL console
-    expel        Expel node from cluster
-    help         Print this message or the help of the given subcommand(s)
-    run          Run the picodata instance
-    test         Run picodata integration tests
+    admin      Connect to the Admin console of a Picodata instance
+    connect    Connect to the Distributed SQL console
+    expel      Expel node from cluster
+    help       Print this message or the help of the given subcommand(s)
+    run        Run the picodata instance
+    test       Run picodata integration tests
 ```
 
 <!-- ********************************************************************** -->
@@ -80,6 +80,20 @@ admin](#admin). Данный способ использует обычный т
 
 Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`
 
+### --config {: #run_config }
+
+`--config <PATH>`
+
+Путь к файлу конфигурации в формате YAML.
+
+Аналогичная переменная окружения: `PICODATA_CONFIG_FILE`
+
+### --config-parameter {: #run_config_parameter }
+
+`-c, --config-parameter <PARAMETER=VALUE>`
+
+Список пар ключ-значение, определяющий параметры конфигурации.
+
 ### --data-dir {: #run_data_dir }
 
 `--data-dir <PATH>`
@@ -114,15 +128,6 @@ admin](#admin). Данный способ использует обычный т
 указанная Lua-переменная имеет значение `nil`.
 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`
-
-### --init-cfg {: #run_init_cfg }
-
-`--init-cfg <PATH>`
-
-Путь к файлу конфигурации, используемый при бутстрапе кластера.
-
-Данный параметр не сочетается с `--init-replication-factor`<br>
-Аналогичная переменная окружения: `PICODATA_INIT_CFG`
 
 ### --init-replication-factor {: #run_init_replication_factor }
 
@@ -180,9 +185,9 @@ admin](#admin). Данный способ использует обычный т
 
 `--memtx-memory <MEMTX_MEMORY>`
 
-Количество памяти, предоставляемое непосредственно на хранение данных.
+Объем памяти в байтах, выделяемый для хранения данных.
 
-Значение по умолчанию: 67108864 (64M)<br>
+Значение по умолчанию: 67108864 (64 MБ)<br>
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`
 
 ### --peer {: #run_peer }
@@ -208,7 +213,8 @@ admin](#admin). Данный способ использует обычный т
 
 `--script <PATH>`
 
-Путь к файлу Lua-скрипта, который будет выполнен после присоединения
+Путь к файлу Lua-скрипта, который будет выполнен [после
+присоединения](../architecture/instance_lifecycle.md#fn_postjoin)
 инстанса к кластеру.
 
 Аналогичная переменная окружения: `PICODATA_SCRIPT`
