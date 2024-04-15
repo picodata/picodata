@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="403" height="189" viewBox="0 0 403 189">
+<svg xmlns="http://www.w3.org/2000/svg" width="403" height="221" viewBox="0 0 403 221">
    <defs>
       <style type="text/css">
     @namespace "http://www.w3.org/2000/svg";
@@ -28,49 +28,63 @@
     rect.text             {fill: none; stroke: none;}
     polygon.regexp        {fill: #FFC7C7; stroke: #330000; stroke-width: 1;}
   </style>
-      <style class="darkreader darkreader--sync" media="screen"/>
    </defs>
    <polygon points="9 17 1 13 1 21"/>
    <polygon points="17 17 9 13 9 21"/>
-   <rect x="51" y="3" width="28" height="32" rx="10"/>
-   <rect x="49"
+   <a xmlns:xlink="http://www.w3.org/1999/xlink"
+      xlink:href="../object"
+      xlink:title="table">
+      <rect x="71" y="35" width="52" height="32"/>
+      <rect x="69" y="33" width="52" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="79" y="53">table</text>
+   </a>
+   <rect x="143" y="35" width="24" height="32" rx="10"/>
+   <rect x="141"
+         y="33"
+         width="24"
+         height="32"
+         class="terminal"
+         rx="10"/>
+   <text class="terminal" x="151" y="53">.</text>
+   <rect x="207" y="3" width="28" height="32" rx="10"/>
+   <rect x="205"
          y="1"
          width="28"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="59" y="21">*</text>
+   <text class="terminal" x="215" y="21">*</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="#expression"
       xlink:title="expression">
-      <rect x="51" y="47" width="90" height="32"/>
-      <rect x="49" y="45" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="65">expression</text>
+      <rect x="51" y="79" width="90" height="32"/>
+      <rect x="49" y="77" width="90" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="97">expression</text>
    </a>
-   <rect x="201" y="111" width="38" height="32" rx="10"/>
+   <rect x="201" y="143" width="38" height="32" rx="10"/>
    <rect x="199"
-         y="109"
+         y="141"
          width="38"
          height="32"
          class="terminal"
          rx="10"/>
-   <text class="terminal" x="209" y="129">AS</text>
+   <text class="terminal" x="209" y="161">AS</text>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="../object"
       xlink:title="name">
-      <rect x="279" y="79" width="56" height="32"/>
-      <rect x="277" y="77" width="56" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="287" y="97">name</text>
+      <rect x="279" y="111" width="56" height="32"/>
+      <rect x="277" y="109" width="56" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="287" y="129">name</text>
    </a>
    <a xmlns:xlink="http://www.w3.org/1999/xlink"
       xlink:href="../aggregate"
       xlink:title="aggregate">
-      <rect x="51" y="155" width="86" height="32"/>
-      <rect x="49" y="153" width="86" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="173">aggregate</text>
+      <rect x="51" y="187" width="86" height="32"/>
+      <rect x="49" y="185" width="86" height="32" class="nonterminal"/>
+      <text class="nonterminal" x="59" y="205">aggregate</text>
    </a>
    <path class="line"
-         d="m17 17 h2 m20 0 h10 m28 0 h10 m0 0 h276 m-344 0 h20 m324 0 h20 m-364 0 q10 0 10 10 m344 0 q0 -10 10 -10 m-354 10 v24 m344 0 v-24 m-344 24 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m90 0 h10 m20 0 h10 m0 0 h164 m-194 0 h20 m174 0 h20 m-214 0 q10 0 10 10 m194 0 q0 -10 10 -10 m-204 10 v12 m194 0 v-12 m-194 12 q0 10 10 10 m174 0 q10 0 10 -10 m-164 10 h10 m0 0 h48 m-78 0 h20 m58 0 h20 m-98 0 q10 0 10 10 m78 0 q0 -10 10 -10 m-88 10 v12 m78 0 v-12 m-78 12 q0 10 10 10 m58 0 q10 0 10 -10 m-68 10 h10 m38 0 h10 m20 -32 h10 m56 0 h10 m-314 -42 v20 m344 0 v-20 m-344 20 v88 m344 0 v-88 m-344 88 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m86 0 h10 m0 0 h218 m23 -152 h-3"/>
+         d="m17 17 h2 m40 0 h10 m0 0 h106 m-136 0 h20 m116 0 h20 m-156 0 q10 0 10 10 m136 0 q0 -10 10 -10 m-146 10 v12 m136 0 v-12 m-136 12 q0 10 10 10 m116 0 q10 0 10 -10 m-126 10 h10 m52 0 h10 m0 0 h10 m24 0 h10 m20 -32 h10 m28 0 h10 m0 0 h120 m-344 0 h20 m324 0 h20 m-364 0 q10 0 10 10 m344 0 q0 -10 10 -10 m-354 10 v56 m344 0 v-56 m-344 56 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m90 0 h10 m20 0 h10 m0 0 h164 m-194 0 h20 m174 0 h20 m-214 0 q10 0 10 10 m194 0 q0 -10 10 -10 m-204 10 v12 m194 0 v-12 m-194 12 q0 10 10 10 m174 0 q10 0 10 -10 m-164 10 h10 m0 0 h48 m-78 0 h20 m58 0 h20 m-98 0 q10 0 10 10 m78 0 q0 -10 10 -10 m-88 10 v12 m78 0 v-12 m-78 12 q0 10 10 10 m58 0 q10 0 10 -10 m-68 10 h10 m38 0 h10 m20 -32 h10 m56 0 h10 m-314 -42 v20 m344 0 v-20 m-344 20 v88 m344 0 v-88 m-344 88 q0 10 10 10 m324 0 q10 0 10 -10 m-334 10 h10 m86 0 h10 m0 0 h218 m23 -184 h-3"/>
    <polygon points="393 17 401 13 401 21"/>
    <polygon points="393 17 385 13 385 21"/>
 </svg>
