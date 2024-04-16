@@ -483,6 +483,7 @@ mod tests {
     use std::time::Duration;
 
     use futures::{AsyncReadExt, AsyncWriteExt, FutureExt};
+    use pretty_assertions::assert_eq;
 
     const _10_SEC: Duration = Duration::from_secs(10);
     const _0_SEC: Duration = Duration::from_secs(0);
@@ -774,28 +775,40 @@ mod tests {
         unsafe { libc::close(fd) };
     }
 
-    fn get_fds() -> HashSet<u32> {
-        let mut res = HashSet::new();
+    fn get_socket_fds() -> Vec<u32> {
+        use std::os::unix::fs::FileTypeExt;
+
+        let mut res = vec![];
         for entry in std::fs::read_dir("/dev/fd/").unwrap() {
-            // Yay rust!
-            let entry = entry.unwrap();
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.file_type().is_socket() {
+                continue;
+            };
             let fd_path = entry.path();
+
+            // Yay rust!
             let fd_str = fd_path.file_name().unwrap();
             let fd: u32 = fd_str.to_str().unwrap().parse().unwrap();
-            res.insert(fd);
+            res.push(fd);
         }
+        res.sort_unstable();
         res
     }
 
     #[crate::test(tarantool = "crate")]
     fn no_leaks_when_failing_to_connect() {
-        let fds_before = get_fds();
+        let fds_before = get_socket_fds();
 
         for _ in 0..10 {
             TcpStream::connect_timeout("localhost", 0, _10_SEC).unwrap_err();
         }
 
-        let fds_after = get_fds();
+        let fds_after = get_socket_fds();
 
         // XXX: this is a bit unreliable, because tarantool is spawning a bunch
         // of other threads which may or may not be creating and closing fds,
