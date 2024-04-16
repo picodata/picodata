@@ -348,17 +348,21 @@ def test_read_from_global_tables(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    cluster.create_table(
-        dict(
-            name="global_t",
-            format=[dict(name="id", type="unsigned", is_nullable=False)],
-            primary_key=["id"],
-            distribution="global",
-        )
+    ddl = i1.sql(
+        """
+        create table "global_t" ("id" unsigned not null, primary key("id"))
+        using memtx
+        distributed globally
+        """
     )
-    index = i1.cas("insert", "global_t", [1])
-    i1.raft_wait_index(index, 3)
-    i2.raft_wait_index(index, 3)
+    assert ddl["row_count"] == 1
+
+    dml = i1.sql(
+        """
+        insert into "global_t" values (1)
+        """
+    )
+    assert dml["row_count"] == 1
 
     data = i2.sql(
         """
@@ -407,6 +411,170 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "tier", "type": "string"},
     ]
     assert len(data["rows"]) == instance_count
+
+
+def test_dml_on_global_tbls(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    ddl = i1.sql(
+        """
+        create table t (x int not null, y int not null, primary key (x))
+        using memtx
+        distributed by (y)
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        create table global_t (id int not null, a int not null, primary key (id))
+        using memtx
+        distributed globally
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    data = i2.sql("insert into t values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)")
+    assert data["row_count"] == 5
+
+    data = i2.sql("insert into global_t values (1, 1), (2, 2)")
+    assert data["row_count"] == 2
+
+    # insert into global from global
+    data = i2.sql("insert into global_t select id + 2, a from global_t")
+    assert data["row_count"] == 2
+
+    # empty insert
+    data = i2.sql(
+        """
+        insert into global_t select id + 2, a from global_t
+        where false
+        """,
+    )
+    assert data["row_count"] == 0
+
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 1], [4, 2]]
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 1], [4, 2]]
+
+    # check update
+    data = i2.sql("update global_t set a = 1")
+    assert data["row_count"] == 4
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 1], [3, 1], [4, 1]]
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 1], [3, 1], [4, 1]]
+
+    # check update global from global table
+    data = i2.sql(
+        """
+        update global_t
+        set a = u from (select a + 1 as u, id as v from global_t) as s
+        where id = v
+        """
+    )
+    assert data["row_count"] == 4
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == [[1, 2], [2, 2], [3, 2], [4, 2]]
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == [[1, 2], [2, 2], [3, 2], [4, 2]]
+
+    # empty update
+    data = i2.sql(
+        """
+        update global_t
+        set a = 20
+        where false
+        """
+    )
+    assert data["row_count"] == 0
+
+    # check update global from sharded table
+    data = i2.sql(
+        """
+        update global_t
+        set a = y from t
+        where id = x
+        """
+    )
+    assert data["row_count"] == 4
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
+
+    # check delete
+    data = i2.sql("delete from global_t")
+    assert data["row_count"] == 4
+
+    # test reading subtree with motion
+    def q1():
+        data = i1.sql("insert into global_t select count(*), 1 from t")
+        assert data["row_count"] == 1
+
+    Retriable(rps=5, timeout=10).call(q1)
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == [[5, 1]]
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == [[5, 1]]
+
+    # test explain
+    lines = i1.sql("explain insert into global_t select * from t")
+    expected_explain = """insert "GLOBAL_T" on conflict: fail
+    motion [policy: full]
+        projection ("T"."X"::integer -> "X", "T"."Y"::integer -> "Y")
+            scan "T"
+execution options:
+sql_vdbe_max_steps = 45000
+vtable_max_rows = 5000"""
+    assert "\n".join(lines) == expected_explain
+
+    # empty delete
+    data = i2.sql("delete from global_t")
+    assert data["row_count"] == 1
+    data = i2.sql("delete from global_t where false")
+    assert data["row_count"] == 0
+
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == []
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == []
+
+    # insert from sharded table
+    data = i2.sql("insert into global_t select x, y from t")
+    assert data["row_count"] == 5
+
+    data = i2.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
+    data = i1.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
+
+    def check_table_contents(contents):
+        data = i1.sql("select * from t")
+        assert sorted(data["rows"]) == contents
+
+    # insert into sharded table from global table
+    data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
+    assert data["row_count"] == 1
+    Retriable(rps=5, timeout=10).call(
+        check_table_contents, [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
+    )
+
+    # update sharded table from global table
+    data = i2.sql("update t set y = a * a from global_t where id = x")
+    assert data["row_count"] == 5
+    Retriable(rps=5, timeout=10).call(
+        check_table_contents, [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
+    )
+
+    # delete sharded table using global table in predicate
+    data = i2.sql("delete from t where x in (select id from global_t)")
+    assert data["row_count"] == 5
+    Retriable(rps=5, timeout=10).call(check_table_contents, [[6, 6]])
 
 
 def test_datetime(cluster: Cluster):
@@ -565,9 +733,14 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
-    for i in range(1, 6):
-        index = i1.cas("insert", "G", [i, i])
-        i1.raft_wait_index(index, 3)
+
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 2),
+        (3, 3), (4, 4), (5, 5)
+        """
+    )
+    assert dml["row_count"] == 5
 
     ddl = i1.sql(
         """
@@ -715,9 +888,13 @@ def test_aggregates_on_global_tbl(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    for i, j in [(1, 1), (2, 2), (3, 1), (4, 1), (5, 2)]:
-        index = i1.cas("insert", "G", [i, j])
-        i1.raft_wait_index(index, 3)
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 2), (3, 1),
+        (4, 1), (5, 2)
+        """
+    )
+    assert dml["row_count"] == 5
 
     data = i1.sql(
         """
@@ -758,9 +935,12 @@ def test_join_with_global_tbls(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    for i, j in [(1, 1), (2, 1), (3, 3)]:
-        index = i1.cas("insert", "G", [i, j])
-        i1.raft_wait_index(index, 3)
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 1), (3, 3)
+        """
+    )
+    assert dml["row_count"] == 3
 
     ddl = i1.sql(
         """
@@ -953,9 +1133,12 @@ def test_union_all_on_global_tbls(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    for i, j in [(1, 1), (2, 2), (3, 2)]:
-        index = i1.cas("insert", "G", [i, j])
-        i1.raft_wait_index(index, 3)
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 2), (3, 2)
+        """
+    )
+    assert dml["row_count"] == 3
 
     ddl = i1.sql(
         """
@@ -1329,9 +1512,14 @@ def test_except_on_global_tbls(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
-    for i in range(1, 6):
-        index = i1.cas("insert", "G", [i, i])
-        i1.raft_wait_index(index, 3)
+
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 2),
+        (3, 3), (4, 4), (5, 5)
+        """
+    )
+    assert dml["row_count"] == 5
 
     ddl = i1.sql(
         """

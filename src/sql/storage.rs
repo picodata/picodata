@@ -200,12 +200,6 @@ impl Vshard for StorageRuntime {
         let opts = std::mem::take(&mut sub_plan.get_mut_ir_plan().options.execute_options);
         let plan = sub_plan.get_ir_plan();
         let top_id = plan.get_top()?;
-        if sub_plan.subtree_modifies_data(top_id)? {
-            return Err(SbroadError::Invalid(
-                Entity::Plan,
-                Some("dml can't be executed locally".into()),
-            ));
-        }
         let plan_id = plan.pattern_id(top_id)?;
         let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;

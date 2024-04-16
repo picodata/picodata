@@ -408,6 +408,8 @@ impl Default for RouterMetadata {
     }
 }
 
+pub const DEFAULT_QUERY_TIMEOUT: u64 = 360;
+
 impl RouterMetadata {
     #[must_use]
     pub fn new() -> Self {
@@ -418,7 +420,7 @@ impl RouterMetadata {
         }
 
         RouterMetadata {
-            waiting_timeout: 360,
+            waiting_timeout: DEFAULT_QUERY_TIMEOUT,
             cache_capacity: DEFAULT_CAPACITY,
             jaeger_agent_host: DEFAULT_JAEGER_AGENT_HOST,
             jaeger_agent_port: DEFAULT_JAEGER_AGENT_PORT,

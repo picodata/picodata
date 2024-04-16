@@ -1,6 +1,7 @@
 //! Clusterwide SQL query execution.
 
 use crate::access_control::UserMetadataKind;
+use crate::cas::Predicate;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DistributionParam,
     Field, IndexOption, PrivilegeDef, PrivilegeType, RenameRoutineParams, RoutineDef,
@@ -12,14 +13,18 @@ use crate::sql::storage::StorageRuntime;
 use crate::storage::space_by_name;
 use crate::traft::error::Error;
 use crate::traft::node::Node as TraftNode;
-use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Op};
+use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or};
 
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
 use sbroad::errors::{Action, Entity, SbroadError};
-use sbroad::executor::engine::helpers::{decode_msgpack, normalize_name_for_space_api};
+use sbroad::executor::engine::helpers::{
+    build_delete_args, build_insert_args, build_update_args, decode_msgpack,
+    init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
+    normalize_name_for_space_api,
+};
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
@@ -27,7 +32,7 @@ use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivile
 use sbroad::ir::block::Block;
 use sbroad::ir::ddl::{Ddl, ParamDef};
 use sbroad::ir::expression::Expression;
-use sbroad::ir::operator::Relational;
+use sbroad::ir::operator::{ConflictStrategy, Relational};
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
@@ -37,6 +42,7 @@ use sbroad::{debug, warn};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
+use tarantool::tuple::ToTupleBuffer;
 
 use crate::storage::Clusterwide;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
@@ -49,6 +55,7 @@ use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
 use std::str::FromStr;
+use std::time::Duration;
 use tarantool::session;
 
 pub mod otm;
@@ -56,6 +63,8 @@ pub mod otm;
 pub mod router;
 pub mod storage;
 use otm::TracerKind;
+
+use self::router::DEFAULT_QUERY_TIMEOUT;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 const SPECTIAL_CHARACTERS: [char; 6] = ['&', '|', '?', '!', '$', '@'];
@@ -253,6 +262,19 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     } else {
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
+
+        if query.is_explain() {
+            return Ok(*query
+                .produce_explain()?
+                .downcast::<Tuple>()
+                .expect("explain must always return a tuple"));
+        }
+
+        if plan.is_dml_on_global_table()? {
+            let res = do_dml_on_global_tbl(query)?;
+            return Ok(Tuple::new(&(res,))?);
+        }
+
         match query.dispatch() {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
@@ -1450,4 +1472,141 @@ pub fn proc_sql_execute(raw: &RawBytes) -> traft::Result<Tuple> {
     } else {
         exec()
     }
+}
+
+// Each DML request on global tables has the following plan:
+// Root(Update/Delete/Insert) -> Motion with full policy -> ...
+// At this point Motion subtree is not materialized.
+// This is done on purpose: we need to save raft index and term
+// before doing any reads. After materializing the subtree we
+// convert virtual table to a batch of DML ops and apply it via
+// CAS. No retries are made in case of CAS error.
+fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<ConsumerResult> {
+    let current_user = effective_user_id();
+
+    let raft_node = node::global()?;
+    let raft_index = raft_node.get_index();
+    let raft_term = raft::Storage::term(&raft_node.raft_storage, raft_index)?;
+
+    // Materialize reading subtree and extract some needed data from Plan
+    let (table_id, dml_kind, vtable) = {
+        let ir = query.get_exec_plan().get_ir_plan();
+        let top = ir.get_top()?;
+        let table = ir.dml_node_table(top)?;
+        let table_name = normalize_name_for_space_api(&table.name);
+        let table_id = Space::find(table_name.as_str())
+            .ok_or(Error::other(format!(
+                "failed to find table with name: {table_name}"
+            )))?
+            .id();
+
+        let node = ir.get_relation_node(top)?;
+        if matches!(
+            node,
+            Relational::Insert {
+                conflict_strategy: ConflictStrategy::DoReplace | ConflictStrategy::DoNothing,
+                ..
+            }
+        ) {
+            Err(Error::other("insert on conflict is not supported yet"))?;
+        }
+        let dml_kind: DmlKind = match node {
+            Relational::Insert { .. } => DmlKind::Insert,
+            Relational::Update { .. } => DmlKind::Update,
+            Relational::Delete { .. } => DmlKind::Delete,
+            _ => unreachable!(),
+        };
+
+        let motion_id = ir.get_relational_child(top, 0)?;
+        let slices = ir.calculate_slices(motion_id)?;
+        query.materialize_subtree(slices.into())?;
+
+        let exec_plan = query.get_mut_exec_plan();
+        let vtables_map = exec_plan
+            .vtables
+            .as_mut()
+            .expect("subtree must be materialized");
+        let vtable = vtables_map
+            .mut_map()
+            .remove(&motion_id)
+            .expect("subtree must be materialized");
+
+        (table_id, dml_kind, vtable)
+    };
+
+    // CAS will return error on empty batch
+    if vtable.get_tuples().is_empty() {
+        return Ok(ConsumerResult { row_count: 0 });
+    }
+
+    // Convert virtual table to a batch of DML opcodes
+
+    let ir = query.get_exec_plan().get_ir_plan();
+    let top = ir.get_top()?;
+    let builder = match dml_kind {
+        DmlKind::Insert => init_insert_tuple_builder(ir, &vtable, top)?,
+        DmlKind::Update => init_local_update_tuple_builder(ir, &vtable, top)?,
+        DmlKind::Delete => init_delete_tuple_builder(ir, top)?,
+        DmlKind::Replace => unreachable!("SQL does not support replace"),
+    };
+
+    let tuples = vtable.get_tuples();
+    let mut ops = Vec::with_capacity(tuples.len());
+    for tuple in tuples {
+        let op = match dml_kind {
+            // TODO: intoduce new opcode that inserts/updates/deletes
+            // many tuples for one table.
+            DmlKind::Insert => {
+                let tuple = build_insert_args(tuple, &builder, None)?;
+                Dml::insert(table_id, &tuple, current_user)?
+            }
+            DmlKind::Delete => {
+                let tuple = build_delete_args(tuple, &builder)?;
+                Dml::delete(table_id, &tuple, current_user)?
+            }
+            DmlKind::Update => {
+                let args = build_update_args(tuple, &builder)?;
+                let ops = args
+                    .ops
+                    .into_iter()
+                    .map(|op| {
+                        op.to_tuple_buffer().map_err(|e| {
+                            SbroadError::GlobalDml(format_smolstr!("can't update op: {e}"))
+                        })
+                    })
+                    .collect::<Result<Vec<_>, SbroadError>>()?;
+                Dml::update(table_id, &args.key_tuple, ops, current_user)?
+            }
+            DmlKind::Replace => unreachable!("SQL does not support replace"),
+        };
+        ops.push(op);
+    }
+
+    let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
+    let node = node::global()?;
+    let deadline = Instant::now().saturating_add(timeout);
+
+    let ops_count = ops.len();
+    let op = crate::traft::op::Op::BatchDml { ops };
+
+    let predicate = Predicate {
+        index: raft_index,
+        term: raft_term,
+        ranges: vec![],
+    };
+    let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
+    let (index, term) =
+        crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now()))?;
+    node.wait_index(index, deadline.duration_since(Instant::now()))?;
+    let current_term = raft::Storage::term(&node.raft_storage, index)?;
+    if current_term != term {
+        return Err(Error::TermMismatch {
+            requested: term,
+            current: current_term,
+        });
+    }
+
+    Ok(ConsumerResult {
+        row_count: ops_count as u64,
+    })
 }

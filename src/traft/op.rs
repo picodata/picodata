@@ -29,9 +29,6 @@ pub enum Op {
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(Dml),
     /// Batch cluster-wide data modification operation.
-    /// TODO: use batch not only for dml operations, currently
-    /// we can't do ACL together with DML because ACL requires
-    /// to be checked on tarantool replicaset leader.
     BatchDml { ops: Vec<Dml> },
     /// Start cluster-wide data schema definition operation.
     /// Should be used to manipulate the cluster-wide schema.

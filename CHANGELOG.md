@@ -12,6 +12,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - sql supports inferring not null constraint on primary key
 columns.
+- SQL supports `INSERT`, `UPDATE`, `DELETE` for global tables.
+`INSERT ON CONFLICT` is not supported.
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
