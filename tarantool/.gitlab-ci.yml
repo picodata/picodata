@@ -256,13 +256,13 @@ test-fork-debug-on-trigger:
     TARANTOOL_MODULE_BUILD_MODE: debug
     CARGO_PROFILE: dev
 
-test-macos-picodata-debug:
+test-macos-debug-fork:
   extends: .test
   tags:
     - mac-dev-m1
   image:
   variables:
-    CACHE_ARCHIVE: /Users/gitlab_runner/shared-storage/tarantool-module/macos-picodata-debug-cache.tar
+    CACHE_ARCHIVE: /Users/gitlab_runner/shared-storage/tarantool-module/macos-debug-fork-cache.tar
     CARGO_FEATURES: default
     CARGO_HOME: /Users/gitlab_runner/.cargo
     # This variable tells tests/run_tests.lua which version of the library to use for testing
@@ -315,10 +315,10 @@ test-macos-picodata-debug:
         echo "Skip saving cache on a non-master branch"
       fi
 
-test-macos-picodata-release:
-  extends: test-macos-picodata-debug
+test-macos-release-fork:
+  extends: test-macos-debug-fork
   variables:
-    CACHE_ARCHIVE: /Users/gitlab_runner/shared-storage/tarantool-module/macos-picodata-release-cache.tar
+    CACHE_ARCHIVE: /Users/gitlab_runner/shared-storage/tarantool-module/macos-release-fork-cache.tar
     CARGO_FEATURES: default
     CARGO_HOME: /Users/gitlab_runner/.cargo
     # This variable tells tests/run_tests.lua which version of the library to use for testing
