@@ -321,7 +321,7 @@ fn module_path() {
         Some(OsStr::new("libtarantool_module_test_runner"))
     );
 
-    dbg!(std::env::current_exe());
+    _ = dbg!(std::env::current_exe());
     assert_eq!(
         ::tarantool::proc::module_path(::tarantool::ffi::tarantool::box_txn as _),
         Some(std::path::Path::new(&std::env::args().next().unwrap())),
