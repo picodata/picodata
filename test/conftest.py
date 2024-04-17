@@ -633,7 +633,7 @@ class Instance:
         options={},
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 1,
+        timeout: int | float = 3,
     ) -> dict:
         """Run SQL query and return result"""
         with self.connect(timeout=timeout, user=user, password=password) as conn:
@@ -645,7 +645,7 @@ class Instance:
         *params,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 1,
+        timeout: int | float = 3,
     ) -> dict:
         """Run SQL query as admin and return result"""
         with self.connect(timeout, user=user, password=password) as conn:
@@ -657,7 +657,7 @@ class Instance:
         with_password: str,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 1,
+        timeout: int | float = 3,
     ):
         self.sql(
             f"""
@@ -1109,7 +1109,7 @@ class Instance:
         """Get current applied raft index"""
         return self.call("pico.raft_get_index")
 
-    def raft_read_index(self, timeout: int | float = 1) -> int:
+    def raft_read_index(self, timeout: int | float = 3) -> int:
         """
         Perform the quorum read operation.
         See `crate::traft::node::Node::read_index`.
@@ -1121,7 +1121,7 @@ class Instance:
             timeout=timeout + 1,  # this timeout is for network call
         )
 
-    def raft_wait_index(self, target: int, timeout: int | float = 1) -> int:
+    def raft_wait_index(self, target: int, timeout: int | float = 3) -> int:
         """
         Wait until instance applies the `target` raft index.
         See `crate::traft::node::Node::wait_index`.
@@ -1145,7 +1145,7 @@ class Instance:
 
         return self.call("pico.get_vclock")
 
-    def wait_vclock(self, target: int, timeout: int | float = 1) -> int:
+    def wait_vclock(self, target: int, timeout: int | float = 3) -> int:
         """
         Wait until Tarantool vclock reaches the `target`. Returns the
         actual vclock. It can be equal to or greater than the target one.
