@@ -32,6 +32,8 @@ impl LineReader {
 enum Error {
     #[error("gather info error: {0}")]
     InfoCollect(String),
+    #[error("send log bad status")]
+    SendLogStatus,
     #[error("io error: {0}")]
     Io(#[from] io::Error),
     #[error("http error: {0}")]
@@ -222,16 +224,16 @@ async fn send_logs(
                             reqwest::StatusCode::NO_CONTENT,
                         ];
                         let status = v.status();
-                        if !statuses.contains(&status) {
-                            log::debug!(
-                                "Bad status: {status} while sending log: {entry:?}, response: {:?}.",
-                                v.text().await
-                            );
+                        if statuses.contains(&status) {
+                            return Ok(v);
+                        }
+                        log::debug!("Error sending log, bad status: {status:?}.");
+                        if tries < 10 {
                             tries += 1;
                             time::sleep(time::Duration::from_millis(100)).await;
                             continue;
                         }
-                        return Ok(v);
+                        return Err(Error::SendLogStatus);
                     }
                     Err(e) => {
                         if tries < 10 {
