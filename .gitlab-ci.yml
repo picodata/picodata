@@ -218,6 +218,7 @@ test-linux:
     # -vv shows extended diff for failures
     - >
       pipenv run pytest -vv
+      --color=yes
       --numprocesses auto
       --junitxml=junit_pytest.xml
       --with-webui
@@ -236,6 +237,7 @@ test-linux:
     # -vv shows extended diff for failures
     - >
       BUILD_PROFILE=release pipenv run pytest -vv
+      --color=yes
       --numprocesses auto
       --junitxml=junit_pytest.xml
       --with-webui
