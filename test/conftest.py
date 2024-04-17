@@ -7,6 +7,7 @@ import sys
 import time
 import threading
 from types import SimpleNamespace
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import yaml as yaml_lib  # type: ignore
 import pytest
@@ -37,6 +38,8 @@ from tarantool.error import (  # type: ignore
     tnt_strerror,
     DatabaseError,
 )
+from multiprocessing import Process, Queue
+
 
 # From raft.rs:
 # A constant represents invalid id of raft.
@@ -45,6 +48,7 @@ INVALID_RAFT_ID = 0
 BASE_HOST = "127.0.0.1"
 BASE_PORT = 3300
 PORT_RANGE = 200
+METRICS_PORT = 7500
 
 MAX_LOGIN_ATTEMPTS = 4
 
@@ -1195,6 +1199,20 @@ class Instance:
             [user, privilege, object_type, object_name],
         )
 
+    def start_and_wait(self) -> None:
+        self.start()
+        self.wait_online()
+
+    @property
+    def password(self) -> Optional[str]:
+        if self.service_password_file is None:
+            return None
+        with open(self.service_password_file, "r") as f:
+            password = f.readline()
+            if password.endswith("\n"):
+                password = password[:-1]
+        return password
+
 
 CLUSTER_COLORS = (
     color.cyan,
@@ -1235,6 +1253,7 @@ class Cluster:
         init_replication_factor: int | None = None,
         tier: str | None = None,
         service_password: str | None = None,
+        audit: bool | str = True,
     ) -> list[Instance]:
         assert not self.instances, "Already deployed"
 
@@ -1251,6 +1270,7 @@ class Cluster:
                 wait_online=False,
                 tier=tier,
                 init_replication_factor=init_replication_factor,
+                audit=audit,
             )
 
         for instance in self.instances:
@@ -1284,6 +1304,7 @@ class Cluster:
         failure_domain=dict(),
         init_replication_factor: int | None = None,
         tier: str | None = None,
+        audit: bool | str = True,
     ) -> Instance:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
@@ -1333,7 +1354,7 @@ class Cluster:
             init_replication_factor=init_replication_factor,
             tier=tier,
             config_path=self.config_path,
-            audit=True,
+            audit=audit,
         )
         if self.service_password_file:
             instance.service_password_file = self.service_password_file
@@ -1672,6 +1693,14 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build failed"
 
+    cmd = ["cargo", "build", "-p", "gostech-audit-log"]
+    eprint(f"Running {cmd}")
+    assert subprocess.call(cmd) == 0, "cargo build gostech audit log failed"
+
+    cmd = ["cargo", "build", "-p", "gostech-metrics"]
+    eprint(f"Running {cmd}")
+    assert subprocess.call(cmd) == 0, "cargo build gostech metrics failed"
+
 
 @pytest.fixture(scope="session")
 def cluster_ids(xdist_worker_number) -> Iterator[str]:
@@ -1822,3 +1851,96 @@ class log_crawler:
             return
 
         self.matched = True
+
+
+class AuditServer:
+    def __init__(self, port: int) -> None:
+        self.port = port
+        self.process: Process | None = None
+        self.queue: Queue[Dict[str, Any]] = Queue(maxsize=10_000)
+        self.target = json.loads(
+            subprocess.check_output(["cargo", "metadata", "--format-version=1"])
+        )["target_directory"]
+
+    def start(self) -> None:
+        if self.process is not None:
+            return None
+
+        def server(queue: Queue, host: str, port: int) -> None:
+
+            class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+                QUEUE = queue
+
+                def do_POST(self):
+                    content_length = int(self.headers["Content-Length"])
+                    post_data = self.rfile.read(content_length)
+
+                    data = json.loads(post_data.decode("utf-8"))
+                    message = {"message": "Log received successfully", "log": data}
+                    self.send_response(200)
+                    self.send_header("Content-type", "application/json")
+                    self.end_headers()
+                    response = bytes(json.dumps(message), "utf-8")
+                    self.wfile.write(response)
+                    self.QUEUE.put(data)
+
+            httpd = HTTPServer((host, port), SimpleHTTPRequestHandler)
+            httpd.serve_forever()
+
+        self.process = Process(target=server, args=(self.queue, BASE_HOST, self.port))
+        self.process.start()
+
+    def cmd(self, binary_path: str) -> str:
+        binary = os.path.realpath(os.path.join(self.target, "debug/gostech-audit-log"))
+        args = (
+            f"--url http://{BASE_HOST}:{self.port}/log --picodata {binary_path} --debug"
+        )
+        return f"| {binary} {args}"
+
+    def logs(self) -> List[Dict[str, Any]]:
+        result = []
+        while not self.queue.empty():
+            result.append(self.queue.get())
+        return result
+
+    def stop(self):
+        if self.process is None:
+            return None
+        self.process.terminate()
+        self.process.join()
+        self.process = None
+
+
+class MetricsServer:
+    def __init__(self, instace: Instance) -> None:
+        target = json.loads(
+            subprocess.check_output(["cargo", "metadata", "--format-version=1"])
+        )["target_directory"]
+
+        self.process: subprocess.Popen | None = None
+        self.instance = instace
+        self.binary_path = os.path.realpath(
+            os.path.join(target, "debug/gostech-metrics")
+        )
+
+    def start(self) -> None:
+        password = self.instance.password or ""
+        command = [
+            self.binary_path,
+            f"--host={self.instance.host}",
+            f"--port={self.instance.port}",
+            f"--password={password}",
+            "--username=pico_service",
+            f"--addr={BASE_HOST}:{METRICS_PORT}",
+        ]
+        self.process = subprocess.Popen(command)
+        time.sleep(3)
+
+    @property
+    def url(self) -> str:
+        return f"http://{BASE_HOST}:{METRICS_PORT}/metrics"
+
+    def stop(self) -> None:
+        if self.process is None:
+            return None
+        self.process.kill()

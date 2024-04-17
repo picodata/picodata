@@ -207,6 +207,8 @@ test-linux:
 
     # There are no Rust tests for `webui` feature, it's checked in pytest
     - cargo build --locked
+    - cargo build -p gostech-audit-log
+    - cargo build -p gostech-metrics
     - cargo test --locked
 
     - cargo build --features webui,error_injection --locked
@@ -379,15 +381,14 @@ build-vm-image:
     branch: main
     strategy: depend
 
-
 pack-on-tag:
   stage: pack
   rules:
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_COMMIT_TAG
   variables:
-    PROJECT_TARGET: 'picodata'
-    TYPE: 'RELEASE'
+    PROJECT_TARGET: "picodata"
+    TYPE: "RELEASE"
     BRANCH_TARGET: $CI_COMMIT_TAG
   inherit:
     variables:
@@ -395,7 +396,7 @@ pack-on-tag:
       - PROJECT_TARGET
       - BRANCH_TARGET
   trigger:
-    project: 'picodata/devops/builder'
+    project: "picodata/devops/builder"
     strategy: depend
 
 deploy-docker:
