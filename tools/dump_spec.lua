@@ -53,7 +53,7 @@ local function main()
     local res = {}
 
     for i, t in ipairs(tables) do
-        local tbl = box.space['_pico_table'].index['name']:get(t)
+        local tbl = box.space['_pico_table'].index[1]:get(t)
         printf("\n### %s\n", tbl.name)
 
         printf("Поля:\n")
