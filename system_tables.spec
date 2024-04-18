@@ -14,8 +14,8 @@
 
 Индексы:
 
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`
+* `_pico_table_id` (unique), parts: `[id]`
+* `_pico_table_name` (unique), parts: `[name]`
 
 ### _pico_index
 
@@ -33,8 +33,8 @@
 
 Индексы:
 
-* `id` (unique), parts: `[table_id, id]`
-* `name` (unique), parts: `[table_id, name]`
+* `_pico_index_id` (unique), parts: `[table_id, id]`
+* `_pico_index_name` (unique), parts: `[table_id, name]`
 
 ### _pico_routine
 
@@ -54,8 +54,8 @@
 
 Индексы:
 
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`
+* `_pico_routine_id` (unique), parts: `[id]`
+* `_pico_routine_name` (unique), parts: `[name]`
 
 ### _pico_property
 
@@ -66,7 +66,7 @@
 
 Индексы:
 
-* `key` (unique), parts: `[key]`
+* `_pico_property_key` (unique), parts: `[key]`
 
 ### _pico_peer_address
 
@@ -77,7 +77,7 @@
 
 Индексы:
 
-* `raft_id` (unique), parts: `[raft_id]`
+* `_pico_peer_address_raft_id` (unique), parts: `[raft_id]`
 
 ### _pico_instance
 
@@ -95,9 +95,9 @@
 
 Индексы:
 
-* `instance_id` (unique), parts: `[instance_id]`
-* `raft_id` (unique), parts: `[raft_id]`
-* `replicaset_id` (non-unique), parts: `[replicaset_id]`
+* `_pico_instance_id` (unique), parts: `[instance_id]`
+* `_pico_instance_raft_id` (unique), parts: `[raft_id]`
+* `_pico_instance_replicaset_id` (non-unique), parts: `[replicaset_id]`
 
 ### _pico_replicaset
 
@@ -114,7 +114,7 @@
 
 Индексы:
 
-* `replicaset_id` (unique), parts: `[replicaset_id]`
+* `_pico_replicaset_id` (unique), parts: `[replicaset_id]`
 
 ### _pico_tier
 
@@ -125,7 +125,7 @@
 
 Индексы:
 
-* `name` (unique), parts: `[name]`
+* `_pico_tier_name` (unique), parts: `[name]`
 
 ### _pico_user
 
@@ -140,8 +140,8 @@
 
 Индексы:
 
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`
+* `_pico_user_id` (unique), parts: `[id]`
+* `_pico_user_name` (unique), parts: `[name]`
 
 ### _pico_privilege
 
@@ -156,5 +156,5 @@
 
 Индексы:
 
-* `primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
-* `object` (non-unique), parts: `[object_type, object_id]`
+* `_pico_privilege_primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
+* `_pico_privilege_object` (non-unique), parts: `[object_type, object_id]`

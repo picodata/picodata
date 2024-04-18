@@ -6,7 +6,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 <!--
 Описание соответствует версии
-Picodata 24.3.0-65-g6043629f
+Picodata 24.3.0-66-g6ea360f7
 -->
 
 ## Описание схемы данных {: #schema }
@@ -58,8 +58,8 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`
+* `_pico_table_id` (unique), parts: `[id]`
+* `_pico_table_name` (unique), parts: `[name]`
 
 ### _pico_index
 
@@ -79,8 +79,8 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `id` (unique), parts: `[table_id, id]`
-* `name` (unique), parts: `[table_id, name]`
+* `_pico_index_id` (unique), parts: `[table_id, id]`
+* `_pico_index_name` (unique), parts: `[table_id, name]`
 
 ### _pico_routine
 
@@ -109,8 +109,8 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`
+* `_pico_routine_id` (unique), parts: `[id]`
+* `_pico_routine_name` (unique), parts: `[name]`
 
 ## Описание свойств кластера {: #cluster_properties }
 
@@ -125,7 +125,7 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `key` (unique), parts: `[key]`
+* `_pico_property_key` (unique), parts: `[key]`
 
 ## Описание топологии кластера {: #cluster_topology }
 
@@ -140,7 +140,7 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `raft_id` (unique), parts: `[raft_id]`
+* `_pico_peer_address_raft_id` (unique), parts: `[raft_id]`
 
 ### _pico_instance
 
@@ -160,9 +160,9 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `instance_id` (unique), parts: `[instance_id]`
-* `raft_id` (unique), parts: `[raft_id]`
-* `replicaset_id` (non-unique), parts: `[replicaset_id]`
+* `_pico_instance_id` (unique), parts: `[instance_id]`
+* `_pico_instance_raft_id` (unique), parts: `[raft_id]`
+* `_pico_instance_replicaset_id` (non-unique), parts: `[replicaset_id]`
 
 ### _pico_replicaset
 
@@ -181,7 +181,7 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `replicaset_id` (unique), parts: `[replicaset_id]`
+* `_pico_replicaset_id` (unique), parts: `[replicaset_id]`
 
 ### _pico_tier
 
@@ -194,7 +194,7 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `name` (unique), parts: `[name]`
+* `_pico_tier_name` (unique), parts: `[name]`
 
 ## Описание управления доступом {: #access_control }
 
@@ -213,8 +213,8 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `id` (unique), parts: `[id]`
-* `name` (unique), parts: `[name]`
+* `_pico_user_id` (unique), parts: `[id]`
+* `_pico_user_name` (unique), parts: `[name]`
 
 ### _pico_privilege
 
@@ -231,5 +231,5 @@ Picodata 24.3.0-65-g6043629f
 
 Индексы:
 
-* `primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
-* `object` (non-unique), parts: `[object_type, object_id]`
+* `_pico_privilege_primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
+* `_pico_privilege_object` (non-unique), parts: `[object_type, object_id]`
