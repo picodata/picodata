@@ -24,11 +24,12 @@
 * `table_id`: (_unsigned_)
 * `id`: (_unsigned_)
 * `name`: (_string_)
-* `local`: (_boolean_)
+* `type`: (_string_)
+* `opts`: (_array_)
 * `parts`: (_array_)
-* `schema_version`: (_unsigned_)
 * `operable`: (_boolean_)
-* `unique`: (_boolean_)
+* `schema_version`: (_unsigned_)
+* `owner`: (_unsigned_)
 
 Индексы:
 

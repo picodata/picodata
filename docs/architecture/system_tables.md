@@ -6,7 +6,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 <!--
 Описание соответствует версии
-Picodata 24.2.0-81-gb26e77b9
+Picodata 24.3.0-65-g6043629f
 -->
 
 ## Описание схемы данных {: #schema }
@@ -70,11 +70,12 @@ Picodata 24.2.0-81-gb26e77b9
 * `table_id`: (_unsigned_)
 * `id`: (_unsigned_)
 * `name`: (_string_)
-* `local`: (_boolean_)
+* `type`: (_string_)
+* `opts`: (_array_)
 * `parts`: (_array_)
-* `schema_version`: (_unsigned_)
 * `operable`: (_boolean_)
-* `unique`: (_boolean_)
+* `schema_version`: (_unsigned_)
+* `owner`: (_unsigned_)
 
 Индексы:
 
