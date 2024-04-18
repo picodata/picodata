@@ -671,6 +671,7 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::Motion { .. }
                 | Relational::Projection { .. }
                 | Relational::Intersect { .. }
+                | Relational::ScanCte { .. }
                 | Relational::ScanRelation { .. }
                 | Relational::ScanSubQuery { .. }
                 | Relational::Selection { .. }

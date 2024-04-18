@@ -15,6 +15,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `to_char`, `to_date` functions.
 - SQL supports `ORDER BY` clause.
 - SQL supports `UNION` operator.
+- SQL supports common table expressions (CTE).
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.

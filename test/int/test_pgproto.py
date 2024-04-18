@@ -149,7 +149,7 @@ def test_extended_errors(pg_client: PgClient):
         pg_client.parse("", sql)
 
     sql = """ select * from "t" """
-    with pytest.raises(ReturnError, match="space t not found"):
+    with pytest.raises(ReturnError, match="""table with name "t" not found"""):
         pg_client.parse("", sql)
 
 

@@ -46,7 +46,7 @@ def test_pico_sql(cluster: Cluster):
     with pytest.raises(ReturnError, match=third_arg_msg):
         i1.call("pico.sql", "select * from t", {}, "tracer")
 
-    invalid_meta_msg = re.escape("sbroad: space")
+    invalid_meta_msg = re.escape("sbroad: table")
     with pytest.raises(ReturnError, match=invalid_meta_msg):
         i1.call(
             "pico.sql",
@@ -1523,8 +1523,8 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    # already dropped -> error, no such space
-    with pytest.raises(ReturnError, match="sbroad: space t not found"):
+    # already dropped -> error, no such table
+    with pytest.raises(ReturnError, match="""sbroad: space t not found"""):
         i2.sql(
             """
             drop table "t"
@@ -3727,3 +3727,203 @@ def test_order_by(cluster: Cluster):
         match="Using parameter as a standalone ORDER BY expression doesn't influence sorting",
     ):
         i1.sql(""" select * from "null_t" order by ? """)
+
+
+def test_cte(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    # Initialize sharded table
+    ddl = i1.sql(
+        """
+        create table t (a int not null, b int, primary key (a))
+        distributed by (b)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+    data = i1.sql(
+        """
+        insert into t values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)
+        """
+    )
+    assert data["row_count"] == 5
+
+    # Initialize global table
+    ddl = i1.sql(
+        """
+        create table g (a int not null, b int, primary key (a))
+        distributed globally
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+    for i in range(1, 5):
+        index = i1.cas("insert", "G", [i, i])
+        i1.raft_wait_index(index, 3)
+
+    # basic CTE
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a > 2)
+        select * from cte
+        """
+    )
+    assert data["rows"] == [[3], [4], [5]]
+
+    # nested CTE
+    data = i1.sql(
+        """
+        with cte1 (b) as (select a from t where a > 2),
+             cte2 as (select b from cte1)
+        select * from cte2
+        """
+    )
+    assert data["rows"] == [[3], [4], [5]]
+
+    # reuse CTE
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a = 2)
+        select b from cte
+        union all
+        select b + b from cte
+        """
+    )
+    assert data["rows"] == [[2], [4]]
+
+    # global CTE
+    data = i1.sql(
+        """
+        with cte (b) as (select a from g where a < 4)
+        select * from cte
+        """
+    )
+    assert data["rows"] == [[1], [2], [3]]
+
+    # CTE with parameters
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a > ?)
+        select * from cte
+        """,
+        3,
+    )
+    assert data["rows"] == [[4], [5]]
+
+    # join sharded table with CTE
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a > 2)
+        select t.a, cte.b from t join cte on t.a = cte.b
+        """
+    )
+    assert data["rows"] == [[3, 3], [4, 4], [5, 5]]
+
+    # join global table with CTE
+    data = i1.sql(
+        """
+        with cte (b) as (select a from g where a < 4)
+        select g.a, cte.b from g join cte on g.a = cte.b
+        """
+    )
+    assert data["rows"] == [[1, 1], [2, 2], [3, 3]]
+
+    # CTE in aggregate
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a between 2 and 4)
+        select count(b) from cte
+        """
+    )
+    assert data["rows"] == [[3]]
+
+    # CTE in subquery
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a in (2, 5))
+        select * from t where a in (select b from cte)
+        """
+    )
+    assert data["rows"] == [[2, 2], [5, 5]]
+
+    # values in CTE
+    data = i1.sql(
+        """
+        with cte (b) as (values (1), (2), (3))
+        select * from cte order by 1
+        """
+    )
+    assert data["rows"] == [[1], [2], [3]]
+
+    # union all in CTE
+    data = i1.sql(
+        """
+        with cte1 (b) as (values (1), (2), (3)),
+        cte2 (b) as (select a from t where a = 1 union all select * from cte1)
+        select * from cte2 order by 1
+        """
+    )
+    assert data["rows"] == [[1], [1], [2], [3]]
+
+    # join in CTE
+    data = i1.sql(
+        """
+        with cte (c) as (
+            select t.a from t join g on t.a = g.a
+            join t as t2 on t2.a = t.a
+            where t.a = 1
+        )
+        select * from cte
+        """
+    )
+    assert data["rows"] == [[1]]
+
+    # order by in CTE
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t order by a desc)
+        select * from cte
+        """
+    )
+    assert data["rows"] == [[5], [4], [3], [2], [1]]
+
+    # randomly distributed CTE used multiple times
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a > 3)
+        select t.c from (select count(*) as c from cte c1 join cte c2 on true) t
+        join cte on true
+        """
+    )
+    assert data["rows"] == [[4], [4]]
+
+    # CTE with segment distribution used multiple times
+    data = i1.sql(
+        """
+        with cte (b) as (select a from t where a = 1)
+        select t.c from (select count(*) as c from cte c1 join cte c2 on true) t
+        join cte on true
+        """
+    )
+    assert data["rows"] == [[1]]
+
+    # CTE with global distribution used multiple times
+    data = i1.sql(
+        """
+        with cte (b) as (select a from g where a = 1)
+        select t.c from (select count(*) as c from cte c1 join cte c2 on true) t
+        join cte on true
+        """
+    )
+    assert data["rows"] == [[1]]
+
+    # CTE with values used multiple times
+    data = i1.sql(
+        """
+        with cte (b) as (values (1))
+        select t.c from (select count(*) as c from cte c1 join cte c2 on true) t
+        join cte on true
+        """
+    )
+    assert data["rows"] == [[1]]
