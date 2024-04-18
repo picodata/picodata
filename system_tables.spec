@@ -135,6 +135,7 @@
 * `schema_version`: (_unsigned_)
 * `auth`: (_array_)
 * `owner`: (_unsigned_)
+* `type`: (_string_)
 
 Индексы:
 
