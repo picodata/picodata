@@ -72,7 +72,7 @@ local function main()
             printf(
                 "* `%s` (%s), parts: `[%s]`",
                 idx.name,
-                idx.unique and "unique" or "non-unique",
+                idx.opts[1]['unique'] and "unique" or "non-unique",
                 table.concat(parts, ", ")
             )
         end
