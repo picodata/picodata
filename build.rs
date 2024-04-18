@@ -80,7 +80,7 @@ fn set_git_describe_env_var() {
     let output = Command::new("git").arg("describe").output().unwrap();
     assert!(
         output.status.success(),
-        "stdout: {} stderr: {}",
+        "`git describe` failed: {}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
