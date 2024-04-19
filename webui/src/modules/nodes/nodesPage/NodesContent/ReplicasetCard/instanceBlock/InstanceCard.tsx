@@ -19,11 +19,6 @@ interface InstanceCardProps {
 
 export const InstanceCard: FC<InstanceCardProps> = React.memo(
   ({ instance, theme = "primary", classes }) => {
-    // const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-    // const onCloseHandler = useCallback(() => {
-    //   setIsOpenModal(false);
-    // }, []);
-
     const { translation } = useTranslation();
     const instanceTranslations = translation.pages.instances.list.instanceCard;
 
@@ -32,7 +27,6 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
         <div
           onClick={(event) => {
             event.stopPropagation();
-            // setIsOpenModal(true);
           }}
           className={cn(
             styles.cardWrapper,
