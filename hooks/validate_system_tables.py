@@ -30,6 +30,9 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
             parsed_spec.extend(["", line, ""])
             capture = "index"
             continue
+        elif line.startswith("Описание соответствует версии Picodata"):
+            parsed_spec.extend([line])
+            continue
 
         if capture == "format":
             if line.startswith("*"):
@@ -57,4 +60,4 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
     if first_line is None:
         return
 
-    log.warning("SYSTEM TABLES DIFFERS!\n" + f"{first_line}\n" + "\n".join(diff))
+    log.warning("SYSTEM TABLES DIFFERS\n" + f"{first_line}\n" + "\n".join(diff))

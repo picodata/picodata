@@ -2,7 +2,7 @@
 --
 -- Usage:
 --
---   picodata run --data-dir /tmp/picospec --script tools/dump_spec.lua | tee system_tables.spec
+--   rm -rf /tmp/picospec; picodata run --data-dir /tmp/picospec --script tools/dump_spec.lua | tee system_tables.spec
 --
 -- Dump system tables schema to the stdout. The output format self-defined by the script.
 --
@@ -51,6 +51,11 @@ end
 
 local function main()
     local res = {}
+
+    printf(
+        "Описание соответствует версии Picodata `%s`.",
+        pico.PICODATA_VERSION
+    )
 
     for i, t in ipairs(tables) do
         local tbl = box.space['_pico_table'].index[1]:get(t)
