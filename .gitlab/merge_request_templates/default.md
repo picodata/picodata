@@ -1,6 +1,5 @@
 ---
 - Close #...
-- Target branch: `%{target_branch}`
 - Changes should be cherry-picked to `24.2`: yes / no
 - Staging: https://docs.binary.picodata.io/picodata/%{source_branch}/
 <!--
