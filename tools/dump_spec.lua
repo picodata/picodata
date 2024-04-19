@@ -58,7 +58,9 @@ local function main()
 
         printf("Поля:\n")
         for _, field in ipairs(tbl.format) do
-            local name, type, nullable = unpack(field)
+            local name = field.name
+            local type = field.field_type
+            local nullable = field.is_nullable
             printf("* `%s`: (_%s_)", name, type)
         end
         printf("")
