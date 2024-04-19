@@ -443,6 +443,13 @@ upload-picodata-to-binary:
     VER: $CI_COMMIT_SHORT_SHA
     GIT_DEPTH: 100
     GIT_SUBMODULE_STRATEGY: recursive
+  before_script:
+    # To conduct stress tests, we require the most recent picodata tag. However,
+    # creating a shallow copy with $GIT_DEPTH commits might not include this tag.
+    # Fetching all commits takes too much time, so we incrementally download more
+    # chunks of commits until we find the required tag.
+    - until git describe; do git fetch --deepen 100; done
+    - *fetch-tags
   script:
     - cargo build --locked --release --features webui
     - mv target/release/picodata target/release/picodata-$VER
