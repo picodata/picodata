@@ -30,17 +30,17 @@ Picodata 24.3.0-74-g153b595b
 * `name`: (_string_) название таблицы
 * `distribution`: (_map_) определяет распределение данных в кластере.
   Возможны следующие варианты:
-    - `["global"]` — глобальная таблица
-    - `["sharded_implicitly", sharding_key, sharding_fn]` —
+    - `{"Global": null}` — глобальная таблица
+    - `{"ShardedImplicitly": [sharding_key, sharding_fn]}` —
       шардированная таблица, `bucket_id` вычисляется автоматически
       как `sharding_fn(sharding_key)`
         - `sharding_fn`: (_string_) функция шардирования, на сегодняшний
-          день поддерживается только `"crc32"`
+          день поддерживается только `"murmur3"`
         - `sharding_key`: (_array_) ключ шардирования — массив полей
-          `[field,...]`, по которым вычисляется `bucket_id`
-    - `["sharded_by_field", field]` — шардированная таблица, в качестве
-      `bucket_id` используется значение поля `field`
-* `format`: (_array_, `[{"name": VALUE, "field_type": VALUE, "is_nullable": VALUE}]`)
+          `[field, ...]`, по которым вычисляется `bucket_id`
+    - `{"ShardedByField": [field]}` — шардированная таблица, в качестве
+      `bucket_id` используется значение поля `field` (ровно одного)
+* `format`: (_array_, `[{"name": ..., "field_type": ..., "is_nullable": ...}]`)
   массив словарей с описанием формата полей таблицы:
     - `name`: (_string_) название поля
     - `field_type`: (_string_, `"any" | "unsigned" | "string" | "number" |
