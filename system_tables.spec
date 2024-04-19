@@ -5,7 +5,7 @@
 
 * `id`: (_unsigned_)
 * `name`: (_string_)
-* `distribution`: (_array_)
+* `distribution`: (_map_)
 * `format`: (_array_)
 * `schema_version`: (_unsigned_)
 * `operable`: (_boolean_)
