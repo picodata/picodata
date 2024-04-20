@@ -2,6 +2,7 @@ import React, { FC } from "react";
 import cn from "classnames";
 
 import { HiddenWrapper } from "shared/ui/HiddenWrapper/HiddenWrapper";
+import { useTranslation } from "shared/intl";
 
 import styles from "./UserRoleCard.module.scss";
 
@@ -28,12 +29,15 @@ export interface UserRoleProps {
 
 export const UserRoleCard: FC<UserRoleProps> = React.memo(
   ({ type, card, className, onClick }) => {
-    const userName = "Имя пользователя";
-    const roleName = "Название роли";
-    const roles = "Роли";
-    const privilegesForUser = "Привилегии для пользователей";
-    const privilegesForRoles = "Привилегии для ролей";
-    const privilegesForTables = "Привилегии для таблиц";
+    const { translation } = useTranslation();
+    const {
+      userName,
+      roleName,
+      roles,
+      privilegesForUser,
+      privilegesForRoles,
+      privilegesForTables,
+    } = translation.pages.users;
 
     return (
       <div className={cn(styles.cardWrapper, className)} onClick={onClick}>

@@ -2,6 +2,7 @@ import React from "react";
 
 import { ListDashesIcon } from "shared/icons/ListDashesIcon";
 import { ButtonSelect } from "shared/ui/ButtonSelect/ButtonSelect";
+import { useTranslation } from "shared/intl";
 
 import { TGroupByValue, groupByOptions } from "./config";
 
@@ -11,7 +12,7 @@ export type GroupByFilterProps = {
 };
 
 export const GroupByFilter: React.FC<GroupByFilterProps> = (props) => {
-  const groupBy = "Группировать";
+  const { translation } = useTranslation();
 
   return (
     <ButtonSelect
@@ -21,7 +22,7 @@ export const GroupByFilter: React.FC<GroupByFilterProps> = (props) => {
       value={props.groupByFilterValue}
       onChange={props.setGroupByFilterValue}
     >
-      {groupBy}
+      {translation.components.buttons.groupBy.label}
     </ButtonSelect>
   );
 };

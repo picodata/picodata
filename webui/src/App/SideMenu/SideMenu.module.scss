@@ -4,7 +4,7 @@
 .container {
   width: 64px;
   flex-shrink: 0;
-  z-index: 1;
+  overflow: hidden;
   background: linear-gradient(
     176.39deg,
     rgba(231, 222, 222, 0.3) 0%,
@@ -19,7 +19,6 @@
   bottom: 0;
   padding: 40px 16px;
   z-index: $zIndexSideMenu;
-  overflow: hidden;
 
   transition: width 0.3s ease-out;
 }
@@ -50,17 +49,16 @@
   align-items: center;
   column-gap: 16px;
   color: $colorTextBlack;
-  padding-left: $menuIndent;
-  margin-top: 16px;
+  margin-bottom: 16px;
 
   @include animate(color);
 
-  &:hover {
-    color: $colorTextOrange;
+  &:last-child {
+    margin-bottom: 0;
   }
 
-  &:first-child {
-    margin-top: 0;
+  &:hover {
+    color: $colorTextOrange;
   }
 }
 

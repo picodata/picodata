@@ -1,0 +1,21 @@
+export const users = {
+  search: "Поиск",
+  userName: "Имя пользователя",
+  roleName: "Название роли",
+  roles: "Роли",
+  privilegesForUser: "Привилегии для пользователей",
+  privilegesForRoles: "Привилегии для ролей",
+  privilegesForTables: "Привилегии для таблиц",
+  modal: {
+    authType: "Тип авторизации",
+    roles: "Роли",
+    privilegesRoles: "Привилегии для ролей:",
+    noPrivileges: "Нет соответствующих привилегий",
+    selectPrivilege: "Выберите привилегию",
+    privilegesUsers: "Привилегии для пользователей:",
+    privilegesForAllUsers: "Относится ко всем пользователям",
+    privilegesTables: "Привилегии для таблиц:",
+    privilegesForAllTables: "Относится ко всем таблицам",
+    close: "Закрыть",
+  },
+};

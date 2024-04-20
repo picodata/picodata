@@ -5,6 +5,7 @@ import { Modal } from "shared/ui/Modal/Modal";
 import { Role, User } from "shared/entity/users/types/types";
 import { CloseIcon } from "shared/icons/CloseIcon";
 import { Button } from "shared/ui/Button/Button";
+import { useTranslation } from "shared/intl";
 
 import styles from "./UserRoleModal.module.scss";
 
@@ -15,16 +16,19 @@ export const UserRoleModal = ({
   item: Role | User;
   onClose: () => void;
 }) => {
-  const authType = "Тип авторизации";
-  const roles = "Роли";
-  const privilegesRoles = "Привилегии для ролей:";
-  const noPrivileges = "Нет соответствующих привилегий";
-  const selectPrivilege = "Выберите привилегию";
-  const privilegesUsers = "Привилегии для пользователей:";
-  const privilegesForAllUsers = "Относится ко всем пользователям";
-  const privilegesTables = "Привилегии для таблиц:";
-  const privilegesForAllTables = "Относится ко всем таблицам";
-  const close = "Закрыть";
+  const { translation } = useTranslation();
+  const {
+    authType,
+    roles,
+    privilegesRoles,
+    noPrivileges,
+    selectPrivilege,
+    privilegesUsers,
+    privilegesForAllUsers,
+    privilegesTables,
+    privilegesForAllTables,
+    close,
+  } = translation.pages.users.modal;
 
   const [selectedUserPrivilege, setSelectedUserPrivilege] = useState<string>();
   const [selectedTablePrivilege, setSelectedTablePrivilege] =

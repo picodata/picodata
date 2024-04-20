@@ -14,25 +14,29 @@ export const Users = ({
 }) => {
   const { data } = useUsersInfoQuery();
 
-  return data
-    ?.filter((user) => {
-      if (search.length) {
-        return user.name
-          .toLocaleLowerCase()
-          .includes(search.toLocaleLowerCase());
-      }
+  return (
+    <>
+      {data
+        ?.filter((user) => {
+          if (search.length) {
+            return user.name
+              .toLocaleLowerCase()
+              .includes(search.toLocaleLowerCase());
+          }
 
-      return true;
-    })
-    .map((item, i) => {
-      return (
-        <UserRoleCard
-          key={i}
-          className={styles.item}
-          type="USERS"
-          onClick={() => setSelectedItem(item)}
-          card={item}
-        />
-      );
-    });
+          return true;
+        })
+        .map((item, i) => {
+          return (
+            <UserRoleCard
+              key={i}
+              className={styles.item}
+              type="USERS"
+              onClick={() => setSelectedItem(item)}
+              card={item}
+            />
+          );
+        })}
+    </>
+  );
 };

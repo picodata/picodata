@@ -33,12 +33,12 @@ export const SideMenu = () => {
     {
       to: URL_CONFIG.NODES.absolutePath,
       label: sideMenuTranslations.navLinks.instances.label,
-      icon: <InstancesIcon />,
+      icon: <InstancesIcon className={styles.icon} />,
     },
     {
       to: URL_CONFIG.USERS.absolutePath,
       label: sideMenuTranslations.navLinks.users.label,
-      icon: <UsersIcon />,
+      icon: <UsersIcon className={styles.icon} />,
     },
   ];
 
@@ -59,7 +59,7 @@ export const SideMenu = () => {
             <NavLink
               key={link.to}
               to={link.to}
-              className={(isActive) => {
+              className={({ isActive }) => {
                 if (isActive) return cn(styles.navLink, styles.activeNavLink);
 
                 return styles.navLink;

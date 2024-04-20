@@ -3,6 +3,7 @@ import cn from "classnames";
 
 import { Input } from "shared/ui/Input/Input";
 import { SearchIcon } from "shared/icons/SearchIcon";
+import { useTranslation } from "shared/intl";
 
 import {
   GroupByFilter,
@@ -20,7 +21,7 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
   const { groupByFilterValue, setGroupByFilterValue, search, setSearch } =
     props;
 
-  const searchTranslate = "Поиск";
+  const { translation } = useTranslation();
 
   return (
     <div className={cn(styles.container)}>
@@ -30,7 +31,7 @@ export const TopBar: React.FC<TopBarProps> = (props) => {
             value={search}
             classes={{ container: styles.searchInput }}
             onChange={setSearch}
-            placeholder={searchTranslate}
+            placeholder={translation.pages.users.search}
             rightIcon={<SearchIcon className={styles.searchIcon} />}
           />
         </div>
