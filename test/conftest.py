@@ -1895,7 +1895,6 @@ class AuditServer:
             return None
 
         def server(queue: Queue, host: str, port: int) -> None:
-
             class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 QUEUE = queue
 

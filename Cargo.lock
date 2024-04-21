@@ -3003,6 +3003,7 @@ dependencies = [
  "serde_yaml 0.8.26",
  "smol_str",
  "tarantool 5.0.0",
+ "time",
  "uuid 1.8.0",
 ]
 

@@ -677,6 +677,7 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::GroupBy { .. }
                 | Relational::OrderBy { .. }
                 | Relational::Having { .. }
+                | Relational::Union { .. }
                 | Relational::UnionAll { .. }
                 | Relational::Values { .. }
                 | Relational::ValuesRow { .. } => Ok(CommandTag::Select),
