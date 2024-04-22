@@ -43,6 +43,9 @@ local tables = {
     '_pico_tier',
     '_pico_user',
     '_pico_privilege',
+    '_pico_plugin',
+    '_pico_service',
+    '_pico_service_route',
 }
 
 local function printf(fmt, ...)

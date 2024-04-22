@@ -230,3 +230,52 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `_pico_privilege_primary` (unique), parts: `[grantee_id, object_type, object_id, privilege]`
 * `_pico_privilege_object` (non-unique), parts: `[object_type, object_id]`
+
+## Описание плагинов {: #plugins }
+
+Содержит информацию о плагинах Picodata.
+
+### _pico_plugin
+
+Поля:
+
+* `name`: (_string_)
+* `running`: (_boolean_)
+* `services`: (_array_)
+* `version`: (_string_)
+
+Индексы:
+
+* `_pico_plugin_name` (unique), parts: `[name]`
+
+### _pico_service
+
+Содержит информацию о топологии сервисов, включенных в плагины Picodata.
+
+Поля:
+
+* `plugin_name`: (_string_)
+* `name`: (_string_)
+* `version`: (_string_)
+* `tiers`: (_array_)
+* `configuration`: (_any_)
+* `schema_version`: (_unsigned_)
+
+Индексы:
+
+* `_pico_service_name` (unique), parts: `[plugin_name, name, version]`
+
+### _pico_service_route
+
+Содержит информацию о маршрутизации между сервисами Picodata.
+
+Поля:
+
+* `instance_id`: (_string_)
+* `plugin_name`: (_string_)
+* `service_name`: (_string_)
+* `poison`: (_boolean_)
+
+Индексы:
+
+* `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, service_name]`
