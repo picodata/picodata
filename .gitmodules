@@ -18,5 +18,5 @@
 	url = ../picodata-webui.git
 [submodule "sbroad"]
 	path = sbroad
-	url = https://git.picodata.io/picodata/picodata/sbroad.git
+	url = ../sbroad.git
 	branch = picodata-24.2
