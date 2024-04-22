@@ -153,3 +153,18 @@ body {
 .picodata-link {
     max-width: 5.9rem !important;
 }
+
+/* Set custom bullets for level 2 <ul> lists — hollow circle */
+article ul ul {
+    list-style-type: circle !important;
+}
+
+/* Set custom bullets for level 3 <ul> lists — minus sign */
+article ul ul ul {
+    list-style-type: "\2212" !important;
+}
+
+/* Set padding for level 3 <ul> list items*/
+article ul ul ul li {
+    padding-left: 0.5rem;
+}
