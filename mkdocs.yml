@@ -90,6 +90,8 @@ nav:
     - architecture/raft_failover.md
     - architecture/system_tables.md
     - architecture/rpc_api.md
+  - Плагины:
+    - plugins/synapse.md
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
