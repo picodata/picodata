@@ -59,6 +59,7 @@ nav:
         - reference/sql/alter_procedure.md
         - reference/sql/alter_user.md
         - reference/sql/call.md
+        - reference/sql/create_index.md
         - reference/sql/create_procedure.md
         - reference/sql/create_role.md
         - reference/sql/create_table.md
