@@ -65,6 +65,7 @@ nav:
         - reference/sql/create_table.md
         - reference/sql/create_user.md
         - reference/sql/delete.md
+        - reference/sql/drop_index.md
         - reference/sql/drop_procedure.md
         - reference/sql/drop_role.md
         - reference/sql/drop_table.md
