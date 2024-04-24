@@ -57,6 +57,7 @@ use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
+use sbroad::utils::MutexLike;
 use std::rc::Rc;
 use std::str::FromStr;
 use tarantool::session;
@@ -518,10 +519,7 @@ pub fn proc_pg_parse(
         &sql.clone(),
         || {
             let runtime = RouterRuntime::new().map_err(Error::from)?;
-            let mut cache = runtime
-                .cache()
-                .try_borrow_mut()
-                .map_err(|e| Error::Other(format!("runtime query cache: {e:?}").into()))?;
+            let mut cache = runtime.cache().lock();
             if let Some(plan) = cache.get(&query.to_smolstr())? {
                 let statement =
                     Statement::new(id.to_string(), sql.clone(), plan.clone(), param_oids)?;
@@ -529,7 +527,7 @@ pub fn proc_pg_parse(
                     .with(|cache| cache.borrow_mut().put((cid, name.into()), statement))?;
                 return Ok(());
             }
-            let metadata = &*runtime.metadata().map_err(Error::from)?;
+            let metadata = &*runtime.metadata().lock();
             let plan = with_su(ADMIN_ID, || -> traft::Result<IrPlan> {
                 let mut plan =
                     <RouterRuntime as Router>::ParseTree::transform_into_plan(&query, metadata)

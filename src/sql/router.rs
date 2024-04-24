@@ -16,10 +16,12 @@ use sbroad::executor::protocol::Binary;
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::ir::value::{MsgPackValue, Value};
 use sbroad::ir::Plan;
+use sbroad::utils::MutexLike;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use tarantool::fiber::Mutex;
 
 use std::any::Any;
-use std::cell::{Ref, RefCell};
+
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -50,8 +52,8 @@ use ::tarantool::util::Value as TarantoolValue;
 pub type VersionMap = HashMap<SmolStr, u64>;
 
 thread_local! {
-    static PLAN_CACHE: Rc<RefCell<PicoRouterCache >> = Rc::new(
-        RefCell::new(PicoRouterCache::new(DEFAULT_CAPACITY).unwrap()));
+    static PLAN_CACHE: Rc<Mutex<PicoRouterCache>> = Rc::new(
+        Mutex::new(PicoRouterCache::new(DEFAULT_CAPACITY).unwrap()));
 }
 
 pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
@@ -85,9 +87,9 @@ pub fn get_table_version(space_name: &str) -> Result<u64, SbroadError> {
 
 #[allow(clippy::module_name_repetitions)]
 pub struct RouterRuntime {
-    metadata: RefCell<RouterMetadata>,
+    metadata: Mutex<RouterMetadata>,
     bucket_count: u64,
-    ir_cache: Rc<RefCell<PicoRouterCache>>,
+    ir_cache: Rc<Mutex<PicoRouterCache>>,
 }
 
 impl RouterRuntime {
@@ -99,7 +101,7 @@ impl RouterRuntime {
         let metadata = RouterMetadata::default();
         let bucket_count = DEFAULT_BUCKET_COUNT;
         let runtime = PLAN_CACHE.with(|cache| RouterRuntime {
-            metadata: RefCell::new(metadata),
+            metadata: Mutex::new(metadata),
             bucket_count,
             ir_cache: cache.clone(),
         });
@@ -185,24 +187,16 @@ impl Cache<SmolStr, Plan> for PicoRouterCache {
 impl QueryCache for RouterRuntime {
     type Cache = PicoRouterCache;
 
-    fn cache(&self) -> &RefCell<Self::Cache> {
-        &self.ir_cache
+    fn cache(&self) -> &impl MutexLike<Self::Cache> {
+        &*self.ir_cache
     }
 
     fn cache_capacity(&self) -> Result<usize, SbroadError> {
-        Ok(self
-            .ir_cache
-            .try_borrow()
-            .map_err(|e| {
-                SbroadError::FailedTo(Action::Get, Some(Entity::Cache), format_smolstr!("{e:?}"))
-            })?
-            .capacity())
+        Ok(self.cache().lock().capacity())
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
-        *self.ir_cache.try_borrow_mut().map_err(|e| {
-            SbroadError::FailedTo(Action::Clear, Some(Entity::Cache), format_smolstr!("{e:?}"))
-        })? = Self::Cache::new(self.cache_capacity()?)?;
+        *self.ir_cache.lock() = Self::Cache::new(self.cache_capacity()?)?;
         Ok(())
     }
 
@@ -219,14 +213,8 @@ impl Router for RouterRuntime {
     type ParseTree = AbstractSyntaxTree;
     type MetadataProvider = RouterMetadata;
 
-    fn metadata(&self) -> Result<Ref<Self::MetadataProvider>, SbroadError> {
-        self.metadata.try_borrow().map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Get,
-                Some(Entity::Metadata),
-                format_smolstr!("{e:?}"),
-            )
-        })
+    fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider> {
+        &self.metadata
     }
 
     fn materialize_motion(
@@ -256,14 +244,7 @@ impl Router for RouterRuntime {
         space: SmolStr,
         args: &'rec HashMap<SmolStr, Value>,
     ) -> Result<Vec<&'rec Value>, SbroadError> {
-        let metadata = self.metadata.try_borrow().map_err(|e| {
-            SbroadError::FailedTo(
-                Action::Borrow,
-                Some(Entity::Metadata),
-                format_smolstr!("{e:?}"),
-            )
-        })?;
-        sharding_key_from_map(&*metadata, &space, args)
+        sharding_key_from_map(&*self.metadata().lock(), &space, args)
     }
 
     fn extract_sharding_key_from_tuple<'rec>(
@@ -271,7 +252,7 @@ impl Router for RouterRuntime {
         space: SmolStr,
         args: &'rec [Value],
     ) -> Result<Vec<&'rec Value>, SbroadError> {
-        sharding_key_from_tuple(&*self.metadata()?, &space, args)
+        sharding_key_from_tuple(&*self.metadata().lock(), &space, args)
     }
 }
 
@@ -318,7 +299,7 @@ impl Vshard for RouterRuntime {
         vtable_max_rows: u64,
     ) -> Result<Box<dyn Any>, SbroadError> {
         exec_ir_on_all_buckets(
-            &*self.metadata()?,
+            &*self.metadata().lock(),
             required,
             optional,
             query_type,
@@ -363,7 +344,7 @@ impl Vshard for &RouterRuntime {
         vtable_max_rows: u64,
     ) -> Result<Box<dyn Any>, SbroadError> {
         exec_ir_on_all_buckets(
-            &*self.metadata()?,
+            &*self.metadata().lock(),
             required,
             optional,
             query_type,
