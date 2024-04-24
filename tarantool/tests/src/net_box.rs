@@ -74,7 +74,11 @@ pub fn execute() {
 
     assert_eq!(result.len(), 1);
     assert_eq!(
-        result.get(0).unwrap().decode::<(u64, String)>().unwrap(),
+        result
+            .get(0)
+            .unwrap()
+            .decode_rmp::<(u64, String)>()
+            .unwrap(),
         (6002, "6002".to_string())
     );
 }
@@ -116,7 +120,7 @@ pub fn call() {
     let result = conn
         .call("test_stored_proc", &(1, 2), &Options::default())
         .unwrap();
-    assert_eq!(result.unwrap().decode::<(i32,)>().unwrap(), (3,));
+    assert_eq!(result.unwrap().decode_rmp::<(i32,)>().unwrap(), (3,));
 }
 
 pub fn call_async() {
@@ -132,7 +136,7 @@ pub fn call_async() {
     assert_eq!(p2.wait().unwrap(), (50,));
     assert_eq!(p1.state(), State::Kept);
     let tuple: Tuple = p1.wait().unwrap();
-    assert_eq!(tuple.decode::<(i32,)>().unwrap(), (489,));
+    assert_eq!(tuple.decode_rmp::<(i32,)>().unwrap(), (489,));
 }
 
 pub fn call_async_error() {
@@ -214,7 +218,7 @@ pub fn eval() {
     let result = conn
         .eval("return ...", &(1, 2), &Options::default())
         .unwrap();
-    assert_eq!(result.unwrap().decode::<(i32, i32)>().unwrap(), (1, 2));
+    assert_eq!(result.unwrap().decode_rmp::<(i32, i32)>().unwrap(), (1, 2));
 }
 
 pub fn eval_async() {
@@ -328,7 +332,7 @@ pub fn get() {
         .unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().decode::<S2Record>().unwrap(),
+        output.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 16,
             key: "key_16".to_string(),
@@ -346,7 +350,7 @@ pub fn select() {
     let result: Vec<S2Record> = space
         .select(IteratorType::LE, &(2,), &Options::default())
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
 
     assert_eq!(
@@ -383,11 +387,14 @@ pub fn insert() {
     };
     let insert_result = remote_space.insert(&input, &Options::default()).unwrap();
     assert!(insert_result.is_some());
-    assert_eq!(insert_result.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(
+        insert_result.unwrap().decode_rmp::<S1Record>().unwrap(),
+        input
+    );
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().decode_rmp::<S1Record>().unwrap(), input);
 }
 
 pub fn replace() {
@@ -412,13 +419,13 @@ pub fn replace() {
         .unwrap();
     assert!(replace_result.is_some());
     assert_eq!(
-        replace_result.unwrap().decode::<S1Record>().unwrap(),
+        replace_result.unwrap().decode_rmp::<S1Record>().unwrap(),
         new_input
     );
 
     let output = local_space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), new_input);
+    assert_eq!(output.unwrap().decode_rmp::<S1Record>().unwrap(), new_input);
 }
 
 pub fn update() {
@@ -447,12 +454,19 @@ pub fn update() {
         .unwrap();
     assert!(update_result.is_some());
     assert_eq!(
-        update_result.unwrap().decode::<S1Record>().unwrap().text,
+        update_result
+            .unwrap()
+            .decode_rmp::<S1Record>()
+            .unwrap()
+            .text,
         "New"
     );
 
     let output = local_space.get(&(input.id,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "New"
+    );
 }
 
 pub fn upsert() {
@@ -499,10 +513,16 @@ pub fn upsert() {
         .unwrap();
 
     let output = local_space.get(&(1,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "Test 1");
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "Test 1"
+    );
 
     let output = local_space.get(&(2,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "New"
+    );
 }
 
 pub fn delete() {
@@ -522,7 +542,10 @@ pub fn delete() {
         .delete(&(input.id,), &Options::default())
         .unwrap();
     assert!(delete_result.is_some());
-    assert_eq!(delete_result.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(
+        delete_result.unwrap().decode_rmp::<S1Record>().unwrap(),
+        input
+    );
 
     let output = local_space.get(&(input.id,)).unwrap();
     assert!(output.is_none());

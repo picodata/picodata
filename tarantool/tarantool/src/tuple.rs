@@ -9,11 +9,12 @@
 //! - [Lua reference: Submodule box.tuple](https://www.tarantool.io/en/doc/2.2/reference/reference_lua/box_tuple/)
 //! - [C API reference: Module tuple](https://www.tarantool.io/en/doc/2.2/dev_guide/reference_capi/tuple/)
 use std::borrow::Cow;
+use std::cell::UnsafeCell;
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
 use std::fmt::{self, Debug, Formatter};
-use std::io::Write;
+use std::io::{Cursor, Write};
 use std::ops::Range;
 use std::os::raw::{c_char, c_int};
 use std::ptr::{null, NonNull};
@@ -27,14 +28,346 @@ use crate::index;
 use crate::tlua;
 use crate::util::NumOrStr;
 
-/// Tuple
+/// Tarantool tuple
 pub struct Tuple {
-    ptr: NonNull<ffi::BoxTuple>,
+    // At least one of the Options should always be Some
+    tuple: UnsafeCell<Option<BoxTuple>>,
+    buf: UnsafeCell<Option<TupleBuffer>>,
+}
+
+impl Tuple {
+    /// Create a new tuple from `value` implementing [`ToTuple`].
+    #[inline]
+    #[deprecated = "use Tuple::encode_rmp or Tuple::encode_custom instead"]
+    pub fn new<T>(value: &T) -> Result<Self>
+    where
+        T: ToTuple + ?Sized,
+    {
+        value.to_tuple()
+    }
+
+    /// Encode `T` into tuple through rmp_serde.
+    pub fn encode_rmp<T: Encode>(data: T) -> Result<Self> {
+        let mut buf = Cursor::new(Vec::<u8>::new());
+        data.encode(&mut buf)?;
+        let buf = TupleBuffer::try_from_vec(buf.into_inner())?;
+        Ok(buf.into())
+    }
+
+    /// Encode `T` into tuple through [`crate::msgpack::Encode`].
+    pub fn encode_custom<T: crate::msgpack::Encode>(data: T) -> Result<Self> {
+        let data = crate::msgpack::encode::encode(&data);
+        let buf = TupleBuffer::try_from_vec(data)?;
+        Ok(buf.into())
+    }
+
+    /// Construct an empty tuple.
+    pub fn encode_empty() -> Self {
+        Self::encode_rmp(()).unwrap()
+    }
+
+    /// # Errors
+    /// Returns an error if `data` is not a valid messagepack array
+    #[inline]
+    pub fn try_from_vec(data: Vec<u8>) -> Result<Self> {
+        let data = validate_msgpack(data)?;
+        unsafe { Ok(Self::from_vec_unchecked(data)) }
+    }
+
+    /// # Safety
+    /// `buf` must be a valid message pack array
+    #[track_caller]
+    #[inline(always)]
+    pub unsafe fn from_vec_unchecked(buf: Vec<u8>) -> Self {
+        TupleBuffer::from_vec_unchecked(buf).into()
+    }
+
+    /// # Errors
+    /// Returns an error if `data` is not a valid messagepack array
+    #[inline]
+    pub fn try_from_slice(data: &[u8]) -> Result<Self> {
+        BoxTuple::try_from_slice(data).map(Into::into)
+    }
+
+    /// # Safety
+    /// `data` must represent a valid messagepack array
+    #[inline(always)]
+    pub unsafe fn from_slice_unchecked(data: &[u8]) -> Self {
+        BoxTuple::from_slice(data).into()
+    }
+
+    #[inline(always)]
+    pub fn from_ptr(ptr: NonNull<ffi::BoxTuple>) -> Self {
+        BoxTuple::from_ptr(ptr).into()
+    }
+
+    /// Returns `None` if `ptr` is a null pointer.
+    #[inline(always)]
+    pub fn try_from_ptr(ptr: *mut ffi::BoxTuple) -> Option<Self> {
+        BoxTuple::try_from_ptr(ptr).map(Into::into)
+    }
+
+    /// # Safety
+    /// `data` must point to a buffer containing `len` bytes representing a
+    /// valid messagepack array
+    #[inline(always)]
+    pub unsafe fn from_raw_data(data: *mut c_char, len: u32) -> Self {
+        BoxTuple::from_raw_data(data, len).into()
+    }
+
+    fn buffer(&self) -> &TupleBuffer {
+        unsafe {
+            let buf = self.buf.get().as_mut().expect("not null");
+            if buf.is_none() {
+                *buf = Some(
+                    self.tuple
+                        .get()
+                        .as_ref()
+                        .expect("not null")
+                        .as_ref()
+                        .expect("should be set")
+                        .into(),
+                );
+            }
+            buf.as_ref().expect("just set")
+        }
+    }
+
+    fn tuple(&self) -> &BoxTuple {
+        unsafe {
+            let tuple = self.tuple.get().as_mut().expect("not null");
+            if tuple.is_none() {
+                *tuple = Some(
+                    self.buf
+                        .get()
+                        .as_ref()
+                        .expect("not null")
+                        .as_ref()
+                        .expect("should be set")
+                        .into(),
+                );
+            }
+            tuple.as_ref().expect("just set")
+        }
+    }
+
+    /// Return the number of fields in tuple (the size of MsgPack Array).
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.tuple().len() as usize
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Return the number of bytes in the tuple.
+    ///
+    /// With both the memtx storage engine and the vinyl storage engine the default maximum is one megabyte
+    /// (`memtx_max_tuple_size` or `vinyl_max_tuple_size`). Every field has one or more "length" bytes preceding the
+    /// actual contents, so `bsize()` returns a value which is slightly greater than the sum of the lengths of the
+    /// contents.
+    #[inline(always)]
+    pub fn bsize(&self) -> usize {
+        unsafe {
+            match (
+                self.tuple.get().as_ref().expect("not null"),
+                self.buf.get().as_ref().expect("not null"),
+            ) {
+                (_, Some(buf)) => buf.len(),
+                (Some(tuple), _) => tuple.bsize() as usize,
+                (None, None) => unreachable!(),
+            }
+        }
+    }
+
+    /// Return the associated format.
+    #[inline(always)]
+    pub fn format(&self) -> TupleFormat {
+        self.tuple().format()
+    }
+
+    /// Allocate and initialize a new `Tuple` iterator. The `Tuple` iterator
+    /// allow to iterate over fields at root level of MsgPack array.
+    ///
+    /// Example:
+    /// ```no_run
+    /// # fn foo<T: serde::de::DeserializeOwned>(tuple: tarantool::tuple::Tuple) {
+    /// let mut it = tuple.iter().unwrap();
+    ///
+    /// while let Some(field) = it.next::<T>().unwrap() {
+    ///     // process data
+    /// }
+    ///
+    /// // rewind iterator to first position
+    /// it.rewind();
+    /// assert!(it.position() == 0);
+    ///
+    /// // rewind iterator to first position
+    /// let field = it.seek::<T>(3).unwrap();
+    /// assert!(it.position() == 4);
+    /// }
+    /// ```
+    #[inline]
+    pub fn iter(&self) -> Result<TupleIterator> {
+        self.tuple().iter()
+    }
+
+    // TODO: support custom msgpack
+    /// Deserialize a tuple field specified by zero-based array index.
+    ///
+    /// - `fieldno` - zero-based index in MsgPack array.
+    ///
+    /// Returns:
+    /// - `Ok(None)` if `fieldno >= self.len()`
+    /// - `Err(e)` if deserialization failed
+    /// - `Ok(Some(field value))` otherwise
+    ///
+    /// See also [`Tuple::try_get`], [`Tuple::get`].
+    #[inline(always)]
+    pub fn field<'a, T>(&'a self, fieldno: u32) -> Result<Option<T>>
+    where
+        T: Decode<'a>,
+    {
+        self.tuple().field(fieldno)
+    }
+
+    // TODO: support custom msgpack
+    /// Deserialize a tuple field specified by an index implementing
+    /// [`TupleIndex`] trait.
+    ///
+    /// Currently 2 types of indexes are supported:
+    /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
+    /// - `&str` - JSON path for tuples with non default formats
+    ///
+    /// **NOTE**: getting tuple fields by JSON paths is not supported in all
+    /// tarantool versions. Use [`tarantool::ffi::has_tuple_field_by_path`] to
+    /// check whether it's supported in your case.
+    /// If `has_tuple_field_by_path` returns `false` this function will always
+    /// return `Err`.
+    ///
+    /// Returns:
+    /// - `Ok(None)` if index wasn't found
+    /// - `Err(e)` if deserialization failed (or api not supported)
+    /// - `Ok(Some(field value))` otherwise
+    ///
+    /// See also [`Tuple::get`].
+    ///
+    /// [`tarantool::ffi::has_tuple_field_by_path`]:
+    /// crate::ffi::has_tuple_field_by_path
+    #[inline(always)]
+    pub fn try_get<'a, I, T>(&'a self, key: I) -> Result<Option<T>>
+    where
+        I: TupleIndex,
+        T: Decode<'a>,
+    {
+        key.get_field(self)
+    }
+
+    // TODO: support custom msgpack
+    /// Deserialize a tuple field specified by an index implementing
+    /// [`TupleIndex`] trait.
+    ///
+    /// Currently 2 types of indexes are supported:
+    /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
+    /// - `&str` - JSON path for tuples with non default formats
+    ///
+    /// **NOTE**: getting tuple fields by JSON paths is not supported in all
+    /// tarantool versions. Use [`tarantool::ffi::has_tuple_field_by_path`] to
+    /// check whether it's supported in your case.
+    /// If `has_tuple_field_by_path` returns `false` this function will always
+    /// **panic**.
+    ///
+    /// Returns:
+    /// - `None` if index wasn't found
+    /// - **panics** if deserialization failed (or api not supported)
+    /// - `Some(field value)` otherwise
+    ///
+    /// See also [`Tuple::get`].
+    ///
+    /// [`tarantool::ffi::has_tuple_field_by_path`]:
+    /// crate::ffi::has_tuple_field_by_path   
+    #[inline(always)]
+    #[track_caller]
+    pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
+    where
+        I: TupleIndex,
+        T: Decode<'a>,
+    {
+        self.try_get(key)
+            .expect("deserializtion failure or api not supported")
+    }
+
+    /// Get tuple contents as a vector of raw bytes.
+    ///
+    /// Returns tuple bytes in msgpack encoding.
+    #[inline]
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.buffer().0.clone()
+    }
+
+    #[inline(always)]
+    pub fn as_slice(&self) -> &[u8] {
+        self.buffer().data()
+    }
+
+    #[inline(always)]
+    pub fn into_ptr(self) -> *mut ffi::BoxTuple {
+        let res = self.tuple().ptr.as_ptr();
+        // don't execute drop code for self.tuple
+        std::mem::forget(self.tuple);
+        res
+    }
+
+    #[inline(always)]
+    pub fn as_ptr(&self) -> *mut ffi::BoxTuple {
+        self.tuple().ptr.as_ptr()
+    }
+
+    /// Decode tuple contents as `T` through rmp_serde.
+    #[deprecated = "use Tuple::decode_rmp or Tuple::decode_custom instead"]
+    #[inline]
+    pub fn decode<T>(&self) -> Result<T>
+    where
+        T: DecodeOwned,
+    {
+        self.decode_rmp()
+    }
+
+    /// Decode tuple contents as `T` through rmp_serde.
+    #[inline]
+    pub fn decode_rmp<T>(&self) -> Result<T>
+    where
+        T: DecodeOwned,
+    {
+        Decode::decode(self.buffer().as_ref())
+    }
+
+    /// Decode tuple contents as `T` through [`crate::msgpack::Decode`].
+    #[inline]
+    pub fn decode_custom<T>(&self) -> Result<T>
+    where
+        T: crate::msgpack::Decode,
+    {
+        crate::msgpack::decode(self.buffer().as_ref()).map_err(Into::into)
+    }
+}
+
+impl Clone for Tuple {
+    fn clone(&self) -> Self {
+        unsafe {
+            Self {
+                tuple: UnsafeCell::new(self.tuple.get().as_ref().expect("not null").clone()),
+                buf: UnsafeCell::new(self.buf.get().as_ref().expect("not null").clone()),
+            }
+        }
+    }
 }
 
 impl Debug for Tuple {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        if let Ok(v) = self.decode::<rmpv::Value>() {
+        if let Ok(v) = self.decode_rmp::<rmpv::Value>() {
             f.debug_tuple("Tuple").field(&v).finish()
         } else {
             // Probably will never happen but better safe than sorry
@@ -43,14 +376,108 @@ impl Debug for Tuple {
     }
 }
 
-impl Tuple {
-    /// Create a new tuple from `value` implementing [`ToTupleBuffer`].
+impl From<BoxTuple> for Tuple {
+    fn from(value: BoxTuple) -> Self {
+        Self {
+            tuple: UnsafeCell::new(Some(value)),
+            buf: UnsafeCell::new(None),
+        }
+    }
+}
+
+impl From<Tuple> for BoxTuple {
+    fn from(value: Tuple) -> Self {
+        let res = BoxTuple {
+            ptr: value.tuple().ptr,
+        };
+        // don't execute drop code for value.tuple
+        std::mem::forget(value.tuple);
+        res
+    }
+}
+
+impl From<TupleBuffer> for Tuple {
+    fn from(value: TupleBuffer) -> Self {
+        Self {
+            tuple: UnsafeCell::new(None),
+            buf: UnsafeCell::new(Some(value)),
+        }
+    }
+}
+
+impl From<Tuple> for TupleBuffer {
+    fn from(value: Tuple) -> Self {
+        TupleBuffer(value.to_vec())
+    }
+}
+
+impl From<Tuple> for Vec<u8> {
+    #[inline(always)]
+    fn from(value: Tuple) -> Self {
+        value.to_vec()
+    }
+}
+
+impl TryFrom<Vec<u8>> for Tuple {
+    type Error = Error;
+
+    #[inline(always)]
+    fn try_from(data: Vec<u8>) -> Result<Self> {
+        Self::try_from_vec(data)
+    }
+}
+
+impl serde_bytes::Serialize for Tuple {
+    #[inline(always)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serde_bytes::Serialize::serialize(&self.as_slice(), serializer)
+    }
+}
+
+impl<'de> serde_bytes::Deserialize<'de> for Tuple {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let tmp: Vec<u8> = serde_bytes::Deserialize::deserialize(deserializer)?;
+        Self::try_from(tmp).map_err(serde::de::Error::custom)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// BoxTuple
+////////////////////////////////////////////////////////////////////////////////
+
+/// Tuple created through tarantool interface
+///
+/// Prefer using [`Tuple`].
+pub struct BoxTuple {
+    ptr: NonNull<ffi::BoxTuple>,
+}
+
+impl Debug for BoxTuple {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        if let Ok(v) = self.decode::<rmpv::Value>() {
+            f.debug_tuple("BoxTuple").field(&v).finish()
+        } else {
+            // Probably will never happen but better safe than sorry
+            f.debug_tuple("BoxTuple").field(&self.to_vec()).finish()
+        }
+    }
+}
+
+impl BoxTuple {
+    /// Create a new tuple from `value` implementing [`ToTuple`].
     #[inline]
     pub fn new<T>(value: &T) -> Result<Self>
     where
-        T: ToTupleBuffer + ?Sized,
+        T: ToTuple + ?Sized,
     {
-        Ok(Self::from(&value.to_tuple_buffer()?))
+        Ok(Self::from(value.to_tuple()?))
     }
 
     /// # Safety
@@ -61,7 +488,7 @@ impl Tuple {
         let format = TupleFormat::default();
         let tuple_ptr = ffi::box_tuple_new(format.inner, data as _, data.add(len as _) as _);
 
-        Self::from_ptr(NonNull::new_unchecked(tuple_ptr))
+        Self::from_ptr(NonNull::new(tuple_ptr).expect("not null"))
     }
 
     /// # Safety
@@ -84,7 +511,7 @@ impl Tuple {
     #[inline(always)]
     pub fn from_ptr(mut ptr: NonNull<ffi::BoxTuple>) -> Self {
         unsafe { ffi::box_tuple_ref(ptr.as_mut()) };
-        Tuple { ptr }
+        BoxTuple { ptr }
     }
 
     #[inline(always)]
@@ -177,81 +604,18 @@ impl Tuple {
         }
     }
 
-    /// Deserialize a tuple field specified by an index implementing
-    /// [`TupleIndex`] trait.
-    ///
-    /// Currently 2 types of indexes are supported:
-    /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
-    /// - `&str` - JSON path for tuples with non default formats
-    ///
-    /// **NOTE**: getting tuple fields by JSON paths is not supported in all
-    /// tarantool versions. Use [`tarantool::ffi::has_tuple_field_by_path`] to
-    /// check whether it's supported in your case.
-    /// If `has_tuple_field_by_path` returns `false` this function will always
-    /// return `Err`.
-    ///
-    /// Returns:
-    /// - `Ok(None)` if index wasn't found
-    /// - `Err(e)` if deserialization failed (or api not supported)
-    /// - `Ok(Some(field value))` otherwise
-    ///
-    /// See also [`Tuple::get`].
-    ///
-    /// [`tarantool::ffi::has_tuple_field_by_path`]:
-    /// crate::ffi::has_tuple_field_by_path
-    #[inline(always)]
-    pub fn try_get<'a, I, T>(&'a self, key: I) -> Result<Option<T>>
-    where
-        I: TupleIndex,
-        T: Decode<'a>,
-    {
-        key.get_field(self)
-    }
-
-    /// Deserialize a tuple field specified by an index implementing
-    /// [`TupleIndex`] trait.
-    ///
-    /// Currently 2 types of indexes are supported:
-    /// - `u32` - zero-based index in MsgPack array (See also [`Tuple::field`])
-    /// - `&str` - JSON path for tuples with non default formats
-    ///
-    /// **NOTE**: getting tuple fields by JSON paths is not supported in all
-    /// tarantool versions. Use [`tarantool::ffi::has_tuple_field_by_path`] to
-    /// check whether it's supported in your case.
-    /// If `has_tuple_field_by_path` returns `false` this function will always
-    /// **panic**.
-    ///
-    /// Returns:
-    /// - `None` if index wasn't found
-    /// - **panics** if deserialization failed (or api not supported)
-    /// - `Some(field value)` otherwise
-    ///
-    /// See also [`Tuple::get`].
-    ///
-    /// [`tarantool::ffi::has_tuple_field_by_path`]:
-    /// crate::ffi::has_tuple_field_by_path
-    #[inline(always)]
-    #[track_caller]
-    pub fn get<'a, I, T>(&'a self, key: I) -> Option<T>
-    where
-        I: TupleIndex,
-        T: Decode<'a>,
-    {
-        self.try_get(key).expect("Error during getting tuple field")
-    }
-
     /// Decode tuple contents as `T`.
     ///
-    /// **NOTE**: Because [`Tuple`] implements [`DecodeOwned`], you can do
+    /// **NOTE**: Because [`BoxTuple`] implements [`DecodeOwned`], you can do
     /// something like this
     /// ```no_run
-    /// use tarantool::tuple::{Decode, Tuple};
-    /// let tuple: Tuple;
-    /// # tuple = Tuple::new(&[1, 2, 3]).unwrap();
-    /// let deep_copy: Tuple = tuple.decode().unwrap();
-    /// let inc_ref_count: Tuple = tuple.clone();
+    /// use tarantool::tuple::{Decode, BoxTuple};
+    /// let tuple: BoxTuple;
+    /// # tuple = BoxTuple::new(&[1, 2, 3]).unwrap();
+    /// let deep_copy: BoxTuple = tuple.decode().unwrap();
+    /// let inc_ref_count: BoxTuple = tuple.clone();
     /// ```
-    /// "Decoding" a `Tuple` into a `Tuple` will basically perform a **deep
+    /// "Decoding" a `BoxTuple` into a `BoxTuple` will basically perform a **deep
     /// copy** of its contents, while `tuple.clone()` will just increase tuple's
     /// reference count. There's probably no use case for deep copying the
     /// tuple, because there's actully no way to move data out of it, so keep
@@ -282,8 +646,11 @@ impl Tuple {
     }
 
     #[inline(always)]
-    pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
-        self.ptr.as_ptr()
+    pub fn to_ptr(self) -> *mut ffi::BoxTuple {
+        let res = self.ptr.as_ptr();
+        // don't execute drop code for self
+        std::mem::forget(self);
+        res
     }
 }
 
@@ -334,12 +701,13 @@ impl TupleIndex for &str {
 
         return match API.as_ref() {
             Ok(Api::New(api)) => unsafe {
-                let field_ptr = api(tuple.ptr.as_ptr(), self.as_ptr() as _, self.len() as _, 1);
+                let field_ptr = api(tuple.as_ptr(), self.as_ptr() as _, self.len() as _, 1);
                 field_value_from_ptr(field_ptr as _)
             },
             Ok(Api::Old(api)) => unsafe {
-                let data_offset = tuple.ptr.as_ref().data_offset() as _;
-                let data = tuple.ptr.as_ptr().cast::<c_char>().add(data_offset);
+                // TODO: expect
+                let data_offset = tuple.as_ptr().as_ref().unwrap().data_offset() as _;
+                let data = tuple.as_ptr().cast::<c_char>().add(data_offset);
                 let field_ptr = api(
                     tuple.format().inner,
                     data,
@@ -378,46 +746,46 @@ impl TupleIndex for &str {
     }
 }
 
-impl From<&TupleBuffer> for Tuple {
+impl From<&TupleBuffer> for BoxTuple {
     #[inline(always)]
     fn from(buf: &TupleBuffer) -> Self {
         unsafe { Self::from_raw_data(buf.as_ptr() as _, buf.len() as _) }
     }
 }
 
-impl Drop for Tuple {
+impl Drop for BoxTuple {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe { ffi::box_tuple_unref(self.ptr.as_ptr()) };
     }
 }
 
-impl Clone for Tuple {
+impl Clone for BoxTuple {
     #[inline(always)]
     fn clone(&self) -> Self {
         unsafe { ffi::box_tuple_ref(self.ptr.as_ptr()) };
-        Tuple { ptr: self.ptr }
+        BoxTuple { ptr: self.ptr }
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// ToTupleBuffer
+/// ToTuple
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Types implementing this trait can be converted to tarantool tuple (msgpack
 /// array).
-pub trait ToTupleBuffer {
+pub trait ToTuple {
     #[inline]
-    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
+    fn to_tuple(&self) -> Result<Tuple> {
         let mut buf = Vec::with_capacity(128);
         self.write_tuple_data(&mut buf)?;
-        TupleBuffer::try_from_vec(buf)
+        Tuple::try_from_vec(buf)
     }
 
     /// Returns a slice of bytes represeting the underlying tarantool tuple.
     ///
     /// Returns `None` if `Self` doesn't contain the data, in which case the
-    /// [`ToTupleBuffer::to_tuple_buffer`] should be used.
+    /// [`ToTuple::to_tuple`] should be used.
     ///
     /// This method exists as an optimization for wrapper types to eliminate
     /// extra copies, in cases where the implementing type already contains the
@@ -430,10 +798,10 @@ pub trait ToTupleBuffer {
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()>;
 }
 
-impl ToTupleBuffer for Tuple {
+impl ToTuple for BoxTuple {
     #[inline(always)]
-    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
-        Ok(TupleBuffer::from(self))
+    fn to_tuple(&self) -> Result<Tuple> {
+        Ok(Tuple::from(self.clone()))
     }
 
     #[inline]
@@ -442,7 +810,30 @@ impl ToTupleBuffer for Tuple {
     }
 }
 
-impl<T> ToTupleBuffer for T
+impl ToTuple for Tuple {
+    #[inline(always)]
+    fn to_tuple(&self) -> Result<Tuple> {
+        Ok(self.clone())
+    }
+
+    fn tuple_data(&self) -> Option<&[u8]> {
+        unsafe {
+            self.buf
+                .get()
+                .as_ref()
+                .expect("not null")
+                .as_ref()
+                .map(|buf| buf.0.as_slice())
+        }
+    }
+
+    #[inline]
+    fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        w.write_all(self.as_slice()).map_err(Into::into)
+    }
+}
+
+impl<T> ToTuple for T
 where
     T: ?Sized,
     T: Encode,
@@ -522,6 +913,8 @@ impl_tuple! { A B C D E F G H I J K L M N O P }
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Buffer containing tuple contents (MsgPack array)
+///
+/// Prefer using [`Tuple`].
 #[derive(Clone, PartialEq, Eq)]
 pub struct TupleBuffer(
     // TODO(gmoshkin): previously TupleBuffer would use tarantool's transaction
@@ -570,6 +963,16 @@ impl TupleBuffer {
         let data = validate_msgpack(data)?;
         unsafe { Ok(Self::from_vec_unchecked(data)) }
     }
+
+    #[inline]
+    pub fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
+        w.write_all(&self.0).map_err(Into::into)
+    }
+
+    #[inline]
+    pub fn data(&self) -> &[u8] {
+        &self.0
+    }
 }
 
 impl AsRef<[u8]> for TupleBuffer {
@@ -595,16 +998,16 @@ impl TryFrom<Vec<u8>> for TupleBuffer {
     }
 }
 
-impl From<Tuple> for TupleBuffer {
+impl From<BoxTuple> for TupleBuffer {
     #[inline(always)]
-    fn from(t: Tuple) -> Self {
+    fn from(t: BoxTuple) -> Self {
         Self(t.to_vec())
     }
 }
 
-impl From<&Tuple> for TupleBuffer {
+impl From<&BoxTuple> for TupleBuffer {
     #[inline(always)]
-    fn from(t: &Tuple) -> Self {
+    fn from(t: &BoxTuple) -> Self {
         Self(t.to_vec())
     }
 }
@@ -619,10 +1022,10 @@ impl Debug for TupleBuffer {
     }
 }
 
-impl ToTupleBuffer for TupleBuffer {
+impl ToTuple for TupleBuffer {
     #[inline(always)]
-    fn to_tuple_buffer(&self) -> Result<TupleBuffer> {
-        Ok(self.clone())
+    fn to_tuple(&self) -> Result<Tuple> {
+        Ok(self.clone().into())
     }
 
     #[inline(always)]
@@ -935,12 +1338,7 @@ impl KeyDef {
     #[inline(always)]
     pub fn compare(&self, tuple_a: &Tuple, tuple_b: &Tuple) -> Ordering {
         unsafe {
-            ffi::box_tuple_compare(
-                tuple_a.ptr.as_ptr(),
-                tuple_b.ptr.as_ptr(),
-                self.inner.as_ptr(),
-            )
-            .cmp(&0)
+            ffi::box_tuple_compare(tuple_a.as_ptr(), tuple_b.as_ptr(), self.inner.as_ptr()).cmp(&0)
         }
     }
 
@@ -956,12 +1354,12 @@ impl KeyDef {
     #[inline]
     pub fn compare_with_key<K>(&self, tuple: &Tuple, key: &K) -> Ordering
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
+        let key_buf = key.to_tuple().unwrap().to_vec();
         let key_buf_ptr = key_buf.as_ptr() as _;
         unsafe {
-            ffi::box_tuple_compare_with_key(tuple.ptr.as_ptr(), key_buf_ptr, self.inner.as_ptr())
+            ffi::box_tuple_compare_with_key(tuple.as_ptr(), key_buf_ptr, self.inner.as_ptr())
                 .cmp(&0)
         }
     }
@@ -980,8 +1378,7 @@ impl KeyDef {
     #[inline]
     pub fn validate_tuple(&self, tuple: &Tuple) -> Result<()> {
         // SAFETY: safe as long as both pointers are valid.
-        let rc =
-            unsafe { ffi::box_key_def_validate_tuple(self.inner.as_ptr(), tuple.ptr.as_ptr()) };
+        let rc = unsafe { ffi::box_key_def_validate_tuple(self.inner.as_ptr(), tuple.as_ptr()) };
         if rc != 0 {
             return Err(TarantoolError::last().into());
         }
@@ -1027,7 +1424,7 @@ impl KeyDef {
             let mut size = 0;
             let data = ffi::box_key_def_extract_key(
                 self.inner.as_ptr(),
-                tuple.ptr.as_ptr(),
+                tuple.as_ptr(),
                 multikey_idx,
                 &mut size,
             );
@@ -1049,7 +1446,7 @@ impl KeyDef {
     /// - 32-bit murmur3 hash value
     #[cfg(feature = "picodata")]
     pub fn hash(&self, tuple: &Tuple) -> u32 {
-        unsafe { ffi::box_tuple_hash(tuple.ptr.as_ptr(), self.inner.as_ptr()) }
+        unsafe { ffi::box_tuple_hash(tuple.as_ptr(), self.inner.as_ptr()) }
     }
 }
 
@@ -1111,7 +1508,7 @@ impl FunctionCtx {
     /// - `tuple` - a Tuple to return
     #[inline]
     pub fn return_tuple(&self, tuple: &Tuple) -> Result<c_int> {
-        let result = unsafe { ffi::box_return_tuple(self.inner, tuple.ptr.as_ptr()) };
+        let result = unsafe { ffi::box_return_tuple(self.inner, tuple.as_ptr()) };
         if result < 0 {
             Err(TarantoolError::last().into())
         } else {
@@ -1211,9 +1608,9 @@ impl FunctionArgs {
 #[inline]
 pub fn session_push<T>(value: &T) -> Result<()>
 where
-    T: ToTupleBuffer + ?Sized,
+    T: ToTuple + ?Sized,
 {
-    let buf = value.to_tuple_buffer().unwrap();
+    let buf = value.to_tuple().unwrap().to_vec();
     let buf_ptr = buf.as_ptr() as *const c_char;
     if unsafe { ffi::box_session_push(buf_ptr, buf_ptr.add(buf.len())) } < 0 {
         Err(TarantoolError::last().into())
@@ -1244,7 +1641,7 @@ where
     #[inline(always)]
     fn push_to_lua(&self, lua: L) -> tlua::PushResult<L, Self> {
         unsafe {
-            ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
+            ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.as_ptr());
             Ok(tlua::PushGuard::new(lua, 1))
         }
     }
@@ -1261,7 +1658,7 @@ where
     #[inline(always)]
     fn push_into_lua(self, lua: L) -> tlua::PushResult<L, Self> {
         unsafe {
-            ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.ptr.as_ptr());
+            ffi::luaT_pushtuple(tlua::AsLua::as_lua(&lua), self.as_ptr());
             Ok(tlua::PushGuard::new(lua, 1))
         }
     }
@@ -1289,6 +1686,7 @@ where
     }
 }
 
+// TODO: should this be implemented now for tuple instead?
 impl<L> tlua::LuaRead<L> for TupleBuffer
 where
     L: tlua::AsLua,
@@ -1299,7 +1697,7 @@ where
             let lua_ptr = tlua::AsLua::as_lua(&lua);
             let ptr = ffi::luaT_istuple(lua_ptr, index.get());
             if let Some(tuple) = Tuple::try_from_ptr(ptr) {
-                return Ok(Self::from(tuple));
+                return Ok(tuple.buffer().clone());
             }
             let mut len = 0;
             let data = ffi::luaT_tuple_encode(lua_ptr, index.get(), &mut len);
@@ -1346,6 +1744,13 @@ impl Decode<'_> for Tuple {
     }
 }
 
+impl Decode<'_> for BoxTuple {
+    #[inline(always)]
+    fn decode(data: &[u8]) -> Result<Self> {
+        Self::try_from_slice(data)
+    }
+}
+
 /// Types implementing this trait can be decoded from msgpack by value.
 ///
 /// `DecodeOwned` is to [`Decode`] what [`DeserializeOwned`] is to
@@ -1365,12 +1770,12 @@ impl<T> DecodeOwned for T where T: for<'de> Decode<'de> {}
 /// Can be used to read a field of a tuple as raw bytes:
 /// ```no_run
 /// use tarantool::{tuple::Tuple, tuple::RawBytes};
-/// let tuple = Tuple::new(&(1, (2, 3, 4), 5)).unwrap();
+/// let tuple = Tuple::encode_rmp(&(1, (2, 3, 4), 5)).unwrap();
 /// let second_field: &RawBytes = tuple.get(1).unwrap();
 /// assert_eq!(&**second_field, &[0x93, 2, 3, 4]);
 /// ```
 ///
-/// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
+/// This type also implements [`ToTuple`] such that `to_tuple`
 /// returns `Ok` only if the underlying bytes represent a valid tuple (msgpack
 /// array).
 #[derive(Debug)]
@@ -1401,7 +1806,15 @@ impl<'de> Decode<'de> for &'de RawBytes {
     }
 }
 
-impl ToTupleBuffer for RawBytes {
+impl<'a> TryFrom<&'a RawBytes> for Tuple {
+    type Error = Error;
+
+    fn try_from(value: &'a RawBytes) -> std::result::Result<Self, Self::Error> {
+        Tuple::try_from_vec(value.0.into())
+    }
+}
+
+impl ToTuple for RawBytes {
     #[inline(always)]
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
         let data = &**self;
@@ -1443,7 +1856,7 @@ impl std::borrow::ToOwned for RawBytes {
 /// can only contain a valid tarantool tuple (msgpack array), while the latter
 /// can contain any sequence of bytes.
 ///
-/// This type also implements [`ToTupleBuffer`] such that `to_tuple_buffer`
+/// This type also implements [`ToTuple`] such that `to_tuple`
 /// returns `Ok` only if the underlying bytes represent a valid tuple.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RawByteBuf(pub Vec<u8>);
@@ -1483,7 +1896,15 @@ impl Decode<'_> for RawByteBuf {
     }
 }
 
-impl ToTupleBuffer for RawByteBuf {
+impl TryFrom<RawByteBuf> for Tuple {
+    type Error = Error;
+
+    fn try_from(value: RawByteBuf) -> std::result::Result<Self, Self::Error> {
+        Tuple::try_from_vec(value.0)
+    }
+}
+
+impl ToTuple for RawByteBuf {
     #[inline(always)]
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
         let data = self.as_slice();
@@ -1525,6 +1946,7 @@ impl std::borrow::Borrow<RawBytes> for RawByteBuf {
 mod picodata {
     use crate::tuple::{Tuple, TupleFormat};
     use crate::Result;
+    use std::convert::TryInto;
     use std::ffi::CStr;
     use std::io::{Cursor, Write};
     use std::marker::PhantomData;
@@ -1547,7 +1969,10 @@ mod picodata {
 
             let mut cursor = Cursor::new(&buff);
 
-            rmp::encode::write_map_len(&mut named_buffer, field_count)?;
+            rmp::encode::write_map_len(
+                &mut named_buffer,
+                field_count.try_into().expect("should be in u32 bounds"),
+            )?;
             rmp::decode::read_array_len(&mut cursor)?;
             format.names().try_for_each(|field_name| -> Result<()> {
                 let value_start = cursor.position() as usize;
@@ -1558,12 +1983,15 @@ mod picodata {
                 Ok(named_buffer.write_all(&buff[value_start..value_end])?)
             })?;
 
-            for i in 0..field_count - format.name_count() {
+            for i in 0..field_count - format.name_count() as usize {
                 let value_start = cursor.position() as usize;
                 crate::msgpack::skip_value(&mut cursor)?;
                 let value_end = cursor.position() as usize;
 
-                rmp::encode::write_u32(&mut named_buffer, i)?;
+                rmp::encode::write_u32(
+                    &mut named_buffer,
+                    i.try_into().expect("should be in u32 bounds"),
+                )?;
                 named_buffer.write_all(&buff[value_start..value_end])?;
             }
 
@@ -1626,6 +2054,14 @@ mod test {
     use crate::space::Space;
 
     #[crate::test(tarantool = "crate")]
+    fn empty_tuple() {
+        let t = Tuple::encode_empty();
+        assert!(t.is_empty());
+        let v: rmpv::Value = t.decode_rmp().unwrap();
+        assert_eq!(v, rmpv::Value::Array(vec![]))
+    }
+
+    #[crate::test(tarantool = "crate")]
     fn tuple_buffer_from_lua() {
         let svp = unsafe { ffi::box_region_used() };
 
@@ -1683,15 +2119,15 @@ mod test {
     fn decode_error() {
         use super::*;
 
-        let buf = (1, 2, 3).to_tuple_buffer().unwrap();
-        let err = <(String, String)>::decode(buf.as_ref()).unwrap_err();
+        let buf = (1, 2, 3).to_tuple().unwrap();
+        let err = <(String, String)>::decode(&buf.to_vec()).unwrap_err();
         assert_eq!(
             err.to_string(),
             r#"failed to decode tuple: invalid type: integer `1`, expected a string when decoding msgpack b"\x93\x01\x02\x03" into rust type (alloc::string::String, alloc::string::String)"#
         );
 
-        let buf = ("hello", [1, 2, 3], "goodbye").to_tuple_buffer().unwrap();
-        let err = <(String, (i32, String, i32), String)>::decode(buf.as_ref()).unwrap_err();
+        let buf = ("hello", [1, 2, 3], "goodbye").to_tuple().unwrap();
+        let err = <(String, (i32, String, i32), String)>::decode(&buf.to_vec()).unwrap_err();
         assert_eq!(
             err.to_string(),
             r#"failed to decode tuple: invalid type: integer `2`, expected a string when decoding msgpack b"\x93\xa5hello\x93\x01\x02\x03\xa7goodbye" into rust type (alloc::string::String, (i32, alloc::string::String, i32), alloc::string::String)"#
@@ -1722,11 +2158,11 @@ mod test {
 
         let key_def = index.meta().unwrap().to_key_def();
 
-        let tuple = Tuple::new(&["foo"]).unwrap();
+        let tuple = Tuple::encode_rmp(["foo"]).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         assert_eq!(e.to_string(), "box error: KeyPartType: Supplied key type of part 0 does not match index part type: expected unsigned");
 
-        let tuple = Tuple::new(&[1]).unwrap();
+        let tuple = Tuple::encode_rmp([1]).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         // XXX: notice how this error message shows the 1-based index, but the
         // previous one showed the 0-based index. You can thank tarantool devs
@@ -1736,7 +2172,7 @@ mod test {
             "box error: FieldMissing: Tuple field [3] required by space format is missing"
         );
 
-        let tuple = Tuple::new(&(1, [1, 2, 3], "foo")).unwrap();
+        let tuple = Tuple::encode_rmp((1, [1, 2, 3], "foo")).unwrap();
         let e = key_def.extract_key(&tuple).unwrap_err();
         assert_eq!(
             e.to_string(),
@@ -1744,7 +2180,7 @@ mod test {
         );
 
         let raw_data = b"\x94\x69\x93\x01\x02\x03\xa3foo\x93\xc0\x81\xa6blabla\x42\x07"; // [0x69, [1, 2, 3], "foo", [null, {blabla: 0x42}, 7]]
-        let tuple = Tuple::new(RawBytes::new(raw_data)).unwrap();
+        let tuple = Tuple::try_from(RawBytes::new(raw_data)).unwrap();
         let key = key_def.extract_key(&tuple).unwrap();
         assert_eq!(key.as_ref(), b"\x93\x69\xa3foo\x42"); // [0x69, "foo", 0x42]
 
@@ -1753,7 +2189,7 @@ mod test {
         // Even though the tuple doesn't actually satisfy the space's format,
         // the key def only know about the locations & types of the key parts,
         // so it doesn't care.
-        let tuple = Tuple::new(RawBytes::new(raw_data)).unwrap();
+        let tuple = Tuple::try_from(RawBytes::new(raw_data)).unwrap();
         let key = key_def.extract_key(&tuple).unwrap();
         assert_eq!(key.as_ref(), b"\x93\x13\xa3bar\x37");
 

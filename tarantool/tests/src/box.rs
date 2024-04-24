@@ -89,7 +89,7 @@ pub fn get() {
     let output = idx_1.get(&("key_16".to_string(),)).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().decode::<S2Record>().unwrap(),
+        output.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 16,
             key: "key_16".to_string(),
@@ -103,7 +103,7 @@ pub fn get() {
     let output = idx_2.get(&S2Key { id: 17, a: 2, b: 3 }).unwrap();
     assert!(output.is_some());
     assert_eq!(
-        output.unwrap().decode::<S2Record>().unwrap(),
+        output.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 17,
             key: "key_17".to_string(),
@@ -120,7 +120,7 @@ pub fn select() {
         .primary_key()
         .select(IteratorType::LE, &(5,))
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -167,7 +167,7 @@ pub fn select() {
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3,))
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -211,7 +211,7 @@ pub fn select_composite_key() {
     let result: Vec<S2Record> = idx
         .select(IteratorType::Eq, &(3, 3, 0))
         .unwrap()
-        .map(|x| x.decode().unwrap())
+        .map(|x| x.decode_rmp().unwrap())
         .collect();
     assert_eq!(
         result,
@@ -238,7 +238,7 @@ pub fn random() {
     let result = idx.random(rng.gen()).unwrap();
     assert!(result.is_some());
 
-    let output = result.unwrap().decode::<S2Record>().unwrap();
+    let output = result.unwrap().decode_rmp::<S2Record>().unwrap();
     assert_eq!(output.a, (output.id as i32) % 5);
     assert_eq!(output.b, (output.id as i32) / 5);
     assert_eq!(output.key, format!("key_{}", output.id));
@@ -252,7 +252,7 @@ pub fn min_max() {
     let result_min = idx.min(&(3,)).unwrap();
     assert!(result_min.is_some());
     assert_eq!(
-        result_min.unwrap().decode::<S2Record>().unwrap(),
+        result_min.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 3,
             key: "key_3".to_string(),
@@ -265,7 +265,7 @@ pub fn min_max() {
     let result_max = idx.max(&(3,)).unwrap();
     assert!(result_max.is_some());
     assert_eq!(
-        result_max.unwrap().decode::<S2Record>().unwrap(),
+        result_max.unwrap().decode_rmp::<S2Record>().unwrap(),
         S2Record {
             id: 18,
             key: "key_18".to_string(),
@@ -298,10 +298,13 @@ pub fn extract_key() {
         a: 1,
         b: 2,
     };
-    let key: Tuple = unsafe { idx.extract_key(Tuple::new(&record).unwrap()) };
-    assert_eq!(key.decode::<S2Key>().unwrap(), S2Key { id: 11, a: 1, b: 2 });
+    let key: Tuple = unsafe { idx.extract_key(Tuple::encode_rmp(&record).unwrap()) };
+    assert_eq!(
+        key.decode_rmp::<S2Key>().unwrap(),
+        S2Key { id: 11, a: 1, b: 2 }
+    );
     let tuple = idx.get(&key).unwrap().unwrap();
-    assert_eq!(tuple.decode::<S2Record>().unwrap(), record);
+    assert_eq!(tuple.decode_rmp::<S2Record>().unwrap(), record);
 }
 
 pub fn insert() {
@@ -313,11 +316,11 @@ pub fn insert() {
         text: "Test".to_string(),
     };
     let insert_result = space.insert(&input).unwrap();
-    assert_eq!(insert_result.decode::<S1Record>().unwrap(), input);
+    assert_eq!(insert_result.decode_rmp::<S1Record>().unwrap(), input);
 
     let output = space.get(&(input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(output.unwrap().decode_rmp::<S1Record>().unwrap(), input);
 }
 
 pub fn replace() {
@@ -335,11 +338,11 @@ pub fn replace() {
         text: "New".to_string(),
     };
     let replace_result = space.replace(&new_input).unwrap();
-    assert_eq!(replace_result.decode::<S1Record>().unwrap(), new_input);
+    assert_eq!(replace_result.decode_rmp::<S1Record>().unwrap(), new_input);
 
     let output = space.get(&(new_input.id,)).unwrap();
     assert!(output.is_some());
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap(), new_input);
+    assert_eq!(output.unwrap().decode_rmp::<S1Record>().unwrap(), new_input);
 }
 
 pub fn delete() {
@@ -356,7 +359,10 @@ pub fn delete() {
     // Delete the tuple we just inserted.
     let delete_result = space.delete(&(input.id,)).unwrap();
     assert!(delete_result.is_some());
-    assert_eq!(delete_result.unwrap().decode::<S1Record>().unwrap(), input);
+    assert_eq!(
+        delete_result.unwrap().decode_rmp::<S1Record>().unwrap(),
+        input
+    );
 
     // Tuple is no longer in the space.
     let output = space.get(&(input.id,)).unwrap();
@@ -383,13 +389,20 @@ pub fn update() {
     let update_result = space.update(&[input.id], [("=", 1, "New")]).unwrap();
     assert!(update_result.is_some());
     assert_eq!(
-        update_result.unwrap().decode::<S1Record>().unwrap().text,
+        update_result
+            .unwrap()
+            .decode_rmp::<S1Record>()
+            .unwrap()
+            .text,
         "New"
     );
 
     // Tuple was updated.
     let output = space.get(&(input.id,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "New"
+    );
 
     // If id isn't found in the space, update returns Ok(None).
     let invalid_id = 0xdead_beef_u32;
@@ -420,7 +433,7 @@ pub fn update_macro() {
     .unwrap();
     assert!(update_result.is_some());
 
-    let updated = update_result.unwrap().decode::<S2Record>().unwrap();
+    let updated = update_result.unwrap().decode_rmp::<S2Record>().unwrap();
     assert_eq!(updated.key, "New");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
@@ -430,7 +443,7 @@ pub fn update_macro() {
         .get(&(input.id,))
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "New");
     assert_eq!(output.value, "New");
@@ -467,7 +480,7 @@ pub fn update_index_macro() {
     .unwrap();
     assert!(update_result.is_some());
 
-    let updated = update_result.unwrap().decode::<S2Record>().unwrap();
+    let updated = update_result.unwrap().decode_rmp::<S2Record>().unwrap();
     assert_eq!(updated.key, "NewKey");
     assert_eq!(updated.value, "New");
     assert_eq!(updated.a, 1);
@@ -477,7 +490,7 @@ pub fn update_index_macro() {
         .get(&(input.id,))
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "NewKey");
     assert_eq!(output.value, "New");
@@ -496,7 +509,7 @@ pub fn update_ops() {
             .get(&[1])
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32)>()
+            .decode_rmp::<(i32, i32)>()
             .unwrap(),
         (1, 0),
     );
@@ -510,7 +523,7 @@ pub fn update_ops() {
             .get(&[1])
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32)>()
+            .decode_rmp::<(i32, i32)>()
             .unwrap(),
         (1, 13),
     );
@@ -527,7 +540,7 @@ pub fn update_ops() {
             .get(&[1])
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32, i32)>()
+            .decode_rmp::<(i32, i32, i32)>()
             .unwrap(),
         (1, 5, 69),
     );
@@ -554,7 +567,7 @@ pub fn update_ops() {
             .get(&[1])
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32, i32, String, String)>()
+            .decode_rmp::<(i32, i32, i32, String, String)>()
             .unwrap(),
         (1, 5, 69, "hello".to_string(), "world".to_string()),
     );
@@ -579,7 +592,7 @@ pub fn update_ops() {
             .get(&[1])
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32, i32, i32, String)>()
+            .decode_rmp::<(i32, i32, i32, i32, String)>()
             .unwrap(),
         (1, 4, 64, 0, "wild".to_string()),
     );
@@ -602,7 +615,7 @@ pub fn update_ops() {
             .get(&[1])
             .unwrap()
             .unwrap()
-            .decode::<(i32, i32)>()
+            .decode_rmp::<(i32, i32)>()
             .unwrap(),
         (1, 420),
     );
@@ -647,10 +660,16 @@ pub fn upsert() {
         .unwrap();
 
     let output = space.get(&(1,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "Test 1");
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "Test 1"
+    );
 
     let output = space.get(&(2,)).unwrap();
-    assert_eq!(output.unwrap().decode::<S1Record>().unwrap().text, "New");
+    assert_eq!(
+        output.unwrap().decode_rmp::<S1Record>().unwrap().text,
+        "New"
+    );
 }
 
 pub fn upsert_macro() {
@@ -697,7 +716,7 @@ pub fn upsert_macro() {
         .get(&(111,))
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_1");
     assert_eq!(output.value, "UpsertUpdated");
@@ -707,7 +726,7 @@ pub fn upsert_macro() {
         .get(&(112,))
         .unwrap()
         .unwrap()
-        .decode::<S2Record>()
+        .decode_rmp::<S2Record>()
         .unwrap();
     assert_eq!(output.key, "test_box_upsert_macro_2");
     assert_eq!(output.value, "UpsertNew");
@@ -985,13 +1004,16 @@ pub fn index_parts() {
         .select(tarantool::index::IteratorType::All, &())
         .unwrap();
 
-    assert_eq!(iter.next().and_then(|t| t.decode().ok()), Some((1, 2, 3)));
     assert_eq!(
-        iter.next().and_then(|t| t.decode().ok()),
+        iter.next().and_then(|t| t.decode_rmp().ok()),
+        Some((1, 2, 3))
+    );
+    assert_eq!(
+        iter.next().and_then(|t| t.decode_rmp().ok()),
         Some((2, "foo".to_string()))
     );
     assert_eq!(
-        iter.next().and_then(|t| t.decode().ok()),
+        iter.next().and_then(|t| t.decode_rmp().ok()),
         Some((3, 3.14, [3, 2, 1]))
     );
     assert!(iter.next().is_none());
@@ -1035,7 +1057,7 @@ pub fn fully_temporary_space() {
     let row = space
         .select(IteratorType::All, &())
         .unwrap()
-        .map(|t| t.decode::<(i32, i32, i32)>().unwrap())
+        .map(|t| t.decode_rmp::<(i32, i32, i32)>().unwrap())
         .next()
         .unwrap();
     assert_eq!(row, (1, 2, 3));

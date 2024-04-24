@@ -117,7 +117,7 @@ fn start_server() {
                     let fruit = space_fruit
                         .select(IteratorType::All, &())
                         .unwrap()
-                        .map(|t| t.decode::<Fruit>().unwrap())
+                        .map(|t| t.decode_rmp::<Fruit>().unwrap())
                         .collect();
                     fruit_tx.send(fruit).unwrap();
                 }

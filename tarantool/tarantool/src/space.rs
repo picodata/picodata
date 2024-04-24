@@ -9,7 +9,7 @@
 use crate::error::{Error, TarantoolError};
 use crate::ffi::tarantool as ffi;
 use crate::index::{Index, IndexIterator, IteratorType};
-use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
+use crate::tuple::{Encode, ToTuple, Tuple};
 use crate::unwrap_or;
 use crate::util::Value;
 use crate::{msgpack, tuple_from_box_api};
@@ -650,12 +650,12 @@ impl Space {
     #[inline]
     pub fn insert<T>(&self, value: &T) -> Result<Tuple, Error>
     where
-        T: ToTupleBuffer + ?Sized,
+        T: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(value.tuple_data(), {
             // TODO: use region allocation for this
-            buf = value.to_tuple_buffer()?;
+            buf = value.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -684,12 +684,12 @@ impl Space {
     #[inline]
     pub fn replace<T>(&self, value: &T) -> Result<Tuple, Error>
     where
-        T: ToTupleBuffer + ?Sized,
+        T: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(value.tuple_data(), {
             // TODO: use region allocation for this
-            buf = value.to_tuple_buffer()?;
+            buf = value.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -709,7 +709,7 @@ impl Space {
     #[inline(always)]
     pub fn put<T>(&self, value: &T) -> Result<Tuple, Error>
     where
-        T: ToTupleBuffer + ?Sized,
+        T: ToTuple + ?Sized,
     {
         self.replace(value)
     }
@@ -754,7 +754,7 @@ impl Space {
     #[inline(always)]
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         self.primary_key().get(key)
     }
@@ -767,7 +767,7 @@ impl Space {
     #[inline(always)]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         self.primary_key().select(iterator_type, key)
     }
@@ -780,7 +780,7 @@ impl Space {
     #[inline(always)]
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         self.primary_key().count(iterator_type, key)
     }
@@ -794,7 +794,7 @@ impl Space {
     #[inline(always)]
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         self.primary_key().delete(key)
     }
@@ -823,8 +823,8 @@ impl Space {
     #[inline(always)]
     pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
+        K: ToTuple + ?Sized,
+        Op: ToTuple,
     {
         self.primary_key().update(key, ops)
     }
@@ -844,7 +844,7 @@ impl Space {
     #[deprecated = "use update_raw instead"]
     pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         #[allow(deprecated)]
         self.primary_key().update_mp(key, ops)
@@ -881,8 +881,8 @@ impl Space {
     #[inline(always)]
     pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
-        T: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
+        T: ToTuple + ?Sized,
+        Op: ToTuple,
     {
         self.primary_key().upsert(value, ops)
     }
@@ -900,7 +900,7 @@ impl Space {
     #[deprecated = "use upsert_raw instead"]
     pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
     where
-        T: ToTupleBuffer + ?Sized,
+        T: ToTuple + ?Sized,
     {
         #[allow(deprecated)]
         self.primary_key().upsert_mp(value, ops)
@@ -926,7 +926,7 @@ impl Space {
     pub fn meta(&self) -> Result<Metadata, Error> {
         let sys_space: Space = SystemSpace::Space.into();
         let tuple = sys_space.get(&(self.id,))?.ok_or(Error::MetaNotFound)?;
-        tuple.decode::<Metadata>()
+        tuple.decode_rmp::<Metadata>()
     }
 }
 
@@ -1109,7 +1109,7 @@ impl<'a> Builder<'a> {
 /// [`encode`]: UpdateOps::encode
 /// [`into_inner`]: UpdateOps::into_inner
 pub struct UpdateOps {
-    ops: Vec<TupleBuffer>,
+    ops: Vec<Tuple>,
 }
 
 macro_rules! define_bin_ops {
@@ -1122,7 +1122,7 @@ macro_rules! define_bin_ops {
                 K: Serialize,
                 V: Serialize,
             {
-                self.ops.push(($op_code, field, value).to_tuple_buffer()?);
+                self.ops.push(($op_code, field, value).to_tuple()?);
                 Ok(self)
             }
         )+
@@ -1203,7 +1203,7 @@ impl UpdateOps {
     where
         K: Serialize,
     {
-        self.ops.push(('#', field, count).to_tuple_buffer()?);
+        self.ops.push(('#', field, count).to_tuple()?);
         Ok(self)
     }
 
@@ -1223,18 +1223,17 @@ impl UpdateOps {
     where
         K: Serialize,
     {
-        self.ops
-            .push((':', field, start, count, value).to_tuple_buffer()?);
+        self.ops.push((':', field, start, count, value).to_tuple()?);
         Ok(self)
     }
 
     #[inline(always)]
-    pub fn as_slice(&self) -> &[TupleBuffer] {
+    pub fn as_slice(&self) -> &[Tuple] {
         &self.ops
     }
 
     #[inline(always)]
-    pub fn into_inner(self) -> Vec<TupleBuffer> {
+    pub fn into_inner(self) -> Vec<Tuple> {
         self.ops
     }
 
@@ -1262,23 +1261,23 @@ impl Default for UpdateOps {
     }
 }
 
-impl AsRef<[TupleBuffer]> for UpdateOps {
+impl AsRef<[Tuple]> for UpdateOps {
     #[inline(always)]
-    fn as_ref(&self) -> &[TupleBuffer] {
+    fn as_ref(&self) -> &[Tuple] {
         &self.ops
     }
 }
 
-impl From<UpdateOps> for Vec<TupleBuffer> {
+impl From<UpdateOps> for Vec<Tuple> {
     #[inline(always)]
-    fn from(ops: UpdateOps) -> Vec<TupleBuffer> {
+    fn from(ops: UpdateOps) -> Vec<Tuple> {
         ops.ops
     }
 }
 
 impl IntoIterator for UpdateOps {
-    type Item = TupleBuffer;
-    type IntoIter = std::vec::IntoIter<TupleBuffer>;
+    type Item = Tuple;
+    type IntoIter = std::vec::IntoIter<Tuple>;
 
     #[inline(always)]
     fn into_iter(self) -> Self::IntoIter {
@@ -1305,13 +1304,13 @@ impl IntoIterator for UpdateOps {
 #[macro_export]
 macro_rules! update {
     ($target:expr, $key:expr, $($op:expr),+ $(,)?) => {{
-        use $crate::tuple::ToTupleBuffer;
+        use $crate::tuple::ToTuple;
         let f = || -> $crate::Result<Option<$crate::tuple::Tuple>> {
             let key = $key;
             let buf;
             let key_data = $crate::unwrap_or!(key.tuple_data(), {
                 // TODO: use region allocation for this
-                buf = key.to_tuple_buffer()?;
+                buf = key.to_tuple()?.to_vec();
                 buf.as_ref()
             });
 
@@ -1341,13 +1340,13 @@ macro_rules! update {
 #[macro_export]
 macro_rules! upsert {
     ($target:expr, $value: expr, $($op:expr),+ $(,)?) => {{
-        use $crate::tuple::ToTupleBuffer;
+        use $crate::tuple::ToTuple;
         let f = || -> $crate::Result<()> {
             let value = $value;
             let buf;
             let value_data = $crate::unwrap_or!(value.tuple_data(), {
                 // TODO: use region allocation for this
-                buf = value.to_tuple_buffer()?;
+                buf = value.to_tuple()?.to_vec();
                 buf.as_ref()
             });
 
@@ -1393,7 +1392,7 @@ mod test {
         space.index_builder("pk").create().unwrap();
         space.insert(RawBytes::new(b"\x93*\xa3foo\xa3bar")).unwrap();
         let t = space.get(&(42,)).unwrap().unwrap();
-        let t: (u32, String, String) = t.decode().unwrap();
+        let t: (u32, String, String) = t.decode_rmp().unwrap();
         assert_eq!(t, (42, "foo".to_owned(), "bar".to_owned()));
         space.drop().unwrap();
     }
@@ -1403,7 +1402,7 @@ mod test {
         let sys_space = Space::from(SystemSpace::Space);
         for tuple in sys_space.select(IteratorType::All, &()).unwrap() {
             // Check space metadata is deserializable from what is actually in _space
-            let _meta: Metadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.decode_rmp().unwrap();
         }
     }
 

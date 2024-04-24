@@ -38,6 +38,7 @@
 
 ### Changed
 
+- `Tuple` was heavily refactored and now represents both TupleBuffer and Tarantool tuple.
 - `tarantool::error::TarantoolError` is renamed `BoxError`. The old name is
   still available via a type alias, and is not yet deprecated so as not to break
   too much code, but in future it will be deprecated.
@@ -111,6 +112,7 @@
   but `tarantool::error::Error`, `Box<dyn Error>` & even `String` still work.
 - `tarantool::set_error!` macro now returns `()` instead of `-1_i32` as it did previously
 - `tarantool::tuple::Tuple::decode` does not support partial decoding anymore. Also any methods/functions which use rpm_serde have same effect.
+- `ToTupleBuffer` trait renamed to `ToTuple` and now returns `Tuple`.
 
 ### Added (picodata)
 

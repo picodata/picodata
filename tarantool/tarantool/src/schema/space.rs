@@ -209,7 +209,7 @@ fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
 pub fn space_metadata(space_id: SpaceId) -> Result<Metadata<'static>, Error> {
     let sys_space = SystemSpace::VSpace.as_space();
     let tuple = sys_space.get(&[space_id])?.ok_or(Error::MetaNotFound)?;
-    tuple.decode::<Metadata>()
+    tuple.decode_rmp::<Metadata>()
 }
 
 /// Drop a space.

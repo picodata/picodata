@@ -3,7 +3,7 @@ use time_macros::datetime;
 
 pub fn to_tuple() {
     let dt: Datetime = datetime!(2023-11-11 6:10:20.10010 -7).into();
-    let t = Tuple::new(&[dt]).unwrap();
+    let t = Tuple::encode_rmp(&[dt]).unwrap();
     let lua = tarantool::lua_state();
     let result: Datetime = lua.eval_with("return box.tuple.unpack(...)", &t).unwrap();
     assert_eq!(dt, result);
@@ -16,7 +16,7 @@ pub fn from_tuple() {
             return box.tuple.new(dt)",
         )
         .unwrap();
-    let (d,): (Datetime,) = t.decode().unwrap();
+    let (d,): (Datetime,) = t.decode_rmp().unwrap();
     assert_eq!(d.to_string(), "2023-11-11 10:11:12.10142 +05:00:00");
 }
 

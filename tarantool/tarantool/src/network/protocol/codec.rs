@@ -9,7 +9,7 @@ use crate::error::TarantoolError;
 use crate::index::IteratorType;
 use crate::msgpack;
 use crate::network::protocol::ProtocolError;
-use crate::tuple::{ToTupleBuffer, Tuple};
+use crate::tuple::{ToTuple, Tuple};
 
 use super::SyncIndex;
 
@@ -181,7 +181,7 @@ pub fn encode_ping(stream: &mut impl Write) -> Result<(), Error> {
 
 pub fn encode_execute<P>(stream: &mut impl Write, sql: &str, bind_params: &P) -> Result<(), Error>
 where
-    P: ToTupleBuffer + ?Sized,
+    P: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SQL_TEXT)?;
@@ -194,7 +194,7 @@ where
 
 pub fn encode_call<T>(stream: &mut impl Write, function_name: &str, args: &T) -> Result<(), Error>
 where
-    T: ToTupleBuffer + ?Sized,
+    T: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, FUNCTION_NAME)?;
@@ -206,7 +206,7 @@ where
 
 pub fn encode_eval<T>(stream: &mut impl Write, expression: &str, args: &T) -> Result<(), Error>
 where
-    T: ToTupleBuffer + ?Sized,
+    T: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, EXPR)?;
@@ -227,7 +227,7 @@ pub fn encode_select<K>(
     key: &K,
 ) -> Result<(), Error>
 where
-    K: ToTupleBuffer + ?Sized,
+    K: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 6)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -247,7 +247,7 @@ where
 
 pub fn encode_insert<T>(stream: &mut impl Write, space_id: u32, value: &T) -> Result<(), Error>
 where
-    T: ToTupleBuffer + ?Sized,
+    T: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -259,7 +259,7 @@ where
 
 pub fn encode_replace<T>(stream: &mut impl Write, space_id: u32, value: &T) -> Result<(), Error>
 where
-    T: ToTupleBuffer + ?Sized,
+    T: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 2)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -277,8 +277,8 @@ pub fn encode_update<K, Op>(
     ops: &Op,
 ) -> Result<(), Error>
 where
-    K: ToTupleBuffer + ?Sized,
-    Op: ToTupleBuffer + ?Sized,
+    K: ToTuple + ?Sized,
+    Op: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 4)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -300,8 +300,8 @@ pub fn encode_upsert<T, Op>(
     ops: &Op,
 ) -> Result<(), Error>
 where
-    T: ToTupleBuffer + ?Sized,
-    Op: ToTupleBuffer + ?Sized,
+    T: ToTuple + ?Sized,
+    Op: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 4)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;
@@ -322,7 +322,7 @@ pub fn encode_delete<K>(
     key: &K,
 ) -> Result<(), Error>
 where
-    K: ToTupleBuffer + ?Sized,
+    K: ToTuple + ?Sized,
 {
     rmp::encode::write_map_len(stream, 3)?;
     rmp::encode::write_pfix(stream, SPACE_ID)?;

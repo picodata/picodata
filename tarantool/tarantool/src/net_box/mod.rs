@@ -51,7 +51,7 @@ pub use space::RemoteSpace;
 
 use crate::error::Error;
 use crate::network::protocol;
-use crate::tuple::{Decode, ToTupleBuffer, Tuple};
+use crate::tuple::{Decode, ToTuple, Tuple};
 
 mod index;
 mod inner;
@@ -140,7 +140,7 @@ impl Conn {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTuple,
         T: ?Sized,
     {
         let res = self
@@ -155,7 +155,7 @@ impl Conn {
     /// kept once a response is received.
     pub fn call_async<A, R>(&self, fn_name: &str, args: A) -> crate::Result<Promise<R>>
     where
-        A: ToTupleBuffer,
+        A: ToTuple,
         R: for<'de> Decode<'de> + 'static,
     {
         self.inner.request_async(&protocol::Call {
@@ -173,7 +173,7 @@ impl Conn {
     /// word `return`.
     pub fn eval<T>(&self, expr: &str, args: &T, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        T: ToTupleBuffer,
+        T: ToTuple,
         T: ?Sized,
     {
         let res = self
@@ -188,7 +188,7 @@ impl Conn {
     /// kept once a response is received.
     pub fn eval_async<A, R>(&self, expr: &str, args: A) -> crate::Result<Promise<R>>
     where
-        A: ToTupleBuffer,
+        A: ToTuple,
         R: for<'de> Decode<'de> + 'static,
     {
         self.inner
@@ -211,7 +211,7 @@ impl Conn {
         options: &Options,
     ) -> Result<Vec<Tuple>, Error>
     where
-        P: ToTupleBuffer + ?Sized,
+        P: ToTuple + ?Sized,
     {
         self.inner
             .request(&protocol::Execute { sql, bind_params }, options)
@@ -247,7 +247,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn dont_drop_worker_join_handles() {
         struct UnexpectedIOError;
-        impl ToTupleBuffer for UnexpectedIOError {
+        impl ToTuple for UnexpectedIOError {
             fn write_tuple_data(&self, _: &mut impl std::io::Write) -> Result<(), Error> {
                 Err(Error::other("some io error"))
             }

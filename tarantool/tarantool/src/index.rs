@@ -19,7 +19,7 @@ use crate::error::{Error, TarantoolError, TarantoolErrorCode};
 use crate::ffi::tarantool as ffi;
 use crate::msgpack;
 use crate::space::{Space, SpaceId, SystemSpace};
-use crate::tuple::{Encode, ToTupleBuffer, Tuple, TupleBuffer};
+use crate::tuple::{Encode, ToTuple, Tuple, TupleBuffer};
 use crate::tuple::{KeyDef, KeyDefPart};
 use crate::tuple_from_box_api;
 use crate::unwrap_or;
@@ -529,7 +529,7 @@ impl Index {
             )
             .into());
         };
-        tuple.decode::<Metadata>()
+        tuple.decode_rmp::<Metadata>()
     }
 
     // Drops index.
@@ -548,12 +548,12 @@ impl Index {
     #[inline]
     pub fn get<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
+            buf = key.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -578,9 +578,9 @@ impl Index {
     #[inline]
     pub fn select<K>(&self, iterator_type: IteratorType, key: &K) -> Result<IndexIterator, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
-        let key_buf = key.to_tuple_buffer().unwrap();
+        let key_buf: TupleBuffer = key.to_tuple().unwrap().into();
         let Range { start, end } = key_buf.as_ref().as_ptr_range();
 
         let ptr = unsafe {
@@ -614,12 +614,12 @@ impl Index {
     #[inline]
     pub fn delete<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
+            buf = key.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -649,13 +649,13 @@ impl Index {
     #[inline]
     pub fn update<K, Op>(&self, key: &K, ops: impl AsRef<[Op]>) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
+        K: ToTuple + ?Sized,
+        Op: ToTuple,
     {
         let key_buf;
         let key_data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            key_buf = key.to_tuple_buffer()?;
+            key_buf = key.to_tuple()?.to_vec();
             key_buf.as_ref()
         });
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
@@ -668,12 +668,12 @@ impl Index {
     #[deprecated = "use update_raw instead"]
     pub unsafe fn update_mp<K>(&self, key: &K, ops: &[Vec<u8>]) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         let key_buf;
         let key_data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            key_buf = key.to_tuple_buffer()?;
+            key_buf = key.to_tuple()?.to_vec();
             key_buf.as_ref()
         });
         let mut ops_buf = Vec::with_capacity(128);
@@ -711,13 +711,13 @@ impl Index {
     #[inline]
     pub fn upsert<T, Op>(&self, value: &T, ops: impl AsRef<[Op]>) -> Result<(), Error>
     where
-        T: ToTupleBuffer + ?Sized,
-        Op: ToTupleBuffer,
+        T: ToTuple + ?Sized,
+        Op: ToTuple,
     {
         let value_buf;
         let value_data = unwrap_or!(value.tuple_data(), {
             // TODO: use region allocation for this
-            value_buf = value.to_tuple_buffer()?;
+            value_buf = value.to_tuple()?.to_vec();
             value_buf.as_ref()
         });
         let mut ops_buf = Vec::with_capacity(4 + ops.as_ref().len() * 4);
@@ -730,12 +730,12 @@ impl Index {
     #[deprecated = "use upsert_raw instead"]
     pub unsafe fn upsert_mp<T>(&self, value: &T, ops: &[Vec<u8>]) -> Result<(), Error>
     where
-        T: ToTupleBuffer + ?Sized,
+        T: ToTuple + ?Sized,
     {
         let value_buf;
         let value_data = unwrap_or!(value.tuple_data(), {
             // TODO: use region allocation for this
-            value_buf = value.to_tuple_buffer()?;
+            value_buf = value.to_tuple()?.to_vec();
             value_buf.as_ref()
         });
         let mut ops_buf = Vec::with_capacity(128);
@@ -819,12 +819,12 @@ impl Index {
     #[inline]
     pub fn min<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
+            buf = key.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -847,12 +847,12 @@ impl Index {
     #[inline]
     pub fn max<K>(&self, key: &K) -> Result<Option<Tuple>, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
+            buf = key.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -874,12 +874,12 @@ impl Index {
     #[inline]
     pub fn count<K>(&self, iterator_type: IteratorType, key: &K) -> Result<usize, Error>
     where
-        K: ToTupleBuffer + ?Sized,
+        K: ToTuple + ?Sized,
     {
         let buf;
         let data = unwrap_or!(key.tuple_data(), {
             // TODO: use region allocation for this
-            buf = key.to_tuple_buffer()?;
+            buf = key.to_tuple()?.to_vec();
             buf.as_ref()
         });
         let Range { start, end } = data.as_ptr_range();
@@ -1143,21 +1143,21 @@ mod tests {
 
         assert!(key_def
             .compare_with_key(
-                &Tuple::new(&("foo", 13, "bar", 37)).unwrap(),
+                &Tuple::encode_rmp(("foo", 13, "bar", 37)).unwrap(),
                 &("foo", 13, "bar", 37),
             )
             .is_eq());
 
         assert!(key_def
             .compare_with_key(
-                &Tuple::new(&("foo", 13, "bar", 37)).unwrap(),
+                &Tuple::encode_rmp(("foo", 13, "bar", 37)).unwrap(),
                 &("foo", 14, "bar", 37),
             )
             .is_lt());
 
         assert!(key_def
             .compare_with_key(
-                &Tuple::new(&("foo", 13, "baz", 37)).unwrap(),
+                &Tuple::encode_rmp(("foo", 13, "baz", 37)).unwrap(),
                 &("foo", 13, "bar", 37),
             )
             .is_gt());
@@ -1170,7 +1170,7 @@ mod tests {
         let sys_index = Space::from(SystemSpace::Index);
         for tuple in sys_index.select(IteratorType::All, &()).unwrap() {
             // Check index metadata is deserializable from what is actually in _index
-            let _meta: Metadata = tuple.decode().unwrap();
+            let _meta: Metadata = tuple.decode_rmp().unwrap();
         }
     }
 }

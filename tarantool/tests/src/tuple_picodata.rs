@@ -35,7 +35,7 @@ pub fn tuple_as_named_buffer() {
         }
     }
 
-    let tuple = Tuple::new(&(1, "foo")).unwrap();
+    let tuple = Tuple::encode_rmp((1, "foo")).unwrap();
     let mp_map = tuple.as_named_buffer().unwrap();
     let map: rmpv::Value = rmp_serde::from_slice(&mp_map).unwrap();
     let map = map.as_map().unwrap();
@@ -53,7 +53,7 @@ pub fn tuple_as_named_buffer() {
 }
 
 pub fn tuple_hash() {
-    let tuple = Tuple::new(&(1, 2, 3)).unwrap();
+    let tuple = Tuple::encode_rmp((1, 2, 3)).unwrap();
     let key = KeyDef::new(vec![
         &KeyDefPart {
             field_no: 0,
@@ -69,7 +69,7 @@ pub fn tuple_hash() {
     .unwrap();
     assert_eq!(key.hash(&tuple), 605624609);
 
-    let tuple = Tuple::new(&(1,)).unwrap();
+    let tuple = Tuple::encode_rmp((1,)).unwrap();
     let key = KeyDef::new(vec![&KeyDefPart {
         field_no: 0,
         field_type: FieldType::Integer,
@@ -78,7 +78,7 @@ pub fn tuple_hash() {
     .unwrap();
     assert_eq!(key.hash(&tuple), 1457374933);
 
-    let tuple = Tuple::new(&(1,)).unwrap();
+    let tuple = Tuple::encode_rmp((1,)).unwrap();
     let key = KeyDef::new(vec![
         &KeyDefPart {
             field_no: 0,
