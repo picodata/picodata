@@ -1,5 +1,8 @@
 import pytest
 import time
+import os
+import sys
+import shutil
 from conftest import Cluster, ReturnError, retrying, Instance
 
 _3_SEC = 3
@@ -570,7 +573,7 @@ def test_config_validation(cluster: Cluster):
 
     plugin_ref.inject_error("testservice_1", "on_cfg_validate", "test error", i1)
     with pytest.raises(
-        ReturnError, match="New configuration validation error: test error"
+        ReturnError, match="New configuration validation error:.* test error"
     ):
         i1.eval(
             "return pico.update_plugin_config('testplug', "

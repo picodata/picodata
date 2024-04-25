@@ -1,11 +1,13 @@
-use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec, UnsyncRBoxError};
+use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
 use abi_stable::{sabi_trait, RTuple, StableAbi};
 use linkme::distributed_slice;
 use std::error::Error;
+use std::fmt::Display;
 
 pub use abi_stable;
 use abi_stable::pmr::{RErr, RResult, RSlice};
 use serde::de::DeserializeOwned;
+use tarantool::error::{BoxError, IntoBoxError};
 
 /// Context of current instance. Produced by picodata.
 #[repr(C)]
@@ -163,21 +165,17 @@ pub trait Service {
 #[sabi_trait]
 pub trait ServiceStable {
     fn schema(&self) -> RVec<DDL>;
-    fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), UnsyncRBoxError>;
-    fn on_health_check(&self, context: &PicoContext) -> RResult<(), UnsyncRBoxError>;
-    fn on_start(
-        &mut self,
-        context: &PicoContext,
-        configuration: RSlice<u8>,
-    ) -> RResult<(), UnsyncRBoxError>;
-    fn on_stop(&mut self, context: &PicoContext) -> RResult<(), UnsyncRBoxError>;
-    fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), UnsyncRBoxError>;
+    fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()>;
+    fn on_health_check(&self, context: &PicoContext) -> RResult<(), ()>;
+    fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()>;
+    fn on_stop(&mut self, context: &PicoContext) -> RResult<(), ()>;
+    fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()>;
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
         new_cfg: RSlice<u8>,
         old_cfg: RSlice<u8>,
-    ) -> RResult<(), UnsyncRBoxError>;
+    ) -> RResult<(), ()>;
 }
 
 /// Implementation of [`ServiceStable`]
@@ -191,11 +189,25 @@ impl<C: DeserializeOwned> ServiceProxy<C> {
     }
 }
 
+// TODO move this code into tarantool-module
+const PLUGIN_ERROR_CODE: u32 = 333;
+
+/// Use this function for conversion between user error and picodata internal error.
+/// This conversion forces allocations because using user-error "as-is"
+/// may lead to use-after-free errors.
+/// UAF can happen if user error points into memory allocated by dynamic lib and lives
+/// longer than dynamic lib memory (that was unmapped by system).
+fn error_into_tt_error<T>(source: impl Display) -> RResult<T, ()> {
+    let tt_error = BoxError::new(PLUGIN_ERROR_CODE, source.to_string());
+    tt_error.set_last_error();
+    RErr(())
+}
+
 macro_rules! rtry {
     ($expr: expr) => {
         match $expr {
             Ok(k) => k,
-            Err(e) => return RErr(UnsyncRBoxError::from_box(Box::new(e))),
+            Err(e) => return error_into_tt_error(e),
         }
     };
 }
@@ -205,45 +217,41 @@ impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
         self.service.schema().into()
     }
 
-    fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), UnsyncRBoxError> {
+    fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()> {
         let configuration: C = rtry!(rmp_serde::from_slice(configuration.as_slice()));
         let res = self.service.on_cfg_validate(configuration);
         match res {
             Ok(_) => ROk(()),
-            Err(e) => RErr(UnsyncRBoxError::from_box(e)),
+            Err(e) => error_into_tt_error(e),
         }
     }
 
-    fn on_health_check(&self, context: &PicoContext) -> RResult<(), UnsyncRBoxError> {
+    fn on_health_check(&self, context: &PicoContext) -> RResult<(), ()> {
         match self.service.on_health_check(context) {
             Ok(_) => ROk(()),
-            Err(e) => RErr(UnsyncRBoxError::from_box(e)),
+            Err(e) => error_into_tt_error(e),
         }
     }
 
-    fn on_start(
-        &mut self,
-        context: &PicoContext,
-        configuration: RSlice<u8>,
-    ) -> RResult<(), UnsyncRBoxError> {
+    fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()> {
         let configuration: C = rtry!(rmp_serde::from_slice(configuration.as_slice()));
         match self.service.on_start(context, configuration) {
             Ok(_) => ROk(()),
-            Err(e) => RErr(UnsyncRBoxError::from_box(e)),
+            Err(e) => error_into_tt_error(e),
         }
     }
 
-    fn on_stop(&mut self, context: &PicoContext) -> RResult<(), UnsyncRBoxError> {
+    fn on_stop(&mut self, context: &PicoContext) -> RResult<(), ()> {
         match self.service.on_stop(context) {
             Ok(_) => ROk(()),
-            Err(e) => RErr(UnsyncRBoxError::from_box(e)),
+            Err(e) => error_into_tt_error(e),
         }
     }
 
-    fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), UnsyncRBoxError> {
+    fn on_leader_change(&mut self, context: &PicoContext) -> RResult<(), ()> {
         match self.service.on_leader_change(context) {
             Ok(_) => ROk(()),
-            Err(e) => RErr(UnsyncRBoxError::from_box(e)),
+            Err(e) => error_into_tt_error(e),
         }
     }
 
@@ -252,14 +260,14 @@ impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
         ctx: &PicoContext,
         new_cfg: RSlice<u8>,
         old_cfg: RSlice<u8>,
-    ) -> RResult<(), UnsyncRBoxError> {
+    ) -> RResult<(), ()> {
         let new_cfg: C = rtry!(rmp_serde::from_slice(new_cfg.as_slice()));
         let old_cfg: C = rtry!(rmp_serde::from_slice(old_cfg.as_slice()));
 
         let res = self.service.on_config_change(ctx, new_cfg, old_cfg);
         match res {
             Ok(_) => ROk(()),
-            Err(e) => RErr(UnsyncRBoxError::from_box(e)),
+            Err(e) => error_into_tt_error(e),
         }
     }
 }
@@ -307,7 +315,7 @@ type ServiceIdent = RTuple!(RString, RString);
 #[repr(C)]
 #[derive(Default, StableAbi)]
 pub struct ServiceRegistry {
-    services: RHashMap<ServiceIdent, FactoryBox>,
+    services: RHashMap<ServiceIdent, RVec<FactoryBox>>,
 }
 
 impl ServiceRegistry {
@@ -331,18 +339,33 @@ impl ServiceRegistry {
             FactoryBox::from_value(factory_inner, abi_stable::sabi_trait::TD_Opaque);
 
         let ident = ServiceIdent::from((RString::from(name), RString::from(plugin_version)));
-        self.services.insert(ident, factory_inner);
+        let entry = self.services.entry(ident).or_default();
+        entry.push(factory_inner);
     }
 
     /// Create service from service name and plugin version pair.
-    pub fn make(&self, service_name: &str, version: &str) -> Option<ServiceBox> {
+    /// Return an error if there is more than one factory suitable for creating a service.
+    pub fn make(&self, service_name: &str, version: &str) -> Result<Option<ServiceBox>, ()> {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
-        self.services.get(&ident).map(|factory| factory.make())
+        let maybe_factories = self.services.get(&ident);
+
+        match maybe_factories {
+            None => Ok(None),
+            Some(factories) if factories.len() == 1 => {
+                Ok(factories.first().map(|factory| factory.make()))
+            }
+            Some(_) => Err(()),
+        }
     }
 
     /// Return true if registry contains needle service, false elsewhere.
-    pub fn contains(&self, service_name: &str, version: &str) -> bool {
+    /// Return an error if there is more than one factory suitable for creating a service.
+    pub fn contains(&self, service_name: &str, version: &str) -> Result<bool, ()> {
         let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
-        self.services.contains_key(&ident)
+        match self.services.get(&ident) {
+            None => Ok(false),
+            Some(factories) if factories.len() == 1 => Ok(true),
+            Some(_) => Err(()),
+        }
     }
 }

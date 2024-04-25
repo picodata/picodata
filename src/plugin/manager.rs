@@ -1,5 +1,5 @@
 use crate::info::InstanceInfo;
-use crate::plugin::PluginError::PluginNotFound;
+use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
 use crate::plugin::{
     remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
     PluginError, PluginEvent, Result, Service, PLUGIN_DIR,
@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::error::BoxError;
 use tarantool::fiber;
 use tarantool::util::IntoClones;
 
@@ -69,7 +70,10 @@ impl PluginManager {
         }
     }
 
+    const AVAILABLE_EXT: &'static [&'static str] = &["so", "dylib"];
+
     /// Load plugin services into instance using plugin and service definitions.
+    ///
     /// Support `dry_run` -
     /// means that plugin is not being loaded but the possibility of loading is checked.
     fn try_load_inner(
@@ -89,18 +93,27 @@ impl PluginManager {
         let mut service_defs_to_load = service_defs.to_vec();
 
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
+        let plugin_dir = plugin_dir.join(&plugin_def.name);
         let entries = fs::read_dir(plugin_dir)?;
-        // TODO filter files before try open it as dynamic lib
-        // TODO what if two or more dynamic libs contains suitable for requirements service?
         for dir_entry in entries {
             let path = dir_entry?.path();
+
+            // filter files by its extension
+            let Some(ext) = path.extension() else {
+                continue;
+            };
+            if !Self::AVAILABLE_EXT.contains(&ext.to_string_lossy().as_ref()) {
+                continue;
+            }
+
+            // trying to load a dynamic library
             let Ok(lib) = (unsafe { Library::new(path) }) else {
                 continue;
             };
             let lib = Rc::new(lib);
 
+            // fill registry with factories
             let mut registry = ServiceRegistry::default();
-
             let make_registrars = unsafe {
                 get_sym::<fn() -> RSlice<'static, extern "C" fn(registry: &mut ServiceRegistry)>>(
                     &lib,
@@ -112,12 +125,26 @@ impl PluginManager {
                 registrar(&mut registry);
             });
 
+            // validate all services to possible factory collisions
+            service_defs.iter().try_for_each(|svc| {
+                registry
+                    .contains(&svc.name, &svc.version)
+                    .map_err(|_| ServiceCollision(svc.name.clone(), svc.version.clone()))
+                    .map(|_| ())
+            })?;
+
+            // trying to load still unloaded services
             service_defs_to_load.retain(|service_def| {
                 if dry_run {
-                    return !registry.contains(&service_def.name, &plugin_def.version);
+                    return !registry
+                        .contains(&service_def.name, &plugin_def.version)
+                        .expect("checked at previous step");
                 }
 
-                if let Some(service_inner) = registry.make(&service_def.name, &plugin_def.version) {
+                let maybe_service = registry
+                    .make(&service_def.name, &plugin_def.version)
+                    .expect("checked at previous step");
+                if let Some(service_inner) = maybe_service {
                     let service = Service {
                         _lib: lib.clone(),
                         name: service_def.name.to_string(),
@@ -148,10 +175,11 @@ impl PluginManager {
     /// How plugins are loaded:
     /// 1) Extract list of services to load from a `_pico_service` system table.
     /// 2) Filter services by plugin topology.
-    /// 3) Read all files from `plugin_dir`.
-    /// 4) From each .so file try to load services from load-list.
+    /// 3) Read all `.so` and `.dylib` files from `plugin_dir/plugin_name`.
+    /// 4) From each file try to load services from load-list.
     /// If service can be loaded - remove it from load-list.
-    /// 5) After scanning all files - check that load-list is empty - plugin is fully loaded now.
+    /// If there is more than one factory for one service - throw error.
+    /// 5) After scanning all files - checks that load-list is empty - plugin fully loaded now.
     /// 6) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
     /// 7) Return error if any of the previous steps failed with error.
     ///
@@ -272,10 +300,11 @@ impl PluginManager {
         if let Some(plugin_state) = plugin {
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
-                if let RErr(e) = service.inner.on_stop(&ctx) {
+                if let RErr(_) = service.inner.on_stop(&ctx) {
+                    let error = BoxError::last();
                     tlog!(
                         Error,
-                        "plugin {} service {} `on_stop` error: {e}",
+                        "plugin {} service {} `on_stop` error: {error}",
                         service.plugin_name,
                         service.name
                     );
@@ -297,10 +326,11 @@ impl PluginManager {
         for services in services_to_stop {
             for service in services.iter() {
                 let mut service = service.lock();
-                if let RErr(e) = service.inner.on_stop(&ctx) {
+                if let RErr(_) = service.inner.on_stop(&ctx) {
+                    let error = BoxError::last();
                     tlog!(
                         Error,
-                        "plugin {} service {} `on_stop` error: {e}",
+                        "plugin {} service {} `on_stop` error: {error}",
                         service.plugin_name,
                         service.name
                     );
@@ -370,8 +400,12 @@ impl PluginManager {
                     replace_routes(&[route], Duration::from_secs(10))?;
                 }
             }
-            RErr(e) => {
-                tlog!(Warning, "service poisoned, `on_config_change` error: {e}");
+            RErr(_) => {
+                let error = BoxError::last();
+                tlog!(
+                    Warning,
+                    "service poisoned, `on_config_change` error: {error}"
+                );
                 // now the route is poison
                 let route = ServiceRouteItem::new_poison(
                     instance_info.instance_id,
@@ -424,8 +458,12 @@ impl PluginManager {
                             ));
                         }
                     }
-                    RErr(e) => {
-                        tlog!(Warning, "service poisoned, `on_leader_change` error: {e}");
+                    RErr(_) => {
+                        let error = BoxError::last();
+                        tlog!(
+                            Warning,
+                            "service poisoned, `on_leader_change` error: {error}"
+                        );
                         // now the route is poison
                         routes_to_replace.push(ServiceRouteItem::new_poison(
                             instance_info.instance_id.clone(),
@@ -467,22 +505,12 @@ impl PluginManager {
         let ctx = context_from_node(node);
         let cfg_raw =
             rmp_serde::encode::to_vec_named(&service_defs[0].configuration).expect("out of memory");
-        if let RErr(e) = new_service
+        if let RErr(_) = new_service
             .inner
             .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
         {
-            // !IMPORTANT
-            // Why error clone to string here and go back to error?
-            // Reason is that original error
-            // points into memory allocated from .so file,
-            // but, unlike other places,
-            // error here means a drop of [`plugin::Service`],
-            // and a drop of service may lead to a drop of [`libloading::safe::Library`].
-            // If it happens - original error will point to a freed memory.
-            let err_str = e.to_string();
-            return Err(PluginError::Callback(PluginCallbackError::OnStart(
-                err_str.into(),
-            )));
+            let error = BoxError::last();
+            return Err(PluginError::Callback(PluginCallbackError::OnStart(error)));
         }
 
         // append new service to a plugin
@@ -516,10 +544,11 @@ impl PluginManager {
         // call `on_stop` callback and drop service
         let ctx = context_from_node(node);
         let mut service = service_to_del.lock();
-        if let RErr(e) = service.inner.on_stop(&ctx) {
+        if let RErr(_) = service.inner.on_stop(&ctx) {
+            let error = BoxError::last();
             tlog!(
                 Error,
-                "plugin {} service {} `on_stop` error: {e}",
+                "plugin {} service {} `on_stop` error: {error}",
                 service.plugin_name,
                 service.name
             );
@@ -551,13 +580,12 @@ impl PluginManager {
             let cfg_raw =
                 rmp_serde::encode::to_vec_named(&def.configuration).expect("out of memory");
 
-            if let RErr(e) = service
+            if let RErr(_) = service
                 .inner
                 .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
             {
-                return Err(PluginError::Callback(PluginCallbackError::OnStart(
-                    e.into(),
-                )));
+                let error = BoxError::last();
+                return Err(PluginError::Callback(PluginCallbackError::OnStart(error)));
             }
         }
 
@@ -608,9 +636,10 @@ impl PluginManager {
         for service in services.iter() {
             let service = service.lock();
             if service.name == service_name {
-                return if let RErr(e) = service.inner.on_cfg_validate(RSlice::from(new_cfg_raw)) {
+                return if let RErr(_) = service.inner.on_cfg_validate(RSlice::from(new_cfg_raw)) {
+                    let error = BoxError::last();
                     Err(PluginError::Callback(
-                        PluginCallbackError::InvalidConfiguration(e.into_box()),
+                        PluginCallbackError::InvalidConfiguration(error),
                     ))
                 } else {
                     Ok(())

@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
+use tarantool::error::BoxError;
 use tarantool::fiber;
 use tarantool::time::Instant;
 
@@ -77,14 +78,16 @@ pub enum PluginError {
     RemoveOfEnabledPlugin,
     #[error("Topology: {0}")]
     TopologyError(String),
+    #[error("Found more than one service factory for `{0}` ver. `{1}`")]
+    ServiceCollision(String, String),
 }
 
 #[derive(thiserror::Error, Debug)]
 pub enum PluginCallbackError {
     #[error("on_start: {0}")]
-    OnStart(Box<dyn std::error::Error>),
+    OnStart(BoxError),
     #[error("New configuration validation error: {0}")]
-    InvalidConfiguration(Box<dyn std::error::Error>),
+    InvalidConfiguration(BoxError),
 }
 
 type Result<T> = std::result::Result<T, PluginError>;
@@ -122,11 +125,11 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    /// Load manifest from file `{plugin_name}.yml`.
+    /// Load manifest from file `{plugin_dir}/{plugin_name}/{plugin_name}.yml`.
     pub fn load(plugin_name: &str) -> Result<Self> {
         // TODO move this into config (in future)
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
-        let manifest_path = plugin_dir.join(format!("{plugin_name}.yaml"));
+        let manifest_path = plugin_dir.join(format!("{plugin_name}/{plugin_name}.yaml"));
         // TODO non-blocking needed?
         let file = File::open(&manifest_path).map_err(|e| {
             PluginError::ManifestNotFound(manifest_path.to_string_lossy().to_string(), e)
@@ -156,6 +159,7 @@ impl Manifest {
                 .map(|srv| srv.name.to_string())
                 .collect(),
             version: self.version.to_string(),
+            description: self.description.to_string(),
         }
     }
 
@@ -170,6 +174,7 @@ impl Manifest {
                 configuration: srv.default_configuration.clone(),
                 version: self.version.to_string(),
                 schema_version: 0,
+                description: srv.description.to_string(),
             })
             .collect()
     }

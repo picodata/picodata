@@ -431,6 +431,8 @@ pub struct PluginDef {
     // should be equal with plugin version from manifest).
     // This would be change in future, with API breaking changes and plugin rolling update feature.
     pub version: String,
+    /// Plugin description
+    pub description: String,
 }
 
 impl Encode for PluginDef {}
@@ -448,6 +450,7 @@ impl PluginDef {
             Field::from(("enabled", FieldType::Boolean)),
             Field::from(("services", FieldType::Array)),
             Field::from(("version", FieldType::String)),
+            Field::from(("description", FieldType::String)),
         ]
     }
 
@@ -458,6 +461,7 @@ impl PluginDef {
             enabled: false,
             services: vec!["service_1".to_string(), "service_2".to_string()],
             version: "0.0.1".into(),
+            description: "description".to_string(),
         }
     }
 }
@@ -483,6 +487,8 @@ pub struct ServiceDef {
     /// Schema version.
     // FIXME: for future improvements
     pub schema_version: u64,
+    /// Plugin description
+    pub description: String,
 }
 
 impl Encode for ServiceDef {}
@@ -499,6 +505,7 @@ impl ServiceDef {
             Field::from(("tiers", FieldType::Array)),
             Field::from(("configuration", FieldType::Any)),
             Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("description", FieldType::String)),
         ]
     }
 
@@ -511,6 +518,7 @@ impl ServiceDef {
             tiers: vec!["t1".to_string(), "t2".to_string()],
             configuration: rmpv::Value::Boolean(false),
             schema_version: 1,
+            description: "description".to_string(),
         }
     }
 }
