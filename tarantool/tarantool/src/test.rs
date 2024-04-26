@@ -114,8 +114,7 @@ pub mod util {
     pub fn listen_port() -> u16 {
         let lua = crate::lua_state();
         let listen: String = lua.eval("return box.info.listen").unwrap();
-        let (address, port) = listen.rsplit_once(':').unwrap();
-        assert_eq!(address, "127.0.0.1");
+        let (_address, port) = listen.rsplit_once(':').unwrap();
         port.parse().unwrap()
     }
 

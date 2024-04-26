@@ -9,7 +9,7 @@ local tmpdir = fio.tempdir()
 
 box.cfg{
     log_level = 'verbose',
-    listen = '127.0.0.1:0',
+    listen = 'localhost:0',
     wal_mode = 'none',
     memtx_dir = tmpdir,
 }
