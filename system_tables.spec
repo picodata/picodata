@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.3.0-74-g153b595b`.
+Описание соответствует версии Picodata `24.3.0-110-g6a39a360`.
 
 ### _pico_table
 
@@ -165,7 +165,7 @@
 Поля:
 
 * `name`: (_string_)
-* `running`: (_boolean_)
+* `enabled`: (_boolean_)
 * `services`: (_array_)
 * `version`: (_string_)
 
