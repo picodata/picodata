@@ -847,10 +847,10 @@ mod tests {
         unsafe { libc::close(fd) };
     }
 
-    fn get_socket_fds() -> Vec<u32> {
+    fn get_socket_fds() -> HashSet<u32> {
         use std::os::unix::fs::FileTypeExt;
 
-        let mut res = vec![];
+        let mut res = HashSet::new();
         for entry in std::fs::read_dir("/dev/fd/").unwrap() {
             let Ok(entry) = entry else {
                 continue;
@@ -866,9 +866,8 @@ mod tests {
             // Yay rust!
             let fd_str = fd_path.file_name().unwrap();
             let fd: u32 = fd_str.to_str().unwrap().parse().unwrap();
-            res.push(fd);
+            res.insert(fd);
         }
-        res.sort_unstable();
         res
     }
 
@@ -885,6 +884,7 @@ mod tests {
         // XXX: this is a bit unreliable, because tarantool is spawning a bunch
         // of other threads which may or may not be creating and closing fds,
         // so we may want to remove this test at some point
-        assert_eq!(fds_before, fds_after)
+        let new_fds: Vec<_> = fds_after.difference(&fds_before).copied().collect();
+        assert!(dbg!(new_fds.is_empty()));
     }
 }
