@@ -3,9 +3,10 @@
 [DDL](ddl.md)-команда `CREATE PROCEDURE` используется для создания новой
 [процедуры](../../overview/glossary.md#stored_procedure).
 
-NOTE: **Примечание** Пользователь может создавать и затем управлять
-своими процедурами при наличии [соответствующей
-привилегии](../../tutorial/access_control.md#proc_access).
+!!! note "Примечание"
+    Пользователь может создавать и затем управлять
+    своими процедурами при наличии [соответствующей
+    привилегии](../../tutorial/access_control.md#proc_access).
 
 Созданная процедура хранится в системной таблице
 [_pico_routine](../../architecture/system_tables.md#_pico_routine).
