@@ -3484,7 +3484,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc 3.0.0",
+ "tarantool-proc 3.1.0",
  "tempfile",
  "tester",
  "thiserror",
@@ -3519,7 +3519,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc 3.0.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
+ "tarantool-proc 3.0.0",
  "thiserror",
  "time",
  "tlua 3.1.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
@@ -3530,6 +3530,7 @@ dependencies = [
 [[package]]
 name = "tarantool-proc"
 version = "3.0.0"
+source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
 dependencies = [
  "darling",
  "proc-macro-error",
@@ -3540,8 +3541,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool-proc"
-version = "3.0.0"
-source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
+version = "3.1.0"
 dependencies = [
  "darling",
  "proc-macro-error",
