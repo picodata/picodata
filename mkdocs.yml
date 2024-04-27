@@ -185,9 +185,10 @@ plugins:
   ## Используется для кастомизации якорей в формате {: #anchor }. Двоеточие и пробелы можно убирать
   ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#attribute-lists
   ## https://python-markdown.github.io/extensions/attr_list/
-  ## > callouts
-  ## Добавляет синтаксис для оформления выносок — более простой, чем в расширении `admonition`
-  ## https://oprypin.github.io/markdown-callouts/
+  ## > admonition
+  ## Добавляет синтаксис для оформления выносок `!!! note`
+  ## https://python-markdown.github.io/extensions/admonition/
+  ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#usage
   ## Описание типов выносок:
   ## https://squidfunk.github.io/mkdocs-material/reference/admonitions/#supported-types
   ## > toc.permalink: true
@@ -198,7 +199,7 @@ plugins:
   ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#+toc.permalink_title
 markdown_extensions:
   - attr_list
-  - callouts
+  - admonition
   - toc:
       permalink: true
       permalink_title: Ссылка на абзац
