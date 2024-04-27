@@ -663,7 +663,7 @@ mod tests {
     async fn read_timeout() {
         let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
         // Read greeting
-        let mut buf = vec![0; 128];
+        let mut buf = vec![0; 4096];
         assert_eq!(
             stream
                 .read_exact(&mut buf)
