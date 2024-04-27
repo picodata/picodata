@@ -51,16 +51,22 @@ brew install node yarn
 
 ### Prerequisites for Fedora 37+
 
-```shell
-dnf install perl automake libtool nodejs yarnpkg
-```
+#### Static build
 
-Note that nodejs and yarnpkg packages are needed only for webui.
+```shell
+dnf install cmake gcc gcc-c++ git libstdc++-static perl
+```
 
 #### Dynamic build
 
 ```shell
-dnf install openldap-devel
+dnf install curl-devel libicu-devel libyaml-devel libzstd-devel openldap-devel openssl-devel readline-devel zlib-devel
+```
+
+#### Build with Web UI
+
+```shell
+dnf install nodejs yarnpkg
 ```
 
 ### Install Rust
@@ -92,11 +98,18 @@ If you want to enable Web UI for administration, build with these flags:
 ```bash
 cargo build --features webui
 ```
-When running `picodata` `-http-listen` should be supplied to serve Web UI.
+When running `picodata` `--http-listen` should be supplied to serve Web UI.
 
 The resulting binaries should appear under the `target` subdirectory.
 
-Note: picodata supports both dynamic and static linking. Instruction above produces statically linked binary. When built with `dynamic_build` feature dynamic linking is used. Dynamic linking requires for additional dependencies to be installed on the system. For full list see [Dockerfile](docker-build-base/Dockerfile)
+> NOTE:<br>
+> Picodata supports both dynamic and static linking. Instruction above produces statically linked binary. When built with `dynamic_build` feature dynamic linking is used:
+>
+> ```bash
+> cargo build --features dynamic_build
+> ```
+>
+> Dynamic linking requires for additional dependencies to be installed on the system. For example see [Dynamic build](#dynamic-build). For full list see [Dockerfile](docker-build-base/Dockerfile).
 
 ## Integration testing with pytest
 The following refers to Ubuntu 20.04 LTS. The mileage with other distributions may vary.
