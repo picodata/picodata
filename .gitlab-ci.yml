@@ -162,7 +162,8 @@ build-base-image:
         echo "Skip saving cache on a non-master branch"
       fi
 
-test-linux:
+
+test-linux-debug:
   extends: .test
   tags:
     - picodata-docker
@@ -205,7 +206,7 @@ test-linux:
 
     - cargo -V
 
-    - |
+    - &pipenv-install |
       # Pipenv install
       ci-log-section start "pipenv-install" Installing pip dependencies ...
       PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
@@ -229,8 +230,39 @@ test-linux:
 
     - make lint
 
-    # Now do the same thing as above but for release mode.
-    # TODO: cleanup the copypasta
+  artifacts:
+    when: always
+    paths:
+      - junit_pytest.xml
+    reports:
+      junit: junit_pytest.xml
+
+
+test-linux-release:
+  extends: .test
+  variables:
+    CACHE_ARCHIVE: /shared-storage/picodata/cache-release.tar
+  tags:
+    - picodata-docker
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
+
+  script:
+    - cargo -V
+
+    - *pipenv-install
+
     - cargo build --locked --release
     - cargo build -p gostech-audit-log --release
     - cargo build -p testplug --release
@@ -252,6 +284,7 @@ test-linux:
       - junit_pytest.xml
     reports:
       junit: junit_pytest.xml
+
 
 .test-patch-rules: &test-patch-rules
   rules:
