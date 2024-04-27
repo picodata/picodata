@@ -19,7 +19,6 @@ import msgpack  # type: ignore
 from rand.params import generate_seed
 from functools import reduce
 from datetime import datetime
-from shutil import rmtree
 from typing import (
     Any,
     Callable,
@@ -826,7 +825,7 @@ class Instance:
         self.start()
 
     def remove_data(self):
-        rmtree(self.data_dir)
+        shutil.rmtree(self.data_dir)
 
     def raft_propose_nop(self):
         return self.call("pico.raft_propose_nop")
@@ -1413,7 +1412,7 @@ class Cluster:
             raise Exception(errors)
 
     def remove_data(self):
-        rmtree(self.data_dir)
+        shutil.rmtree(self.data_dir)
 
     def expel(self, target: Instance, peer: Instance | None = None):
         peer = peer if peer else target
@@ -1693,7 +1692,25 @@ def binary_path(cargo_build: None) -> str:
     if profile == "dev":
         profile = "debug"
 
-    return os.path.realpath(os.path.join(target, f"{profile}/picodata"))
+    binary_path = os.path.realpath(os.path.join(target, f"{profile}/picodata"))
+
+    # Copy the test plugin library into the appropriate location
+    test_dir = os.path.dirname(__file__)
+    assert test_dir.endswith("test")
+
+    ext = None
+    match sys.platform:
+        case "linux":
+            ext = "so"
+        case "darwin":
+            ext = "dylib"
+
+    source = f"{os.path.dirname(binary_path)}/libtestplug.{ext}"
+    destination = f"{test_dir}/testplug/libtestplug.{ext}"
+    eprint(f"Copying '{source}' to '{destination}'")
+    shutil.copyfile(source, destination)
+
+    return binary_path
 
 
 @pytest.fixture(scope="session")
@@ -1722,11 +1739,15 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build failed"
 
-    cmd = ["cargo", "build", "-p", "gostech-audit-log"]
+    cmd = ["cargo", "build", "-p", "gostech-audit-log", "--profile", build_profile()]
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build gostech audit log failed"
 
-    cmd = ["cargo", "build", "-p", "gostech-metrics"]
+    cmd = ["cargo", "build", "-p", "gostech-metrics", "--profile", build_profile()]
+    eprint(f"Running {cmd}")
+    assert subprocess.call(cmd) == 0, "cargo build gostech metrics failed"
+
+    cmd = ["cargo", "build", "-p", "testplug", "--profile", build_profile()]
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build gostech metrics failed"
 

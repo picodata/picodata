@@ -1,8 +1,5 @@
 import pytest
 import time
-import os
-import sys
-import shutil
 from conftest import Cluster, ReturnError, retrying, Instance
 
 _3_SEC = 3
@@ -188,27 +185,6 @@ class PluginReflection:
 
 
 # ---------------------------------- } Test helper classes ----------------------------------------
-
-
-@pytest.fixture
-def cluster(cluster: Cluster) -> Cluster:
-    parent = os.path.dirname(__file__)
-    assert parent.endswith("test/int")
-    test_dir = os.path.dirname(parent)
-
-    ext = None
-    match sys.platform:
-        case "linux":
-            ext = "so"
-        case "darwin":
-            ext = "dylib"
-
-    destination = f"{test_dir}/testplug/libtestplug.{ext}"
-    if not os.path.exists(destination):
-        build_dir = os.path.dirname(cluster.binary_path)
-        shutil.copyfile(f"{build_dir}/libtestplug.{ext}", destination)
-
-    return cluster
 
 
 def test_invalid_manifest_plugin(cluster: Cluster):
