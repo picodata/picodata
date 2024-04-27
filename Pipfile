@@ -8,6 +8,7 @@ mkdocs = "==1.5.3"
 mkdocs-material = "==9.4.8"
 mkdocs-plugin-inline-svg = "==0.1.0"
 mkdocs-open-in-new-tab = "==1.0.3"
+pygments = "==2.17.2"
 
 [dev-packages]
 flake8 = "*"

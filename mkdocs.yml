@@ -197,12 +197,36 @@ plugins:
   ## > toc.permalink_title
   ## Добавляет описание ссылки на якорь, которое отображается при наведении
   ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#+toc.permalink_title
+  ## > pymdownx.superfences (SuperFences)
+  ## Позволяет произвольно встраивать фрагменты кода и блоки контента друг в друга
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown-extensions/#superfences
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/superfences/
+  ## > pymdownx.highlight (Highlight)
+  ## Добавляет поддержку подсветки синтаксиса во фрагментах кода с помощью SuperFences
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown-extensions/#highlight
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/
+  ## > .use_pygments: true
+  ## Highlight использует Pygments для подсветки синтаксиса
+  ## https://pygments.org/
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > .pygments_lang_class: true
+  ## Pygments добавляет класс CSS с указанием языка, используемого во фрагменте кода
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > .guess_lang: true
+  ## Pygments пытается определить используемый во фрагменте кода язык, если он не указан
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+
 markdown_extensions:
   - attr_list
   - admonition
   - toc:
       permalink: true
       permalink_title: Ссылка на абзац
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      use_pygments: true
+      pygments_lang_class: true
+      guess_lang: true
 
 # Валидация ссылок
 # https://www.mkdocs.org/user-guide/configuration/#validation
