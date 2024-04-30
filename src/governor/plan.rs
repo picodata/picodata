@@ -32,7 +32,7 @@ pub(super) fn action_plan<'i>(
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
-    tiers: &HashMap<&String, &Tier>,
+    tiers: &HashMap<&str, &Tier>,
     my_raft_id: RaftId,
     current_vshard_config: &VshardConfig,
     target_vshard_config: &VshardConfig,
@@ -50,7 +50,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // conf change
-    if let Some(conf_change) = raft_conf_change(instances, voters, learners) {
+    if let Some(conf_change) = raft_conf_change(instances, voters, learners, tiers) {
         return Ok(ConfChange { conf_change }.into());
     }
 
@@ -790,7 +790,7 @@ fn get_new_replicaset_master_if_needed<'i>(
 fn get_replicaset_state_change<'i>(
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetId, &Replicaset>,
-    tiers: &HashMap<&String, &Tier>,
+    tiers: &HashMap<&str, &Tier>,
 ) -> Option<(&'i ReplicasetId, bool)> {
     let mut replicaset_sizes = HashMap::new();
     for Instance { replicaset_id, .. } in maybe_responding(instances) {
@@ -802,7 +802,7 @@ fn get_replicaset_state_change<'i>(
         if r.state != ReplicasetState::NotReady {
             continue;
         }
-        let Some(tier_info) = tiers.get(&r.tier) else {
+        let Some(tier_info) = tiers.get(r.tier.as_str()) else {
             continue;
         };
         // TODO: set replicaset.state = NotReady if it was Ready but is no

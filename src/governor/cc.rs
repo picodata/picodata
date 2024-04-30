@@ -1,12 +1,14 @@
 use ::raft::prelude as raft;
 use ::raft::prelude::ConfChangeType::*;
 
+use std::collections::HashMap;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::has_grades;
 use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
+use crate::tier::Tier;
 use crate::traft::{Distance, RaftId};
+use crate::{has_grades, tlog};
 
 struct RaftConf<'a> {
     all: BTreeMap<RaftId, &'a Instance>,
@@ -74,6 +76,7 @@ pub(crate) fn raft_conf_change(
     instances: &[Instance],
     voters: &[RaftId],
     learners: &[RaftId],
+    tiers: &HashMap<&str, &Tier>,
 ) -> Option<raft::ConfChangeV2> {
     let mut raft_conf = RaftConf {
         all: instances.iter().map(|p| (p.raft_id, p)).collect(),
@@ -83,16 +86,23 @@ pub(crate) fn raft_conf_change(
     let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
     let not_expelled = |instance: &&Instance| has_grades!(instance, * -> not Expelled);
+    // Only an instance from tier with `can_vote = true` can be considered as voter.
+    let tier_can_vote = |instance: &&Instance| {
+        tiers
+            .get(instance.tier.as_str())
+            .expect("tier for instance should exists")
+            .can_vote
+    };
 
-    let cluster_size = instances.iter().filter(not_expelled).count();
-    let voters_needed = match cluster_size {
-        // five and more nodes -> 5 voters
+    let number_of_eligible_for_vote = instances
+        .iter()
+        .filter(not_expelled)
+        .filter(tier_can_vote)
+        .count();
+
+    let voters_needed = match number_of_eligible_for_vote {
         5.. => 5,
-        // three or four nodes -> 3 voters
         3..=4 => 3,
-        // two nodes -> 2 voters
-        // one node -> 1 voter
-        // zero nodes -> 0 voters (almost unreachable)
         x => x,
     };
 
@@ -101,6 +111,7 @@ pub(crate) fn raft_conf_change(
         .iter()
         // Only an instance with current grade online can be promoted
         .filter(|instance| has_grades!(instance, Online -> Online))
+        .filter(tier_can_vote)
         .map(|instance| instance.raft_id)
         // Exclude those who is already a voter.
         .filter(|raft_id| !raft_conf.voters.contains(raft_id))
@@ -112,11 +123,27 @@ pub(crate) fn raft_conf_change(
 
     // Remove / replace voters
     for voter_id in raft_conf.voters.clone().iter() {
-        let Some(instance) = raft_conf.all.get(voter_id) else {
-            // Nearly impossible, but rust forces me to check it.
-            let ccs = raft_conf.change_single(RemoveNode, *voter_id);
-            changes.push(ccs);
-            continue;
+        let instance = match raft_conf.all.get(voter_id) {
+            Some(instance) if tier_can_vote(instance) => instance,
+            // case when bootstrap leader from tier with `can_vote = false`
+            Some(Instance {
+                tier, instance_id, ..
+            }) => {
+                tlog!(
+                    Warning,
+                    "instance with instance_id '{instance_id}' from \
+                     tier '{tier}' with 'can_vote' = false is in raft configuration as voter, making it follower"
+                );
+                let ccs = raft_conf.change_single(RemoveNode, *voter_id);
+                changes.push(ccs);
+                continue;
+            }
+            // unknown instance which is not in configuration of cluster, nearly impossible
+            None => {
+                let ccs = raft_conf.change_single(RemoveNode, *voter_id);
+                changes.push(ccs);
+                continue;
+            }
         };
         match instance.target_grade.variant {
             Online => {
@@ -260,6 +287,7 @@ mod tests {
                     // raft_conf_change doesn't care about incarnations
                     incarnation: 0,
                 },
+                tier: crate::tier::DEFAULT_TIER.into(),
                 $(failure_domain: $failure_domain,)?
                 ..Instance::default()
             }
@@ -273,6 +301,19 @@ mod tests {
         ) => {
             p!($raft_id, $grade -> $grade $(, $failure_domain)?)
         };
+    }
+
+    macro_rules! p_with_tier {
+        (
+            $raft_id:literal,
+            $tier:ident,
+            $grade:ident
+
+        ) => {{
+            let mut instance = p!($raft_id, $grade -> $grade);
+            instance.tier = $tier.to_string();
+            instance
+        }}
     }
 
     macro_rules! cc {
@@ -294,7 +335,19 @@ mod tests {
     }
 
     fn cc(p: &[Instance], v: &[RaftId], l: &[RaftId]) -> Option<raft::ConfChangeV2> {
-        let mut cc = super::raft_conf_change(p, v, l)?;
+        let mut t = HashMap::new();
+        let tier = Tier::default();
+        t.insert(tier.name.as_str(), &tier);
+        cc_with_tiers(p, v, l, &t)
+    }
+
+    fn cc_with_tiers(
+        p: &[Instance],
+        v: &[RaftId],
+        l: &[RaftId],
+        t: &HashMap<&str, &Tier>,
+    ) -> Option<raft::ConfChangeV2> {
+        let mut cc = super::raft_conf_change(p, v, l, t)?;
         cc.changes.sort_by(|l, r| Ord::cmp(&l.node_id, &r.node_id));
         Some(cc)
     }
@@ -554,6 +607,91 @@ mod tests {
             ),
             // Vouters number should not fall below the optimal number
             cc![AddLearnerNode(1), AddNode(4)]
+        );
+
+        let mut tiers = HashMap::new();
+        const VOTER_TIER_NAME: &str = "voter";
+        const FOLLOWER_TIER_NAME: &str = "follower";
+        let voter_tier = Tier {
+            name: VOTER_TIER_NAME.into(),
+            replication_factor: 1,
+            can_vote: true,
+        };
+        let router_tier = Tier {
+            name: FOLLOWER_TIER_NAME.into(),
+            replication_factor: 1,
+            can_vote: false,
+        };
+        tiers.insert(voter_tier.name.as_str(), &voter_tier);
+        tiers.insert(router_tier.name.as_str(), &router_tier);
+
+        assert_eq!(
+            cc_with_tiers(
+                &[
+                    p_with_tier!(1, VOTER_TIER_NAME, Online),
+                    p_with_tier!(2, FOLLOWER_TIER_NAME, Online),
+                ],
+                &[1],
+                &[2],
+                &tiers
+            ),
+            // instance from router tier couldn't be upgraded to voter
+            None
+        );
+
+        assert_eq!(
+            cc_with_tiers(
+                &[
+                    p_with_tier!(1, VOTER_TIER_NAME, Online),
+                    p_with_tier!(2, FOLLOWER_TIER_NAME, Online),
+                ],
+                &[2],
+                &[1],
+                &tiers
+            ),
+            // case when bootstrap leader from tier with falsy `can_vote`
+            cc![AddNode(1), RemoveNode(2), AddLearnerNode(2)]
+        );
+
+        assert_eq!(
+            cc_with_tiers(
+                &[
+                    p_with_tier!(1, VOTER_TIER_NAME, Expelled),
+                    p_with_tier!(2, FOLLOWER_TIER_NAME, Online),
+                ],
+                &[1],
+                &[2],
+                &tiers
+            ),
+            // remove expelled voter
+            cc![RemoveNode(1)]
+        );
+
+        assert_eq!(
+            cc_with_tiers(
+                &[
+                    p_with_tier!(1, FOLLOWER_TIER_NAME, Expelled),
+                    p_with_tier!(2, FOLLOWER_TIER_NAME, Online),
+                ],
+                &[1],
+                &[2],
+                &tiers
+            ),
+            // remove expelled follower
+            cc![RemoveNode(1)]
+        );
+
+        assert_eq!(
+            cc_with_tiers(
+                &[
+                    p_with_tier!(1, VOTER_TIER_NAME, Online),
+                    p_with_tier!(2, VOTER_TIER_NAME, Online),
+                ],
+                &[],
+                &[1, 2],
+                &tiers
+            ),
+            cc![AddNode(1), AddNode(2)]
         );
     }
 }

@@ -101,3 +101,76 @@ def test_threesome(cluster3: Cluster):
     c2 = log_crawler(i2, ON_SHUTDOWN_TIMEOUT)
     i2.terminate(kill_after_seconds=1)
     assert not c2.matched
+
+
+def test_instance_from_falsy_tier_is_not_voter(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    tiers:
+        storage:
+            replication_factor: 1
+            can_vote: true
+        router:
+            replication_factor: 1
+            can_vote: false
+instance:
+    cluster_id: my-cluster
+    tier: storage
+    log:
+        level: verbose
+"""
+    )
+
+    i1 = cluster.add_instance(wait_online=False, tier="storage")
+    i1.start()
+    i1.wait_online()
+
+    i2 = cluster.add_instance(wait_online=False, tier="router")
+    i2.start()
+    i2.wait_online()
+
+    c1 = log_crawler(
+        i1,
+        "leader is going offline and no substitution is found, voters: [1], leader_raft_id: 1",
+    )
+
+    # make sure i1 is leader
+    i1.assert_raft_status("Leader")
+    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
+
+    i1.terminate(kill_after_seconds=1)
+
+    i2.assert_raft_status("Follower", leader_id=i1.raft_id)
+    assert c1.matched
+
+
+def test_deploy_crash_with_wrong_bootstrap_leader(cluster: Cluster):
+    # bootstrap leader from tier with can_vote = false
+
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    tiers:
+        storage:
+            replication_factor: 1
+            can_vote: false
+instance:
+    cluster_id: my-cluster
+    tier: storage
+    log:
+        level: verbose
+"""
+    )
+
+    i1 = cluster.add_instance(wait_online=False, tier="storage")
+
+    c1 = log_crawler(
+        i1,
+        "CRITICAL: invalid configuration: instance with instance_id 'i1' from tier "
+        "'storage' with `can_vote = false` cannot be a bootstrap leader",
+    )
+
+    i1.fail_to_start()
+
+    assert c1.matched

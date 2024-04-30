@@ -173,11 +173,12 @@ mod tests {
         }
     }
 
-    fn add_tier(storage: &Clusterwide, name: &str, replication_factor: u8) -> tarantool::Result<()> {
+    fn add_tier(storage: &Clusterwide, name: &str, replication_factor: u8, can_vote: bool) -> tarantool::Result<()> {
         storage.tiers.put(
                 &Tier {
                     name: name.into(),
                     replication_factor,
+                    can_vote,
                 }
         )
     }
@@ -187,12 +188,7 @@ mod tests {
             storage.instances.put(&instance).unwrap();
         }
 
-        storage.tiers.put(
-                &Tier {
-                    name: DEFAULT_TIER.into(),
-                    replication_factor,
-                }
-        ).unwrap();
+        add_tier(storage, DEFAULT_TIER, replication_factor, true).unwrap();
     }
 
     fn replication_ids(replicaset_id: &ReplicasetId, storage: &Clusterwide) -> HashSet<RaftId> {
@@ -589,9 +585,9 @@ mod tests {
         let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![], 1);
 
-        add_tier(&storage, first_tier, 3).unwrap();
-        add_tier(&storage, second_tier, 2).unwrap();
-        add_tier(&storage, third_tier, 2).unwrap();
+        add_tier(&storage, first_tier, 3, true).unwrap();
+        add_tier(&storage, second_tier, 2, true).unwrap();
+        add_tier(&storage, third_tier, 2, true).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Earth}, &storage, first_tier)

@@ -259,8 +259,10 @@ cluster:
     tiers:
         storage:
             replication_factor: 2
+            can_vote: true
         router:
             replication_factor: 1
+            can_vote: true
 """
     )
     i1 = cluster.add_instance(tier="storage")
@@ -384,7 +386,7 @@ def test_raft_log(instance: Instance):
 Replace({_pico_peer_address}, [1,"127.0.0.1:{p}"]),
 Insert({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
 Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"]))|
-|  0  | 1  |BatchDml(Insert({_pico_tier}, ["default",1]))|
+|  0  | 1  |BatchDml(Insert({_pico_tier}, ["default",1,true]))|
 |  0  | 1  |BatchDml(
 Insert({_pico_property}, ["global_schema_version",0]),
 Insert({_pico_property}, ["next_schema_version",1]),
@@ -445,7 +447,7 @@ Insert({_pico_index}, [{_pico_user},1,"_pico_user_name","tree",[{{"unique":true}
 Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_privilege},0,"_pico_privilege_primary","tree",[{{"unique":true}}],[["grantee_id",null,null,null,null],["object_type",null,null,null,null],["object_id",null,null,null,null],["privilege",null,null,null,null]],true,0,1]),
 Insert({_pico_index}, [{_pico_privilege},1,"_pico_privilege_object","tree",[{{"unique":false}}],[["object_type",null,null,null,null],["object_id",null,null,null,null]],true,0,1]),
-Insert({_pico_table}, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}}],0,true,"memtx",1]),
+Insert({_pico_table}, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}}],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_tier},0,"_pico_tier_name","tree",[{{"unique":true}}],[["name",null,null,null,null]],true,0,1]),
 Insert({_pico_table}, [{_pico_routine},"_pico_routine",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"array","is_nullable":false,"name":"params"}},{{"field_type":"array","is_nullable":false,"name":"returns"}},{{"field_type":"string","is_nullable":false,"name":"language"}},{{"field_type":"string","is_nullable":false,"name":"body"}},{{"field_type":"string","is_nullable":false,"name":"security"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}}],0,true,"memtx",1]),
 Insert({_pico_index}, [{_pico_routine},0,"_pico_routine_id","tree",[{{"unique":true}}],[["id",null,null,null,null]],true,0,1]),

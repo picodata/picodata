@@ -697,7 +697,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 
     let tiers = config.cluster.tiers();
     let my_tier_name = config.instance.tier();
-    if !tiers.contains_key(my_tier_name) {
+    let Some(tier) = tiers.get(my_tier_name) else {
         return Err(Error::other(format!(
             "invalid configuration: current instance is assigned tier '{my_tier_name}' which is not defined in the configuration file",
         )));
@@ -714,6 +714,13 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     );
     let raft_id = instance.raft_id;
     let instance_id = instance.instance_id.clone();
+
+    if !tier.can_vote {
+        return Err(Error::invalid_configuration(format!(
+            "instance with instance_id '{instance_id}' from tier '{my_tier_name}' with `can_vote = false` \
+             cannot be a bootstrap leader"
+        )));
+    }
 
     luamod::setup();
     assert!(!tarantool::is_box_configured());

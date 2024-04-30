@@ -267,6 +267,7 @@ fn choose_replicaset_id(
     Tier {
         replication_factor,
         name: tier_name,
+        ..
     }: &Tier,
 ) -> core::result::Result<ReplicasetId, String> {
     // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.

@@ -86,7 +86,10 @@ impl Loop {
             .iter()
             .expect("storage should never fail")
             .collect();
-        let tiers: HashMap<_, _> = tiers.iter().map(|tier| (&tier.name, tier)).collect();
+        let tiers: HashMap<_, _> = tiers
+            .iter()
+            .map(|tier| (tier.name.as_str(), tier))
+            .collect();
 
         let term = raft_status.get().term;
         let applied = raft_storage.applied().expect("storage should never fail");

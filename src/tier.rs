@@ -11,6 +11,7 @@ pub const DEFAULT_TIER: &str = "default";
 pub struct Tier {
     pub name: String,
     pub replication_factor: u8,
+    pub can_vote: bool,
 }
 impl Encode for Tier {}
 
@@ -22,6 +23,7 @@ impl Tier {
         vec![
             Field::from(("name", FieldType::String)),
             Field::from(("replication_factor", FieldType::Unsigned)),
+            Field::from(("can_vote", FieldType::Boolean)),
         ]
     }
 }
@@ -31,6 +33,7 @@ impl Default for Tier {
         Tier {
             name: DEFAULT_TIER.into(),
             replication_factor: 1,
+            can_vote: true,
         }
     }
 }
@@ -54,7 +57,6 @@ pub struct TierConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replication_factor: Option<u8>,
 
-    /// TODO: This is not yet implemented, currently all tiers can vote
     #[serde(default = "default_can_vote")]
     pub can_vote: bool,
 }

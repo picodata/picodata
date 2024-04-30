@@ -17,6 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `UNION` operator.
 - SQL supports common table expressions (CTE).
 - SQL supports `CASE` expression.
+- New property in tier table - `can_vote`. Indicates whether instances from tier can be considered as voter in raft protocol.
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.

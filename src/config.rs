@@ -169,7 +169,7 @@ Using configuration file '{args_path}'.");
         // This isn't set by set_defaults_explicitly, because we expect the
         // tiers to be specified explicitly when the config file is provided.
         config.cluster.tiers.insert(
-            "default".into(),
+            DEFAULT_TIER.into(),
             TierConfig {
                 can_vote: true,
                 replication_factor: Some(1),
@@ -771,6 +771,7 @@ impl ClusterConfig {
                 Tier {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
+                    can_vote: true,
                 },
             )]);
         }
@@ -784,7 +785,7 @@ impl ClusterConfig {
             let tier_def = Tier {
                 name: name.into(),
                 replication_factor,
-                // TODO: support other fields
+                can_vote: info.can_vote,
             };
             tier_defs.insert(name.into(), tier_def);
         }
