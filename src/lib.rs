@@ -164,7 +164,7 @@ fn init_sbroad() {
 
     lua.exec(
         r#"
-        require('sbroad.builtins').init()        
+        require('sbroad.builtins').init()
     "#,
     )
     .unwrap();
