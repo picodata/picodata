@@ -37,7 +37,7 @@ picodata run --listen 192.168.0.2:3301 --peer 192.168.0.1:3301
 You can find out more about getting started procedures and first steps
 by heading to our [documentation site].
 
-[documentation site]: https://docs.picodata.io/picodata/deploy/
+[documentation site]: https://docs.picodata.io/picodata/stable/
 
 ## Building Picodata from source
 
