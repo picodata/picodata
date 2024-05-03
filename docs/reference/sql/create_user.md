@@ -30,6 +30,6 @@
 ## Примеры {: #examples }
 
 ```sql
-CREATE USER andy WITH PASSWORD 'P@ssw0rd' USING md5
+CREATE USER "andy" WITH PASSWORD 'P@ssw0rd' USING chap-sha1
 OPTION (TIMEOUT = 3.0);
 ```
