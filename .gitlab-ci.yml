@@ -21,7 +21,7 @@ variables:
   MAIN_BRANCH: &main-branch "24.2"
   CARGO_HOME: /shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
-  CACHE_ARCHIVE: /shared-storage/picodata/cache-24.2.tar
+  CACHE_ARCHIVE: /data/shared-storage/picodata/cache-24.2.tar
   # Helps to tolerate spurious network failures
   GET_SOURCES_ATTEMPTS: 3
   NO_CACHE:
