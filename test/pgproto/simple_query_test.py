@@ -2,6 +2,7 @@ import pytest
 import pg8000.dbapi as pg  # type: ignore
 import os
 from conftest import Postgres
+from decimal import Decimal
 
 
 def test_simple_query_flow_errors(postgres: Postgres):
@@ -146,9 +147,8 @@ def test_explain(postgres: Postgres):
     cur.execute('drop table "explain";')
 
 
-# Aggregates return value type is decimal, which is currently not supported,
-# so an error is expected.
-def test_aggregate_error(postgres: Postgres):
+# test that we can handle aggregate functions returning decimals
+def test_aggregates(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
     postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
@@ -174,16 +174,22 @@ def test_aggregate_error(postgres: Postgres):
     """
     )
 
-    with pytest.raises(pg.DatabaseError, match="unknown column type 'decimal'"):
-        cur.execute(
-            """
-            SELECT SUM("id") FROM "tall";
+    cur.execute(
         """
-        )
+        INSERT INTO "tall" ("id") VALUES (1)
+        """
+    )
 
-    with pytest.raises(pg.DatabaseError, match="unknown column type 'decimal'"):
-        cur.execute(
-            """
-            SELECT AVG("id") FROM "tall";
+    cur.execute(
         """
-        )
+        SELECT SUM("id") FROM "tall";
+    """
+    )
+    assert cur.fetchall() == ([Decimal(1)],)
+
+    cur.execute(
+        """
+        SELECT AVG("id") FROM "tall";
+    """
+    )
+    assert cur.fetchall() == ([Decimal(1)],)

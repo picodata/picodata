@@ -42,6 +42,7 @@ tempfile = "3.8"
 thiserror = "1.0"
 uuid = { version = "1.0", features = ["v3"] }
 va_list = ">=0.1.4"
+rust_decimal = { version = "1.35.0", features = ["db-postgres"] }
 
 # Link- and ABI- related stuff
 abi_stable = "0.11.2"

@@ -3,8 +3,11 @@ use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::types::ToSqlText;
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::Value;
+use serde::de::DeserializeOwned;
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::{error::Error, str};
+use std::error::Error;
+use std::str::{self, FromStr};
+use tarantool::decimal::Decimal;
 
 pub fn type_from_name(name: &str) -> PgResult<Type> {
     match name {
@@ -12,6 +15,7 @@ pub fn type_from_name(name: &str) -> PgResult<Type> {
         "string" => Ok(Type::TEXT),
         "boolean" => Ok(Type::BOOL),
         "double" => Ok(Type::FLOAT8),
+        "decimal" => Ok(Type::NUMERIC),
         "any" => Ok(Type::ANY),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{name}\'"
@@ -67,6 +71,10 @@ impl PgValue {
         Self(Value::Boolean(value))
     }
 
+    fn decimal(value: Decimal) -> Self {
+        Self(Value::Decimal(value))
+    }
+
     fn null() -> Self {
         Self(Value::Null)
     }
@@ -76,11 +84,11 @@ impl TryFrom<rmpv::Value> for PgValue {
     type Error = PgError;
 
     fn try_from(value: rmpv::Value) -> Result<Self, Self::Error> {
-        match value {
+        match &value {
             rmpv::Value::Nil => Ok(PgValue::null()),
-            rmpv::Value::Boolean(v) => Ok(PgValue::boolean(v)),
-            rmpv::Value::F32(v) => Ok(PgValue::float(v as _)),
-            rmpv::Value::F64(v) => Ok(PgValue::float(v)),
+            rmpv::Value::Boolean(v) => Ok(PgValue::boolean(*v)),
+            rmpv::Value::F32(v) => Ok(PgValue::float(*v as _)),
+            rmpv::Value::F64(v) => Ok(PgValue::float(*v)),
             rmpv::Value::Integer(v) => Ok(PgValue::integer({
                 if let Some(v) = v.as_i64() {
                     v
@@ -99,9 +107,22 @@ impl TryFrom<rmpv::Value> for PgValue {
                 };
                 Ok(PgValue::text(s.to_owned()))
             }
+            rmpv::Value::Ext(1, _data) => {
+                let decimal = deserialize_rmpv_ext(&value).map_err(EncodingError::new)?;
+                Ok(PgValue::decimal(decimal))
+            }
             value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
         }
     }
+}
+
+fn deserialize_rmpv_ext<T: DeserializeOwned>(
+    value: &rmpv::Value,
+) -> Result<T, Box<dyn Error + Sync + Send>> {
+    // TODO: Find a way to avoid this redundant encoding.
+    let buf = rmp_serde::encode::to_vec(&value).map_err(Box::new)?;
+    let val = rmp_serde::from_slice(&buf).map_err(Box::new)?;
+    Ok(val)
 }
 
 fn decode_text_as_bool(s: &str) -> PgResult<bool> {
@@ -125,7 +146,35 @@ fn bool_to_sql_text(val: bool, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Err
     Ok(IsNull::No)
 }
 
-// TODO: support decimal type
+fn decimal_to_sql_text(
+    val: &Decimal,
+    buf: &mut BytesMut,
+) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+    buf.put_slice(val.to_string().as_bytes());
+    Ok(IsNull::No)
+}
+
+fn decimal_to_sql_binary(
+    val: &Decimal,
+    buf: &mut BytesMut,
+) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+    let string = val.to_string();
+    let decimal = rust_decimal::Decimal::from_str_exact(&string).map_err(Box::new)?;
+    decimal.to_sql(&Type::NUMERIC, buf)
+}
+
+fn decode_text_as_decimal(text: &str) -> PgResult<Decimal> {
+    Ok(Decimal::from_str(text)
+        .map_err(|_| DecodingError::new(format!("failed to decode decimal {text}")))?)
+}
+
+fn decode_decimal_binary(bytes: &Bytes) -> PgResult<Decimal> {
+    let decimal = rust_decimal::Decimal::from_sql(&Type::NUMERIC, bytes);
+    let decimal = decimal.map_err(DecodingError::new)?;
+    let str = decimal.to_string();
+    decode_text_as_decimal(&str)
+}
+
 impl PgValue {
     fn encode_text(&self, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
         match &self.0 {
@@ -133,6 +182,7 @@ impl PgValue {
             Value::Integer(number) => number.to_sql_text(&Type::INT8, buf),
             Value::Double(double) => double.value.to_sql_text(&Type::FLOAT8, buf),
             Value::String(string) => string.to_sql_text(&Type::TEXT, buf),
+            Value::Decimal(decimal) => decimal_to_sql_text(decimal, buf),
             Value::Null => Ok(IsNull::Yes),
             value => Err(format!("unsupported value: {value:?}"))?,
         }
@@ -144,6 +194,7 @@ impl PgValue {
             Value::Integer(number) => number.to_sql(&Type::INT8, buf),
             Value::Double(double) => double.value.to_sql(&Type::FLOAT8, buf),
             Value::String(string) => string.to_sql(&Type::TEXT, buf),
+            Value::Decimal(decimal) => decimal_to_sql_binary(decimal, buf),
             Value::Null => Ok(IsNull::Yes),
             value => Err(format!("unsupported value: {value:?}"))?,
         }
@@ -178,6 +229,7 @@ impl PgValue {
             }
             Type::TEXT => PgValue::text(s),
             Type::BOOL => PgValue::boolean(decode_text_as_bool(&s.to_lowercase())?),
+            Type::NUMERIC => PgValue::decimal(decode_text_as_decimal(&s)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"
@@ -203,6 +255,7 @@ impl PgValue {
             Type::FLOAT4 => PgValue::float(do_decode_binary::<f32>(&ty, bytes)?.into()),
             Type::TEXT => PgValue::text(do_decode_binary(&ty, bytes)?),
             Type::BOOL => PgValue::boolean(do_decode_binary(&ty, bytes)?),
+            Type::NUMERIC => PgValue::decimal(decode_decimal_binary(bytes)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"
