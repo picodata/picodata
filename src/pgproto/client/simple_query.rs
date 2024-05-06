@@ -15,9 +15,8 @@ pub fn process_query_message(
         stream.write_message_noflush(row_description)?;
     }
 
-    for data_row in query_result.by_ref() {
-        let data_row = messages::data_row(data_row);
-        stream.write_message_noflush(data_row)?;
+    while let Some(row) = query_result.next_row()? {
+        stream.write_message_noflush(messages::data_row(row))?;
     }
 
     let tag = query_result.command_tag().as_str();

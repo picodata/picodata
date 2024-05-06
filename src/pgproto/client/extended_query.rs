@@ -53,7 +53,7 @@ pub fn process_execute_message(
     let max_rows = execute.max_rows as i64;
     let mut execute_result = backend.execute(execute.name, max_rows)?;
 
-    for row in execute_result.by_ref() {
+    while let Some(row) = execute_result.next_row()? {
         stream.write_message_noflush(messages::data_row(row))?;
     }
 

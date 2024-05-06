@@ -6,11 +6,11 @@ use pgwire::messages::data::{DataRow, RowDescription};
 use std::iter::zip;
 use std::vec::IntoIter;
 
-fn encode_row(values: Vec<PgValue>, formats: &[Format], buf: &mut BytesMut) -> DataRow {
+fn encode_row(values: Vec<PgValue>, formats: &[Format], buf: &mut BytesMut) -> PgResult<DataRow> {
     let row = zip(values, formats)
-        .map(|(v, f)| v.encode(f, buf).unwrap())
-        .collect();
-    DataRow::new(row)
+        .map(|(v, f)| v.encode(f, buf))
+        .collect::<PgResult<_>>()?;
+    Ok(DataRow::new(row))
 }
 
 #[derive(Debug)]
@@ -63,6 +63,19 @@ impl ExecuteResult {
             _ => None,
         }
     }
+
+    /// Try to get next row from the result. If there are no rows, None is returned.
+    ///
+    /// Error is returned in case of an encoding error.
+    pub fn next_row(&mut self) -> PgResult<Option<DataRow>> {
+        let Some(row) = self.values_stream.next() else {
+            return Ok(None);
+        };
+        let row = encode_row(row, self.describe.output_format(), &mut self.buf)?;
+        self.buf.clear();
+        self.row_count += 1;
+        Ok(Some(row))
+    }
 }
 
 impl ExecuteResult {
@@ -72,18 +85,5 @@ impl ExecuteResult {
 
     pub fn into_values_stream(self) -> IntoIter<Vec<PgValue>> {
         self.values_stream
-    }
-}
-
-impl Iterator for ExecuteResult {
-    type Item = DataRow;
-
-    fn next(&mut self) -> Option<DataRow> {
-        self.values_stream.next().map(|row| {
-            let row = encode_row(row, self.describe.output_format(), &mut self.buf);
-            self.buf.clear();
-            self.row_count += 1;
-            row
-        })
     }
 }
