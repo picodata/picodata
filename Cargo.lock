@@ -2496,7 +2496,7 @@ dependencies = [
  "serde_yaml 0.9.34+deprecated",
  "slog",
  "smol_str",
- "tarantool 5.0.0",
+ "tarantool",
  "tempfile",
  "thiserror",
  "uuid 1.8.0",
@@ -2521,7 +2521,7 @@ dependencies = [
  "rmp",
  "rmp-serde",
  "serde",
- "tarantool 5.0.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
+ "tarantool",
 ]
 
 [[package]]
@@ -2531,7 +2531,7 @@ dependencies = [
  "proc-macro2 1.0.80",
  "quote 1.0.36",
  "syn 1.0.109",
- "tarantool 5.0.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
+ "tarantool",
 ]
 
 [[package]]
@@ -3708,59 +3708,16 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha-1",
- "tarantool-proc 3.1.0",
+ "tarantool-proc",
  "tempfile",
  "tester",
  "thiserror",
  "time",
  "time-macros",
- "tlua 3.1.0",
+ "tlua",
  "tokio",
  "uuid 0.8.2",
  "va_list",
-]
-
-[[package]]
-name = "tarantool"
-version = "5.0.0"
-source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
-dependencies = [
- "async-trait",
- "base64 0.13.1",
- "bitflags 1.3.2",
- "dec",
- "dlopen",
- "futures",
- "libc",
- "linkme 0.2.10",
- "log",
- "once_cell",
- "refpool",
- "rmp",
- "rmp-serde",
- "rmpv",
- "serde",
- "serde_bytes",
- "serde_json",
- "sha-1",
- "tarantool-proc 3.0.0",
- "thiserror",
- "time",
- "tlua 3.1.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
- "uuid 0.8.2",
- "va_list",
-]
-
-[[package]]
-name = "tarantool-proc"
-version = "3.0.0"
-source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
-dependencies = [
- "darling",
- "proc-macro-error",
- "proc-macro2 1.0.80",
- "quote 1.0.36",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -3935,33 +3892,12 @@ dependencies = [
  "serde",
  "tester",
  "thiserror",
- "tlua-derive 0.2.0",
-]
-
-[[package]]
-name = "tlua"
-version = "3.1.0"
-source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
-dependencies = [
- "libc",
- "serde",
- "thiserror",
- "tlua-derive 0.2.0 (git+https://github.com/picodata/tarantool-module?rev=dbebcc0)",
+ "tlua-derive",
 ]
 
 [[package]]
 name = "tlua-derive"
 version = "0.2.0"
-dependencies = [
- "proc-macro2 1.0.80",
- "quote 1.0.36",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "tlua-derive"
-version = "0.2.0"
-source = "git+https://github.com/picodata/tarantool-module?rev=dbebcc0#dbebcc0aace0264b7ba9569e9a8a672b972c95ea"
 dependencies = [
  "proc-macro2 1.0.80",
  "quote 1.0.36",

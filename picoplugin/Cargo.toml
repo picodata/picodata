@@ -9,10 +9,14 @@ crate-type = ["lib"]
 
 [dependencies]
 linkme = "0.3.14"
-tarantool = { git = "https://github.com/picodata/tarantool-module", rev = "dbebcc0" }
 gensym = "0.1.0"
 abi_stable = "0.11.2"
-picoplugin_gen = {path = "../picoplugin_gen"}
+picoplugin_gen = { path = "../picoplugin_gen" }
 serde = "1.0.197"
 rmp = "0.8.11"
 rmp-serde = "=1.1.0"
+
+[dependencies.tarantool]
+path = "./../tarantool/tarantool"
+version = "5.0"
+features = ["picodata", "test"]
