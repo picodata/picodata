@@ -168,3 +168,8 @@ article ul ul ul {
 article ul ul ul li {
     padding-left: 0.5rem;
 }
+
+/* Hide h1 headerlinks */
+h1 > a[class=headerlink] {
+    visibility: hidden;
+}
