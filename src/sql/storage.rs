@@ -16,6 +16,8 @@ use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sbroad::executor::protocol::{Binary, RequiredData, SchemaInfo};
 use sbroad::ir::value::Value;
+use sbroad::utils::MutexLike;
+use tarantool::fiber::Mutex;
 
 use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
@@ -28,8 +30,8 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
 
 thread_local!(
-    static STATEMENT_CACHE: Rc<RefCell<PicoStorageCache>> = Rc::new(
-        RefCell::new(PicoStorageCache::new(DEFAULT_CAPACITY, Some(Box::new(unprepare))).unwrap())
+    static STATEMENT_CACHE: Rc<Mutex<PicoStorageCache>> = Rc::new(
+        Mutex::new(PicoStorageCache::new(DEFAULT_CAPACITY, Some(Box::new(unprepare))).unwrap())
     )
 );
 
@@ -37,7 +39,7 @@ thread_local!(
 pub struct StorageRuntime {
     pub metadata: RefCell<StorageMetadata>,
     bucket_count: u64,
-    cache: Rc<RefCell<PicoStorageCache>>,
+    cache: Rc<Mutex<PicoStorageCache>>,
 }
 
 pub struct PicoStorageCache(LRUCache<SmolStr, (PreparedStmt, VersionMap)>);
@@ -130,28 +132,16 @@ impl StorageCache for PicoStorageCache {
 impl QueryCache for StorageRuntime {
     type Cache = PicoStorageCache;
 
-    fn cache(&self) -> &RefCell<Self::Cache> {
-        &self.cache
+    fn cache(&self) -> &impl MutexLike<<Self as QueryCache>::Cache> {
+        &*self.cache
     }
 
     fn cache_capacity(&self) -> Result<usize, SbroadError> {
-        Ok(self
-            .cache()
-            .try_borrow()
-            .map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Borrow,
-                    Some(Entity::Cache),
-                    format_smolstr!("{e:?}"),
-                )
-            })?
-            .capacity())
+        Ok(self.cache().lock().capacity())
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
-        *self.cache.try_borrow_mut().map_err(|e| {
-            SbroadError::FailedTo(Action::Clear, Some(Entity::Cache), format_smolstr!("{e:?}"))
-        })? = Self::Cache::new(DEFAULT_CAPACITY, None)?;
+        *self.cache.lock() = Self::Cache::new(self.cache_capacity()?, Some(Box::new(unprepare)))?;
         Ok(())
     }
 
