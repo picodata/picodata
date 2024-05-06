@@ -1706,9 +1706,17 @@ def binary_path(cargo_build: None) -> str:
             ext = "dylib"
 
     source = f"{os.path.dirname(binary_path)}/libtestplug.{ext}"
-    destination = f"{test_dir}/testplug/libtestplug.{ext}"
-    eprint(f"Copying '{source}' to '{destination}'")
-    shutil.copyfile(source, destination)
+    destinations = [
+        f"{test_dir}/testplug/testplug/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_broken_manifest_1/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_broken_manifest_2/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_broken_manifest_3/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_small/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_small_svc2/libtestplug.{ext}",
+    ]
+    for destination in destinations:
+        eprint(f"Copying '{source}' to '{destination}'")
+        shutil.copyfile(source, destination)
 
     return binary_path
 

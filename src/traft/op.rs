@@ -1,3 +1,4 @@
+use crate::plugin::UpdateTopologyOp;
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
@@ -70,7 +71,8 @@ pub enum Op {
     PluginUpdateTopology {
         plugin_name: String,
         service_name: String,
-        tiers: Vec<String>,
+        op: UpdateTopologyOp,
+        tier: String,
     },
 }
 
@@ -274,7 +276,7 @@ impl std::fmt::Display for Op {
                     grantor_id = priv_def.grantor_id(),
                     grantee_id = priv_def.grantee_id(),
                     object_type = priv_def.object_type(),
-                    privilege = priv_def.privilege(),)
+                    privilege = priv_def.privilege(), )
             }
             Op::PluginEnable { plugin_name, .. } => {
                 write!(f, "PluginEnablePrepare({})", plugin_name)
@@ -295,9 +297,13 @@ impl std::fmt::Display for Op {
             Op::PluginUpdateTopology {
                 plugin_name,
                 service_name,
+                op,
                 ..
             } => {
-                write!(f, "PluginUpdateTopology({plugin_name}, {service_name})")
+                write!(
+                    f,
+                    "PluginUpdateTopology({op:?} {plugin_name}, {service_name})"
+                )
             }
         };
 

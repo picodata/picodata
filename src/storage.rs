@@ -44,6 +44,7 @@ use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 use crate::{plugin, tlog};
 
+use crate::plugin::UpdateTopologyOp;
 use std::borrow::Cow;
 use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map::Entry;
@@ -1291,7 +1292,7 @@ impl PropertyName {
             }
             PropertyName::PendingPluginTopologyUpdate => {
                 _ = new
-                    .field::<(String, String, Vec<String>)>(1)
+                    .field::<(String, String, UpdateTopologyOp, String)>(1)
                     .map_err(map_err)?;
             }
         }
@@ -1531,7 +1532,7 @@ impl Properties {
     #[inline]
     pub fn pending_plugin_topology_update(
         &self,
-    ) -> tarantool::Result<Option<(String, String, Vec<String>)>> {
+    ) -> tarantool::Result<Option<(String, String, UpdateTopologyOp, String)>> {
         self.get(PropertyName::PendingPluginTopologyUpdate)
     }
 

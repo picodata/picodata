@@ -20,7 +20,7 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let (plugin_name, service_name, _) = node.storage.properties.pending_plugin_topology_update()?
+        let (plugin_name, service_name, _, _) = node.storage.properties.pending_plugin_topology_update()?
             .ok_or_else(|| TraftError::other("pending plugin topology not found"))?;
 
         node.plugin_manager.handle_event_sync(PluginEvent::ServiceEnabled {

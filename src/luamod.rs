@@ -1588,18 +1588,18 @@ pub(crate) fn setup() {
     #[rustfmt::skip]
     luamod_set(
         &l,
-        "update_plugin_tiers",
+        "service_append_tier",
         indoc! {"
-        pico.update_plugin_tiers(plugin_name, service_name, tiers, [opts])
+        pico.service_append_tier(plugin_name, service_name, tier, [opts])
         =================
 
-        Update or set tiers for plugin service.
+        Append service to a tier, this will enable service on all instances with coressponding tier.
 
         Params:
 
             1. plugin_name - plugin name, plugin should already be installed with `pico.install_plugin` command
             2. service_name - service name
-            3. tiers - list of tiers where service must be enabled
+            3. tier - tier where service must be enabled
             4. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
@@ -1608,14 +1608,50 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function4(|plugin_name: String, service_name: String, tiers: Vec<String>, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function4(|plugin_name: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::update_tiers(&plugin_name, &service_name, &tiers, timeout)
+                plugin::append_tier(&plugin_name, &service_name, &tier, timeout)
+            })
+        },
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
+    #[rustfmt::skip]
+    luamod_set(
+        &l,
+        "service_remove_tier",
+        indoc! {"
+        pico.service_remove_tier(plugin_name, service_name, tier, [opts])
+        =================
+
+        Remove service from tier, this will disable service on all instances with coressponding tier.
+
+        Params:
+
+            1. plugin_name - plugin name, plugin should already be installed with `pico.install_plugin` command
+            2. service_name - service name
+            3. tier - tier where service must be disabled
+            4. opts (optional table)
+                - timeout (optional number), in seconds, default: 10
+        "},
+        {
+            #[derive(::tarantool::tlua::LuaRead)]
+            struct Opts {
+                timeout: Option<f64>,
+            }
+            tlua::function4(|plugin_name: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
+                let mut timeout = Duration::from_secs(10);
+                if let Some(opts) = opts {
+                    if let Some(t) = opts.timeout {
+                        timeout = duration_from_secs_f64_clamped(t);
+                    }
+                }
+                plugin::remove_tier(&plugin_name, &service_name, &tier, timeout)
             })
         },
     );

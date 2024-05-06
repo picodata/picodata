@@ -1402,13 +1402,14 @@ impl NodeImpl {
             Op::PluginUpdateTopology {
                 plugin_name,
                 service_name,
-                tiers,
+                tier,
+                op,
             } => {
                 self.storage
                     .properties
                     .put(
                         PropertyName::PendingPluginTopologyUpdate,
-                        &(plugin_name, service_name, tiers),
+                        &(plugin_name, service_name, op, tier),
                     )
                     .expect("storage should not fail");
             }

@@ -41,7 +41,7 @@ pub(super) fn action_plan<'i>(
     install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
     enable_plugin: Option<&'i (String, Option<PluginDef>, Vec<ServiceDef>, Duration)>,
     disable_plugin: Option<&'i [ServiceRouteItem]>,
-    update_plugin_topology: Option<(PluginDef, ServiceDef, Vec<String>)>,
+    update_plugin_topology: Option<(PluginDef, ServiceDef, UpdateTopologyOp, String)>,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -506,10 +506,19 @@ pub(super) fn action_plan<'i>(
         let op = Op::BatchDml { ops };
         return Ok(DisablePlugin { op }.into());
     }
-    if let Some((plugin_def, mut service_def, new_tiers)) = update_plugin_topology {
+    if let Some((plugin_def, mut service_def, action, tier)) = update_plugin_topology {
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];
+
+        let mut new_tiers = service_def.tiers.clone();
+        if action == UpdateTopologyOp::Append {
+            if !new_tiers.contains(&tier) {
+                new_tiers.push(tier);
+            }
+        } else if new_tiers.contains(&tier) {
+            new_tiers.retain(|t| t != &tier);
+        }
 
         let old_tiers = mem::replace(&mut service_def.tiers, new_tiers);
         let new_tiers = &service_def.tiers;
@@ -620,8 +629,8 @@ macro_rules! define_plan {
     }
 }
 
-use crate::plugin::topology;
 use crate::plugin::topology::TopologyContext;
+use crate::plugin::{topology, UpdateTopologyOp};
 use stage::*;
 
 pub mod stage {

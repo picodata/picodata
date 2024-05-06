@@ -125,11 +125,11 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    /// Load manifest from file `{plugin_dir}/{plugin_name}/{plugin_name}.yml`.
+    /// Load manifest from file `{plugin_dir}/{plugin_name}/manifest.yml`.
     pub fn load(plugin_name: &str) -> Result<Self> {
         // TODO move this into config (in future)
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
-        let manifest_path = plugin_dir.join(format!("{plugin_name}/{plugin_name}.yaml"));
+        let manifest_path = plugin_dir.join(format!("{plugin_name}/manifest.yaml"));
         // TODO non-blocking needed?
         let file = File::open(&manifest_path).map_err(|e| {
             PluginError::ManifestNotFound(manifest_path.to_string_lossy().to_string(), e)
@@ -583,11 +583,19 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> 
     .map(|_| ())
 }
 
-/// Update a tier list of plugin service.
-pub fn update_tiers(
+#[derive(Serialize, Deserialize, PartialEq, Clone, Copy, Debug)]
+pub enum UpdateTopologyOp {
+    /// Append service to a new tier.
+    Append,
+    /// Remove service from a tier.
+    Remove,
+}
+
+fn update_tier(
     plugin_name: &str,
     service_name: &str,
-    tiers: &[String],
+    upd_op: UpdateTopologyOp,
+    tier: &str,
     timeout: Duration,
 ) -> traft::Result<()> {
     let deadline = Instant::now().saturating_add(timeout);
@@ -609,7 +617,8 @@ pub fn update_tiers(
     let op = Op::PluginUpdateTopology {
         plugin_name: plugin_name.to_string(),
         service_name: service_name.to_string(),
-        tiers: tiers.to_vec(),
+        tier: tier.to_string(),
+        op: upd_op,
     };
 
     let mut index = do_plugin_cas(
@@ -645,9 +654,46 @@ pub fn update_tiers(
         .get_any_version(plugin_name, service_name)?
         .ok_or(PluginError::TopologyUpdateAborted)?;
 
-    if service.tiers != tiers {
+    let contains = service.tiers.iter().any(|t| t == tier);
+    if upd_op == UpdateTopologyOp::Append {
+        if !contains {
+            return Err(PluginError::TopologyUpdateAborted.into());
+        }
+    } else if contains {
         return Err(PluginError::TopologyUpdateAborted.into());
     }
 
     Ok(())
+}
+
+/// Enable service on a new tier.
+pub fn append_tier(
+    plugin_name: &str,
+    service_name: &str,
+    tier: &str,
+    timeout: Duration,
+) -> traft::Result<()> {
+    update_tier(
+        plugin_name,
+        service_name,
+        UpdateTopologyOp::Append,
+        tier,
+        timeout,
+    )
+}
+
+/// Disable service on a new tier.
+pub fn remove_tier(
+    plugin_name: &str,
+    service_name: &str,
+    tier: &str,
+    timeout: Duration,
+) -> traft::Result<()> {
+    update_tier(
+        plugin_name,
+        service_name,
+        UpdateTopologyOp::Remove,
+        tier,
+        timeout,
+    )
 }
