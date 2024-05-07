@@ -274,9 +274,10 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
                 .args(common_args)
                 .args([
                     "-DENABLE_BUNDLED_LDAP=OFF",
-                    "-DENABLE_BUNDLED_ZSTD=OFF",
                     "-DENABLE_BUNDLED_LIBCURL=OFF",
                     "-DENABLE_BUNDLED_LIBYAML=OFF",
+                    "-DENABLE_BUNDLED_OPENSSL=OFF",
+                    "-DENABLE_BUNDLED_ZSTD=OFF",
                 ])
                 // for dynamic build we'll also need to install the project, so configure the prefix
                 .arg(format!(
