@@ -21,7 +21,6 @@ rust-version = "1.67.1"
 base64 = "0.13"
 bitflags = "1.2"
 dlopen = "0.1.8"
-dec = "0.4.8"
 thiserror = "1.0.30"
 libc = { version = "0.2", features = ["extra_traits"] }
 log = "0.4"

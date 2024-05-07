@@ -19,7 +19,10 @@ pub mod uuid;
 ///
 /// [`tarantool::decimal`]: mod@crate::decimal
 pub fn has_decimal() -> bool {
-    true
+    unsafe {
+        let name = crate::c_str!("decimal_zero");
+        helper::tnt_internal_symbol::<*const ()>(name).is_some() || helper::has_dyn_symbol(name)
+    }
 }
 
 /// Check whether the current tarantool executable supports fiber::channel api.

@@ -183,10 +183,6 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
 
             tests.append(&mut tarantool::tlua::test::collect());
             tests.append(&mut tests![
-                decimal::from_lua,
-                decimal::from_tuple,
-                decimal::to_tuple,
-                decimal::to_lua,
                 define_str_enum::basic,
                 define_str_enum::coerce_from_str,
                 tlua::lua_functions::basic,
