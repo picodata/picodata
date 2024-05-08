@@ -1,17 +1,20 @@
 FROM rockylinux:8 AS builder
 
+RUN set -e; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --profile default --default-toolchain 1.76.0
+ENV PATH=/root/.cargo/bin:${PATH}
+
 RUN dnf -y install dnf-plugins-core \
     && dnf config-manager --set-enabled powertools \
     && dnf module -y enable nodejs:20 \
     && curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo -o /etc/yum.repos.d/yarn.repo \
     && rpm --import https://dl.yarnpkg.com/rpm/pubkey.gpg \
-    && dnf install -y gcc gcc-c++ make cmake git libstdc++-static libtool nodejs yarn \
+    && dnf install -y \
+                gcc gcc-c++ make cmake git libstdc++-static libtool \
+                openssl-devel \
+                nodejs yarn \
     && dnf clean all
-
-RUN set -e; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --profile default --default-toolchain 1.76.0
-ENV PATH=/root/.cargo/bin:${PATH}
 
 WORKDIR /build/picodata
 COPY . .
