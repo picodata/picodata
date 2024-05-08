@@ -11,27 +11,39 @@
 
 ![Explain](../../images/ebnf/explain.svg)
 
-## Примеры {: #examples }
+## Структура плана запроса {: #plan_structure }
 
-Для начала рассмотрим план простого запроса на получение данных одного
-столбца таблицы:
+План запроса выглядит как граф, исполнение которого происходит снизу
+вверх.
+
+### Обязательные элементы {: #essential_elements }
+
+Для DQL-запросов обязательными элементами являются:
+
+- `scan` — сканирование (получение данных) таблицы
+- `projection` — уточненный набор колонок таблицы для выполнения запроса
+
+Пример получения столбца таблицы целиком:
 
 ```sql
-EXPLAIN SELECT "score" FROM "scoring";
+EXPLAIN SELECT "name" FROM "stars"
 ```
 
-Вывод в консоль:
+Результат:
 
-```
----
-- - projection ("scoring"."score"::decimal -> "score")
-  - '    scan "scoring"'
-...
+```sql
+projection ("stars"."name"::string -> "name")
+    scan "stars"
 ```
 
-Обязательными элементами плана запроса являются `scan` и `projection`.
-Первый узел отвечает за сканирование (получение данных) таблицы, второй
-— за выборку нужных столбцов. Построение проекции (`projection`) всегда
+В одном запросе может быть несколько узлов `scan` и `projection`, в
+зависимости от количества обращений к таблицам, наличия условий,
+подзапросов и т.п. В общем случае, каждому ключевому слову `SELECT`
+соответствует своя проекция, а каждому `FROM` — свое сканирование.
+
+## Запрос с условием {: #query_with_selection }
+
+Построение проекции (`projection`) всегда
 происходит после сканирования. В рамках построения проекции планировщик
 создает псевдоним для столбца: `"scoring"."score" -> "score"`.
 
@@ -47,8 +59,8 @@ EXPLAIN SELECT "score" FROM "scoring" WHERE "score" > 70;
 ```
 ---
 - - projection ("scoring"."score"::decimal -> "score")
-  - '    selection ROW("scoring"."score"::decimal) > ROW(70::unsigned)'
-  - '        scan "scoring"'
+    selection ROW("scoring"."score"::decimal) > ROW(70::unsigned)'
+        scan "scoring"'
 ...
 ```
 
@@ -59,7 +71,7 @@ EXPLAIN SELECT "score" FROM "scoring" WHERE "score" > 70;
 трансформации фильтра `where "score" > 70` в `where ("score") > (70)`,
 т.е. превращения значения в строку из одного столбца.
 
-### Запрос с несколькими проекциями {: #multi_projection_explain }
+## Запрос с несколькими проекциями {: #multi_projection_explain }
 
 Пример построения проекции из более сложного запроса:
 
@@ -75,11 +87,11 @@ WHERE "stock" > 1000;
 ```
 ---
 - - except
-  - '    projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name")'
-  - '        scan "characters"'
-  - '    projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")'
-  - '        selection ROW("assets"."stock"::integer) > ROW(1000::unsigned)'
-  - '            scan "assets"'
+    projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name")'
+        scan "characters"'
+    projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")'
+        selection ROW("assets"."stock"::integer) > ROW(1000::unsigned)'
+            scan "assets"'
 ...
 ```
 
@@ -88,7 +100,7 @@ WHERE "stock" > 1000;
 сканирование таблицы и, опционально, дополнительный фильтр по строкам
 (`selection`).
 
-### Варианты перемещения данных {: #data_motion_types }
+## Варианты перемещения данных {: #data_motion_types }
 
 В плане запроса может быть указан параметр `motion`, который отражает
 вариант перемещения данных между узлами хранения. Существуют следующие
@@ -143,6 +155,8 @@ WHERE "stock" > 1000;
 
 Примеры разных вариантов `motion policy` приведены ниже.
 
+### Локальная вставка {: #local_segment_motion }
+
 **Локальная вставка** характерна для `INSERT` с передачей строки
 значений:
 
@@ -153,13 +167,13 @@ EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561);
 Вывод в консоль:
 
 ```
----
-- - 'insert "assets" on conflict: fail'
-  - '    motion [policy: local segment([ref("COLUMN_1")])]'
-  - '        values'
-  - '            value row (data=ROW(1::unsigned, ''Woody''::string, 2561::unsigned))'
-...
+insert "assets" on conflict: fail
+    motion [policy: segment([ref("COLUMN_1")])]
+        values
+            value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))
 ```
+
+### Локальная материализация {: #local_motion }
 
 **Локальная материализация** относится к тем случаям, когда требуется
 положить в память прочитанные данные из локального запроса для их
@@ -175,13 +189,11 @@ EXPLAIN DELETE FROM "characters" WHERE "id" = 1;
 Вывод в консоль:
 
 ```
----
-- - delete "characters"
-  - '    motion [policy: local]'
-  - '        projection ("characters"."id"::integer -> pk_col_0)'
-  - '            selection ROW("characters"."id"::integer) = ROW(1::unsigned)'
-  - '                scan "characters"'
-...
+delete "characters"
+    motion [policy: local]
+        projection ("characters"."id"::integer -> pk_col_0)
+            selection ROW("characters"."id"::integer) = ROW(1::unsigned)
+                scan "characters"
 ```
 
 Локальная материализация происходит и при обновлении данных в тех
@@ -199,17 +211,14 @@ EXPLAIN UPDATE "characters" SET "year" = 2010;
 Вывод в консоль:
 
 ```
----
-- - update "characters"
-  - '"year" = COL_0'
-  - '    motion [policy: local]'
-  - '        projection (2010::unsigned -> COL_0, "characters"."id"::integer -> COL_1)'
-  - '            scan "characters"'
-  - 'execution options:'
-  - sql_vdbe_max_steps = 45000
-  - vtable_max_rows = 5000
-...
+update "characters"
+"year" = COL_0
+    motion [policy: local]
+        projection (2010::unsigned -> COL_0, "characters"."id"::integer -> COL_1)
+            scan "characters"
 ```
+
+### Частичное перемещение {: #segment_motion }
 
 **Частичное перемещение** происходит, когда требуется отправить на узлы
 хранения недостающую часть таблицы.
@@ -224,14 +233,12 @@ EXPLAIN INSERT INTO "assets" SELECT * FROM "assets3" WHERE "id3" = 1;
 Вывод в консоль:
 
 ```
----
-- - 'insert "assets" on conflict: fail'
-  - '    motion [policy: segment([ref("id3")])]'
-  - '        projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string ->
-             "name3", "assets3"."stock3"::integer -> "stock3")'
-  - '            selection ROW("assets3"."id3"::integer) = ROW(1::unsigned)'
-  - '                scan "assets3"'
-...
+insert "assets" on conflict: fail'
+    motion [policy: segment([ref("id3")])]'
+        projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string ->
+            "name3", "assets3"."stock3"::integer -> "stock3")'
+            selection ROW("assets3"."id3"::integer) = ROW(1::unsigned)'
+            scan "assets3"'
 ```
 
 Пример `JOIN` двух таблиц с разными ключами шардирования:
@@ -246,18 +253,16 @@ ON "assets"."id" = "new_assets"."id3";
 Вывод в консоль:
 
 ```
----
-- - projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")
-  - '    join on ROW("assets"."id"::integer) = ROW("new_assets"."id3"::integer)'
-  - '        scan "assets"'
-  - '            projection ("assets"."id"::integer -> "id", "assets"."name"::string
+projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")
+    join on ROW("assets"."id"::integer) = ROW("new_assets"."id3"::integer)'
+        scan "assets"'
+            projection ("assets"."id"::integer -> "id", "assets"."name"::string
     -> "name", "assets"."stock"::integer -> "stock")'
-  - '                scan "assets"'
-  - '        motion [policy: segment([ref("id3")])]'
-  - '            scan "new_assets"'
-  - '                projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string -> "name3")'
-  - '                    scan "assets3"'
-...
+                scan "assets"'
+        motion [policy: segment([ref("id3")])]'
+            scan "new_assets"'
+                projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string -> "name3")'
+                    scan "assets3"'
 ```
 
 Пример `UPDATE` с обновлением колонки, по которой шардирована таблица
@@ -270,22 +275,19 @@ EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;
 Вывод в консоль:
 
 ```
----
-- - update "characters"
-  - '"id" = COL_0'
-  - '"name" = COL_1'
-  - '"year" = COL_2'
-  - '    motion [policy: segment([])]'
-  - '        projection ("characters"."id"::integer -> COL_0, ''Etch''::string ->
+update "characters"
+"id" = COL_0'
+"name" = COL_1'
+"year" = COL_2'
+    motion [policy: segment([])]'
+        projection ("characters"."id"::integer -> COL_0, ''Etch''::string ->
     COL_1, 2010::unsigned -> COL_2, "characters"."id"::integer -> COL_3, "characters"."name"::string
     -> COL_4)'
-  - '            selection ROW("characters"."id"::integer) = ROW(2::unsigned)'
-  - '                scan "characters"'
-  - 'execution options:'
-  - sql_vdbe_max_steps = 45000
-  - vtable_max_rows = 5000
-...
+            selection ROW("characters"."id"::integer) = ROW(2::unsigned)'
+                scan "characters"'
 ```
+
+### Полное перемещение {: #full_motion }
 
 **Полное перемещение** происходит, когда требуется скопировать всю
 внутреннюю таблицу (в правой части запроса) на все узлы, содержащие
@@ -304,15 +306,14 @@ ON "characters"."id" = stock."number";
 Вывод в консоль:
 
 ```
----
-- - projection (
+projection (
     - "characters"."id" -> "id",
     - "characters"."name" -> "name",
     - "STOCK"."stock" -> "stock",
     - "characters"."year" -> "year")',
-    - '    join on ROW("characters"."id") = ROW("STOCK"."number")',
-    - '        scan "characters"',
-    - '            projection (
+      join on ROW("characters"."id") = ROW("STOCK"."number")',
+          scan "characters"',
+              projection (
     -   "characters"."id" -> "id",
     -   "characters"."name" -> "name",
     -   "characters"."year" -> "year")',
@@ -323,7 +324,6 @@ ON "characters"."id" = stock."number";
     -     "assets"."id" -> "number",
     -     "assets"."stock" -> "stock")',
     -     '                    scan "assets"'
-...
 ```
 
 Пример выполнения агрегатной функции.
@@ -335,12 +335,10 @@ EXPLAIN SELECT COUNT("id") FROM "characters";
 Вывод в консоль:
 
 ```
----
-- - projection (sum(("8278664dae744882bfeec573f427fd0d_count_11"::integer))::decimal
+projection (sum(("8278664dae744882bfeec573f427fd0d_count_11"::integer))::decimal
     -> "COL_1")
-  - '    motion [policy: full]'
-  - '        scan'
-  - '            projection (count(("characters"."id"::integer))::integer -> "8278664dae744882bfeec573f427fd0d_count_11")'
-  - '                scan "characters"'
-...
+    motion [policy: full]'
+        scan'
+            projection (count(("characters"."id"::integer))::integer -> "8278664dae744882bfeec573f427fd0d_count_11")'
+                scan "characters"'
 ```
