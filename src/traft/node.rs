@@ -1641,7 +1641,7 @@ impl NodeImpl {
                         let bucket_id_def = IndexDef {
                             table_id: id,
                             id: 1,
-                            name: "bucket_id".into(),
+                            name: format!("{}_bucket_id", name),
                             ty: IndexType::Tree,
                             opts: vec![IndexOption::Unique(false)],
                             parts: vec![Part::field(bucket_id_index)

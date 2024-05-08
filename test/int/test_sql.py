@@ -3932,3 +3932,47 @@ def test_cte(cluster: Cluster):
         """
     )
     assert data["rows"] == [[1]]
+
+
+def test_unique_index_name_for_sharded_table(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+    table_names = ["T", "T2"]
+
+    # Initialize two sharded table
+    for table_name in table_names:
+        ddl = i1.sql(
+            f"""
+            create table {table_name} (a int not null, b int, primary key (a))
+            distributed by (b)
+            option (timeout = 3)
+            """
+        )
+        assert ddl["row_count"] == 1
+
+    for table_name, other_table_name in zip(table_names, reversed(table_names)):
+        with pytest.raises(
+            ReturnError,
+            match=f"""index {table_name}_bucket_id already exists with a different signature""",
+        ):
+            # try to create existing index
+            i1.sql(
+                f""" create index "{table_name}_bucket_id"
+                on "{table_name}" (a) option (timeout = 3) """
+            )
+
+        with pytest.raises(
+            ReturnError,
+            match=f"""index {other_table_name}_bucket_id already exists""",
+        ):
+            # try to create non existing index with existing name
+            i1.sql(
+                f""" create index "{other_table_name}_bucket_id"
+                on "{table_name}" (a) option (timeout = 3) """
+            )
+
+        # ensure that index on field bucket_id of sharded table exists
+        data = i1.sql(
+            f""" select * from "_pico_index" where "name" = '{table_name}_bucket_id' """
+        )
+        assert data["rows"] != []
