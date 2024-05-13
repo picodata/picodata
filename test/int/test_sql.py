@@ -3600,6 +3600,11 @@ def test_index(cluster: Cluster):
     ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
     assert ddl["row_count"] == 0
 
+    ddl = i1.sql(""" create index i19 on t (b)""")
+    assert ddl["row_count"] == 1
+    with pytest.raises(ReturnError, match="index I19 already exists"):
+        i1.sql(""" create index i19 on v (b)""")
+
 
 def test_order_by(cluster: Cluster):
     cluster.deploy(instance_count=1)

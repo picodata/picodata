@@ -1144,6 +1144,12 @@ fn reenterable_schema_change_request(
                     // Index already exists, no op needed.
                     return Ok(ConsumerResult { row_count: 0 });
                 }
+                if storage.indexes.by_name(&params.name)?.is_some() {
+                    return Err(traft::error::Error::other(format!(
+                        "index {} already exists",
+                        &params.name,
+                    )));
+                }
                 let ddl = params.into_ddl(storage)?;
                 Op::DdlPrepare {
                     schema_version,
