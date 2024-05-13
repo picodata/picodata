@@ -3524,7 +3524,7 @@ def test_index(cluster: Cluster):
     ddl = i1.sql(""" create unique index i3 on g using tree (b) """)
 
     # Successful create a tree index with corresponding options.
-    ddl = i1.sql(""" create index i4 on t using tree (c) with (hint = true) """)
+    ddl = i1.sql(""" create index i4 on t using tree (c) with (HiNT = TrUe) """)
     assert ddl["row_count"] == 1
 
     # Fail to create a tree index with wrong options.
