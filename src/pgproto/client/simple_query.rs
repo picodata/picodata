@@ -8,7 +8,7 @@ pub fn process_query_message(
     manager: &StorageManager,
     query: Query,
 ) -> PgResult<()> {
-    let mut query_result = manager.simple_query(query.query())?;
+    let mut query_result = manager.simple_query(&query.query)?;
 
     if let Some(row_description) = query_result.row_description()? {
         let row_description = messages::row_description(row_description);
@@ -23,5 +23,6 @@ pub fn process_query_message(
     let tag = query_result.command_tag().as_str();
     let command_complete = messages::command_complete(tag, query_result.row_count());
     stream.write_message(command_complete)?;
+
     Ok(())
 }

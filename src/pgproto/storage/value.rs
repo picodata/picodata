@@ -148,12 +148,12 @@ impl PgValue {
         }
     }
 
-    fn decode_text(bytes: Option<Bytes>, ty: Type) -> PgResult<Self> {
+    fn decode_text(bytes: Option<&Bytes>, ty: Type) -> PgResult<Self> {
         let Some(bytes) = bytes else {
             return Ok(PgValue::Null);
         };
 
-        let s = String::from_utf8(bytes.into()).map_err(DecodingError::from)?;
+        let s = String::from_utf8(bytes.to_vec()).map_err(DecodingError::from)?;
         Ok(match ty {
             Type::INT8 | Type::INT4 | Type::INT2 => {
                 PgValue::Integer(s.parse::<i64>().map_err(DecodingError::from)?)
@@ -171,7 +171,7 @@ impl PgValue {
         })
     }
 
-    fn decode_binary(bytes: Option<Bytes>, ty: Type) -> PgResult<Self> {
+    fn decode_binary(bytes: Option<&Bytes>, ty: Type) -> PgResult<Self> {
         fn do_decode_binary<'a, T: FromSql<'a>>(ty: &Type, raw: &'a [u8]) -> PgResult<T> {
             T::from_sql(ty, raw).map_err(|e| PgError::DecodingError(DecodingError::Other(e)))
         }
@@ -181,13 +181,13 @@ impl PgValue {
         };
 
         Ok(match ty {
-            Type::INT8 => PgValue::Integer(do_decode_binary::<i64>(&ty, &bytes)?),
-            Type::INT4 => PgValue::Integer(do_decode_binary::<i32>(&ty, &bytes)?.into()),
-            Type::INT2 => PgValue::Integer(do_decode_binary::<i16>(&ty, &bytes)?.into()),
-            Type::FLOAT8 => PgValue::Float(do_decode_binary::<f64>(&ty, &bytes)?),
-            Type::FLOAT4 => PgValue::Float(do_decode_binary::<f32>(&ty, &bytes)?.into()),
-            Type::TEXT => PgValue::Text(do_decode_binary(&ty, &bytes)?),
-            Type::BOOL => PgValue::Boolean(do_decode_binary(&ty, &bytes)?),
+            Type::INT8 => PgValue::Integer(do_decode_binary::<i64>(&ty, bytes)?),
+            Type::INT4 => PgValue::Integer(do_decode_binary::<i32>(&ty, bytes)?.into()),
+            Type::INT2 => PgValue::Integer(do_decode_binary::<i16>(&ty, bytes)?.into()),
+            Type::FLOAT8 => PgValue::Float(do_decode_binary::<f64>(&ty, bytes)?),
+            Type::FLOAT4 => PgValue::Float(do_decode_binary::<f32>(&ty, bytes)?.into()),
+            Type::TEXT => PgValue::Text(do_decode_binary(&ty, bytes)?),
+            Type::BOOL => PgValue::Boolean(do_decode_binary(&ty, bytes)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"
@@ -196,7 +196,7 @@ impl PgValue {
         })
     }
 
-    pub fn decode(bytes: Option<Bytes>, oid: Oid, format: Format) -> PgResult<Self> {
+    pub fn decode(bytes: Option<&Bytes>, oid: Oid, format: Format) -> PgResult<Self> {
         let ty =
             Type::from_oid(oid).ok_or(PgError::ProtocolViolation(format!("unknown oid: {oid}")))?;
         match format {

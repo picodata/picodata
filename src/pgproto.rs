@@ -6,7 +6,6 @@ use thiserror::Error;
 mod client;
 mod entrypoints;
 mod error;
-mod helpers;
 mod messages;
 mod server;
 mod storage;

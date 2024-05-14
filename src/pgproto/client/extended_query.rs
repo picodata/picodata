@@ -11,7 +11,6 @@ use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
 use postgres_types::Oid;
 use std::io::{Read, Write};
 use std::iter::zip;
-use std::mem;
 
 fn use_tarantool_parameter_placeholders(sql: &str) -> String {
     // TODO: delete it after the pg parameters are supported,
@@ -27,8 +26,8 @@ pub fn process_parse_message(
     manager: &StorageManager,
     parse: Parse,
 ) -> PgResult<()> {
-    let query = use_tarantool_parameter_placeholders(parse.query());
-    manager.parse(parse.name().as_deref(), &query, parse.type_oids())?;
+    let query = use_tarantool_parameter_placeholders(&parse.query);
+    manager.parse(parse.name.as_deref(), &query, &parse.type_oids)?;
     stream.write_message_noflush(messages::parse_complete())?;
     Ok(())
 }
@@ -56,7 +55,7 @@ fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Form
 }
 
 fn decode_parameter_values(
-    params: Vec<Option<Bytes>>,
+    params: &[Option<Bytes>],
     param_oids: &[Oid],
     formats: &[RawFormat],
 ) -> PgResult<Vec<PgValue>> {
@@ -71,25 +70,27 @@ fn decode_parameter_values(
     }
 
     zip(zip(params, param_oids), formats)
-        .map(|((bytes, oid), format)| PgValue::decode(bytes, *oid, format))
+        .map(|((bytes, oid), format)| PgValue::decode(bytes.as_ref(), *oid, format))
         .collect()
 }
 
 pub fn process_bind_message(
     stream: &mut PgStream<impl Read + Write>,
     manager: &StorageManager,
-    mut bind: Bind,
+    bind: Bind,
 ) -> PgResult<()> {
-    let describe = manager.describe_statement(bind.statement_name().as_deref())?;
-    let params = mem::take(bind.parameters_mut());
-    let formats = bind.parameter_format_codes();
-    let params = decode_parameter_values(params, &describe.param_oids, formats)?;
-    let ncolumns = describe.ncolumns();
-    let result_format = prepare_encoding_format(bind.result_column_format_codes(), ncolumns)?;
+    let describe = manager.describe_statement(bind.statement_name.as_deref())?;
+    let params = decode_parameter_values(
+        &bind.parameters,
+        &describe.param_oids,
+        &bind.parameter_format_codes,
+    )?;
+    let result_format =
+        prepare_encoding_format(&bind.result_column_format_codes, describe.ncolumns())?;
 
     manager.bind(
-        bind.statement_name().as_deref(),
-        bind.portal_name().as_deref(),
+        bind.statement_name.as_deref(),
+        bind.portal_name.as_deref(),
         params,
         result_format,
     )?;
@@ -102,8 +103,8 @@ pub fn process_execute_message(
     manager: &StorageManager,
     execute: Execute,
 ) -> PgResult<()> {
-    let mut count = *execute.max_rows() as i64;
-    let mut execute_result = manager.execute(execute.name().as_deref())?;
+    let mut count = execute.max_rows as i64;
+    let mut execute_result = manager.execute(execute.name.as_deref())?;
     if count <= 0 {
         count = std::i64::MAX;
     }
@@ -160,8 +161,8 @@ pub fn process_describe_message(
     manager: &StorageManager,
     describe: Describe,
 ) -> PgResult<()> {
-    let name = describe.name().as_deref();
-    match describe.target_type() {
+    let name = describe.name.as_deref();
+    match describe.target_type {
         b'S' => {
             let (params_desc, rows_desc) = describe_statement(manager, name)?;
             stream.write_message_noflush(params_desc)?;
@@ -175,7 +176,7 @@ pub fn process_describe_message(
         }
         _ => Err(PgError::ProtocolViolation(format!(
             "unknown describe type \'{}\'",
-            describe.target_type()
+            describe.target_type
         ))),
     }
 }
@@ -185,14 +186,14 @@ pub fn process_close_message(
     manager: &StorageManager,
     close: Close,
 ) -> PgResult<()> {
-    let name = close.name().as_deref();
-    match close.target_type() {
+    let name = close.name.as_deref();
+    match close.target_type {
         b'S' => manager.close_statement(name)?,
         b'P' => manager.close_portal(name)?,
         _ => {
             return Err(PgError::ProtocolViolation(format!(
                 "unknown close type \'{}\'",
-                close.target_type()
+                close.target_type
             )));
         }
     }

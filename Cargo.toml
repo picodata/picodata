@@ -9,47 +9,49 @@ rust-version = "1.76.0"
 
 [dependencies]
 ahash = "0.7"
+blake3 = "=1.3.3"
 bytes = "1.1"
+chrono = "0.4.31"
 clap = { version = "3", features = ["derive", "env"] }
+comfy-table = "7.0.1"
+file_shred = "1.1.3"
+futures = "0.3.25"
 indoc = "2"
 lazy_static = "1.4"
-opentelemetry = "0.17"
-openssl = "0.10.64"
 libc = "0.2.108"
-raft = "0.6.0"
-serde = "1.0"
-serde_yaml = "0.9.25"
-serde_json = "1.0"
-serde_bytes = "0.11"
-serde_repr = "0.1"
-rmp-serde = "1.0"
-rmp = "*"
-tempfile = "3.8"
-thiserror = "1.0"
 nix = { version = "0.26.4", features = ["fs", "term", "process", "signal"] }
-uuid = { version = "1.0", features = ["v3"] }
-futures = "0.3.25"
 once_cell = "1.17.1"
-blake3 = "=1.3.3"
+openssl = "0.10.64"
+opentelemetry = "0.17"
+pgwire = "0.19.0"
+postgres-types = "0.2.6"
+raft = "0.6.0"
+rand = "0.8.5"
+rmp = "*"
+rmp-serde = "1.0"
+rmpv = { version = "1.0.0", features = ["with-serde"] }
 rustyline = "12.0.0"
 rustyline-derive = "0.10.0"
-rmpv = { version = "1.0.0", features = ["with-serde"] }
-comfy-table = "7.0.1"
+serde = "1.0"
+serde_bytes = "0.11"
+serde_json = "1.0"
+serde_repr = "0.1"
+serde_yaml = "0.9.25"
+smol_str = "0.2.1"
+tempfile = "3.8"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v3"] }
 va_list = ">=0.1.4"
-chrono = "0.4.31"
-file_shred = "1.1.3"
-pico_proc_macro = { path = "./pico_proc_macro" }
 
-linkme = "0.3.14"
-libloading = "0.8"
+# Link- and ABI- related stuff
 abi_stable = "0.11.2"
+libloading = "0.8"
+linkme = "0.3.14"
 
+# Bundled modules e.g. picodata SDK
+pico_proc_macro = { path = "./pico_proc_macro" }
 picodata-sdk = { path = "./sdk/picodata-sdk" }
 picoplugin = { path = "./picoplugin" }
-smol_str = "0.2.1"
-pgwire = { git = "https://github.com/sunng87/pgwire", rev = "6e653e851703bb743a96ba7a8e0f1fde6a5abeb0" }
-postgres-types = "0.2.6"
-rand = "0.8.5"
 
 [dependencies.protobuf]
 version = "2.27"
@@ -70,24 +72,23 @@ version = "5.0"
 features = ["picodata", "test"]
 
 [dev-dependencies]
-rand = "0.8.5"
 pretty_assertions = "0.6.1"
 
 [build-dependencies]
 nix = { version = "0.26.4", features = ["fs"] }
 jobserver = "0.1.26"
 
-[patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
-tarantool = { path = "./tarantool/tarantool" }
-
 [patch.crates-io]
 nix = { git = "https://git.picodata.io/picodata/picodata/nix.git", branch = "fix-memfd-create-for-older-libc-backport-26-4" }
 
+[patch."https://git.picodata.io/picodata/picodata/tarantool-module.git"]
+tarantool = { path = "./tarantool/tarantool" }
+
 [features]
+dynamic_build = []
+error_injection = []
 load_test = []
 webui = []
-error_injection = []
-dynamic_build = []
 
 [lib]
 doctest = true

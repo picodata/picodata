@@ -31,8 +31,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
         let (mut stream, params) = startup::handshake(stream, tls_acceptor.as_ref())?;
         tlog!(Info, "processed startup");
 
-        let salt = rand::random::<[u8; 20]>();
-        auth::authenticate(&mut stream, &salt, &params.username).map_err(|error| {
+        auth::authenticate(&mut stream, &params.username).map_err(|error| {
             tlog!(Info, "failed to establish client connection: {error}");
             // At this point we don't care about failed writes (best effort approach).
             let _ = stream.write_message(messages::error_response(error.info()));
@@ -101,7 +100,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
 
         match message {
             FeMessage::Query(query) => {
-                tlog!(Info, "executing simple query: {}", query.query());
+                tlog!(Info, "executing simple query: {}", query.query);
                 process_query_message(&mut self.stream, &self.manager, query)?;
                 self.loop_state = MessageLoopState::ReadyForQuery;
             }
@@ -109,8 +108,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(
                     Info,
                     "parsing query \'{}\': {}",
-                    parse.name().as_deref().unwrap_or_default(),
-                    parse.query(),
+                    parse.name.as_deref().unwrap_or_default(),
+                    parse.query,
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 extended_query::process_parse_message(&mut self.stream, &self.manager, parse)?;
@@ -119,8 +118,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(
                     Info,
                     "binding statement \'{}\' to portal \'{}\'",
-                    bind.statement_name().as_deref().unwrap_or_default(),
-                    bind.portal_name().as_deref().unwrap_or_default()
+                    bind.statement_name.as_deref().unwrap_or_default(),
+                    bind.portal_name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 extended_query::process_bind_message(&mut self.stream, &self.manager, bind)?;
@@ -129,7 +128,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(
                     Info,
                     "executing portal \'{}\'",
-                    execute.name().as_deref().unwrap_or_default()
+                    execute.name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 extended_query::process_execute_message(&mut self.stream, &self.manager, execute)?;
@@ -138,8 +137,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(
                     Info,
                     "describing {} \'{}\'",
-                    describe.target_type(),
-                    describe.name().as_deref().unwrap_or_default()
+                    describe.target_type,
+                    describe.name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 extended_query::process_describe_message(
@@ -152,8 +151,8 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 tlog!(
                     Info,
                     "closing {} \'{}\'",
-                    close.target_type(),
-                    close.name().as_deref().unwrap_or_default()
+                    close.target_type,
+                    close.name.as_deref().unwrap_or_default()
                 );
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 extended_query::process_close_message(&mut self.stream, &self.manager, close)?;

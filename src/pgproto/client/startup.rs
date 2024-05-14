@@ -12,8 +12,8 @@ pub struct ClientParams {
     pub rest: BTreeMap<String, String>,
 }
 
-fn parse_startup(mut startup: Startup) -> PgResult<ClientParams> {
-    let mut parameters = std::mem::take(startup.parameters_mut());
+fn parse_startup(startup: Startup) -> PgResult<ClientParams> {
+    let mut parameters = startup.parameters;
     tlog!(Debug, "client parameters: {parameters:?}");
 
     let Some(username) = parameters.remove("user") else {
