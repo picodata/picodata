@@ -12,13 +12,13 @@ Picodata с помощью команд языка SQL.
 шардированными таблицами (в последнем случае реализованы возможности
 [распределенного SQL](../architecture/distributed_sql.md)).
 
-Для примера создадим шаблон списка друзей Свинки Пеппы,
-котором будет два поля: идентификатор записи и имя друга:
+Для примера создадим таблицу со списком товаров на складе. В ней будут
+две колонки: идентификатор товара и его название:
 
 ```sql
-CREATE TABLE friends_of_peppa (
+CREATE TABLE warehouse (
 			id INTEGER NOT NULL,
-			name TEXT NOT NULL,
+			item TEXT NOT NULL,
 			PRIMARY KEY (id))
 USING memtx DISTRIBUTED BY (id)
 OPTION (TIMEOUT = 3.0);
@@ -32,15 +32,13 @@ OPTION (TIMEOUT = 3.0);
 - ключ шардирования таблицы (колонка `id`);
 - таймаут перед возвращением управления пользователю.
 
-<!-- TODO: использовать другое имя для таблицы чтобы оба примера работали -->
-
 Для того чтобы создать такую же, но глобальную таблицу, следует указать
 соответствующий тип:
 
 ```sql
-CREATE TABLE friends_of_peppa (
+CREATE TABLE warehouse_global (
 			id INTEGER NOT NULL,
-			name TEXT NOT NULL,
+			item TEXT NOT NULL,
 			PRIMARY KEY (id))
 USING memtx DISTRIBUTED GLOBALLY
 OPTION (TIMEOUT = 3.0);
@@ -56,15 +54,15 @@ OPTION (TIMEOUT = 3.0);
 прямой передачей значений:
 
 ```sql
-INSERT INTO friends_of_peppa (id, name) VALUES (1, 'Suzy');
+INSERT INTO warehouse (id, item) VALUES (1, 'bricks');
 ```
 
 Либо параметризированный запрос, но в Lua-режиме (`\s l lua`):
 
 ```sql
 pico.sql(
-	[[INSERT INTO friends_of_peppa (id, name) VALUES (?, ?)]],
-	{1, 'Suzy'}
+	[[INSERT INTO warehouse (id, item) VALUES (?, ?)]],
+	{1, 'bricks'}
 );
 ```
 
@@ -75,13 +73,13 @@ pico.sql(
 Для чтения всех данных из таблицы подойдёт команда:
 
 ```sql
-SELECT * FROM friends_of_peppa;
+SELECT * FROM warehouse;
 ```
 
 Можно вывести отдельно строку по известному полю:
 
 ```sql
-SELECT * FROM friends_of_peppa WHERE id = 1;
+SELECT * FROM warehouse WHERE id = 1;
 ```
 
 См. [подробнее](../reference/sql/select.md) о вариантах чтения данных в SQL.
@@ -91,7 +89,7 @@ SELECT * FROM friends_of_peppa WHERE id = 1;
 Удаление строки с известным `id`:
 
 ```sql
-DELETE FROM friends_of_peppa WHERE id = 1;
+DELETE FROM warehouse WHERE id = 1;
 ```
 
 В консоли будет выведено количество удаленных строк (в данном случае, это `1`).
