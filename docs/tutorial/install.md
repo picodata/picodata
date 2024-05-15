@@ -40,7 +40,7 @@ source "$HOME/.cargo/env"
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-#### CentOS 8, Fedora 37-40 {: #centos_fedora }
+#### CentOS 8, Fedora 38-40 {: #centos_fedora }
 
 Только для CentOS 8:
 
@@ -62,12 +62,12 @@ curl -sL https://dl.yarnpkg.com/rpm/yarn.repo | sudo tee /etc/yum.repos.d/yarn.r
 sudo dnf install yarn nodejs
 ```
 
-#### Ubuntu 22.04 {: #ubuntu_22.04 }
+#### Ubuntu 22.04 и 24.04 {: #ubuntu_lts }
 
 Установка общих зависимостей для сборки:
 
 ```bash
-sudo apt-get install build-essential git cmake autoconf libtool -y
+sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config -y
 ```
 
 Установка NodeJS и Yarn (для веб-интерфейса):
