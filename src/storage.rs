@@ -54,6 +54,7 @@ use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -63,6 +64,8 @@ use std::time::Duration;
 
 use self::acl::{on_master_drop_role, on_master_drop_user};
 use pico_proc_macro::get_doc_literal;
+use sbroad::ir::relation::Type;
+use sbroad::ir::value::Value;
 
 macro_rules! define_clusterwide_tables {
     (
@@ -1377,6 +1380,55 @@ impl PropertyName {
 ////////////////////////////////////////////////////////////////////////////////
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
+
+#[derive(thiserror::Error, Debug)]
+#[error("unknown property: '{property}'")]
+pub(crate) struct UnknownPropertyError {
+    property: String,
+}
+
+impl UnknownPropertyError {
+    #[allow(clippy::new_ret_no_self)]
+    pub(crate) fn new(property: impl Display) -> Error {
+        Error::other(UnknownPropertyError {
+            property: format!("{}", property),
+        })
+    }
+}
+
+pub(crate) fn property_key_value_to_tuple(key: PropertyName, value: &Value) -> Result<TupleBuffer> {
+    use PropertyName::*;
+
+    let property_expected_type = match key {
+        PasswordEnforceDigits => Type::Boolean,
+        PasswordMinLength | AutoOfflineTimeout | SnapshotChunkMaxSize => Type::Unsigned,
+        MaxHeartbeatPeriod | SnapshotReadViewCloseTimeout => Type::Double,
+        key => return Err(UnknownPropertyError::new(key)),
+    };
+    let casted_value = value.cast(&property_expected_type).map_err(|_| {
+        Error::other(format!(
+            "'{key}' property expected value of {property_expected_type} type."
+        ))
+    })?;
+    (key, casted_value).to_tuple_buffer().map_err(Error::other)
+}
+
+pub(crate) fn default_property_tuple(key: PropertyName) -> Result<TupleBuffer> {
+    use PropertyName::*;
+    let tuple = match key {
+        PasswordMinLength => (key, DEFAULT_PASSWORD_MIN_LENGTH).to_tuple_buffer(),
+        PasswordEnforceDigits => (key, DEFAULT_PASSWORD_ENFORCE_DIGITS).to_tuple_buffer(),
+        AutoOfflineTimeout => (key, DEFAULT_AUTO_OFFLINE_TIMEOUT).to_tuple_buffer(),
+        MaxHeartbeatPeriod => (key, DEFAULT_MAX_HEARTBEAT_PERIOD).to_tuple_buffer(),
+        SnapshotChunkMaxSize => (key, DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE).to_tuple_buffer(),
+        SnapshotReadViewCloseTimeout => {
+            (key, DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT).to_tuple_buffer()
+        }
+        key => return Err(UnknownPropertyError::new(key)),
+    };
+
+    tuple.map_err(Error::other)
+}
 
 pub const DEFAULT_PASSWORD_MIN_LENGTH: usize = 8;
 pub const DEFAULT_PASSWORD_ENFORCE_UPPERCASE: bool = true;

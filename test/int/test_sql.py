@@ -5050,3 +5050,136 @@ def test_limit(cluster: Cluster):
         """
     )
     assert data == [[1], [2], [3]]
+
+
+def test_alter_system_property(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    non_default_prop = [
+        ("password_min_length", 10),
+        ("password_enforce_digits", True),
+        ("auto_offline_timeout", 12),
+        ("max_heartbeat_period", 6.6),
+        ("snapshot_chunk_max_size", 1500),
+        ("snapshot_read_view_close_timeout", 12312.4),
+    ]
+
+    default_prop = []
+    for index, (prop, value) in enumerate(non_default_prop):
+        data = i1.sql(f""" select * from "_pico_property" where "key" = '{prop}' """)
+        default_prop.append(data[0][1])
+
+        # check simple setting
+        data = i1.sql(f""" alter system set "{prop}" to {value} """)
+        assert data["row_count"] == 1
+        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        assert data[0][1] == value
+
+        # change back to non default value for check of reset
+        data = i1.sql(f""" alter system set "{prop}" to default """)
+        assert data["row_count"] == 1
+        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        assert data[0][1] == default_prop[index]
+
+        # change back to
+        data = i1.sql(f""" alter system set "{prop}" to {value} """)
+        assert data["row_count"] == 1
+        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        assert data[0][1] == value
+
+        # check reset to default
+        data = i1.sql(f""" alter system reset "{prop}" """)
+        assert data["row_count"] == 1
+        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        assert data[0][1] == default_prop[-1]
+
+        # change back to non default value for later check of reset all
+        data = i1.sql(f""" alter system set "{prop}" to {value} """)
+        assert data["row_count"] == 1
+        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        assert data[0][1] == value
+
+    # check reset all
+    data = i1.sql(""" alter system reset all """)
+    assert data["row_count"] == 1
+    for (prop, _), default in zip(non_default_prop, default_prop):
+        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        assert data[0][1] == default
+
+
+def test_alter_system_property_errors(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    # check valid insertion (int)
+    data = i1.sql(
+        """ select * from "_pico_property" where "key" = 'auto_offline_timeout' """
+    )
+    assert data == [["auto_offline_timeout", 5]]
+    dml = i1.sql(
+        """
+        alter system set "auto_offline_timeout" to 3
+        """
+    )
+    assert dml["row_count"] == 1
+    data = i1.sql(
+        """ select * from "_pico_property" where "key" = 'auto_offline_timeout' """
+    )
+    assert data == [["auto_offline_timeout", 3]]
+
+    # check valid insertion (bool)
+    data = i1.sql(
+        """ select * from "_pico_property" where "key" = 'password_enforce_digits' """
+    )
+    assert data == [["password_enforce_digits", True]]
+    dml = i1.sql(
+        """
+        alter system set "password_enforce_digits" to false
+        """
+    )
+    assert dml["row_count"] == 1
+    data = i1.sql(
+        """ select * from "_pico_property" where "key" = 'password_enforce_digits' """
+    )
+    assert data == [["password_enforce_digits", False]]
+
+    # such property does not exist
+    with pytest.raises(
+        TarantoolError, match="unknown property: 'invalid_parameter_name'"
+    ):
+        dml = i1.sql(
+            """
+            alter system set "invalid_parameter_name" to 3
+            """
+        )
+
+    # property expects different value type
+    with pytest.raises(
+        TarantoolError,
+        match="'password_enforce_digits' property expected value of boolean type.",
+    ):
+        dml = i1.sql(
+            """
+            alter system set "password_enforce_digits" to 3
+            """
+        )
+
+    # such property exists but must not be allowed to be changed through alter system
+    with pytest.raises(TarantoolError, match="unknown property: 'next_schema_version'"):
+        dml = i1.sql(
+            """
+            alter system set "next_schema_version" to 3
+            """
+        )
+
+    # properties may be changed only globally yet
+    with pytest.raises(
+        TarantoolError,
+        match="Specifying tier name in alter system is not supported yet.",
+    ):
+        dml = i1.sql(
+            """
+            alter system set "auto_offline_timeout" to true for tier foo
+            """
+        )

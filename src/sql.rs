@@ -10,7 +10,7 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::space_by_name;
+use crate::storage::{space_by_name, PropertyName, UnknownPropertyError};
 use crate::traft::error::Error;
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
@@ -31,7 +31,7 @@ use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
 use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
 use sbroad::ir::block::Block;
-use sbroad::ir::ddl::{Ddl, ParamDef};
+use sbroad::ir::ddl::{AlterSystemType, Ddl, ParamDef};
 use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::{ConflictStrategy, Relational};
 use sbroad::ir::relation::Type;
@@ -938,6 +938,77 @@ fn acl_ir_node_to_op_or_result(
     }
 }
 
+fn alter_system_ir_node_to_op_or_result(
+    ty: &AlterSystemType,
+    tier_name: Option<&str>,
+    current_user: UserId,
+) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
+    if tier_name.is_some() {
+        return Err(Error::other(
+            "Specifying tier name in alter system is not supported yet. Use 'all tiers' instead.",
+        ));
+    }
+
+    let parse_property_name = |param_name: &str| -> traft::Result<PropertyName> {
+        param_name
+            .parse::<PropertyName>()
+            .map_err(|_| UnknownPropertyError::new(param_name))
+    };
+
+    match ty {
+        AlterSystemType::AlterSystemSet {
+            param_name,
+            param_value,
+        } => {
+            let key = parse_property_name(param_name)?;
+            let tuple = crate::storage::property_key_value_to_tuple(key, param_value)?;
+
+            Ok(Continue(Op::Dml(Dml::Replace {
+                table: crate::storage::ClusterwideTable::Property.into(),
+                tuple,
+                initiator: current_user,
+            })))
+        }
+        AlterSystemType::AlterSystemReset { param_name } => {
+            match param_name {
+                Some(key) => {
+                    // reset one
+                    let key = parse_property_name(key)?;
+                    let tuple = crate::storage::default_property_tuple(key)?;
+
+                    Ok(Continue(Op::Dml(Dml::Replace {
+                        table: crate::storage::ClusterwideTable::Property.into(),
+                        tuple,
+                        initiator: current_user,
+                    })))
+                }
+                None => {
+                    // reset all
+                    use PropertyName::*;
+
+                    let mut dmls = vec![];
+                    for prop in [
+                        PasswordMinLength,
+                        PasswordEnforceDigits,
+                        AutoOfflineTimeout,
+                        MaxHeartbeatPeriod,
+                        SnapshotChunkMaxSize,
+                        SnapshotReadViewCloseTimeout,
+                    ] {
+                        let tuple = crate::storage::default_property_tuple(prop)?;
+                        dmls.push(Dml::Replace {
+                            table: crate::storage::ClusterwideTable::Property.into(),
+                            tuple,
+                            initiator: current_user,
+                        })
+                    }
+                    Ok(Continue(Op::BatchDml { ops: dmls }))
+                }
+            }
+        }
+    }
+}
+
 fn ddl_ir_node_to_op_or_result(
     ddl: &Ddl,
     current_user: UserId,
@@ -946,6 +1017,11 @@ fn ddl_ir_node_to_op_or_result(
     storage: &Clusterwide,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
+        Ddl::AlterSystem { ty, tier_name, .. } => alter_system_ir_node_to_op_or_result(
+            ty,
+            tier_name.as_ref().map(|s| s.as_str()),
+            current_user,
+        ),
         Ddl::CreateTable {
             name,
             format,

@@ -42,6 +42,8 @@ with the `YY.MINOR.MICRO` scheme.
 - New rpc entrypoint: `.proc_get_config` which returns the effective
   picodata configuration
 
+- Ability to change cluster properties via SQL `ALTER SYSTEM` command
+
 ### Compatibility
 
 - New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`

@@ -42,6 +42,7 @@ pub enum QueryType {
 #[repr(u8)]
 pub enum CommandTag {
     AlterRole = 0,
+    AlterSystem = 22,
     CallProcedure = 16,
     CreateProcedure = 14,
     CreateRole = 1,
@@ -72,6 +73,7 @@ impl CommandTag {
     pub fn as_str(&self) -> &str {
         match *self {
             Self::AlterRole => "ALTER ROLE",
+            Self::AlterSystem => "ALTER SYSTEM",
             Self::CreateRole => "CREATE ROLE",
             Self::CreateTable => "CREATE TABLE",
             Self::CreateIndex => "CREATE INDEX",
@@ -106,6 +108,7 @@ impl From<CommandTag> for QueryType {
     fn from(command_tag: CommandTag) -> Self {
         match command_tag {
             CommandTag::AlterRole
+            | CommandTag::AlterSystem
             | CommandTag::DropRole
             | CommandTag::CreateRole
             | CommandTag::Grant
@@ -153,6 +156,7 @@ impl TryFrom<&Node> for CommandTag {
                 Block::Procedure { .. } => Ok(CommandTag::CallProcedure),
             },
             Node::Ddl(ddl) => match ddl {
+                Ddl::AlterSystem { .. } => Ok(CommandTag::AlterSystem),
                 Ddl::DropTable { .. } => Ok(CommandTag::DropTable),
                 Ddl::CreateTable { .. } => Ok(CommandTag::CreateTable),
                 Ddl::CreateProc { .. } => Ok(CommandTag::CreateProcedure),
