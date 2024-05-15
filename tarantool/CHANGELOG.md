@@ -71,6 +71,8 @@
   contained formatting sequences of %n sort.
 - Used to panic when logging messages which contained nul-bytes.
 - Pushing `ViaMsgpack` didn't work in release mode.
+- Enums defined with `define_str_enum!` can now deserialize from owned `String`.
+  Could be seen when deserializing from `rmpv::Value::String`.
 
 ### Deprecated
 

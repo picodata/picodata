@@ -45,7 +45,7 @@ pub fn basic() {
     assert_eq!(Color::from_str("#000000"), Ok(Color::Black));
     assert_eq!(
         Color::from_str("#ffffff").unwrap_err().to_string(),
-        "unknown Color \"#ffffff\""
+        r##"unknown variant "#ffffff" of enum `Color`, expected one of: ["#000000", "#FFFFFF"]"##
     );
 
     // serde: ser
@@ -56,7 +56,7 @@ pub fn basic() {
     assert_eq!(de("\"#FFFFFF\"").unwrap(), Color::White);
     assert_eq!(
         de("\"#00ff00\"").unwrap_err().to_string(),
-        "unknown variant `#00ff00`, expected `#000000` or `#FFFFFF`"
+        r##"unknown variant "#00ff00" of enum `Color`, expected one of: ["#000000", "#FFFFFF"] at line 1 column 9"##
     );
 
     // encode
@@ -134,4 +134,17 @@ pub fn coerce_from_str() {
     assert_eq!(Season::from_str("SummeR"), Ok(Season::Summer));
     assert_eq!(Season::from_str("SUMMER"), Ok(Season::Summer));
     assert_eq!(Season::from_str(" SUMMER "), Ok(Season::Summer));
+}
+
+pub fn deserialize_from_owned() {
+    define_str_enum! {
+        enum Season {
+            Summer = "summer",
+        }
+    }
+
+    let value = rmpv::Value::String("summer".into());
+    let season =
+        rmpv::ext::from_value::<Season>(value).expect("fails to deserialize from owned string");
+    assert_eq!(season, Season::Summer);
 }

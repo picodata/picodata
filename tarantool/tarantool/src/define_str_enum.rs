@@ -1,15 +1,25 @@
+use serde::de::{self, Visitor};
 use std::any::type_name;
-use std::fmt::{Debug, Display};
+use std::fmt::{self, Debug, Display};
 use std::marker::PhantomData;
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct UnknownEnumVariant<E>(pub String, pub PhantomData<E>);
+pub struct UnknownEnumVariant<E> {
+    pub raw_value: String,
+    pub type_container: PhantomData<E>,
+    pub variants: &'static [&'static str],
+}
 
 impl<E> Display for UnknownEnumVariant<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let type_name = type_name::<E>();
         let type_name = type_name.rsplit("::").next().unwrap_or(type_name);
-        write!(f, "unknown {} {:?}", type_name, self.0)
+        write!(
+            f,
+            "unknown variant {:?} of enum `{}`, expected one of: {:?}",
+            self.raw_value, type_name, self.variants
+        )
     }
 }
 
@@ -205,7 +215,11 @@ macro_rules! define_str_enum {
                     $(
                         $display => Ok(Self::$variant),
                     )+
-                    _ => Err(UnknownEnumVariant(s.into(), PhantomData)),
+                    _ => Err(UnknownEnumVariant {
+                        raw_value: s.into(),
+                        type_container: PhantomData,
+                        variants: Self::values()
+                    }),
                 }
             }
         }
@@ -235,9 +249,9 @@ macro_rules! define_str_enum {
             {
                 use ::std::result::Result::Ok;
                 use serde::de::Error;
-                let tmp = <&str>::deserialize(deserializer)?;
+                let tmp = deserializer.deserialize_str($crate::define_str_enum::FromStrVisitor::<$enum>::default())?;
                 let res = tmp.parse().map_err(|_| {
-                    Error::unknown_variant(tmp, Self::values())
+                    Error::unknown_variant(&tmp, Self::values())
                 })?;
                 Ok(res)
             }
@@ -529,6 +543,48 @@ macro_rules! define_enum_with_introspection {
         impl_try_from_int! { u64 }
         impl_try_from_int! { isize }
         impl_try_from_int! { usize }
+    }
+}
+
+/// [FromStrVisitor] is needed to efficiently deserialize strings -
+/// both owned and borrowed via directly parsing them into needed type.
+///
+/// For define_str_enum it allows avoiding temporary string allocation.
+#[derive(Clone, Copy)]
+pub struct FromStrVisitor<T>(PhantomData<T>);
+
+impl<T> Default for FromStrVisitor<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<'de, Err: Display, T: FromStr<Err = Err>> Visitor<'de> for FromStrVisitor<T> {
+    type Value = T;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a string")
+    }
+
+    fn visit_borrowed_str<E>(self, value: &'de str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        value.parse().map_err(de::Error::custom)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        value.parse().map_err(de::Error::custom)
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        value.parse().map_err(de::Error::custom)
     }
 }
 

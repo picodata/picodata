@@ -184,6 +184,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
             tests.append(&mut tests![
                 define_str_enum::basic,
                 define_str_enum::coerce_from_str,
+                define_str_enum::deserialize_from_owned,
                 tlua::lua_functions::basic,
                 tlua::lua_functions::two_functions_at_the_same_time,
                 tlua::lua_functions::args,
