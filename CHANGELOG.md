@@ -16,6 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `ORDER BY` clause.
 - SQL supports `UNION` operator.
 - SQL supports common table expressions (CTE).
+- SQL supports `CASE` expression.
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
