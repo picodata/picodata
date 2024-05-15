@@ -520,7 +520,8 @@ pub fn proc_pg_parse(
         || {
             let runtime = RouterRuntime::new().map_err(Error::from)?;
             let mut cache = runtime.cache().lock();
-            if let Some(plan) = cache.get(&query.to_smolstr())? {
+            let cache_entry = with_su(ADMIN_ID, || cache.get(&query.to_smolstr()))??;
+            if let Some(plan) = cache_entry {
                 let statement =
                     Statement::new(id.to_string(), sql.clone(), plan.clone(), param_oids)?;
                 PG_STATEMENTS
