@@ -280,6 +280,10 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.http_listen = Some(http_listen);
         }
 
+        if let Some(pg_listen) = args.pg_listen {
+            config_from_args.instance.pg.listen = Some(pg_listen);
+        }
+
         if !args.peers.is_empty() {
             config_from_args.instance.peers = Some(args.peers);
         }
@@ -1764,6 +1768,21 @@ instance:
         let pg = config.instance.pg;
         assert!(pg.enabled());
         assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert!(!pg.ssl());
+
+        // test config from run args
+        let config = setup_for_tests(None, &["run", "--pg-listen", "localhost:5432"]).unwrap();
+        let pg = config.instance.pg;
+        assert!(pg.enabled());
+        assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert!(!pg.ssl());
+
+        // test config from env
+        std::env::set_var("PICODATA_PG_LISTEN", "localhost:1234");
+        let config = setup_for_tests(None, &["run"]).unwrap();
+        let pg = config.instance.pg;
+        assert!(pg.enabled());
+        assert_eq!(pg.listen(), Address::from_str("localhost:1234").unwrap());
         assert!(!pg.ssl());
     }
 }

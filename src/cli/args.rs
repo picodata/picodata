@@ -95,6 +95,10 @@ pub struct Run {
     /// By default "localhost:3301" is used.
     pub listen: Option<Address>,
 
+    /// Pgproto server address.
+    #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_PG_LISTEN")]
+    pub pg_listen: Option<Address>,
+
     #[clap(
         long = "peer",
         value_name = "[HOST][:PORT]",
