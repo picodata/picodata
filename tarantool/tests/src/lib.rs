@@ -25,7 +25,6 @@ mod r#box;
 mod coio;
 mod common;
 mod datetime;
-mod decimal;
 mod define_str_enum;
 mod enums;
 mod fiber;

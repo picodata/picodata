@@ -20,6 +20,7 @@ rust-version = "1.67.1"
 [dependencies]
 base64 = "0.13"
 bitflags = "1.2"
+dec = { version = "0.4.8", optional = true }
 dlopen = "0.1.8"
 thiserror = "1.0.30"
 libc = { version = "0.2", features = ["extra_traits"] }
@@ -63,6 +64,14 @@ network_client = []
 test = ["tester"]
 all = ["default", "test"]
 internal_test = ["test", "tlua/internal_test", "pretty_assertions", "tempfile"]
+# This feature switches tarantool module decimal support to use rust dec crate
+# instead of decimal impl available in tarantool. This feature is considered as a temporary hack
+# for sbroad tests. Having two implementations of decimal in use at the same time 
+# is problematic because libdecnumber versions used by both of the options are not exactly 
+# the same. Thus deviations in behaviour between them are possible (up to UB if struct 
+# definitions become out of sync)
+standalone_decimal = ["dec"]
+
 
 [dev-dependencies]
 time-macros = "=0.2.6"

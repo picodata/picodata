@@ -233,6 +233,16 @@ test-fork-debug:
     TARANTOOL_MODULE_BUILD_MODE: debug
     CARGO_PROFILE: dev
 
+test-fork-debug-standalone-decimal:
+  extends: .test
+  variables:
+    CACHE_ARCHIVE: /shared-storage/tarantool-module/picodata-cache.tar
+    BASE_IMAGE_NAME: ${BASE_IMAGE_FORK}
+    CARGO_FEATURES: picodata,tokio_components,standalone_decimal
+    # This variable tells tests/run_tests.lua which version of the library to use for testing
+    TARANTOOL_MODULE_BUILD_MODE: debug
+    CARGO_PROFILE: dev
+
 test-fork-release:
   extends: .test
   variables:

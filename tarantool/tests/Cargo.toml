@@ -46,4 +46,5 @@ harness = false
 
 [features]
 picodata = ["tarantool/picodata"]
+standalone_decimal = ["tarantool/standalone_decimal"]
 tokio_components = ["tarantool/tokio_components"]

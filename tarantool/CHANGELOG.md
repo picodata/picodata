@@ -50,6 +50,9 @@
 - `tarantool::set_error!` macro will now use the caller's location, so if it's
   called from a function marked `#[track_caller]`, the log message will contain
   that function's call site, instead of the location of the macro call itself.
+- `Decimal` type is now backed by builtin tarantool decimal implementation. 
+  The only expected difference is slight change in formatting (lack of
+  scientific notation).
 
 ### Fixed
 

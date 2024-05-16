@@ -30,6 +30,7 @@ pub const DECNUMUNITS: u32 = 13;
 pub const DECIMAL_MAX_DIGITS: u32 = 38;
 pub const MP_DECIMAL: c_char = 1;
 
+#[cfg(not(feature = "standalone_decimal"))]
 crate::define_dlsym_reloc! {
     /// Return decimal precision,
     /// i.e. the amount of decimal digits in

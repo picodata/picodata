@@ -19,6 +19,10 @@ pub mod uuid;
 ///
 /// [`tarantool::decimal`]: mod@crate::decimal
 pub fn has_decimal() -> bool {
+    if cfg!(feature = "standalone_decimal") {
+        return true;
+    }
+
     unsafe {
         let name = crate::c_str!("decimal_zero");
         helper::tnt_internal_symbol::<*const ()>(name).is_some() || helper::has_dyn_symbol(name)
