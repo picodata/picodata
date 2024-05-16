@@ -54,6 +54,7 @@ tokio = { version = "=1.29.1", features = [
     "rt",
     "time",
 ], optional = true }
+anyhow = { version = "1", optional = true }
 
 [features]
 default = ["net_box", "network_client"]

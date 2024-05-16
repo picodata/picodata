@@ -578,6 +578,13 @@ impl IntoBoxError for &str {
     }
 }
 
+#[cfg(feature = "anyhow")]
+impl IntoBoxError for anyhow::Error {
+    fn into_box_error(self) -> BoxError {
+        format!("{:#}", self).into_box_error()
+    }
+}
+
 impl IntoBoxError for Box<dyn std::error::Error> {
     #[inline(always)]
     #[track_caller]
