@@ -1,14 +1,11 @@
+use super::tls::TlsError;
 use pgwire::error::{ErrorInfo, PgWireError};
-use std::env;
 use std::error;
 use std::io;
 use std::num::{ParseFloatError, ParseIntError};
 use std::str::ParseBoolError;
 use std::string::FromUtf8Error;
 use thiserror::Error;
-
-use super::tls::TlsError;
-use super::ConfigError;
 
 pub type PgResult<T> = Result<T, PgError>;
 
@@ -34,7 +31,7 @@ pub enum PgError {
     PgWireError(#[from] PgWireError),
 
     #[error("lua error: {0}")]
-    TarantoolError(#[from] tarantool::tlua::LuaError),
+    LuaError(#[from] tarantool::tlua::LuaError),
 
     #[error("json error: {0}")]
     JsonError(#[from] serde_json::Error),
@@ -44,12 +41,6 @@ pub enum PgError {
 
     #[error("tls error: {0}")]
     TlsError(#[from] TlsError),
-
-    #[error("env error: {0}")]
-    EnvError(#[from] env::VarError),
-
-    #[error("config error: {0}")]
-    ConfigError(#[from] ConfigError),
 }
 
 #[derive(Error, Debug)]

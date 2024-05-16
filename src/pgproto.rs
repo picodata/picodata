@@ -1,7 +1,12 @@
-use crate::address::Address;
-use crate::tlog;
-use tarantool::coio::CoIOListener;
-use thiserror::Error;
+use self::{
+    client::PgClient,
+    error::PgResult,
+    tls::{TlsAcceptor, TlsConfig, TlsError},
+};
+use crate::{address::Address, introspection::Introspection, tlog, traft::error::Error};
+use std::path::{Path, PathBuf};
+use stream::PgStream;
+use tarantool::coio::{CoIOListener, CoIOStream};
 
 mod client;
 mod entrypoints;
@@ -12,57 +17,7 @@ mod storage;
 mod stream;
 mod tls;
 
-use self::client::PgClient;
-use self::error::PgResult;
-use self::tls::{TlsAcceptor, TlsConfig};
-use crate::introspection::Introspection;
-use std::cell::Cell;
-use std::path::{Path, PathBuf};
-use stream::PgStream;
-use tarantool::{coio::CoIOStream, fiber::JoinHandle};
-
-pub use error::PgError;
-
-fn server_start(context: Context) {
-    let mut handles = vec![];
-    while let Ok(raw) = context.server.accept() {
-        let stream = PgStream::new(raw);
-        handles.push(handle_client(stream, context.tls_acceptor.clone()));
-    }
-
-    // TODO: this feels forced; find a better way.
-    for handle in handles {
-        handle.join();
-    }
-}
-
-fn handle_client(
-    client: PgStream<CoIOStream>,
-    tls_acceptor: Option<TlsAcceptor>,
-) -> JoinHandle<'static, ()> {
-    tlog!(Info, "spawning a new fiber for postgres client connection");
-    tarantool::fiber::start(move || {
-        let res = do_handle_client(client, tls_acceptor);
-        if let Err(e) = res {
-            tlog!(Error, "postgres client connection error: {e}");
-        }
-    })
-}
-
-fn do_handle_client(
-    stream: PgStream<CoIOStream>,
-    tls_acceptor: Option<TlsAcceptor>,
-) -> PgResult<()> {
-    let mut client = PgClient::accept(stream, tls_acceptor)?;
-    client.send_parameter("server_version", "15.0")?;
-    client.send_parameter("server_encoding", "UTF8")?;
-    client.send_parameter("client_encoding", "UTF8")?;
-    client.send_parameter("date_style", "ISO YMD")?;
-    client.send_parameter("integer_datetimes", "on")?;
-    client.process_messages_loop()?;
-    Ok(())
-}
-
+/// Main postgres server configuration.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -89,34 +44,79 @@ impl Config {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum ConfigError {
-    #[error("bad port: {0}")]
-    BadPort(String),
+fn server_start(context: Context) {
+    while let Ok(raw) = context.server.accept() {
+        let stream = PgStream::new(raw);
+        if let Err(e) = handle_client(stream, context.tls_acceptor.clone()) {
+            tlog!(Error, "failed to handle client {e}");
+        }
+    }
 }
 
+fn handle_client(
+    client: PgStream<CoIOStream>,
+    tls_acceptor: Option<TlsAcceptor>,
+) -> tarantool::Result<()> {
+    tlog!(Info, "spawning a new fiber for postgres client connection");
+
+    tarantool::fiber::Builder::new()
+        .name("pgproto::client")
+        .func(move || {
+            let res = do_handle_client(client, tls_acceptor);
+            if let Err(e) = res {
+                tlog!(Error, "postgres client connection error: {e}");
+            }
+        })
+        .start_non_joinable()?;
+
+    Ok(())
+}
+
+fn do_handle_client(
+    stream: PgStream<CoIOStream>,
+    tls_acceptor: Option<TlsAcceptor>,
+) -> PgResult<()> {
+    let mut client = PgClient::accept(stream, tls_acceptor)?;
+
+    // Send important parameters to the client.
+    client
+        .send_parameter("server_version", "15.0")?
+        .send_parameter("server_encoding", "UTF8")?
+        .send_parameter("client_encoding", "UTF8")?
+        .send_parameter("date_style", "ISO YMD")?
+        .send_parameter("integer_datetimes", "on")?;
+
+    client.process_messages_loop()?;
+
+    Ok(())
+}
+
+fn new_tls_acceptor(data_dir: &Path) -> Result<TlsAcceptor, TlsError> {
+    let tls_config = TlsConfig::from_data_dir(data_dir)?;
+    TlsAcceptor::new(&tls_config)
+}
+
+/// Server execution context.
 pub struct Context {
     server: CoIOListener,
     tls_acceptor: Option<TlsAcceptor>,
 }
 
 impl Context {
-    pub fn new(config: &Config, data_dir: &Path) -> PgResult<Self> {
+    pub fn new(config: &Config, data_dir: &Path) -> Result<Self, Error> {
         assert!(config.enabled(), "must be checked before the call");
 
         let listen = config.listen();
         let host = listen.host.as_str();
-        let port = listen
-            .port
-            .parse::<u16>()
-            .map_err(|_| ConfigError::BadPort(listen.port.clone()))?;
+        let port = listen.port.parse::<u16>().map_err(|_| {
+            Error::invalid_configuration(format!("bad postgres port {}", listen.port))
+        })?;
 
-        let tls_acceptor = if config.ssl() {
-            let tls_config = TlsConfig::from_data_dir(data_dir)?;
-            Some(TlsAcceptor::new(&tls_config)?)
-        } else {
-            None
-        };
+        let tls_acceptor = config
+            .ssl()
+            .then(|| new_tls_acceptor(data_dir))
+            .transpose()
+            .map_err(Error::invalid_configuration)?;
 
         let addr = (host, port);
         tlog!(Info, "starting postgres server at {:?}...", addr);
@@ -130,22 +130,13 @@ impl Context {
 }
 
 /// Start a postgres server fiber.
-///
-/// WARNING: It must be called only once, otherwise a panic will happen.
-pub fn start(config: &Config, data_dir: PathBuf) -> PgResult<()> {
+pub fn start(config: &Config, data_dir: PathBuf) -> Result<(), Error> {
     let context = Context::new(config, &data_dir)?;
-    let handler = tarantool::fiber::start(move || server_start(context));
 
-    // There's currently no way of detaching a fiber without leaking memory,
-    // so we have to store it's join handle somewhere.
-    //
-    // From JoinHandle's doc:
-    // NOTE: if `JoinHandle` is dropped before [`JoinHandle::join`] is called on it
-    // a panic will happen.
-    thread_local! {
-        static FIBER_JOIN_HANDLE: Cell<Option<JoinHandle<'static, ()>>> = Cell::new(None);
-    }
-    FIBER_JOIN_HANDLE.replace(Some(handler));
+    tarantool::fiber::Builder::new()
+        .name("pgproto")
+        .func(move || server_start(context))
+        .start_non_joinable()?;
 
     Ok(())
 }

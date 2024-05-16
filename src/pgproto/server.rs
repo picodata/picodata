@@ -2,7 +2,7 @@ use crate::tlog;
 use std::io;
 use tarantool::coio::CoIOListener;
 
-pub fn new_listener(addr: (&str, u16)) -> io::Result<CoIOListener> {
+pub fn new_listener(addr: (&str, u16)) -> tarantool::Result<CoIOListener> {
     let mut socket = None;
     let mut f = |_| {
         let wrapped = std::net::TcpListener::bind(addr);
@@ -12,9 +12,10 @@ pub fn new_listener(addr: (&str, u16)) -> io::Result<CoIOListener> {
     };
 
     if tarantool::coio::coio_call(&mut f, ()) != 0 {
-        return Err(io::Error::last_os_error());
+        return Err(io::Error::last_os_error().into());
     }
 
     let socket = socket.expect("uninitialized socket")?;
-    tarantool::coio::CoIOListener::try_from(socket)
+    let listener = tarantool::coio::CoIOListener::try_from(socket)?;
+    Ok(listener)
 }

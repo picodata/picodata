@@ -339,7 +339,7 @@ impl Entrypoints {
         let json: String = self
             .simple_query
             .call_with_args((client_id, sql))
-            .map_err(|e| PgError::TarantoolError(e.into()))?;
+            .map_err(|e| PgError::LuaError(e.into()))?;
         simple_execute_result_from_json(&json)
     }
 
@@ -353,7 +353,7 @@ impl Entrypoints {
     ) -> PgResult<()> {
         self.parse
             .call_with_args((client_id, name, sql, param_oids))
-            .map_err(|e| PgError::TarantoolError(e.into()))
+            .map_err(|e| PgError::LuaError(e.into()))
     }
 
     /// Handler for a Bind message. See self.bind for the details.
@@ -367,7 +367,7 @@ impl Entrypoints {
     ) -> PgResult<()> {
         self.bind
             .call_with_args((id, statement, portal, params, result_format))
-            .map_err(|e| PgError::TarantoolError(e.into()))
+            .map_err(|e| PgError::LuaError(e.into()))
     }
 
     /// Handler for an Execute message. See self.execute for the details.
@@ -375,7 +375,7 @@ impl Entrypoints {
         let json: String = self
             .execute
             .call_with_args((id, portal))
-            .map_err(|e| PgError::TarantoolError(e.into()))?;
+            .map_err(|e| PgError::LuaError(e.into()))?;
         execute_result_from_json(&json)
     }
 
@@ -384,7 +384,7 @@ impl Entrypoints {
         let json: String = self
             .describe_portal
             .call_with_args((client_id, portal))
-            .map_err(|e| PgError::TarantoolError(e.into()))?;
+            .map_err(|e| PgError::LuaError(e.into()))?;
         let describe = serde_json::from_str(&json)?;
         Ok(describe)
     }
@@ -398,7 +398,7 @@ impl Entrypoints {
         let json: String = self
             .describe_statement
             .call_with_args((client_id, statement))
-            .map_err(|e| PgError::TarantoolError(e.into()))?;
+            .map_err(|e| PgError::LuaError(e.into()))?;
         let describe = serde_json::from_str(&json)?;
         Ok(describe)
     }
@@ -407,28 +407,28 @@ impl Entrypoints {
     pub fn close_portal(&self, id: ClientId, portal: &str) -> PgResult<()> {
         self.close_portal
             .call_with_args((id, portal))
-            .map_err(|e| PgError::TarantoolError(e.into()))
+            .map_err(|e| PgError::LuaError(e.into()))
     }
 
     /// Handler for a Close message. See self.close_statement for the details.
     pub fn close_statement(&self, client_id: ClientId, statement: &str) -> PgResult<()> {
         self.close_statement
             .call_with_args((client_id, statement))
-            .map_err(|e| PgError::TarantoolError(e.into()))
+            .map_err(|e| PgError::LuaError(e.into()))
     }
 
     /// Close all the client statements and portals. See self.close_client_statements for the details.
     pub fn close_client_statements(&self, client_id: ClientId) -> PgResult<()> {
         self.close_client_statements
             .call_with_args(client_id)
-            .map_err(|e| PgError::TarantoolError(e.into()))
+            .map_err(|e| PgError::LuaError(e.into()))
     }
 
     /// Close client statements with its portals.
     pub fn close_client_portals(&self, client_id: ClientId) -> PgResult<()> {
         self.close_client_portals
             .call_with_args(client_id)
-            .map_err(|e| PgError::TarantoolError(e.into()))
+            .map_err(|e| PgError::LuaError(e.into()))
     }
 }
 

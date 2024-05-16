@@ -1,4 +1,3 @@
-use super::error::PgResult;
 use openssl::{
     error::ErrorStack,
     ssl::{self, HandshakeError, SslFiletype, SslMethod, SslStream},
@@ -42,7 +41,7 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-    pub fn from_data_dir(data_dir: &Path) -> PgResult<Self> {
+    pub fn from_data_dir(data_dir: &Path) -> Result<Self, TlsError> {
         // We should use the absolute paths here, because SslContextBuilder::set_certificate_chain_file
         // fails for relative paths with an unclear error, represented as an empty error stack.
         let cert = data_dir.join("server.crt");

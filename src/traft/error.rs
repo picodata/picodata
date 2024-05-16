@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display};
 
 use crate::instance::InstanceId;
-use crate::pgproto;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
 use tarantool::error::{BoxError, IntoBoxError};
@@ -85,9 +84,6 @@ pub enum Error {
 
     #[error(transparent)]
     Plugin(#[from] PluginError),
-
-    #[error(transparent)]
-    PgProto(#[from] pgproto::PgError),
 
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),
