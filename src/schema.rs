@@ -782,7 +782,7 @@ impl PrivilegeType {
 ///    user Id of the vanilla role super we keep it as a placeholder. Aside from that
 ///    vanilla super role has some privileges that cannot be represented in picodata,
 ///    namely privileges on universe. This hole opens possibility for unwanted edge cases.
-/// 2) Only Session and Usage can be granted on Universe.
+/// 2) Only Login can be granted on Universe in picodata.
 /// Note that validation is not performed in Deserialize. We assume that for untrusted data
 /// the object is created via constructor. In other cases validation was already performed
 /// prior to serialization thus deserialization always creates a valid object.

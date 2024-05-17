@@ -1331,7 +1331,7 @@ fn reenterable_schema_change_request(
                 };
 
                 // For ALTER Login/NoLogin.
-                let grantor_id = session::euid()?;
+                let grantor_id = current_user;
                 let grantee_id = get_grantee_id(storage, name)?;
                 let object_type = SchemaObjectType::Universe;
                 let object_id = 0;
