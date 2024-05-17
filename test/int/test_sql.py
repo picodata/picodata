@@ -1738,20 +1738,34 @@ def test_sql_alter_login(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
+    # Create the owner of `USER`
+    owner_username = "OWNER_USER"
+    owner_password = "PA5sWORD"
+
+    acl = i1.sudo_sql(f"create user {owner_username} with password '{owner_password}'")
+    assert acl["row_count"] == 1
+
+    acl = i1.sudo_sql(f"grant create user to {owner_username}")
+    assert acl["row_count"] == 1
+
     username = "USER"
     password = "PA5sWORD"
     # Create user.
-    acl = i1.sudo_sql(f"create user {username} with password '{password}'")
+    acl = i1.sql(
+        f"create user {username} with password '{password}'",
+        user=owner_username,
+        password=owner_password,
+    )
     assert acl["row_count"] == 1
 
     # Alter user with LOGIN option - opertaion is idempotent.
-    acl = i1.sudo_sql(f""" alter user {username} with login """)
+    acl = i1.sudo_sql(f"alter user {username} with login")
     assert acl["row_count"] == 1
     # Alter user with NOLOGIN option.
-    acl = i1.sudo_sql(f""" alter user {username} with nologin """)
+    acl = i1.sudo_sql(f"alter user {username} with nologin")
     assert acl["row_count"] == 1
     # Alter user with NOLOGIN again - operation is idempotent.
-    acl = i1.sudo_sql(f""" alter user {username} with nologin """)
+    acl = i1.sudo_sql(f"alter user {username} with nologin")
     assert acl["row_count"] == 1
     # Login privilege is removed
     with pytest.raises(
@@ -1759,6 +1773,47 @@ def test_sql_alter_login(cluster: Cluster):
         match="User does not have login privilege",
     ):
         i1.sql("insert into t values(2);", user=username, password=password)
+
+    # Alter user with LOGIN option again - `USER` owner can also modify LOGIN privilege.
+    acl = i1.sql(
+        f"alter user {username} with login",
+        user=owner_username,
+        password=owner_password,
+    )
+    assert acl["row_count"] == 1
+
+    # Alter user with NOLOGIN option again - `USER` owner can also modify LOGIN privilege.
+    acl = i1.sql(
+        f"alter user {username} with nologin",
+        user=owner_username,
+        password=owner_password,
+    )
+    assert acl["row_count"] == 1
+
+    # Login privilege cannot be granted or removed by any user
+    # other than admin or user account owner
+    other_username = "OTHER_USER"
+    other_password = "PA5sWORD"
+    acl = i1.sudo_sql(f"create user {other_username} with password '{other_password}'")
+    assert acl["row_count"] == 1
+    with pytest.raises(
+        Exception,
+        match=f"AccessDenied: Grant Login from '{username}' is denied for {other_username}",
+    ):
+        acl = i1.sql(
+            f"alter user {username} with login",
+            user=other_username,
+            password=other_password,
+        )
+    with pytest.raises(
+        Exception,
+        match=f"AccessDenied: Revoke Login from '{username}' is denied for {other_username}",
+    ):
+        acl = i1.sql(
+            f"alter user {username} with nologin",
+            user=other_username,
+            password=other_password,
+        )
 
     # Login privilege cannot be removed from pico_service even by admin.
     with pytest.raises(
@@ -2170,7 +2225,7 @@ def test_sql_privileges(cluster: Cluster):
     username = "alice"
     alice_pwd = "Pa55sword"
 
-    # Create user with execute on universe privilege
+    # Create user
     acl = i1.sql(
         f"""
         create user "{username}" with password '{alice_pwd}'
@@ -2178,7 +2233,6 @@ def test_sql_privileges(cluster: Cluster):
     """
     )
     assert acl["row_count"] == 1
-    i1.eval(f""" pico.grant_privilege("{username}", "execute", "universe") """)
 
     # ------------------------
     # Check SQL read privilege
