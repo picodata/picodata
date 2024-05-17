@@ -352,26 +352,49 @@ fn access_check_grant_revoke(
         Some(object_id) => object_id,
     };
 
+    // Nobody should be able to revoke privileges from pico_service
+    // As it would break the cluster permanently.
+    if access == PrivType::Revoke && priv_def.grantee_id() == PICO_SERVICE_ID {
+        tarantool::set_error!(
+            tarantool::error::TarantoolErrorCode::AccessDenied,
+            "Revoke '{}' from '{}' is denied for all users",
+            priv_def.privilege(),
+            PICO_SERVICE_USER_NAME,
+        );
+        return Err(tarantool::error::TarantoolError::last().into());
+    }
+
     match priv_def.object_type() {
         PicoSchemaObjectType::Universe => {
-            // Only admin can grant on universe
-            if grantor_id != ADMIN_ID {
+            if priv_def.privilege() != PrivilegeType::Login {
+                // This assumption is used in the following checks
+                crate::warn_or_panic!(
+                    "Only Login privilege can be granted on Universe, got {}",
+                    priv_def.privilege()
+                );
                 return Err(make_access_denied(
                     access_name,
                     PicoSchemaObjectType::Universe,
-                    "",
+                    "Only Login privilege can be granted on Universe",
                     grantor.name,
                 ));
             }
 
-            // Even admin should not be able to revoke privileges from pico_service
-            // As it would break the cluster permanently.
-            if access == PrivType::Revoke && priv_def.grantee_id() == PICO_SERVICE_ID {
+            // Following checks are assuming that it's a grant or revoke of Login privilege
+
+            let target_sys_user = user_by_id(priv_def.grantee_id())?;
+            if target_sys_user.ty != UserMetadataKind::User {
+                return Err(make_no_such_user(&target_sys_user.name));
+            }
+
+            // Only owner or admin can grant login on user
+            if target_sys_user.owner_id != grantor_id && grantor_id != ADMIN_ID {
                 tarantool::set_error!(
                     tarantool::error::TarantoolErrorCode::AccessDenied,
-                    "Revoke '{}' from '{}' is denied for all users",
-                    priv_def.privilege(),
-                    PICO_SERVICE_USER_NAME,
+                    "{} Login from '{}' is denied for {}",
+                    access_name,
+                    target_sys_user.name,
+                    grantor.name
                 );
                 return Err(tarantool::error::TarantoolError::last().into());
             }
@@ -615,7 +638,7 @@ mod tests {
         access_control::{access_check_op, UserMetadataKind},
         schema::{
             auth_for_role_definition, Distribution, PrivilegeDef, PrivilegeType, SchemaObjectType,
-            UserDef, ADMIN_ID,
+            UserDef, ADMIN_ID, UNIVERSE_ID,
         },
         storage::{
             acl::{
@@ -1584,5 +1607,134 @@ mod tests {
                 ),
             );
         }
+    }
+
+    #[tarantool::test]
+    fn alter_user_login() {
+        let storage = Clusterwide::for_tests();
+
+        let owner_name = "test_owner";
+        let user_name = "test_user";
+
+        let owner_id = make_user(owner_name, None);
+        let user_id = make_user(user_name, Some(owner_id));
+
+        // User that is not an owner or admin cannot grant/revoke login on user
+        let e = access_check_acl(
+            &storage,
+            &Acl::GrantPrivilege {
+                priv_def: PrivilegeDef::new(
+                    PrivilegeType::Login,
+                    SchemaObjectType::Universe,
+                    UNIVERSE_ID,
+                    user_id,
+                    user_id,
+                    0,
+                )
+                .unwrap(),
+            },
+            user_id,
+        )
+        .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "box error: AccessDenied: Grant Login from '{user_name}' is denied for test_user"
+            )
+        );
+
+        let e = access_check_acl(
+            &storage,
+            &Acl::RevokePrivilege {
+                priv_def: PrivilegeDef::new(
+                    PrivilegeType::Login,
+                    SchemaObjectType::Universe,
+                    UNIVERSE_ID,
+                    user_id,
+                    user_id,
+                    0,
+                )
+                .unwrap(),
+                initiator: user_id,
+            },
+            user_id,
+        )
+        .unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            format!(
+                "box error: AccessDenied: Revoke Login from '{user_name}' is denied for test_user"
+            )
+        );
+
+        // Owner can grant/revoke login on user
+        access_check_acl(
+            &storage,
+            &Acl::GrantPrivilege {
+                priv_def: PrivilegeDef::new(
+                    PrivilegeType::Login,
+                    SchemaObjectType::Universe,
+                    UNIVERSE_ID,
+                    user_id,
+                    owner_id,
+                    0,
+                )
+                .unwrap(),
+            },
+            owner_id,
+        )
+        .unwrap();
+        access_check_acl(
+            &storage,
+            &Acl::RevokePrivilege {
+                priv_def: PrivilegeDef::new(
+                    PrivilegeType::Login,
+                    SchemaObjectType::Universe,
+                    UNIVERSE_ID,
+                    user_id,
+                    owner_id,
+                    0,
+                )
+                .unwrap(),
+                initiator: owner_id,
+            },
+            owner_id,
+        )
+        .unwrap();
+
+        // Admin can grant/revoke login on user
+        access_check_acl(
+            &storage,
+            &Acl::GrantPrivilege {
+                priv_def: PrivilegeDef::new(
+                    PrivilegeType::Login,
+                    SchemaObjectType::Universe,
+                    UNIVERSE_ID,
+                    user_id,
+                    ADMIN_ID,
+                    0,
+                )
+                .unwrap(),
+            },
+            ADMIN_ID,
+        )
+        .unwrap();
+        access_check_acl(
+            &storage,
+            &Acl::RevokePrivilege {
+                priv_def: PrivilegeDef::new(
+                    PrivilegeType::Login,
+                    SchemaObjectType::Universe,
+                    UNIVERSE_ID,
+                    user_id,
+                    ADMIN_ID,
+                    0,
+                )
+                .unwrap(),
+                initiator: ADMIN_ID,
+            },
+            ADMIN_ID,
+        )
+        .unwrap();
     }
 }
