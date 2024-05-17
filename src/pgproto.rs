@@ -1,8 +1,4 @@
-use self::{
-    client::PgClient,
-    error::PgResult,
-    tls::{TlsAcceptor, TlsConfig, TlsError},
-};
+use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::{address::Address, introspection::Introspection, tlog, traft::error::Error};
 use std::path::{Path, PathBuf};
 use stream::PgStream;
@@ -94,11 +90,6 @@ fn do_handle_client(
     Ok(())
 }
 
-fn new_tls_acceptor(data_dir: &Path) -> Result<TlsAcceptor, TlsError> {
-    let tls_config = TlsConfig::from_data_dir(data_dir)?;
-    TlsAcceptor::new(&tls_config)
-}
-
 /// Server execution context.
 pub struct Context {
     server: CoIOListener,
@@ -117,7 +108,7 @@ impl Context {
 
         let tls_acceptor = config
             .ssl()
-            .then(|| new_tls_acceptor(data_dir))
+            .then(|| TlsAcceptor::new_from_dir(data_dir))
             .transpose()
             .map_err(Error::invalid_configuration)?;
 

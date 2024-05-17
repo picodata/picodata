@@ -1,12 +1,6 @@
-use super::tls::TlsError;
 use pgwire::error::{ErrorInfo, PgWireError};
-use std::error;
-use std::io;
-use std::num::{ParseFloatError, ParseIntError};
-use std::str::ParseBoolError;
-use std::string::FromUtf8Error;
-use tarantool::error::BoxError;
-use tarantool::error::IntoBoxError;
+use std::{error, io};
+use tarantool::error::{BoxError, IntoBoxError};
 use thiserror::Error;
 
 pub type PgResult<T> = Result<T, PgError>;
@@ -26,67 +20,61 @@ pub enum PgError {
     #[error("authentication failed for user '{0}'")]
     InvalidPassword(String),
 
-    #[error("IO error: {0}")]
-    IoError(#[from] io::Error),
-
     // Server could not encode value into client's format.
     #[error("encoding error: {0}")]
     EncodingError(Box<dyn error::Error>),
 
+    // Server could not decode value recieved from client.
+    #[error("decoding error: {0}")]
+    DecodingError(#[from] DecodingError),
+
+    // Common error for postges protocol helpers.
     #[error("pgwire error: {0}")]
     PgWireError(#[from] PgWireError),
 
-    #[error("lua error: {0}")]
-    LuaError(#[from] tarantool::tlua::LuaError),
+    // This is picodata's main app error which incapsulates
+    // everything else, including sbroad and tarantool errors.
+    #[error("picodata error: {0}")]
+    PicodataError(#[from] crate::traft::error::Error),
 
-    #[error("json error: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    // Server could not decode value recieved from client.
-    #[error("{0}")]
-    DecodingError(#[from] DecodingError),
-
-    #[error("tls error: {0}")]
-    TlsError(#[from] TlsError),
-
-    #[error("sbroad error: {0}")]
-    SbroadError(#[from] sbroad::errors::SbroadError),
-
-    #[error("traft error: {0}")]
-    TraftError(Box<crate::traft::error::Error>),
-
-    #[error("tarantool error: {0}")]
-    TarantoolError(#[from] tarantool::error::Error),
-
-    #[error("encoding error: {0}")]
-    RmpSerdeEncode(#[from] rmp_serde::encode::Error),
+    // Generic IO error (TLS/SSL errors also go here).
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
 
     #[error("{0}")]
     Other(Box<dyn error::Error>),
+}
+
+impl From<sbroad::errors::SbroadError> for PgError {
+    #[inline(always)]
+    fn from(e: sbroad::errors::SbroadError) -> Self {
+        crate::traft::error::Error::from(e).into()
+    }
+}
+
+impl From<tarantool::error::Error> for PgError {
+    #[inline(always)]
+    fn from(e: tarantool::error::Error) -> Self {
+        crate::traft::error::Error::from(e).into()
+    }
 }
 
 #[derive(Error, Debug)]
 pub enum DecodingError {
     #[error("failed to decode int: {0}")]
-    ParseIntError(#[from] ParseIntError),
+    ParseIntError(#[from] std::num::ParseIntError),
 
     #[error("failed to decode float: {0}")]
-    ParseFloatError(#[from] ParseFloatError),
+    ParseFloatError(#[from] std::num::ParseFloatError),
 
     #[error("from utf8 error: {0}")]
-    FromUtf8Error(#[from] FromUtf8Error),
+    FromUtf8Error(#[from] std::string::FromUtf8Error),
 
     #[error("failed to decode bool: {0}")]
-    ParseBoolError(#[from] ParseBoolError),
+    ParseBoolError(#[from] std::str::ParseBoolError),
 
     #[error("decoding error: {0}")]
     Other(Box<dyn error::Error>),
-}
-
-impl From<crate::traft::error::Error> for PgError {
-    fn from(value: crate::traft::error::Error) -> Self {
-        PgError::TraftError(value.into())
-    }
 }
 
 /// Build error info from PgError.

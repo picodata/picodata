@@ -150,26 +150,18 @@ impl<S: io::Read + io::Write> PgStream<S> {
 
 impl<S: io::Read + io::Write> PgStream<S> {
     pub fn into_secure(self, acceptor: &TlsAcceptor) -> PgResult<PgStream<S>> {
-        let Self {
-            socket,
-            ibuf,
-            obuf,
-            startup_processed,
-        } = self;
+        let PgSocket::Plain(socket) = self.socket else {
+            return Err(PgError::ProtocolViolation(
+                "BUG: cannot upgrade TLS stream".into(),
+            ));
+        };
 
-        if let PgSocket::Plain(socket) = socket {
-            let secure_socket = acceptor.accept(socket)?;
-            Ok(PgStream {
-                socket: PgSocket::Secure(secure_socket),
-                ibuf,
-                obuf,
-                startup_processed,
-            })
-        } else {
-            // this should be checked during the handshake
-            Err(PgError::ProtocolViolation(
-                "BUG: stream is already secured".into(),
-            ))
-        }
+        let secure_socket = acceptor.accept(socket).map_err(io::Error::other)?;
+        let stream = PgStream {
+            socket: PgSocket::Secure(secure_socket),
+            ..self
+        };
+
+        Ok(stream)
     }
 }
