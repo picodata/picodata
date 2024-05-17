@@ -1754,7 +1754,7 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::remove_plugin(&name, timeout)
+                plugin::remove_plugin(&name, timeout, false)
             })
         },
     );

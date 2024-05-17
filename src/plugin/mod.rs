@@ -1,4 +1,5 @@
 pub mod manager;
+pub mod migration;
 pub mod topology;
 
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
@@ -24,7 +25,7 @@ use crate::traft::node::Node;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
-use crate::{cas, error_injection, traft};
+use crate::{cas, error_injection, tlog, traft};
 
 const DEFAULT_PLUGIN_DIR: &'static str = "/usr/share/picodata/";
 
@@ -80,6 +81,8 @@ pub enum PluginError {
     TopologyError(String),
     #[error("Found more than one service factory for `{0}` ver. `{1}`")]
     ServiceCollision(String, String),
+    #[error(transparent)]
+    Migration(#[from] migration::Error),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -122,6 +125,9 @@ pub struct Manifest {
     pub version: String,
     /// Plugin services
     services: Vec<ServiceManifest>,
+    /// Plugin migration list.
+    #[serde(default)]
+    pub migration: Vec<String>,
 }
 
 impl Manifest {
@@ -160,6 +166,8 @@ impl Manifest {
                 .collect(),
             version: self.version.to_string(),
             description: self.description.to_string(),
+            migration_list: self.migration.clone(),
+            migration_progress: -1,
         }
     }
 
@@ -173,7 +181,6 @@ impl Manifest {
                 tiers: vec![],
                 configuration: srv.default_configuration.clone(),
                 version: self.version.to_string(),
-                schema_version: 0,
                 description: srv.description.to_string(),
             })
             .collect()
@@ -412,7 +419,7 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
 
     let dml = Dml::replace(
         ClusterwideTable::Property,
-        &(&PropertyName::PluginInstall, manifest),
+        &(&PropertyName::PluginInstall, &manifest),
         effective_user_id(),
     )?;
 
@@ -429,8 +436,20 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
         index = node.read_index(deadline.duration_since(Instant::now()))?;
     }
 
-    if !node.storage.plugin.contains(name)? {
+    let Some(plugin) = node.storage.plugin.get(name)? else {
         return Err(PluginError::InstallationAborted.into());
+    };
+
+    if error_injection::is_enabled("PLUGIN_MIGRATION_CLIENT_DOWN") {
+        return Ok(());
+    }
+
+    let migration_result = migration::up(&plugin.name, &manifest.migration, deadline);
+    if let Err(e) = migration_result {
+        if let Err(err) = remove_plugin(&plugin.name, Duration::from_secs(2), true) {
+            tlog!(Error, "rollback plugin installation error: {err}");
+        }
+        return Err(e.into());
     }
 
     Ok(())
@@ -550,10 +569,17 @@ pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()>
 }
 
 /// Remove plugin: clear records from `_pico_plugin` and `_pico_service` system tables.
-pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> {
+///
+/// # Arguments
+///
+/// * `plugin_name`: plugin name to remove
+/// * `timeout`: operation timeout
+/// * `force`: whether true if plugin should be removed without DOWN migration, false elsewhere
+pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft::Result<()> {
     let deadline = Instant::now().saturating_add(timeout);
 
     let node = node::global()?;
+    let maybe_plugin = node.storage.plugin.get(plugin_name)?;
     // we check this condition on any instance, this will allow
     // to return an error in most situations, but there are still
     // situations when instance is a follower and has not yet received up-to-date
@@ -561,8 +587,7 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> 
     // the error will not be returned to client and raft op
     // must be applied on instances correctly (op should ignore removing if
     // plugin exists and enabled)
-    let plugin_exists_and_enabled =
-        node.storage.plugin.get(plugin_name)?.map(|p| p.enabled) == Some(true);
+    let plugin_exists_and_enabled = maybe_plugin.as_ref().map(|p| p.enabled) == Some(true);
     if plugin_exists_and_enabled && !error_injection::is_enabled("PLUGIN_EXIST_AND_ENABLED") {
         return Err(RemoveOfEnabledPlugin.into());
     }
@@ -579,8 +604,15 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> 
         ],
         None,
         deadline,
-    )
-    .map(|_| ())
+    )?;
+
+    if !force {
+        if let Some(plugin) = maybe_plugin {
+            migration::down(&plugin.name, &plugin.migration_list);
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]

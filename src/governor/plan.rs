@@ -430,6 +430,10 @@ pub(super) fn action_plan<'i>(
             Some(plugin) if plugin.enabled => {
                 // plugin already exists - do nothing
             }
+            Some(plugin) if plugin.migration_list.len() as i32 - 1 != plugin.migration_progress => {
+                // migration is partially applied - do nothing
+                tlog!(Error, "Trying to enable a non-fully installed plugin (migration is partially applied)");
+            }
             None => {
                 // plugin isn't installed - do nothing
                 tlog!(Error, "Trying to enable a non-installed plugin");

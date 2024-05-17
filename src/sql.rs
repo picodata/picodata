@@ -282,6 +282,10 @@ pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
 pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
+    dispatch_sql_query(encoded_params)
+}
+
+pub fn dispatch_sql_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
     let mut params = PatternWithParams::try_from(encoded_params)?;
     let id = params.clone_id();
     let mut ctx = params.extract_context();

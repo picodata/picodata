@@ -433,6 +433,10 @@ pub struct PluginDef {
     pub version: String,
     /// Plugin description
     pub description: String,
+    /// List of migration files.
+    pub migration_list: Vec<String>,
+    /// Number of a last migration file (-1 if no migration files applied).
+    pub migration_progress: i32,
 }
 
 impl Encode for PluginDef {}
@@ -440,6 +444,8 @@ impl Encode for PluginDef {}
 impl PluginDef {
     /// Index (0-based) of field "enable" in the _pico_plugin table format.
     pub const FIELD_ENABLE: usize = 1;
+    /// Index (0-based) of field "migration_progress" in the _pico_plugin table format.
+    pub const FIELD_MIGRATION_PROGRESS: usize = 6;
 
     /// Format of the _pico_plugin global table.
     #[inline(always)]
@@ -451,6 +457,8 @@ impl PluginDef {
             Field::from(("services", FieldType::Array)),
             Field::from(("version", FieldType::String)),
             Field::from(("description", FieldType::String)),
+            Field::from(("migration_list", FieldType::Array)),
+            Field::from(("migration_progress", FieldType::Integer)),
         ]
     }
 
@@ -462,6 +470,8 @@ impl PluginDef {
             services: vec!["service_1".to_string(), "service_2".to_string()],
             version: "0.0.1".into(),
             description: "description".to_string(),
+            migration_list: vec![],
+            migration_progress: -1,
         }
     }
 }
@@ -484,9 +494,6 @@ pub struct ServiceDef {
     pub tiers: Vec<String>,
     /// Current service configuration.
     pub configuration: rmpv::Value,
-    /// Schema version.
-    // FIXME: for future improvements
-    pub schema_version: u64,
     /// Plugin description
     pub description: String,
 }
@@ -504,7 +511,6 @@ impl ServiceDef {
             Field::from(("version", FieldType::String)),
             Field::from(("tiers", FieldType::Array)),
             Field::from(("configuration", FieldType::Any)),
-            Field::from(("schema_version", FieldType::Unsigned)),
             Field::from(("description", FieldType::String)),
         ]
     }
@@ -517,7 +523,6 @@ impl ServiceDef {
             version: "0.0.1".into(),
             tiers: vec!["t1".to_string(), "t2".to_string()],
             configuration: rmpv::Value::Boolean(false),
-            schema_version: 1,
             description: "description".to_string(),
         }
     }
@@ -2624,6 +2629,8 @@ mod test {
         let tuple_data = p.to_tuple_buffer().unwrap();
         let format = PluginDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PluginDef::format");
+        assert_eq!(format[PluginDef::FIELD_ENABLE].name, "enabled");
+        assert_eq!(format[PluginDef::FIELD_MIGRATION_PROGRESS].name, "migration_progress");
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import pytest
 import time
-from conftest import Cluster, ReturnError, retrying, Instance
+from conftest import Cluster, ReturnError, retrying, Instance, TarantoolError
+from typing import Any, Optional
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -13,6 +14,8 @@ _PLUGIN_SMALL = "testplug_small"
 _PLUGIN_SMALL_SERVICES = ["testservice_1"]
 _PLUGIN_SMALL_SERVICES_SVC2 = ["testservice_2"]
 _DEFAULT_TIER = "default"
+_PLUGIN_WITH_MIGRATION = "testplug_w_migration"
+_PLUGIN_WITH_MIGRATION_SERVICES = ["testservice_2"]
 
 
 # ---------------------------------- Test helper classes {-----------------------------------------
@@ -33,6 +36,8 @@ class PluginReflection:
     installed: bool = False
     # if True - assert_synced checks that plugin are enabled
     enabled: bool = False
+    # plugin data [table -> tuples] map
+    data: dict[str, Optional[list[Any]]] = {}
 
     def __init__(self, name: str, services: list[str], *instances):
         """Create reflection with empty topology"""
@@ -68,6 +73,10 @@ class PluginReflection:
         self.instances.append(i)
         return self
 
+    def set_data(self, data: dict[str, Optional[list[Any]]]):
+        self.data = data
+        return self
+
     def assert_synced(self):
         """Assert that plugin reflection and plugin state in cluster are synchronized.
         This means that system tables `_pico_plugin`, `_pico_service` and `_pico_service_route`
@@ -101,6 +110,20 @@ class PluginReflection:
                     self.name,
                 )
                 assert routes == expected_services
+
+    def assert_data_synced(self):
+        for table in self.data:
+            data = []
+
+            for i in self.instances:
+                if self.data[table] is None:
+                    with pytest.raises(TarantoolError, match="attempt to index field"):
+                        i.eval(f"return box.space.{table}:select()")
+                else:
+                    data += i.eval(f"return box.space.{table}:select()")
+
+            if self.data[table] is not None:
+                assert data.sort() == self.data[table].sort()
 
     @staticmethod
     def assert_cb_called(service, callback, called_times, *instances):
@@ -559,6 +582,101 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 2, i1, i2)
 
 
+# -------------------------- migration tests -------------------------------------
+
+
+_DATA = {
+    "AUTHOR": [
+        [1, "Alexander Pushkin"],
+        [2, "Alexander Blok"],
+    ],
+    "BOOK": [
+        [1, "Ruslan and Ludmila"],
+        [2, "The Tale of Tsar Saltan"],
+        [3, "The Twelve"],
+        [4, "The Lady Unknown"],
+    ],
+}
+
+_NO_DATA: dict[str, None] = {
+    "AUTHOR": None,
+    "BOOK": None,
+}
+
+
+def test_migration_on_plugin_install(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    expected_state = PluginReflection(
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+    )
+
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    expected_state = expected_state.install(True).set_data(_DATA)
+    expected_state.assert_synced()
+    expected_state.assert_data_synced()
+
+    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    expected_state = expected_state.install(False).set_data(_NO_DATA)
+    expected_state.assert_synced()
+    expected_state.assert_data_synced()
+
+
+def test_migration_file_invalid_ext(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    expected_state = PluginReflection(
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+    )
+
+    # the first file in a migration list has an invalid extension
+    i1.call("pico._inject_error", "PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT", True)
+
+    with pytest.raises(ReturnError, match="invalid extension"):
+        i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    expected_state = expected_state.install(False)
+    expected_state.assert_synced()
+
+
+def test_migration_apply_err(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    expected_state = PluginReflection(
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+    )
+
+    # second file in a migration list applied with error
+    i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
+
+    with pytest.raises(ReturnError, match="Error while apply UP command"):
+        i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    expected_state = expected_state.install(False).set_data(_NO_DATA)
+    expected_state.assert_synced()
+    expected_state.assert_data_synced()
+
+
+def test_migration_client_down(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    expected_state = PluginReflection(
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+    )
+
+    # client down while applied migration
+    i1.call("pico._inject_error", "PLUGIN_MIGRATION_CLIENT_DOWN", True)
+
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    expected_state = expected_state.install(True)
+    expected_state.assert_synced()
+
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        i1.call("pico.enable_plugin", _PLUGIN_WITH_MIGRATION)
+
+    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    expected_state = expected_state.install(False).set_data(_NO_DATA)
+    expected_state.assert_synced()
+    expected_state.assert_data_synced()
+
+
+# -------------------------- configuration tests -------------------------------------
+
+
 def test_config_validation(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     plugin_ref = PluginReflection.default(i1, i2)
@@ -705,6 +823,9 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
         )
     )
     plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
+
+
+# -------------------------- leader change test -----------------------------------
 
 
 def test_on_leader_change(cluster: Cluster):

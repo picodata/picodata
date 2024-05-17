@@ -1713,6 +1713,7 @@ def binary_path(cargo_build: None) -> str:
         f"{test_dir}/testplug/testplug_broken_manifest_3/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_small/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_small_svc2/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_w_migration/libtestplug.{ext}",
     ]
     for destination in destinations:
         eprint(f"Copying '{source}' to '{destination}'")

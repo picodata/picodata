@@ -1,0 +1,9 @@
+-- pico.UP
+CREATE TABLE book (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id);
+INSERT INTO book (id, name) VALUES (1, 'Ruslan and Ludmila');
+INSERT INTO book (id, name) VALUES (2, 'The Tale of Tsar Saltan');
+INSERT INTO book (id, name) VALUES (3, 'The Twelve');
+INSERT INTO book (id, name) VALUES (4, 'The Lady Unknown');
+
+-- pico.DOWN
+DROP TABLE book;
