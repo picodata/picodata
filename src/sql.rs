@@ -83,7 +83,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
         REL_CAPACITY,
         Box::new(filter),
     );
-    let top_id = plan.get_top().map_err(Error::from)?;
+    let top_id = plan.get_top()?;
     plan_traversal.populate_nodes(top_id);
     let nodes = plan_traversal.take_nodes();
 
@@ -95,7 +95,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
     // module and can't get space metadata without _space table read permissions.
     with_su(ADMIN_ID, || -> traft::Result<()> {
         for (_, node_id) in nodes {
-            let rel_node = plan.get_relation_node(node_id).map_err(Error::from)?;
+            let rel_node = plan.get_relation_node(node_id)?;
             let (relation, privileges) = match rel_node {
                 Relational::ScanRelation { relation, .. } => (relation, Privileges::Read),
                 Relational::Insert { relation, .. } => (relation, Privileges::Write),
@@ -117,7 +117,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
                 _ => unreachable!("internal bug on the table privilege check"),
             };
             let space_name = normalize_name_for_space_api(relation);
-            let space = space_by_name(&space_name).map_err(Error::from)?;
+            let space = space_by_name(&space_name)?;
             space_privs.push((space.id(), privileges))
         }
         Ok(())
@@ -125,14 +125,14 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
     for (space_id, priviledges) in space_privs {
         match priviledges {
             Privileges::Read => {
-                box_access_check_space(space_id, PrivType::Read).map_err(Error::from)?;
+                box_access_check_space(space_id, PrivType::Read)?;
             }
             Privileges::Write => {
-                box_access_check_space(space_id, PrivType::Write).map_err(Error::from)?;
+                box_access_check_space(space_id, PrivType::Write)?;
             }
             Privileges::ReadWrite => {
-                box_access_check_space(space_id, PrivType::Read).map_err(Error::from)?;
-                box_access_check_space(space_id, PrivType::Write).map_err(Error::from)?;
+                box_access_check_space(space_id, PrivType::Read)?;
+                box_access_check_space(space_id, PrivType::Write)?;
             }
         }
     }
@@ -141,18 +141,14 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
 
 fn routine_by_name(name: &str) -> traft::Result<RoutineDef> {
     // Switch to admin to get procedure definition.
-    with_su(ADMIN_ID, || -> traft::Result<RoutineDef> {
+    with_su(ADMIN_ID, || {
         let storage = &node::global()?.storage;
-        let routine = storage
-            .routines
-            .by_name(name)
-            .map_err(Error::from)?
-            .ok_or_else(|| {
-                Error::Sbroad(SbroadError::Invalid(
-                    Entity::Routine,
-                    Some(format_smolstr!("routine {name} not found")),
-                ))
-            })?;
+        let routine = storage.routines.by_name(name)?.ok_or_else(|| {
+            Error::Sbroad(SbroadError::Invalid(
+                Entity::Routine,
+                Some(format_smolstr!("routine {name} not found")),
+            ))
+        })?;
         Ok(routine)
     })?
 }
@@ -160,7 +156,7 @@ fn routine_by_name(name: &str) -> traft::Result<RoutineDef> {
 fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
     // At the moment we don't support nested procedure calls, so we can safely
     // assume that the top node is the only procedure in the plan.
-    let top_id = plan.get_top().map_err(Error::from)?;
+    let top_id = plan.get_top()?;
     let Ok(Block::Procedure { name, .. }) = plan.get_block_node(top_id) else {
         // There are no procedures in the plan tree: nothing to check.
         return Ok(());
@@ -178,22 +174,23 @@ fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
 }
 
 pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
-    if query.is_ddl().map_err(Error::from)? || query.is_acl().map_err(Error::from)? {
+    if query.is_ddl()? || query.is_acl()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
-        let top_id = ir_plan.get_top().map_err(Error::from)?;
+        let top_id = ir_plan.get_top()?;
         let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
 
         // XXX: add Node::take_node method to simplify the following 2 lines
-        let ir_node = ir_plan_mut.get_mut_node(top_id).map_err(Error::from)?;
+        let ir_node = ir_plan_mut.get_mut_node(top_id)?;
         let ir_node = std::mem::replace(ir_node, IrNode::Parameter);
         let node = node::global()?;
         let result = reenterable_schema_change_request(node, ir_node)?;
-        Tuple::new(&(result,)).map_err(Error::from)
-    } else if query.is_block().map_err(Error::from)? {
+        let tuple = Tuple::new(&(result,))?;
+        Ok(tuple)
+    } else if query.is_block()? {
         check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
         let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
-        let top_id = ir_plan.get_top().map_err(Error::from)?;
-        let code_block = ir_plan.get_mut_block_node(top_id).map_err(Error::from)?;
+        let top_id = ir_plan.get_top()?;
+        let code_block = ir_plan.get_mut_block_node(top_id)?;
         let code_block = std::mem::take(code_block);
         match code_block {
             Block::Procedure { name, values } => {
@@ -215,7 +212,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 let pattern = routine.body;
                 let mut params: Vec<Value> = Vec::with_capacity(values.len());
                 for (pos, value_id) in values.into_iter().enumerate() {
-                    let constant_node = ir_plan.get_mut_node(value_id).map_err(Error::from)?;
+                    let constant_node = ir_plan.get_mut_node(value_id)?;
                     let constant_node = std::mem::replace(constant_node, IrNode::Parameter);
                     let value = match constant_node {
                         IrNode::Expression(Expression::Constant { value, .. }) => value,
@@ -229,7 +226,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                     // We have already checked the amount of passed values, so we can
                     // safely assume that the parameter exists at the given position.
                     let param_def = &routine.params[pos];
-                    let param_type = Type::try_from(param_def.r#type).map_err(Error::from)?;
+                    let param_type = Type::try_from(param_def.r#type)?;
                     // Check that the value has a correct type.
                     if !value.get_type().is_castable_to(&param_type) {
                         return Err(Error::Sbroad(SbroadError::Invalid(
@@ -243,11 +240,8 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                     }
                     params.push(value);
                 }
-                let runtime = RouterRuntime::new().map_err(Error::from)?;
-                let mut stmt_query =
-                    with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
-                        Query::new(&runtime, &pattern, params).map_err(Error::from)
-                    })??;
+                let runtime = RouterRuntime::new()?;
+                let mut stmt_query = with_su(ADMIN_ID, || Query::new(&runtime, &pattern, params))??;
                 // Take options from the original query.
                 let options = std::mem::take(&mut ir_plan.raw_options);
                 let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
@@ -288,7 +282,7 @@ pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
 pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
-    let mut params = PatternWithParams::try_from(encoded_params).map_err(Error::from)?;
+    let mut params = PatternWithParams::try_from(encoded_params)?;
     let id = params.clone_id();
     let mut ctx = params.extract_context();
     let mut tracer_kind = TracerKind::default();
@@ -300,17 +294,14 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
     }
 
     let dispatch = || {
-        let runtime = RouterRuntime::new().map_err(Error::from)?;
-        let build_query =
-            || Query::new(&runtime, &params.pattern, params.params).map_err(Error::from);
-
-        let query = with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
-            build_query()
+        let runtime = RouterRuntime::new()?;
+        let query = with_su(ADMIN_ID, || {
+            Query::new(&runtime, &params.pattern, params.params)
         })??;
         dispatch(query)
     };
 
-    query_span::<Result<Tuple, Error>, _>(
+    query_span(
         "\"api.router.dispatch\"",
         &id,
         tracer_kind.get_tracer(),
@@ -1355,7 +1346,7 @@ pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
 
     let tracing_meta = std::mem::take(&mut required.tracing_meta);
     let mut exec = || {
-        let runtime = StorageRuntime::new().map_err(Error::from)?;
+        let runtime = StorageRuntime::new()?;
         match runtime.execute_plan(&mut required, &mut raw_optional) {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
@@ -1395,7 +1386,7 @@ pub fn execute(raw: &RawBytes) -> traft::Result<Tuple> {
         };
 
         let tracer = kind.get_tracer();
-        query_span::<Result<Tuple, Error>, _>(
+        query_span(
             "\"api.storage.execute\"",
             &meta.trace_id,
             tracer,
