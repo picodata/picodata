@@ -8,6 +8,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::error::Error;
 use std::str::{self, FromStr};
 use tarantool::decimal::Decimal;
+use tarantool::uuid::Uuid;
 
 pub fn type_from_name(name: &str) -> PgResult<Type> {
     match name {
@@ -16,6 +17,7 @@ pub fn type_from_name(name: &str) -> PgResult<Type> {
         "boolean" => Ok(Type::BOOL),
         "double" => Ok(Type::FLOAT8),
         "decimal" => Ok(Type::NUMERIC),
+        "uuid" => Ok(Type::UUID),
         "any" => Ok(Type::ANY),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{name}\'"
@@ -75,6 +77,10 @@ impl PgValue {
         Self(Value::Decimal(value))
     }
 
+    fn uuid(value: Uuid) -> Self {
+        Self(Value::Uuid(value))
+    }
+
     fn null() -> Self {
         Self(Value::Null)
     }
@@ -111,6 +117,11 @@ impl TryFrom<rmpv::Value> for PgValue {
                 let decimal = deserialize_rmpv_ext(&value).map_err(EncodingError::new)?;
                 Ok(PgValue::decimal(decimal))
             }
+            rmpv::Value::Ext(2, _data) => {
+                let uuid = deserialize_rmpv_ext(&value).map_err(EncodingError::new)?;
+                Ok(PgValue::uuid(uuid))
+            }
+
             value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
         }
     }
@@ -137,24 +148,21 @@ fn decode_text_as_bool(s: &str) -> PgResult<bool> {
     }
 }
 
-fn bool_to_sql_text(val: bool, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+fn write_bool_as_text(val: bool, buf: &mut BytesMut) -> IsNull {
     // There are many representations of bool in text, but some connectors do not support all of them,
     // for instance, pg8000 doesn't recognize "true"/"false" as valid boolean values.
     // It seems that "t"/"f" variants are likely to be supported, because they are more efficient and
     // at least they work with psql, psycopg and pg8000.
     buf.put_u8(if val { b't' } else { b'f' });
-    Ok(IsNull::No)
+    IsNull::No
 }
 
-fn decimal_to_sql_text(
-    val: &Decimal,
-    buf: &mut BytesMut,
-) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+fn write_decimal_as_text(val: &Decimal, buf: &mut BytesMut) -> IsNull {
     buf.put_slice(val.to_string().as_bytes());
-    Ok(IsNull::No)
+    IsNull::No
 }
 
-fn decimal_to_sql_binary(
+fn write_decimal_as_bin(
     val: &Decimal,
     buf: &mut BytesMut,
 ) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
@@ -175,14 +183,34 @@ fn decode_decimal_binary(bytes: &Bytes) -> PgResult<Decimal> {
     decode_text_as_decimal(&str)
 }
 
+fn write_uuid_as_text(val: &Uuid, buf: &mut BytesMut) -> IsNull {
+    buf.put_slice(val.to_string().as_bytes());
+    IsNull::No
+}
+
+fn write_uuid_as_bin(
+    val: &Uuid,
+    buf: &mut BytesMut,
+) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
+    let uuid = val.into_inner();
+    uuid.to_sql(&Type::UUID, buf)
+}
+
+fn decode_uuid_binary(bytes: &Bytes) -> PgResult<Uuid> {
+    let uuid = uuid::Uuid::from_sql(&Type::UUID, bytes);
+    let uuid = uuid.map_err(DecodingError::new)?;
+    Ok(Uuid::from_inner(uuid))
+}
+
 impl PgValue {
     fn encode_text(&self, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
         match &self.0 {
-            Value::Boolean(val) => bool_to_sql_text(*val, buf),
             Value::Integer(number) => number.to_sql_text(&Type::INT8, buf),
             Value::Double(double) => double.value.to_sql_text(&Type::FLOAT8, buf),
             Value::String(string) => string.to_sql_text(&Type::TEXT, buf),
-            Value::Decimal(decimal) => decimal_to_sql_text(decimal, buf),
+            Value::Boolean(val) => Ok(write_bool_as_text(*val, buf)),
+            Value::Decimal(decimal) => Ok(write_decimal_as_text(decimal, buf)),
+            Value::Uuid(uuid) => Ok(write_uuid_as_text(uuid, buf)),
             Value::Null => Ok(IsNull::Yes),
             value => Err(format!("unsupported value: {value:?}"))?,
         }
@@ -194,7 +222,8 @@ impl PgValue {
             Value::Integer(number) => number.to_sql(&Type::INT8, buf),
             Value::Double(double) => double.value.to_sql(&Type::FLOAT8, buf),
             Value::String(string) => string.to_sql(&Type::TEXT, buf),
-            Value::Decimal(decimal) => decimal_to_sql_binary(decimal, buf),
+            Value::Decimal(decimal) => write_decimal_as_bin(decimal, buf),
+            Value::Uuid(uuid) => write_uuid_as_bin(uuid, buf),
             Value::Null => Ok(IsNull::Yes),
             value => Err(format!("unsupported value: {value:?}"))?,
         }
@@ -230,6 +259,7 @@ impl PgValue {
             Type::TEXT => PgValue::text(s),
             Type::BOOL => PgValue::boolean(decode_text_as_bool(&s.to_lowercase())?),
             Type::NUMERIC => PgValue::decimal(decode_text_as_decimal(&s)?),
+            Type::UUID => PgValue::uuid(Uuid::from_str(&s).map_err(DecodingError::new)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"
@@ -256,6 +286,7 @@ impl PgValue {
             Type::TEXT => PgValue::text(do_decode_binary(&ty, bytes)?),
             Type::BOOL => PgValue::boolean(do_decode_binary(&ty, bytes)?),
             Type::NUMERIC => PgValue::decimal(decode_decimal_binary(bytes)?),
+            Type::UUID => PgValue::uuid(decode_uuid_binary(bytes)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"

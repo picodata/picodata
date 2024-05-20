@@ -223,7 +223,7 @@ impl Vshard for StorageRuntime {
             let (pattern_with_params, _tmp_spaces) = sub_plan.to_sql(
                 &nodes,
                 &Buckets::All,
-                &uuid::Uuid::new_v4().as_simple().to_string(),
+                &uuid::Uuid::new_v4().to_simple().to_string(),
             )?;
             prepare_and_read(
                 self,
@@ -237,7 +237,7 @@ impl Vshard for StorageRuntime {
             let (pattern_with_params, _tmp_spaces) = sub_plan.to_sql(
                 &nodes,
                 &Buckets::All,
-                &uuid::Uuid::new_v4().as_simple().to_string(),
+                &uuid::Uuid::new_v4().to_simple().to_string(),
             )?;
             read_unprepared(
                 &pattern_with_params.pattern,

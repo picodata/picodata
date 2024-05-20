@@ -370,7 +370,7 @@ pub fn instance_uuid(instance_id: &str) -> String {
     static mut NAMESPACE_INSTANCE_UUID: Option<Uuid> = None;
     let ns = unsafe { NAMESPACE_INSTANCE_UUID.get_or_insert_with(|| uuid_v3("INSTANCE_UUID")) };
     let uuid = Uuid::new_v3(ns, instance_id.as_bytes());
-    uuid.hyphenated().to_string()
+    uuid.to_hyphenated().to_string()
 }
 
 /// Generate UUID for a replicaset from `replicaset_id` (String).
@@ -379,7 +379,7 @@ pub fn replicaset_uuid(replicaset_id: &str) -> String {
     static mut NAMESPACE_REPLICASET_UUID: Option<Uuid> = None;
     let ns = unsafe { NAMESPACE_REPLICASET_UUID.get_or_insert_with(|| uuid_v3("REPLICASET_UUID")) };
     let uuid = Uuid::new_v3(ns, replicaset_id.as_bytes());
-    uuid.hyphenated().to_string()
+    uuid.to_hyphenated().to_string()
 }
 
 #[inline(always)]
