@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error, fmt};
+use std::{collections::HashMap, error::Error};
 
 use ::tarantool::net_box::{Conn, ConnOptions, Options};
 use ::tarantool::tuple::Tuple;
@@ -15,17 +15,6 @@ use crate::util::Uppercase;
 
 const DEFAULT_TIMEOUT: u64 = 60;
 const PICO_USER: &'static str = "pico_service";
-
-#[derive(Debug, Serialize)]
-struct HttpError(String);
-
-impl fmt::Display for HttpError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Error for HttpError {}
 
 /// Struct for box.slab.info() result
 #[derive(Deserialize)]

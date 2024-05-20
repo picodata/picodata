@@ -1,13 +1,15 @@
 use crate::tlog;
-use std::collections::HashSet;
+use std::{collections::HashSet, ptr};
 
 static mut INJECTED_ERRORS: Option<HashSet<String>> = None;
 
 #[inline(always)]
 pub fn enable(error: &str, enable: bool) {
     // SAFETY: safe as long as only called from tx thread
-    let injected_errors = unsafe { &mut INJECTED_ERRORS };
-    let injected_errors = injected_errors.get_or_insert_with(Default::default);
+    let injected_errors = unsafe { ptr::addr_of_mut!(INJECTED_ERRORS).as_mut() }
+        .unwrap()
+        .get_or_insert_with(Default::default);
+
     if enable {
         injected_errors.insert(error.into());
         tlog!(Info, "ERROR INJECTION '{error}': fused");
@@ -20,10 +22,10 @@ pub fn enable(error: &str, enable: bool) {
 #[inline(always)]
 pub fn is_enabled(error: &str) -> bool {
     // SAFETY: safe as long as only called from tx thread
-    let Some(injected_errors) = (unsafe { &INJECTED_ERRORS }) else {
-        return false;
-    };
-    injected_errors.contains(error)
+    match unsafe { ptr::addr_of!(INJECTED_ERRORS).as_ref() }.unwrap() {
+        Some(injected_errors) => injected_errors.contains(error),
+        None => false,
+    }
 }
 
 #[cfg(not(feature = "error_injection"))]

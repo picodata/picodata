@@ -1,6 +1,6 @@
 use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use std::{collections::HashMap, ptr};
 
 static mut LOG_LEVEL: SayLevel = SayLevel::Info;
 
@@ -48,7 +48,11 @@ pub fn clear_highlight() {
 
 #[inline]
 pub fn highlight_key(key: impl Into<String> + AsRef<str>, color: Option<Color>) {
-    let map = unsafe { &mut HIGHLIGHT }.get_or_insert_with(HashMap::new);
+    // SAFETY: safe as long as only called from tx thread
+    let map = unsafe { ptr::addr_of_mut!(HIGHLIGHT).as_mut() }
+        .unwrap()
+        .get_or_insert_with(HashMap::new);
+
     if let Some(color) = color {
         map.insert(key.into(), color);
     } else {
