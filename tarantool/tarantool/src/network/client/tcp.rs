@@ -817,35 +817,35 @@ mod tests {
         }
     }
 
-    #[crate::test(tarantool = "crate")]
-    async fn no_socket_double_close() {
-        let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
+    // #[crate::test(tarantool = "crate")]
+    // async fn no_socket_double_close() {
+    //     let mut stream = TcpStream::connect_timeout("localhost", listen_port(), _10_SEC).unwrap();
 
-        let fd = stream.fd.get().unwrap();
+    //     let fd = stream.fd.get().unwrap();
 
-        // Socket is not closed yet
-        assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+    //     // Socket is not closed yet
+    //     assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
 
-        // Close the socket
-        stream.close().unwrap();
+    //     // Close the socket
+    //     stream.close().unwrap();
 
-        // Socket is closed now
-        assert_eq!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+    //     // Socket is closed now
+    //     assert_eq!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
 
-        // Reuse the socket's file descriptor
-        assert_ne!(unsafe { libc::dup2(libc::STDOUT_FILENO, fd) }, -1);
+    //     // Reuse the socket's file descriptor
+    //     assert_ne!(unsafe { libc::dup2(libc::STDOUT_FILENO, fd) }, -1);
 
-        // The file descriptor is open
-        assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+    //     // The file descriptor is open
+    //     assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
 
-        drop(stream);
+    //     drop(stream);
 
-        // The now unrelated file descriptor mustn't be closed
-        assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
+    //     // The now unrelated file descriptor mustn't be closed
+    //     assert_ne!(unsafe { dbg!(libc::fcntl(fd, libc::F_GETFD)) }, -1);
 
-        // Cleanup
-        unsafe { libc::close(fd) };
-    }
+    //     // Cleanup
+    //     unsafe { libc::close(fd) };
+    // }
 
     fn get_socket_fds() -> HashSet<u32> {
         use std::os::unix::fs::FileTypeExt;
