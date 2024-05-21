@@ -20,6 +20,7 @@ box.cfg{
     listen = 'localhost:0',
     wal_mode = 'none',
     memtx_dir = tmpdir,
+    wal_dir = tmpdir,
 }
 
 log.info("version: " .. box.info.version)
