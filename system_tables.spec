@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.3.0-110-g6a39a360`.
+Описание соответствует версии Picodata `24.3.0-191-g5ea8e375`.
 
 ### _pico_table
 
@@ -123,6 +123,7 @@
 
 * `name`: (_string_)
 * `replication_factor`: (_unsigned_)
+* `can_vote`: (_boolean_)
 
 Индексы:
 
