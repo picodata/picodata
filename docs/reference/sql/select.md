@@ -70,6 +70,10 @@
   `DESC` — по убыванию), то по умолчанию подразумевается возрастание
   значений.
 
+* **UNION** — объединение результатов с одинаковым набором колонок
+  из нескольких DQL-запросов. При этом результат не содержит
+  дубликаты строк.
+
 * **UNION ALL** — объединение результатов с одинаковым набором колонок
   из нескольких DQL-запросов. При этом результат может содержать
   дубликаты строк.
@@ -84,122 +88,211 @@
 
 ## Примеры  {: #examples }
 
-Получение данных из таблицы с фильтрацией:
+### Тестовые таблицы {: #sample_tables }
+
+Для иллюстрации SQL-запросов будем использовать три тестовые таблицы:
+
+- список товаров разных типов на складе (`warehouse`)
+- остатки товаров (`items`)
+- заказы товаров (`orders`)
+
+<details><summary>Содержимое таблиц</summary><p>
 
 ```sql
-SELECT type FROM characters WHERE name = 'Woody';
+picodata> select * from warehouse
++----+----------+---------+
+| ID | ITEM     | TYPE    |
++=========================+
+| 1  | "bricks" | "heavy" |
+|----+----------+---------|
+| 2  | "bars"   | "light" |
+|----+----------+---------|
+| 3  | "blocks" | "heavy" |
+|----+----------+---------|
+| 4  | "piles"  | "light" |
+|----+----------+---------|
+| 5  | "panels" | "light" |
++----+----------+---------+
+(5 rows)
+picodata> select * from items
++----+----------+-------+
+| ID | NAME     | STOCK |
++=======================+
+| 1  | "bricks" | 1123  |
+|----+----------+-------|
+| 2  | "panels" | 998   |
+|----+----------+-------|
+| 3  | "piles"  | 177   |
+|----+----------+-------|
+| 4  | "bars"   | 90211 |
+|----+----------+-------|
+| 5  | "blocks" | 16    |
++----+----------+-------+
+(5 rows)
+picodata> select * from orders
++----+-------------+--------+
+| ID | ITEM        | AMOUNT |
++===========================+
+| 1  | "metalware" | 5000   |
+|----+-------------+--------|
+| 2  | "adhesives" | 350    |
+|----+-------------+--------|
+| 3  | "moldings"  | 900    |
+|----+-------------+--------|
+| 4  | "bars"      | 100    |
+|----+-------------+--------|
+| 5  | "blocks"    | 20000  |
++----+-------------+--------+
+(5 rows)
 ```
 
-Получение данных без повторов:
+</p></details>
+
+Далее приведены примеры запросов к этим таблицам
+
+### Получение данных из таблицы с фильтрацией {: #select_with_filter }
+
 
 ```sql
-SELECT DISTINCT type FROM characters;
+SELECT name from ITEM WHERE STOCK > 1000;
 ```
 
-Внутреннее соединение:
+### Получение данных без повторов {: #select_distinct }
+
+
+```sql
+SELECT DISTINCT type FROM warehouse;
+```
+
+### Внутреннее соединение {: #inner_join }
 
 ```sql
 SELECT
-    c.name,
+    c.item,
+    c.type,
     a.stock
-FROM characters as c
-JOIN assets AS a
-ON c.id = a.id;
+FROM warehouse AS c
+JOIN items AS a
+ON c.id = a.id
 ```
 
-Внешнее левое соединение:
+### Внешнее левое соединение {: #left_outer_join }
 
 ```sql
 SELECT
-    c.name,
+    c.item,
+    c.type,
     a.stock
-FROM characters as c
-LEFT JOIN assets AS a
-ON true;
+FROM warehouse AS c
+LEFT JOIN items AS a
+ON TRUE
 ```
 
-Множественные соединения:
+### Множественные соединения {: #multiple_joins }
 
 ```sql
-SELECT characters.name, cast.film, cast.actor, stars.age
-FROM characters
-INNER JOIN cast ON characters.name = cast.character
-LEFT OUTER JOIN stars ON cast.actor = stars.name;
+SELECT
+    warehouse.item,
+    items.stock,
+    orders.amount
+FROM warehouse
+INNER JOIN items
+ON warehouse.item = items.name
+LEFT OUTER JOIN orders
+ON items.name = orders.item
 ```
 
-Агрегация:
+### Агрегация {: #aggregation }
 
 ```sql
-SELECT COUNT(*) FROM characters WHERE id < 10;
+SELECT COUNT(*) FROM warehouse WHERE type = 'heavy';
 ```
 
-Группировка с предварительной фильтрацией:
+### Группировка с предварительной фильтрацией {: #filter_and_group }
 
 ```sql
-SELECT type, COUNT(*) FROM characters
-WHERE id < 10
+SELECT type, COUNT(*) FROM warehouse
+WHERE id < 5
 GROUP BY type;
 ```
 
-Группировка с последующей фильтрацией по сгруппированным данным:
+<!--
+
+### Группировка с последующей фильтрацией по сгруппированным данным {: #group_and_filter }
 
 ```sql
-SELECT type, COUNT(*) as c FROM characters
+SELECT type, COUNT(*) as c FROM warehouse
 GROUP BY type
-HAVING c > 10
-```
+HAVING c > 3;
 
-Упорядочивание результата по убыванию значений в третьей колонке:
+sbroad: column with name "C" not found
+
+```
+-->
+
+### Упорядочивание результата по убыванию значений в третьей колонке {: #order_desc }
 
 ```sql
-SELECT * FROM item
+SELECT * FROM items
 ORDER BY 3 DESC
 ```
 
-Разнонаправленное упорядочивание результата по двум явно именованным
-колонкам:
+### Разнонаправленное упорядочивание результата по двум явно именованным колонкам {: #order_asc_and_desc }
 
 ```sql
-SELECT * FROM item
+SELECT * FROM items
 ORDER BY name ASC, stock DESC
 ```
 
-Простое объединение результатов двух запросов:
+### Объединение только уникальных строк из результатов двух запросов {: #union_distinct }
 
 ```sql
-SELECT name FROM characters WHERE name = 'Dragon'
-UNION ALL
-SELECT name FROM characters WHERE name = 'Woody'
+SELECT item FROM warehouse
+UNION
+SELECT item FROM orders
 ```
 
-Объединение результатов с использование подзапроса:
+### Объединение только уникальных строк из результатов многих запросов {: #union_distinct_chain }
 
 ```sql
-SELECT name FROM characters WHERE name = 'Dragon'
+SELECT item FROM warehouse
+UNION
+SELECT item FROM orders
+UNION
+SELECT name FROM items
+```
+
+### Полное объединение результатов с использованием подзапроса {: #union_all_subquery }
+
+```sql
+SELECT item FROM warehouse WHERE type = 'heavy'
 UNION ALL
 SELECT * FROM (
-    SELECT name FROM assets
+    SELECT name FROM items
     UNION ALL
-    SELECT name FROM characters WHERE name = 'Woody'
+    SELECT item FROM orders WHERE amount > 400
 )
 ```
 
-Последовательное исключение результатов одного запроса из другого:
+### Последовательное исключение результатов одного запроса из другого {: #except }
 
 ```sql
-SELECT name FROM characters
+SELECT item FROM orders
 EXCEPT
-SELECT name FROM assets
+SELECT item FROM warehouse
 ```
 
-Последовательное исключение результатов с использование подзапроса:
+### Последовательное исключение результатов с использованием подзапроса {: #except_with_subquery }
 
 ```sql
-SELECT name FROM characters
+SELECT item FROM warehouse
 EXCEPT
 SELECT * FROM (
-    SELECT name FROM assets
-    EXCEPT
-    SELECT name FROM characters WHERE name = 'Woody'
+  SELECT item
+  FROM orders
+  EXCEPT
+    SELECT NAME
+    FROM items
+    WHERE stock > 200
 )
 ```
