@@ -142,18 +142,18 @@ impl Loop {
             .properties
             .pending_plugin_topology_update()
             .expect("storage should never fail")
-            .and_then(|(plugin, service, action, new_tier)| {
+            .and_then(|op| {
                 let plugin_def = storage
                     .plugin
-                    .get(&plugin)
+                    .get(op.plugin_name())
                     .expect("storage should not fail")?;
 
                 let service_def = storage
                     .service
-                    .get_any_version(&plugin, &service)
+                    .get_any_version(op.plugin_name(), op.service_name())
                     .expect("storage should not fail")?;
 
-                Some((plugin_def, service_def, action, new_tier))
+                Some((plugin_def, service_def, op))
             });
 
         let plan = action_plan(

@@ -1399,18 +1399,10 @@ impl NodeImpl {
                 }
             }
 
-            Op::PluginUpdateTopology {
-                plugin_name,
-                service_name,
-                tier,
-                op,
-            } => {
+            Op::PluginUpdateTopology { op } => {
                 self.storage
                     .properties
-                    .put(
-                        PropertyName::PendingPluginTopologyUpdate,
-                        &(plugin_name, service_name, op, tier),
-                    )
+                    .put(PropertyName::PendingPluginTopologyUpdate, &op)
                     .expect("storage should not fail");
             }
 

@@ -583,51 +583,75 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> 
     .map(|_| ())
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Clone, Copy, Debug)]
-pub enum UpdateTopologyOp {
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub enum TopologyUpdateOp {
     /// Append service to a new tier.
-    Append,
+    Append {
+        plugin_name: String,
+        service_name: String,
+        tier: String,
+    },
     /// Remove service from a tier.
-    Remove,
+    Remove {
+        plugin_name: String,
+        service_name: String,
+        tier: String,
+    },
 }
 
-fn update_tier(
-    plugin_name: &str,
-    service_name: &str,
-    upd_op: UpdateTopologyOp,
-    tier: &str,
-    timeout: Duration,
-) -> traft::Result<()> {
+impl TopologyUpdateOp {
+    #[inline(always)]
+    pub fn plugin_name(&self) -> &str {
+        match self {
+            TopologyUpdateOp::Append { plugin_name, .. } => plugin_name,
+            TopologyUpdateOp::Remove { plugin_name, .. } => plugin_name,
+        }
+    }
+
+    #[inline(always)]
+    pub fn service_name(&self) -> &str {
+        match self {
+            TopologyUpdateOp::Append { service_name, .. } => service_name,
+            TopologyUpdateOp::Remove { service_name, .. } => service_name,
+        }
+    }
+
+    #[inline(always)]
+    pub fn tier(&self) -> &str {
+        match self {
+            TopologyUpdateOp::Append { tier, .. } => tier,
+            TopologyUpdateOp::Remove { tier, .. } => tier,
+        }
+    }
+}
+
+fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()> {
     let deadline = Instant::now().saturating_add(timeout);
     let node = node::global()?;
 
     let mb_service = node
         .storage
         .service
-        .get_any_version(plugin_name, service_name)?;
+        .get_any_version(upd_op.plugin_name(), upd_op.service_name())?;
 
     if mb_service.is_none() {
         return Err(PluginError::ServiceNotFound(
-            service_name.to_string(),
-            plugin_name.to_string(),
+            upd_op.service_name().to_string(),
+            upd_op.plugin_name().to_string(),
         )
         .into());
     }
 
-    let op = Op::PluginUpdateTopology {
-        plugin_name: plugin_name.to_string(),
-        service_name: service_name.to_string(),
-        tier: tier.to_string(),
-        op: upd_op,
-    };
+    let ranges = vec![
+        Range::new(ClusterwideTable::Plugin).eq([upd_op.plugin_name()]),
+        Range::new(ClusterwideTable::Service).eq([upd_op.plugin_name(), upd_op.service_name()]),
+    ];
+    let op = Op::PluginUpdateTopology { op: upd_op.clone() };
 
     let mut index = do_plugin_cas(
         node,
         op,
-        vec![
-            Range::new(ClusterwideTable::Plugin).eq([plugin_name]),
-            Range::new(ClusterwideTable::Service).eq([plugin_name, service_name]),
-        ],
+        ranges,
         Some(|node| {
             Ok(node
                 .storage
@@ -651,11 +675,11 @@ fn update_tier(
     let service = node
         .storage
         .service
-        .get_any_version(plugin_name, service_name)?
+        .get_any_version(upd_op.plugin_name(), upd_op.service_name())?
         .ok_or(PluginError::TopologyUpdateAborted)?;
 
-    let contains = service.tiers.iter().any(|t| t == tier);
-    if upd_op == UpdateTopologyOp::Append {
+    let contains = service.tiers.iter().any(|t| t == upd_op.tier());
+    if matches!(upd_op, TopologyUpdateOp::Append { .. }) {
         if !contains {
             return Err(PluginError::TopologyUpdateAborted.into());
         }
@@ -674,10 +698,11 @@ pub fn append_tier(
     timeout: Duration,
 ) -> traft::Result<()> {
     update_tier(
-        plugin_name,
-        service_name,
-        UpdateTopologyOp::Append,
-        tier,
+        TopologyUpdateOp::Append {
+            plugin_name: plugin_name.to_string(),
+            service_name: service_name.to_string(),
+            tier: tier.to_string(),
+        },
         timeout,
     )
 }
@@ -690,10 +715,11 @@ pub fn remove_tier(
     timeout: Duration,
 ) -> traft::Result<()> {
     update_tier(
-        plugin_name,
-        service_name,
-        UpdateTopologyOp::Remove,
-        tier,
+        TopologyUpdateOp::Remove {
+            plugin_name: plugin_name.to_string(),
+            service_name: service_name.to_string(),
+            tier: tier.to_string(),
+        },
         timeout,
     )
 }

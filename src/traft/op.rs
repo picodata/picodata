@@ -1,4 +1,4 @@
-use crate::plugin::UpdateTopologyOp;
+use crate::plugin::TopologyUpdateOp;
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
@@ -68,12 +68,7 @@ pub enum Op {
     /// Remove selected plugin.
     PluginRemove { name: String },
     /// Update topology of a plugin service.
-    PluginUpdateTopology {
-        plugin_name: String,
-        service_name: String,
-        op: UpdateTopologyOp,
-        tier: String,
-    },
+    PluginUpdateTopology { op: TopologyUpdateOp },
 }
 
 impl Eq for Op {}
@@ -294,16 +289,8 @@ impl std::fmt::Display for Op {
             Op::PluginRemove { name } => {
                 write!(f, "PluginRemove({name})")
             }
-            Op::PluginUpdateTopology {
-                plugin_name,
-                service_name,
-                op,
-                ..
-            } => {
-                write!(
-                    f,
-                    "PluginUpdateTopology({op:?} {plugin_name}, {service_name})"
-                )
+            Op::PluginUpdateTopology { op } => {
+                write!(f, "PluginUpdateTopology({op:?})",)
             }
         };
 
