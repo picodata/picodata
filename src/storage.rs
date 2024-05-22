@@ -2526,24 +2526,16 @@ pub fn ddl_create_index_on_master(
     index_id: IndexId,
 ) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
-    let mut pico_index_def = storage
+    let pico_index_def = storage
         .indexes
         .get(space_id, index_id)?
         .ok_or_else(|| Error::other(format!("index with id {index_id} not found")))?;
     let mut opts = IndexOptions {
+        parts: Some(pico_index_def.parts),
         r#type: Some(pico_index_def.ty),
         id: Some(pico_index_def.id),
         ..Default::default()
     };
-    // We use LUA to create indexes, so we need to switch from C 0-based to LUA 1-based
-    // part enumeration in options.
-    for part in pico_index_def.parts.iter_mut() {
-        let NumOrStr::Num(ref mut num) = part.field else {
-            unreachable!("index part field should be a number");
-        };
-        *num += 1;
-    }
-    opts.parts = Some(pico_index_def.parts);
     let dec_to_f32 = |d: Decimal| f32::from_str(&d.to_string()).expect("decimal to f32");
     for opt in pico_index_def.opts {
         match opt {
@@ -2690,14 +2682,14 @@ pub fn ddl_create_space_on_master(
             pico_space_def.name
         ))
     })?;
-    let tt_pk_def = pico_pk_def.to_index_metadata();
+    let tt_pk_def = pico_pk_def.to_index_metadata(&pico_space_def);
 
     // For now we just assume that during space creation index with id 1
     // exists if and only if it is a bucket_id index.
     let mut tt_bucket_id_def = None;
     let pico_bucket_id_def = storage.indexes.get(space_id, 1)?;
     if let Some(def) = &pico_bucket_id_def {
-        tt_bucket_id_def = Some(def.to_index_metadata());
+        tt_bucket_id_def = Some(def.to_index_metadata(&pico_space_def));
     }
 
     let res = (|| -> tarantool::Result<()> {
@@ -4769,7 +4761,7 @@ mod tests {
                 );
 
                 // Check "_index" agrees with `ClusterwideTable.index_definitions`
-                let pico_index_def = index_def.to_index_metadata();
+                let pico_index_def = index_def.to_index_metadata(&pico_table_def);
                 assert_eq!(pico_index_def.space_id, tt_index_def.space_id);
                 assert_eq!(pico_index_def.index_id, tt_index_def.index_id);
                 assert_eq!(pico_index_def.r#type, tt_index_def.r#type);

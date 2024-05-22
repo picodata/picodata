@@ -1472,7 +1472,8 @@ impl NodeImpl {
                 for pk_part in &mut primary_key {
                     let (index, field) = match &pk_part.field {
                         Num(index) => {
-                            if *index as usize >= format.len() {
+                            let index = *index;
+                            if index as usize >= format.len() {
                                 // Ddl prepare operations should be verified before being proposed,
                                 // so this shouldn't ever happen. But ignoring this is safe anyway,
                                 // because proc_apply_schema_change will catch the error and ddl will be aborted.
@@ -1482,7 +1483,10 @@ impl NodeImpl {
                                 );
                                 continue;
                             }
-                            (*index, &format[*index as usize])
+                            let field = &format[index as usize];
+                            // We store all index parts as field names.
+                            pk_part.field = Str(field.name.clone());
+                            (index, field)
                         }
                         Str(name) => {
                             let field_index = format.iter().zip(0..).find(|(f, _)| f.name == *name);
@@ -1496,8 +1500,6 @@ impl NodeImpl {
                                 );
                                 continue;
                             };
-                            // We store all index parts as field indexes.
-                            pk_part.field = Num(index);
                             (index, field)
                         }
                     };
@@ -1565,7 +1567,7 @@ impl NodeImpl {
                             name: format!("{}_bucket_id", name),
                             ty: IndexType::Tree,
                             opts: vec![IndexOption::Unique(false)],
-                            parts: vec![Part::field(bucket_id_index)
+                            parts: vec![Part::field("bucket_id")
                                 .field_type(IFT::Unsigned)
                                 .is_nullable(false)],
                             operable: false,

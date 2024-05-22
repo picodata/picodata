@@ -1,4 +1,4 @@
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashSet;
 use sbroad::ir::ddl::{Language, ParamDef};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
@@ -379,11 +379,32 @@ impl IndexDef {
         }
     }
 
-    pub fn to_index_metadata(&self) -> IndexMetadata {
+    pub fn to_index_metadata(&self, table_def: &TableDef) -> IndexMetadata {
         let mut opts = BTreeMap::new();
         for opt in &self.opts {
             let (key, value) = opt.as_kv();
             opts.insert(key, value);
+        }
+
+        // We must convert any field names to field indexes in the index parts,
+        // because it is very important for tarantool, and we are very
+        // understanding and supportive of it.
+        let mut parts = self.parts.clone();
+        for part in &mut parts {
+            let NumOrStr::Str(field_name) = &part.field else {
+                continue;
+            };
+
+            let mut index = 0;
+            for field in &table_def.format {
+                if &field.name == field_name {
+                    break;
+                }
+                index += 1;
+            }
+            // No need to check the field was found,
+            // tarantool will tell us if the field index is out of range
+            part.field = NumOrStr::Num(index as _);
         }
 
         let index_meta = IndexMetadata {
@@ -392,7 +413,7 @@ impl IndexDef {
             name: self.name.as_str().into(),
             r#type: self.ty,
             opts,
-            parts: self.parts.clone(),
+            parts,
         };
 
         index_meta
@@ -1677,24 +1698,21 @@ impl CreateIndexParams {
         let table = self.table(storage)?;
         let mut parts = Vec::with_capacity(self.columns.len());
 
-        type Position = u32;
-        let mut positions: AHashMap<&str, Position> = AHashMap::with_capacity(table.format.len());
-        for (i, field) in table.format.iter().enumerate() {
-            positions.insert(field.name.as_str(), i as Position);
-        }
         for column_name in &self.columns {
-            let position = positions.get(column_name.as_str()).cloned();
-            let position = position.ok_or_else(|| CreateIndexError::FieldUndefined {
-                name: column_name.clone(),
-            })?;
-            let column = &table.format[position as usize];
+            let found = table.format.iter().find(|c| &c.name == column_name);
+            let Some(column) = found else {
+                return Err(CreateIndexError::FieldUndefined {
+                    name: column_name.clone(),
+                }
+                .into());
+            };
             let index_field_type = try_space_field_type_to_index_field_type(column.field_type)
                 .ok_or_else(|| CreateIndexError::IncompatibleIndexColumnType {
                     ty: self.ty.to_string(),
                     ctype: column.field_type.to_string(),
                 })?;
             let part = Part {
-                field: NumOrStr::Num(position),
+                field: NumOrStr::Str(column_name.into()),
                 r#type: Some(index_field_type),
                 collation: None,
                 is_nullable: Some(column.is_nullable),

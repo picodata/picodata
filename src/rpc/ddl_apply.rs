@@ -122,6 +122,11 @@ pub fn apply_schema_change(
         Ddl::CreateTable { id, .. } => {
             let abort_reason = ddl_create_space_on_master(storage, id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
+                if let tarantool::error::Error::Tarantool(e) = &e {
+                    if let Some((file, line)) = e.file().zip(e.line()) {
+                        tlog!(Error, "{}:{}: {e}", file, line);
+                    }
+                }
                 return Err(Error::Aborted(e.to_string()));
             }
         }
