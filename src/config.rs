@@ -130,7 +130,7 @@ Using configuration file '{args_path}'.");
             Default::default()
         };
 
-        config.set_from_args(args, &mut parameter_sources)?;
+        config.set_from_args_and_env(args, &mut parameter_sources)?;
 
         config.set_defaults_explicitly(&parameter_sources);
 
@@ -204,7 +204,10 @@ Using configuration file '{args_path}'.");
         Ok(config)
     }
 
-    pub fn set_from_args(
+    /// Sets parameters of `self` to values from `args` as well as current
+    /// environment variables. Updates `parameter_sources` specifying the source
+    /// for each parameter which is updated by this function.
+    pub fn set_from_args_and_env(
         &mut self,
         args: args::Run,
         parameter_sources: &mut ParameterSourcesMap,
@@ -1222,12 +1225,11 @@ tarantool::define_str_enum! {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
-    use crate::util::on_scope_exit;
+    use crate::util::{on_scope_exit, ScopeGuard};
     use clap::Parser as _;
     use pretty_assertions::assert_eq;
+    use std::{str::FromStr, sync::Mutex};
 
     #[test]
     fn config_from_yaml() {
@@ -1397,15 +1399,23 @@ instance:
         let args = args::Run::try_parse_from(args).unwrap();
         let mut parameter_sources = Default::default();
         mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
-        config.set_from_args(args, &mut parameter_sources)?;
+        config.set_from_args_and_env(args, &mut parameter_sources)?;
         config.set_defaults_explicitly(&parameter_sources);
         config.parameter_sources = parameter_sources;
         Ok(config)
     }
 
-    #[rustfmt::skip]
-    #[test]
-    fn parameter_source_precedence() {
+    // This is a helper for tests that modify environment variables to test how
+    // we're parsing them. But rust unit-tests are ran in parallel, so we
+    // must be careful: we can't allow other test which also read env to
+    // run concurrently hence the lock.
+    // Note: make sure to not assign the guard to `_` variable to avoid
+    // premature lock release
+    #[must_use]
+    fn protect_env() -> ScopeGuard<impl FnOnce() -> ()> {
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let locked = ENV_LOCK.lock().unwrap();
+
         // Save environment before test, to avoid breaking something unrelated
         let env_before: Vec<_> = std::env::vars()
             .filter(|(k, _)| k.starts_with("PICODATA_"))
@@ -1413,11 +1423,20 @@ instance:
         for (k, _) in &env_before {
             std::env::remove_var(k);
         }
-        let _guard = on_scope_exit(|| {
+        on_scope_exit(|| {
             for (k, v) in env_before {
                 std::env::set_var(k, v);
             }
-        });
+            std::env::remove_var("PICODATA_CONFIG_PARAMETERS");
+
+            drop(locked)
+        })
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn parameter_source_precedence() {
+        let _guard = protect_env();
 
         //
         // Defaults
@@ -1741,6 +1760,8 @@ instance:
 
     #[test]
     fn pg_config() {
+        let _guard = protect_env();
+
         let yaml = r###"
 instance:
 "###;
