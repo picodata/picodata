@@ -2342,10 +2342,7 @@ impl Indexes {
                 name: "_pico_index_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![
-                    Part::from(("table_id", IndexFieldType::Unsigned)).is_nullable(false),
-                    Part::from(("name", IndexFieldType::String)).is_nullable(false),
-                ],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -4769,12 +4766,6 @@ mod tests {
                 let parts_as_known_by_picodata = std::mem::take(&mut index_def.parts);
                 let parts_as_known_by_tarantool = std::mem::take(&mut tt_index_def.parts);
 
-                // The only exception is the `_pico_index_name` index. In comparison to
-                // tarantool `_index`'s `name` index, it has only one part as we need
-                // index name uniqueness in picodata.
-                if index_def.name == "_pico_index_name" {
-                    continue;
-                }
                 check_index_parts_match(
                     &index_def,
                     &parts_as_known_by_picodata,
