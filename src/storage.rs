@@ -2,6 +2,7 @@ use tarantool::auth::AuthDef;
 use tarantool::decimal::Decimal;
 use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
+use tarantool::index::FieldType as IndexFieldType;
 use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
 use tarantool::index::{IndexOptions, Part};
 use tarantool::msgpack::{ArrayWriter, ValueIter};
@@ -1346,7 +1347,7 @@ impl Properties {
             name: "_pico_property_key".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from("key")],
+            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -1613,7 +1614,7 @@ impl Replicasets {
             name: "_pico_replicaset_id".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from("replicaset_id")],
+            parts: vec![Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -1679,7 +1680,7 @@ impl PeerAddresses {
             name: "_pico_peer_address_raft_id".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from("raft_id")],
+            parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -1789,7 +1790,7 @@ impl Instances {
                 name: "_pico_instance_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("instance_id")],
+                parts: vec![Part::from(("instance_id", IndexFieldType::String)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -1801,7 +1802,7 @@ impl Instances {
                 name: "_pico_instance_raft_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("raft_id")],
+                parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -1813,7 +1814,9 @@ impl Instances {
                 name: "_pico_instance_replicaset_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
-                parts: vec![Part::from("replicaset_id")],
+                parts: vec![
+                    Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)
+                ],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2187,7 +2190,7 @@ impl Tables {
                 name: "_pico_table_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("id")],
+                parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2199,7 +2202,7 @@ impl Tables {
                 name: "_pico_table_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("name")],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2324,7 +2327,10 @@ impl Indexes {
                 name: "_pico_index_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("table_id"), Part::from("id")],
+                parts: vec![
+                    Part::from(("table_id", IndexFieldType::Unsigned)).is_nullable(false),
+                    Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false),
+                ],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2336,7 +2342,10 @@ impl Indexes {
                 name: "_pico_index_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("table_id"), Part::from("name")],
+                parts: vec![
+                    Part::from(("table_id", IndexFieldType::Unsigned)).is_nullable(false),
+                    Part::from(("name", IndexFieldType::String)).is_nullable(false),
+                ],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2825,7 +2834,7 @@ impl Users {
                 name: "_pico_user_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("id")],
+                parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2837,7 +2846,7 @@ impl Users {
                 name: "_pico_user_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("name")],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2961,10 +2970,10 @@ impl Privileges {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![
-                    Part::from("grantee_id"),
-                    Part::from("object_type"),
-                    Part::from("object_id"),
-                    Part::from("privilege"),
+                    Part::from(("grantee_id", IndexFieldType::Unsigned)).is_nullable(false),
+                    Part::from(("object_type", IndexFieldType::String)).is_nullable(false),
+                    Part::from(("object_id", IndexFieldType::Integer)).is_nullable(false),
+                    Part::from(("privilege", IndexFieldType::String)).is_nullable(false),
                 ],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
@@ -2977,7 +2986,10 @@ impl Privileges {
                 name: "_pico_privilege_object".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
-                parts: vec![Part::from("object_type"), Part::from("object_id")],
+                parts: vec![
+                    Part::from(("object_type", IndexFieldType::String)).is_nullable(false),
+                    Part::from(("object_id", IndexFieldType::Integer)).is_nullable(false),
+                ],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -3152,7 +3164,7 @@ impl Tiers {
             name: "_pico_tier_name".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from("name")],
+            parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -3230,7 +3242,7 @@ impl Routines {
                 name: "_pico_routine_id".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("id")],
+                parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -3242,7 +3254,7 @@ impl Routines {
                 name: "_pico_routine_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from("name")],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -3347,7 +3359,7 @@ impl Plugins {
             name: "_pico_plugin_name".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from("name")],
+            parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
@@ -3427,9 +3439,9 @@ impl Services {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![
-                Part::from("plugin_name"),
-                Part::from("name"),
-                Part::from("version"),
+                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("version", IndexFieldType::String)).is_nullable(false),
             ],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -3535,9 +3547,9 @@ impl ServiceRouteTable {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![
-                Part::from("instance_id"),
-                Part::from("plugin_name"),
-                Part::from("service_name"),
+                Part::from(("instance_id", IndexFieldType::String)).is_nullable(false),
+                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("service_name", IndexFieldType::String)).is_nullable(false),
             ],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -4650,26 +4662,35 @@ mod tests {
 
     #[track_caller]
     fn check_index_parts_match(
+        index_def: &IndexDef,
         picodata_index_parts: &[Part],
         tarantool_index_parts: &[Part],
         space_fields: &[tarantool::space::Field],
     ) {
-        assert_eq!(picodata_index_parts.len(), tarantool_index_parts.len());
+        assert_eq!(
+            picodata_index_parts.len(),
+            tarantool_index_parts.len(),
+            "{index_def:?}"
+        );
 
         for (pd_part, tt_part) in picodata_index_parts.iter().zip(tarantool_index_parts) {
             if let (Some(pd_type), Some(tt_type)) = (pd_part.r#type, tt_part.r#type) {
-                assert_eq!(pd_type, tt_type);
+                assert_eq!(pd_type, tt_type, "{index_def:?}");
             } else {
                 // Ignore
             }
 
-            assert_eq!(pd_part.collation, tt_part.collation);
-            assert_eq!(pd_part.is_nullable, tt_part.is_nullable);
-            assert_eq!(pd_part.path, tt_part.path);
+            assert_eq!(pd_part.collation, tt_part.collation, "{index_def:?}");
+            assert_eq!(
+                pd_part.is_nullable.unwrap_or(false),
+                tt_part.is_nullable.unwrap_or(false),
+                "{index_def:?}"
+            );
+            assert_eq!(pd_part.path, tt_part.path, "{index_def:?}");
 
             let pd_field_index = get_field_index(pd_part, space_fields);
             let tt_field_index = get_field_index(tt_part, space_fields);
-            assert_eq!(pd_field_index, tt_field_index);
+            assert_eq!(pd_field_index, tt_field_index, "{index_def:?}");
         }
     }
 
@@ -4755,6 +4776,7 @@ mod tests {
                     continue;
                 }
                 check_index_parts_match(
+                    &index_def,
                     &parts_as_known_by_picodata,
                     &parts_as_known_by_tarantool,
                     &sys_table.format(),

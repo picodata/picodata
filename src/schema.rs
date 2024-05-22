@@ -81,14 +81,14 @@ impl TableDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("id", FieldType::Unsigned)),
-            Field::from(("name", FieldType::String)),
-            Field::from(("distribution", FieldType::Map)),
-            Field::from(("format", FieldType::Array)),
-            Field::from(("schema_version", FieldType::Unsigned)),
-            Field::from(("operable", FieldType::Boolean)),
-            Field::from(("engine", FieldType::String)),
-            Field::from(("owner", FieldType::Unsigned)),
+            Field::from(("id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("name", FieldType::String)).is_nullable(false),
+            Field::from(("distribution", FieldType::Map)).is_nullable(false),
+            Field::from(("format", FieldType::Array)).is_nullable(false),
+            Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("operable", FieldType::Boolean)).is_nullable(false),
+            Field::from(("engine", FieldType::String)).is_nullable(false),
+            Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
         ]
     }
 
@@ -351,15 +351,15 @@ impl IndexDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("table_id", FieldType::Unsigned)),
-            Field::from(("id", FieldType::Unsigned)),
-            Field::from(("name", FieldType::String)),
-            Field::from(("type", FieldType::String)),
-            Field::from(("opts", FieldType::Array)),
-            Field::from(("parts", FieldType::Array)),
-            Field::from(("operable", FieldType::Boolean)),
-            Field::from(("schema_version", FieldType::Unsigned)),
-            Field::from(("owner", FieldType::Unsigned)),
+            Field::from(("table_id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("name", FieldType::String)).is_nullable(false),
+            Field::from(("type", FieldType::String)).is_nullable(false),
+            Field::from(("opts", FieldType::Array)).is_nullable(false),
+            Field::from(("parts", FieldType::Array)).is_nullable(false),
+            Field::from(("operable", FieldType::Boolean)).is_nullable(false),
+            Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
         ]
     }
 
@@ -473,13 +473,13 @@ impl PluginDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("name", FieldType::String)),
-            Field::from(("enabled", FieldType::Boolean)),
-            Field::from(("services", FieldType::Array)),
-            Field::from(("version", FieldType::String)),
-            Field::from(("description", FieldType::String)),
-            Field::from(("migration_list", FieldType::Array)),
-            Field::from(("migration_progress", FieldType::Integer)),
+            Field::from(("name", FieldType::String)).is_nullable(false),
+            Field::from(("enabled", FieldType::Boolean)).is_nullable(false),
+            Field::from(("services", FieldType::Array)).is_nullable(false),
+            Field::from(("version", FieldType::String)).is_nullable(false),
+            Field::from(("description", FieldType::String)).is_nullable(false),
+            Field::from(("migration_list", FieldType::Array)).is_nullable(false),
+            Field::from(("migration_progress", FieldType::Integer)).is_nullable(false),
         ]
     }
 
@@ -527,12 +527,12 @@ impl ServiceDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("plugin_name", FieldType::String)),
-            Field::from(("name", FieldType::String)),
-            Field::from(("version", FieldType::String)),
-            Field::from(("tiers", FieldType::Array)),
-            Field::from(("configuration", FieldType::Any)),
-            Field::from(("description", FieldType::String)),
+            Field::from(("plugin_name", FieldType::String)).is_nullable(false),
+            Field::from(("name", FieldType::String)).is_nullable(false),
+            Field::from(("version", FieldType::String)).is_nullable(false),
+            Field::from(("tiers", FieldType::Array)).is_nullable(false),
+            Field::from(("configuration", FieldType::Any)).is_nullable(false),
+            Field::from(("description", FieldType::String)).is_nullable(false),
         ]
     }
 
@@ -596,10 +596,10 @@ impl ServiceRouteItem {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("instance_id", FieldType::String)),
-            Field::from(("plugin_name", FieldType::String)),
-            Field::from(("service_name", FieldType::String)),
-            Field::from(("poison", FieldType::Boolean)),
+            Field::from(("instance_id", FieldType::String)).is_nullable(false),
+            Field::from(("plugin_name", FieldType::String)).is_nullable(false),
+            Field::from(("service_name", FieldType::String)).is_nullable(false),
+            Field::from(("poison", FieldType::Boolean)).is_nullable(false),
         ]
     }
 
@@ -671,12 +671,12 @@ impl UserDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("id", FieldType::Unsigned)),
-            Field::from(("name", FieldType::String)),
-            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("name", FieldType::String)).is_nullable(false),
+            Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
             Field::from(("auth", FieldType::Array)).is_nullable(true),
-            Field::from(("owner", FieldType::Unsigned)),
-            Field::from(("type", FieldType::String)),
+            Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("type", FieldType::String)).is_nullable(false),
         ]
     }
 
@@ -956,12 +956,12 @@ impl PrivilegeDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("privilege", FieldType::String)),
-            Field::from(("object_type", FieldType::String)),
-            Field::from(("object_id", FieldType::Integer)),
-            Field::from(("grantee_id", FieldType::Unsigned)),
-            Field::from(("grantor_id", FieldType::Unsigned)),
-            Field::from(("schema_version", FieldType::Unsigned)),
+            Field::from(("privilege", FieldType::String)).is_nullable(false),
+            Field::from(("object_type", FieldType::String)).is_nullable(false),
+            Field::from(("object_id", FieldType::Integer)).is_nullable(false),
+            Field::from(("grantee_id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("grantor_id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
         ]
     }
 
@@ -1372,17 +1372,17 @@ impl RoutineDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("id", FieldType::Unsigned)),
-            Field::from(("name", FieldType::String)),
-            Field::from(("kind", FieldType::String)),
-            Field::from(("params", FieldType::Array)),
-            Field::from(("returns", FieldType::Array)),
-            Field::from(("language", FieldType::String)),
-            Field::from(("body", FieldType::String)),
-            Field::from(("security", FieldType::String)),
-            Field::from(("operable", FieldType::Boolean)),
-            Field::from(("schema_version", FieldType::Unsigned)),
-            Field::from(("owner", FieldType::Unsigned)),
+            Field::from(("id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("name", FieldType::String)).is_nullable(false),
+            Field::from(("kind", FieldType::String)).is_nullable(false),
+            Field::from(("params", FieldType::Array)).is_nullable(false),
+            Field::from(("returns", FieldType::Array)).is_nullable(false),
+            Field::from(("language", FieldType::String)).is_nullable(false),
+            Field::from(("body", FieldType::String)).is_nullable(false),
+            Field::from(("security", FieldType::String)).is_nullable(false),
+            Field::from(("operable", FieldType::Boolean)).is_nullable(false),
+            Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
         ]
     }
 
