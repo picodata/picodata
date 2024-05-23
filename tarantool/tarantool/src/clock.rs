@@ -20,6 +20,12 @@
 
 use std::time::Duration;
 
+/// A large duration, effectively infinite for all practical purposes.
+///
+/// This value can be used as a default timeout value whenever there's no
+/// obvious limit but the API requires an explicit value.
+///
+/// Is equivalent to 100 years.
 pub const INFINITY: Duration = Duration::from_secs(100 * 365 * 24 * 60 * 60);
 
 use crate::ffi::tarantool as ffi;

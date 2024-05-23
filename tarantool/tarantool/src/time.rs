@@ -4,6 +4,8 @@ use std::mem::MaybeUninit;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::time::Duration;
 
+pub use crate::clock::INFINITY;
+
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].
 ///

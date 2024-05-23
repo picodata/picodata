@@ -37,6 +37,8 @@
   the `should_panic` argument, i.e. `#[tarantool::test(should_panic = cfg!(debug_assertions))]`
 - `anyhow` feature that adds `IntoBoxError` impl for `anyhow::Error` so `anyhow::Result` could be
   returned from the stored proc.
+- `tarantool::time::INFINITY` reexport from `tarantool::clock::INFINITY` for
+  convenience.
 
 ### Changed
 
