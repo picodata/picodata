@@ -122,25 +122,24 @@ impl<T> Promise<T> {
     /// [`Ok`]: TryGet::Ok
     /// [`Err`]: TryGet::Err
     /// [`Pending`]: TryGet::Pending
-    pub fn wait_timeout(self, mut timeout: Duration) -> TryGet<T, Error> {
+    pub fn wait_timeout(self, timeout: Duration) -> TryGet<T, Error> {
         if let Some(res) = self.inner.data.take() {
             return res.into();
         }
 
+        let deadline = Instant::now_fiber().saturating_add(timeout);
         loop {
             if let Err(e) = self.check_connection() {
                 break TryGet::Err(e);
             }
 
-            let last_awake = Instant::now();
-            unsafe { &*self.inner.cond.get() }.wait_timeout(timeout);
+            unsafe { &*self.inner.cond.get() }.wait_deadline(deadline);
 
             if let Some(res) = self.inner.data.take() {
                 break res.into();
             }
 
-            timeout = timeout.saturating_sub(last_awake.elapsed());
-            if timeout.is_zero() {
+            if Instant::now_fiber() >= deadline {
                 break TryGet::Pending(self);
             }
         }
