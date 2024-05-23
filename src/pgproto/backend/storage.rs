@@ -16,7 +16,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Bound::{Excluded, Included};
 use std::os::raw::c_int;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::vec::IntoIter;
 use tarantool::proc::{Return, ReturnMsgpack};
 use tarantool::tuple::FunctionCtx;
@@ -119,11 +119,11 @@ impl StatementStorage {
     }
 
     pub fn put(&mut self, key: (ClientId, Rc<str>), statement: Statement) -> PgResult<()> {
-        self.0.put(key, StatementHolder(statement))
+        self.0.put(key, StatementHolder::new(statement))
     }
 
     pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<Statement> {
-        self.0.map.get(key).map(|s| s.0.clone())
+        self.0.map.get(key).map(|h| h.statement.clone())
     }
 
     pub fn remove(&mut self, key: &(ClientId, Rc<str>)) {
@@ -325,12 +325,30 @@ impl Statement {
 }
 
 // A wrapper over Statement that closes portals created from it on `Drop`.
-pub struct StatementHolder(Statement);
+pub struct StatementHolder {
+    statement: Statement,
+    // When the holder drops it also drops some portals from the portal storage, but the
+    // storage may have already been dropped, so must not be accessed.
+    // To handle this, we use this Weak that won't allow us to access a dropped storage.
+    portals: Weak<RefCell<PortalStorage>>,
+}
+
+impl StatementHolder {
+    pub fn new(statement: Statement) -> StatementHolder {
+        let portals = PG_PORTALS.with(Rc::downgrade);
+        Self { statement, portals }
+    }
+}
 
 impl Drop for StatementHolder {
     fn drop(&mut self) {
-        self.0.set_is_closed(true);
-        PG_PORTALS.with(|storage| storage.borrow_mut().remove_portals_by_statement(&self.0));
+        self.statement.set_is_closed(true);
+        // The storage may have already been dropped, so we cannot access PG_PORTALS.
+        if let Some(portals) = self.portals.upgrade() {
+            portals
+                .borrow_mut()
+                .remove_portals_by_statement(&self.statement)
+        }
     }
 }
 
