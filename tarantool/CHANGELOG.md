@@ -42,6 +42,8 @@
 - `tarantool::time::Instant::{now_fiber, now_accurate}` methods with more
   descriptive names then before. Use `now_fiber` when computing timeouts, use
   `now_accurate` when benchmarking.
+- `#[encode(as_raw)]` on struct fields and enum variants
+  with `Vec<u8>` type, representing raw MessagePack.
 
 ### Changed
 

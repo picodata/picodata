@@ -20,6 +20,19 @@ macro_rules! read_be {
     }};
 }
 
+macro_rules! slice_read_be_to {
+    ($r:expr, $ty:ty, $into:expr) => {{
+        let mut buf = [0_u8; std::mem::size_of::<$ty>()];
+        match std::io::Read::read_exact($r, &mut buf) {
+            Ok(()) => {
+                $into.extend_from_slice(&buf);
+                Ok(<$ty>::from_be_bytes(buf))
+            }
+            Err(e) => Err(e),
+        }
+    }};
+}
+
 // TODO: we should make it accept a concrete `&mut [u8]`,
 // which will make it much nicer to use and will improve
 // both the build time and the debug performance.
@@ -136,6 +149,144 @@ pub fn skip_value(mp: &mut impl Read) -> Result<()> {
     Ok(())
 }
 
+/// Reads appropriate amount of bytes according to marker from raw bytes
+/// of MessagePack, returning those bytes back in a `Vec<u8>` format.
+pub fn preserve_read(from: &mut &[u8]) -> Result<Vec<u8>> {
+    use rmp::Marker;
+
+    let mut into = Vec::new();
+    match Marker::from_u8(from[0]) {
+        Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {
+            into.push(from[0]);
+            *from = &from[1..];
+        }
+        Marker::U8 | Marker::I8 => {
+            into.extend_from_slice(&from[..=1]);
+            *from = &from[1..];
+        }
+        Marker::U16 | Marker::I16 => {
+            into.extend_from_slice(&from[..=2]);
+            *from = &from[2..];
+        }
+        Marker::U32 | Marker::I32 | Marker::F32 => {
+            into.extend_from_slice(&from[..=4]);
+            *from = &from[4..];
+        }
+        Marker::U64 | Marker::I64 | Marker::F64 => {
+            into.extend_from_slice(&from[..=8]);
+            *from = &from[8..];
+        }
+        Marker::FixStr(len) => {
+            into.extend_from_slice(&from[..=len as usize]);
+            *from = &from[(len + 1) as usize..];
+        }
+        Marker::Str8 | Marker::Bin8 => {
+            let len = slice_read_be_to!(from, u8, into)?;
+            into.extend_from_slice(&from[..=len as usize]);
+            *from = &from[(len + 1) as usize..];
+        }
+        Marker::Str16 | Marker::Bin16 => {
+            let len = slice_read_be_to!(from, u16, into)?;
+            into.extend_from_slice(&from[..=len as usize]);
+            *from = &from[(len + 1) as usize..];
+        }
+        Marker::Str32 | Marker::Bin32 => {
+            let len = slice_read_be_to!(from, u32, into)?;
+            into.extend_from_slice(&from[..=len as usize]);
+            *from = &from[(len + 1) as usize..];
+        }
+        Marker::FixArray(len) => {
+            into.push(from[0]);
+            *from = &from[1..];
+            for _ in 0..len {
+                into.extend_from_slice(&preserve_read(from)?);
+            }
+        }
+        Marker::Array16 => {
+            let len = slice_read_be_to!(from, u16, into)?;
+            for _ in 0..len {
+                into.extend_from_slice(&preserve_read(from)?);
+            }
+        }
+        Marker::Array32 => {
+            let len = slice_read_be_to!(from, u32, into)?;
+            for _ in 0..len {
+                into.extend_from_slice(&preserve_read(from)?);
+            }
+        }
+        Marker::FixMap(len) => {
+            let len = len * 2;
+            into.push(from[0]);
+            *from = &from[1..];
+            for _ in 0..len {
+                into.extend_from_slice(&preserve_read(from)?);
+            }
+        }
+        Marker::Map16 => {
+            // Multiply by 2, because we skip key, value pairs.
+            let len = slice_read_be_to!(from, u16, into)? * 2;
+            for _ in 0..len {
+                into.extend_from_slice(&preserve_read(from)?);
+            }
+        }
+        Marker::Map32 => {
+            // Multiply by 2, because we skip key, value pairs.
+            let len = slice_read_be_to!(from, u32, into)? * 2;
+            for _ in 0..len {
+                into.extend_from_slice(&preserve_read(from)?);
+            }
+        }
+        Marker::FixExt1 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            into.extend_from_slice(&from[..=(1 + 1)]);
+            *from = &from[(1 + 1)..];
+        }
+        Marker::FixExt2 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            into.extend_from_slice(&from[..=(2 + 1)]);
+            *from = &from[(2 + 1)..];
+        }
+        Marker::FixExt4 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            into.extend_from_slice(&from[..=(4 + 1)]);
+            *from = &from[(4 + 1)..];
+        }
+        Marker::FixExt8 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            into.extend_from_slice(&from[..=(8 + 1)]);
+            *from = &from[(8 + 1)..];
+        }
+        Marker::FixExt16 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            into.extend_from_slice(&from[..=(16 + 1)]);
+            *from = &from[(16 + 1)..];
+        }
+        Marker::Ext8 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            let len = slice_read_be_to!(from, u8, into)? as usize + 1;
+            into.extend_from_slice(&from[..=len]);
+            *from = &from[len..];
+        }
+        Marker::Ext16 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            let len = slice_read_be_to!(from, u16, into)? as usize + 1;
+            into.extend_from_slice(&from[..=len]);
+            *from = &from[len..];
+        }
+        Marker::Ext32 => {
+            // Add 1, because we skip a 1-byte long type designator.
+            let len = slice_read_be_to!(from, u32, into)? as usize + 1;
+            into.extend_from_slice(&from[..=len]);
+            *from = &from[len..];
+        }
+        Marker::Reserved => {
+            return Err(rmp::decode::ValueReadError::TypeMismatch(Marker::Reserved).into())
+        }
+    }
+
+    Ok(into)
+}
+
 /// Write to `w` a msgpack array with values from `arr`.
 pub fn write_array<T>(w: &mut impl std::io::Write, arr: &[T]) -> Result<()>
 where
@@ -148,7 +299,7 @@ where
     Ok(())
 }
 
-/// Initiate a msgpack array of `len`
+/// Initiate a msgpack array of `len`.
 pub fn write_array_len(
     w: &mut impl std::io::Write,
     len: u32,

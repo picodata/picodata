@@ -130,6 +130,10 @@ pub enum StructStyle {
 /// does not override behavior of std types. To override supply `Encode::ForceAsMap` or
 /// `StructStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
 ///
+/// It is also possible to put `#[encode(as_raw)]` attribute on fields of structs or variants of enums
+/// to interpret field or variant value as raw MessagePack value. This will validate them at runtime
+/// and directly write to or read from buffer.
+///
 /// It should replace `tuple::Decode` when it's ready.
 ///
 /// # Example
@@ -493,6 +497,10 @@ impl_simple_decode! {
 /// `context.style` let's you override `as_map` attribute if it is defined for a struct.
 /// does not override behavior of std types. To override supply `Encode::ForceAsMap` or
 /// `StructStyle::ForceAsArray`. To leave the behavior up to the struct set it to `Encode::Default`.
+///
+/// It is also possible to put `#[encode(as_raw)]` attribute on fields of structs or variants of enums
+/// to interpret field or variant value as raw MessagePack value. This will validate them at runtime
+/// and directly write to or read from buffer.
 ///
 /// It should replace `tuple::Encode` when it's ready.
 ///
@@ -928,6 +936,267 @@ mod tests {
         assert_eq!(
             e.to_string(),
             "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2: expected field not_b, got b"
+        );
+    }
+
+    #[test]
+    fn encode_raw() {
+        use serde::Serialize;
+
+        #[derive(Serialize, Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct TestHelper {
+            b: i32,
+            c: Vec<String>,
+            d: u64,
+        }
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test1 {
+            #[encode(as_raw)]
+            b: Vec<u8>,
+        }
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test2 {
+            b: i32,
+            #[encode(as_raw)]
+            c: Vec<u8>,
+            d: i32,
+        }
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test3 {
+            #[encode(as_raw)]
+            not_b: Vec<u8>,
+        }
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test4 {
+            b: Vec<String>,
+            #[encode(as_raw)]
+            c: Vec<u8>,
+            d: i32,
+        }
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test5(#[encode(as_raw)] Vec<u8>);
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Test6(Vec<String>, #[encode(as_raw)] Vec<u8>, i32);
+
+        let ctx = Context::default().with_struct_style(StructStyle::ForceAsMap);
+
+        // Encode and decode with only field is raw
+        let value = rmp_serde::encode::to_vec(&42).unwrap();
+        let original = Test1 { b: value };
+        let bytes = encode(&original);
+        assert_value(&bytes, Value::Array(vec![Value::from(42)]));
+        let decoded = decode::<Test1>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+        // Override struct-level encoding with map context on struct with only field is raw
+        let mut bytes = vec![];
+        original.encode(&mut bytes, &ctx).unwrap();
+        assert_value(
+            &bytes,
+            Value::Map(vec![(Value::from("b"), Value::from(42))]),
+        );
+        let decoded = Test1::decode(&mut bytes.as_slice(), &ctx).unwrap();
+        assert_eq!(decoded, original);
+        // Try to decode as a different struct with only field is also raw
+        let err = decode::<Test3>(&bytes).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test3: the type decoded isn't match with the expected one"
+        );
+        // Try to decode as a different struct with only field is also raw with different context
+        let err = Test3::decode(&mut bytes.as_slice(), &ctx).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test3: expected field not_b, got b"
+        );
+
+        // Encode and decode with more complex members of struct
+        let value = rmp_serde::to_vec(&42).unwrap();
+        let original = Test2 {
+            b: 52,
+            c: value,
+            d: 42,
+        };
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![Value::from(52), Value::from(42), Value::from(42)]),
+        );
+        let decoded = decode::<Test2>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+        // Override struct-level encoding with map context
+        let mut bytes = vec![];
+        original.encode(&mut bytes, &ctx).unwrap();
+        assert_value(
+            &bytes,
+            Value::Map(vec![
+                (Value::from("b"), Value::from(52)),
+                (Value::from("c"), Value::from(42)),
+                (Value::from("d"), Value::from(42)),
+            ]),
+        );
+        let decoded = Test2::decode(&mut bytes.as_slice(), &ctx).unwrap();
+        assert_eq!(decoded, original);
+        // Try to decode as a different struct
+        let err = decode::<Test4>(bytes.as_slice()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test4: the type decoded isn't match with the expected one"
+        );
+
+        // Encode and decode with complex multibyte members of struct
+        let helper = TestHelper {
+            b: 42,
+            c: vec!["nothing".into(), "here".into()],
+            d: 52,
+        };
+        let value = rmp_serde::to_vec(&helper).unwrap();
+        let original = Test4 {
+            b: vec!["hello".into(), "world".into()],
+            c: value,
+            d: 52,
+        };
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![
+                Value::Array(vec![Value::from("hello"), Value::from("world")]),
+                Value::Array(vec![
+                    Value::from(42),
+                    Value::Array(vec![Value::from("nothing"), Value::from("here")]),
+                    Value::from(52),
+                ]),
+                Value::from(52),
+            ]),
+        );
+        let decoded = decode::<Test4>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+        // Override struct-level encoding with map context
+        let mut bytes = vec![];
+        original.encode(&mut bytes, &ctx).unwrap();
+        assert_value(
+            &bytes,
+            Value::Map(vec![
+                (
+                    Value::from("b"),
+                    Value::Array(vec![Value::from("hello"), Value::from("world")]),
+                ),
+                (
+                    Value::from("c"),
+                    Value::Array(vec![
+                        Value::from(42),
+                        Value::Array(vec![Value::from("nothing"), Value::from("here")]),
+                        Value::from(52),
+                    ]),
+                ),
+                (Value::from("d"), Value::from(52)),
+            ]),
+        );
+        // Try to decode as a different struct
+        let err = decode::<Test2>(&bytes).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test2: the type decoded isn't match with the expected one"
+        );
+
+        // Encode unnamed struct fields with raw attribute
+        let value = rmp_serde::encode::to_vec(&42).unwrap();
+        let original = Test5(value);
+        let bytes = encode(&original);
+        assert_value(&bytes, Value::Array(vec![Value::from(42)]));
+        let decoded = decode::<Test5>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+        // Decode as wrong
+        let err = decode::<Test6>(&bytes).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test6(field 0): \
+            failed decoding alloc::vec::Vec<alloc::string::String>: the type decoded isn't match with the expected one"
+        );
+
+        // Check for parsing scope of valid msgpack in multibyte scenario
+        let value = rmp_serde::encode::to_vec(&helper).unwrap();
+        let original = Test6(vec!["hello".into(), "world".into()], value, 42);
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![
+                Value::Array(vec![Value::from("hello"), Value::from("world")]),
+                Value::Array(vec![
+                    Value::from(42),
+                    Value::Array(vec![Value::from("nothing"), Value::from("here")]),
+                    Value::from(52),
+                ]),
+                Value::from(42),
+            ]),
+        );
+        let decoded = decode::<Test6>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+
+        #[derive(Clone, Serialize, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum Test7 {
+            #[encode(as_raw)]
+            Something(Vec<u8>),
+        }
+        #[derive(Clone, Serialize, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        enum Test8 {
+            Something {
+                foo: i32,
+                #[encode(as_raw)]
+                bar: Vec<u8>,
+            },
+        }
+
+        let mut value = Vec::new();
+        rmp_serde::encode::write(&mut value, &42).unwrap();
+        let original = Test7::Something(value.clone());
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Map(vec![(
+                Value::from("Something"),
+                // first array is `Vec<u8>` from field type
+                // second array is `encode::write` type repr
+                Value::Array(vec![Value::Array(vec![Value::from(42)])]),
+            )]),
+        );
+        let decoded = decode::<Test7>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+
+        let original = Test8::Something {
+            foo: 52,
+            bar: value,
+        };
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Map(vec![(
+                Value::from("Something"),
+                Value::Array(vec![Value::from(52), Value::from(42)]),
+            )]),
+        );
+        let decoded = decode::<Test8>(&bytes).unwrap();
+        assert_eq!(decoded, original);
+        let err = decode::<Test7>(&bytes).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test7(field 0): failed decoding alloc::vec::Vec<u8>: the type decoded isn't match with the expected one"
+        );
+        let decoded = Test8::decode(&mut bytes.as_slice(), &ctx).unwrap();
+        assert_eq!(
+            decoded,
+            Test8::Something {
+                foo: 52,
+                bar: vec![42]
+            }
         );
     }
 
