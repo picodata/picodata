@@ -58,6 +58,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use self::acl::{on_master_drop_role, on_master_drop_user};
+use pico_proc_macro::get_doc_literal;
 
 macro_rules! define_clusterwide_tables {
     (
@@ -124,6 +125,18 @@ macro_rules! define_clusterwide_tables {
                     $( Self::$cw_space_var => ::std::stringify!($space_struct), )+
                 }
             }
+
+            pub fn description(&self) -> Option<String> {
+                match self {
+                    $( Self::$cw_space_var => $space_struct::description_from_doc_comments(), )+
+                }
+            }
+
+            const fn doc_comments_raw(&self) -> &'static [&'static str] {
+                match self {
+                    $( Self::$cw_space_var => $space_struct::DOC_COMMENTS_RAW, )+
+                }
+            }
         }
 
         const _TEST_ID_AND_NAME_ARE_CORRECT: () = {
@@ -143,7 +156,7 @@ macro_rules! define_clusterwide_tables {
         pub struct $Clusterwide {
             $( pub $Clusterwide_field: $space_struct, )+
             $(
-                $(#[$Clusterwide_extra_field_meta:meta])*
+                $(#[$Clusterwide_extra_field_meta])*
                 pub $Clusterwide_extra_field: $Clusterwide_extra_field_type,
             )*
         }
@@ -216,6 +229,9 @@ macro_rules! define_clusterwide_tables {
                     $index_name_pk,
                     $( $index_name, )*
                 ];
+                const DOC_COMMENTS_RAW: &'static [&'static str] = &[
+                    $(get_doc_literal!($space_struct_meta), )*
+                ];
             }
         )+
     }
@@ -274,6 +290,10 @@ define_clusterwide_tables! {
             Clusterwide::tables;
 
             /// A struct for accessing definitions of all the user-defined tables.
+            ///
+            /// # Table description
+            ///
+            /// Stores metadata of all the cluster tables in picodata.
             pub struct Tables {
                 space: Space,
                 #[primary]
@@ -1089,6 +1109,41 @@ pub trait TClusterwideTable {
     const TABLE_NAME: &'static str;
     const TABLE_ID: SpaceId;
     const INDEX_NAMES: &'static [&'static str];
+    const DOC_COMMENTS_RAW: &'static [&'static str];
+
+    fn description_from_doc_comments() -> Option<String> {
+        let mut res = String::with_capacity(256);
+
+        let mut lines = Self::DOC_COMMENTS_RAW.iter();
+        for line in &mut lines {
+            if line.trim() == "# Table description" {
+                break;
+            }
+        }
+
+        for line in lines {
+            let line = line.trim();
+            if res.is_empty() && line.is_empty() {
+                continue;
+            }
+            res.push_str(line.trim());
+            res.push('\n');
+        }
+
+        // Remove any trailing whitespace
+        while let Some(last) = res.pop() {
+            if !last.is_whitespace() {
+                res.push(last);
+                break;
+            }
+        }
+
+        if res.is_empty() {
+            return None;
+        }
+
+        Some(res)
+    }
 }
 
 impl From<ClusterwideTable> for SpaceId {

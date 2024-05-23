@@ -91,7 +91,7 @@ columns.
   be started with the old snapshots
 
 - System table `_pico_table` format changed, the field `distribution`
-  now is a map
+  now is a map, a new field `description` was added (nullable _string_)
 
 - System table `_pico_tier` format changed, a new field `can_vote` was
   added (_boolean_)

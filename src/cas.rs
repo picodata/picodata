@@ -844,8 +844,9 @@ mod tests {
 
         let builder = DdlBuilder::with_schema_version(1);
 
-        let space_name = "space1";
-        let space_id = 1;
+        let table_def = TableDef::for_tests();
+        let space_name = &table_def.name;
+        let space_id = table_def.id;
         let index_id = 1;
 
         let create_space = builder.with_op(Ddl::CreateTable {
@@ -894,19 +895,7 @@ mod tests {
 
         // drop_space
         // `DropTable` needs `TableDef` to get space name
-        storage
-            .tables
-            .insert(&TableDef {
-                id: space_id,
-                name: space_name.into(),
-                operable: true,
-                distribution: Distribution::Global,
-                format: vec![],
-                schema_version: 1,
-                engine: SpaceEngineType::Memtx,
-                owner: ADMIN_ID,
-            })
-            .unwrap();
+        storage.tables.insert(&table_def).unwrap();
         assert!(t(&drop_space, Range::new(props).eq(&pending_schema_change)).is_err());
         assert!(t(&drop_space, Range::new(props).eq(&pending_schema_version)).is_err());
         assert!(t(&drop_space, Range::new(props).eq(("another_key",))).is_ok());

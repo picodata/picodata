@@ -29,6 +29,18 @@ pub fn format_but_ignore_everything_after_semicolon(
     .into()
 }
 
+#[proc_macro]
+pub fn get_doc_literal(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::Meta);
+    let syn::Meta::NameValue(meta) = input else {
+        return syn::Error::new_spanned(input, format!("expected a doc comment"))
+            .to_compile_error()
+            .into();
+    };
+    let lit = meta.lit;
+    quote! { #lit }.into()
+}
+
 #[allow(clippy::single_match)]
 #[proc_macro_derive(Introspection, attributes(introspection))]
 pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

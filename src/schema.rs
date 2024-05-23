@@ -70,6 +70,7 @@ pub struct TableDef {
     pub operable: bool,
     pub engine: SpaceEngineType,
     pub owner: UserId,
+    pub description: Option<String>,
 }
 
 impl TableDef {
@@ -89,6 +90,7 @@ impl TableDef {
             Field::from(("operable", FieldType::Boolean)).is_nullable(false),
             Field::from(("engine", FieldType::String)).is_nullable(false),
             Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("description", FieldType::String)).is_nullable(true),
         ]
     }
 
@@ -108,6 +110,7 @@ impl TableDef {
             operable: true,
             engine: SpaceEngineType::Blackhole,
             owner: 42,
+            description: Some("Very important, don't delete!".into()),
         }
     }
 
@@ -148,6 +151,7 @@ pub fn system_table_definitions() -> Vec<(TableDef, Vec<IndexDef>)> {
             operable: true,
             engine: SpaceEngineType::Memtx,
             owner: ADMIN_ID,
+            description: sys_table.description(),
         };
 
         let index_defs = sys_table.index_definitions();

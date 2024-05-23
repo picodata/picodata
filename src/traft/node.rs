@@ -1615,6 +1615,7 @@ impl NodeImpl {
                     operable: false,
                     engine,
                     owner,
+                    description: None,
                 };
                 let res = self.storage.tables.insert(&table_def);
                 if let Err(e) = res {
