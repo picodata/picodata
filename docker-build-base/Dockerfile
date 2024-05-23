@@ -1,10 +1,12 @@
 FROM ubuntu:22.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN set -e; \
     apt update -y && \
     apt install -y \
         build-essential \
-        git unzip wget curl\
+        git unzip wget curl tzdata \
         libtool autoconf cmake make \
         python3 \
         python3-yaml \
@@ -51,3 +53,6 @@ RUN set -e; \
     cd /bin; \
     curl -L -o glauth https://github.com/glauth/glauth/releases/download/v2.3.0/glauth-linux-amd64; \
     chmod +x glauth;
+
+# Timezone
+RUN ln -fs /usr/share/zoneinfo/Europe/Moscow /etc/localtime

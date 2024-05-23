@@ -27,6 +27,9 @@ variables:
   GET_SOURCES_ATTEMPTS: 3
   NO_CACHE:
     description: "Do not use cache during build phase"
+  # k8s runner config
+  KUBERNETES_CPU_REQUEST: 4
+  KUBERNETES_MEMORY_REQUEST: "4Gi"
 
 # job:rules explained:
 #
@@ -59,7 +62,7 @@ variables:
       paths: *build-base-changes-paths
 
   - &else {}
-
+     
 build-base-image:
   stage: build-base-image
   tags:
@@ -248,6 +251,69 @@ test-linux:
       - junit_pytest.xml
     reports:
       junit: junit_pytest.xml
+
+test-patch-picodata:
+  extends: .test
+  tags:
+    - docker
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_TAG}
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  variables:
+    GIT_DEPTH: 1
+    GIT_SUBMODULE_STRATEGY: recursive        
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
+    pull_policy: always
+  script:
+    - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+    - ./tools/prepare_source_tree_for_stat_analysis.py svace
+    - ./tools/prepare_source_tree_for_stat_analysis.py gamayun      
+
+    - cargo build --locked --release --features dynamic_build
+    - cargo build -p testplug --release
+    - cargo build -p gostech-audit-log
+    - cargo build -p gostech-metrics
+    - cp ./target/release/libtestplug.so ./test/testplug/.
+    - cargo test --locked --release --features dynamic_build
+    - cargo build --features webui,error_injection --locked --release --features dynamic_build
+    
+    - >
+      BUILD_PROFILE=release pipenv run pytest -vv
+      --color=yes
+      --numprocesses auto
+      --junitxml=junit_pytest.xml
+      --with-webui
+
+test-patch-tarantool:
+  extends: .test
+  tags:
+    - docker
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_TAG}
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  variables:
+    GIT_DEPTH: 1
+    GIT_SUBMODULE_STRATEGY: recursive        
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
+    pull_policy: always
+  script:
+    - pushd tarantool-sys/ && make -f .test.mk test-release; popd
 
 test-mac-m1:
   extends: .test

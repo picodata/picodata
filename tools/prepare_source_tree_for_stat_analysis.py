@@ -25,6 +25,7 @@ DEBUG = os.getenv("DEBUG")
 DEAD_LIST = [
     # from 6b2a88b551e6940089cf248d88b050b65ab67262
     "tarantool-sys/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py",
+    # static build doesn't work without this file. We build dynamically, so it's fine    
     "tarantool-sys/third_party/nghttp2/script/fetch-ocsp-response",
     "tarantool-sys/vendor/openssl-1.1.1q/fuzz/helper.py",
     "tarantool-sys/third_party/zstd/.circleci/images/primary/Dockerfile",
