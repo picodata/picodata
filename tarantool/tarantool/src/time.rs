@@ -1,5 +1,6 @@
 //! Provides a custom [`Instant`] implementation, based on tarantool fiber API.
 
+use crate::ffi::tarantool as ffi;
 use std::mem::MaybeUninit;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use std::time::Duration;
@@ -32,18 +33,35 @@ pub use crate::clock::INFINITY;
 pub struct Instant(pub(crate) Duration);
 
 impl Instant {
+    /// Equivalent to [`Self::now_accurate`].
+    #[must_use]
+    #[inline(always)]
+    #[deprecated = "use `now_fiber` or `now_accurate` instead"]
+    pub fn now() -> Self {
+        Self::now_accurate()
+    }
+
     /// Returns an instant corresponding to "now". Uses monotonic clock.
+    ///
+    /// Use this function when duration accuracy is required, for example when
+    /// timing the execution of different parts of your program (benchmarking).
+    ///
+    /// If you need to compute timeouts for yielding operations you should use
+    /// [`Self::now_fiber`] instead.
     ///
     /// # Examples
     ///
     /// ```no_run
+    /// # fn expensive_computation() {}
     /// use tarantool::time::Instant;
     ///
-    /// let now = Instant::now();
+    /// let start = Instant::now_accurate();
+    /// expensive_computation();
+    /// println!("expensive_computation took {:?}", start.elapsed());
     /// ```
     #[must_use]
     #[inline]
-    pub fn now() -> Self {
+    pub fn now_accurate() -> Self {
         unsafe {
             let mut timespec = MaybeUninit::<libc::timespec>::zeroed().assume_init();
             if libc::clock_gettime(libc::CLOCK_MONOTONIC, (&mut timespec) as *mut _) != 0 {
@@ -57,7 +75,40 @@ impl Instant {
         }
     }
 
+    /// Returns an instant corresponding to event loop iteration begin time.
+    /// Uses monotonic clock.
+    ///
+    /// Use this function when computing timeouts for tasks which may result in
+    /// fiber yields. It is important that this function is used, because the
+    /// tarantool uses this value for it's internal event loop timers, and using
+    /// [`Self::now_accurate`] may result in unexpected results.
+    ///
+    /// If instead you're timing how long things execute, use [`Self::now_accurate`].
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # fn do_some_yielding_task() {}
+    /// use tarantool::time::Instant;
+    /// use std::time::Duration;
+    ///
+    /// let timeout = Duration::from_secs(3);
+    /// let deadline = Instant::now_fiber().saturating_add(timeout);
+    /// while Instant::now_fiber() < deadline {
+    ///     do_some_yielding_task();
+    /// }
+    /// ```
+    #[must_use]
+    #[inline(always)]
+    pub fn now_fiber() -> Self {
+        // Safety: always safe
+        let secs = unsafe { ffi::fiber_clock() };
+        Self(Duration::from_secs_f64(secs))
+    }
+
     /// Returns the amount of time elapsed since this instant was created.
+    ///
+    /// Uses [`Self::now_accurate`] to determine the instant of "now".
     ///
     /// # Examples
     ///
@@ -66,7 +117,7 @@ impl Instant {
     /// use tarantool::time::Instant;
     /// use tarantool::fiber;
     ///
-    /// let instant = Instant::now();
+    /// let instant = Instant::now_accurate();
     /// let three_secs = Duration::from_secs(3);
     /// fiber::sleep(three_secs);
     /// assert!(instant.elapsed() >= three_secs);
@@ -74,7 +125,7 @@ impl Instant {
     #[must_use]
     #[inline]
     pub fn elapsed(&self) -> Duration {
-        Self::now().duration_since(*self)
+        Self::now_accurate().duration_since(*self)
     }
 
     /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as
@@ -246,17 +297,17 @@ mod tests {
 
     #[test]
     fn fiber_sleep() {
-        let before_sleep = Instant::now();
+        let before_sleep = Instant::now_accurate();
         let sleep_for = Duration::from_millis(100);
         std::thread::sleep(sleep_for);
 
-        assert!(Instant::now() >= before_sleep);
+        assert!(Instant::now_accurate() >= before_sleep);
         assert!(before_sleep.elapsed() >= Duration::ZERO);
     }
 
     #[test]
     fn addition() {
-        let now = Instant::now();
+        let now = Instant::now_accurate();
 
         assert_eq!(now.checked_add(Duration::MAX), None);
         assert_eq!(now.saturating_add(Duration::MAX), Instant(Duration::MAX));
@@ -269,7 +320,7 @@ mod tests {
 
     #[test]
     fn subtraction() {
-        let now = Instant::now();
+        let now = Instant::now_accurate();
 
         assert_eq!(now.checked_sub(Duration::MAX), None);
         assert_eq!(now.saturating_sub(Duration::MAX), Instant(Duration::ZERO));
@@ -282,7 +333,7 @@ mod tests {
 
     #[test]
     fn duration_since() {
-        let now = Instant::now();
+        let now = Instant::now_accurate();
         let plus_second = now + Duration::from_secs(1);
         let minus_second = now - Duration::from_secs(1);
 

@@ -1537,12 +1537,10 @@ pub fn sleep(time: Duration) {
     unsafe { ffi::fiber_sleep(time.as_secs_f64()) }
 }
 
-/// Get [`Instant`] corresponding to event loop iteration begin time.
-/// Uses monotonic clock.
+/// Equivalent to [`Instant::now_fiber`].
 #[inline(always)]
 pub fn clock() -> Instant {
-    let secs = unsafe { ffi::fiber_clock() };
-    Instant(Duration::from_secs_f64(secs))
+    Instant::now_fiber()
 }
 
 /// Yield control to the scheduler.

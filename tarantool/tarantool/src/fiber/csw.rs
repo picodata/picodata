@@ -103,7 +103,7 @@ mod tests {
 
     #[crate::test(tarantool = "crate")]
     fn performance() {
-        let now = crate::time::Instant::now();
+        let now = crate::time::Instant::now_accurate();
         let _ = crate::fiber::csw();
         let elapsed = now.elapsed();
         print!("{elapsed:?} ");

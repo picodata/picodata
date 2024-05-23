@@ -39,6 +39,9 @@
   returned from the stored proc.
 - `tarantool::time::INFINITY` reexport from `tarantool::clock::INFINITY` for
   convenience.
+- `tarantool::time::Instant::{now_fiber, now_accurate}` methods with more
+  descriptive names then before. Use `now_fiber` when computing timeouts, use
+  `now_accurate` when benchmarking.
 
 ### Changed
 
@@ -85,6 +88,8 @@
 - `network::protocol::ResponseError` is now a deprecated alias for `error::BoxError`
 - `error::Encode` is now a deprecated alias for `error::EncodeError`
 - `tarantool::set_and_get_error!` macro is deprecated in favor of `BoxError::new`.
+- `tarantool::time::Instant::now` is deprecated, now you need to choose between
+  `now_fiber` (likely) and `now_accurate`.
 
 ### Breaking changes
 
