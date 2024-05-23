@@ -296,16 +296,6 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn fiber_sleep() {
-        let before_sleep = Instant::now_accurate();
-        let sleep_for = Duration::from_millis(100);
-        std::thread::sleep(sleep_for);
-
-        assert!(Instant::now_accurate() >= before_sleep);
-        assert!(before_sleep.elapsed() >= Duration::ZERO);
-    }
-
-    #[test]
     fn addition() {
         let now = Instant::now_accurate();
 
@@ -348,5 +338,24 @@ mod tests {
 
         assert_eq!(minus_second.duration_since(plus_second), Duration::ZERO);
         assert_eq!(minus_second.checked_duration_since(plus_second), None);
+    }
+}
+
+#[cfg(feature = "internal_test")]
+mod test {
+    use super::*;
+
+    #[crate::test(tarantool = "crate")]
+    fn thread_sleep() {
+        let now_fiber = Instant::now_fiber();
+        let t0 = Instant::now_accurate();
+
+        // Block the whole event loop
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Event loop knows nothing about the nap we just took
+        assert_eq!(now_fiber, Instant::now_fiber());
+        // But there's still a way to find out if we needed
+        assert!(t0 < Instant::now_accurate());
     }
 }
