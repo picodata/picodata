@@ -62,7 +62,7 @@
      * (init_audit, local_startup, local_shutdown, change_current_grade)
 
 - [x] изменение конфигурации СУБД;
-     * (change_config, join_instance, expel_instance)
+     * (join_instance, expel_instance)
 
 - [x] создание и удаление таблицы
      * (create_table, drop_table)
@@ -134,22 +134,6 @@ new field: user == initiator
      "severity": "high",
      "user": ...,
      "verdict": ...,
-     ...
-}
-```
-
-### change_config
-
-Изменение конфигурации СУБД связанное с изменением в системной таблице
-[_pico_property](../architecture/system_tables.md#_pico_property).
-
-```json
-{
-     "title": "change_config",
-     "message": "property `<key>` was changed to <value>",
-     "severity": "high",
-     "key": ...,
-     "value": ...,
      ...
 }
 ```
