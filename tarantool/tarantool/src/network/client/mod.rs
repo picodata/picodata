@@ -52,7 +52,7 @@ use crate::fiber::r#async::oneshot;
 use crate::fiber::r#async::IntoOnDrop as _;
 use crate::fiber::FiberId;
 use crate::fiber::NoYieldsRefCell;
-use crate::tuple::{ToTuple, Tuple};
+use crate::tuple::{ToTupleBuffer, Tuple};
 use crate::unwrap_ok_or;
 
 use futures::{AsyncReadExt, AsyncWriteExt};
@@ -256,7 +256,7 @@ pub trait AsClient {
     /// The return from `conn.call` is whatever the function returns.
     async fn call<T>(&self, fn_name: &str, args: &T) -> Result<Tuple, ClientError>
     where
-        T: ToTuple + ?Sized,
+        T: ToTupleBuffer + ?Sized,
     {
         self.send(&Call { fn_name, args }).await
     }
@@ -270,7 +270,7 @@ pub trait AsClient {
     /// word `return`.
     async fn eval<T>(&self, expr: &str, args: &T) -> Result<Tuple, ClientError>
     where
-        T: ToTuple + ?Sized,
+        T: ToTupleBuffer + ?Sized,
     {
         self.send(&Eval { args, expr }).await
     }
@@ -278,7 +278,7 @@ pub trait AsClient {
     /// Execute sql query remotely.
     async fn execute<T>(&self, sql: &str, bind_params: &T) -> Result<Vec<Tuple>, ClientError>
     where
-        T: ToTuple + ?Sized,
+        T: ToTupleBuffer + ?Sized,
     {
         self.send(&Execute { sql, bind_params }).await
     }
@@ -549,11 +549,7 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(
-            result
-                .first()
-                .unwrap()
-                .decode_rmp::<(u64, String)>()
-                .unwrap(),
+            result.first().unwrap().decode::<(u64, String)>().unwrap(),
             (6002, "6002".into())
         );
     }
@@ -567,7 +563,7 @@ mod tests {
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
-        assert_eq!(result.decode_rmp::<(i32,)>().unwrap(), (3,));
+        assert_eq!(result.decode::<(i32,)>().unwrap(), (3,));
     }
 
     #[crate::test(tarantool = "crate")]
@@ -601,7 +597,7 @@ mod tests {
             .timeout(Duration::from_secs(3))
             .await
             .unwrap();
-        assert_eq!(result.decode_rmp::<(i32, i32)>().unwrap(), (1, 2));
+        assert_eq!(result.decode::<(i32, i32)>().unwrap(), (1, 2));
 
         // Error result
         let err = client
@@ -715,10 +711,10 @@ mod tests {
         let t = client.call(&proc, &s).await.unwrap();
         dbg!(t0.elapsed());
 
-        if let Ok((len,)) = t.decode_rmp::<(u32,)>() {
+        if let Ok((len,)) = t.decode::<(u32,)>() {
             assert_eq!(len, N + 17);
         } else {
-            let ((len,),): ((u32,),) = t.decode_rmp().unwrap();
+            let ((len,),): ((u32,),) = t.decode().unwrap();
             assert_eq!(len, N + 17);
         }
     }

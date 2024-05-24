@@ -79,14 +79,14 @@ impl ConnSchema {
         self.is_updating.set(true);
         let (spaces_data, actual_schema_version) = self.fetch_schema_spaces(conn_inner)?;
         for row in spaces_data {
-            let metadata = row.decode_rmp::<space::Metadata>()?;
+            let metadata = row.decode::<space::Metadata>()?;
             self.space_ids
                 .borrow_mut()
                 .insert(metadata.name.to_string(), metadata.id);
         }
 
         for row in self.fetch_schema_indexes(conn_inner)? {
-            let metadata = row.decode_rmp::<index::Metadata>()?;
+            let metadata = row.decode::<index::Metadata>()?;
             self.index_ids.borrow_mut().insert(
                 (metadata.space_id, metadata.name.to_string()),
                 metadata.index_id,

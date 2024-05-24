@@ -1387,14 +1387,14 @@ mod tests {
         let t: Tuple = crate::lua_state()
             .eval("return box.tuple.new(require('decimal').new('-8.11'))")
             .unwrap();
-        let (d,): (Decimal,) = t.decode_rmp().unwrap();
+        let (d,): (Decimal,) = t.decode().unwrap();
         assert_eq!(d.to_string(), "-8.11");
     }
 
     #[crate::test(tarantool = "crate")]
     pub fn to_tuple() {
         let d = decimal!(-8.11);
-        let t = Tuple::encode_rmp([d]).unwrap();
+        let t = Tuple::new(&[d]).unwrap();
         let lua = crate::lua_state();
         let f: tlua::LuaFunction<_> = lua.eval("return box.tuple.unpack").unwrap();
         let d: Decimal = f.call_with_args(&t).unwrap();

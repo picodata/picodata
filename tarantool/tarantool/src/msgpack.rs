@@ -1,4 +1,4 @@
-use super::tuple::ToTuple;
+use super::tuple::ToTupleBuffer;
 use crate::unwrap_ok_or;
 use crate::Result;
 use std::io::Cursor;
@@ -139,7 +139,7 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
 /// Write to `w` a msgpack array with values from `arr`.
 pub fn write_array<T>(w: &mut impl std::io::Write, arr: &[T]) -> Result<()>
 where
-    T: ToTuple,
+    T: ToTupleBuffer,
 {
     rmp::encode::write_array_len(w, arr.len() as _)?;
     for elem in arr {
@@ -256,7 +256,7 @@ where
     #[inline(always)]
     pub fn push_tuple<T>(&mut self, v: &T) -> Result<()>
     where
-        T: ToTuple + ?Sized,
+        T: ToTupleBuffer + ?Sized,
     {
         v.write_tuple_data(&mut self.writer)?;
         self.len += 1;

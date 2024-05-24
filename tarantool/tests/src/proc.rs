@@ -58,7 +58,7 @@ pub fn simple() {
 pub fn return_tuple() {
     #[tarantool::proc]
     fn proc_return_tuple(x: i32, y: String) -> tarantool::Result<Tuple> {
-        Tuple::encode_rmp(&(x, y))
+        Tuple::new(&(x, y))
     }
 
     #[tarantool::proc]
@@ -67,7 +67,7 @@ pub fn return_tuple() {
     }
 
     let tuple: Tuple = call_proc("proc_return_tuple", (1998, "March")).unwrap();
-    let data: (u32, String) = tuple.decode_rmp().unwrap();
+    let data: (u32, String) = tuple.decode().unwrap();
     assert_eq!(data, (1998, "March".to_string()));
 
     let data: [String; 2] = call_proc("proc_return_tuple_buf", ()).unwrap();

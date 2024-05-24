@@ -5,7 +5,7 @@ use crate::index::IndexId;
 use crate::index::IteratorType;
 use crate::space::SpaceId;
 use crate::tuple::Encode;
-use crate::tuple::{ToTuple, Tuple};
+use crate::tuple::{ToTupleBuffer, Tuple};
 
 use super::codec::IProtoType;
 use super::{codec, SyncIndex};
@@ -56,7 +56,7 @@ pub struct Call<'a, 'b, T: ?Sized> {
 
 impl<'a, 'b, T> Request for Call<'a, 'b, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Call;
     type Response = Tuple;
@@ -79,7 +79,7 @@ pub struct Eval<'a, 'b, T: ?Sized> {
 
 impl<'a, 'b, T> Request for Eval<'a, 'b, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Eval;
     type Response = Tuple;
@@ -102,7 +102,7 @@ pub struct Execute<'a, 'b, T: ?Sized> {
 
 impl<'a, 'b, T> Request for Execute<'a, 'b, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Execute;
     type Response = Vec<Tuple>;
@@ -151,7 +151,7 @@ pub struct Select<'a, T: ?Sized> {
 
 impl<'a, T> Request for Select<'a, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Select;
     type Response = Vec<Tuple>;
@@ -185,7 +185,7 @@ where
 
 impl<'a, T> Request for Insert<'a, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Insert;
     // TODO: can this be just Tuple?
@@ -212,7 +212,7 @@ where
 
 impl<'a, T> Request for Replace<'a, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Replace;
     // TODO: can this be just Tuple?
@@ -241,7 +241,7 @@ where
 
 impl<'a, T, Op> Request for Update<'a, T, Op>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
     Op: Encode,
 {
     const TYPE: IProtoType = IProtoType::Update;
@@ -271,7 +271,7 @@ where
 
 impl<'a, T, Op> Request for Upsert<'a, T, Op>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
     Op: Encode,
 {
     const TYPE: IProtoType = IProtoType::Upsert;
@@ -300,7 +300,7 @@ where
 
 impl<'a, T> Request for Delete<'a, T>
 where
-    T: ToTuple + ?Sized,
+    T: ToTupleBuffer + ?Sized,
 {
     const TYPE: IProtoType = IProtoType::Delete;
     // TODO: can this be just Tuple?

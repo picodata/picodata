@@ -4,7 +4,7 @@ use std::vec::IntoIter;
 use crate::error::Error;
 use crate::index::IteratorType;
 use crate::network::protocol;
-use crate::tuple::{Encode, ToTuple, Tuple};
+use crate::tuple::{Encode, ToTupleBuffer, Tuple};
 
 use super::inner::ConnInner;
 use super::Options;
@@ -30,7 +30,7 @@ impl RemoteIndex {
     #[inline(always)]
     pub fn get<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: ToTuple + ?Sized,
+        K: ToTupleBuffer + ?Sized,
     {
         Ok(self
             .select(
@@ -55,7 +55,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<RemoteIndexIterator, Error>
     where
-        K: ToTuple + ?Sized,
+        K: ToTupleBuffer + ?Sized,
     {
         let rows = self.conn_inner.request(
             &protocol::Select {
@@ -83,7 +83,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        K: ToTuple + ?Sized,
+        K: ToTupleBuffer + ?Sized,
         Op: Encode,
     {
         self.conn_inner.request(
@@ -107,7 +107,7 @@ impl RemoteIndex {
         options: &Options,
     ) -> Result<Option<Tuple>, Error>
     where
-        T: ToTuple + ?Sized,
+        T: ToTupleBuffer + ?Sized,
         Op: Encode,
     {
         self.conn_inner.request(
@@ -125,7 +125,7 @@ impl RemoteIndex {
     /// (see [details](../index/struct.Index.html#method.delete)).
     pub fn delete<K>(&self, key: &K, options: &Options) -> Result<Option<Tuple>, Error>
     where
-        K: ToTuple + ?Sized,
+        K: ToTupleBuffer + ?Sized,
     {
         self.conn_inner.request(
             &protocol::Delete {

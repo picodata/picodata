@@ -25,7 +25,8 @@ use std::ptr::null;
 use log::{Level, Log, Metadata, Record};
 
 use crate::ffi::tarantool as ffi;
-use crate::util::{into_cstring_lossy, to_cstring_lossy};
+use crate::util::into_cstring_lossy;
+use crate::util::to_cstring_lossy;
 
 /// [Log](https://docs.rs/log/latest/log/trait.Log.html) trait implementation. Wraps [say()](fn.say.html).
 pub struct TarantoolLogger(fn(Level) -> SayLevel);
