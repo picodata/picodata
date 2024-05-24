@@ -111,6 +111,7 @@ nav:
   ## language — https://squidfunk.github.io/mkdocs-material/setup/changing-the-language/#site-language
   ## features:
     ### toc.follow — https://squidfunk.github.io/mkdocs-material/setup/setting-up-navigation/#anchor-following
+    ### content.code.annotate — https://squidfunk.github.io/mkdocs-material/reference/code-blocks/#code-annotations
     ### content.code.copy — https://squidfunk.github.io/mkdocs-material/upgrade/#contentcodecopy
     ### content.action.edit — https://squidfunk.github.io/mkdocs-material/upgrade/#contentaction
     ### navigation.footer — https://squidfunk.github.io/mkdocs-material/setup/setting-up-the-footer/#navigation
@@ -125,6 +126,7 @@ theme:
   language: ru
   features:
     - toc.follow
+    - content.code.annotate
     - content.code.copy
     - content.action.edit
     - navigation.footer
