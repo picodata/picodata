@@ -222,7 +222,6 @@ plugins:
   ## > .guess_lang: true
   ## Pygments пытается определить используемый во фрагменте кода язык, если он не указан
   ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
-
 markdown_extensions:
   - attr_list
   - admonition
@@ -241,6 +240,7 @@ validation:
   links:
     unrecognized_links: warn
 
+# Хуки
 # https://www.mkdocs.org/user-guide/configuration/#hooks
 hooks:
   - ./hooks/add_meta.py
