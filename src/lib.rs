@@ -325,7 +325,7 @@ fn redirect_interactive_sql() {
     .expect("overriding sql executor shouldn't fail")
 }
 
-/// Sets a check that will performed when a user is logging ini
+/// Sets a check that will performed when a user is logging in
 /// Checks for user exceeding maximum number of login attempts and if user was blocked.
 ///
 /// Also see [`storage::PropertyName::MaxLoginAttempts`].
