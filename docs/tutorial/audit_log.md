@@ -123,6 +123,23 @@ picodata run --admin-sock ./i1.sock  --audit='|/tmp/audit-sink.py'
 В результате, сообщения из журнала аудита будут сохраняться в `syslog` и
 дублироваться в виде уведомлений на рабочем столе.
 
+<!--
+Установка среды рабочего стола в защищенной ОС Альт СП Релиз 10 выполняется из
+репозитория [c10f1]:
+
+```bash
+su -
+cat << EOF | sudo tee /etc/apt/sources.list.d/c10f1
+rpm http://ftp.altlinux.org/pub/distributions/ALTLinux/ c10f1/branch/x86_64 classic
+rpm http://ftp.altlinux.org/pub/distributions/ALTLinux/ c10f1/branch/noarch classic
+EOF
+apt-repo
+apt-get update
+```
+
+[c10f1]: https://packages.altlinux.org/ru/c10f1/about/
+-->
+
 ### Оповещения по электронной почте {: #email_notifications }
 
 Для получения оповещений по электронной почте потребуются:
