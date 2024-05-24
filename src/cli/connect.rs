@@ -191,7 +191,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 
     // Check if connection is valid. We need to do it because connect is lazy
     // and we want to check whether authentication have succeeded or not
-    ::tarantool::fiber::block_on(client.call("box.schema.user.info", &()))?;
+    ::tarantool::fiber::block_on(client.ping())?;
 
     let mut console = Console::new()?;
 
