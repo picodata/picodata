@@ -2029,7 +2029,7 @@ instance:
         ssl: {self.ssl}
 """
         )
-        ssl_dir = Path("test/pgproto/ssl_dir").absolute()
+        ssl_dir = Path(os.path.realpath(__file__)).parent / "ssl_certs"
         instance_dir = Path(self.cluster.data_dir) / "i1"
         instance_dir.mkdir()
         shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")

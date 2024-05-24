@@ -2,6 +2,7 @@ import pytest
 import pg8000.dbapi as pg  # type: ignore
 from conftest import Postgres
 import os
+from pathlib import Path
 import psycopg
 
 
@@ -48,16 +49,15 @@ def test_ssl_accept(postgres_with_tls: Postgres):
     instance = postgres_with_tls.instance
     host = postgres_with_tls.host
     port = postgres_with_tls.port
-    ssl_dir = "ssl_dir"
-    assert ssl_dir is not None
 
     user = "user"
     password = "P@ssw0rd"
     instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
     # where the client should find his certificate
-    client_cert_file = os.path.join(ssl_dir, "root.crt")
-    os.environ["SSL_CERT_FILE"] = client_cert_file
+    test_dir = Path(os.path.realpath(__file__)).parent
+    client_cert_file = test_dir.parent / "ssl_certs" / "root.crt"
+    os.environ["SSL_CERT_FILE"] = str(client_cert_file)
 
     os.environ["PGSSLMODE"] = "require"
     conn = psycopg.connect(
