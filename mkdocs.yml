@@ -84,6 +84,7 @@ nav:
       - Функции и операторы:
         - reference/sql/aggregate.md
         - reference/sql/cast.md
+        - reference/sql/trim.md
     - reference/audit_events.md
   - Архитектура:
     - architecture/distributed_sql.md

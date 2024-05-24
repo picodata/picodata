@@ -40,3 +40,4 @@
 
 * [Агрегатные функции](reference/sql/aggregate.md)
 * [CAST](reference/sql/cast.md)
+* [TRIM](reference/sql/trim.md)
