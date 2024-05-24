@@ -71,6 +71,30 @@ def test_connect_guest(i1: Instance):
     cli.expect_exact(pexpect.EOF)
 
 
+def test_connect_user_with_role(i1: Instance):
+    acl = i1.sudo_sql('create role "testrole"')
+    assert acl["row_count"] == 1
+    acl = i1.sudo_sql('grant "testrole" to "testuser"')
+    assert acl["row_count"] == 1
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for testuser: ")
+    cli.sendline("Testpa55")
+
+    cli.expect_exact("picodata> ")
+
+    eprint("^D")
+    cli.sendcontrol("d")
+    cli.expect_exact(pexpect.EOF)
+
+
 def test_no_pass(i1: Instance):
     cli = pexpect.spawn(
         command=i1.binary_path,
