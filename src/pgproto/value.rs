@@ -1,14 +1,10 @@
+use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::types::ToSqlText;
-use postgres_types::Type;
-use postgres_types::{FromSql, ToSql};
-use postgres_types::{IsNull, Oid};
+use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::Value;
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::error::Error;
-use std::str;
-
-use crate::pgproto::error::{DecodingError, PgError, PgResult};
+use std::{error::Error, str};
 
 pub fn type_from_name(name: &str) -> PgResult<Type> {
     match name {
@@ -83,27 +79,23 @@ impl TryFrom<rmpv::Value> for PgValue {
         match value {
             rmpv::Value::Nil => Ok(PgValue::null()),
             rmpv::Value::Boolean(v) => Ok(PgValue::boolean(v)),
-            rmpv::Value::F32(v) => Ok(PgValue::float(v.into())),
+            rmpv::Value::F32(v) => Ok(PgValue::float(v as _)),
             rmpv::Value::F64(v) => Ok(PgValue::float(v)),
-            rmpv::Value::Integer(v) => {
-                let i = if v.is_i64() {
-                    v.as_i64().unwrap()
-                } else if v.is_u64() {
+            rmpv::Value::Integer(v) => Ok(PgValue::integer({
+                if let Some(v) = v.as_i64() {
+                    v
+                } else if let Some(v) = v.as_u64() {
                     // NOTE: u64::MAX can't be converted into i64
-                    i64::try_from(v.as_u64().unwrap())
-                        .map_err(|e| PgError::EncodingError(e.into()))?
+                    i64::try_from(v).map_err(EncodingError::new)?
                 } else {
-                    Err(PgError::EncodingError(
-                        format!("couldn't encode integer: {v:?}").into(),
-                    ))?
-                };
-                Ok(PgValue::integer(i))
-            }
+                    Err(EncodingError::new(format!(
+                        "couldn't encode integer: {v:?}"
+                    )))?
+                }
+            })),
             rmpv::Value::String(v) => {
                 let Some(s) = v.as_str() else {
-                    Err(PgError::EncodingError(
-                        format!("couldn't encode string: {v:?}").into(),
-                    ))?
+                    Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
                 };
                 Ok(PgValue::text(s.to_owned()))
             }
@@ -118,9 +110,9 @@ fn decode_text_as_bool(s: &str) -> PgResult<bool> {
     match s {
         "t" | "true" | "yes" | "on" | "1" => Ok(true),
         "f" | "false" | "no" | "off" | "0" => Ok(false),
-        _ => Err(PgError::DecodingError(DecodingError::Other(
-            format!("couldn't decode \'{s}\' as bool").into(),
-        ))),
+        _ => Err(DecodingError::new(format!(
+            "couldn't decode \'{s}\' as bool"
+        )))?,
     }
 }
 
@@ -163,12 +155,12 @@ impl PgValue {
             Format::Text => self.encode_text(buf),
             Format::Binary => self.encode_binary(buf),
         }
-        .map_err(|e| PgError::EncodingError(e))?;
-        if let IsNull::No = is_null {
-            Ok(Some(buf.split_off(len).freeze()))
-        } else {
-            Ok(None)
-        }
+        .map_err(EncodingError::new)?;
+
+        Ok(match is_null {
+            IsNull::No => Some(buf.split_off(len).freeze()),
+            IsNull::Yes => None,
+        })
     }
 
     fn decode_text(bytes: Option<&Bytes>, ty: Type) -> PgResult<Self> {
@@ -176,13 +168,13 @@ impl PgValue {
             return Ok(PgValue::null());
         };
 
-        let s = String::from_utf8(bytes.to_vec()).map_err(DecodingError::from)?;
+        let s = String::from_utf8(bytes.to_vec()).map_err(DecodingError::new)?;
         Ok(match ty {
             Type::INT8 | Type::INT4 | Type::INT2 => {
-                PgValue::integer(s.parse::<i64>().map_err(DecodingError::from)?)
+                PgValue::integer(s.parse::<i64>().map_err(DecodingError::new)?)
             }
             Type::FLOAT8 | Type::FLOAT4 => {
-                PgValue::float(s.parse::<f64>().map_err(DecodingError::from)?)
+                PgValue::float(s.parse::<f64>().map_err(DecodingError::new)?)
             }
             Type::TEXT => PgValue::text(s),
             Type::BOOL => PgValue::boolean(decode_text_as_bool(&s.to_lowercase())?),
@@ -196,7 +188,7 @@ impl PgValue {
 
     fn decode_binary(bytes: Option<&Bytes>, ty: Type) -> PgResult<Self> {
         fn do_decode_binary<'a, T: FromSql<'a>>(ty: &Type, raw: &'a [u8]) -> PgResult<T> {
-            T::from_sql(ty, raw).map_err(|e| PgError::DecodingError(DecodingError::Other(e)))
+            Ok(T::from_sql(ty, raw).map_err(DecodingError::new)?)
         }
 
         let Some(bytes) = bytes else {

@@ -1,9 +1,13 @@
-use super::describe::{PortalDescribe, QueryType, StatementDescribe};
-use super::storage::{UserPortalNames, UserStatementNames};
-use crate::pgproto::backend;
-use crate::pgproto::error::DecodingError;
-use crate::pgproto::value::Format;
-use crate::pgproto::{client::ClientId, error::PgResult};
+use super::{
+    describe::{PortalDescribe, QueryType, StatementDescribe},
+    storage::{UserPortalNames, UserStatementNames},
+};
+use crate::pgproto::{
+    backend,
+    client::ClientId,
+    error::{EncodingError, PgResult},
+    value::Format,
+};
 use ::tarantool::proc;
 use postgres_types::Oid;
 use sbroad::ir::value::{LuaValue, Value};
@@ -127,8 +131,8 @@ pub fn proc_pg_execute(
         }
     };
 
-    let bytes = bytes.map_err(|e| DecodingError::Other(e.into()))?;
-    let tuple = Tuple::try_from_slice(&bytes).map_err(|e| DecodingError::Other(e.into()))?;
+    let bytes = bytes.map_err(EncodingError::new)?;
+    let tuple = Tuple::try_from_slice(&bytes)?;
     Ok(tuple)
 }
 

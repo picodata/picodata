@@ -1,10 +1,35 @@
-use pgwire::error::{ErrorInfo, PgWireError};
-use std::{error, io};
-use tarantool::error::{BoxError, IntoBoxError};
+use std::io;
 use thiserror::Error;
+
+// Use case: server could not encode a value into client's format.
+// To the client it's as meaningful & informative as any other "internal error".
+#[derive(Error, Debug)]
+#[error("{0}")]
+pub struct EncodingError(Box<dyn std::error::Error + Send + Sync>);
+
+impl EncodingError {
+    #[inline(always)]
+    pub fn new(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self(e.into())
+    }
+}
+
+// Use case: server could not decode a value received from client.
+// To the client it's as meaningful & informative as any other "internal error".
+#[derive(Error, Debug)]
+#[error("{0}")]
+pub struct DecodingError(Box<dyn std::error::Error + Send + Sync>);
+
+impl DecodingError {
+    #[inline(always)]
+    pub fn new(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self(e.into())
+    }
+}
 
 pub type PgResult<T> = Result<T, PgError>;
 
+/// Pgproto's main error type.
 /// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
 #[derive(Error, Debug)]
 pub enum PgError {
@@ -20,17 +45,19 @@ pub enum PgError {
     #[error("authentication failed for user '{0}'")]
     InvalidPassword(String),
 
-    // Server could not encode value into client's format.
+    // Server could not encode a value into client's format.
+    // We don't care about any details as long as it's logged.
     #[error("encoding error: {0}")]
-    EncodingError(Box<dyn error::Error>),
+    EncodingError(#[from] EncodingError),
 
-    // Server could not decode value recieved from client.
+    // Server could not decode a value received from client.
+    // We don't care about any details as long as it's logged.
     #[error("decoding error: {0}")]
     DecodingError(#[from] DecodingError),
 
     // Common error for postges protocol helpers.
     #[error("pgwire error: {0}")]
-    PgWireError(#[from] PgWireError),
+    PgWireError(#[from] pgwire::error::PgWireError),
 
     // This is picodata's main app error which incapsulates
     // everything else, including sbroad and tarantool errors.
@@ -41,8 +68,9 @@ pub enum PgError {
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 
+    // TODO: exterminate this error.
     #[error("{0}")]
-    Other(Box<dyn error::Error>),
+    Other(Box<dyn std::error::Error>),
 }
 
 impl From<sbroad::errors::SbroadError> for PgError {
@@ -59,36 +87,14 @@ impl From<tarantool::error::Error> for PgError {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum DecodingError {
-    #[error("failed to decode int: {0}")]
-    ParseIntError(#[from] std::num::ParseIntError),
-
-    #[error("failed to decode float: {0}")]
-    ParseFloatError(#[from] std::num::ParseFloatError),
-
-    #[error("from utf8 error: {0}")]
-    FromUtf8Error(#[from] std::string::FromUtf8Error),
-
-    #[error("failed to decode bool: {0}")]
-    ParseBoolError(#[from] std::str::ParseBoolError),
-
-    #[error("decoding error: {0}")]
-    Other(Box<dyn error::Error>),
-}
-
-/// Build error info from PgError.
-impl PgError {
-    pub fn info(&self) -> ErrorInfo {
-        ErrorInfo::new(
-            "ERROR".to_string(),
-            self.code().to_string(),
-            self.to_string(),
-        )
+impl tarantool::error::IntoBoxError for PgError {
+    fn into_box_error(self) -> tarantool::error::BoxError {
+        self.to_string().into_box_error()
     }
 }
 
 impl PgError {
+    /// Convert the error into a corresponding postgres error code.
     fn code(&self) -> &str {
         use PgError::*;
         match self {
@@ -101,10 +107,13 @@ impl PgError {
             _otherwise => "XX000",
         }
     }
-}
 
-impl IntoBoxError for PgError {
-    fn into_box_error(self) -> BoxError {
-        self.to_string().into_box_error()
+    /// Build [`pgwire`]'s error info from [`PgError`].
+    pub fn info(&self) -> pgwire::error::ErrorInfo {
+        pgwire::error::ErrorInfo::new(
+            "ERROR".to_string(),
+            self.code().to_string(),
+            self.to_string(),
+        )
     }
 }

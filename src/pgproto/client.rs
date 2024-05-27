@@ -1,9 +1,11 @@
-use super::backend::Backend;
-use super::client::simple_query::process_query_message;
-use super::error::*;
-use super::messages;
-use super::stream::{BeMessage, FeMessage, PgStream};
-use super::tls::TlsAcceptor;
+use super::{
+    backend::Backend,
+    client::simple_query::process_query_message,
+    error::{PgError, PgResult},
+    messages,
+    stream::{BeMessage, FeMessage, PgStream},
+    tls::TlsAcceptor,
+};
 use crate::tlog;
 use pgwire::messages::startup::*;
 use std::io;
