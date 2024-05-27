@@ -75,6 +75,14 @@ tail -f /tmp/audit.log
 инстансу Picodata, используйте такую команду:
 
 ```bash
+journalctl -f | grep tarantool
+```
+
+Если запись в `syslog` происходит через скрипт-обработчик
+([пример](#desktop_notifications)), то команда для доступа к журналу
+будет немного отличаться:
+
+```bash
 journalctl -f | grep AUDIT
 ```
 
