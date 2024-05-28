@@ -723,11 +723,21 @@ where
 // Lexer
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub enum QuoteEscapingStyle {
+    /// "quote\"in string"for 'single\'quote'
+    #[default]
+    Backslash,
+    /// 'this is a '' single quote'
+    DoubleSingleQuote,
+}
+
 pub struct Lexer<'a> {
     input: &'a str,
     utf8_stream: std::iter::Peekable<std::str::CharIndices<'a>>,
     last_token: Option<TokenInfo<'a>>,
     last_token_was_peeked: bool,
+    quote_escaping_style: QuoteEscapingStyle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -746,7 +756,13 @@ impl<'a> Lexer<'a> {
             input,
             last_token: None,
             last_token_was_peeked: false,
+            quote_escaping_style: QuoteEscapingStyle::Backslash,
         }
+    }
+
+    #[inline(always)]
+    pub fn set_quote_escaping_style(&mut self, quote_escaping_style: QuoteEscapingStyle) {
+        self.quote_escaping_style = quote_escaping_style;
     }
 
     #[inline(always)]
@@ -805,6 +821,23 @@ impl<'a> Lexer<'a> {
                     } else if c == openning_quote {
                         let end = i + c.len_utf8();
                         return Some(self.update_last_token(start, end, utf8_count));
+                    }
+                }
+                // in case stream ended, fall through to handled it at the end
+            }
+            '\'' if self.quote_escaping_style == QuoteEscapingStyle::DoubleSingleQuote => {
+                while let Some((i, c)) = self.utf8_stream.next() {
+                    utf8_count += 1;
+                    if c == '\'' {
+                        if let Some((_, '\'')) = self.utf8_stream.peek() {
+                            // an escaped single quote character
+                            utf8_count += 1;
+                            _ = self.utf8_stream.next().expect("peek returned Some");
+                        } else {
+                            // not a quote or input ended => string literal ended
+                            let end = i + c.len_utf8();
+                            return Some(self.update_last_token(start, end, utf8_count));
+                        }
                     }
                 }
                 // in case stream ended, fall through to handled it at the end
@@ -1110,5 +1143,33 @@ mod tests {
         assert!(lexer.peek_token().is_none());
         assert!(lexer.peek_token().is_none());
         assert!(lexer.next_token().is_none());
+
+        //
+        //
+        //
+        let mut lexer =
+            Lexer::new("single_quote '''' double_single_quote '''''' apostrophe 'parsn''t' end ''");
+        lexer.set_quote_escaping_style(QuoteEscapingStyle::DoubleSingleQuote);
+
+        let mut tokens = vec![];
+        while let Some(token) = lexer.next_token().copied() {
+            assert_eq!(token.text, &lexer.input[token.start..token.end]);
+            assert_eq!(token.utf8_count, dbg!(token.text).chars().count());
+            tokens.push(token.text);
+        }
+
+        assert_eq!(
+            tokens,
+            [
+                "single_quote",
+                "''''",
+                "double_single_quote",
+                "''''''",
+                "apostrophe",
+                "'parsn''t'",
+                "end",
+                "''",
+            ]
+        );
     }
 }
