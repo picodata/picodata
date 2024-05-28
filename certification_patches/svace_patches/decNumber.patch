@@ -1,0 +1,13 @@
+diff --git a/decContext.c b/decContext.c
+index 3583224..e57f207 100644
+--- a/decContext.c
++++ b/decContext.c
+@@ -383,7 +383,7 @@ const char *decContextStatusToString(const decContext *context) {
+ /* ------------------------------------------------------------------ */
+ Int decContextTestEndian(Flag quiet) {
+   Int res=0;                  // optimist
+-  uInt dle=(uInt)DECLITEND;   // unsign
++  Int dle=DECLITEND;
+   if (dle>1) dle=1;           // ensure 0 or 1
+ 
+   if (LITEND!=DECLITEND) {
