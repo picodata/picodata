@@ -20,6 +20,7 @@ OPTIONS:
 
 SUBCOMMANDS:
     admin      Connect to the Admin console of a Picodata instance
+    config     Subcommands related to working with the configuration file
     connect    Connect to the Distributed SQL console
     expel      Expel node from cluster
     help       Print this message or the help of the given subcommand(s)
@@ -38,6 +39,11 @@ SUBCOMMANDS:
 ```
 picodata run [OPTIONS]
 ```
+
+!!! note "Примечание"
+    Если в директории, из которой вызывается команда,
+    присутствует [файл конфигурации](config.md) с именем `config.yaml`,
+    инстанс Picodata будет запущен с указанными в нем параметрами.
 
 ### --admin-sock {: #run_admin_sock }
 
@@ -89,6 +95,10 @@ admin](#admin). Данный способ использует обычный т
 Путь к файлу конфигурации в формате YAML.
 
 Аналогичная переменная окружения: `PICODATA_CONFIG_FILE`
+
+См. также:
+
+* [Файл конфигурации](./config.md)
 
 ### --config-parameter {: #run_config_parameter }
 
@@ -285,6 +295,38 @@ Connected to admin console by socket path "admin.sock"
 type '\help' for interactive help
 picodata>
 ```
+
+<!-- ********************************************************************** -->
+## picodata config default {: #config_default }
+<!-- ********************************************************************** -->
+
+Генерирует файл конфигурации Picodata со значениями по умолчанию.
+Без указания опций содержимое файла конфигурации выводится в *stdout*.
+
+```
+picodata config default [OPTIONS]
+```
+
+Пример вывода `picodata config default` —
+см. [Описание файла конфигурации](config.md#config_file_description)
+
+### --output-file {: #config_default_output_file }
+
+`-o, --output-file <FILENAME>`
+
+Записывает файл конфигурации Picodata со значениями по умолчанию
+в файл `<FILENAME>`.
+
+**Пример**
+
+Сохранение файла конфигурации Picodata со значениями по умолчанию
+в файл `config.yaml`:
+
+```
+picodata config default -o config.yaml
+```
+
+Подробнее об имени `config.yaml` — в описании команды [picodata run](#run).
 
 <!-- ********************************************************************** -->
 ## picodata connect {: #connect }

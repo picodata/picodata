@@ -46,6 +46,7 @@ nav:
     - tutorial/pgproto.md
   - Справочные материалы:
     - reference/cli.md
+    - reference/config.md
     - Язык SQL:
       - Оглавление: sql_index.md
       - reference/sql/dcl.md
