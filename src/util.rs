@@ -727,6 +727,7 @@ pub struct Lexer<'a> {
     input: &'a str,
     utf8_stream: std::iter::Peekable<std::str::CharIndices<'a>>,
     last_token: Option<TokenInfo<'a>>,
+    last_token_was_peeked: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -744,19 +745,25 @@ impl<'a> Lexer<'a> {
             utf8_stream: input.char_indices().peekable(),
             input,
             last_token: None,
+            last_token_was_peeked: false,
         }
     }
 
     #[inline(always)]
     pub fn peek_token(&mut self) -> Option<&TokenInfo<'a>> {
-        if self.last_token.is_some() {
-            self.last_token.as_ref()
-        } else {
-            self.next_token()
+        if !self.last_token_was_peeked {
+            self.next_token();
+            self.last_token_was_peeked = true;
         }
+        self.last_token.as_ref()
     }
 
     pub fn next_token(&mut self) -> Option<&TokenInfo<'a>> {
+        if self.last_token_was_peeked {
+            self.last_token_was_peeked = false;
+            return self.last_token.as_ref();
+        }
+
         // skip leading whitespace
         while let Some(&(_, c)) = self.utf8_stream.peek() {
             if !c.is_whitespace() {
@@ -774,27 +781,30 @@ impl<'a> Lexer<'a> {
         let mut utf8_count = 1;
 
         match c {
-            c if c.is_alphanumeric() => {
+            c if is_alphanumeric_or_underscore(c) => {
                 while let Some(&(i, c)) = self.utf8_stream.peek() {
-                    if !c.is_alphanumeric() {
+                    if !is_alphanumeric_or_underscore(c) {
                         return Some(self.update_last_token(start, i, utf8_count));
                     }
                     utf8_count += 1;
-                    _ = self.utf8_stream.next().unwrap();
+                    _ = self.utf8_stream.next().expect("peek returned Some");
                 }
                 // in case stream ended, fall through to handled it at the end
             }
-            '"' => {
-                while let Some((_, c)) = self.utf8_stream.next() {
+            '"' | '\'' if self.quote_escaping_style == QuoteEscapingStyle::Backslash => {
+                let openning_quote = c;
+                while let Some((i, c)) = self.utf8_stream.next() {
                     utf8_count += 1;
                     if c == '\\' {
                         // next character is escaped, so always added to the token
-                        utf8_count += 1;
-                        _ = self.utf8_stream.next().unwrap();
-                    } else if c == '"' {
-                        let &(i, _) = self.utf8_stream.peek().unwrap();
-
-                        return Some(self.update_last_token(start, i, utf8_count));
+                        if self.utf8_stream.next().is_some() {
+                            utf8_count += 1;
+                        } else {
+                            // end of input
+                        }
+                    } else if c == openning_quote {
+                        let end = i + c.len_utf8();
+                        return Some(self.update_last_token(start, end, utf8_count));
                     }
                 }
                 // in case stream ended, fall through to handled it at the end
@@ -819,6 +829,11 @@ impl<'a> Lexer<'a> {
             utf8_count,
         })
     }
+}
+
+#[inline(always)]
+fn is_alphanumeric_or_underscore(c: char) -> bool {
+    c == '_' || c.is_alphanumeric()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1010,7 +1025,13 @@ mod tests {
 
     #[test]
     fn lexer() {
-        let mut lexer = Lexer::new(r##"foo bar1   3baz " \" ' " ,,) "unfinished"##);
+        //
+        //
+        //
+
+        let mut lexer = Lexer::new(
+            r##"foo bar1   3baz " \" ' "  'single\'quotes' 'double"in singles',,) "unfinished"##,
+        );
 
         let mut tokens = vec![];
         while let Some(token) = lexer.next_token().copied() {
@@ -1026,6 +1047,8 @@ mod tests {
                 "bar1",
                 "3baz",
                 "\" \\\" ' \"",
+                "'single\\'quotes'",
+                "'double\"in singles'",
                 ",",
                 ",",
                 ")",
@@ -1033,6 +1056,9 @@ mod tests {
             ]
         );
 
+        //
+        //
+        //
         let mut lexer = Lexer::new("   alphanumeric");
 
         let mut tokens = vec![];
@@ -1043,5 +1069,46 @@ mod tests {
         }
 
         assert_eq!(tokens, ["alphanumeric"]);
+
+        //
+        //
+        //
+        let mut lexer = Lexer::new("quotes_at_the_end''");
+
+        let mut tokens = vec![];
+        while let Some(token) = lexer.next_token().copied() {
+            assert_eq!(token.text, &lexer.input[token.start..token.end]);
+            assert_eq!(token.utf8_count, dbg!(token.text).chars().count());
+            tokens.push(token.text);
+        }
+
+        assert_eq!(tokens, ["quotes_at_the_end", "''"]);
+
+        //
+        //
+        //
+        let mut lexer = Lexer::new("backslash_at_the_end'\\");
+
+        let mut tokens = vec![];
+        while let Some(token) = lexer.next_token().copied() {
+            assert_eq!(token.text, &lexer.input[token.start..token.end]);
+            assert_eq!(token.utf8_count, dbg!(token.text).chars().count());
+            tokens.push(token.text);
+        }
+
+        assert_eq!(tokens, ["backslash_at_the_end", "'\\"]);
+
+        //
+        //
+        //
+        let mut lexer = Lexer::new("foo bar");
+        assert_eq!(lexer.next_token().unwrap().text, "foo");
+        assert_eq!(lexer.peek_token().unwrap().text, "bar");
+        assert_eq!(lexer.peek_token().unwrap().text, "bar");
+        assert_eq!(lexer.next_token().unwrap().text, "bar");
+
+        assert!(lexer.peek_token().is_none());
+        assert!(lexer.peek_token().is_none());
+        assert!(lexer.next_token().is_none());
     }
 }
