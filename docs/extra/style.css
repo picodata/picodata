@@ -12,6 +12,12 @@
     /* --md-primary-fg-color: #4051b5;
        --md-primary-bg-color: #fff;
        --md-accent-fg-color: #526cfe; */
+    --pd-annotation-size: 1.8ch;
+    --md-annotation-icon: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 256a256 256 0 1 0 512 0A256 256 0 1 0 0 256zM281 385c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l71-71L136 280c-13.3 0-24-10.7-24-24s10.7-24 24-24l182.1 0-71-71c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0L393 239c9.4 9.4 9.4 24.6 0 33.9L281 385z"/></svg>');
+    --md-annotation-bg-icon: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--!Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z"/></svg>');
+    /* --pd-annotation_size — custom size
+       --md-annotation-icon — https://fontawesome.com/icons/circle-arrow-right
+       --md-annotation-bg-icon — https://fontawesome.com/icons/circle */
 }
 
 :root,[data-md-color-scheme=default] {
@@ -158,12 +164,40 @@ body {
     }
 }
 
-/* >>>>>>>>>>>>>>>>>>>>>>>> CUSTOM SELECTORS >>>>>>>>>>>>>>>>>>>>>>>> */
-
-/* Hide `.md-icon__mobile` */
-.md-icon__mobile {
-    display: none;
+.md-annotation__index {
+    overflow: visible;
+    /* overflow: hidden; */
 }
+
+@media screen {
+    .md-annotation__index {
+        width: var(--pd-annotation-size);
+        left: 0.15ch;
+        /* width: 2.2ch
+        NONE */
+    }
+
+    [data-md-visible]>.md-annotation__index {
+        animation-iteration-count: 0;
+        /* NONE */
+    }
+
+    .md-annotation__index::after, .md-annotation__index::before {
+        height: var(--pd-annotation-size);
+        top: 0.2ch;
+        width: var(--pd-annotation-size);
+        /* height: 2.2ch;
+        top: -.1ch;
+        width: 2.2ch; */
+    }
+}
+
+    /* >>>>>>>>>>>>>>>>>>>>>>>> CUSTOM SELECTORS >>>>>>>>>>>>>>>>>>>>>>>> */
+
+    /* Hide `.md-icon__mobile` */
+    .md-icon__mobile {
+        display: none;
+    }
 
 /* Set `img` dimensions of `.md-icon__mobile` */
 .md-icon__mobile img {
