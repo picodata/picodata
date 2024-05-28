@@ -20,6 +20,9 @@ with the `YY.MINOR.MICRO` scheme.
   instance belongs to a tier.
 -->
 
+--------------------------------------------------------------------------------
+## [24.2.3] - 2024-05-28
+
 - Fix `picodata admin` 100\% CPU usage when server closes the socket
 - Fix `picodata connect` error after granting a role to the user
 - Fix `ALTER USER alice WITH NOLOGIN`
