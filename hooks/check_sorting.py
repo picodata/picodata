@@ -28,7 +28,7 @@ def reference_cli(markdown: str, page: Page):
         if h.startswith("## "):
             last_h2 = h
             index[last_h2] = []
-        elif h.startswith("### "):
+        elif h.startswith("### ") and "--" in h:
             arg = re.findall(r"--[\w-]+", h)[0]
             index[last_h2].append(arg)
 
