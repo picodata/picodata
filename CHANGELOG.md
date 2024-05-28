@@ -10,7 +10,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## Unreleased
 
-- Fix `picodata admin` 100\% CPU usage when server closes the socket
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
@@ -20,6 +19,10 @@ with the `YY.MINOR.MICRO` scheme.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
 -->
+
+- Fix `picodata admin` 100\% CPU usage when server closes the socket
+- Fix `picodata connect` error after granting a role to the user
+- Fix `ALTER USER alice WITH NOLOGIN`
 
 --------------------------------------------------------------------------------
 ## [24.2.2] - 2024-04-03
