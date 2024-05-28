@@ -10,7 +10,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## Unreleased
 
-- Fix `picodata admin` 100\% CPU usage when server closes the socket
 - SQL supports `trim` function.
 - SQL supports `to_char`, `to_date` functions.
 - SQL supports `ORDER BY` clause.
@@ -49,6 +48,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Support index drop with SQL.
 - Primary indexes change there naming convention: now it is "{table_name}_pkey".
 -->
+
+- Fix `picodata admin` 100\% CPU usage when server closes the socket
+- Fix `picodata connect` error after granting a role to the user
+- Fix `ALTER USER alice WITH NOLOGIN`
 
 --------------------------------------------------------------------------------
 ## [24.2.2] - 2024-04-03
