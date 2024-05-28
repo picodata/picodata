@@ -1,7 +1,12 @@
 -- pico.UP
-CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id)) USING memtx DISTRIBUTED BY (id)
-INSERT INTO author (id, name) VALUES (1, 'Alexander Pushkin')
-INSERT INTO author (id, name) VALUES (2, 'Alexander Blok')
+
+CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY (id);
+
+INSERT INTO author (id, name) VALUES
+    (1, 'Alexander Pushkin'),
+    (2, 'Alexander Blok');
 
 -- pico.DOWN
 DROP TABLE author;

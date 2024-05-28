@@ -6,10 +6,8 @@ use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::{error_injection, sql, tlog, traft};
 use sbroad::backend::sql::ir::PatternWithParams;
-use std::fs::File;
 use std::io;
-use std::io::{BufRead, BufReader, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::io::ErrorKind;
 use tarantool::space::UpdateOps;
 use tarantool::time::Instant;
 
@@ -24,7 +22,7 @@ pub enum Error {
     File(String, io::Error),
 
     #[error("Invalid migration file format: {0}")]
-    InvalidMigrationFormat(&'static str),
+    InvalidMigrationFormat(String),
 
     #[error("Error while apply UP command `{0}`: {1}")]
     Up(String, String),
@@ -33,82 +31,137 @@ pub enum Error {
     UpdateProgress(String),
 }
 
-#[derive(Debug, PartialEq)]
-enum Annotation {
-    Up,
-    Down,
+fn extract_comment(line: &str) -> Option<&str> {
+    let (prefix, comment) = line.trim().split_once("--")?;
+    if !prefix.is_empty() {
+        return None;
+    };
+    Some(comment.trim())
 }
 
-#[derive(Debug, PartialEq)]
-enum MigrationLine {
-    Comment(String),
-    Annotation(Annotation),
-    String(String),
+#[derive(Debug)]
+struct MigrationQueries {
+    up: Vec<String>,
+    down: Vec<String>,
 }
 
-/// Parse migration data line by line.
-struct MigrationLineParser<B: BufRead> {
-    inner: io::Lines<B>,
+/// Reads and parses `filename`, returns a pair of arrays: one
+/// for "UP" queries and one for "DOWN" queries.
+#[inline]
+fn read_migration_queries_from_file(filename: &str) -> Result<MigrationQueries, Error> {
+    let source = std::fs::read_to_string(filename).map_err(|e| Error::File(filename.into(), e))?;
+    parse_migration_queries(&source, filename)
 }
 
-impl<B: BufRead> MigrationLineParser<B> {
-    fn new(lines: io::Lines<B>) -> Self {
-        Self { inner: lines }
-    }
-}
+/// Parses the migration queries from `source`, returns a pair of arrays: one
+/// for "UP" queries and one for "DOWN" queries.
+///
+/// `filename` is only used for reporting errors to the user.
+fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQueries, Error> {
+    let mut up_lines = vec![];
+    let mut down_lines = vec![];
 
-impl MigrationLineParser<BufReader<File>> {
-    /// Construct parser from .db file.
-    fn from_file<P: AsRef<Path>>(filename: P) -> Result<Self, Error> {
-        let file_path = filename.as_ref();
-        let file = File::open(file_path)
-            .map_err(|e| Error::File(file_path.to_string_lossy().to_string(), e))?;
-        let lines = io::BufReader::new(file).lines();
-        Ok(Self::new(lines))
-    }
-}
+    let mut state = State::Initial;
 
-impl<B: BufRead> Iterator for MigrationLineParser<B> {
-    type Item = MigrationLine;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        fn extract_comment(line: &str) -> Option<&str> {
-            let (prefix, comment) = line.trim().split_once("--")?;
-            if !prefix.is_empty() {
-                return None;
-            };
-            Some(comment.trim())
+    for (line, lineno) in source.lines().zip(1..) {
+        if line.trim().is_empty() {
+            continue;
         }
 
-        for line in self.inner.by_ref() {
-            let line = match line {
-                Err(_) => {
-                    // ignore non-utf8 lines
-                    continue;
+        match extract_comment(line) {
+            Some("pico.UP") => {
+                if !up_lines.is_empty() {
+                    return Err(Error::InvalidMigrationFormat(format!(
+                        "{filename}:{lineno}: duplicate `pico.UP` annotation found"
+                    )));
                 }
-                Ok(line) => {
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    let maybe_comment = extract_comment(&line);
-
-                    if let Some(comment) = maybe_comment {
-                        match comment {
-                            "pico.UP" => MigrationLine::Annotation(Annotation::Up),
-                            "pico.DOWN" => MigrationLine::Annotation(Annotation::Down),
-                            _ => MigrationLine::Comment(comment.to_string()),
-                        }
-                    } else {
-                        MigrationLine::String(line)
-                    }
+                state = State::ParsingUp;
+                continue;
+            }
+            Some("pico.DOWN") => {
+                if !down_lines.is_empty() {
+                    return Err(Error::InvalidMigrationFormat(format!(
+                        "{filename}:{lineno}: duplicate `pico.DOWN` annotation found"
+                    )));
                 }
-            };
-            return Some(line);
+                state = State::ParsingDown;
+                continue;
+            }
+            Some(comment) if comment.starts_with("pico.") => {
+                return Err(Error::InvalidMigrationFormat(
+                    format!("{filename}:{lineno}: unsupported annotation `{comment}`, expected one of `pico.UP`, `pico.DOWN`"),
+                ));
+            }
+            Some(_) => {
+                // Ignore other comments
+                continue;
+            }
+            None => {}
         }
 
-        None
+        // A query line found
+        match state {
+            State::Initial => {
+                return Err(Error::InvalidMigrationFormat(format!(
+                    "{filename}: no pico.UP annotation found at start of file"
+                )));
+            }
+            State::ParsingUp => up_lines.push(line),
+            State::ParsingDown => down_lines.push(line),
+        }
     }
+
+    enum State {
+        Initial,
+        ParsingUp,
+        ParsingDown,
+    }
+
+    let all_up_queries = up_lines.join("\n");
+    let all_down_queries = down_lines.join("\n");
+
+    Ok(MigrationQueries {
+        up: split_sql_queries(&all_up_queries),
+        down: split_sql_queries(&all_down_queries),
+    })
+}
+
+fn split_sql_queries(sql: &str) -> Vec<String> {
+    let mut queries = Vec::new();
+
+    let mut lexer = crate::util::Lexer::new(sql);
+    lexer.set_quote_escaping_style(crate::util::QuoteEscapingStyle::DoubleSingleQuote);
+
+    let mut paren_depth = 0;
+    let mut current_query_start = 0;
+    while let Some(token) = lexer.next_token() {
+        match token.text {
+            "(" => {
+                paren_depth += 1;
+            }
+            ")" => {
+                paren_depth -= 1;
+            }
+            ";" => {
+                if paren_depth != 0 {
+                    // Ignore semicolons in nested queries
+                } else {
+                    let query = &sql[current_query_start..token.end];
+                    queries.push(query.trim().to_owned());
+                    current_query_start = token.end;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let tail = sql[current_query_start..].trim();
+    if !tail.is_empty() {
+        // no semicolon at the end of last query
+        queries.push(tail.to_owned());
+    }
+
+    queries
 }
 
 /// Apply sql from migration file onto cluster.
@@ -127,40 +180,22 @@ impl SqlApplier for SBroadApplier {
     }
 }
 
-fn up_single_file<B: BufRead>(
-    mut migration_iter: MigrationLineParser<B>,
-    applier: impl SqlApplier,
-) -> Result<(), Error> {
-    for line in migration_iter.by_ref() {
-        match line {
-            MigrationLine::Comment(_) => continue,
-            MigrationLine::Annotation(Annotation::Up) => break,
-            _ => {
-                return Err(Error::InvalidMigrationFormat(
-                    "no pico.UP annotation found at start of file",
-                ))
-            }
-        }
-    }
-
-    for line in migration_iter {
-        match line {
-            MigrationLine::Comment(_) => continue,
-            MigrationLine::Annotation(Annotation::Down) => return Ok(()),
-            MigrationLine::Annotation(Annotation::Up) => {
-                return Err(Error::InvalidMigrationFormat(
-                    "only single pico.UP annotation allowed",
-                ))
-            }
-            MigrationLine::String(sql) => {
-                if let Err(e) = applier.apply(&sql) {
-                    return Err(Error::Up(sql, e.to_string()));
-                }
-            }
+fn up_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) -> Result<(), Error> {
+    for sql in &queries.up {
+        if let Err(e) = applier.apply(sql) {
+            return Err(Error::Up(sql.clone(), e.to_string()));
         }
     }
 
     Ok(())
+}
+
+fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
+    for sql in &queries.down {
+        if let Err(e) = applier.apply(sql) {
+            tlog!(Error, "Error while apply DOWN command `{sql}`: {e}");
+        }
+    }
 }
 
 /// Apply UP part from migration files. If one of migration files migrated with errors,
@@ -202,34 +237,37 @@ pub fn up(
             .into());
         }
 
-        migration_files.push(migration_path.clone());
+        migration_files.push(migration_path.display().to_string());
     }
 
-    fn handle_err(to_revert: &[PathBuf]) {
+    fn handle_err(to_revert: &[MigrationQueries]) {
         let it = to_revert.iter().rev();
-        for f in it {
-            let iter = match MigrationLineParser::from_file(f) {
-                Ok(mi) => mi,
-                Err(e) => {
-                    tlog!(Error, "Rollback DOWN migration error: {e}");
-                    continue;
-                }
-            };
-
-            down_single_file(iter, SBroadApplier);
+        for queries in it {
+            down_single_file(queries, &SBroadApplier);
         }
     }
+
+    let mut seen_queries = Vec::with_capacity(migration_files.len());
 
     let node = node::global().expect("node must be already initialized");
     for (num, db_file) in migration_files.iter().enumerate() {
+        let res = read_migration_queries_from_file(db_file);
+        let queries = crate::unwrap_ok_or!(res,
+            Err(e) => {
+                handle_err(&seen_queries);
+                return Err(e.into());
+            }
+        );
+        seen_queries.push(queries);
+        let queries = seen_queries.last().expect("just inserted");
+
         if num == 1 && error_injection::is_enabled("PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR") {
-            handle_err(&migration_files[..num + 1]);
+            handle_err(&seen_queries);
             return Err(Error::Up("".to_string(), "".to_string()).into());
         }
 
-        let migration_iter = MigrationLineParser::from_file(db_file)?;
-        if let Err(e) = up_single_file(migration_iter, SBroadApplier) {
-            handle_err(&migration_files[..num + 1]);
+        if let Err(e) = up_single_file(queries, &SBroadApplier) {
+            handle_err(&seen_queries);
             return Err(e.into());
         }
 
@@ -246,36 +284,12 @@ pub fn up(
         let ranges = vec![Range::new(ClusterwideTable::Plugin).eq([plugin_name])];
 
         if let Err(e) = do_plugin_cas(node, Op::Dml(update_dml), ranges, None, deadline) {
-            handle_err(&migration_files[..num + 1]);
+            handle_err(&seen_queries);
             return Err(Error::UpdateProgress(e.to_string()).into());
         }
     }
 
     Ok(())
-}
-
-fn down_single_file<B: BufRead>(migration_iter: MigrationLineParser<B>, applier: impl SqlApplier) {
-    // skip all while pico.DOWN is not reached
-    let migration_iter = migration_iter
-        .skip_while(|line| !matches!(line, MigrationLine::Annotation(Annotation::Down)))
-        .skip(1);
-
-    for line in migration_iter {
-        match line {
-            MigrationLine::Comment(_) => continue,
-            MigrationLine::Annotation(_) => {
-                let e = Error::InvalidMigrationFormat(
-                    "only single pico.UP/pico.DOWN annotation allowed",
-                );
-                tlog!(Error, "Error while apply DOWN command: {e}");
-            }
-            MigrationLine::String(sql) => {
-                if let Err(e) = applier.apply(&sql) {
-                    tlog!(Error, "Error while apply DOWN command `{sql}`: {e}");
-                }
-            }
-        }
-    }
 }
 
 /// Apply DOWN part from migration files.
@@ -289,79 +303,130 @@ pub fn down(plugin_name: &str, migrations: &[String]) {
     for db_file in migrations {
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone()).join(plugin_name);
         let migration_path = plugin_dir.join(db_file);
-        let migration_iter = match MigrationLineParser::from_file(&migration_path) {
-            Ok(mi) => mi,
+        let filename = migration_path.display().to_string();
+
+        let res = read_migration_queries_from_file(&filename);
+        let queries = crate::unwrap_ok_or!(res,
             Err(e) => {
                 tlog!(Error, "Rollback DOWN migration error: {e}");
                 continue;
             }
-        };
+        );
 
-        down_single_file(migration_iter, SBroadApplier);
+        down_single_file(&queries, &SBroadApplier);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
     use std::cell::RefCell;
-    use std::io::{BufRead, BufReader};
-    use std::rc::Rc;
 
     #[test]
-    fn test_migration_line_parser() {
-        struct TestCase {
-            migration_data: &'static str,
-            expected_lines: Vec<MigrationLine>,
-        }
-        let test_cases = vec![
-            TestCase {
-                migration_data: r#"
+    fn test_parse_migration_queries() {
+        let queries = r#"
 -- pico.UP
-sql_command_1
-"#,
-                expected_lines: vec![
-                    MigrationLine::Annotation(Annotation::Up),
-                    MigrationLine::String("sql_command_1".to_string()),
-                ],
-            },
-            TestCase {
-                migration_data: r#"
+sql_command1
+        "#;
+        let queries = parse_migration_queries(queries, "test.db").unwrap();
+        assert_eq!(queries.up, &["sql_command1"],);
+        assert!(queries.down.is_empty());
+
+        let queries = r#"
 -- test comment
 
 -- pico.UP
+multiline
+sql
+command;
+another command;
+nested (
+    multiline;
+    command;
+);
+
+command with 'semicolon ; in quotes';
+
+-- test comment
+
+no semicolon after last command
 -- pico.DOWN
 
-sql_command_1
+sql_command1;
+sql_command2;
+
 -- test comment
-"#,
-                expected_lines: vec![
-                    MigrationLine::Comment("test comment".to_string()),
-                    MigrationLine::Annotation(Annotation::Up),
-                    MigrationLine::Annotation(Annotation::Down),
-                    MigrationLine::String("sql_command_1".to_string()),
-                    MigrationLine::Comment("test comment".to_string()),
-                ],
-            },
-        ];
 
-        for tc in test_cases {
-            let lines = BufReader::new(tc.migration_data.as_bytes()).lines();
-            let parser = MigrationLineParser::new(lines);
-            let parsing_res = parser.collect::<Vec<_>>();
+        "#;
+        let queries = parse_migration_queries(queries, "test.db").unwrap();
+        assert_eq!(
+            queries.up,
+            &[
+                "multiline
+sql
+command;",
+                "another command;",
+                "nested (\n    multiline;\n    command;\n);",
+                "command with 'semicolon ; in quotes';",
+                "no semicolon after last command",
+            ],
+        );
+        assert_eq!(queries.down, &["sql_command1;", "sql_command2;",],);
 
-            assert_eq!(parsing_res, tc.expected_lines);
-        }
+        //
+        // Errors
+        //
+        let queries = r#"
+sql_command1
+        "#;
+        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "Invalid migration file format: test.db: no pico.UP annotation found at start of file",
+        );
+
+        let queries = r#"
+-- pico.up
+        "#;
+        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "Invalid migration file format: test.db:2: unsupported annotation `pico.up`, expected one of `pico.UP`, `pico.DOWN`",
+        );
+
+        let queries = r#"
+-- pico.UP
+command;
+-- pico.UP
+        "#;
+        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "Invalid migration file format: test.db:4: duplicate `pico.UP` annotation found",
+        );
+
+        let queries = r#"
+-- pico.DOWN
+command_1;
+-- pico.DOWN
+command_2
+        "#;
+        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "Invalid migration file format: test.db:4: duplicate `pico.DOWN` annotation found",
+        );
     }
 
     struct BufApplier {
-        poison_line: Option<&'static str>,
-        buf: Rc<RefCell<Vec<String>>>,
+        poison_query: Option<&'static str>,
+        buf: RefCell<Vec<String>>,
     }
 
     impl SqlApplier for BufApplier {
         fn apply(&self, sql: &str) -> crate::traft::Result<()> {
-            if let Some(p) = self.poison_line {
+            if let Some(p) = self.poison_query {
                 if p == sql {
                     return Err(crate::traft::error::Error::Other("test error".into()));
                 }
@@ -373,130 +438,85 @@ sql_command_1
 
     #[test]
     fn test_migration_up() {
-        struct TestCase {
-            migration_data: &'static str,
-            poison_line: Option<&'static str>,
-            expected_applied_commands: Vec<&'static str>,
-            error: bool,
-        }
-        let test_cases = vec![
-            TestCase {
-                migration_data: r#"
+        let source = r#"
 -- pico.UP
-sql_command_1
-sql_command_2
-sql_command_3
-"#,
-                poison_line: None,
-                expected_applied_commands: vec!["sql_command_1", "sql_command_2", "sql_command_3"],
-                error: false,
-            },
-            TestCase {
-                migration_data: r#"
--- pico.UP
-sql_command_1
-sql_command_2
-sql_command_3
-"#,
-                poison_line: Some("sql_command_2"),
-                expected_applied_commands: vec!["sql_command_1"],
-                error: true,
-            },
-            TestCase {
-                migration_data: r#"
--- pico.U
-sql_command_1
-"#,
-                poison_line: None,
-                expected_applied_commands: vec![],
-                error: true,
-            },
-            TestCase {
-                migration_data: r#"
--- pico.UP
-sql_command_1
--- pico.UP
-sql_command_2
-"#,
-                poison_line: None,
-                expected_applied_commands: vec!["sql_command_1"],
-                error: true,
-            },
-        ];
+sql_command_1;
+sql_command_2;
+sql_command_3;
+"#;
+        let queries = parse_migration_queries(source, "test.db").unwrap();
+        let applier = BufApplier {
+            buf: RefCell::new(vec![]),
+            poison_query: None,
+        };
+        up_single_file(&queries, &applier).unwrap();
 
-        for tc in test_cases {
-            let lines = BufReader::new(tc.migration_data.as_bytes()).lines();
-            let iter = MigrationLineParser::new(lines);
-            let buf = Rc::new(RefCell::new(vec![]));
-            let applier = BufApplier {
-                buf: buf.clone(),
-                poison_line: tc.poison_line,
-            };
-            let result = up_single_file(iter, applier);
+        #[rustfmt::skip]
+        assert_eq!(
+            applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &["sql_command_1;", "sql_command_2;", "sql_command_3;"],
+        );
 
-            assert_eq!(tc.error, result.is_err());
-            assert_eq!(
-                buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                tc.expected_applied_commands
-            );
-        }
+        //
+        let source = r#"
+-- pico.UP
+sql_command_1;
+sql_command_2;
+sql_command_3;
+"#;
+        let queries = parse_migration_queries(source, "test.db").unwrap();
+        let applier = BufApplier {
+            buf: RefCell::new(vec![]),
+            poison_query: Some("sql_command_2;"),
+        };
+        up_single_file(&queries, &applier).unwrap_err();
+
+        #[rustfmt::skip]
+        assert_eq!(
+            applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &["sql_command_1;"],
+        );
     }
 
     #[test]
     fn test_migration_down() {
-        struct TestCase {
-            migration_data: &'static str,
-            poison_line: Option<&'static str>,
-            expected_applied_commands: Vec<&'static str>,
-        }
-        let test_cases = vec![
-            TestCase {
-                migration_data: r#"
+        let source = r#"
 -- pico.UP
 sql_command_1
 -- pico.DOWN
-sql_command_2
-sql_command_3
-"#,
-                poison_line: None,
-                expected_applied_commands: vec!["sql_command_2", "sql_command_3"],
-            },
-            TestCase {
-                migration_data: r#"
--- pico.UP
--- pico.DOWN
-sql_command_1
-sql_command_2
-sql_command_3
-"#,
-                poison_line: Some("sql_command_2"),
-                expected_applied_commands: vec!["sql_command_1", "sql_command_3"],
-            },
-            TestCase {
-                migration_data: r#"
--- pico.DOWN
-sql_command_1
--- pico.DOWN
-sql_command_2
-"#,
-                poison_line: None,
-                expected_applied_commands: vec!["sql_command_1", "sql_command_2"],
-            },
-        ];
+sql_command_2;
+sql_command_3;
+"#;
+        let queries = parse_migration_queries(&source, "test.db").unwrap();
+        let applier = BufApplier {
+            buf: RefCell::new(vec![]),
+            poison_query: None,
+        };
+        down_single_file(&queries, &applier);
+        #[rustfmt::skip]
+        assert_eq!(
+            applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &["sql_command_2;", "sql_command_3;"],
+        );
 
-        for tc in test_cases {
-            let lines = BufReader::new(tc.migration_data.as_bytes()).lines();
-            let iter = MigrationLineParser::new(lines);
-            let buf = Rc::new(RefCell::new(vec![]));
-            let applier = BufApplier {
-                buf: buf.clone(),
-                poison_line: tc.poison_line,
-            };
-            down_single_file(iter, applier);
-            assert_eq!(
-                buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                tc.expected_applied_commands
-            );
-        }
+        //
+        let source = r#"
+-- pico.UP
+-- pico.DOWN
+sql_command_1;
+sql_command_2;
+sql_command_3;
+"#;
+        let queries = parse_migration_queries(&source, "test.db").unwrap();
+        let applier = BufApplier {
+            buf: RefCell::new(vec![]),
+            poison_query: Some("sql_command_2;"),
+        };
+        down_single_file(&queries, &applier);
+        #[rustfmt::skip]
+        assert_eq!(
+            applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            &["sql_command_1;", "sql_command_3;"],
+        );
     }
 }
