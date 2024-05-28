@@ -702,7 +702,8 @@ pub(crate) fn setup() {
                     ranges: cas::schema_change_ranges().into(),
                 };
 
-                let res = compare_and_swap(op, predicate, effective_user_id(), timeout)?;
+                let req = crate::cas::Request::new(op, predicate, effective_user_id())?;
+                let res = compare_and_swap(&req, timeout)?;
                 Ok(res)
             },
         ),
@@ -1183,12 +1184,8 @@ pub(crate) fn setup() {
                 let op = op::Dml::from_lua_args(op, su.original_user_id)
                     .map_err(traft::error::Error::other)?;
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
-                let (index, _) = compare_and_swap(
-                    op.into(),
-                    predicate,
-                    su.original_user_id,
-                    Duration::from_secs(3),
-                )?;
+                let req = crate::cas::Request::new(op.into(), predicate, su.original_user_id)?;
+                let (index, _) = compare_and_swap(&req, Duration::from_secs(3))?;
                 Ok(index)
             },
         ),
@@ -1218,12 +1215,12 @@ pub(crate) fn setup() {
                     )
                 }
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
-                let (index, _) = compare_and_swap(
+                let req = crate::cas::Request::new(
                     Op::BatchDml { ops: dmls },
                     predicate,
                     su.original_user_id,
-                    Duration::from_secs(3),
                 )?;
+                let (index, _) = compare_and_swap(&req, Duration::from_secs(3))?;
                 Ok(index)
             },
         ),

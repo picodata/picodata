@@ -134,7 +134,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             cas::Range::new(ClusterwideTable::Tier),
         ];
 
-        let res = cas::compare_and_swap(
+        let cas_req = crate::cas::Request::new(
             Op::Dml(dml),
             cas::Predicate {
                 index: raft_storage.applied()?,
@@ -142,8 +142,8 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
                 ranges,
             },
             ADMIN_ID,
-            deadline.duration_since(fiber::clock()),
-        );
+        )?;
+        let res = cas::compare_and_swap(&cas_req, deadline.duration_since(fiber::clock()));
         match res {
             Ok((index, term)) => {
                 node.wait_index(index, deadline.duration_since(fiber::clock()))?;

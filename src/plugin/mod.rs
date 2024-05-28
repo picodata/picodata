@@ -249,7 +249,7 @@ fn do_routing_table_cas(
             ops: dml_ops.clone(),
         };
 
-        let res = cas::compare_and_swap(
+        let req = crate::cas::Request::new(
             op,
             cas::Predicate {
                 index: raft_storage.applied()?,
@@ -257,8 +257,8 @@ fn do_routing_table_cas(
                 ranges: ranges.clone(),
             },
             ADMIN_ID,
-            deadline.duration_since(fiber::clock()),
-        );
+        )?;
+        let res = cas::compare_and_swap(&req, deadline.duration_since(fiber::clock()));
         match res {
             Ok((index, term)) => {
                 node.wait_index(index, deadline.duration_since(fiber::clock()))?;
@@ -363,7 +363,7 @@ fn do_plugin_cas(
             }
         }
 
-        let cas_result = compare_and_swap(
+        let req = crate::cas::Request::new(
             op.clone(),
             cas::Predicate {
                 index: raft_storage.applied()?,
@@ -372,8 +372,8 @@ fn do_plugin_cas(
             },
             // FIXME: access rules will be implemented in future release
             effective_user_id(),
-            deadline.duration_since(Instant::now()),
-        );
+        )?;
+        let cas_result = compare_and_swap(&req, deadline.duration_since(Instant::now()));
         match cas_result {
             Ok((index, term)) => {
                 node.wait_index(index, deadline.duration_since(Instant::now()))?;

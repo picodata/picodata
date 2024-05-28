@@ -1280,12 +1280,8 @@ fn reenterable_schema_change_request(
         };
         // Note: as_user doesnt really serve any purpose for DDL checks
         // It'll change when access control checks will be introduced for DDL
-        let res = cas::compare_and_swap(
-            op,
-            predicate,
-            current_user,
-            deadline.duration_since(Instant::now()),
-        );
+        let req = crate::cas::Request::new(op, predicate, current_user)?;
+        let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now()));
         let (index, term) = unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {

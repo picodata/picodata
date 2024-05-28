@@ -35,7 +35,7 @@ use sbroad::ir::value::Value as IrValue;
 use serde::{Deserialize, Serialize};
 
 use crate::access_control::UserMetadataKind;
-use crate::cas::{self, compare_and_swap};
+use crate::cas::{self, compare_and_swap, Request};
 use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
 use crate::storage::{self, RoutineId};
@@ -2217,8 +2217,8 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
             ],
         };
 
-        let (index, term) =
-            compare_and_swap(Op::DdlAbort, predicate, effective_user_id(), timeout)?;
+        let req = Request::new(Op::DdlAbort, predicate, effective_user_id())?;
+        let (index, term) = compare_and_swap(&req, timeout)?;
         node.wait_index(index, timeout)?;
         if raft::Storage::term(&node.raft_storage, index)? != term {
             // leader switched - retry

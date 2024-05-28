@@ -120,7 +120,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             cas::Range::new(ClusterwideTable::Replicaset),
         ];
         // Only in this order - so that when instance exists - address will always be there.
-        let res = cas::compare_and_swap(
+        let cas_req = crate::cas::Request::new(
             Op::BatchDml { ops },
             cas::Predicate {
                 index: raft_storage.applied()?,
@@ -128,8 +128,8 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 ranges,
             },
             ADMIN_ID,
-            deadline.duration_since(fiber::clock()),
-        );
+        )?;
+        let res = cas::compare_and_swap(&cas_req, deadline.duration_since(fiber::clock()));
         match res {
             Ok((index, term)) => {
                 node.wait_index(index, deadline.duration_since(fiber::clock()))?;

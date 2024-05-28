@@ -49,25 +49,15 @@ const PROHIBITED_SPACES: &[ClusterwideTable] = &[
 /// # Errors
 /// See [`cas::Error`][Error] for CaS-specific errors.
 /// It can also return general picodata errors in cases of faulty network or storage.
-pub async fn compare_and_swap_async(
-    op: Op,
-    predicate: Predicate,
-    as_user: UserId,
-) -> traft::Result<(RaftIndex, RaftTerm)> {
+pub async fn compare_and_swap_async(request: &Request) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
 
-    if let Op::BatchDml { ops } = &op {
+    if let Op::BatchDml { ops } = &request.op {
         if ops.is_empty() {
             return Err(Error::EmptyBatch.into());
         }
     }
 
-    let request = Request {
-        cluster_id: node.raft_storage.cluster_id()?,
-        predicate,
-        op,
-        as_user,
-    };
     loop {
         let Some(leader_id) = node.status().leader_id else {
             tlog!(
@@ -89,9 +79,9 @@ pub async fn compare_and_swap_async(
         let resp = if leader_id == node.raft_id {
             // cas has to be called locally in cases when listen ports are closed,
             // for example on shutdown
-            proc_cas_local(request.clone())
+            proc_cas_local(request)
         } else {
-            rpc::network_call(&leader_address, &request)
+            rpc::network_call(&leader_address, request)
                 .await
                 .map_err(TraftError::from)
         };
@@ -120,16 +110,13 @@ pub async fn compare_and_swap_async(
 /// See [`Error`] for CaS-specific errors.
 /// It can also return general picodata errors in cases of faulty network or storage.
 pub fn compare_and_swap(
-    op: Op,
-    predicate: Predicate,
-    as_user: UserId,
+    request: &Request,
     timeout: Duration,
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
-    fiber::block_on(compare_and_swap_async(op, predicate, as_user).timeout(timeout))
-        .map_err(Into::into)
+    fiber::block_on(compare_and_swap_async(request).timeout(timeout)).map_err(Into::into)
 }
 
-fn proc_cas_local(req: Request) -> Result<Response> {
+fn proc_cas_local(req: &Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let storage = &node.storage;
@@ -137,7 +124,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
 
     if req.cluster_id != cluster_id {
         return Err(TraftError::ClusterIdMismatch {
-            instance_cluster_id: req.cluster_id,
+            instance_cluster_id: req.cluster_id.clone(),
             cluster_cluster_id: cluster_id,
         });
     }
@@ -156,7 +143,9 @@ fn proc_cas_local(req: Request) -> Result<Response> {
             | Op::PluginRemove { .. }
             | Op::PluginUpdateTopology { .. }
     ) {
-        return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(req.op))));
+        return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(
+            req.op.clone(),
+        ))));
     }
 
     let Predicate {
@@ -347,7 +336,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     // Don't wait for the proposal to be accepted, instead return the index
     // to the requestor, so that they can wait for it.
 
-    let entry_id = node_impl.propose_async(req.op)?;
+    let entry_id = node_impl.propose_async(req.op.clone())?;
     let index = entry_id.index;
     let term = entry_id.term;
     // TODO: return number of raft entries and check this
@@ -375,7 +364,7 @@ crate::define_rpc_request! {
     /// 6. [Compare and swap error](Error)
     // TODO Result<Either<Response, Error>>
     fn proc_cas(req: Request) -> Result<Response> {
-        proc_cas_local(req)
+        proc_cas_local(&req)
     }
 
     pub struct Request {
@@ -388,6 +377,18 @@ crate::define_rpc_request! {
     pub struct Response {
         pub index: RaftIndex,
         pub term: RaftTerm,
+    }
+}
+
+impl Request {
+    pub fn new(op: Op, predicate: Predicate, as_user: UserId) -> traft::Result<Self> {
+        let node = node::global()?;
+        Ok(Request {
+            cluster_id: node.raft_storage.cluster_id()?,
+            predicate,
+            op,
+            as_user,
+        })
     }
 }
 
