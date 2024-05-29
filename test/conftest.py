@@ -571,16 +571,23 @@ class Instance:
                     if password.endswith("\n"):
                         password = password[:-1]
 
-        c = Connection(
-            self.host,
-            self.port,
-            user=user,
-            password=password,
-            socket_timeout=timeout,
-            connection_timeout=timeout,
-            connect_now=True,
-            fetch_schema=False,
-        )
+        try:
+            c = Connection(
+                self.host,
+                self.port,
+                user=user,
+                password=password,
+                socket_timeout=timeout,
+                connection_timeout=timeout,
+                connect_now=True,
+                fetch_schema=False,
+            )
+        except Exception as e:
+            self.check_process_alive()
+            # if process is dead, the above call will raise an expection
+            # otherwise we raise the original exception
+            raise e from e
+
         try:
             yield c
         finally:
@@ -1010,6 +1017,18 @@ class Instance:
             "leader_id": status["leader_id"],
         } == {"raft_state": state, "leader_id": leader_id}
 
+    def check_process_alive(self):
+        if self.process is None:
+            raise ProcessDead("process was not started")
+
+        try:
+            exit_code = self.process.wait(timeout=0)  # type: ignore
+        except subprocess.TimeoutExpired:
+            # it's fine, the process is still running
+            pass
+        else:
+            raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
+
     def wait_online(
         self, timeout: int | float = 6, rps: int | float = 5, expected_incarnation=None
     ):
@@ -1030,13 +1049,7 @@ class Instance:
             raise ProcessDead("process was not started")
 
         def fetch_current_grade() -> Tuple[str, int]:
-            try:
-                exit_code = self.process.wait(timeout=0)  # type: ignore
-            except subprocess.TimeoutExpired:
-                # it's fine, the process is still running
-                pass
-            else:
-                raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
+            self.check_process_alive()
 
             myself = self.call(".proc_instance_info")
             assert isinstance(myself, dict)

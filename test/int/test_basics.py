@@ -6,6 +6,7 @@ import signal
 from conftest import (
     Cluster,
     Instance,
+    ProcessDead,
     Retriable,
     TarantoolError,
     ReturnError,
@@ -50,9 +51,8 @@ def test_call_normalization(instance: Instance):
     assert e6.value.errno == errno.ECONNRESET
 
     instance.terminate()
-    with pytest.raises(OSError) as e7:
+    with pytest.raises(ProcessDead):
         instance.call("anything")
-    assert e7.value.errno == errno.ECONNREFUSED
 
 
 def test_eval_normalization(instance: Instance):
@@ -121,9 +121,8 @@ def test_process_management(instance: Instance):
         os.kill(pid, 0)
 
     # Make sure the child is still hanging
-    with pytest.raises(OSError) as exc:
+    with pytest.raises(ProcessDead):
         instance.eval("return 'ok'", timeout=0.1)
-    assert exc.value.errno == errno.ECONNRESET
     with pytest.raises(StillAlive):
         Retriable(timeout=1, rps=10).call(check_pg, pgrp)
     print(f"{instance} is still alive")
