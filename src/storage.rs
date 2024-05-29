@@ -1230,23 +1230,6 @@ impl PropertyName {
 
         Ok(())
     }
-
-    /// Try decoding property's value specifically for audit log.
-    /// Returns `Some(string)` if it should be logged, `None` otherwise.
-    pub fn should_be_audited(&self, tuple: &Tuple) -> Result<Option<String>> {
-        let bad_value = || Error::other("bad value");
-        Ok(match self {
-            Self::PasswordMinLength
-            | Self::MaxLoginAttempts
-            | Self::SnapshotChunkMaxSize
-            | Self::MaxPgStatements
-            | Self::MaxPgPortals => {
-                let v = tuple.field::<usize>(1)?.ok_or_else(bad_value)?;
-                Some(format!("{v}"))
-            }
-            _ => None,
-        })
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
