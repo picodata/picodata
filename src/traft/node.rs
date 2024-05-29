@@ -802,47 +802,6 @@ impl NodeImpl {
             Err(e) => {
                 tlog!(Error, "clusterwide dml failed: {e}");
             }
-            // Handle delete from _pico_property
-            Ok((Some(old), None)) if space == Ok(ClusterwideTable::Property) => {
-                assert!(matches!(op, Dml::Delete { .. }));
-
-                if let Ok(Some(key)) = old.field::<PropertyName>(0) {
-                    crate::audit!(
-                        message: "property `{key}` was deleted",
-                        title: "change_config",
-                        severity: High,
-                        key: %key,
-                        initiator: initiator_def.name,
-                    );
-                }
-            }
-            // Handle insert, replace, update in _pico_property
-            Ok((_old, Some(new))) if space == Ok(ClusterwideTable::Property) => {
-                // Dml::Delete mandates that new tuple is None.
-                assert!(!matches!(op, Dml::Delete { .. }));
-
-                // Keep in mind that currently we allow invalid names,
-                // which means that we have to ignore the decoding error.
-                let key = new.field::<PropertyName>(0).ok().flatten();
-
-                // Try decoding the value iff the name's known.
-                let value = key
-                    .map(|p| p.should_be_audited(new))
-                    .transpose()
-                    .expect("property value decoding should not fail")
-                    .flatten();
-
-                if let Some((key, value)) = key.zip(value) {
-                    crate::audit!(
-                        message: "property `{key}` was changed to {value}",
-                        title: "change_config",
-                        severity: High,
-                        key: %key,
-                        value: &value,
-                        initiator: initiator_def.name,
-                    );
-                }
-            }
             // Handle insert, replace, update in _pico_instance
             Ok((old, Some(new))) if space == Ok(ClusterwideTable::Instance) => {
                 // Dml::Delete mandates that new tuple is None.

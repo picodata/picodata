@@ -72,13 +72,6 @@ def test_gostech_startup(gostech_instance: Instance) -> None:
     assert event["serviceName"] == "picodata"
     assert event["userLogin"] == "admin"
 
-    event = take_until_name(events, name="change_config")
-    assert event is not None
-    assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
-    assert event["userLogin"] == "admin"
-
     event = take_until_name(events, name="create_local_db")
     assert event is not None
     assert event["tags"] == ["low", "i1", "1"]

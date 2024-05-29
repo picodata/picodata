@@ -85,10 +85,6 @@ def test_startup(instance: Instance):
     assert event["severity"] == "medium"
     assert event["initiator"] == "admin"
 
-    event = take_until_title(iter(events), "change_config")
-    assert event is not None
-    assert event["initiator"] == "admin"
-
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
     assert create_db["initiator"] == "admin"
