@@ -168,6 +168,44 @@ pub struct Entry {
 }
 impl Encode for Entry {}
 
+impl Entry {
+    /// Computes the number of bytes the entry with these fields will take up
+    /// when encoded into a tuple. This function is used to catch early the
+    /// entries which exceed the max_tuple_size threshold.
+    pub fn tuple_size(index: RaftIndex, term: RaftTerm, data: &[u8], context: &[u8]) -> usize {
+        // This capacity fits any msgpack value header and then some
+        const CAPACITY: usize = 16;
+        let mut dummy = [0_u8; CAPACITY];
+
+        // Msgpack array of 5 elements, header needs 1 byte
+        let msgpack_header_size = 1;
+
+        // Entry type is an enum with only 3 variants, is encoded as 1 byte
+        let entry_type_size = 1;
+
+        // Encoded size of the raft index
+        let mut buf = dummy.as_mut_slice();
+        rmp::encode::write_uint(&mut buf, index).expect("buffer has enough capacity");
+        let index_size = CAPACITY - buf.len();
+
+        // Encoded size of the raft term
+        let mut buf = dummy.as_mut_slice();
+        rmp::encode::write_uint(&mut buf, term).expect("buffer has enough capacity");
+        let term_size = CAPACITY - buf.len();
+
+        // Encoded size of the raft-rs specific data field
+        let mut buf = dummy.as_mut_slice();
+        rmp::encode::write_bin_len(&mut buf, data.len() as _).expect("buffer has enough capacity");
+        let data_header_size = CAPACITY - buf.len();
+        let data_size = data_header_size + data.len();
+
+        // Context is already encoded as msgpack value, so we use it's length as is
+        let context_size = context.len();
+
+        msgpack_header_size + entry_type_size + index_size + term_size + data_size + context_size
+    }
+}
+
 mod entry_type_as_i32 {
     use ::raft::prelude as raft;
     use protobuf::ProtobufEnum as _;
@@ -290,13 +328,19 @@ impl EntryContext {
     }
 
     #[inline]
-    fn into_raft_ctx(self) -> Vec<u8> {
+    fn to_raft_ctx(&self) -> Vec<u8> {
         match self {
             Self::None => vec![],
-            Self::Op(op) => {
-                rmp_serde::to_vec_named(&op).expect("encoding may only fail due to oom")
-            }
+            Self::Op(op) => rmp_serde::to_vec(op).expect("encoding may only fail due to oom"),
         }
+    }
+
+    #[inline(always)]
+    fn to_raft_entry(&self) -> raft::Entry {
+        let mut res = raft::Entry::new();
+        res.entry_type = raft::EntryType::EntryNormal;
+        res.context = self.to_raft_ctx().into();
+        res
     }
 }
 
@@ -323,7 +367,7 @@ impl From<self::Entry> for raft::Entry {
             index: row.index,
             term: row.term,
             data: row.data.into(),
-            context: row.context.into_raft_ctx().into(),
+            context: row.context.to_raft_ctx().into(),
             ..Default::default()
         }
     }
@@ -385,4 +429,39 @@ pub fn replicaset_uuid(replicaset_id: &str) -> String {
 #[inline(always)]
 fn uuid_v3(name: &str) -> Uuid {
     Uuid::new_v3(&Uuid::nil(), name.as_bytes())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tarantool::tuple::ToTupleBuffer;
+
+    #[test]
+    fn traft_entry_tuple_size_calculation() {
+        let entry = Entry {
+            entry_type: raft::EntryType::EntryNormal,
+            index: 420,
+            term: 69,
+            data: vec![4, 8, 15, 16, 23, 42],
+            context: EntryContext::Op(
+                op::Dml::Replace {
+                    table: 69105,
+                    tuple: ("foo", 100500, "bar").to_tuple_buffer().unwrap(),
+                    initiator: 1337,
+                }
+                .into(),
+            ),
+        };
+
+        let entry_tuple = entry.to_tuple_buffer().unwrap();
+        #[rustfmt::skip]
+        eprintln!("{}", tarantool::util::DisplayAsHexBytes(entry_tuple.as_ref()));
+
+        let encoded_context = entry.context.to_raft_ctx();
+        #[rustfmt::skip]
+        eprintln!("{}", tarantool::util::DisplayAsHexBytes(&encoded_context));
+
+        let fast_size = Entry::tuple_size(entry.index, entry.term, &entry.data, &encoded_context);
+        assert_eq!(entry_tuple.len(), fast_size);
+    }
 }

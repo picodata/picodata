@@ -650,6 +650,14 @@ Using configuration file '{args_path}'.");
             Value::Map(fields)
         }
     }
+
+    #[inline]
+    pub fn max_tuple_size() -> usize {
+        // This is value is not configurable at the moment, but this may change
+        // in the future. At that point this function will probably also want to
+        // accept a `&self` parameter, but for now it's not necessary.
+        1048576
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

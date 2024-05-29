@@ -416,6 +416,7 @@ impl RaftSpaceAccess {
     /// into `traft::Entry`.
     pub fn persist_entries(&self, entries: &[raft::Entry]) -> tarantool::Result<()> {
         for e in entries {
+            // FIXME: this deserialize -> serialize step is redundant
             let row = traft::Entry::try_from(e).unwrap();
             self.space_raft_log.replace(&row)?;
         }

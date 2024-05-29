@@ -167,8 +167,9 @@ impl<E: Display> From<::tarantool::transaction::TransactionError<E>> for Error {
     }
 }
 
-impl From<::tarantool::error::TarantoolError> for Error {
-    fn from(err: ::tarantool::error::TarantoolError) -> Self {
+impl From<BoxError> for Error {
+    #[inline(always)]
+    fn from(err: BoxError) -> Self {
         Self::Tarantool(err.into())
     }
 }

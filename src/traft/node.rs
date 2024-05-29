@@ -6,6 +6,7 @@
 //! - processing raft `Ready` - persisting entries, communicating with other raft nodes.
 
 use crate::access_control::user_by_id;
+use crate::config::PicodataConfig;
 use crate::governor;
 use crate::has_grades;
 use crate::instance::Instance;
@@ -49,6 +50,8 @@ use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
 use ::raft::StorageError;
 use ::raft::INVALID_ID;
+use ::tarantool::error::BoxError;
+use ::tarantool::error::TarantoolErrorCode;
 use ::tarantool::fiber;
 use ::tarantool::fiber::mutex::MutexGuard;
 use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
@@ -561,11 +564,28 @@ impl NodeImpl {
         }
 
         let index_before = self.raw_node.raft.raft_log.last_index();
-
-        let ctx = traft::EntryContext::Op(op.into());
-        self.raw_node.propose(ctx.into_raft_ctx(), vec![])?;
-
         let term = self.raw_node.raft.term;
+
+        let context = traft::EntryContext::Op(op.into());
+
+        // Check resulting raft log entry does not exceed the maximum tuple size limit.
+        let entry = context.to_raft_entry();
+        let tuple_size = traft::Entry::tuple_size(index_before + 1, term, &[], &entry.context);
+        if tuple_size > PicodataConfig::max_tuple_size() {
+            return Err(BoxError::new(
+                TarantoolErrorCode::MemtxMaxTupleSize,
+                format!("tuple size {tuple_size} exceeds the allowed limit"),
+            )
+            .into());
+        }
+
+        // Copy-pasted from `raft::raw_node::RawNode::propose`
+        let mut m = raft::Message::default();
+        m.set_msg_type(raft::MessageType::MsgPropose);
+        m.from = self.raw_node.raft.id;
+        m.set_entries(vec![entry].into());
+        self.raw_node.raft.step(m)?;
+
         let index = self.raw_node.raft.raft_log.last_index();
         debug_assert!(index == index_before + 1);
 

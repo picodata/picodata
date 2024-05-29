@@ -156,6 +156,22 @@ def test_cas_errors(instance: Instance):
         "box error: FieldMissing: Tuple field 2 (value) required by space format is missing",  # noqa: E501
     )
 
+    # Resulting raft log entry is too big
+    with pytest.raises(TarantoolError) as error:
+        # NOTE: this size is carefully chosen so that the inserted tuple doesn't
+        # exceed the threshold, but the raft log tuple (which also contains some
+        # additional metadata) does exceed the limit.
+        size = 1024 * 1024 - 18
+        instance.cas(
+            "insert",
+            "_pico_property",
+            ["X", "X" * size],
+        )
+    assert error.value.args == (
+        "ER_PROC_C",
+        "box error: MemtxMaxTupleSize: tuple size 1048593 exceeds the allowed limit",  # noqa: E501
+    )
+
 
 def test_cas_predicate(instance: Instance):
     instance.raft_compact_log()

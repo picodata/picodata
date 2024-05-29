@@ -936,7 +936,14 @@ class Instance:
         as_user = 1
         op["initiator"] = as_user
 
-        eprint(f"CaS:\n  {predicate=}\n  {op=}")
+        eprint(f"CaS:\n  {predicate=}")
+        if len(op.get("tuple") or []) > 512:
+            op_to_display = {k: v for k, v in op.items()}
+            op_to_display["tuple"] = "<too-big-to-display>"
+            eprint(f"  op={op_to_display}")
+        else:
+            eprint(f"  {op=}")
+
         return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)["index"]
 
     def pico_property(self, key: str):
