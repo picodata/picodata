@@ -811,6 +811,7 @@ fn reenterable_schema_change_request(
             primary_key,
             sharding_key,
             engine_type,
+            tier,
             ..
         }) => {
             let format = format
@@ -843,6 +844,7 @@ fn reenterable_schema_change_request(
                 engine: Some(engine_type),
                 timeout: None,
                 owner: current_user,
+                tier: tier.map(String::from),
             };
             params.validate()?;
             Params::CreateTable(params)
@@ -1085,6 +1087,9 @@ fn reenterable_schema_change_request(
                     // Space already exists, no op needed
                     return Ok(ConsumerResult { row_count: 0 });
                 }
+
+                params.check_tier_exists(storage)?;
+
                 // XXX: this is stupid, we pass raft op by value everywhere even
                 // though it's always just dropped right after serialization.
                 // This forces us to clone it quite often. The root problem is

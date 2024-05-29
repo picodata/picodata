@@ -40,14 +40,10 @@ use sbroad::executor::engine::Metadata;
 use sbroad::ir::function::Function;
 use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table, Type};
 
-use std::borrow::Cow;
-
 use crate::sql::storage::StorageRuntime;
 use crate::traft::node;
 
-use ::tarantool::space::Space;
 use ::tarantool::tuple::{KeyDef, Tuple};
-use ::tarantool::util::Value as TarantoolValue;
 
 pub type VersionMap = HashMap<SmolStr, u64>;
 
@@ -428,51 +424,6 @@ impl RouterMetadata {
             functions,
         }
     }
-
-    fn get_shard_cols(
-        name: &str,
-        meta: &tarantool::space::Metadata,
-    ) -> Result<Vec<SmolStr>, SbroadError> {
-        let storage = Clusterwide::try_get(false).expect("storage should be initialized");
-        let table_def = storage
-            .tables
-            .get(meta.id)
-            .map_err(|e| {
-                SbroadError::FailedTo(
-                    Action::Get,
-                    Some(Entity::ShardingKey),
-                    format_smolstr!("space id {}: {e}", meta.id),
-                )
-            })?
-            .ok_or_else(|| SbroadError::NotFound(Entity::ShardingKey, name.to_smolstr()))?;
-        let shard_cols: Vec<SmolStr> = match &table_def.distribution {
-            Distribution::Global => {
-                vec![]
-            }
-            Distribution::ShardedImplicitly {
-                sharding_key,
-                sharding_fn,
-            } => {
-                if !matches!(sharding_fn, ShardingFn::Murmur3) {
-                    return Err(SbroadError::NotImplemented(
-                        Entity::Distribution,
-                        format_smolstr!("by hash function {sharding_fn}"),
-                    ));
-                }
-                sharding_key
-                    .iter()
-                    .map(|field| normalize_name_from_schema(field))
-                    .collect()
-            }
-            Distribution::ShardedByField { field } => {
-                return Err(SbroadError::NotImplemented(
-                    Entity::Distribution,
-                    format_smolstr!("explicitly by field '{field}'"),
-                ));
-            }
-        };
-        Ok(shard_cols)
-    }
 }
 
 impl Metadata for RouterMetadata {
@@ -480,69 +431,20 @@ impl Metadata for RouterMetadata {
     #[allow(clippy::too_many_lines)]
     fn table(&self, table_name: &str) -> Result<Table, SbroadError> {
         let name = normalize_name_for_space_api(table_name);
+        let storage = Clusterwide::try_get(false).expect("storage should be initialized");
 
-        // // Get the space columns and engine of the space.
-        let space = Space::find(&name)
+        // // Get the space columns and engine of the space from global metatable.
+        let table = storage
+            .tables
+            .by_name(&name)?
             .ok_or_else(|| SbroadError::NotFound(Entity::Space, name.to_smolstr()))?;
-        let meta = space.meta().map_err(|e| {
-            SbroadError::FailedTo(Action::Get, Some(Entity::SpaceMetadata), e.to_smolstr())
-        })?;
-        let engine = meta.engine;
-        let mut columns: Vec<Column> = Vec::with_capacity(meta.format.len());
-        for column_meta in &meta.format {
-            let name_value = column_meta.get(&Cow::from("name")).ok_or_else(|| {
-                SbroadError::FailedTo(
-                    Action::Get,
-                    Some(Entity::SpaceMetadata),
-                    format_smolstr!("column name not found in the space format: {column_meta:?}"),
-                )
-            })?;
-            let col_name = if let TarantoolValue::Str(name) = name_value {
-                name
-            } else {
-                return Err(SbroadError::FailedTo(
-                    Action::Get,
-                    Some(Entity::SpaceMetadata),
-                    format_smolstr!("column name is not a string: {name_value:?}"),
-                ));
-            };
-            let is_nullable_value =
-                column_meta.get(&Cow::from("is_nullable")).ok_or_else(|| {
-                    SbroadError::FailedTo(
-                        Action::Get,
-                        Some(Entity::SpaceMetadata),
-                        format_smolstr!(
-                            "column nullability attribute was not found in the space metadata: {column_meta:?}"
-                        ),
-                    )
-                })?;
-            let is_nullable = if let TarantoolValue::Bool(is_nullable) = is_nullable_value {
-                *is_nullable
-            } else {
-                return Err(SbroadError::FailedTo(
-                    Action::Get,
-                    Some(Entity::SpaceMetadata),
-                    format_smolstr!(
-                        "column nullability attribute is not a boolean: {is_nullable_value:?}"
-                    ),
-                ));
-            };
-            let type_value = column_meta.get(&Cow::from("type")).ok_or_else(|| {
-                SbroadError::FailedTo(
-                    Action::Get,
-                    Some(Entity::SpaceMetadata),
-                    format_smolstr!("column type not found in the space format: {column_meta:?}"),
-                )
-            })?;
-            let col_type: Type = if let TarantoolValue::Str(col_type) = type_value {
-                Type::new(col_type)?
-            } else {
-                return Err(SbroadError::FailedTo(
-                    Action::Get,
-                    Some(Entity::SpaceMetadata),
-                    format_smolstr!("column type is not a string: {type_value:?}"),
-                ));
-            };
+
+        let engine = table.engine;
+        let mut columns: Vec<Column> = Vec::with_capacity(table.format.len());
+        for column_meta in &table.format {
+            let col_name = &column_meta.name;
+            let is_nullable = column_meta.is_nullable;
+            let col_type = Type::new(column_meta.field_type.as_str())?;
             let role = if col_name == DEFAULT_BUCKET_COLUMN {
                 ColumnRole::Sharding
             } else {
@@ -571,21 +473,46 @@ impl Metadata for RouterMetadata {
         if is_system_table {
             return Table::new_system(&normalized_name, columns, pk_cols_str);
         }
-        let sharded_columns = Self::get_shard_cols(&name, &meta)?;
-        if sharded_columns.is_empty() {
-            return Table::new_global(&normalized_name, columns, pk_cols_str);
+
+        match table.distribution {
+            Distribution::Global => Table::new_global(&normalized_name, columns, pk_cols_str),
+            Distribution::ShardedImplicitly {
+                sharding_key,
+                sharding_fn,
+                tier: tier_name,
+            } => {
+                if !matches!(sharding_fn, ShardingFn::Murmur3) {
+                    return Err(SbroadError::NotImplemented(
+                        Entity::Distribution,
+                        format_smolstr!("by hash function {sharding_fn}"),
+                    ));
+                }
+
+                let tier = Some(tier_name.to_smolstr());
+                let sharding_key_cols = sharding_key
+                    .iter()
+                    .map(|field| normalize_name_from_schema(field))
+                    .collect::<Vec<_>>();
+
+                let sharding_key_cols = sharding_key_cols
+                    .iter()
+                    .map(SmolStr::as_str)
+                    .collect::<Vec<_>>();
+
+                Table::new_sharded_in_tier(
+                    &normalized_name,
+                    columns,
+                    &sharding_key_cols,
+                    pk_cols_str,
+                    engine.into(),
+                    tier,
+                )
+            }
+            Distribution::ShardedByField { field, .. } => Err(SbroadError::NotImplemented(
+                Entity::Distribution,
+                format_smolstr!("explicitly by field '{field}'"),
+            )),
         }
-        let sharding_columns_str: &[&str] = &sharded_columns
-            .iter()
-            .map(SmolStr::as_str)
-            .collect::<Vec<_>>();
-        Table::new_sharded(
-            &normalized_name,
-            columns,
-            sharding_columns_str,
-            pk_cols_str,
-            engine.into(),
-        )
     }
 
     fn function(&self, fn_name: &str) -> Result<&Function, SbroadError> {

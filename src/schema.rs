@@ -38,9 +38,10 @@ use crate::access_control::UserMetadataKind;
 use crate::cas::{self, compare_and_swap, Request};
 use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
-use crate::storage::{self, RoutineId};
+use crate::storage::{self, RoutineId, ToEntryIter};
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
+use crate::tier::DEFAULT_TIER;
 use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, node, RaftIndex};
@@ -198,6 +199,7 @@ pub enum Distribution {
         sharding_key: Vec<String>,
         #[serde(default)]
         sharding_fn: ShardingFn,
+        tier: String,
     },
     /// Tuples will be explicitely sharded. E.g. sent to the bucket
     /// which id is provided by field that is specified here.
@@ -206,6 +208,7 @@ pub enum Distribution {
     ShardedByField {
         #[serde(default = "default_bucket_id_field")]
         field: String,
+        tier: String,
     },
 }
 
@@ -1479,6 +1482,10 @@ pub enum CreateTableError {
     ConflictingShardingPolicy,
     #[error("global spaces only support memtx engine")]
     IncompatibleGlobalSpaceEngine,
+    #[error("specified tier '{tier_name}' doesn't exist")]
+    UnexistingTier { tier_name: String },
+    #[error("specified tier '{tier_name}' doesn't contain at least one instance")]
+    EmptyTier { tier_name: String },
 }
 
 impl From<CreateTableError> for Error {
@@ -1918,6 +1925,7 @@ pub struct CreateTableParams {
     pub(crate) sharding_fn: Option<ShardingFn>,
     pub(crate) engine: Option<SpaceEngineType>,
     pub(crate) owner: UserId,
+    pub(crate) tier: Option<String>,
     /// Timeout in seconds.
     ///
     /// Specifying the timeout identifies how long user is ready to wait for ddl to be applied.
@@ -1926,6 +1934,38 @@ pub struct CreateTableParams {
 }
 
 impl CreateTableParams {
+    /// Checks for the following conditions:
+    /// 1) specified tier exists
+    /// 2) specified tier contains at least one instance
+    ///
+    /// Checks occur only in case of a sharded table.
+    pub fn check_tier_exists(&self, storage: &Clusterwide) -> traft::Result<()> {
+        if self.distribution == DistributionParam::Sharded {
+            let tier = self.tier.as_deref().unwrap_or(DEFAULT_TIER);
+
+            if storage.tiers.by_name(tier)?.is_none() {
+                return Err(CreateTableError::UnexistingTier {
+                    tier_name: tier.to_string(),
+                }
+                .into());
+            };
+
+            let tier_is_not_empty = storage
+                .instances
+                .iter()?
+                .any(|instance| instance.tier == tier);
+
+            if !tier_is_not_empty {
+                return Err(CreateTableError::EmptyTier {
+                    tier_name: tier.to_string(),
+                }
+                .into());
+            }
+        }
+
+        Ok(())
+    }
+
     /// Checks if space described by options already exists. Returns an error if
     /// the space with given id exists, but has a different name.
     pub fn space_exists(&self) -> traft::Result<bool> {
@@ -2152,14 +2192,17 @@ impl CreateTableParams {
         let distribution = match self.distribution {
             DistributionParam::Global => Distribution::Global,
             DistributionParam::Sharded => {
+                // Case when tier wasn't specified explicitly. On that stage we sure that specified tier exists and isn't empty.
+                let tier = self.tier.unwrap_or(DEFAULT_TIER.into());
                 if let Some(field) = self.by_field {
-                    Distribution::ShardedByField { field }
+                    Distribution::ShardedByField { field, tier }
                 } else {
                     Distribution::ShardedImplicitly {
                         sharding_key: self
                             .sharding_key
                             .expect("should be checked during `validate`"),
                         sharding_fn: self.sharding_fn.unwrap_or_default(),
+                        tier,
                     }
                 }
             }
@@ -2299,6 +2342,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .test_create_space(&storage)
         .unwrap();
@@ -2316,6 +2360,7 @@ mod tests {
             engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .test_create_space(&storage)
         .unwrap();
@@ -2333,6 +2378,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .test_create_space(&storage)
         .unwrap_err();
@@ -2369,6 +2415,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2386,6 +2433,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2403,6 +2451,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2420,6 +2469,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2437,6 +2487,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2454,6 +2505,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2474,6 +2526,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();
@@ -2494,6 +2547,7 @@ mod tests {
             engine: None,
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap();
@@ -2510,6 +2564,7 @@ mod tests {
             engine: Some(SpaceEngineType::Vinyl),
             timeout: None,
             owner: ADMIN_ID,
+            tier: None,
         }
         .validate()
         .unwrap_err();

@@ -4367,3 +4367,193 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
             f""" select * from "_pico_index" where "name" = '{table_name}_bucket_id' """
         )
         assert data["rows"] != []
+
+
+def test_tier_part(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tier:
+        default:
+        router:
+        empty_tier:
+        STORAGE:
+"""
+    )
+
+    cluster.deploy(instance_count=1)
+    i1 = cluster.add_instance(tier="default")
+    _ = cluster.add_instance(tier="router")
+    _ = cluster.add_instance(tier="STORAGE")
+
+    def get_tier_from_distribution_field_from_pico_table(table_name):
+        data = i1.sudo_sql(
+            f"""
+            select "distribution" from "_pico_table" where "name" = '{table_name}'
+            """
+        )
+
+        distribution_field = data["rows"][0][0]
+        distribution_parameters = list(distribution_field.values())
+        assert len(distribution_parameters) == 1
+        tier = distribution_parameters[0][2]
+        return tier
+
+    # Create sharded table in unexistent tier failed.
+    with pytest.raises(
+        TarantoolError, match="specified tier 'unexistent_tier' doesn't exist"
+    ):
+        i1.sql(
+            """
+            create table "table_in_unexistent_tier" (a int not null, b int, primary key (a))
+            distributed by (b)
+            on tier("unexistent_tier")
+            option (timeout = 3)
+            """
+        )
+
+    # Create sharded table in empty tier failed. Tier `storage` is empty, because single instance
+    # belongs to default tier.
+    with pytest.raises(
+        TarantoolError,
+        match="specified tier 'empty_tier' doesn't contain at least one instance",
+    ):
+        i1.sql(
+            """
+            create table "table_in_empty_tier" (a int not null, b int, primary key (a))
+            distributed by (b)
+            on tier("empty_tier")
+            option (timeout = 3)
+            """
+        )
+
+    # [on tier] part with `DISTRIBUTED BY GLOBALLY` should fail.
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        i1.sql(
+            """
+            create table "global_table_in_tier" (a int not null, b int, primary key (a))
+            distributed globally
+            on tier("storage")
+            option (timeout = 3)
+            """
+        )
+
+    # Empty [on tier] part should fail.
+    with pytest.raises(TarantoolError, match="expected Identifier"):
+        i1.sql(
+            """
+            create table "global_table_in_tier" (a int not null, b int, primary key (a))
+            distributed by (a)
+            on tier()
+            option (timeout = 3)
+            """
+        )
+
+    # Empty tier name doesn't exist, so should fail.
+    with pytest.raises(TarantoolError, match="specified tier '' doesn't exist"):
+        i1.sql(
+            """
+            create table "sharded_table_in_empty_tier_name"
+            (a int not null, b int, primary key (a))
+            distributed by (a)
+            on tier("")
+            option (timeout = 3)
+            """
+        )
+
+    # Tier name without parentheses should fail.
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        i1.sql(
+            """
+            create table "sharded_table_in_tier_default" (a int not null, b int, primary key (a))
+            distributed by (a)
+            on tier "default"
+            option (timeout = 3)
+            """
+        )
+
+    # Tier name without quotes is ok.
+    ddl = i1.sql(
+        """
+            create table "sharded_table_in_tier_STORAGE" (a int not null, b int, primary key (a))
+            distributed by(a)
+            on tier(storage)
+            option (timeout = 3)
+            """
+    )
+    assert ddl["row_count"] == 1
+    assert (
+        get_tier_from_distribution_field_from_pico_table(
+            "sharded_table_in_tier_STORAGE"
+        )
+        == "STORAGE"
+    )
+
+    # Create sharded table without [on tier] part. In that case tier value in distribution field
+    # in `_pico_table` should equals "default".
+    ddl = i1.sql(
+        """
+        create table "sharded_table_in_default"
+        (a int not null, b int, primary key (a))
+        distributed by (b)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+    assert (
+        get_tier_from_distribution_field_from_pico_table("sharded_table_in_default")
+        == "default"
+    )
+
+    # Create sharded table in existing tier.
+    ddl = i1.sql(
+        """
+        create table "sharded_table_in_router" (a int not null, b int, primary key (a))
+        distributed by (b)
+        on tier("router")
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+    assert (
+        get_tier_from_distribution_field_from_pico_table("sharded_table_in_router")
+        == "router"
+    )
+
+    # It's ok to use global tables with sharded in single tier.
+    dql = i1.sql(
+        """
+            select a from "sharded_table_in_router"
+            union all
+            select "id" from "_pico_table"
+            """
+    )
+
+    assert len(dql["rows"]) > 0
+
+    # Query with tables from different tier is aborted.
+    with pytest.raises(
+        TarantoolError, match="Query cannot use tables from different tiers"
+    ):
+        i1.sql(
+            """
+            select * from "sharded_table_in_router"
+            union all
+            select * from "sharded_table_in_default"
+            """
+        )
+
+    # Query with tables from different tier is aborted.
+    with pytest.raises(
+        TarantoolError, match="Query cannot use tables from different tiers"
+    ):
+        i1.sql(
+            """
+            select a from "sharded_table_in_router"
+            union all
+            select a from "sharded_table_in_default"
+            union all
+            select "id" from "_pico_table"
+            """
+        )
