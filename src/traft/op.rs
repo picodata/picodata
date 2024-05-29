@@ -73,39 +73,6 @@ pub enum Op {
 
 impl Eq for Op {}
 
-/// Helper struct for serializing subarray of dml
-/// commands to avoid copying. It must serialize
-/// to the same stuff as `BatchDml`.
-#[derive(Serialize, Debug, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-#[serde(tag = "kind")]
-pub enum BatchRef<'ops> {
-    BatchDml { ops: &'ops [Dml] },
-}
-
-#[cfg(test)]
-#[test]
-fn check_batch_dml_serialize() {
-    // check BatchDml and BatchRef are serialized the same way
-    let dmls = vec![
-        Dml::insert(0u32, &[0, 1], 1u32).unwrap(),
-        Dml::insert(0u32, &[0, 1], 0u32).unwrap(),
-    ];
-    let reffed = BatchRef::BatchDml {
-        ops: &dmls[0..dmls.len()],
-    };
-    let ser_actual = rmp_serde::to_vec_named(&reffed).unwrap();
-    let owned = Op::BatchDml { ops: dmls.clone() };
-    let ser_expected = rmp_serde::to_vec_named(&owned).unwrap();
-    assert_eq!(ser_expected, ser_actual);
-
-    let deser_actual: Op = rmp_serde::from_slice(&ser_actual).unwrap();
-    assert!(matches!(deser_actual, Op::BatchDml { .. }));
-    if let Op::BatchDml { ops } = deser_actual {
-        assert_eq!(ops, dmls);
-    }
-}
-
 impl std::fmt::Display for Op {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         return match self {

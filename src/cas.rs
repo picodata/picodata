@@ -1,5 +1,3 @@
-use std::io;
-use std::io::Write;
 use std::time::Duration;
 
 use crate::access_control;
@@ -10,7 +8,6 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error as TraftError;
 use crate::traft::node;
-use crate::traft::op::BatchRef;
 use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::EntryContext;
 use crate::traft::Result;
@@ -21,7 +18,6 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::StorageError;
 
-use serde::Serialize;
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
 use tarantool::fiber::r#async::sleep;
@@ -351,13 +347,7 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     // Don't wait for the proposal to be accepted, instead return the index
     // to the requestor, so that they can wait for it.
 
-    let entry_id = match req.op {
-        Op::BatchDml { ops } => {
-            let entries = prepare_entries_for_batch(ops)?;
-            node_impl.propose_multiple_async(entries)?
-        }
-        op => node_impl.propose_async(op)?,
-    };
+    let entry_id = node_impl.propose_async(req.op)?;
     let index = entry_id.index;
     let term = entry_id.term;
     // TODO: return number of raft entries and check this
@@ -366,76 +356,6 @@ fn proc_cas_local(req: Request) -> Result<Response> {
     drop(node_impl); // unlock the mutex
 
     Ok(Response { index, term })
-}
-
-fn prepare_entries_for_batch(ops: Vec<Dml>) -> Result<Vec<raft::Entry>> {
-    // TODO: check that each instance in cluster
-    // satisfies this limit.
-    let max_batch_size = {
-        let lua = tarantool::lua_state();
-        let tuple_max_size: u64 = lua
-            .eval("return box.cfg.memtx_max_tuple_size")
-            .map_err(traft::error::Error::Lua)?;
-        let suggested = Clusterwide::get().properties.cas_batch_max_size()?;
-        tuple_max_size.min(suggested)
-    };
-
-    // determine boundaries for splitting
-    let bounds = {
-        struct ByteCount(u64);
-
-        impl Write for ByteCount {
-            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-                self.0 += buf.len() as u64;
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> io::Result<()> {
-                Ok(())
-            }
-        }
-        let mut s = rmp_serde::Serializer::new(ByteCount(0));
-        let mut bounds = Vec::new();
-        let mut prev = 0;
-        for (idx, op) in ops.iter().enumerate() {
-            op.serialize(&mut s)
-                .expect("can't fail serialize with no allocation");
-            let op_ser_sz = s.get_ref().0;
-            if op_ser_sz >= max_batch_size {
-                if prev == idx {
-                    return Err(crate::cas::Error::TooBigOp {
-                        op: Box::new(op.clone()),
-                        op_size: op_ser_sz,
-                        tuple_max_size: max_batch_size,
-                    }
-                    .into());
-                }
-                bounds.push((prev, idx));
-                prev = idx;
-                s.get_mut().0 = 0;
-            }
-        }
-        bounds.push((prev, ops.len()));
-
-        bounds
-    };
-
-    let mut entries = Vec::with_capacity(bounds.len());
-
-    for (start, end) in bounds {
-        let op = BatchRef::BatchDml {
-            ops: &ops[start..end],
-        };
-        let e = raft::Entry {
-            data: vec![].into(),
-            context: rmp_serde::to_vec_named(&op)
-                .expect("serialize may fail only due to oom")
-                .into(),
-            ..Default::default()
-        };
-        entries.push(e);
-    }
-
-    Ok(entries)
 }
 
 crate::define_rpc_request! {
