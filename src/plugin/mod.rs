@@ -5,7 +5,7 @@ pub mod topology;
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use libloading::Library;
 use once_cell::unsync;
-use picoplugin::interface::ServiceBox;
+use picoplugin::plugin::interface::ServiceBox;
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
 use std::fs::File;

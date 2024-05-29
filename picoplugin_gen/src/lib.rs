@@ -48,8 +48,8 @@ pub fn proc_service_registrar(_attr: TokenStream, input: TokenStream) -> TokenSt
 
     // embeds function for check input argument
     quote! {
-        #[linkme::distributed_slice(picoplugin::interface::REGISTRARS)]
-        extern "C" fn #ident(registry: &mut picoplugin::interface::ServiceRegistry) {
+        #[linkme::distributed_slice(picoplugin::plugin::interface::REGISTRARS)]
+        extern "C" fn #ident(registry: &mut picoplugin::plugin::interface::ServiceRegistry) {
             fn #inner_fn_name (#inputs) {
                    #block
             }

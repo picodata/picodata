@@ -10,7 +10,7 @@ use crate::traft::node::Node;
 use crate::{tlog, traft};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use libloading::{Library, Symbol};
-use picoplugin::interface::{PicoContext, ServiceRegistry};
+use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;

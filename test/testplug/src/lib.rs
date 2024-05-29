@@ -1,12 +1,12 @@
-use picoplugin::interface::{CallbackResult, DDL};
-use picoplugin::prelude::*;
+use picoplugin::plugin::interface::{CallbackResult, DDL};
+use picoplugin::plugin::prelude::*;
+use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
+use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType};
+use picoplugin::system::tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
+use picoplugin::system::tarantool::{fiber, index, tlua};
 use serde::{Deserialize, Serialize};
 use std::sync;
 use std::time::Duration;
-use tarantool::index::{IndexOptions, IndexType, Part};
-use tarantool::space::{Field, SpaceCreateOptions, SpaceType};
-use tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
-use tarantool::{fiber, index, tlua};
 
 struct ErrInjection;
 
