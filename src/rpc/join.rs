@@ -217,7 +217,7 @@ pub fn build_instance(
         .expect("storage should not fail")
         + 1;
     let instance_id = instance_id
-        .map(Clone::clone)
+        .cloned()
         .unwrap_or_else(|| choose_instance_id(raft_id, storage));
     let replicaset_id = match replicaset_id {
         Some(replicaset_id) => replicaset_id.clone(),

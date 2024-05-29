@@ -131,13 +131,13 @@ impl ser::Serializer for RmpvNamedSerializer {
     }
 
     #[inline]
-    fn serialize_newtype_struct<T: ?Sized>(
+    fn serialize_newtype_struct<T>(
         self,
         name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         if name == rmpv::MSGPACK_EXT_STRUCT_NAME {
             let mut ext_se = ExtSerializer::new();
@@ -150,7 +150,7 @@ impl ser::Serializer for RmpvNamedSerializer {
     }
 
     #[inline]
-    fn serialize_newtype_variant<T: ?Sized>(
+    fn serialize_newtype_variant<T>(
         self,
         _name: &'static str,
         _idx: u32,
@@ -158,7 +158,7 @@ impl ser::Serializer for RmpvNamedSerializer {
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Ok(Value::Map(vec![(
             Value::from(variant),
@@ -172,9 +172,9 @@ impl ser::Serializer for RmpvNamedSerializer {
     }
 
     #[inline(always)]
-    fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         value.serialize(self)
     }
@@ -386,13 +386,13 @@ impl ser::Serializer for &mut ExtSerializer {
     }
 
     #[cold]
-    fn serialize_newtype_struct<T: ?Sized>(
+    fn serialize_newtype_struct<T>(
         self,
         _name: &'static str,
         _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Err(<Error as ser::Error>::custom(
             "expected tuple, received newtype_struct",
@@ -400,7 +400,7 @@ impl ser::Serializer for &mut ExtSerializer {
     }
 
     #[cold]
-    fn serialize_newtype_variant<T: ?Sized>(
+    fn serialize_newtype_variant<T>(
         self,
         _name: &'static str,
         _idx: u32,
@@ -408,7 +408,7 @@ impl ser::Serializer for &mut ExtSerializer {
         _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Err(<Error as ser::Error>::custom(
             "expected tuple, received newtype_variant",
@@ -423,9 +423,9 @@ impl ser::Serializer for &mut ExtSerializer {
     }
 
     #[cold]
-    fn serialize_some<T: ?Sized>(self, _value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, _value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Err(<Error as ser::Error>::custom(
             "expected tuple, received some",
@@ -508,9 +508,9 @@ impl ser::SerializeTuple for &mut ExtSerializer {
     type Error = Error;
 
     #[inline]
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         match self.fields_se {
             Some(ref mut se) => value.serialize(&mut *se),
@@ -677,20 +677,20 @@ impl ser::Serializer for &mut ExtFieldSerializer {
     }
 
     #[cold]
-    fn serialize_newtype_struct<T: ?Sized>(
+    fn serialize_newtype_struct<T>(
         self,
         _name: &'static str,
         _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Err(<Error as ser::Error>::custom(
             "expected i8 and bytes, received newtype_struct",
         ))
     }
 
-    fn serialize_newtype_variant<T: ?Sized>(
+    fn serialize_newtype_variant<T>(
         self,
         _name: &'static str,
         _idx: u32,
@@ -698,7 +698,7 @@ impl ser::Serializer for &mut ExtFieldSerializer {
         _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Err(<Error as ser::Error>::custom(
             "expected i8 and bytes, received newtype_variant",
@@ -713,9 +713,9 @@ impl ser::Serializer for &mut ExtFieldSerializer {
     }
 
     #[cold]
-    fn serialize_some<T: ?Sized>(self, _value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, _value: &T) -> Result<Self::Ok, Self::Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         Err(<Error as ser::Error>::custom(
             "expected i8 and bytes, received some",
@@ -863,9 +863,9 @@ impl ser::SerializeSeq for SerializeVec {
     type Error = Error;
 
     #[inline]
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         self.vec.push(to_rmpv_named(value)?);
         Ok(())
@@ -882,9 +882,9 @@ impl ser::SerializeTuple for SerializeVec {
     type Error = Error;
 
     #[inline]
-    fn serialize_element<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn serialize_element<T>(&mut self, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         ser::SerializeSeq::serialize_element(self, value)
     }
@@ -900,9 +900,9 @@ impl ser::SerializeTupleStruct for SerializeVec {
     type Error = Error;
 
     #[inline]
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         ser::SerializeSeq::serialize_element(self, value)
     }
@@ -918,9 +918,9 @@ impl ser::SerializeTupleVariant for SerializeTupleVariant {
     type Error = Error;
 
     #[inline]
-    fn serialize_field<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         self.vec.push(to_rmpv_named(value)?);
         Ok(())
@@ -940,17 +940,17 @@ impl ser::SerializeMap for DefaultSerializeMap {
     type Error = Error;
 
     #[inline(always)]
-    fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<(), Error>
+    fn serialize_key<T>(&mut self, key: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         self.next_key = Some(to_rmpv_named(key)?);
         Ok(())
     }
 
-    fn serialize_value<T: ?Sized>(&mut self, value: &T) -> Result<(), Error>
+    fn serialize_value<T>(&mut self, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         // Panic because this indicates a bug in the program rather than an
         // expected failure.
@@ -973,9 +973,9 @@ impl ser::SerializeStruct for DefaultSerializeMap {
     type Error = Error;
 
     #[inline]
-    fn serialize_field<T: ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         self.map.push((to_rmpv_named(key)?, to_rmpv_named(value)?));
         Ok(())
@@ -992,9 +992,9 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
     type Error = Error;
 
     #[inline]
-    fn serialize_field<T: ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), Error>
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<(), Error>
     where
-        T: ser::Serialize,
+        T: ?Sized + ser::Serialize,
     {
         self.map.push((to_rmpv_named(key)?, to_rmpv_named(value)?));
         Ok(())

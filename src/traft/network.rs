@@ -12,6 +12,7 @@ use crate::traft::error::Error;
 use crate::traft::RaftId;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
+#[cfg(debug_assertions)]
 use crate::util::NoYieldsGuard;
 use ::raft::prelude as raft;
 use ::tarantool::fiber;

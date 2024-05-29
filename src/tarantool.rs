@@ -225,7 +225,7 @@ impl Cfg {
     }
 
     pub fn set_core_parameters(&mut self, config: &PicodataConfig) -> Result<(), Error> {
-        self.log = config.instance.log.destination.clone();
+        self.log.clone_from(&config.instance.log.destination);
         self.log_level = Some(config.instance.log_level() as _);
 
         self.wal_dir = config.instance.data_dir();

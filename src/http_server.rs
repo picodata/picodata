@@ -299,13 +299,13 @@ fn get_replicasets_info(
 
         let replicaset_id = instance.replicaset_id;
         let mut is_leader = false;
-        let mut replicaset_uuid = Default::default();
+        let mut replicaset_uuid = String::new();
         let mut tier = instance.tier.clone();
         if let Some(replicaset) = replicasets.get(&replicaset_id) {
             is_leader = replicaset.current_master_id == instance.instance_id;
-            replicaset_uuid = replicaset.replicaset_uuid.clone();
+            replicaset_uuid.clone_from(&replicaset.replicaset_uuid);
             debug_assert_eq!(replicaset.tier, instance.tier);
-            tier = replicaset.tier.clone();
+            tier.clone_from(&replicaset.tier);
         }
 
         let mut http_address = String::new();
@@ -313,8 +313,8 @@ fn get_replicasets_info(
         let mut mem_usable: u64 = 0u64;
         let mut mem_used: u64 = 0u64;
         if let Some(data) = instances_props.get(&instance.raft_id) {
-            http_address = data.httpd_address.clone();
-            version = data.version.clone();
+            http_address.clone_from(&data.httpd_address);
+            version.clone_from(&data.version);
             mem_usable = data.mem_usable;
             mem_used = data.mem_used;
         }
