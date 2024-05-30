@@ -8,22 +8,12 @@ use crate::pgproto::{
 use pgwire::messages::extendedquery::{Bind, Close, Describe, Execute, Parse};
 use std::io::{Read, Write};
 
-fn use_tarantool_parameter_placeholders(sql: &str) -> String {
-    // TODO: delete it after the pg parameters are supported,
-    // related issue https://git.picodata.io/picodata/picodata/pgproto/-/issues/18.
-    sql.replace("$1", "?")
-        .replace("$2", "?")
-        .replace("$3", "?")
-        .replace("$4", "?")
-}
-
 pub fn process_parse_message(
     stream: &mut PgStream<impl Read + Write>,
     backend: &Backend,
     parse: Parse,
 ) -> PgResult<()> {
-    let query = use_tarantool_parameter_placeholders(&parse.query);
-    backend.parse(parse.name, query, parse.type_oids)?;
+    backend.parse(parse.name, parse.query, parse.type_oids)?;
     stream.write_message_noflush(messages::parse_complete())?;
     Ok(())
 }
