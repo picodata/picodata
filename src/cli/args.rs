@@ -5,6 +5,7 @@ use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
+use std::path::PathBuf;
 use tarantool::auth::AuthMethod;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
@@ -29,7 +30,7 @@ pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
 // Run
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Parser, tlua::Push, PartialEq)]
+#[derive(Debug, Parser, PartialEq)]
 #[clap(about = "Run the picodata instance")]
 pub struct Run {
     #[clap(long, value_name = "NAME", env = "PICODATA_CLUSTER_ID")]
@@ -43,13 +44,13 @@ pub struct Run {
     /// Here the instance persists all of its data.
     ///
     /// By default this is the current working directory (".").
-    pub data_dir: Option<String>,
+    pub data_dir: Option<PathBuf>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
     /// Path to configuration file in yaml format.
     ///
     /// By default the "config.yaml" in the data directory is used.
-    pub config: Option<String>,
+    pub config: Option<PathBuf>,
 
     #[clap(
         short = 'c',
@@ -153,7 +154,7 @@ pub struct Run {
     /// At the moment the script is executed, the local storage is
     /// already initialized and HTTP server is running (if specified).
     /// But the raft node is uninitialized yet.
-    pub script: Option<String>,
+    pub script: Option<PathBuf>,
 
     #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_HTTP_LISTEN")]
     /// Address to start the HTTP server on. The routing API is exposed
@@ -173,11 +174,11 @@ pub struct Run {
     ///
     /// By default the "admin.sock" in the data directory is used.
     // TODO: rename to admin_socket
-    pub admin_sock: Option<String>,
+    pub admin_sock: Option<PathBuf>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_PLUGIN_DIR")]
     /// Path to directory with plugin files
-    pub plugin_dir: Option<String>,
+    pub plugin_dir: Option<PathBuf>,
 
     #[clap(long = "tier", value_name = "TIER", env = "PICODATA_INSTANCE_TIER")]
     /// Name of the tier to which the instance will belong.
@@ -196,6 +197,7 @@ pub struct Run {
     pub init_cfg: Option<String>,
 
     #[clap(long = "audit", value_name = "PATH", env = "PICODATA_AUDIT_LOG")]
+    // As it's not always a path the value type is left as `String`.
     /// Configuration for the audit log.
     /// Valid options:
     ///
@@ -219,6 +221,7 @@ pub struct Run {
     pub shredding: bool,
 
     #[clap(long = "log", value_name = "PATH", env = "PICODATA_LOG")]
+    // As it's not always a path the value type is left as `String`.
     /// Configuration for the picodata diagnostic log.
     /// Valid options:
     ///
@@ -250,7 +253,7 @@ pub struct Run {
     /// Path to a plain-text file with a password for the system user "pico_service".
     /// This password will be used for internal communication among instances of
     /// picodata, so it must be the same on all instances.
-    pub service_password_file: Option<String>,
+    pub service_password_file: Option<PathBuf>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.

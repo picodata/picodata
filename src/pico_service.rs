@@ -4,6 +4,7 @@ use crate::unwrap_ok_or;
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt as _;
+use std::path::Path;
 
 /// Password of the special system user "pico_service".
 ///
@@ -19,12 +20,14 @@ pub(crate) fn pico_service_password() -> &'static str {
     unsafe { PICO_SERVICE_PASSWORD.as_deref() }.unwrap_or("")
 }
 
-pub(crate) fn read_pico_service_password_from_file(filename: &str) -> Result<(), Error> {
-    let res = read_file_contents_and_mode(filename);
+pub(crate) fn read_pico_service_password_from_file(
+    filename: impl AsRef<Path>,
+) -> Result<(), Error> {
+    let res = read_file_contents_and_mode(filename.as_ref());
     let (data, mode) = unwrap_ok_or!(
         res,
         Err(e) => {
-            return Err(Error::other(format!("failed to read password from file '{filename}': {e}")));
+            return Err(Error::other(format!("failed to read password from file '{}': {e}", filename.as_ref().display())));
         }
     );
 
@@ -50,7 +53,7 @@ pub(crate) fn read_pico_service_password_from_file(filename: &str) -> Result<(),
     Ok(())
 }
 
-fn read_file_contents_and_mode(filename: &str) -> std::io::Result<(Vec<u8>, u32)> {
+fn read_file_contents_and_mode(filename: impl AsRef<Path>) -> std::io::Result<(Vec<u8>, u32)> {
     let mut file = File::open(filename)?;
     let metadata = file.metadata()?;
     let mode = metadata.permissions().mode();

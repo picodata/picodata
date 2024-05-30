@@ -7,7 +7,7 @@
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::vec_init_then_push)]
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
@@ -562,7 +562,7 @@ fn init_common(
     std::fs::create_dir_all(config.instance.data_dir()).unwrap();
 
     if let Some(log_config) = &cfg.log {
-        tlog!(Info, "switching to log configuration: {log_config}");
+        tlog!(Info, "switching to log configuration: {}", log_config);
     }
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized(true);
@@ -894,8 +894,14 @@ fn postjoin(
     // Execute postjoin script if present
     if let Some(ref script) = config.instance.deprecated_script {
         let l = ::tarantool::lua_state();
-        l.exec_with("dofile(...)", script)
-            .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
+        l.exec_with(
+            "dofile(...)",
+            script.to_str().ok_or(Error::other(format!(
+                "postjoin script path {} is not encoded in UTF-8",
+                script.to_string_lossy()
+            )))?,
+        )
+        .unwrap_or_else(|err| panic!("failed to execute postjoin script: {err}"))
     }
 
     // Reset the quorum BEFORE initializing the raft node.
@@ -921,7 +927,7 @@ fn postjoin(
         .expect("changing listen port shouldn't fail");
 
     // Start admin console
-    let socket_uri = util::validate_and_complete_unix_socket_path(&config.instance.admin_socket())?;
+    let socket_uri = util::validate_and_complete_unix_socket_path(config.instance.admin_socket())?;
     let lua = ::tarantool::lua_state();
     lua.exec_with(r#"require('console').listen(...)"#, &socket_uri)?;
 
@@ -1038,7 +1044,7 @@ fn postjoin(
 
     let pg_config = &config.instance.pg;
     if pg_config.enabled() {
-        pgproto::start(pg_config, PathBuf::from(config.instance.data_dir()))?;
+        pgproto::start(pg_config, config.instance.data_dir())?;
     }
 
     Ok(())

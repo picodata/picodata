@@ -21,6 +21,7 @@ use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
 
@@ -77,13 +78,13 @@ impl PicodataConfig {
         validate_args(&args)?;
 
         let cwd = std::env::current_dir();
-        let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new(".")).display();
-        let default_path = format!("{cwd}/{DEFAULT_CONFIG_FILE_NAME}");
+        let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new("."));
+        let default_path = cwd.join(DEFAULT_CONFIG_FILE_NAME);
         let args_path = args.config.clone().map(|path| {
-            if Path::new(&path).is_absolute() {
+            if path.is_absolute() {
                 path
             } else {
-                format!("{cwd}/{path}")
+                cwd.join(path)
             }
         });
 
@@ -91,6 +92,8 @@ impl PicodataConfig {
         match (&args_path, file_exists(&default_path)) {
             (Some(args_path), true) => {
                 if args_path != &default_path {
+                    let cwd = cwd.display();
+                    let args_path = args_path.display();
                     #[rustfmt::skip]
                     tlog!(Warning, "A path to configuration file '{args_path}' was provided explicitly,
 but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}' also exists.
@@ -104,7 +107,7 @@ Using configuration file '{args_path}'.");
             }
             (None, true) => {
                 #[rustfmt::skip]
-                tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{cwd}'.");
+                tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{}'.", cwd.display());
                 config_from_file = Some((Self::read_yaml_file(&default_path)?, &default_path));
             }
             (None, false) => {}
@@ -185,9 +188,13 @@ Using configuration file '{args_path}'.");
     }
 
     #[inline]
-    pub fn read_yaml_file(path: &str) -> Result<Box<Self>, Error> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| Error::other(format!("can't read from '{path}': {e}")))?;
+    pub fn read_yaml_file(path: impl AsRef<Path>) -> Result<Box<Self>, Error> {
+        let contents = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            Error::other(format!(
+                "can't read from '{}': {e}",
+                path.as_ref().display()
+            ))
+        })?;
         Self::read_yaml_contents(&contents)
     }
 
@@ -805,14 +812,14 @@ impl ClusterConfig {
 
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct InstanceConfig {
-    #[introspection(config_default = ".")]
-    pub data_dir: Option<String>,
-    pub service_password_file: Option<String>,
+    #[introspection(config_default = PathBuf::from("."))]
+    pub data_dir: Option<PathBuf>,
+    pub service_password_file: Option<PathBuf>,
 
     // Skip serializing, so that default config doesn't contain this option,
     // which isn't allowed to be set from file.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub config_file: Option<String>,
+    pub config_file: Option<PathBuf>,
 
     // Skip serializing, so that default config doesn't contain duplicate
     // cluster_id fields.
@@ -851,17 +858,17 @@ pub struct InstanceConfig {
 
     pub http_listen: Option<Address>,
 
-    #[introspection(config_default = format!("{}/admin.sock", self.data_dir.as_ref().unwrap()))]
-    pub admin_socket: Option<String>,
+    #[introspection(config_default = self.data_dir.as_ref().map(|dir| dir.join("admin.sock")))]
+    pub admin_socket: Option<PathBuf>,
 
     // TODO:
     // - sepparate config file for common parameters
-    pub plugin_dir: Option<String>,
+    pub plugin_dir: Option<PathBuf>,
 
     // Skip serializing, so that default config doesn't contain this option,
     // because it's deprecated.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub deprecated_script: Option<String>,
+    pub deprecated_script: Option<PathBuf>,
 
     pub audit: Option<String>,
 
@@ -904,7 +911,7 @@ pub struct InstanceConfig {
 // TODO: remove all of the .clone() calls from these methods
 impl InstanceConfig {
     #[inline]
-    pub fn data_dir(&self) -> String {
+    pub fn data_dir(&self) -> PathBuf {
         self.data_dir
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
@@ -956,7 +963,7 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn admin_socket(&self) -> String {
+    pub fn admin_socket(&self) -> PathBuf {
         self.admin_socket
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
@@ -1706,7 +1713,7 @@ instance:
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
             assert_eq!(config.instance.memtx.memory.unwrap(), 0xdead_beef);
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
-            assert_eq!(config.instance.data_dir.unwrap(), ".");
+            assert_eq!(config.instance.data_dir.unwrap(), PathBuf::from("."));
 
             //
             // Errors

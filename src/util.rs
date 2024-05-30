@@ -8,6 +8,7 @@ use std::io::Write as _;
 use std::mem::replace;
 use std::os::fd::AsRawFd;
 use std::panic::Location;
+use std::path::Path;
 use std::time::Duration;
 use tarantool::session::{self, UserId};
 pub use Either::{Left, Right};
@@ -503,24 +504,29 @@ pub fn prompt_password(prompt: &str) -> Result<String, std::io::Error> {
 /// Non-absolute paths are prepended with `./`.
 ///
 /// Returns and error in case validation using lua `uri` module fails.
-pub fn validate_and_complete_unix_socket_path(socket_path: &str) -> Result<String, Error> {
+pub fn validate_and_complete_unix_socket_path(
+    socket_path: impl AsRef<Path>,
+) -> Result<String, Error> {
     let l = ::tarantool::lua_state();
-    let path = std::path::Path::new(socket_path);
-    let console_sock = match path.components().next() {
-        Some(std::path::Component::Normal(_)) | Some(std::path::Component::ParentDir) => {
-            format!("unix/:./{socket_path}")
-        }
-        _ => format!("unix/:{socket_path}"),
+    let path = socket_path.as_ref();
+    let path_str = path.to_str().ok_or(Error::other(format!(
+        "socket_path {} is not encoded in UTF-8",
+        socket_path.as_ref().to_string_lossy()
+    )))?;
+    let path_str = if path.is_absolute() {
+        format!("unix/:{path_str}")
+    } else {
+        format!("unix/:./{path_str}")
     };
 
     // Check that Lua can correctly parse the unix socket path
     l.exec_with(
         "local u = require('uri').parse(...); assert(u and u.unix)",
-        &console_sock,
+        &path_str,
     )
-    .map_err(|_| Error::other(format!("invalid socket path: {socket_path}")))?;
+    .map_err(|_| Error::other(format!("invalid socket path: {}", path.display())))?;
 
-    Ok(console_sock)
+    Ok(path_str)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -820,7 +826,7 @@ impl<'a> Lexer<'a> {
 ////////////////////////////////////////////////////////////////////////////////
 
 #[inline(always)]
-pub fn file_exists(path: &str) -> bool {
+pub fn file_exists(path: impl AsRef<Path>) -> bool {
     std::fs::metadata(path).is_ok()
 }
 

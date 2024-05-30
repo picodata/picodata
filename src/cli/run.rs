@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::{waitpid, WaitStatus};
@@ -204,7 +206,7 @@ pub fn main(args: args::Run) -> ! {
     }
 }
 
-fn rm_tarantool_files(data_dir: &str) {
+fn rm_tarantool_files(data_dir: impl AsRef<Path>) {
     std::fs::read_dir(data_dir)
         .expect("[supervisor] failed reading data_dir")
         .map(|entry| entry.expect("[supervisor] failed reading directory entry"))

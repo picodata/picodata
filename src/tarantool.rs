@@ -15,6 +15,7 @@ use file_shred::*;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::os::unix::ffi::OsStrExt;
+use std::path::PathBuf;
 use tlua::CallError;
 
 #[macro_export]
@@ -100,9 +101,9 @@ pub struct Cfg {
     pub log: Option<String>,
     pub log_level: Option<u8>,
 
-    pub wal_dir: String,
-    pub memtx_dir: String,
-    pub vinyl_dir: String,
+    pub wal_dir: PathBuf,
+    pub memtx_dir: PathBuf,
+    pub vinyl_dir: PathBuf,
 
     #[serde(flatten)]
     pub other_fields: HashMap<String, rmpv::Value>,
