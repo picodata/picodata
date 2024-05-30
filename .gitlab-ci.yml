@@ -3,6 +3,8 @@ variables:
   BASE_IMAGE_NAME: $CI_REGISTRY_IMAGE
   BASE_IMAGE_TAG: $CI_COMMIT_SHA
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RO
+  KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
+
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
