@@ -192,6 +192,7 @@ fn preload_http() {
     }
 
     preload!("http.server", "http/server.lua");
+    preload!("http.version", "http/version.lua");
     preload!("http.codes", "http/codes.lua");
     preload!("http.mime_types", "http/mime_types.lua");
 }

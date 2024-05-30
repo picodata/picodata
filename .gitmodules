@@ -10,7 +10,7 @@
 	url = https://github.com/tarantool/vshard
 [submodule "http"]
 	path = http
-	url = https://github.com/tarantool/http
+	url = https://git.picodata.io/picodata/picodata/http
 [submodule "picodata-webui"]
 	path = picodata-webui
 	url = ../picodata-webui.git
