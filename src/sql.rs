@@ -333,6 +333,7 @@ pub fn sql_dispatch(
 
     let dispatch = || {
         let runtime = RouterRuntime::new()?;
+        // Admin privileges are need for reading tables metadata.
         let query = with_su(ADMIN_ID, || {
             Query::new(
                 &runtime,

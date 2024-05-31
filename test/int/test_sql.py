@@ -2761,6 +2761,57 @@ def test_sql_privileges(cluster: Cluster):
     assert dml["row_count"] == 2
 
 
+def test_sql_privileges_vtables(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    username = "borat"
+    pwd = "Password1"
+
+    # Create user.
+    acl = i1.sql(
+        f"""
+        create user "{username}" with password '{pwd}'
+        using chap-sha1 option (timeout = 3)
+    """
+    )
+    assert acl["row_count"] == 1
+
+    # Grant create table privilege.
+    i1.sudo_sql(f""" grant create table to "{username}" """)
+
+    table_name = "foo"
+
+    # Create a table by user.
+    ddl = i1.sql(
+        f"""
+        create table "{table_name}" ("i" int not null, primary key ("i"))
+        using memtx
+        distributed by ("i")
+    """,
+        user=username,
+        password=pwd,
+    )
+    assert ddl["row_count"] == 1
+
+    # Check no-motion (without need to read vtables) query work.
+    dql = i1.sql(f""" select * from "{table_name}" """, user=username, password=pwd)
+    assert dql["rows"] == []
+
+    # Check with-motion (with need to read vtables) query work.
+    # See https://git.picodata.io/picodata/picodata/picodata/-/issues/620
+    dql = i1.sql(
+        f""" select count(*) from "{table_name}" """, user=username, password=pwd
+    )
+    assert dql["rows"] == [[0]]
+
+    # Check DML query work.
+    dml = i1.sql(
+        f""" insert into "{table_name}" select count(*) from "{table_name}" """
+    )
+    assert dml["row_count"] == 1
+
+
 def test_user_changes_password(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
     user_name = "U"
