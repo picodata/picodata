@@ -42,6 +42,7 @@ pub fn main(args: args::Test) -> ! {
             }
         }
         print!("test {} ... ", t.name());
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
 
         let (mut rx, tx) = ipc::pipe().expect("pipe creation failed");
         let pid = unsafe { fork() };

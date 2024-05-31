@@ -3,8 +3,10 @@
 #![allow(clippy::let_and_return)]
 #![allow(clippy::needless_return)]
 #![allow(clippy::needless_late_init)]
+#![allow(clippy::needless_range_loop)]
 #![allow(clippy::unwrap_or_default)]
 #![allow(clippy::redundant_static_lifetimes)]
+#![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::vec_init_then_push)]
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -39,6 +41,7 @@ pub mod address;
 pub mod audit;
 mod bootstrap_entries;
 pub mod cas;
+pub mod cbus;
 pub mod cli;
 pub mod config;
 pub mod discovery;
@@ -594,6 +597,9 @@ fn init_common(
         tlog::set_core_logger_is_initialized(false);
         return Err(Error::other(format!("core initialization failed: {e}")));
     }
+
+    cbus::init_cbus_endpoint();
+    tlog::init_thread_safe_logger();
 
     if config.instance.shredding() {
         tarantool::xlog_set_remove_file_impl();

@@ -11,6 +11,24 @@ macro_rules! unwrap_or_compile_error {
     };
 }
 
+#[proc_macro]
+pub fn format_but_ignore_everything_after_semicolon(
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let args: proc_macro::TokenStream = input
+        .into_iter()
+        .take_while(
+            |token| !matches!(token, proc_macro::TokenTree::Punct(punct) if punct.as_char() == ';'),
+        )
+        .collect();
+
+    let args = proc_macro2::TokenStream::from(args);
+    quote! {
+        ::std::format!(#args)
+    }
+    .into()
+}
+
 #[allow(clippy::single_match)]
 #[proc_macro_derive(Introspection, attributes(introspection))]
 pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

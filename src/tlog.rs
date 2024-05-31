@@ -1,6 +1,8 @@
 use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, ptr};
+use tarantool::cbus::unbounded as cbus;
+use tarantool::fiber;
 
 #[inline(always)]
 pub fn set_log_level(lvl: SayLevel) {
@@ -127,8 +129,25 @@ pub fn root() -> &'static slog::Logger {
 #[macro_export]
 macro_rules! tlog {
     ($lvl:ident, $($args:tt)*) => {{
-        let logger = &$crate::tlog::root();
-        slog::slog_log!(logger, slog::Level::$lvl, "", $($args)*);
+        // Safety: always safe
+        if unsafe { ::tarantool::ffi::tarantool::cord_is_main_dont_create() }
+            // This is needed, because we call tlog!() before tarantool_main in
+            // some cases, which means cord machinery is not yet initialized and
+            // cord_is_main_dont_create returns false for the main thread.
+            || !$crate::tlog::thread_safe_logger_is_initialized()
+        {
+            let logger = &$crate::tlog::root();
+            slog::slog_log!(logger, slog::Level::$lvl, "", $($args)*);
+        } else {
+            // TODO: support the structured parameters
+            let message = ::pico_proc_macro::format_but_ignore_everything_after_semicolon!($($args)*);
+
+            if cfg!(test) {
+                eprintln!("{}: {message}", stringify!($lvl));
+            } else {
+                $crate::tlog::log_from_non_tx_thread(slog::Level::$lvl, message);
+            }
+        }
     }}
 }
 
@@ -189,5 +208,122 @@ fn color_for_log_level(level: SayLevel) -> &'static str {
         SayLevel::System | SayLevel::Fatal | SayLevel::Crit | SayLevel::Error => "\x1b[31m", // red
         SayLevel::Warn => "\x1b[33m", // yellow
         SayLevel::Info | SayLevel::Verbose | SayLevel::Debug => "",
+    }
+}
+
+static THREAD_SAFE_LOGGING: std::sync::Mutex<Option<cbus::Sender<ThreadSafeLogRequest>>> =
+    std::sync::Mutex::new(None);
+
+struct ThreadSafeLogRequest {
+    level: slog::Level,
+    thread_name: String,
+    message: String,
+}
+
+pub fn log_from_non_tx_thread(level: slog::Level, message: String) {
+    let Ok(sender) = THREAD_SAFE_LOGGING.lock() else {
+        // Somebody panics while holding the lock, not much we can do here
+        return;
+    };
+
+    let sender = sender.as_ref().expect("is set at picodata startup");
+
+    let res = sender.send(ThreadSafeLogRequest {
+        thread_name: std::thread::current().name().unwrap_or("<unknown>").into(),
+        level,
+        message,
+    });
+    if let Err(_) = res {
+        // Nothing we can do if sending the message failed
+    }
+}
+
+#[inline(always)]
+pub fn thread_safe_logger_is_initialized() -> bool {
+    if let Ok(logger) = THREAD_SAFE_LOGGING.lock() {
+        logger.is_some()
+    } else {
+        // Somebody panicked while holding the mutex, just assume the
+        // logger was initialized at some point
+        true
+    }
+}
+
+pub fn init_thread_safe_logger() {
+    let (sender, receiver) = cbus::channel::<ThreadSafeLogRequest>(crate::cbus::ENDPOINT_NAME);
+
+    // This fiber is responsible for transmitting log messages
+    // from non-tx threads to the tx thread
+    fiber::Builder::new()
+        .name("thread_safe_logger")
+        .func(move || {
+            loop {
+                match receiver.receive() {
+                    Err(_) => {
+                        tlog!(Error, "thread safe log sender was dropped");
+                        break;
+                    }
+                    Ok(req) => {
+                        fiber::set_name(&req.thread_name);
+
+                        // NOTE: this looks incredibly stupid and it is, but
+                        // there's no easy way to do this with the slog crate
+                        // (none that I found anyway).
+                        match req.level {
+                            slog::Level::Critical => tlog!(Critical, "{}", req.message),
+                            slog::Level::Error => tlog!(Error, "{}", req.message),
+                            slog::Level::Warning => tlog!(Warning, "{}", req.message),
+                            slog::Level::Info => tlog!(Info, "{}", req.message),
+                            slog::Level::Debug => tlog!(Debug, "{}", req.message),
+                            slog::Level::Trace => tlog!(Trace, "{}", req.message),
+                        }
+                    }
+                }
+            }
+        })
+        .start_non_joinable()
+        .expect("starting a fiber shouldn't fail");
+
+    *THREAD_SAFE_LOGGING
+        .lock()
+        .expect("nobody should've touched this yet") = Some(sender);
+}
+
+mod test {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+
+    #[tarantool::test]
+    fn thread_safe_logging() {
+        crate::cbus::init_cbus_endpoint();
+        init_thread_safe_logger();
+
+        let random_numbers = [6, 9, 4, 7, 2, 1, 8, 3, 5, 6];
+
+        tlog!(Info, "start logging from non-tx threads");
+        thread::scope(|s| {
+            let mut jhs = Vec::new();
+            for i in 0..10 {
+                let jh = thread::Builder::new()
+                    .name(format!("test thread #{i}"))
+                    .spawn_scoped(s, move || {
+                        tlog!(Info, "test thread #{i} started");
+                        thread::sleep(Duration::from_millis(random_numbers[i]));
+                        tlog!(Info, "test thread #{i} ended");
+                    })
+                    .unwrap();
+                jhs.push(jh);
+            }
+
+            for jh in jhs {
+                jh.join().unwrap();
+            }
+        });
+
+        // Now we have to wait until the helper fiber processes all the logging requests
+        fiber::sleep(Duration::from_millis(500));
+
+        tlog!(Info, "done logging from non-tx threads");
     }
 }
