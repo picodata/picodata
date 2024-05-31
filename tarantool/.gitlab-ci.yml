@@ -25,6 +25,7 @@ variables:
   GIT_DEPTH: 1
   GIT_STRATEGY: fetch
   DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RW
+  KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   CACHE_PATHS: target
   CARGO_INCREMENTAL: 0
   RUST_VERSION: 1.67.1
