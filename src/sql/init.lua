@@ -43,7 +43,7 @@ local function sql(...)
     )
 
     if ok == false then
-        return nil, res
+        return nil, tostring(res)
     end
 
     return helper.format_result(res[1])

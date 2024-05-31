@@ -3466,7 +3466,7 @@ def test_rename_user(cluster: Cluster):
     # Existed name
     with pytest.raises(
         ReturnError,
-        match=f'User with name "{biba}" exists. Unable to rename user "{boba}".',
+        match=f'User with name "{biba}" exists. Unable to rename user "{boba}"',
     ):
         data = i1.sudo_sql(
             f"""
@@ -3479,7 +3479,7 @@ def test_rename_user(cluster: Cluster):
     with pytest.raises(
         ReturnError,
         match="""\
-box error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'.\
+box error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'\
 """,
     ):
         data = i1.sql(

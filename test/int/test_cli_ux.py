@@ -234,3 +234,30 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
+
+
+def test_lua_console_sql_error_messages(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+
+    result = i1.eval(
+        """
+        console = require 'console'
+        return console.eval ' pico.sql [[ create table foo ]] '
+        """
+    )
+
+    assert (
+        result
+        == """---
+- null
+- |+
+  sbroad: rule parsing error:  --> 1:9
+    |
+  1 |  create table foo
+    |         ^---
+    |
+    = expected Unique
+
+...
+"""
+    )

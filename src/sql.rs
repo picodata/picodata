@@ -282,7 +282,30 @@ pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
 /// Dispatches a query to the cluster.
 #[proc(packed_args)]
 pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
-    dispatch_sql_query(encoded_params)
+    let res = dispatch_sql_query(encoded_params);
+    res.map_err(|e| {
+        match e {
+            Error::Sbroad(SbroadError::ParsingError(entity, message)) if message.contains('\n') => {
+                // Tweak the error message so that tarantool's yaml handler
+                // prints it in human-readable form
+                //
+                // `+ 1` here for one extra '\n' at the end
+                let mut buffer = String::with_capacity(message.len() + 1);
+                for line in message.lines() {
+                    // There must not be any spaces at the end of lines,
+                    // otherwise the string will be formatted incorrectly
+                    buffer.push_str(line.trim_end());
+                    buffer.push('\n');
+                }
+                // There must be at least one empty line so that tarantool
+                // formats the string correctly (it's a special hack they use
+                // for the help feature in the lua console).
+                buffer.push('\n');
+                SbroadError::ParsingError(entity, buffer.into()).into()
+            }
+            e => e,
+        }
+    })
 }
 
 pub fn dispatch_sql_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
