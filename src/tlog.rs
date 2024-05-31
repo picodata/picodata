@@ -2,13 +2,9 @@ use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
 use std::{collections::HashMap, ptr};
 
-static mut LOG_LEVEL: SayLevel = SayLevel::Info;
-
+#[inline(always)]
 pub fn set_log_level(lvl: SayLevel) {
-    // SAFETY: Here and onward, globals are used in single thread.
-    unsafe {
-        LOG_LEVEL = lvl;
-    }
+    tarantool::log::set_current_level(lvl)
 }
 
 /// For user experience reasons we do some log messages enhancements (we add
@@ -150,7 +146,7 @@ impl slog::Drain for Drain {
         // It's hardcoded in Cargo.toml dependency features
         // In runtime it's managed by tarantool box.cfg.log_level
         let level = slog_level_to_say_level(record.level());
-        if level > unsafe { LOG_LEVEL } {
+        if level > tarantool::log::current_level() {
             return Ok(());
         }
 
