@@ -315,6 +315,7 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
         let build_query =
             || Query::new(&runtime, &params.pattern, params.params).map_err(Error::from);
 
+        // Admin privileges are need for reading tables metadata.
         let query = with_su(ADMIN_ID, || -> traft::Result<Query<RouterRuntime>> {
             build_query()
         })??;
