@@ -258,10 +258,8 @@ test-patch-picodata:
     - ./tools/prepare_source_tree_for_stat_analysis.py gamayun      
 
     - cargo build --locked --release --features dynamic_build
-    - cargo build -p testplug --release
     - cargo build -p gostech-audit-log
     - cargo build -p gostech-metrics
-    - cp ./target/release/libtestplug.so ./test/testplug/.
     - cargo test --locked --release --features dynamic_build
     - cargo build --features webui,error_injection --locked --release --features dynamic_build
     
