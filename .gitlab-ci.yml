@@ -17,7 +17,10 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
-  BASE_IMAGE_LATEST: "24.3"
+  # hack: due to insufficient versioning in images we need to use latest one.
+  # otherwise when commit changes dockerfile new image is not picked up by the 
+  # job running tests
+  BASE_IMAGE_LATEST: "latest"
   MAIN_BRANCH: &main-branch "24.3"
   CARGO_HOME: /data/shared-storage/picodata/.cargo
   CACHE_PATHS: target .venv picodata-webui/node_modules
