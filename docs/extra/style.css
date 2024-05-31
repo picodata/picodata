@@ -77,6 +77,35 @@ body {
        font-weight: (700 or NONE) */
 }
 
+/* >>> Change header behavior when scrolling page >>> */
+
+.md-header__title--active .md-header__topic {
+    opacity: initial;
+    pointer-events: initial;
+    transform: none;
+    transition: none;
+    z-index: initial;
+    /* opacity: 0;
+       pointer-events: none;
+       transform: translateX(-1.25rem);
+       transition: transform .4s cubic-bezier(1,.7,.1,.1),opacity .15s;
+       z-index: -1 */
+}
+
+[dir=rtl] .md-header__title--active .md-header__topic {
+    transform: none;
+    /* transform: translateX(1.25rem) */
+}
+
+.md-header__topic {
+    width: 100%;
+    justify-content: space-between;
+    /* NONE
+       NONE */
+}
+
+/* <<< END <<< */
+
 @media screen and (min-width: 60em) {
     .md-search__form {
         background-color: var(--pd-search-bg-color);
