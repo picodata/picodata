@@ -413,7 +413,7 @@ fn do_plugin_cas(
 /// 1) check that plugin is ready for run at all instances
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
 pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
     let manifest = Manifest::load(name)?;
 
@@ -444,7 +444,8 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
         return Ok(());
     }
 
-    let migration_result = migration::up(&plugin.name, &manifest.migration, deadline);
+    let migration_result =
+        migration::apply_up_migrations(&plugin.name, &manifest.migration, deadline);
     if let Err(e) = migration_result {
         if let Err(err) = remove_plugin(&plugin.name, Duration::from_secs(2), true) {
             tlog!(Error, "rollback plugin installation error: {err}");
@@ -608,7 +609,7 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft
 
     if !force {
         if let Some(plugin) = maybe_plugin {
-            migration::down(&plugin.name, &plugin.migration_list);
+            migration::apply_down_migrations(&plugin.name, &plugin.migration_list);
         }
     }
 

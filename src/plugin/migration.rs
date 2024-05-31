@@ -1,13 +1,17 @@
 use crate::cas::Range;
+use crate::cbus::ENDPOINT_NAME;
 use crate::plugin::{do_plugin_cas, PLUGIN_DIR};
 use crate::schema::{PluginDef, ADMIN_ID};
 use crate::storage::ClusterwideTable;
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
+use crate::util::Lexer;
+use crate::util::QuoteEscapingStyle;
 use crate::{error_injection, sql, tlog, traft};
 use sbroad::backend::sql::ir::PatternWithParams;
 use std::io;
 use std::io::ErrorKind;
+use tarantool::cbus;
 use tarantool::fiber;
 use tarantool::space::UpdateOps;
 use tarantool::time::Instant;
@@ -22,14 +26,60 @@ pub enum Error {
     #[error("Error while open migration file `{0}`: {1}")]
     File(String, io::Error),
 
+    #[error("Failed spawning a migrations parsing thread: {0}")]
+    ThreadDead(String),
+
     #[error("Invalid migration file format: {0}")]
     InvalidMigrationFormat(String),
 
-    #[error("Error while apply UP command `{0}`: {1}")]
-    Up(String, String),
+    #[error("Failed to apply `UP` command (file: {filename}) `{}`: {error}", DisplayTruncated(.command))]
+    Up {
+        filename: String,
+        command: String,
+        error: String,
+    },
 
     #[error("Update migration progress: {0}")]
     UpdateProgress(String),
+}
+
+const MAX_COMMAND_LENGTH_TO_SHOW: usize = 256;
+struct DisplayTruncated<'a>(&'a str);
+
+impl std::fmt::Display for DisplayTruncated<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let command = self.0;
+
+        if command.len() < MAX_COMMAND_LENGTH_TO_SHOW {
+            return f.write_str(command);
+        }
+
+        let mut lexer = Lexer::new(command);
+        lexer.set_quote_escaping_style(QuoteEscapingStyle::DoubleSingleQuote);
+
+        let Some(first_token) = lexer.next_token() else {
+            return f.write_str(command);
+        };
+
+        if first_token.end > MAX_COMMAND_LENGTH_TO_SHOW {
+            // First token is too big, just truncate it
+            f.write_str(&command[0..MAX_COMMAND_LENGTH_TO_SHOW])?;
+            f.write_str("...")?;
+            return Ok(());
+        }
+
+        let mut current_end = first_token.end;
+        while let Some(token) = lexer.next_token() {
+            if token.end > MAX_COMMAND_LENGTH_TO_SHOW {
+                break;
+            }
+            current_end = token.end;
+        }
+
+        f.write_str(&command[0..current_end])?;
+        f.write_str("...")?;
+        Ok(())
+    }
 }
 
 fn extract_comment(line: &str) -> Option<&str> {
@@ -42,12 +92,50 @@ fn extract_comment(line: &str) -> Option<&str> {
 
 #[derive(Debug)]
 struct MigrationQueries {
+    filename: String,
     up: Vec<String>,
     down: Vec<String>,
 }
 
-/// Reads and parses `filename`, returns a pair of arrays: one
-/// for "UP" queries and one for "DOWN" queries.
+/// Sends a task to a separate thread to parse the migrations file and blocks
+/// the current fiber until the result is ready.
+fn read_migration_queries_from_file_async(filename: &str) -> Result<MigrationQueries, Error> {
+    let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
+
+    tlog!(Info, "parsing migrations file '{filename}'");
+    let t0 = Instant::now();
+
+    std::thread::scope(|s| -> std::io::Result<_> {
+        std::thread::Builder::new()
+            .name("migrations_parser".into())
+            .spawn_scoped(s, move || {
+                tlog!(Debug, "parsing a migrations file '{filename}'");
+                let res = read_migration_queries_from_file(filename);
+                if let Err(e) = &res {
+                    tlog!(Debug, "failed parsing migrations file '{filename}': {e}");
+                }
+
+                sender.send(res)
+            })?;
+        Ok(())
+    })
+    .map_err(|e| Error::ThreadDead(e.to_string()))?;
+
+    // FIXME: add receive_timeout/receive_deadline
+    let res = receiver.receive().map_err(|e| {
+        #[rustfmt::skip]
+        tlog!(Error, "failed receiving migrations parsed from file '{filename}': {e}");
+        Error::ThreadDead(e.to_string())
+    });
+
+    let elapsed = t0.elapsed();
+    #[rustfmt::skip]
+    tlog!(Info, "done parsing migrations file '{filename}', elapsed time: {elapsed:?}");
+
+    res?
+}
+
+/// Reads and parses migrations file named `filename`..
 #[inline]
 fn read_migration_queries_from_file(filename: &str) -> Result<MigrationQueries, Error> {
     let source = std::fs::read_to_string(filename).map_err(|e| Error::File(filename.into(), e))?;
@@ -121,7 +209,11 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
     let all_up_queries = up_lines.join("\n");
     let all_down_queries = down_lines.join("\n");
 
+    let filename = std::path::Path::new(filename)
+        .file_name()
+        .map_or(filename.into(), |n| n.to_string_lossy());
     Ok(MigrationQueries {
+        filename: filename.into(),
         up: split_sql_queries(&all_up_queries),
         down: split_sql_queries(&all_down_queries),
     })
@@ -130,8 +222,8 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
 fn split_sql_queries(sql: &str) -> Vec<String> {
     let mut queries = Vec::new();
 
-    let mut lexer = crate::util::Lexer::new(sql);
-    lexer.set_quote_escaping_style(crate::util::QuoteEscapingStyle::DoubleSingleQuote);
+    let mut lexer = Lexer::new(sql);
+    lexer.set_quote_escaping_style(QuoteEscapingStyle::DoubleSingleQuote);
 
     let mut paren_depth = 0;
     let mut current_query_start = 0;
@@ -193,9 +285,19 @@ fn up_single_file(
     applier: &impl SqlApplier,
     deadline: Instant,
 ) -> Result<(), Error> {
-    for sql in &queries.up {
+    let filename = &queries.filename;
+
+    for (sql, i) in queries.up.iter().zip(1..) {
+        #[rustfmt::skip]
+        tlog!(Debug, "applying `UP` migration query {filename} #{i}/{} `{}`", queries.up.len(), DisplayTruncated(sql));
         if let Err(e) = applier.apply(sql, Some(deadline)) {
-            return Err(Error::Up(sql.clone(), e.to_string()));
+            #[rustfmt::skip]
+            tlog!(Error, "failed applying `UP` migration query (file: {filename}) `{}`", DisplayTruncated(sql));
+            return Err(Error::Up {
+                filename: filename.into(),
+                command: sql.clone(),
+                error: e.to_string(),
+            });
         }
     }
 
@@ -203,9 +305,14 @@ fn up_single_file(
 }
 
 fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
-    for sql in &queries.down {
+    let filename = &queries.filename;
+
+    for (sql, i) in queries.down.iter().zip(1..) {
+        #[rustfmt::skip]
+        tlog!(Debug, "applying `DOWN` migration query {filename} #{i}/{} `{}`", queries.down.len(), DisplayTruncated(sql));
         if let Err(e) = applier.apply(sql, None) {
-            tlog!(Error, "Error while apply DOWN command `{sql}`: {e}");
+            #[rustfmt::skip]
+            tlog!(Error, "Error while apply DOWN query (file: {filename}) `{}`: {e}", DisplayTruncated(sql));
         }
     }
 }
@@ -219,7 +326,7 @@ fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
 /// * `plugin_name`: name of plugin for which migrations belong to
 /// * `migrations`: list of migration file names
 /// * `deadline`: applying deadline
-pub fn up(
+pub fn apply_up_migrations(
     plugin_name: &str,
     migrations: &[String],
     deadline: Instant,
@@ -263,7 +370,10 @@ pub fn up(
 
     let node = node::global().expect("node must be already initialized");
     for (num, db_file) in migration_files.iter().enumerate() {
-        let res = read_migration_queries_from_file(db_file);
+        #[rustfmt::skip]
+        tlog!(Info, "applying `UP` migrations, progress: {num}/{}", migration_files.len());
+
+        let res = read_migration_queries_from_file_async(db_file);
         let queries = crate::unwrap_ok_or!(res,
             Err(e) => {
                 handle_err(&seen_queries);
@@ -275,7 +385,12 @@ pub fn up(
 
         if num == 1 && error_injection::is_enabled("PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR") {
             handle_err(&seen_queries);
-            return Err(Error::Up("".to_string(), "".to_string()).into());
+            return Err(Error::Up {
+                filename: queries.filename.clone(),
+                command: "<no-command>".into(),
+                error: "injected error".into(),
+            }
+            .into());
         }
 
         if let Err(e) = up_single_file(queries, &SBroadApplier, deadline) {
@@ -295,11 +410,22 @@ pub fn up(
         )?;
         let ranges = vec![Range::new(ClusterwideTable::Plugin).eq([plugin_name])];
 
+        tlog!(
+            Debug,
+            "updating global storage with migrations progress {num}/{}",
+            migration_files.len()
+        );
         if let Err(e) = do_plugin_cas(node, Op::Dml(update_dml), ranges, None, deadline) {
+            tlog!(
+                Debug,
+                "failed: updating global storage with migrations progress: {e}"
+            );
             handle_err(&seen_queries);
             return Err(Error::UpdateProgress(e.to_string()).into());
         }
     }
+    #[rustfmt::skip]
+    tlog!(Info, "applying `UP` migrations, progress: {0}/{0}", migration_files.len());
 
     Ok(())
 }
@@ -310,14 +436,17 @@ pub fn up(
 ///
 /// * `plugin_name`: name of plugin for which migrations belong to
 /// * `migrations`: list of migration file names
-pub fn down(plugin_name: &str, migrations: &[String]) {
-    let migrations = migrations.iter().rev();
-    for db_file in migrations {
+pub fn apply_down_migrations(plugin_name: &str, migrations: &[String]) {
+    let iter = migrations.iter().rev().zip(0..);
+    for (db_file, num) in iter {
+        #[rustfmt::skip]
+        tlog!(Info, "applying `DOWN` migrations, progress: {num}/{}", migrations.len());
+
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone()).join(plugin_name);
         let migration_path = plugin_dir.join(db_file);
         let filename = migration_path.display().to_string();
 
-        let res = read_migration_queries_from_file(&filename);
+        let res = read_migration_queries_from_file_async(&filename);
         let queries = crate::unwrap_ok_or!(res,
             Err(e) => {
                 tlog!(Error, "Rollback DOWN migration error: {e}");
@@ -327,6 +456,8 @@ pub fn down(plugin_name: &str, migrations: &[String]) {
 
         down_single_file(&queries, &SBroadApplier);
     }
+    #[rustfmt::skip]
+    tlog!(Info, "applying `DOWN` migrations, progress: {0}/{0}", migrations.len());
 }
 
 #[cfg(test)]

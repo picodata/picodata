@@ -645,7 +645,7 @@ def test_migration_apply_err(cluster: Cluster):
     # second file in a migration list applied with error
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
 
-    with pytest.raises(ReturnError, match="Error while apply UP command"):
+    with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
         i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
     expected_state = expected_state.install(False).set_data(_NO_DATA)
     expected_state.assert_synced()
