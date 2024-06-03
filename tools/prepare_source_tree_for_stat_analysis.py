@@ -25,7 +25,7 @@ DEBUG = os.getenv("DEBUG")
 DEAD_LIST = [
     # from 6b2a88b551e6940089cf248d88b050b65ab67262
     "tarantool-sys/vendor/icu4c-71_1/source/python/icutools/databuilder/renderers/common_exec.py",
-    # static build doesn't work without this file. We build dynamically, so it's fine    
+    # static build doesn't work without this file. We build dynamically, so it's fine
     "tarantool-sys/third_party/nghttp2/script/fetch-ocsp-response",
     "tarantool-sys/vendor/openssl-1.1.1q/fuzz/helper.py",
     "tarantool-sys/third_party/zstd/.circleci/images/primary/Dockerfile",
@@ -61,24 +61,11 @@ def cd(target: Path):
 
 
 def apply(patch: Path):
-    # todo: https://git.picodata.io/picodata/picodata/picodata/-/issues/577
-    with open(patch) as f:
-        line = f.readline()
-        # here we parse something like "diff --git a/src/box/alter.cc b/src/box/alter.cc"
-        # and want to get "src/box/alter.cc"
-        # so, get second elt and skip "a/"
-        file_to_patch = line.split(" ", maxsplit=4)[2][2:]
-        if not Path(file_to_patch).exists:
-            return
-
     subprocess.check_call(["git", "apply", str(patch)])  # nosec
 
 
 def apply_from_dir(path: Path):
     for patch in path.iterdir():
-        if not path.exists:
-            continue
-
         patch = patch.resolve()
         print("Applying:", patch)
 
@@ -99,7 +86,11 @@ def apply_from_dir(path: Path):
                 apply(patch)
 
 
-def prepare_for_gamayun():
+def apply_patches():
+    print("For svace:")
+    apply_from_dir(SVACE_PATCHES)
+
+    print("For gamayun:")
     for glob_pattern in DEAD_LIST:
         for fname in glob.glob(glob_pattern):
             print("Removing:", REPO_DIR / fname)
@@ -107,10 +98,6 @@ def prepare_for_gamayun():
             (REPO_DIR / fname).unlink(missing_ok=DEBUG)
 
     apply_from_dir(GAMAYUN_PATCHES)
-
-
-def prepare_for_svace():
-    apply_from_dir(SVACE_PATCHES)
 
 
 def restore():
@@ -125,16 +112,14 @@ if __name__ == "__main__":
         "Apply various certification induced transformations to source tree"
     )
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("gamayun", help="Prepare for gamayun analysis")
-    subparsers.add_parser("svace", help="Prepare for svace analysis")
+    subparsers.add_parser("apply", help="Prepare for analysis by applying patches")
     subparsers.add_parser(
         "restore",
         help="Restore all changes applied by 'svace' or(and) 'gamayun' commands",
     )
 
     commands = {
-        "gamayun": prepare_for_gamayun,
-        "svace": prepare_for_svace,
+        "apply": apply_patches,
         "restore": restore,
     }
 
