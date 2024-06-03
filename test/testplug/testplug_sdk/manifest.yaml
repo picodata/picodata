@@ -1,0 +1,10 @@
+description: plugin for test purposes
+name: testplug_sdk
+version: 0.1.0
+services:
+  - name: testservice_3
+    description: testservice_3 descr
+    default_configuration:
+      test_type: "internal"
+migration:
+  - migr.db

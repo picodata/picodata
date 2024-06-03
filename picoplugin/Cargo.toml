@@ -15,6 +15,7 @@ picoplugin_gen = { path = "../picoplugin_gen" }
 serde = "1.0.197"
 rmp = "0.8.11"
 rmp-serde = "1.1"
+thiserror = "1.0.61"
 
 [dependencies.tarantool]
 path = "./../tarantool/tarantool"

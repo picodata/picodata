@@ -2543,6 +2543,7 @@ dependencies = [
  "rmp-serde",
  "serde",
  "tarantool",
+ "thiserror",
 ]
 
 [[package]]

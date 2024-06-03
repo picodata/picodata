@@ -15,7 +15,7 @@ services:
   - name: testservice_2
     description: testservice_2 descr
     default_configuration:
-  - name: testservice_3
-    description: testservice_3 descr
+  - name: testservice_0
+    description: testservice_0 descr
     default_configuration:
 

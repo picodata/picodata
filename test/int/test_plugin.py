@@ -19,7 +19,8 @@ _PLUGIN_SMALL_SERVICES_SVC2 = ["testservice_2"]
 _DEFAULT_TIER = "default"
 _PLUGIN_WITH_MIGRATION = "testplug_w_migration"
 _PLUGIN_WITH_MIGRATION_SERVICES = ["testservice_2"]
-
+_PLUGIN_W_SDK = "testplug_sdk"
+_PLUGIN_W_SDK_SERVICES = ["testservice_3"]
 
 # ---------------------------------- Test helper classes {-----------------------------------------
 
@@ -205,6 +206,16 @@ class PluginReflection:
             assert route is not None
             assert route[3] == poisoned
 
+    @staticmethod
+    def assert_data_eq(instance, key, expected):
+        val = instance.eval(f"return _G['plugin_state']['data']['{key}']")
+        assert val == expected
+
+    @staticmethod
+    def assert_int_data_le(instance, key, expected):
+        val = instance.eval(f"return _G['plugin_state']['data']['{key}']")
+        assert int(val) <= expected
+
 
 # ---------------------------------- } Test helper classes ----------------------------------------
 
@@ -246,7 +257,7 @@ def test_invalid_manifest_plugin(cluster: Cluster):
         True
     ).assert_synced()
 
-    # # try to use invalid manifest (with non-existed extra service)
+    # try to use invalid manifest (with non-existed extra service)
     with pytest.raises(ReturnError, match="Error while install the plugin"):
         i1.call("pico.install_plugin", "testplug_broken_manifest_3")
     PluginReflection(
@@ -1327,3 +1338,30 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
 
     # assert that topology doesn't change
     plugin_ref.assert_synced()
+
+
+def test_sdk_internal(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    install_and_enable_plugin(i1, _PLUGIN_W_SDK, _PLUGIN_W_SDK_SERVICES)
+
+    version_info = i1.call(".proc_version_info")
+    PluginReflection.assert_data_eq(i1, "version", version_info["picodata_version"])
+    PluginReflection.assert_data_eq(i1, "rpc_version", version_info["rpc_api_version"])
+
+    PluginReflection.assert_data_eq(i1, "instance_id", i1.instance_id)
+    PluginReflection.assert_data_eq(i1, "instance_uuid", i1.instance_uuid())
+    PluginReflection.assert_data_eq(i1, "replicaset_id", "r1")
+    PluginReflection.assert_data_eq(i1, "replicaset_uuid", i1.replicaset_uuid())
+    PluginReflection.assert_data_eq(i1, "cluster_id", i1.cluster_id)
+    PluginReflection.assert_data_eq(i1, "tier", _DEFAULT_TIER)
+    PluginReflection.assert_data_eq(i1, "raft_id", "1")
+    PluginReflection.assert_int_data_le(
+        i1, "raft_term", i1.eval("return pico.raft_term()")
+    )
+    PluginReflection.assert_int_data_le(
+        i1, "raft_index", i1.eval("return pico.raft_get_index()")
+    )
+
+    cas_result_sdk = i1.eval("return box.space.AUTHOR:select()")
+    assert cas_result_sdk == [[101, "Alexander Blok"]]

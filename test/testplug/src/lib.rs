@@ -1,10 +1,14 @@
+use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::plugin::interface::{CallbackResult, DDL};
 use picoplugin::plugin::prelude::*;
 use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
-use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType};
+use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
 use picoplugin::system::tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
+use picoplugin::system::tarantool::tuple::Tuple;
 use picoplugin::system::tarantool::{fiber, index, tlua};
+use picoplugin::{internal, system};
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::sync;
 use std::time::Duration;
 
@@ -97,6 +101,9 @@ fn init_plugin_state_if_need(lua: &LuaThread, service: &str) {
             end
             if _G['plugin_state']['{service}'] == nil then
                 _G['plugin_state']['{service}'] = {{}}
+            end
+            if _G['plugin_state']['data'] == nil then
+                _G['plugin_state']['data'] = {{}}
             end
         "#
     );
@@ -267,10 +274,94 @@ impl Service2 {
     }
 }
 
+struct Service3;
+
+fn save_in_lua(service: &str, key: &str, value: impl Display) {
+    let lua = tarantool::lua_state();
+    init_plugin_state_if_need(&lua, service);
+
+    let value = value.to_string();
+    lua.exec_with(
+        "local key, value = ...
+        _G['plugin_state']['data'][key] = value",
+        (key, value),
+    )
+    .unwrap();
+}
+
+#[derive(Deserialize)]
+struct Service3Cfg {
+    test_type: String,
+}
+
+impl Service for Service3 {
+    type CFG = Service3Cfg;
+
+    fn on_start(&mut self, _: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {
+        match cfg.test_type.as_str() {
+            "internal" => {
+                let version = internal::picodata_version();
+                save_in_lua("testservice_3", "version", version);
+                let rpc_version = internal::rpc_version();
+                save_in_lua("testservice_3", "rpc_version", rpc_version);
+
+                // get some instance info
+                let i_info = internal::instance_info().unwrap();
+                save_in_lua("testservice_3", "instance_id", i_info.instance_id());
+                save_in_lua("testservice_3", "instance_uuid", i_info.instance_uuid());
+                save_in_lua("testservice_3", "replicaset_id", i_info.replicaset_id());
+                save_in_lua("testservice_3", "replicaset_uuid", i_info.replicaset_uuid());
+                save_in_lua("testservice_3", "cluster_id", i_info.cluster_id());
+                save_in_lua("testservice_3", "tier", i_info.tier());
+
+                // get some raft information
+                let raft_info = internal::raft_info();
+                save_in_lua("testservice_3", "raft_id", raft_info.id());
+                save_in_lua("testservice_3", "raft_term", raft_info.term());
+                save_in_lua("testservice_3", "raft_index", raft_info.applied());
+
+                let timeout = Duration::from_secs(10);
+
+                // do CAS
+                let space = system::tarantool::space::Space::find("AUTHOR")
+                    .unwrap()
+                    .id();
+                let (idx, term) = internal::cas::compare_and_swap(
+                    Op::dml(Dml::insert(
+                        space,
+                        Tuple::new(&(101, "Alexander Pushkin")).unwrap(),
+                        1,
+                    )),
+                    Predicate::new(raft_info.applied(), raft_info.term(), vec![]),
+                    timeout,
+                )
+                .unwrap();
+                internal::cas::wait_index(idx, Duration::from_secs(10)).unwrap();
+
+                let mut ops = UpdateOps::new();
+                ops.assign(1, "Alexander Blok").unwrap();
+                let (idx, _term) = internal::cas::compare_and_swap(
+                    Op::dml(Dml::update(space, &(101,), ops, 1).unwrap()),
+                    Predicate::new(idx, term, vec![]),
+                    timeout,
+                )
+                .unwrap();
+                internal::cas::wait_index(idx, Duration::from_secs(10)).unwrap();
+            }
+            _ => {
+                panic!("invalid test type")
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[service_registrar]
 pub fn service_registrar(reg: &mut ServiceRegistry) {
     ErrInjection::init(&["testservice_1", "testservice_2"]);
 
     reg.add("testservice_1", "0.1.0", Service1::new);
     reg.add("testservice_2", "0.1.0", Service2::new);
+    reg.add("testservice_3", "0.1.0", || Service3);
 }
