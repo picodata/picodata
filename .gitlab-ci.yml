@@ -363,7 +363,8 @@ gamayun-prepare:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        # hack: use latest because we dont push changed images on branches
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *else
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
