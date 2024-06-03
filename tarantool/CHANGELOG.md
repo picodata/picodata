@@ -59,6 +59,8 @@
 - `Decimal` type is now backed by builtin tarantool decimal implementation. 
   The only expected difference is slight change in formatting (lack of
   scientific notation).
+- `tarantool::msgpack::skip_value` parameter trait bound has been mitigated, now
+  accepts `&mut impl std::io::Read` instead of `&mut (impl std::io::Read + std::io::Seek)`
 
 ### Fixed
 

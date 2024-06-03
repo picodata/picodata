@@ -1,8 +1,7 @@
 use super::tuple::ToTupleBuffer;
 use crate::unwrap_ok_or;
 use crate::Result;
-use std::io::Cursor;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Cursor, Read, SeekFrom};
 
 pub mod encode;
 pub use encode::*;
@@ -21,118 +20,119 @@ macro_rules! read_be {
     }};
 }
 
-// TODO: we only ever Seek forward which is equivalent to reading into a buffer
-// and discarding the results. We should refactor this and make it accept a
-// concrete `&mut [u8]`, which will make it much nicer to use and will improve
-// both the build time and the debug perfromance.
-pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
+// TODO: we should make it accept a concrete `&mut [u8]`,
+// which will make it much nicer to use and will improve
+// both the build time and the debug performance.
+pub fn skip_value(mp: &mut impl Read) -> Result<()> {
     use rmp::Marker;
 
-    match rmp::decode::read_marker(cur)? {
+    match rmp::decode::read_marker(mp)? {
         Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {}
         Marker::U8 | Marker::I8 => {
-            cur.seek(SeekFrom::Current(1))?;
+            mp.read_exact(&mut [0u8; 1])?;
         }
         Marker::U16 | Marker::I16 => {
-            cur.seek(SeekFrom::Current(2))?;
+            mp.read_exact(&mut [0u8; 2])?;
         }
         Marker::U32 | Marker::I32 | Marker::F32 => {
-            cur.seek(SeekFrom::Current(4))?;
+            mp.read_exact(&mut [0u8; 4])?;
         }
         Marker::U64 | Marker::I64 | Marker::F64 => {
-            cur.seek(SeekFrom::Current(8))?;
+            mp.read_exact(&mut [0u8; 8])?;
         }
         Marker::FixStr(len) => {
-            cur.seek(SeekFrom::Current(len as _))?;
+            mp.read_exact(&mut vec![0u8; len as _])?;
         }
         Marker::Str8 | Marker::Bin8 => {
-            let len = read_be!(cur, u8)?;
-            cur.seek(SeekFrom::Current(len as _))?;
+            let len = read_be!(mp, u8)?;
+            mp.read_exact(&mut vec![0u8; len as _])?;
         }
         Marker::Str16 | Marker::Bin16 => {
-            let len = read_be!(cur, u16)?;
-            cur.seek(SeekFrom::Current(len as _))?;
+            let len = read_be!(mp, u16)?;
+            mp.read_exact(&mut vec![0u8; len as _])?;
         }
         Marker::Str32 | Marker::Bin32 => {
-            let len = read_be!(cur, u32)?;
-            cur.seek(SeekFrom::Current(len as _))?;
+            let len = read_be!(mp, u32)?;
+            mp.read_exact(&mut vec![0u8; len as _])?;
         }
         Marker::FixArray(len) => {
             for _ in 0..len {
-                skip_value(cur)?;
+                skip_value(mp)?;
             }
         }
         Marker::Array16 => {
-            let len = read_be!(cur, u16)?;
+            let len = read_be!(mp, u16)?;
             for _ in 0..len {
-                skip_value(cur)?;
+                skip_value(mp)?;
             }
         }
         Marker::Array32 => {
-            let len = read_be!(cur, u32)?;
+            let len = read_be!(mp, u32)?;
             for _ in 0..len {
-                skip_value(cur)?;
+                skip_value(mp)?;
             }
         }
         Marker::FixMap(len) => {
+            // Multiply by 2, because we skip key, value pairs.
             let len = len * 2;
             for _ in 0..len {
-                skip_value(cur)?;
+                skip_value(mp)?;
             }
         }
         Marker::Map16 => {
             // Multiply by 2, because we skip key, value pairs.
-            let len = read_be!(cur, u16)? * 2;
+            let len = read_be!(mp, u16)? * 2;
             for _ in 0..len {
-                skip_value(cur)?;
+                skip_value(mp)?;
             }
         }
         Marker::Map32 => {
             // Multiply by 2, because we skip key, value pairs.
-            let len = read_be!(cur, u32)? * 2;
+            let len = read_be!(mp, u32)? * 2;
             for _ in 0..len {
-                skip_value(cur)?;
+                skip_value(mp)?;
             }
         }
         Marker::FixExt1 => {
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(1 + 1))?;
+            mp.read_exact(&mut [0u8; 1 + 1])?;
         }
         Marker::FixExt2 => {
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(2 + 1))?;
+            mp.read_exact(&mut [0u8; 2 + 1])?;
         }
         Marker::FixExt4 => {
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(4 + 1))?;
+            mp.read_exact(&mut [0u8; 4 + 1])?;
         }
         Marker::FixExt8 => {
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(8 + 1))?;
+            mp.read_exact(&mut [0u8; 8 + 1])?;
         }
         Marker::FixExt16 => {
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(16 + 1))?;
+            mp.read_exact(&mut [0u8; 16 + 1])?;
         }
         Marker::Ext8 => {
-            let len = read_be!(cur, u8)?;
+            let len = read_be!(mp, u8)?;
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(len as i64 + 1))?;
+            mp.read_exact(&mut vec![0u8; len as usize + 1])?;
         }
         Marker::Ext16 => {
-            let len = read_be!(cur, u16)?;
+            let len = read_be!(mp, u16)?;
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(len as i64 + 1))?;
+            mp.read_exact(&mut vec![0u8; len as usize + 1])?;
         }
         Marker::Ext32 => {
-            let len = read_be!(cur, u32)?;
+            let len = read_be!(mp, u32)?;
             // Add 1, because we skip a 1-byte long type designator.
-            cur.seek(SeekFrom::Current(len as i64 + 1))?;
+            mp.read_exact(&mut vec![0u8; len as usize + 1])?;
         }
         Marker::Reserved => {
             return Err(rmp::decode::ValueReadError::TypeMismatch(Marker::Reserved).into())
         }
     }
+
     Ok(())
 }
 
@@ -626,6 +626,39 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use rmpv::Value;
+
+    #[test]
+    fn skip_value() {
+        let data = [
+            Value::Map(vec![(Value::from("something"), Value::from(true))]),
+            Value::Array(vec![Value::from(42), Value::from(52)]),
+            Value::from("anything"),
+            Value::from(4019497904u32),
+            Value::Ext(42, vec![1, 2, 3, 4, 5]),
+            Value::Nil,
+        ];
+        let len = data.len() as usize;
+
+        let mut bytes = Vec::new();
+        for info in &data {
+            rmp_serde::encode::write(&mut bytes, &info).unwrap();
+        }
+
+        let mut reader = Cursor::new(bytes);
+        for info in &data[..(len - 1)] {
+            let value: Value = rmp_serde::from_read(reader.clone()).unwrap();
+            assert_eq!(&value, info);
+            super::skip_value(&mut reader).unwrap();
+        }
+
+        super::skip_value(&mut reader).unwrap();
+        let err = rmp_serde::from_read::<_, Value>(reader.clone()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "IO error while reading marker: failed to fill whole buffer"
+        );
+    }
 
     #[test]
     fn array_writer() {
