@@ -256,8 +256,7 @@ test-patch-picodata:
     pull_policy: always
   script:
     - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-    - ./tools/prepare_source_tree_for_stat_analysis.py svace
-    - ./tools/prepare_source_tree_for_stat_analysis.py gamayun      
+    - ./tools/prepare_source_tree_for_stat_analysis.py apply
 
     - cargo build --locked --release --features dynamic_build
     - cargo build -p gostech-audit-log
@@ -412,8 +411,7 @@ gamayun-run:
     - |
       # svace patches is more iportant than gamayun and order of applying is important
       # first - svace, second - gamayun
-      ./tools/prepare_source_tree_for_stat_analysis.py svace
-      ./tools/prepare_source_tree_for_stat_analysis.py gamayun
+      ./tools/prepare_source_tree_for_stat_analysis.py apply
     - |
       # TODO consider moving this to the script as well, this may delete some html
       # license files which is probably not intended
