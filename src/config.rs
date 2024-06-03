@@ -15,7 +15,7 @@ use crate::util::file_exists;
 use crate::yaml_value::YamlValue;
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::PathBuf;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
 
@@ -79,13 +79,18 @@ impl PicodataConfig {
         validate_args(&args)?;
 
         let cwd = std::env::current_dir();
-        let cwd = cwd.as_deref().unwrap_or_else(|_| Path::new(".")).display();
-        let default_path = format!("{cwd}/{DEFAULT_CONFIG_FILE_NAME}");
+        let cwd = cwd.unwrap_or_else(|_| PathBuf::from("."));
+        let default_path = cwd
+            .join(DEFAULT_CONFIG_FILE_NAME)
+            .to_str()
+            .expect("all symbols are UTF-8")
+            .to_owned();
 
         let mut config = None;
         match (&args.config, file_exists(&default_path)) {
             (Some(args_path), true) => {
                 if args_path != &default_path {
+                    let cwd = cwd.display();
                     #[rustfmt::skip]
                     tlog!(Warning, "A path to configuration file '{args_path}' was provided explicitly,
 but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}' also exists.
@@ -99,7 +104,7 @@ Using configuration file '{args_path}'.");
             }
             (None, true) => {
                 #[rustfmt::skip]
-                tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{cwd}'.");
+                tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{}'.", cwd.display());
                 config = Some((Self::read_yaml_file(&default_path)?, &default_path));
             }
             (None, false) => {}
@@ -728,7 +733,11 @@ impl InstanceConfig {
         if let Some(admin_socket) = &self.admin_socket {
             admin_socket.to_owned()
         } else {
-            format!("{}/admin.sock", self.data_dir())
+            PathBuf::from(self.data_dir())
+                .join("admin.sock")
+                .to_str()
+                .expect("all symbols are UTF-8")
+                .into()
         }
     }
 
