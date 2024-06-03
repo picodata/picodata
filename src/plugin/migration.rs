@@ -82,14 +82,6 @@ impl std::fmt::Display for DisplayTruncated<'_> {
     }
 }
 
-fn extract_comment(line: &str) -> Option<&str> {
-    let (prefix, comment) = line.trim().split_once("--")?;
-    if !prefix.is_empty() {
-        return None;
-    };
-    Some(comment.trim())
-}
-
 #[derive(Debug)]
 struct MigrationQueries {
     filename: String,
@@ -153,12 +145,16 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
     let mut state = State::Initial;
 
     for (line, lineno) in source.lines().zip(1..) {
-        if line.trim().is_empty() {
+        let line_trimmed = line.trim();
+        if line_trimmed.is_empty() {
             continue;
         }
 
-        match extract_comment(line) {
-            Some("pico.UP") => {
+        let temp = line_trimmed
+            .split_once("--")
+            .map(|(l, r)| (l.trim_end(), r.trim_start()));
+        match temp {
+            Some(("", "pico.UP")) => {
                 if !up_lines.is_empty() {
                     return Err(Error::InvalidMigrationFormat(format!(
                         "{filename}:{lineno}: duplicate `pico.UP` annotation found"
@@ -167,7 +163,7 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
                 state = State::ParsingUp;
                 continue;
             }
-            Some("pico.DOWN") => {
+            Some(("", "pico.DOWN")) => {
                 if !down_lines.is_empty() {
                     return Err(Error::InvalidMigrationFormat(format!(
                         "{filename}:{lineno}: duplicate `pico.DOWN` annotation found"
@@ -176,10 +172,22 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
                 state = State::ParsingDown;
                 continue;
             }
-            Some(comment) if comment.starts_with("pico.") => {
+            Some(("", comment)) if comment.starts_with("pico.") => {
                 return Err(Error::InvalidMigrationFormat(
                     format!("{filename}:{lineno}: unsupported annotation `{comment}`, expected one of `pico.UP`, `pico.DOWN`"),
                 ));
+            }
+            Some((code, comment)) if comment.contains("pico.UP") => {
+                debug_assert!(!code.is_empty());
+                return Err(Error::InvalidMigrationFormat(format!(
+                    "{filename}:{lineno}: unexpected `pico.UP` annotation, it must be at the start of the line"
+                )));
+            }
+            Some((code, comment)) if comment.contains("pico.DOWN") => {
+                debug_assert!(!code.is_empty());
+                return Err(Error::InvalidMigrationFormat(format!(
+                    "{filename}:{lineno}: unexpected `pico.DOWN` annotation, it must be at the start of the line"
+                )));
             }
             Some(_) => {
                 // Ignore other comments
@@ -206,52 +214,52 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
         ParsingDown,
     }
 
-    let all_up_queries = up_lines.join("\n");
-    let all_down_queries = down_lines.join("\n");
-
     let filename = std::path::Path::new(filename)
         .file_name()
         .map_or(filename.into(), |n| n.to_string_lossy());
     Ok(MigrationQueries {
         filename: filename.into(),
-        up: split_sql_queries(&all_up_queries),
-        down: split_sql_queries(&all_down_queries),
+        up: split_sql_queries(&up_lines),
+        down: split_sql_queries(&down_lines),
     })
 }
 
-fn split_sql_queries(sql: &str) -> Vec<String> {
+fn split_sql_queries(lines: &[&str]) -> Vec<String> {
     let mut queries = Vec::new();
 
-    let mut lexer = Lexer::new(sql);
-    lexer.set_quote_escaping_style(QuoteEscapingStyle::DoubleSingleQuote);
-
-    let mut paren_depth = 0;
     let mut current_query_start = 0;
-    while let Some(token) = lexer.next_token() {
-        match token.text {
-            "(" => {
-                paren_depth += 1;
-            }
-            ")" => {
-                paren_depth -= 1;
-            }
-            ";" => {
-                if paren_depth != 0 {
-                    // Ignore semicolons in nested queries
-                } else {
-                    let query = &sql[current_query_start..token.end];
-                    queries.push(query.trim().to_owned());
-                    current_query_start = token.end;
-                }
-            }
-            _ => {}
-        }
-    }
+    let mut current_query_length = 0;
+    for (line, i) in lines.iter().copied().zip(0..) {
+        // `+ 1` for an extra '\n'
+        current_query_length += line.len() + 1;
 
-    let tail = sql[current_query_start..].trim();
-    if !tail.is_empty() {
-        // no semicolon at the end of last query
-        queries.push(tail.to_owned());
+        let mut found_query_end = false;
+        if let Some((code, _comment)) = line.split_once("--") {
+            if code.trim_end().ends_with(';') {
+                found_query_end = true;
+            }
+        } else if line.trim_end().ends_with(';') {
+            found_query_end = true;
+        }
+
+        let is_last_line = i == lines.len() - 1;
+        if found_query_end || is_last_line {
+            let mut query = String::with_capacity(current_query_length);
+            for line in &lines[current_query_start..i + 1] {
+                query.push_str(line);
+                // Add the original line breaks because the query may be
+                // shown to the user for debugging.
+                query.push('\n');
+            }
+
+            // And immediately remove one trailing newline because OCD
+            let trailing_newline = query.pop();
+            debug_assert_eq!(trailing_newline, Some('\n'));
+
+            queries.push(query);
+            current_query_start = i + 1;
+            current_query_length = 0;
+        }
     }
 
     queries
@@ -485,11 +493,13 @@ sql
 command;
 another command;
 nested (
-    multiline;
-    command;
+    multiline
+    command
 );
 
 command with 'semicolon ; in quotes';
+
+comment after; -- command
 
 -- test comment
 
@@ -506,11 +516,9 @@ sql_command2;
         assert_eq!(
             queries.up,
             &[
-                "multiline
-sql
-command;",
+                "multiline\nsql\ncommand;",
                 "another command;",
-                "nested (\n    multiline;\n    command;\n);",
+                "nested (\n    multiline\n    command\n);",
                 "command with 'semicolon ; in quotes';",
                 "no semicolon after last command",
             ],
@@ -559,6 +567,28 @@ command_2
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db:4: duplicate `pico.DOWN` annotation found",
+        );
+
+        let queries = r#"
+ -- pico.UP
+command;
+command_2; -- pico.DOWN
+command_3;
+        "#;
+        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "Invalid migration file format: test.db:4: unexpected `pico.DOWN` annotation, it must be at the start of the line",
+        );
+
+        let queries = r#"
+-- pico.UP
+command; -- pico.UP
+        "#;
+        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "Invalid migration file format: test.db:3: unexpected `pico.UP` annotation, it must be at the start of the line",
         );
     }
 
