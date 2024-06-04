@@ -772,18 +772,20 @@ pub struct ClusterConfig {
 
 impl ClusterConfig {
     pub fn tiers(&self) -> HashMap<String, Tier> {
-        if self.tiers.is_empty() {
-            return HashMap::from([(
-                DEFAULT_TIER.to_string(),
+        let mut tier_defs = HashMap::with_capacity(self.tiers.len());
+
+        let contains_default_tier_definition = self.tiers.get(DEFAULT_TIER).is_some();
+        if !contains_default_tier_definition {
+            tier_defs.insert(
+                DEFAULT_TIER.into(),
                 Tier {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
                     can_vote: true,
                 },
-            )]);
+            );
         }
 
-        let mut tier_defs = HashMap::with_capacity(self.tiers.len());
         for (name, info) in &self.tiers {
             let replication_factor = info
                 .replication_factor
