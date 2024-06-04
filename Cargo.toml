@@ -107,6 +107,6 @@ members = [
     "sdk/plugin-example",
     "sdk/plugin-example2",
     "gostech/gostech-audit-log",
-    "gostech/gostech-metrics",
+
     "test/testplug",
 ]

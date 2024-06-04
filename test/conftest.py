@@ -1752,10 +1752,6 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build gostech audit log failed"
 
-    cmd = ["cargo", "build", "-p", "gostech-metrics", "--profile", build_profile()]
-    eprint(f"Running {cmd}")
-    assert subprocess.call(cmd) == 0, "cargo build gostech metrics failed"
-
     cmd = ["cargo", "build", "-p", "testplug", "--profile", build_profile()]
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build gostech metrics failed"
@@ -1969,41 +1965,6 @@ class AuditServer:
         self.process.terminate()
         self.process.join()
         self.process = None
-
-
-class MetricsServer:
-    def __init__(self, instace: Instance) -> None:
-        target = json.loads(
-            subprocess.check_output(["cargo", "metadata", "--format-version=1"])
-        )["target_directory"]
-
-        self.process: subprocess.Popen | None = None
-        self.instance = instace
-        self.binary_path = os.path.realpath(
-            os.path.join(target, "debug/gostech-metrics")
-        )
-
-    def start(self) -> None:
-        password = self.instance.password or ""
-        command = [
-            self.binary_path,
-            f"--host={self.instance.host}",
-            f"--port={self.instance.port}",
-            f"--password={password}",
-            "--username=pico_service",
-            f"--addr={BASE_HOST}:{METRICS_PORT}",
-        ]
-        self.process = subprocess.Popen(command)
-        time.sleep(3)
-
-    @property
-    def url(self) -> str:
-        return f"http://{BASE_HOST}:{METRICS_PORT}/metrics"
-
-    def stop(self) -> None:
-        if self.process is None:
-            return None
-        self.process.kill()
 
 
 @dataclass

@@ -212,7 +212,6 @@ test-linux:
     # There are no Rust tests for `webui` feature, it's checked in pytest
     - cargo build --locked
     - cargo build -p gostech-audit-log
-    - cargo build -p gostech-metrics
     - cargo build -p testplug
     - cargo test --locked
 
@@ -280,7 +279,6 @@ test-patch-picodata:
     - cargo build --locked --release --features dynamic_build
     - cargo build -p testplug --release
     - cargo build -p gostech-audit-log
-    - cargo build -p gostech-metrics
     - cp ./target/release/libtestplug.so ./test/testplug/.
     - cargo test --locked --release --features dynamic_build
     - cargo build --features webui,error_injection --locked --release --features dynamic_build

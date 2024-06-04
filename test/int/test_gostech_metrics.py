@@ -1,14 +1,9 @@
 import requests  # type: ignore
 
-from conftest import (
-    Instance,
-    MetricsServer,
-)
+from conftest import Instance
 
 
 def test_metrics_ok(instance: Instance) -> None:
-    server = MetricsServer(instance)
-    server.start()
-    response = requests.get(server.url)
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    response = requests.get(f"http://{http_listen}/metrics")
     assert response.ok
-    server.stop()
