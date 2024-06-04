@@ -112,6 +112,18 @@ macro_rules! define_clusterwide_tables {
                     $( Self::$cw_space_var => $space_struct::index_definitions(), )+
                 }
             }
+
+            const fn index_names(&self) -> &'static [&'static str] {
+                match self {
+                    $( Self::$cw_space_var => $space_struct::INDEX_NAMES, )+
+                }
+            }
+
+            const fn struct_name(&self) -> &'static str {
+                match self {
+                    $( Self::$cw_space_var => ::std::stringify!($space_struct), )+
+                }
+            }
         }
 
         const _TEST_ID_AND_NAME_ARE_CORRECT: () = {
@@ -342,8 +354,8 @@ define_clusterwide_tables! {
             pub struct Privileges {
                 space: Space,
                 #[primary]
-                primary_key: Index => "_pico_privileges_primary",
-                object_idx:  Index => "_pico_privileges_object",
+                primary_key: Index => "_pico_privilege_primary",
+                object_idx:  Index => "_pico_privilege_object",
             }
         }
         Tier = 523, "_pico_tier" => {
@@ -374,7 +386,7 @@ define_clusterwide_tables! {
             pub struct Plugins {
                 space: Space,
                 #[primary]
-                index_name: Index => "name",
+                index_name: Index => "_pico_plugin_name",
             }
         }
         Service = 527, "_pico_service" => {
@@ -384,7 +396,7 @@ define_clusterwide_tables! {
             pub struct Services {
                 space: Space,
                 #[primary]
-                index_name: Index => "name",
+                index_name: Index => "_pico_service_name",
             }
         }
         ServiceRouteTable = 528, "_pico_service_route" => {
@@ -394,7 +406,7 @@ define_clusterwide_tables! {
             pub struct ServiceRouteTable {
                 space: Space,
                 #[primary]
-                index_name: Index => "routing_key",
+                index_name: Index => "_pico_service_routing_key",
             }
         }
     }
@@ -4692,6 +4704,48 @@ mod tests {
     }
 
     #[track_caller]
+    fn check_macro_matches_index_definitions(sys_table: &ClusterwideTable, index_def: &IndexDef) {
+        let from_macro = sys_table.index_names()[index_def.id as usize];
+        let from_function = &index_def.name;
+        assert_eq!(
+            from_macro,
+            from_function,
+            r#"{struct}::INDEX_NAMES doesn't match {struct}::index_definitions()
+
+    You must make sure that this part in the macro:
+    | define_clusterwide_tables! {{
+    | ...
+    |    {sys_table:?} = {table_id}, "{table_name}" => {{
+    | ...
+    |        <index_name>: Index => "{from_macro}"
+    |                                {from_macro_underline}
+    Matches with this part in {struct}::index_definitions():
+    | impl {struct} {{
+    | ...
+    |     pub fn index_definitions() -> Vec<IndexDef> {{
+    | ...
+    |         name: "{from_function}".into(),
+    |                {from_function_unreline}
+    don't ask why
+"#,
+            struct = sys_table.struct_name(),
+            table_id = sys_table.id(),
+            table_name = sys_table.name(),
+            from_function_unreline = Highlight(&"^".repeat(from_function.len())),
+            from_macro_underline = Highlight(&"^".repeat(from_macro.len())),
+        );
+
+        struct Highlight<'a>(&'a str);
+        impl std::fmt::Display for Highlight<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("\x1b[1;31m")?;
+                f.write_str(self.0)?;
+                f.write_str("\x1b[0m")
+            }
+        }
+    }
+
+    #[track_caller]
     fn get_number_of_indexes_defined_for_space(space_id: SpaceId) -> usize {
         let sys_index = SystemSpace::Index.as_space();
         let iter = sys_index.select(IteratorType::Eq, &[space_id]).unwrap();
@@ -4739,8 +4793,15 @@ mod tests {
                 "Mismatched number of indexes defined for table '{}'",
                 sys_table.name(),
             );
+            assert_eq!(
+                index_definitions.len(),
+                sys_table.index_names().len(),
+                "Mismatched number of indexes defined for table '{}'",
+                sys_table.name(),
+            );
             for mut index_def in index_definitions {
                 assert_eq!(index_def.table_id, sys_table.id());
+                check_macro_matches_index_definitions(sys_table, &index_def);
 
                 //
                 // box.space._pico_index
