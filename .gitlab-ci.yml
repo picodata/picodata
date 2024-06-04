@@ -64,6 +64,7 @@ variables:
   - &else {}
      
 build-base-image:
+  interruptible: true
   stage: build-base-image
   tags:
     - picodata-shell
@@ -101,6 +102,7 @@ build-base-image:
       fi
 
 .test:
+  interruptible: true
   stage: test
   variables:
     GIT_DEPTH: 100
@@ -349,6 +351,7 @@ test-mac-m1:
     # - |
 
 test-helm-docker-image:
+  interruptible: true
   stage: test
   tags:
     - shell
@@ -464,6 +467,7 @@ gamayun-run:
         docker.binary.picodata.io/gamayun
 
 build-vm-image:
+  interruptible: true
   stage: test
   when: manual
   inherit:
@@ -548,6 +552,7 @@ upload-picodata-to-binary:
     - curl -v --upload-file target/release/picodata-$VER $RAW_NT_REGISTRY
 
 downstream-stress-test:
+  interruptible: true
 # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
   stage: stress-test
   trigger:
