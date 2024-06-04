@@ -1915,9 +1915,6 @@ class AuditServer:
         self.port = port
         self.process: Process | None = None
         self.queue: Queue[Dict[str, Any]] = Queue(maxsize=10_000)
-        self.target = json.loads(
-            subprocess.check_output(["cargo", "metadata", "--format-version=1"])
-        )["target_directory"]
 
     def start(self) -> None:
         if self.process is not None:
@@ -1947,8 +1944,10 @@ class AuditServer:
         self.process.start()
 
     def cmd(self, binary_path: str) -> str:
-        binary = os.path.realpath(os.path.join(self.target, "debug/gostech-audit-log"))
+        target_dir = os.path.dirname(binary_path)
+        binary = os.path.realpath(os.path.join(target_dir, "gostech-audit-log"))
         args = f"--url http://{BASE_HOST}:{self.port}/log --debug"
+
         return f"| {binary} {args}"
 
     def logs(self) -> List[Dict[str, Any]]:
