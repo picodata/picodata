@@ -59,6 +59,7 @@ columns.
 - New function [TRIM][sql_trim]
 - New functions `TO_CHAR`, `TO_DATE`
 - Allow `PRIMARY KEY` next to column declaration
+- Support `SET ...` and `SET TRANSACTION ...` but they are ignored
 
 [CREATE INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/create_index/
 [DROP INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/drop_index/

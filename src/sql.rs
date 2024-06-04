@@ -18,7 +18,6 @@ use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or};
 
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
-use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{decode_msgpack, normalize_name_for_space_api};
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
@@ -34,6 +33,7 @@ use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span};
+use sbroad::{debug, warn};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
@@ -849,6 +849,20 @@ fn reenterable_schema_change_request(
                 params,
             };
             Params::RenameRoutine(params)
+        }
+        IrNode::Ddl(Ddl::SetParam { param_value, .. }) => {
+            warn!(
+                None,
+                &format!(
+                    "Parameters setting is currently disabled. Skipping update for {}.",
+                    param_value.param_name()
+                ),
+            );
+            return Ok(ConsumerResult { row_count: 0 });
+        }
+        IrNode::Ddl(Ddl::SetTransaction { .. }) => {
+            warn!(None, "Transaction setting is currently disabled. Skipping.");
+            return Ok(ConsumerResult { row_count: 0 });
         }
         IrNode::Acl(Acl::DropUser { name, .. }) => {
             // Nothing to check

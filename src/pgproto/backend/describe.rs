@@ -50,10 +50,14 @@ pub enum CommandTag {
     RevokeRole = 11,
     #[default]
     Select = 12,
+    SetParam = 20,
+    SetTransaction = 21,
     Update = 13,
 }
 
 impl CommandTag {
+    /// Note: Should be in accordance with
+    ///       `<https://github.com/postgres/postgres/blob/master/src/include/tcop/cmdtaglist.h>`
     pub fn as_str(&self) -> &str {
         match *self {
             Self::AlterRole => "ALTER ROLE",
@@ -82,6 +86,7 @@ impl CommandTag {
             Self::DropProcedure => "DROP PROCEDURE",
             Self::CallProcedure => "CALL",
             Self::RenameRoutine => "RENAME ROUTINE",
+            Self::SetParam | Self::SetTransaction => "SET",
         }
     }
 }
@@ -102,6 +107,8 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CreateIndex
             | CommandTag::RenameRoutine
             | CommandTag::DropIndex
+            | CommandTag::SetParam
+            | CommandTag::SetTransaction
             | CommandTag::DropProcedure => QueryType::Ddl,
             CommandTag::Delete
             | CommandTag::Insert
@@ -142,6 +149,8 @@ impl TryFrom<&Node> for CommandTag {
                 Ddl::DropProc { .. } => Ok(CommandTag::DropProcedure),
                 Ddl::DropIndex { .. } => Ok(CommandTag::DropIndex),
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
+                Ddl::SetParam { .. } => Ok(CommandTag::SetParam),
+                Ddl::SetTransaction { .. } => Ok(CommandTag::SetTransaction),
             },
             Node::Relational(rel) => match rel {
                 Relational::Delete { .. } => Ok(CommandTag::Delete),
