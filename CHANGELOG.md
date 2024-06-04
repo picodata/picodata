@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
   tier a table belongs to.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
+- New http server method - `/metrics`. Exposes instance metrics in prometheus format.
 -->
 
 - Fix `picodata admin` 100\% CPU usage when server closes the socket

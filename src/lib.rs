@@ -212,7 +212,11 @@ fn start_http_server(Address { host, port, .. }: &Address) {
             http_server::wrap_api_result!(http_server::http_api_cluster())
         }),
     )
-    .expect("failed to add route api/v1/cluster to http server")
+    .expect("failed to add route api/v1/cluster to http server");
+    lua.exec(
+        "pico.httpd:route({method = 'GET', path = 'metrics' }, require('metrics.plugins.prometheus').collect_http)",
+    )
+    .expect("failed to add route metrics to http server");
 }
 
 #[cfg(feature = "webui")]
