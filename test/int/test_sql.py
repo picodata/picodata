@@ -1590,6 +1590,54 @@ def test_create_drop_table(cluster: Cluster):
             """
         )
 
+    # Check table creation with different forms of primary key declaration.
+    with pytest.raises(ReturnError, match="Primary key has been already declared"):
+        i1.sql(
+            """
+            create table "primary_t" (a int not null primary key, b int not null primary key)
+            distributed by (a)
+            """
+        )
+    with pytest.raises(ReturnError, match="Primary key has been already declared"):
+        i1.sql(
+            """
+            create table "primary_t" (a int not null primary key, b int, primary key (a))
+            distributed by (a)
+            """
+        )
+    with pytest.raises(ReturnError, match="Primary key has been already declared"):
+        i1.sql(
+            """
+            create table "primary_t" (a int not null primary key, b int, primary key (b))
+            distributed by (a)
+            """
+        )
+    with pytest.raises(
+        ReturnError, match="Primary key mustn't contain nullable columns"
+    ):
+        i1.sql(
+            """
+            create table "primary_t" (a int primary key)
+            distributed by (a)
+            """
+        )
+
+    with pytest.raises(ReturnError, match="Primary key must be declared"):
+        i1.sql(
+            """
+            create table "primary_t" (a int)
+            distributed by (a)
+            """
+        )
+
+    ddl = i1.sql(
+        """
+        create table "primary_t" (a int not null primary key)
+        distributed by (a)
+        """
+    )
+    assert ddl["row_count"] == 1
+
 
 def test_check_format(cluster: Cluster):
     cluster.deploy(instance_count=2)

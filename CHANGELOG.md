@@ -18,6 +18,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `CASE` expression.
 - New property in tier table - `can_vote`. Indicates whether instances from tier can be considered as voter in raft protocol.
 - New http server method - `/metrics`. Exposes instance metrics in prometheus format.
+- SQL supports `PRIMARY KEY` next to column declaration
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
