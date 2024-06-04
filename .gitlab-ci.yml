@@ -251,20 +251,39 @@ test-linux:
     reports:
       junit: junit_pytest.xml
 
-test-patch-picodata:
-  extends: .test
-  tags:
-    - docker
+.test-patch-rules: &test-patch-rules
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_TAG}
+    # build base didnt chage but we still want the job to run
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_TAG}
     - <<: *if-build-base-changes-on-dev-branch
+      when: manual
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
+    # build base didnt change but we still want the job to run
+    # in case certification_patches has changed
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      changes:
+      - certification_patches/**/*
+      allow_failure: true
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+    # manual in other cases
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      when: manual
+      allow_failure: true
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+
+test-patch-picodata:
+  extends: .test
+  tags:
+    - docker
+  <<: *test-patch-rules
   variables:
     GIT_DEPTH: 1
     GIT_SUBMODULE_STRATEGY: recursive        
@@ -294,16 +313,7 @@ test-patch-tarantool:
   extends: .test
   tags:
     - docker
-  rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_TAG}
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  <<: *test-patch-rules
   variables:
     GIT_DEPTH: 1
     GIT_SUBMODULE_STRATEGY: recursive        
