@@ -213,7 +213,7 @@ test-linux-debug:
       ci-log-section end "pipenv-install"
 
     # There are no Rust tests for `webui` feature, it's checked in pytest
-    - cargo build --locked
+    - cargo build --timings --locked
     - cargo build -p gostech-audit-log
     - cargo build -p testplug
     - cargo test --locked
@@ -234,6 +234,7 @@ test-linux-debug:
     when: always
     paths:
       - junit_pytest.xml
+      - ./target/cargo-timings/cargo-timing.html
     reports:
       junit: junit_pytest.xml
 
@@ -263,7 +264,7 @@ test-linux-release:
 
     - *pipenv-install
 
-    - cargo build --locked --release
+    - cargo build --timings --locked --release
     - cargo build -p gostech-audit-log --release
     - cargo build -p testplug --release
     - cargo test --locked --release
@@ -282,6 +283,7 @@ test-linux-release:
     when: always
     paths:
       - junit_pytest.xml
+      - ./target/cargo-timings/cargo-timing.html
     reports:
       junit: junit_pytest.xml
 
