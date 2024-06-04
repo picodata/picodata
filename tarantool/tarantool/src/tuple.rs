@@ -285,6 +285,12 @@ impl Tuple {
     pub(crate) fn into_ptr(self) -> *mut ffi::BoxTuple {
         self.ptr.as_ptr()
     }
+
+    /// Return pointer to underlying tuple.
+    #[inline(always)]
+    pub fn as_ptr(&self) -> *mut ffi::BoxTuple {
+        self.ptr.as_ptr()
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -44,6 +44,8 @@
   `now_accurate` when benchmarking.
 - `#[encode(as_raw)]` on struct fields and enum variants
   with `Vec<u8>` type, representing raw MessagePack.
+- added `Decimal::into_raw` functions
+- added `Tuple::as_ptr` functions
 
 ### Changed
 
@@ -63,6 +65,7 @@
   scientific notation).
 - `tarantool::msgpack::skip_value` parameter trait bound has been mitigated, now
   accepts `&mut impl std::io::Read` instead of `&mut (impl std::io::Read + std::io::Seek)`
+- datetime `from_ffi_dt` and `as_ffi_dt` functions now public
 
 ### Fixed
 

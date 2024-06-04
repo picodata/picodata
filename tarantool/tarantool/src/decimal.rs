@@ -36,6 +36,11 @@ mod tarantool_decimal {
             Self { inner }
         }
 
+        /// Return a raw [`ffi::decNumber`] struct
+        pub fn into_raw(self) -> ffi::decNumber {
+            self.inner
+        }
+
         /// Return a zero decimal number.
         #[inline(always)]
         pub fn zero() -> Self {
@@ -535,6 +540,11 @@ mod standalone_decimal {
             let inner = std::mem::transmute(inner);
 
             Self { inner }
+        }
+
+        /// Return a raw [`ffi::decNumber`] struct
+        pub fn into_raw(self) -> ffi::decNumber {
+            self.to_ffi()
         }
 
         #[inline(always)]

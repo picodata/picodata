@@ -80,7 +80,7 @@ impl Datetime {
     }
 
     #[inline(always)]
-    fn from_ffi_dt(inner: ffi::datetime) -> Result<Self, Error> {
+    pub fn from_ffi_dt(inner: ffi::datetime) -> Result<Self, Error> {
         let utc_offset = UtcOffset::from_whole_seconds((inner.tzoffset * 60).into())
             .map_err(Error::WrongUtcOffset)?;
         let dt = Inner::from_unix_timestamp(inner.epoch as i64)
@@ -92,7 +92,7 @@ impl Datetime {
     }
 
     #[inline(always)]
-    fn as_ffi_dt(&self) -> ffi::datetime {
+    pub fn as_ffi_dt(&self) -> ffi::datetime {
         ffi::datetime {
             epoch: self.inner.unix_timestamp() as f64,
             nsec: self.inner.nanosecond() as i32,
