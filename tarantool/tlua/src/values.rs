@@ -1,10 +1,12 @@
 use std::borrow::Cow;
 use std::convert::TryFrom;
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, OsStr, OsString};
 use std::mem::MaybeUninit;
 use std::num::NonZeroI32;
 use std::ops::Deref;
 use std::os::raw::{c_int, c_void};
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::path::{Path, PathBuf};
 use std::ptr::null_mut;
 use std::slice;
 use std::str;
@@ -416,6 +418,46 @@ impl_push_read! { CStr,
             );
             Ok(PushGuard::new(lua, 1))
         }
+    }
+}
+
+impl_push_read! { OsString,
+    push_to_lua(&self, lua) {
+        push_string_impl!(self, lua)
+    }
+    push_into_lua(self, lua) {
+        push_string_impl!(self, lua)
+    }
+    read_at_position(lua, index) {
+        lua_read_string_impl!(lua, index,
+            |slice: &[u8], _| Ok(OsString::from_vec(slice.to_vec()))
+        )
+    }
+}
+
+impl_push_read! { OsStr,
+    push_to_lua(&self, lua) {
+        push_string_impl!(self, lua)
+    }
+}
+
+impl_push_read! { PathBuf,
+    push_to_lua(&self, lua) {
+        self.as_path().push_to_lua(lua)
+    }
+    push_into_lua(self, lua) {
+        let s = self.into_os_string();
+        push_string_impl!(s, lua)
+    }
+    read_at_position(lua, index) {
+        OsString::lua_read_at_position(lua, index).map(Into::into)
+    }
+}
+
+impl_push_read! { Path,
+    push_to_lua(&self, lua) {
+        let s = self.as_os_str();
+        push_string_impl!(s, lua)
     }
 }
 

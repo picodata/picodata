@@ -1,9 +1,11 @@
 # Change Log
 
 
-# [?.?.?] Unreleased
+# [5.1.0] Unreleased
 
 ### Added
+- `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
+- `tlua::LuaRead` trait implementations for `OsString`, `PathBuf`
 
 ### Changed
 

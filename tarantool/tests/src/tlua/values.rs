@@ -1,5 +1,6 @@
-use std::ffi::CString;
+use std::ffi::{CString, OsStr, OsString};
 use std::os::raw::{c_char, c_void};
+use std::path::{Path, PathBuf};
 use tarantool::tlua::{
     c_ptr, c_str, ffi, function0, AnyLuaString, AnyLuaValue, AsCData, AsLua, AsTable, CData,
     CDataOnStack, False, Lua, LuaFunction, LuaTable, Nil, Null, Strict, StringInLua, ToString,
@@ -883,12 +884,33 @@ pub fn readwrite_bools() {
 }
 
 pub fn readwrite_strings() {
+    use tarantool::tlua;
+
     let lua = Lua::new();
+
+    #[derive(tlua::Push)]
+    struct S<'a, 'b> {
+        os: &'a OsStr,
+        path: &'b Path,
+    }
+
+    #[derive(tlua::Push, tlua::LuaRead)]
+    struct OwnedS {
+        os: OsString,
+        path: PathBuf,
+    }
 
     lua.set("a", "hello");
     lua.set("b", &"hello".to_string());
     lua.set("c", c_str!("can you hear me?"));
     lua.set("d", CString::new("HELLO!!!").unwrap());
+
+    lua.checked_set("os_owned", OsString::from("OsString"))
+        .unwrap();
+    lua.checked_set("os", &OsStr::new("OsStr")).unwrap();
+    lua.checked_set("path_owned", PathBuf::from("./path/owned"))
+        .unwrap();
+    lua.checked_set("path", Path::new("./path")).unwrap();
 
     let x: String = lua.get("a").unwrap();
     assert_eq!(x, "hello");
@@ -898,6 +920,17 @@ pub fn readwrite_strings() {
 
     assert_eq!(lua.get::<String, _>("c").unwrap(), "can you hear me?");
     assert_eq!(lua.get::<String, _>("d").unwrap(), "HELLO!!!");
+
+    assert_eq!(lua.get::<OsString, _>("os_owned").unwrap(), "OsString");
+    assert_eq!(lua.get::<OsString, _>("os").unwrap(), "OsStr");
+    assert_eq!(
+        lua.get::<PathBuf, _>("path_owned").unwrap(),
+        Path::new(".").join("path").join("owned")
+    );
+    assert_eq!(
+        lua.get::<PathBuf, _>("path").unwrap(),
+        Path::new(".").join("path")
+    );
 
     assert_eq!(lua.eval::<String>("return 'abc'").unwrap(), "abc");
     assert_eq!(
