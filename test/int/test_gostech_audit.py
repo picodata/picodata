@@ -53,37 +53,37 @@ def test_gostech_startup(gostech_instance: Instance) -> None:
     # Init audit logs is skipped due to it's structure
     event = take_until_name(events, name="join_instance")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="change_target_grade")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="change_current_grade")
     assert event is not None
-    assert event["tags"] == ["medium", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["medium"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="create_local_db")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="connect_local_db")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
 
@@ -101,23 +101,23 @@ def test_gostech_recover_database(gostech_instance: Instance) -> None:
 
     event = take_until_name(events, name="create_local_db")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="recover_local_db")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="connect_local_db")
     assert event is not None
-    assert event["tags"] == ["low", "i1", "1"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
 
@@ -145,15 +145,15 @@ def test_gostech_create_drop_table(gostech_instance: Instance) -> None:
     event = take_until_name(events, name="create_table")
     assert event is not None
     assert event["tags"] == ["medium"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "pico_service"
 
     event = take_until_name(events, name="drop_table")
     assert event is not None
     assert event["tags"] == ["medium"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "pico_service"
 
 
@@ -185,22 +185,22 @@ def test_gostech_user(gostech_instance: Instance) -> None:
     event = take_until_name(events, name="create_user")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir"
 
     event = take_until_name(events, name="change_password")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir"
 
     event = take_until_name(events, name="drop_user")
     assert event is not None
     assert event["tags"] == ["medium"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir"
 
 
@@ -255,29 +255,29 @@ def test_gostech_role(gostech_instance: Instance) -> None:
     event = take_until_name(events, name="create_role")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "bubba"
 
     event = take_until_name(events, name="grant_role")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, name="revoke_role")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "bubba"
 
     event = take_until_name(events, name="drop_role")
     assert event is not None
     assert event["tags"] == ["medium"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "bubba"
 
 
@@ -298,9 +298,9 @@ def test_gostech_join_expel_instance(cluster: Cluster) -> None:
 
     event = take_until_name(events, "expel_instance")
     assert event is not None
-    assert event["tags"] == ["low", "i2", "2"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["tags"] == ["low"]
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
 
@@ -343,15 +343,15 @@ def test_gostech_auth(gostech_instance: Instance) -> None:
     event = take_until_name(events, "auth_ok")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir" or event["userLogin"] == "pico_service"
 
     event = take_until_name(events, "auth_fail")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir"
 
 
@@ -379,8 +379,8 @@ def test_gostech_access_denied(gostech_instance: Instance) -> None:
     event = take_until_name(events, "access_denied")
     assert event is not None
     assert event["tags"] == ["medium"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir"
 
 
@@ -419,36 +419,36 @@ def test_gostech_grant_revoke(gostech_instance: Instance) -> None:
     event = take_until_name(events, "grant_privilege")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, "revoke_privilege")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, "revoke_privilege")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
     event = take_until_name(events, "grant_role")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir" or event["userLogin"] == "pico_service"
 
     event = take_until_name(events, "revoke_role")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "ymir"
 
 
@@ -471,6 +471,6 @@ def test_gostech_rename_user(gostech_instance: Instance) -> None:
     event = take_until_name(events, "rename_user")
     assert event is not None
     assert event["tags"] == ["high"]
-    assert event["Datetime"] is not None
-    assert event["serviceName"] == "picodata"
+    assert event["createdAt"] is not None
+    assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"

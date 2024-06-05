@@ -1,5 +1,6 @@
 {"id":"1.0.1","message":"audit log is ready","severity":"low","time":"2024-03-26T13:02:22.053+0300","title":"init_audit"}
 {"id":"1.0.2","message":"instance is starting","severity":"low","time":"2024-03-26T13:02:22.057+0300","title":"local_startup"}
+
 {"id":"1.0.3","initiator":"admin","instance_id":"i1","message":"a new instance `i1` joined the cluster","raft_id":"1","severity":"low","time":"2024-03-26T13:02:22.122+0300","title":"join_instance"}
 {"id":"1.0.4","initiator":"admin","instance_id":"i1","message":"current grade of instance `i1` changed to Offline(0)","new_grade":"Offline(0)","raft_id":"1","severity":"medium","time":"2024-03-26T13:02:22.122+0300","title":"change_current_grade"}
 {"id":"1.0.5","initiator":"admin","instance_id":"i1","message":"target grade of instance `i1` changed to Offline(0)","new_grade":"Offline(0)","raft_id":"1","severity":"low","time":"2024-03-26T13:02:22.122+0300","title":"change_target_grade"}

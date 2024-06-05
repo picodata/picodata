@@ -3,16 +3,52 @@ use std::{collections, path, sync};
 use tokio::{
     fs,
     io::{self, AsyncBufReadExt},
-    process, runtime, signal,
+    runtime, signal,
     sync::oneshot,
     task, time,
 };
 
 const TASKS_CAP: usize = 1024;
-const TAGS_NAMES: [&str; 4] = ["severity", "initiator", "instance_id", "raft_id"];
-
-static mut PICODATA_NAME: String = String::new();
-static mut PICODATA_VERSION: String = String::new();
+const USER_NODE: &str = "default";
+const X_NODE_ID: &str = "0.0.0";
+const MODULE: &str = "picodata";
+const METAMODEL_VERSION: &str = "0.1.0";
+const EVENT_TYPES: [&str; 34] = [
+    "access_denied",
+    "auth_fail",
+    "auth_ok",
+    "change_config",
+    "change_current_grade",
+    "change_password",
+    "change_target_grade",
+    "connect_local_db",
+    "create_local_db",
+    "create_procedure",
+    "create_role",
+    "create_table",
+    "create_user",
+    "drop_local_db",
+    "drop_procedure",
+    "drop_role",
+    "drop_table",
+    "drop_user",
+    "expel_instance",
+    "grant_privilege",
+    "grant_role",
+    "init_audit",
+    "integrity_violation",
+    "join_instance",
+    "local_shutdown",
+    "local_startup",
+    "recover_local_db",
+    "rename_procedure",
+    "rename_user",
+    "revoke_privilege",
+    "revoke_role",
+    "shredding_failed",
+    "shredding_finished",
+    "shredding_started",
+];
 
 enum LineReader {
     File(io::Lines<io::BufReader<fs::File>>),
@@ -30,8 +66,6 @@ impl LineReader {
 
 #[derive(thiserror::Error, Debug)]
 enum Error {
-    #[error("gather info error: {0}")]
-    InfoCollect(String),
     #[error("send log bad status")]
     SendLogStatus,
     #[error("io error: {0}")]
@@ -51,18 +85,25 @@ struct Param {
     value: String,
 }
 
+fn map_to_params(map: collections::HashMap<String, String>) -> Vec<Param> {
+    let mut result = Vec::with_capacity(map.len());
+    for (key, value) in map {
+        result.push(Param { key, value });
+    }
+    result
+}
+
 #[derive(Clone, Debug, serde::Serialize)]
 struct Log {
-    tags: Vec<String>,
-    #[serde(rename = "Datetime")]
+    tags: [String; 1],
+    #[serde(rename = "createdAt")]
     datetime: i64,
-    #[serde(rename = "serviceName")]
-    service_name: String,
-    #[serde(rename = "serviceVersion")]
-    service_version: String,
+    module: String,
+    #[serde(rename = "metamodelVersion")]
+    metamodel_version: String,
     name: String,
     params: Vec<Param>,
-    #[serde(rename = "sessionID")]
+    #[serde(rename = "session")]
     session_id: Option<String>,
     #[serde(rename = "userLogin")]
     user_login: String,
@@ -72,68 +113,59 @@ struct Log {
     user_node: Option<String>,
 }
 
-impl TryFrom<String> for Log {
+impl TryFrom<collections::HashMap<String, String>> for Log {
     type Error = Option<Error>;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let mut map = match serde_json::from_str::<collections::HashMap<String, String>>(&value) {
-            Ok(v) => v,
-            Err(e) => {
-                log::debug!("Error parsing line: {e:?}.");
-                return Err(None);
-            }
-        };
+    fn try_from(value: collections::HashMap<String, String>) -> Result<Self, Self::Error> {
+        let mut map = value;
 
-        let Some(time) = map.remove("time") else {
-            return Err(None);
-        };
+        let time = map
+            .get("time")
+            .expect("getting time should not fail")
+            .clone();
+        let name = map
+            .get("title")
+            .expect("getting title should not fail")
+            .clone();
+        let severity = map
+            .get("severity")
+            .expect("getting severity should not fail")
+            .clone();
 
-        let Some(name) = map.remove("title") else {
-            return Err(None);
-        };
-
-        let user = map.remove("user");
-        let initiator = map.remove("initiator");
-
-        let user_login = match (user, initiator) {
-            (Some(v1), _) => v1,
-            (None, Some(v2)) => v2,
-            (None, None) => return Err(None),
-        };
-
-        let datetime = match time.parse::<chrono::DateTime<chrono::FixedOffset>>() {
-            Ok(v) => v.timestamp_millis(),
-            Err(e) => {
-                log::debug!("Error parsing line ts: {e:?}.");
-                return Err(None);
-            }
-        };
-
-        let mut tags = Vec::with_capacity(TAGS_NAMES.len());
-
-        for tag_name in TAGS_NAMES {
-            if let Some(v) = map.remove(tag_name) {
-                tags.push(v);
-            }
+        if map.get("initiator").is_none() {
+            map.insert(String::from("initiator"), String::from("unset"));
         }
 
-        let mut params = Vec::with_capacity(map.len());
-
-        for (key, value) in map {
-            params.push(Param { key, value });
+        let user_login = match (map.get("user"), map.get("initiator")) {
+            (Some(v1), _) => v1.as_str(),
+            (None, Some(v2)) => v2.as_str(),
+            (None, None) => "unset",
         }
+        .to_string();
+
+        let datetime = time
+            .parse::<chrono::DateTime<chrono::FixedOffset>>()
+            .expect("invalid time format")
+            .timestamp_millis();
+
+        if !EVENT_TYPES.contains(&name.as_str()) {
+            log::error!("unknown log type line: {}", &name);
+            return Err(None);
+        }
+
+        let params = map_to_params(map);
 
         Ok(Self {
-            tags,
+            tags: [severity],
             datetime,
-            service_name: unsafe { PICODATA_NAME.clone() },
-            service_version: unsafe { PICODATA_VERSION.clone() },
+            module: MODULE.to_string(),
+            metamodel_version: METAMODEL_VERSION.to_string(),
             name,
             params,
             session_id: None,
             user_login,
             user_name: None,
-            user_node: None,
+            user_node: Some(String::from(USER_NODE)),
         })
     }
 }
@@ -147,16 +179,20 @@ enum Type {
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long)]
+    #[arg(long)]
     url: String,
-    #[arg(short, long, default_value = "audit.log")]
+    #[arg(long, default_value = "audit.log")]
     filename: String,
-    #[arg(short, long, value_enum, default_value = "pipe")]
+    #[arg(long, value_enum, default_value = "pipe")]
     r#type: Type,
-    #[arg(short, long, default_value = "false")]
+    #[arg(long, default_value = "false")]
     debug: bool,
-    #[arg(short, long, default_value = "picodata")]
-    picodata: String,
+    #[arg(long, default_value = "")]
+    certificate: String,
+    #[arg(long, default_value = "")]
+    private_key: String,
+    #[arg(long, default_value = "")]
+    ca_certificate: String,
 }
 
 async fn reader(args: sync::Arc<Args>) -> Result<LineReader, Error> {
@@ -179,7 +215,25 @@ async fn send_logs(
     mut lines: LineReader,
     mut receiver: oneshot::Receiver<Result<(), Error>>,
 ) -> Result<(), Error> {
-    let client = reqwest::ClientBuilder::new().build()?;
+    let mut builder = reqwest::ClientBuilder::new();
+    if !args.certificate.is_empty() && !args.private_key.is_empty() {
+        let cert = fs::read(&args.certificate).await?;
+        let key = fs::read(&args.private_key).await?;
+        let id = reqwest::Identity::from_pem(&[cert, key].concat())?;
+        builder = builder
+            .identity(id)
+            .danger_accept_invalid_certs(true)
+            .use_rustls_tls();
+    }
+
+    if !args.ca_certificate.is_empty() {
+        let ca: Vec<u8> = fs::read(&args.ca_certificate).await?;
+        builder = builder
+            .add_root_certificate(reqwest::tls::Certificate::from_pem(&ca)?)
+            .use_rustls_tls();
+    }
+
+    let client = builder.build()?;
     let mut tasks = Vec::with_capacity(TASKS_CAP);
 
     loop {
@@ -199,7 +253,24 @@ async fn send_logs(
 
         log::debug!("Handle row: {line}.");
 
-        let entry = match Log::try_from(line) {
+        let map = match serde_json::from_str::<collections::HashMap<String, String>>(&line) {
+            Ok(v) => v,
+            Err(e) => {
+                log::debug!("Error parsing line: {e:?}.");
+                continue;
+            }
+        };
+
+        let x_node_id = map
+            .get("raft_id")
+            .map(String::as_str)
+            .unwrap_or(X_NODE_ID)
+            .split('.')
+            .next()
+            .expect("getting x node id should not fail")
+            .to_string();
+
+        let entry = match Log::try_from(map) {
             Ok(v) => v,
             Err(e) => match e {
                 Some(ee) => return Err(ee),
@@ -215,7 +286,13 @@ async fn send_logs(
             let mut tries = 1;
 
             loop {
-                match client.post(&args.url).json(&entry).send().await {
+                match client
+                    .post(&args.url)
+                    .header("X-Node-ID", &x_node_id)
+                    .json(&entry)
+                    .send()
+                    .await
+                {
                     Ok(v) => {
                         let statuses: [reqwest::StatusCode; 4] = [
                             reqwest::StatusCode::OK,
@@ -227,7 +304,8 @@ async fn send_logs(
                         if statuses.contains(&status) {
                             return Ok(v);
                         }
-                        log::debug!("Error sending log, bad status: {status:?}.");
+                        let text = v.text().await;
+                        log::debug!("Error sending log, bad status: {status:?}, body: {text:?}.");
                         if tries < 10 {
                             tries += 1;
                             time::sleep(time::Duration::from_millis(100)).await;
@@ -270,27 +348,6 @@ fn main() -> Result<(), Error> {
         .expect("Failed to build rt.");
 
     let res: Result<(), Error> = rt.block_on(async move {
-        let output = process::Command::new(&args.picodata)
-            .arg("--version")
-            .output()
-            .await?;
-        if output.status.success() {
-            let mut info = String::from_utf8(output.stdout).unwrap();
-            if let Some(v) = info.pop() {
-                if v != '\n' {
-                    info.push(v);
-                }
-            }
-            log::debug!("Picodata info: {info}.");
-            let mut parts = info.split(' ').collect::<Vec<&str>>();
-            unsafe {
-                PICODATA_VERSION = parts.pop().unwrap().to_string();
-                PICODATA_NAME = parts.pop().unwrap().to_string();
-            };
-        } else {
-            let stderr = String::from_utf8(output.stderr).unwrap();
-            return Err(Error::InfoCollect(stderr));
-        }
         let lines = reader(args.clone()).await?;
         let (sender, receiver) = oneshot::channel();
         let signal = tokio::spawn(async move {
@@ -314,13 +371,13 @@ fn main() -> Result<(), Error> {
 mod tests {
     use super::*;
 
+    use actix_web::web;
     use std::str::FromStr;
-    use std::{convert, future, net, sync::mpsc, thread, time};
+    use std::{net, thread, time};
     use tokio::{runtime, sync::mpsc as tmpsc, sync::oneshot, time as ttime};
 
     pub struct Server {
         addr: net::SocketAddr,
-        panic_rx: mpsc::Receiver<()>,
         shutdown_tx: Option<oneshot::Sender<()>>,
     }
 
@@ -335,23 +392,11 @@ mod tests {
             if let Some(tx) = self.shutdown_tx.take() {
                 let _ = tx.send(());
             }
-
-            if !thread::panicking() {
-                self.panic_rx
-                    .recv_timeout(time::Duration::from_secs(3))
-                    .expect("Test server should not panic.");
-            }
         }
     }
 
-    fn server<FN, FT>(addr: &str, sender: tmpsc::Sender<()>, func: FN) -> Server
-    where
-        FN: Fn(http::Request<hyper::Body>) -> FT + Clone + Send + 'static,
-        FT: future::Future<Output = http::Response<hyper::Body>> + Send + 'static,
-    {
-        let (panic_tx, panic_rx) = mpsc::channel();
+    fn server(addr: &str, sender: tmpsc::Sender<()>) -> Server {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        let (addr_tx, addr_rx) = mpsc::channel();
 
         let thread_name = format!(
             "test({})-support-server",
@@ -367,41 +412,34 @@ mod tests {
                     .build()
                     .expect("Failed to create tokio runtime.");
 
+                async fn handler(s: web::Data<tmpsc::Sender<()>>) -> impl actix_web::Responder {
+                    s.send(()).await.expect("Failed to send.");
+                    ""
+                }
+
                 rt.block_on(async move {
-                    let server = hyper::Server::bind(&addr).serve(hyper::service::make_service_fn(
-                        move |_| {
-                            let func = func.clone();
-                            let sender = sender.clone();
-                            async move {
-                                sender.send(()).await.expect("Failed to send.");
-                                Ok::<_, convert::Infallible>(hyper::service::service_fn(
-                                    move |req| {
-                                        let fut = func(req);
-                                        async move { Ok::<_, convert::Infallible>(fut.await) }
-                                    },
-                                ))
-                            }
-                        },
-                    ));
-                    addr_tx
-                        .send(server.local_addr())
-                        .expect("Failed to send server addr.");
-
-                    let server = server.with_graceful_shutdown(async move {
-                        let _ = shutdown_rx.await;
+                    let builder = actix_web::HttpServer::new(move || {
+                        actix_web::App::new()
+                            .app_data(web::Data::new(sender.clone()))
+                            .route("/log", web::post().to(handler))
                     });
-
-                    server.await.expect("Failed server.");
-                    let _ = panic_tx.send(());
-                });
+                    let server = builder
+                        .bind(addr)
+                        .expect("Failed to bind.")
+                        .workers(1)
+                        .run();
+                    let handle = server.handle();
+                    let task = tokio::spawn(async move { server.await.expect("Failed to run") });
+                    let _ = shutdown_rx.await;
+                    handle.stop(true).await;
+                    let _ = task.await;
+                })
             })
             .expect("Failed to spawn thread.");
 
-        let addr = addr_rx.recv().expect("Failed to receive server address.");
-
+        std::thread::sleep(std::time::Duration::from_secs(5));
         Server {
             addr,
-            panic_rx,
             shutdown_tx: Some(shutdown_tx),
         }
     }
@@ -410,30 +448,33 @@ mod tests {
     async fn logs_sent_success() {
         _ = simple_logger::init_with_level(log::Level::Debug);
         let (s, mut r) = tmpsc::channel(256);
-        let server = server("127.0.0.1:4000", s, move |_req| async move {
-            http::Response::default()
-        });
+
+        let server = server("127.0.0.1:4005", s);
 
         let args = sync::Arc::new(Args {
             url: format!("http://{}/log", server.addr()),
             filename: String::from("audit.log"),
             r#type: Type::File,
             debug: true,
-            picodata: String::from("picodata"),
+            certificate: String::from(""),
+            private_key: String::from(""),
+            ca_certificate: String::from(""),
         });
 
         let lines = reader(args.clone()).await.expect("Failed to get reader.");
         let (sender, receiver) = oneshot::channel();
+
         let task = {
             let args = args.clone();
             tokio::spawn(async move { send_logs(args, lines, receiver).await })
         };
 
-        const EXPECTED_LINES: usize = 11;
+        const EXPECTED_LINES: usize = 13;
 
         ttime::sleep(time::Duration::from_secs(3)).await;
 
-        _ = sender.send(Ok(()));
+        let _ = sender.send(Ok(()));
+
         task.await
             .expect("Failed to join task outer.")
             .expect("Failed to join task inner.");
@@ -464,7 +505,9 @@ mod tests {
             filename: String::from("audit.log"),
             r#type: Type::File,
             debug: true,
-            picodata: String::from("picodata"),
+            certificate: String::from(""),
+            private_key: String::from(""),
+            ca_certificate: String::from(""),
         });
 
         let lines = reader(args.clone()).await.expect("Failed to get reader.");
