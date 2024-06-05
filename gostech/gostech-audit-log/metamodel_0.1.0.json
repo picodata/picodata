@@ -1,0 +1,910 @@
+{
+  "event": [
+    {
+      "description": "access denied",
+      "mode": "reliability",
+      "name": "access_denied",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "privilege",
+          "name": "privilege"
+        },
+        {
+          "description": "object_type",
+          "name": "object_type"
+        },
+        {
+          "description": "object",
+          "name": "object"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "auth fail",
+      "mode": "reliability",
+      "name": "auth_fail",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "user",
+          "name": "user"
+        },
+        {
+          "description": "verdict",
+          "name": "verdict"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "auth ok",
+      "mode": "reliability",
+      "name": "auth_ok",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "user",
+          "name": "user"
+        },
+        {
+          "description": "verdict",
+          "name": "verdict"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "change config",
+      "mode": "reliability",
+      "name": "change_config",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "key",
+          "name": "key"
+        },
+        {
+          "description": "value",
+          "name": "value"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "change current grade",
+      "mode": "reliability",
+      "name": "change_current_grade",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "new_grade",
+          "name": "new_grade"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "change password",
+      "mode": "reliability",
+      "name": "change_password",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "user",
+          "name": "user"
+        },
+        {
+          "description": "auth_type",
+          "name": "auth_type"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "change target grade",
+      "mode": "reliability",
+      "name": "change_target_grade",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "new_grade",
+          "name": "new_grade"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "connect local db",
+      "mode": "reliability",
+      "name": "connect_local_db",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "instance_id",
+          "name": "instance_id"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "create local db",
+      "mode": "reliability",
+      "name": "create_local_db",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "instance_id",
+          "name": "instance_id"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "create procedure",
+      "mode": "reliability",
+      "name": "create_procedure",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "name",
+          "name": "name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "create role",
+      "mode": "reliability",
+      "name": "create_role",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "role",
+          "name": "role"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "create table",
+      "mode": "reliability",
+      "name": "create_table",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "name",
+          "name": "name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "create user",
+      "mode": "reliability",
+      "name": "create_user",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "user",
+          "name": "user"
+        },
+        {
+          "description": "auth_type",
+          "name": "auth_type"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "drop local db",
+      "mode": "reliability",
+      "name": "drop_local_db",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "instance_id",
+          "name": "instance_id"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "drop procedure",
+      "mode": "reliability",
+      "name": "drop_procedure",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "name",
+          "name": "name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "drop_role",
+      "mode": "reliability",
+      "name": "drop_role",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "role",
+          "name": "role"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "drop table",
+      "mode": "reliability",
+      "name": "drop_table",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "name",
+          "name": "name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "drop user",
+      "mode": "reliability",
+      "name": "drop_user",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "user",
+          "name": "user"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "expel instace",
+      "mode": "reliability",
+      "name": "expel_instance",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "instance_id",
+          "name": "instance_id"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "grant privilege",
+      "mode": "reliability",
+      "name": "grant_privilege",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "privilege",
+          "name": "privilege"
+        },
+        {
+          "description": "object_type",
+          "name": "object_type"
+        },
+        {
+          "description": "object",
+          "name": "object"
+        },
+        {
+          "description": "grantee_type",
+          "name": "grantee_type"
+        },
+        {
+          "description": "grantee",
+          "name": "grantee"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "grant role",
+      "mode": "reliability",
+      "name": "grant_role",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "role",
+          "name": "role"
+        },
+        {
+          "description": "grantee_type",
+          "name": "grantee_type"
+        },
+        {
+          "description": "grantee",
+          "name": "grantee"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "init audit",
+      "mode": "reliability",
+      "name": "init_audit",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "integrity violation",
+      "mode": "reliability",
+      "name": "integrity_violation",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "join instace",
+      "mode": "reliability",
+      "name": "join_instace",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "local shutdown",
+      "mode": "reliability",
+      "name": "local_shutdown",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "local startup",
+      "mode": "reliability",
+      "name": "local_startup",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "recover local db",
+      "mode": "reliability",
+      "name": "recover_local_db",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "instance_id",
+          "name": "instance_id"
+        },
+        {
+          "description": "raft_id",
+          "name": "raft_id"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "create procedure",
+      "mode": "reliability",
+      "name": "rename_procedure",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "old_name",
+          "name": "old_name"
+        },
+        {
+          "description": "new_name",
+          "name": "new_name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "rename user",
+      "mode": "reliability",
+      "name": "rename_user",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "old_name",
+          "name": "old_name"
+        },
+        {
+          "description": "new_name",
+          "name": "new_name"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "revoke privilege",
+      "mode": "reliability",
+      "name": "revoke_privilege",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "privilege",
+          "name": "privilege"
+        },
+        {
+          "description": "object_type",
+          "name": "object_type"
+        },
+        {
+          "description": "object",
+          "name": "object"
+        },
+        {
+          "description": "grantee_type",
+          "name": "grantee_type"
+        },
+        {
+          "description": "grantee",
+          "name": "grantee"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "revoke role",
+      "mode": "reliability",
+      "name": "revoke_role",
+      "params": [
+        {
+          "description": "role",
+          "name": "role"
+        },
+        {
+          "description": "grantee_type",
+          "name": "grantee_type"
+        },
+        {
+          "description": "grantee",
+          "name": "grantee"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "shredding failed",
+      "mode": "reliability",
+      "name": "shredding_failed",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "filename",
+          "name": "filename"
+        },
+        {
+          "description": "error",
+          "name": "error"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "shredding finished",
+      "mode": "reliability",
+      "name": "shredding_finished",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "filename",
+          "name": "filename"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    },
+    {
+      "description": "shredding started",
+      "mode": "reliability",
+      "name": "shredding_finished",
+      "params": [
+        {
+          "description": "message",
+          "name": "message"
+        },
+        {
+          "description": "filename",
+          "name": "filename"
+        },
+        {
+          "description": "severity",
+          "name": "severity"
+        },
+        {
+          "description": "initiator",
+          "name": "initiator"
+        }
+      ],
+      "success": true
+    }
+  ],
+  "metamodelVersion": "0.1.0",
+  "module": "picodata"
+}

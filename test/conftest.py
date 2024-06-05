@@ -1905,9 +1905,7 @@ class AuditServer:
 
     def cmd(self, binary_path: str) -> str:
         binary = os.path.realpath(os.path.join(self.target, "debug/gostech-audit-log"))
-        args = (
-            f"--url http://{BASE_HOST}:{self.port}/log --picodata {binary_path} --debug"
-        )
+        args = f"--url http://{BASE_HOST}:{self.port}/log --debug"
         return f"| {binary} {args}"
 
     def logs(self) -> List[Dict[str, Any]]:
