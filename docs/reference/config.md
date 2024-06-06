@@ -31,6 +31,8 @@ picodata run --config <PATH>
 
 ## Описание файла конфигурации {: #config_file_description }
 
+<!-- Описание соответствует версии Picodata `24.3.0-179-gaf8647c7`. -->
+
 Результатом выполнения команды `picodata config default -o config.yaml`
 является файл конфигурации Picodata в формате YAML со стандартными
 значениями параметров:
@@ -40,8 +42,8 @@ cluster:
   cluster_id: demo # (4)!
   tiers:
     default:
-      replication_factor: 1 # (19)!
-      can_vote: true # (20)!
+      replication_factor: 1 # (20)!
+      can_vote: true # (21)!
   default_replication_factor: 1 # (8)!
 instance:
   data_dir: . # (5)!
@@ -62,16 +64,19 @@ instance:
   log:
     level: info # (12)!
     destination: null # (11)!
-    format: plain # (21)!
+    format: plain # (22)!
   memtx:
-    memory: 67108864 # (22)!
-    checkpoint_count: 2 # (23)!
-    checkpoint_interval: 3600.0 # (24)!
+    memory: 67108864 # (23)!
+    checkpoint_count: 2 # (24)!
+    checkpoint_interval: 3600.0 # (25)!
   vinyl:
-    memory: 134217728 # (25)!
-    cache: 134217728 # (26)!
+    memory: 134217728 # (26)!
+    cache: 134217728 # (27)!
   iproto:
-    max_concurrent_messages: 768 # (27)!
+    max_concurrent_messages: 768 # (28)!
+  pg:
+    listen: null # (19)!
+    ssl: false # (29)!
 ```
 
 1.  [🔗 picodata run --admin-sock](cli.md#run_admin_sock)
@@ -92,15 +97,17 @@ instance:
 16. [🔗 picodata run --service-password-file](cli.md#run_service_password_file)
 17. [🔗 picodata run --shredding](cli.md#run_shredding)
 18. [🔗 picodata run --tier](cli.md#run_tier)
-19. [cluster.tiers.<tier_name\>.replication_factor](#cluster_tiers_tier_replication_factor)
-20. [cluster.tiers.<tier_name\>.can_vote](#cluster_tiers_tier_can_vote)
-21. [instance.log.format](#instance_log_format)
-22. [instance.memtx.memory](#instance_memtx_memory)
-23. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
-24. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
-25. [instance.vinyl.memory](#instance_vinyl_memory)
-26. [instance.vinyl.cache](#instance_vinyl_cache)
-27. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
+19. [🔗 picodata run --pg-listen](cli.md#run_pg_listen)
+20. [cluster.tiers.<tier_name\>.replication_factor](#cluster_tiers_tier_replication_factor)
+21. [cluster.tiers.<tier_name\>.can_vote](#cluster_tiers_tier_can_vote)
+22. [instance.log.format](#instance_log_format)
+23. [instance.memtx.memory](#instance_memtx_memory)
+24. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
+25. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
+26. [instance.vinyl.memory](#instance_vinyl_memory)
+27. [instance.vinyl.cache](#instance_vinyl_cache)
+28. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
+29. [instance.pg.ssl](#instance_pg_ssl)
 
 См. также:
 
@@ -245,3 +252,19 @@ not be processed until some time after delivery. -->
 
 * Тип: *int*
 * Значение по умолчанию: `768`
+
+### instance.pg.ssl {: #instance_pg_ssl }
+
+Признак использования протокола SSL при подключении к Pgproto.
+
+Если для признака указано значение `true`, [в рабочей директории
+инстанса](cli.md#run_data_dir) `<DATA_DIR>` должны находиться необходимые
+SSL-сертификаты:
+
+* `server.crt`
+* `server.key`
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
