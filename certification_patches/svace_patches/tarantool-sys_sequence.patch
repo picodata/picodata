@@ -1,12 +1,14 @@
 diff --git a/src/box/sequence.c b/src/box/sequence.c
-index 1aa777687..49d86bce8 100644
+index 1aa777687..0083f6428 100644
 --- a/src/box/sequence.c
 +++ b/src/box/sequence.c
-@@ -344,6 +344,8 @@ sequence_data_iterator_next_raw(struct index_read_view_iterator *iterator,
+@@ -344,6 +344,10 @@ sequence_data_iterator_next_raw(struct index_read_view_iterator *iterator,
  	const size_t buf_size = mp_sizeof_array(2) +
  				2 * mp_sizeof_uint(UINT64_MAX);
  	char *buf = region_alloc(&fiber()->gc, buf_size);
 +	if (buf == NULL)
++		diag_set(OutOfMemory, buf_size,
++			"region", "buf");
 +		return -1;
  	char *buf_end = buf;
  	buf_end = mp_encode_array(buf_end, 2);

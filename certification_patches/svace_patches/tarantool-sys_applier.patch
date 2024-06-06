@@ -1,5 +1,5 @@
 diff --git a/src/box/applier.cc b/src/box/applier.cc
-index a501ad781..a22cef5fd 100644
+index a501ad781..020cd8258 100644
 --- a/src/box/applier.cc
 +++ b/src/box/applier.cc
 @@ -736,7 +736,8 @@ applier_connect(struct applier *applier)
@@ -23,8 +23,8 @@ index a501ad781..a22cef5fd 100644
 +			stailq_first_entry(&rows,
 +					    struct applier_tx_row,
 +					    next);
-+		if (tx_row == NULL)
-+			return -1; /* using if instead of assert for svace */
++		if (tx_row == NULL) /* using if instead of assert for svace */
++			panic("tx_row == NULL in %s:%d", __FILE__, __LINE__); //exit(1);
 +
 +		struct xrow_header *first_row = &tx_row->row;
  		if (first_row->type == IPROTO_OK) {
@@ -34,17 +34,17 @@ index a501ad781..a22cef5fd 100644
  {
  	struct applier_tx_row *txr =
  		stailq_first_entry(rows, struct applier_tx_row, next);
-+	if (txr == NULL)
-+		return -1; /* using if instead of assert for svace */
-
++	if (txr == NULL) /* using if instead of assert for svace */
++		panic("txr == NULL in %s:%d", __FILE__, __LINE__); //exit(1);
+ 
  	struct xrow_header *last_row =
  		&stailq_last_entry(rows, struct applier_tx_row, next)->row;
 @@ -1645,6 +1653,8 @@ applier_apply_tx(struct applier *applier, struct stailq *rows)
  	struct applier_tx_row *txr = stailq_first_entry(rows,
  							struct applier_tx_row,
  							next);
-+	if (txr == NULL)
-+		return -1; /* using if instead of assert for svace */
++	if (txr == NULL) /* using if instead of assert for svace */
++		panic("txr == NULL in %s:%d", __FILE__, __LINE__); //exit(1);
  	struct xrow_header *first_row = &txr->row;
  	struct xrow_header *last_row;
  	last_row = &stailq_last_entry(rows, struct applier_tx_row, next)->row;
@@ -59,8 +59,8 @@ index a501ad781..a22cef5fd 100644
 +				stailq_first_entry(rows,
 +						   struct applier_tx_row,
 +						   next);
-+			if (tx_row == NULL)
-+				return -1; /* using if instead of assert for svace */
++			if (tx_row == NULL) /* using if instead of assert for svace */
++				panic("tx_row == NULL in %s:%d", __FILE__, __LINE__); //exit(1);
 +			tmp = &tx_row->row;
  			if (tmp->lsn <= vclock_get(&replicaset.applier.vclock,
  						   tmp->replica_id)) {
