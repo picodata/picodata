@@ -227,6 +227,10 @@ plugins:
   ## > .guess_lang: true
   ## Pygments пытается определить используемый во фрагменте кода язык, если он не указан
   ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > md_in_html
+  ## Позволяет использовать Markdown внутри тегов HTML
+  ## https://python-markdown.github.io/extensions/md_in_html/
+  ## https://squidfunk.github.io/mkdocs-material/setup/extensions/python-markdown/#markdown-in-html
 markdown_extensions:
   - attr_list
   - admonition
@@ -239,6 +243,7 @@ markdown_extensions:
       use_pygments: true
       pygments_lang_class: true
       guess_lang: true
+  - md_in_html
 
 # Валидация ссылок
 # https://www.mkdocs.org/user-guide/configuration/#validation
