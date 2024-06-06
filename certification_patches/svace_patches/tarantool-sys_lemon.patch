@@ -1,8 +1,21 @@
 diff --git a/extra/lemon.c b/extra/lemon.c
-index f5450ef83..53b85ddbe 100644
+index f5450ef83..20df08926 100644
 --- a/extra/lemon.c
 +++ b/extra/lemon.c
-@@ -3394,6 +3394,8 @@ PRIVATE FILE *tplt_open(struct lemon *lemp)
+@@ -1878,7 +1878,11 @@ static void errline(int n, int k, FILE *err)
+ {
+   int spcnt, i;
+   if( argv[0] ) fprintf(err,"%s",argv[0]);
+-  spcnt = lemonStrlen(argv[0]) + 1;
++  if( argv[0] == NULL) {
++    spcnt = 1;
++  } else {
++    spcnt = lemonStrlen(argv[0]) + 1;
++  }
+   for(i=1; i<n && argv[i]; i++){
+     fprintf(err," %s",argv[i]);
+     spcnt += lemonStrlen(argv[i])+1;
+@@ -3394,6 +3398,8 @@ PRIVATE FILE *tplt_open(struct lemon *lemp)
      return in;
    }
  
@@ -11,7 +24,7 @@ index f5450ef83..53b85ddbe 100644
    cp = strrchr(lemp->filename,'.');
    if( cp ){
      lemon_sprintf(buf,"%.*s.lt",(int)(cp-lemp->filename),lemp->filename);
-@@ -3406,6 +3408,7 @@ PRIVATE FILE *tplt_open(struct lemon *lemp)
+@@ -3406,6 +3412,7 @@ PRIVATE FILE *tplt_open(struct lemon *lemp)
      tpltname = templatename;
    }else{
      tpltname = pathsearch(lemp->argv0,templatename,0);
@@ -19,7 +32,7 @@ index f5450ef83..53b85ddbe 100644
    }
    if( tpltname==0 ){
      fprintf(stderr,"Can't find the parser driver template file \"%s\".\n",
-@@ -3417,6 +3420,8 @@ PRIVATE FILE *tplt_open(struct lemon *lemp)
+@@ -3417,6 +3424,8 @@ PRIVATE FILE *tplt_open(struct lemon *lemp)
    if( in==0 ){
      fprintf(stderr,"Can't open the template file \"%s\".\n",templatename);
      lemp->errorcnt++;
@@ -28,7 +41,7 @@ index f5450ef83..53b85ddbe 100644
      return 0;
    }
    return in;
-@@ -3482,6 +3487,9 @@ void emit_destructor_code(
+@@ -3482,6 +3491,9 @@ void emit_destructor_code(
     fprintf(out,"{\n"); (*lineno)++;
   }else{
     assert( 0 );  /* Cannot happen */
@@ -38,7 +51,7 @@ index f5450ef83..53b85ddbe 100644
   }
   for(; *cp; cp++){
     if( *cp=='$' && cp[1]=='$' ){
-@@ -4666,7 +4674,10 @@ void CompressTables(struct lemon *lemp)
+@@ -4666,7 +4678,10 @@ void CompressTables(struct lemon *lemp)
        /* If we reach this point, it means the optimization can be applied */
        nextap = ap;
        for(ap2=stp->ap; ap2 && (ap2==ap || ap2->sp!=rp->lhs); ap2=ap2->next){}
