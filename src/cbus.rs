@@ -1,7 +1,8 @@
 use crate::tlog;
+use picoplugin::interplay::channel::DEFAULT_CBUS_ENDPOINT;
 use tarantool::fiber;
 
-pub const ENDPOINT_NAME: &'static str = "picodata-channels";
+pub const ENDPOINT_NAME: &'static str = DEFAULT_CBUS_ENDPOINT;
 
 /// Initializes the special fiber which will be responsible for the internal cbus machinery.
 /// NOTE: the endpoint must be created before any channels which will attempt
