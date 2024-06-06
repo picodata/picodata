@@ -18,7 +18,6 @@ use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, unwrap_ok_or};
 
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
-use sbroad::backend::sql::ir::{EncodedPatternWithParams, PatternWithParams};
 use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{decode_msgpack, normalize_name_for_space_api};
@@ -32,9 +31,9 @@ use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
 use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
-use sbroad::ir::value::Value;
+use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
-use sbroad::otm::query_span;
+use sbroad::otm::{query_id, query_span};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
@@ -281,14 +280,10 @@ pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
     ctx.with_baggage(vec![KeyValue::new(TRACER_KEY, tracer_kind.to_string())])
 }
 
-/// Dispatches a query to the cluster.
-#[proc(packed_args)]
-pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
-    let res = dispatch_sql_query(encoded_params);
-    res.map_err(|e| {
-        match e {
-            Error::Sbroad(SbroadError::ParsingError(_, message)) if message.contains('\n') => {
-                // Tweak the error message so that tarantool's yaml handler
+fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
+    match e {
+        Error::Sbroad(SbroadError::ParsingError(entity, message)) if message.contains('\n') => {
+ // Tweak the error message so that tarantool's yaml handler
                 // prints it in human-readable form
                 //
                 // `+ 20` for message prefix
@@ -306,28 +301,44 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                 // for the help feature in the lua console).
                 buffer.push('\n');
                 BoxError::new(TarantoolErrorCode::SqlUnrecognizedSyntax, buffer).into()
-            }
-            e => e,
         }
-    })
+        e => e,
+    }
 }
 
-pub fn dispatch_sql_query(encoded_params: EncodedPatternWithParams) -> traft::Result<Tuple> {
-    let mut params = PatternWithParams::try_from(encoded_params)?;
-    let id = params.clone_id();
-    let mut ctx = params.extract_context();
-    let mut tracer_kind = TracerKind::default();
+/// Dispatches an SQL query to the cluster.
+/// Part of public RPC API.
+#[proc]
+pub fn proc_sql_dispatch(
+    pattern: String,
+    params: Vec<LuaValue>,
+    id: Option<String>,
+    traceable: Option<bool>,
+) -> traft::Result<Tuple> {
+    sql_dispatch(&pattern, params, id, traceable).map_err(err_for_tnt_console)
+}
 
-    if let Some(tracer_kind_str) = params.tracer.as_ref() {
-        tracer_kind =
-            TracerKind::from_str(tracer_kind_str).map_err(|e| Error::Other(Box::new(e)))?;
-        ctx = with_tracer(ctx, tracer_kind);
-    }
+pub fn sql_dispatch(
+    pattern: &str,
+    params: Vec<LuaValue>,
+    id: Option<String>,
+    traceable: Option<bool>,
+) -> traft::Result<Tuple> {
+    let id = id.unwrap_or_else(|| query_id(pattern).to_string());
+    let tracer_kind = traceable
+        .map(TracerKind::from_traceable)
+        .unwrap_or_default();
+    // TODO: `Context` is no longer used and should be removed from sbroad
+    let ctx = with_tracer(Context::default(), tracer_kind);
 
     let dispatch = || {
         let runtime = RouterRuntime::new()?;
         let query = with_su(ADMIN_ID, || {
-            Query::new(&runtime, &params.pattern, params.params)
+            Query::new(
+                &runtime,
+                pattern,
+                params.into_iter().map(Into::into).collect(),
+            )
         })??;
         dispatch(query)
     };
@@ -337,7 +348,7 @@ pub fn dispatch_sql_query(encoded_params: EncodedPatternWithParams) -> traft::Re
         &id,
         tracer_kind.get_tracer(),
         &ctx,
-        &params.pattern,
+        pattern,
         dispatch,
     )
 }

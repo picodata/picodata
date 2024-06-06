@@ -296,14 +296,16 @@ fn init_handlers() {
 
     lua.exec(
         r#"
-        box.schema.role.grant('public', 'execute', 'function', '.dispatch_query', {if_not_exists = true})
-        "#).expect("grant execute on .dispatch_query to public should never fail");
+        box.schema.role.grant('public', 'execute', 'function', '.proc_sql_dispatch', {if_not_exists = true})
+        "#,
+    )
+    .expect("grant execute on .proc_sql_dispatch to public should never fail");
 
     lua.exec(
         r#"
         box.schema.func.create('pico.cas', {if_not_exists = true});
         box.schema.role.grant('public', 'execute', 'function', 'pico.cas', {if_not_exists = true})
-    "#,
+        "#,
     )
     .expect("pico.cas registration should never fail");
 }

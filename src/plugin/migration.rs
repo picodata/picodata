@@ -8,7 +8,7 @@ use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{error_injection, sql, tlog, traft};
-use sbroad::backend::sql::ir::PatternWithParams;
+use std::fs::File;
 use std::io;
 use std::io::ErrorKind;
 use tarantool::cbus;
@@ -282,9 +282,7 @@ impl SqlApplier for SBroadApplier {
             }
         }
 
-        let mut params = PatternWithParams::new(sql.to_string(), vec![]);
-        params.tracer = Some("stat".to_string());
-        sql::dispatch_sql_query(params.into()).map(|_| ())
+        sql::sql_dispatch(sql, vec![], None, None).map(|_| ())
     }
 }
 
