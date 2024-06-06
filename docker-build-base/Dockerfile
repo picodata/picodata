@@ -31,10 +31,10 @@ RUN set -e; \
     sh -s -- -y --profile default --default-toolchain 1.76.0
 ENV PATH=/root/.cargo/bin:${PATH}
 
-COPY ci-log-section /usr/bin/ci-log-section
+COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
 
 # install Pipenv
-COPY requirements-pipenv.txt /tmp/requirements-pipenv.txt
+COPY docker-build-base/requirements-pipenv.txt /tmp/requirements-pipenv.txt
 RUN PIP_NO_CACHE_DIR=true python3.10 -m pip install -q --require-hashes -r /tmp/requirements-pipenv.txt \
     && rm /tmp/requirements-pipenv.txt
 

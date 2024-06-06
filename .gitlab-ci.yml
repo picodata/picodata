@@ -1,3 +1,7 @@
+default:
+  tags:
+    - docker
+
 stages:
   - build-base-image
   - test
@@ -21,15 +25,14 @@ variables:
   BASE_IMAGE_LATEST: latest
   MAIN_BRANCH: &main-branch master
   CARGO_HOME: /data/shared-storage/picodata/.cargo
-  CACHE_PATHS: target .venv picodata-webui/node_modules
-  CACHE_ARCHIVE: /data/shared-storage/picodata/cache-v2.tar
-  # Helps to tolerate spurious network failures
+  DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RW
+  KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
+  FF_USE_FASTZIP: "true"
+  CACHE_COMPRESSION_LEVEL: "fastest"
   GET_SOURCES_ATTEMPTS: 3
-  NO_CACHE:
-    description: "Do not use cache during build phase"
   # k8s runner config
-  KUBERNETES_CPU_REQUEST: 4
-  KUBERNETES_MEMORY_REQUEST: "4Gi"
+  KUBERNETES_CPU_REQUEST: 6
+  KUBERNETES_MEMORY_REQUEST: "6Gi"
 
 # job:rules explained:
 #
@@ -62,12 +65,50 @@ variables:
       paths: *build-base-changes-paths
 
   - &else {}
-     
+
+.base_cache: &base_cache
+  paths:
+    - .cargo/
+  key:
+    files:
+      - Cargo.lock
+
+.base_node: &base_node
+  paths:
+    - picodata-webui/node_modules/
+  key:
+    files:
+      - picodata-webui/yarn.lock
+
+.py_cache: &py_cache
+  paths:
+    - .venv
+  key:
+    files:
+      - Pipfile.lock
+
+.kaniko_image: &kaniko_image
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.20.1-debug
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 1
+    GIT_SUBMODULE_STRATEGY: none
+    PUSH_DOCKER: ""
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "$DOCKER_AUTH_CONFIG" > /kaniko/.docker/config.json
+  script:
+    - |
+      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
+        --build-arg GIT_COMMIT=${CI_COMMIT_SHA} ${PUSH_DOCKER} \
+        --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
+        --destination $DESTINATION    
+
 build-base-image:
   interruptible: true
   stage: build-base-image
-  tags:
-    - picodata-shell
+  <<: *kaniko_image
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -78,28 +119,8 @@ build-base-image:
     - <<: *else
       when: never
   variables:
-    GIT_DEPTH: 1
-    GIT_STRATEGY: fetch
-    GIT_SUBMODULE_STRATEGY: none
-  script:
-    - docker pull ${BASE_IMAGE}:${BASE_IMAGE_LATEST} || true
-    - >
-      docker build
-      --cache-from ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
-      --label GIT_COMMIT=${CI_COMMIT_SHA}
-      -t ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-      -f ./docker-build-base/Dockerfile
-      ./docker-build-base
-    - |
-      # Push image to registry
-      if [ "${CI_COMMIT_BRANCH}" == "${MAIN_BRANCH}" ]; then
-        echo "Pushing ${BASE_IMAGE}:${BASE_IMAGE_TAG}"
-        mkdir -p $CI_PROJECT_DIR/.docker
-        echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-        docker --config $CI_PROJECT_DIR/.docker/ push ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-      else
-        echo "Skip pushing image on a non-master branch"
-      fi
+    DOCKERFILE: docker-build-base/Dockerfile
+    DESTINATION: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
 
 .test:
   interruptible: true
@@ -125,48 +146,17 @@ build-base-image:
         popd
       done
       ci-log-section end "fetch-submodule-tags"
+      if [[ $BUILD_PROFILE == release ]]; then SCRIPT="--release"; fi
 
-    # Gitlab CI caching is shit. So we implement it manually
-    - |
-      # Restore cache
-      git fetch origin master:refs/remotes/origin/master
-      git branch -a
-      if [[ -n "$NO_CACHE" ]]; then
-        echo "Skipping restoring from cache because NO_CACHE is set"
-      elif [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
-        echo "Skip restoring cache on the master branch"
-      elif git diff origin/"$MAIN_BRANCH" "$CI_COMMIT_SHA" --submodule=short | grep '^[+-]Subproject commit'; then
-        echo "Skip restoring cache because submodule(s) changed"
-      elif [ -f "${CACHE_ARCHIVE}" ]; then
-        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
-        tar -xf ${CACHE_ARCHIVE}
-        echo "Ok"
-        du -sh ${CACHE_PATHS} || true
-        ci-log-section end "restore-cache"
-      else
-        echo "No cache found"
-      fi
-  after_script:
-    - |
-      # Save cache
-      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
-        ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
-        du -sh ${CACHE_PATHS} || true
-        TMPEXT=$RANDOM
-        tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" ${CACHE_PATHS}
-        mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
-        echo Ok
-        du -sh ${CACHE_ARCHIVE}
-        ci-log-section end "save-cache"
-      else
-        echo "Skip saving cache on a non-master branch"
-      fi
+.parallel:
+  parallel:
+    matrix:
+      - BUILD_PROFILE: [release, debug]
 
-
-test-linux-debug:
-  extends: .test
-  tags:
-    - picodata-docker
+test-linux:
+  extends:
+    - .test
+    - .parallel
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
@@ -180,7 +170,13 @@ test-linux-debug:
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
-
+  variables:
+    GIT_DEPTH: 1
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+  cache:
+    - <<: *py_cache
+    - <<: *base_cache
+    - <<: *base_node    
   script:
     - |
       # Check rust version consistency
@@ -213,16 +209,16 @@ test-linux-debug:
       ci-log-section end "pipenv-install"
 
     # There are no Rust tests for `webui` feature, it's checked in pytest
-    - cargo build --timings --locked
-    - cargo build -p gostech-audit-log
-    - cargo build -p testplug
-    - cargo test --locked
+    - cargo build --timings --locked $SCRIPT
+    - cargo build -p gostech-audit-log $SCRIPT
+    - cargo build -p testplug $SCRIPT
+    - cargo test --locked $SCRIPT
 
-    - cargo build --features webui,error_injection --locked
+    - cargo build --features webui,error_injection --locked $SCRIPT
 
     # -vv shows extended diff for failures
     - >
-      pipenv run pytest -vv
+      BUILD_PROFILE=$BUILD_PROFILE pipenv run pytest
       --color=yes
       --numprocesses auto
       --junitxml=junit_pytest.xml
@@ -237,56 +233,6 @@ test-linux-debug:
       - ./target/cargo-timings/cargo-timing.html
     reports:
       junit: junit_pytest.xml
-
-
-test-linux-release:
-  extends: .test
-  variables:
-    CACHE_ARCHIVE: /shared-storage/picodata/cache-release.tar
-  tags:
-    - picodata-docker
-  rules:
-    - <<: *if-build-base-changes-on-master-branch
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-    - <<: *if-build-base-changes-on-dev-branch
-      variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
-    - <<: *else
-      variables:
-        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
-  image:
-    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
-    pull_policy: if-not-present
-
-  script:
-    - cargo -V
-
-    - *pipenv-install
-
-    - cargo build --timings --locked --release
-    - cargo build -p gostech-audit-log --release
-    - cargo build -p testplug --release
-    - cargo test --locked --release
-
-    - cargo build --features webui,error_injection --locked --release
-
-    # -vv shows extended diff for failures
-    - >
-      BUILD_PROFILE=release pipenv run pytest -vv
-      --color=yes
-      --numprocesses auto
-      --junitxml=junit_pytest.xml
-      --with-webui
-
-  artifacts:
-    when: always
-    paths:
-      - junit_pytest.xml
-      - ./target/cargo-timings/cargo-timing.html
-    reports:
-      junit: junit_pytest.xml
-
 
 .test-patch-rules: &test-patch-rules
   rules:
@@ -305,7 +251,7 @@ test-linux-release:
     # in case certification_patches has changed
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
-      - certification_patches/**/*
+        - certification_patches/**/*
       allow_failure: true
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
@@ -318,15 +264,18 @@ test-linux-release:
 
 test-patch-picodata:
   extends: .test
-  tags:
-    - docker
   <<: *test-patch-rules
   variables:
     GIT_DEPTH: 1
-    GIT_SUBMODULE_STRATEGY: recursive        
+    GIT_SUBMODULE_STRATEGY: recursive
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
     pull_policy: always
+  cache:
+    - <<: *py_cache
+    - <<: *base_cache
+    - <<: *base_node
   script:
     - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
@@ -336,7 +285,7 @@ test-patch-picodata:
     - cargo build -p gostech-audit-log --release
     - cargo test --locked --release --features dynamic_build
     - cargo build --features webui,error_injection --locked --release --features dynamic_build
-    
+
     - >
       BUILD_PROFILE=release pipenv run pytest -vv
       --color=yes
@@ -346,12 +295,10 @@ test-patch-picodata:
 
 test-patch-tarantool:
   extends: .test
-  tags:
-    - docker
   <<: *test-patch-rules
   variables:
     GIT_DEPTH: 1
-    GIT_SUBMODULE_STRATEGY: recursive        
+    GIT_SUBMODULE_STRATEGY: recursive
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
     pull_policy: always
@@ -383,11 +330,10 @@ test-mac-m1:
     # - pipenv run lint
     # - |
 
-test-helm-docker-image:
+.test-helm:
   interruptible: true
   stage: test
-  tags:
-    - shell
+  <<: *kaniko_image
   rules:
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
@@ -400,22 +346,16 @@ test-helm-docker-image:
     - when: manual
       allow_failure: true
   variables:
-    GIT_DEPTH: 100
-    GIT_STRATEGY: fetch
-    GIT_SUBMODULE_STRATEGY: recursive
-  before_script:
-    - export PATH=docker-build-base:$PATH
-    - *fetch-tags
-  script:
-    - |
-      # Build docker images
-      for image in picodata picodata-diag; do
-        ci-log-section start "test-docker-${image}" Building docker image ${image}
-        docker build \
-          --label GIT_COMMIT=${CI_COMMIT_SHA} \
-          -f helm/${image}.Dockerfile .
-        ci-log-section end "test-docker-${image}"
-      done
+    PUSH_DOCKER: ""
+
+test-helm-image:
+  extends: .test-helm
+  parallel:
+    matrix:
+      - DOCKERFILE: helm/picodata-diag.Dockerfile
+        DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_SHA}
+      - DOCKERFILE: helm/picodata.Dockerfile
+        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_SHA}
 
 gamayun-prepare:
   extends: .test
@@ -433,23 +373,14 @@ gamayun-prepare:
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
-  tags:
-    - picodata-docker
   script:
     - export CARGO_HOME=$HOME/.cargo
     - cargo -V
     - cargo clippy --locked --message-format=json > clippy.json
-    - |
-      # Save cache
-      CACHE_ARCHIVE="${CACHE_ARCHIVE}_clippy"
-      ci-log-section start "save-cache" Saving cache to ${CACHE_ARCHIVE} ...
-      du -sh ${CACHE_PATHS} || true
-      TMPEXT=$RANDOM
-      tar -cf "${CACHE_ARCHIVE}.${TMPEXT}" clippy.json
-      mv -f "${CACHE_ARCHIVE}.${TMPEXT}" "${CACHE_ARCHIVE}"
-      echo Ok
-      du -sh ${CACHE_ARCHIVE}
-      ci-log-section end "save-cache"
+  artifacts:
+    when: always
+    paths:
+      - clippy.json
 
 gamayun-run:
   extends: .test
@@ -457,18 +388,6 @@ gamayun-run:
   tags:
     - picodata-shell
   script:
-    - CACHE_ARCHIVE="${CACHE_ARCHIVE}_clippy"
-    - ls -la ${CACHE_ARCHIVE} || true
-    - |
-      # Restore cache
-      if [ -f "${CACHE_ARCHIVE}" ]; then
-        ci-log-section start "restore-cache" Restoring cache from ${CACHE_ARCHIVE} ...
-        tar -xf ${CACHE_ARCHIVE}
-        echo "Ok"
-        ci-log-section end "restore-cache"
-      else
-        echo "No cache found"
-      fi
     # create an ssh tunnel to gamayun server to allow the report uploading
     - TUNNEL="ssh -4 -L 9000:localhost:9000 sonar-reports -N -f"
     - eval $TUNNEL
@@ -529,42 +448,25 @@ pack-on-tag:
     project: "picodata/devops/builder"
     strategy: depend
 
-deploy-docker:
+.deploy-docker-tmpl:
   stage: docker
-  tags:
-    - shell
-  only:
-    - web
-    - tags
-  variables:
-    GIT_DEPTH: 100
-    GIT_STRATEGY: fetch
-    GIT_SUBMODULE_STRATEGY: recursive
-  before_script:
-    - export PATH=docker-build-base:$PATH
-    - *fetch-tags
-    - mkdir -p $CI_PROJECT_DIR/.docker
-    - echo $DOCKER_AUTH_RW > $CI_PROJECT_DIR/.docker/config.json
-  script:
-    - |
-      # Rebuild and push docker images
-      for image in picodata picodata-diag; do
-        ci-log-section start "deploy-docker-${image}" Building and pushing docker image ${image}
-        docker build \
-          --label GIT_COMMIT=${CI_COMMIT_SHA} \
-          -t ${REGISTRY}/${image}:${BASE_IMAGE_LATEST} \
-          -f helm/${image}.Dockerfile .
-        docker --config $CI_PROJECT_DIR/.docker push ${REGISTRY}/${image}:${BASE_IMAGE_LATEST}
-        ci-log-section end "deploy-docker-${image}"
-      done
+  <<: *kaniko_image
+  rules:
+    - if: $CI_COMMIT_TAG
+
+deploy-docker:
+  extends: .deploy-docker-tmpl
+  parallel:
+    matrix:
+      - DOCKERFILE: helm/picodata-diag.Dockerfile
+        DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_SHA}
+      - DOCKERFILE: helm/picodata.Dockerfile
+        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_SHA}    
 
 # Stages of independent stress testing in downstream pipeline
-
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
 upload-picodata-to-binary:
   stage: stress-test
-  tags:
-    - picodata-docker
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
   variables:
@@ -585,7 +487,7 @@ upload-picodata-to-binary:
 
 downstream-stress-test:
   interruptible: true
-# See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
+  # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
   stage: stress-test
   trigger:
     project: picodata/devops/proxmox/sbroad-nt
