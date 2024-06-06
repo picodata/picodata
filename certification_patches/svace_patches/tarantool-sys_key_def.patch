@@ -1,14 +1,15 @@
-diff --git a/src/box/lua/key_def.c b/src/box/lua/key_def.c
-index a95431de2..e234415f8 100644
---- a/src/box/lua/key_def.c
-+++ b/src/box/lua/key_def.c
-@@ -272,7 +272,8 @@ static int
- lbox_key_def_gc(struct lua_State *L)
- {
- 	struct key_def *key_def = luaT_check_key_def(L, 1);
--	assert(key_def != NULL);
-+	if (key_def == NULL) // assert
-+		panic("key_def == NULL in %s:%d", __FILE__, __LINE__);
- 	key_def_delete(key_def);
- 	return 0;
- }
+diff --git a/src/box/key_def.c b/src/box/key_def.c
+index c790e2fb1..af9b4dd16 100644
+--- a/src/box/key_def.c
++++ b/src/box/key_def.c
+@@ -219,7 +219,9 @@ key_def_set_part_path(struct key_def *def, uint32_t part_no, const char *path,
+ 	struct json_token token;
+ 	json_lexer_create(&lexer, path + multikey_path_len,
+ 			  path_len - multikey_path_len, TUPLE_INDEX_BASE);
+-	json_lexer_next_token(&lexer, &token);
++	int rc = json_lexer_next_token(&lexer, &token);
++	if (rc != 0) // assert
++		panic("rc != 0 in %s:%d", __FILE__, __LINE__);
+ 	assert(token.type == JSON_TOKEN_ANY);
+ 
+ 	/* The rest of JSON path couldn't be multikey. */
