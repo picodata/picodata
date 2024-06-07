@@ -6,6 +6,7 @@ pub mod topology;
 
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use once_cell::unsync;
+use picoplugin::background::ServiceId;
 use picoplugin::plugin::interface::ServiceBox;
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
@@ -108,6 +109,7 @@ pub struct Service {
     pub name: String,
     pub version: String,
     pub plugin_name: String,
+    pub id: ServiceId,
     _lib: Rc<LibraryWrapper>,
 }
 

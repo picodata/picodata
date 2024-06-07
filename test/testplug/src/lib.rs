@@ -1,3 +1,4 @@
+use picoplugin::background::CancellationToken;
 use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::log::rs_log;
 use picoplugin::plugin::interface::{CallbackResult, DDL};
@@ -308,7 +309,7 @@ struct Service3Cfg {
 impl Service for Service3 {
     type CFG = Service3Cfg;
 
-    fn on_start(&mut self, _: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {
+    fn on_start(&mut self, ctx: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {
         match cfg.test_type.as_str() {
             "internal" => {
                 let version = internal::picodata_version();
@@ -380,6 +381,18 @@ impl Service for Service3 {
                     .unwrap();
                 log::info!("TEST MESSAGE");
             }
+            "background" => {
+                fn my_job(ct: CancellationToken) {
+                    while ct.wait_timeout(Duration::from_millis(100)).is_err() {
+                        save_persisted_data("background_job_running");
+                    }
+                    save_persisted_data("background_job_stopped");
+                }
+
+                let wm = ctx.worker_manager();
+                wm.register_job(my_job).unwrap();
+            }
+            "no_test" => {}
             _ => {
                 panic!("invalid test type")
             }

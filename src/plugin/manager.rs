@@ -14,6 +14,7 @@ use crate::traft::node;
 use crate::traft::node::Node;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
+use picoplugin::background::{Error, InternalGlobalWorkerManager, ServiceId};
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picoplugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
@@ -151,12 +152,18 @@ impl PluginManager {
                     .make(&service_def.name, &plugin_def.version)
                     .expect("checked at previous step");
                 if let Some(service_inner) = maybe_service {
+                    let plugin_name = plugin_def.name.clone();
+                    let service_name = service_def.name.clone();
+                    let plugin_version = service_def.version.clone();
+                    let service_id = ServiceId::new(&plugin_name, &service_name, &plugin_version);
+
                     let service = Service {
                         _lib: lib.clone(),
-                        name: service_def.name.clone(),
-                        version: service_def.version.clone(),
+                        name: service_name,
+                        version: plugin_version,
                         inner: service_inner,
-                        plugin_name: plugin_def.name.clone(),
+                        plugin_name,
+                        id: service_id,
                     };
                     loaded_services.push(service);
                     return false;
@@ -295,7 +302,7 @@ impl PluginManager {
         plugin_name: &str,
     ) -> traft::Result<()> {
         let node = node::global().expect("node must be already initialized");
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
 
         let plugin = {
             let mut lock = plugins.lock();
@@ -303,8 +310,12 @@ impl PluginManager {
         };
 
         if let Some(plugin_state) = plugin {
+            // stop all background jobs first
+            stop_background_jobs(std::iter::once(&plugin_state.services));
+
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
+                context_set_service_info(&mut ctx, &service);
                 stop_service(&mut service, &ctx);
             }
         }
@@ -315,14 +326,18 @@ impl PluginManager {
     /// Stop all plugin services.
     fn handle_instance_shutdown(&self) {
         let node = node::global().expect("node must be already initialized");
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
 
         let plugins = self.plugins.lock();
         let services_to_stop = plugins.values().map(|state| &state.services);
 
+        // stop all background jobs first
+        stop_background_jobs(services_to_stop.clone());
+
         for services in services_to_stop {
             for service in services.iter() {
                 let mut service = service.lock();
+                context_set_service_info(&mut ctx, &service);
                 stop_service(&mut service, &ctx);
             }
         }
@@ -551,6 +566,7 @@ impl PluginManager {
 
     fn handle_service_disabled(&self, plugin_ident: &PluginIdentifier, service: &str) {
         let node = node::global().expect("node must be already initialized");
+        let mut ctx = context_from_node(node);
 
         // remove service from runtime
         let mut plugins = self.plugins.lock();
@@ -571,9 +587,12 @@ impl PluginManager {
         let service_to_del = state.services.swap_remove(svc_idx);
         drop(plugins);
 
+        // stop all background jobs first
+        stop_background_jobs(std::iter::once(&vec![service_to_del.clone()]));
+
         // call `on_stop` callback and drop service
-        let ctx = context_from_node(node);
         let mut service = service_to_del.lock();
+        context_set_service_info(&mut ctx, &service);
         stop_service(&mut service, &ctx);
     }
 
@@ -624,7 +643,7 @@ impl PluginManager {
 
     fn handle_plugin_load_error(&self, plugin: &str) -> Result<()> {
         let node = node::global().expect("must be initialized");
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
 
         let maybe_plugin_state = {
             let mut lock = self.plugins.lock();
@@ -632,8 +651,12 @@ impl PluginManager {
         };
 
         if let Some(plugin_state) = maybe_plugin_state {
+            // stop all background jobs first
+            stop_background_jobs(std::iter::once(&plugin_state.services));
+
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
+                context_set_service_info(&mut ctx, &service);
                 stop_service(&mut service, &ctx);
             }
         }
@@ -828,5 +851,42 @@ impl Loop {
                 tlog!(Error, "plugin async event handler error: {e}");
             }
         }
+    }
+}
+
+fn stop_background_jobs<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
+    const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+
+    let mut service_to_unregister = vec![];
+    let mut max_shutdown_timeout = DEFAULT_SHUTDOWN_TIMEOUT;
+    for services in plugins {
+        for service in services.iter() {
+            let lock = service.lock();
+            let svc_id = ServiceId::new(&lock.plugin_name, &lock.name, &lock.version);
+            drop(lock);
+
+            if let Some(timeout) =
+                InternalGlobalWorkerManager::instance().get_shutdown_timeout(&svc_id)
+            {
+                if max_shutdown_timeout < timeout {
+                    max_shutdown_timeout = timeout;
+                }
+            }
+            service_to_unregister.push(svc_id);
+        }
+    }
+
+    let mut fibers = vec![];
+    for svc_id in service_to_unregister {
+        fibers.push(fiber::start(move || {
+            if let Err(Error::PartialCompleted(expected, completed)) =
+                InternalGlobalWorkerManager::instance().unregister_service(&svc_id, max_shutdown_timeout)
+            {
+                tlog!(Warning, "Not all jobs for service {svc_id} was completed on time, expected: {expected}, completed: {completed}");
+            }
+        }));
+    }
+    for fiber in fibers {
+        fiber.join();
     }
 }

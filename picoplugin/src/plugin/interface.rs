@@ -5,6 +5,7 @@ use linkme::distributed_slice;
 use std::error::Error;
 use std::fmt::Display;
 
+use crate::background::{InternalGlobalWorkerManager, ServiceId, ServiceWorkerManager};
 pub use abi_stable;
 use abi_stable::pmr::{RErr, RResult, RSlice};
 use serde::de::DeserializeOwned;
@@ -15,7 +16,7 @@ use tarantool::error::{BoxError, IntoBoxError};
 #[derive(StableAbi, Debug)]
 pub struct PicoContext {
     is_master: bool,
-
+    global_wm: *const (),
     pub plugin_name: FfiSafeStr,
     pub service_name: FfiSafeStr,
     pub plugin_version: FfiSafeStr,
@@ -24,8 +25,12 @@ pub struct PicoContext {
 impl PicoContext {
     #[inline]
     pub fn new(is_master: bool) -> PicoContext {
+        let gwm = InternalGlobalWorkerManager::instance() as *const InternalGlobalWorkerManager
+            as *const ();
+
         Self {
             is_master,
+            global_wm: gwm,
             plugin_name: "<unset>".into(),
             service_name: "<unset>".into(),
             plugin_version: "<unset>".into(),
@@ -38,6 +43,7 @@ impl PicoContext {
     pub unsafe fn clone(&self) -> Self {
         Self {
             is_master: self.is_master,
+            global_wm: self.global_wm,
             plugin_name: self.plugin_name.clone(),
             service_name: self.service_name.clone(),
             plugin_version: self.plugin_version.clone(),
@@ -48,6 +54,21 @@ impl PicoContext {
     #[inline]
     pub fn is_master(&self) -> bool {
         self.is_master
+    }
+
+    /// Return [`ServiceWorkerManager`] for current service.
+    pub fn worker_manager(&self) -> ServiceWorkerManager {
+        let global_manager: &'static InternalGlobalWorkerManager =
+            // SAFETY: `picodata` guaranty that this reference live enough
+            unsafe { &*(self.global_wm as *const InternalGlobalWorkerManager) };
+
+        // TODO: can we eliminate allocation here?
+        let service_id = ServiceId::new(
+            self.plugin_name(),
+            self.service_name(),
+            self.plugin_version(),
+        );
+        global_manager.get_or_init_manager(service_id)
     }
 
     #[inline]

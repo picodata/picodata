@@ -1897,3 +1897,43 @@ def test_sdk_log(cluster: Cluster):
         default_config={"test_type": "log"},
     )
     assert crawler.matched
+
+
+def test_sdk_background(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    install_and_enable_plugin(
+        i1,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        default_config={"test_type": "background"},
+    )
+
+    # assert that job is working
+    Retriable(timeout=5, rps=2).call(
+        PluginReflection.assert_persisted_data_exists, "background_job_running", i1
+    )
+
+    # assert that job ends after plugin disabled
+    i1.call("pico.disable_plugin", _PLUGIN_W_SDK, "0.1.0")
+
+    Retriable(timeout=5, rps=2).call(
+        PluginReflection.assert_persisted_data_exists, "background_job_stopped", i1
+    )
+
+    # run again
+    i1.call("pico.enable_plugin", _PLUGIN_W_SDK, "0.1.0")
+    Retriable(timeout=5, rps=2).call(
+        PluginReflection.assert_persisted_data_exists, "background_job_running", i1
+    )
+
+    # now shutdown 1 and check that job ended
+    i1.eval(
+        f"pico.update_plugin_config"
+        f"('{_PLUGIN_W_SDK}', '0.1.0', '{_PLUGIN_W_SDK_SERVICES[0]}', {{test_type = 'no_test'}})"
+    )
+    i1.restart()
+    i1.wait_online()
+    PluginReflection.assert_persisted_data_exists("background_job_stopped", i1)
+
+    PluginReflection.clear_persisted_data(i1)
