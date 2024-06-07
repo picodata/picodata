@@ -146,12 +146,11 @@ build-base-image:
         popd
       done
       ci-log-section end "fetch-submodule-tags"
-      if [[ $BUILD_PROFILE == release ]]; then SCRIPT="--release"; fi
 
 .parallel:
   parallel:
     matrix:
-      - BUILD_PROFILE: [release, debug]
+      - BUILD_PROFILE: [release, dev]
 
 test-linux:
   extends:
@@ -209,12 +208,12 @@ test-linux:
       ci-log-section end "pipenv-install"
 
     # There are no Rust tests for `webui` feature, it's checked in pytest
-    - cargo build --timings --locked $SCRIPT
-    - cargo build -p gostech-audit-log $SCRIPT
-    - cargo build -p testplug $SCRIPT
-    - cargo test --locked $SCRIPT
+    - cargo build --timings --locked --profile=$BUILD_PROFILE
+    - cargo build -p gostech-audit-log --profile=$BUILD_PROFILE
+    - cargo build -p testplug --profile=$BUILD_PROFILE
+    - cargo test --locked --profile=$BUILD_PROFILE
 
-    - cargo build --features webui,error_injection --locked $SCRIPT
+    - cargo build --features webui,error_injection --locked --profile=$BUILD_PROFILE
 
     # -vv shows extended diff for failures
     - >
