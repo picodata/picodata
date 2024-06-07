@@ -6,11 +6,11 @@
 команды дадут одинаковый результат (вывод строки по известному `id`). :
 
 ```sql
-SELECT "name" FROM "characters" WHERE "id" = 1;
+SELECT item FROM warehouse WHERE id = 1;
 ```
 
 ```lua
-pico.sql([[SELECT "name" FROM "characters" WHERE "id" = ?]], {1});
+pico.sql([[SELECT item FROM warehouse WHERE id = ?]], {1});
 ```
 
 Вывод в консоль:
@@ -18,15 +18,15 @@ pico.sql([[SELECT "name" FROM "characters" WHERE "id" = ?]], {1});
 ```
 ---
 - metadata:
-  - {'name': 'name', 'type': 'string'}
+  - {'name': 'ITEM', 'type': 'string'}
   rows:
-  - ['Woody']
+  - ['bricks']
 ...
 ```
 
 Разница состоит в том, что при параметризации происходит кеширование
-плана запроса по ключу от шаблона SQL (в данном случае `select "name"
-from "characters" where "id" = ?`), и если подобных запросов несколько,
+плана запроса по ключу от шаблона SQL (в данном случае `select item
+from warehouse where id = ?`), и если подобных запросов несколько,
 то они все смогут использовать кешированный план. Без параметризации у
 каждого запроса будет свой отдельный план, и ускорения от кеша не
 произойдет.
@@ -35,11 +35,11 @@ from "characters" where "id" = ?`), и если подобных запросо�
 два варианта):
 
 ```sql
-SELECT "name","year" FROM "characters" WHERE "id" > 3 AND "year" > 2000;
+SELECT item, type FROM warehouse WHERE id > 3 AND type = 'light'
 ```
 
 ```lua
-pico.sql([[SELECT "name","year" FROM "characters" WHERE "id" > ? AND "year" > ? ]], {3, 2000});
+pico.sql([[SELECT item, type FROM warehouse WHERE id > ? AND type = ?]], {3, 'light'});
 ```
 
 Вывод в консоль:
@@ -47,13 +47,10 @@ pico.sql([[SELECT "name","year" FROM "characters" WHERE "id" > ? AND "year" > ? 
 ```
 ---
 - metadata:
-  - {'name': 'name', 'type': 'string'}
-  - {'name': 'year', 'type': 'integer'}
+  - {'name': 'ITEM', 'type': 'string'}
+  - {'name': 'TYPE', 'type': 'string'}
   rows:
-  - ['Barbie', 2010]
-  - ['Daisy', 2010]
-  - ['Forky', 2019]
-  - ['Dragon', 2019]
-  - ['The Dummies', 2019]
+  - ['piles', 'light']
+  - ['panels', 'light']
 ...
 ```

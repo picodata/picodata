@@ -25,24 +25,21 @@
 ## Примеры {: #examples }
 
 ```sql
-SELECT * FROM "characters" OPTION(SQL_VDBE_MAX_STEPS = 55, VTABLE_MAX_ROWS = 10);
----
-- metadata:
-  - {'name': 'id', 'type': 'integer'}
-  - {'name': 'name', 'type': 'string'}
-  - {'name': 'year', 'type': 'integer'}
-  rows:
-  - [1, 'Woody', 1995]
-  - [2, 'Buzz Lightyear', 1995]
-  - [3, 'Bo Peep', 1995]
-  - [4, 'Mr. Potato Head', 1995]
-  - [5, 'Slinky Dog', 1995]
-  - [6, 'Barbie', 2010]
-  - [7, 'Daisy', 2010]
-  - [8, 'Forky', 2019]
-  - [9, 'Dragon', 2019]
-  - [10, 'The Dummies', 2019]
-...
+SELECT * FROM warehouse OPTION(SQL_VDBE_MAX_STEPS = 30, VTABLE_MAX_ROWS = 5);
++----+----------+---------+
+| ID | ITEM     | TYPE    |
++=========================+
+| 1  | "bricks" | "heavy" |
+|----+----------+---------|
+| 2  | "bars"   | "light" |
+|----+----------+---------|
+| 3  | "blocks" | "heavy" |
+|----+----------+---------|
+| 4  | "piles"  | "light" |
+|----+----------+---------|
+| 5  | "panels" | "light" |
++----+----------+---------+
+(5 rows)
 ```
 
 Если ограничения не позволяют выполнить запрос, то будет возвращена
@@ -53,7 +50,7 @@ SELECT * FROM "characters" OPTION(SQL_VDBE_MAX_STEPS = 55, VTABLE_MAX_ROWS = 10)
 ```
 ---
 - null
-- ("Reached a limit on max executed vdbe opcodes. Limit: 54\")
+- ("Reached a limit on max executed vdbe opcodes. Limit: 29\")
 ...
 ```
 
@@ -62,6 +59,6 @@ SELECT * FROM "characters" OPTION(SQL_VDBE_MAX_STEPS = 55, VTABLE_MAX_ROWS = 10)
 ```
 ---
 - null
-- (Exceeded maximum number of rows (9) in virtual table: 10\")
+- (Exceeded maximum number of rows (4) in virtual table: 5\")
 ...
 ```

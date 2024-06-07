@@ -23,5 +23,5 @@
 
 Создание таблицы из двух предопределенных кортежей:
 ```sql
-VALUES (1, 'Woody', 2561), (2, 'Buzz Lightyear', 4781);
+VALUES (1, 'bricks', 'heavy'), (2, 'bars', 'light');
 ```

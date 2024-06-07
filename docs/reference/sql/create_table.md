@@ -38,12 +38,11 @@
 Создание шардированной таблицы с использованием движка хранения `memtx`:
 
 ```sql
-CREATE TABLE "characters" (
-            "id" INTEGER NOT NULL,
-            "name" TEXT NOT NULL,
-            "year" INTEGER,
-            PRIMARY KEY ("id")
-)
-USING MEMTX DISTRIBUTED BY ("id")
+CREATE TABLE warehouse (
+            id INTEGER NOT NULL,
+            item TEXT NOT NULL,
+            type TEXT NOT NULL,
+            PRIMARY KEY (id))
+USING memtx DISTRIBUTED BY (id)
 OPTION (TIMEOUT = 3.0);
 ```

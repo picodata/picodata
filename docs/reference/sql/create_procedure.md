@@ -34,11 +34,11 @@
 
 ## Примеры {: #examples }
 
-Процедура для добавления новых строк в таблицу `characters`:
+Процедура для добавления новых строк в таблицу `warehouse`:
 
 ```sql
 CREATE PROCEDURE proc (int, text, int)
-AS $$INSERT INTO characters VALUES($1, $2, $3)$$
+AS $$INSERT INTO warehouse VALUES($1, $2, $3)$$
 OPTION (TIMEOUT = 5.0)
 ```
 

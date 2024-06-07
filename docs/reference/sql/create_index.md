@@ -56,10 +56,10 @@
 ## Примеры {: #examples }
 
 ```sql
-CREATE INDEX name_year
-ON characters
+CREATE INDEX product_quantity
+ON deliveries
 USING TREE
-(name, year)
+(product, quantity)
 WITH (
 HINT = true,
 BLOOM_FPR = 0.05,

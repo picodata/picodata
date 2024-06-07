@@ -24,14 +24,14 @@
 
 ## Примеры {: #examples }
 
-Выдача права изменять данные пользователя `woody` пользователю `andy`:
+Выдача права изменять данные пользователя `alice` пользователю `bob`:
 
 ```sql
-GRANT ALTER ON USER woody TO andy;
+GRANT ALTER ON USER alice TO bob;
 ```
 
-Выдача права записи в таблицу `characters` для пользователя `woody`:
+Выдача права записи в таблицу `warehouse` для пользователя `alice`:
 
 ```sql
-GRANT WRITE ON TABLE characters to woody;
+GRANT WRITE ON TABLE warehouse to alice;
 ```

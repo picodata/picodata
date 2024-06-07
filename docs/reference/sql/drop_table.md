@@ -15,6 +15,6 @@
 ## Примеры {: #examples }
 
 ```sql
-DROP TABLE characters OPTION (TIMEOUT = 3.0);
+DROP TABLE warehouse OPTION (TIMEOUT = 3.0);
 ```
 

@@ -24,8 +24,8 @@
 
 ## Примеры {: #examples }
 
-Изъятие права чтения таблиц у пользователя `woody`:
+Изъятие права чтения таблиц у пользователя `alice`:
 
 ```sql
-REVOKE READ TABLE FROM woody;
+REVOKE READ TABLE FROM alice;
 ```

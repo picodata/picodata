@@ -20,9 +20,9 @@
 ```
 {
      "title": "create_table",
-     "message": "created table `friends_of_peppa`",
+     "message": "created table `WAREHOUSE`",
      "severity": "medium",
-     "name": "friends_of_peppa",
+     "name": "WAREHOUSE",
      "initiator": "admin",
      "time": "2023-12-01T14:31:50.117+0300",
      "id": "1.0.14"

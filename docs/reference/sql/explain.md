@@ -26,14 +26,14 @@
 Пример получения столбца таблицы целиком:
 
 ```sql
-EXPLAIN SELECT "name" FROM "stars"
+EXPLAIN SELECT item FROM warehouse;
 ```
 
 Результат:
 
 ```sql
-projection ("stars"."name"::string -> "name")
-    scan "stars"
+projection ("WAREHOUSE"."ITEM"::string -> "ITEM")
+    scan "WAREHOUSE"
 ```
 
 В одном запросе может быть несколько узлов `scan` и `projection`, в
@@ -45,30 +45,28 @@ projection ("stars"."name"::string -> "name")
 
 Построение проекции (`projection`) всегда
 происходит после сканирования. В рамках построения проекции планировщик
-создает псевдоним для столбца: `"scoring"."score" -> "score"`.
+создает псевдоним для столбца: `"ORDERS"."AMOUNT" -> "AMOUNT"`.
 
 Если в запросе есть условие (`where`), то в план добавляется узел
 `selection`:
 
 ```sql
-EXPLAIN SELECT "score" FROM "scoring" WHERE "score" > 70;
+EXPLAIN SELECT amount FROM orders WHERE amount > 1000;
 ```
 
 Вывод в консоль:
 
 ```
----
-- - projection ("scoring"."score"::decimal -> "score")
-    selection ROW("scoring"."score"::decimal) > ROW(70::unsigned)'
-        scan "scoring"'
-...
+projection ("ORDERS"."AMOUNT"::integer -> "AMOUNT")
+    selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)
+        scan "ORDERS"
 ```
 
 Если `projection` выбирает столбцы (атрибуты таблицы), то `selection`
 фильтрует данные по строкам (`ROW`).
 
-Фраза `selection ROW("scoring"."score") > ROW(70)'` является результатом
-трансформации фильтра `where "score" > 70` в `where ("score") > (70)`,
+Фраза `selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)` является результатом
+трансформации фильтра `WHERE "AMOUNT" > 1000` в `WHERE ("AMOUNT") > (1000)`,
 т.е. превращения значения в строку из одного столбца.
 
 ## Запрос с несколькими проекциями {: #multi_projection_explain }
@@ -76,23 +74,22 @@ EXPLAIN SELECT "score" FROM "scoring" WHERE "score" > 70;
 Пример построения проекции из более сложного запроса:
 
 ```sql
-EXPLAIN SELECT "id","name" FROM "characters"
+EXPLAIN SELECT id,name FROM items
 EXCEPT
-SELECT "id","name" FROM "assets"
-WHERE "stock" > 1000;
+SELECT id,item FROM orders
+WHERE amount > 1000;
 ```
 
 Вывод в консоль:
 
 ```
----
-- - except
-    projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name")'
-        scan "characters"'
-    projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")'
-        selection ROW("assets"."stock"::integer) > ROW(1000::unsigned)'
-            scan "assets"'
-...
+except
+    projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME")
+        scan "ITEMS"
+        projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
+            selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)
+                scan "ORDERS"
+
 ```
 
 В таком плане запроса присутствует два блока `projection`, перед
@@ -161,16 +158,16 @@ WHERE "stock" > 1000;
 значений:
 
 ```sql
-EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561);
+EXPLAIN INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
 ```
 
 Вывод в консоль:
 
 ```
-insert "assets" on conflict: fail
+insert "WAREHOUSE" on conflict: fail
     motion [policy: segment([ref("COLUMN_1")])]
         values
-            value row (data=ROW(1::unsigned, 'Woody'::string, 2561::unsigned))
+            value row (data=ROW(1::unsigned, 'bricks'::string, 'heavy'::string))
 ```
 
 ### Локальная материализация {: #local_motion }
@@ -183,39 +180,39 @@ insert "assets" on conflict: fail
 Примером может служить удаление данных из таблицы:
 
 ```sql
-EXPLAIN DELETE FROM "characters" WHERE "id" = 1;
+EXPLAIN DELETE FROM warehouse WHERE id = 1;
 ```
 
 Вывод в консоль:
 
 ```
-delete "characters"
+delete "WAREHOUSE"
     motion [policy: local]
-        projection ("characters"."id"::integer -> pk_col_0)
-            selection ROW("characters"."id"::integer) = ROW(1::unsigned)
-                scan "characters"
+        projection ("WAREHOUSE"."ID"::integer -> pk_col_0)
+            selection ROW("WAREHOUSE"."ID"::integer) = ROW(1::unsigned)
+                scan "WAREHOUSE"
 ```
 
 Локальная материализация происходит и при обновлении данных в тех
 случаях, если не затрагивается колонка, по которой таблица шардирована.
 Например, если при создании таблицы было указано шардирование по колонке
-`id` (`distributed by ("id")`), то обновление данных в других колонках
+`ID` (`distributed by (id)`), то обновление данных в других колонках
 не приведет к их перемещению через узел-маршрутизатор. Поскольку при
 `UPDATE` не происходит пересчет `bucket_id`, то планировщик использует
 политику `local`:
 
 ```sql
-EXPLAIN UPDATE "characters" SET "year" = 2010;
+EXPLAIN UPDATE warehouse SET type = 'N/A';
 ```
 
 Вывод в консоль:
 
 ```
-update "characters"
-"year" = COL_0
+update "WAREHOUSE"
+"TYPE" = COL_0
     motion [policy: local]
-        projection (2010::unsigned -> COL_0, "characters"."id"::integer -> COL_1)
-            scan "characters"
+        projection ('N/A'::string -> COL_0, "WAREHOUSE"."ID"::integer -> COL_1)
+            scan "WAREHOUSE"
 ```
 
 ### Частичное перемещение {: #segment_motion }
@@ -227,64 +224,61 @@ update "characters"
 которой отличается ключ шардирования:
 
 ```sql
-EXPLAIN INSERT INTO "assets" SELECT * FROM "assets3" WHERE "id3" = 1;
+EXPLAIN INSERT INTO orders SELECT * FROM items WHERE id = 5;
 ```
 
 Вывод в консоль:
 
 ```
-insert "assets" on conflict: fail'
-    motion [policy: segment([ref("id3")])]'
-        projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string ->
-            "name3", "assets3"."stock3"::integer -> "stock3")'
-            selection ROW("assets3"."id3"::integer) = ROW(1::unsigned)'
-            scan "assets3"'
+insert "ORDERS" on conflict: fail
+    motion [policy: segment([ref("NAME")])]
+        projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+            selection ROW("ITEMS"."ID"::integer) = ROW(5::unsigned)
+                scan "ITEMS"
 ```
 
 Пример `JOIN` двух таблиц с разными ключами шардирования:
 
 ```sql
-EXPLAIN SELECT "id","name" FROM "assets"
+EXPLAIN SELECT id,item FROM orders
 JOIN
-(SELECT "id3","name3" FROM "assets3") AS "new_assets"
-ON "assets"."id" = "new_assets"."id3";
+(SELECT nmbr,product FROM deliveries) AS new_table
+ON orders.id=new_table.nmbr;
 ```
 
 Вывод в консоль:
 
 ```
-projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name")
-    join on ROW("assets"."id"::integer) = ROW("new_assets"."id3"::integer)'
-        scan "assets"'
-            projection ("assets"."id"::integer -> "id", "assets"."name"::string
-    -> "name", "assets"."stock"::integer -> "stock")'
-                scan "assets"'
-        motion [policy: segment([ref("id3")])]'
-            scan "new_assets"'
-                projection ("assets3"."id3"::integer -> "id3", "assets3"."name3"::string -> "name3")'
-                    scan "assets3"'
+projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
+    join on ROW("ORDERS"."ID"::integer) = ROW("NEW_TABLE"."NMBR"::integer)
+        scan "ORDERS"
+            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                scan "ORDERS"
+        motion [policy: segment([ref("NMBR")])]
+            scan "NEW_TABLE"
+                projection ("DELIVERIES"."NMBR"::integer -> "NMBR", "DELIVERIES"."PRODUCT"::string -> "PRODUCT")
+                    scan "DELIVERIES"
 ```
 
 Пример `UPDATE` с обновлением колонки, по которой шардирована таблица
-(например, `distributed by ("id", "name")`):
+(например, `distributed by (product)`):
 
 ```sql
-EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;
+EXPLAIN UPDATE deliveries SET product = 'metals',quantity = 4000 WHERE nmbr = 1;
+
 ```
 
 Вывод в консоль:
 
 ```
-update "characters"
-"id" = COL_0'
-"name" = COL_1'
-"year" = COL_2'
-    motion [policy: segment([])]'
-        projection ("characters"."id"::integer -> COL_0, ''Etch''::string ->
-    COL_1, 2010::unsigned -> COL_2, "characters"."id"::integer -> COL_3, "characters"."name"::string
-    -> COL_4)'
-            selection ROW("characters"."id"::integer) = ROW(2::unsigned)'
-                scan "characters"'
+update "DELIVERIES"
+"NMBR" = COL_0
+"PRODUCT" = COL_1
+"QUANTITY" = COL_2
+    motion [policy: segment([])]
+        projection ("DELIVERIES"."NMBR"::integer -> COL_0, 'metals'::string -> COL_1, 4000::unsigned -> COL_2, "DELIVERIES"."PRODUCT"::string -> COL_3)
+            selection ROW("DELIVERIES"."NMBR"::integer) = ROW(1::unsigned)
+                scan "DELIVERIES"
 ```
 
 ### Полное перемещение {: #full_motion }
@@ -297,48 +291,38 @@ update "characters"
 таблиц:
 
 ```sql
-EXPLAIN SELECT "id","name","stock","year" FROM "characters"
+EXPLAIN SELECT NAME FROM items
 JOIN
-(SELECT "id" AS "number","stock" FROM "assets") AS stock
-ON "characters"."id" = stock."number";
+(SELECT item FROM orders) AS new_table
+ON items.name = new_table.item;
 ```
 
 Вывод в консоль:
 
 ```
-projection (
-    - "characters"."id" -> "id",
-    - "characters"."name" -> "name",
-    - "STOCK"."stock" -> "stock",
-    - "characters"."year" -> "year")',
-      join on ROW("characters"."id") = ROW("STOCK"."number")',
-          scan "characters"',
-              projection (
-    -   "characters"."id" -> "id",
-    -   "characters"."name" -> "name",
-    -   "characters"."year" -> "year")',
-    -   '                scan "characters"',
-    -   '        motion [policy: full]',
-    -   '            scan "STOCK"',
-    -   '                projection (
-    -     "assets"."id" -> "number",
-    -     "assets"."stock" -> "stock")',
-    -     '                    scan "assets"'
+projection ("ITEMS"."NAME"::string -> "NAME")
+    join on ROW("ITEMS"."NAME"::string) = ROW("NEW_TABLE"."ITEM"::string)
+        scan "ITEMS"
+            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+                scan "ITEMS"
+        motion [policy: full]
+            scan "NEW_TABLE"
+                projection ("ORDERS"."ITEM"::string -> "ITEM")
+                    scan "ORDERS"
 ```
 
 Пример выполнения агрегатной функции.
 
 ```sql
-EXPLAIN SELECT COUNT("id") FROM "characters";
+EXPLAIN SELECT COUNT(id) FROM warehouse;
 ```
 
 Вывод в консоль:
 
 ```
-projection (sum(("8278664dae744882bfeec573f427fd0d_count_11"::integer))::decimal
-    -> "COL_1")
-    motion [policy: full]'
-        scan'
-            projection (count(("characters"."id"::integer))::integer -> "8278664dae744882bfeec573f427fd0d_count_11")'
-                scan "characters"'
+projection (sum(("0e660ad12ab24037a48f169fcf315549_count_11"::integer))::decimal -> "COL_1")
+    motion [policy: full]
+        scan
+            projection (count(("WAREHOUSE"."ID"::integer))::integer -> "0e660ad12ab24037a48f169fcf315549_count_11")
+                scan "WAREHOUSE"
 ```

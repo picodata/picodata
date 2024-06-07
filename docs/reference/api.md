@@ -198,10 +198,12 @@ function cas(dml[, predicate])
 ```lua
 pico.cas({
     kind = 'insert',
-    table = 'friends_of_peppa',
-    tuple = {1, 'Suzy'},
+    table = 'WAREHOUSE',
+    tuple = {11, 99, 'chunks', 'light'},
 })
 ```
+
+Здесь, `11` — значение первой колонки (`id`), `99` — значение `bucket_id`.
 
 Пример с указанием предиката (проверка, что никакие другие записи не
 были добавлены ранее):
@@ -209,11 +211,11 @@ pico.cas({
 ```lua
 pico.cas({
     kind = 'replace',
-    table = 'friends_of_peppa',
-    tuple = {2, 'Rebecca'},
+    table = 'WAREHOUSE',
+    tuple = {11, 99, 'chunks', 'light'},
 }, {
     ranges = {{
-        table = 'friends_of_peppa',
+        table = 'WAREHOUSE',
         key_min = { kind = 'excluded', key = {1,} },
         key_max = { kind = 'unbounded' },
     }},
@@ -330,12 +332,13 @@ function create_table(opts)
 
 ```lua
 pico.create_table({
-    name = 'friends_of_peppa',
+    name = 'WAREHOUSE',
     format = {
-        {name = 'id', type = 'unsigned', is_nullable = false},
-        {name = 'name', type = 'string', is_nullable = false},
+        {name = 'ID', type = 'unsigned', is_nullable = false},
+        {name = 'ITEM', type = 'string', is_nullable = false},
+        {name = 'TYPE', type = 'string', is_nullable = false}
     },
-    primary_key = {'id'},
+    primary_key = {'ID'},
     distribution = 'global',
     timeout = 3,
 })
@@ -346,29 +349,30 @@ pico.create_table({
 ```lua
 pico.cas({
     kind = 'insert',
-    table = 'friends_of_peppa',
-    key = {1, 'Suzy'},
+    table = 'WAREHOUSE',
+    tuple = {1, 'bricks', 'heavy'},
 })
 ```
 
 Для чтения из глобальной таблицы используется box-API Tarantool:
 
 ```
-box.space.friends_of_peppa:fselect()
+box.space.WAREHOUSE:fselect()
 ```
 
 Создание шардированной таблицы с двумя полями:
 
 ```lua
 pico.create_table({
-    name = 'wonderland',
+    name = 'DELIVERIES',
     format = {
-        {name = 'property', type = 'string', is_nullable = false},
-        {name = 'value', type = 'any', is_nullable = true}
+        {name = 'nmbr', type = 'unsigned', is_nullable = false},
+        {name = 'product', type = 'string', is_nullable = true},
+        {name = 'quantity', type = 'unsigned', is_nullable = true},
     },
-    primary_key = {'property'},
+    primary_key = {'product'},
     distribution = 'sharded',
-    sharding_key = {'property'},
+    sharding_key = {'product'},
     timeout = 3,
 })
 ```
@@ -376,16 +380,16 @@ pico.create_table({
 Вычисление совместимого с SQL хеша для параметра `bucket_id`:
 
 ```lua
-local key = require('key_def').new({{fieldno = 1, type = 'string'}})
-local tuple = box.tuple.new({'unicorns'})
+local key = require('key_def').new({{fieldno = 2, type = 'string'}})
+local tuple = box.tuple.new({'metalware'})
 local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
 ```
 
 Добавление данных в шардированную таблицу происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/):
 
 ```lua
-local bucket_id = vshard.router.bucket_id_mpcrc32('unicorns')
-vshard.router.callrw(bucket_id, 'box.space.wonderland:insert', {{'unicorns', 12}})
+local bucket_id = vshard.router.bucket_id_mpcrc32('metalware')
+vshard.router.callrw(bucket_id, 'box.space.DELIVERIES:insert', {{1, 'metalware', 2000}})
 ```
 
 !!! note "Примечание"
@@ -1138,14 +1142,14 @@ local including_1 = { kind = 'included', key = {1,} }
 local excluding_3 = { kind = 'excluded', key = {3,} }
 
 local range_a = {
-    table = 'friends_of_peppa',
+    table = 'WAREHOUSE',
     key_min = unbounded,
     key_max = unbounded,
 }
 
 -- [1, 3)
 local range_a = {
-    table = 'friends_of_peppa',
+    table = 'WAREHOUSE',
     key_min = including_1,
     key_max = excluding_3,
 }

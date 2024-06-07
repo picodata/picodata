@@ -64,8 +64,8 @@ Picodata поддерживает два типа соединения: `INNER J
 ключевого слова `ON` и, в большинстве случаев, соответствует одному из
 следующих типов:
 
-- равенство колонок (`characters.id = assets.id`)
-- математическое выражение (`characters.id > 2`)
+- равенство колонок (`items.id = orders.id`)
+- математическое выражение (`items.id > 2`)
 - литерал (`TRUE` / `FALSE`)
 
 Любое соединение с JOIN является декартовым произведением кортежей из
@@ -88,89 +88,91 @@ Picodata поддерживает два типа соединения: `INNER J
 месте отсутствующих значений будет `nil`.
 
 Покажем это на примере соединения по равенству колонок для таблиц
-`characters` и `assets`:
+`items` и `orders`:
 
 <details><summary>Содержимое таблиц</summary><p>
 
 ```sql
-picodata> select * from "characters"
-+----+-------------------+------+
-| id | name              | year |
-+===============================+
-| 1  | "Woody"           | 1995 |
-|----+-------------------+------|
-| 2  | "Buzz Lightyear"  | 1995 |
-|----+-------------------+------|
-| 3  | "Bo Peep"         | 1995 |
-|----+-------------------+------|
-| 4  | "Mr. Potato Head" | 1995 |
-|----+-------------------+------|
-| 5  | "Woody"           | 1995 |
-|----+-------------------+------|
-| 10 | "Duke Caboom"     | 2019 |
-+----+-------------------+------+
-(6 rows)
-picodata> select * from "assets"
-+----+------------------+-------+
-| id | name             | stock |
-+===============================+
-| 1  | "Woody"          | 2561  |
-|----+------------------+-------|
-| 2  | "Buzz Lightyear" | 4781  |
-+----+------------------+-------+
-(2 rows)
+picodata> select * from items
++----+----------+-------+
+| ID | NAME     | STOCK |
++=======================+
+| 1  | "bricks" | 1123  |
+|----+----------+-------|
+| 2  | "panels" | 998   |
+|----+----------+-------|
+| 3  | "piles"  | 177   |
+|----+----------+-------|
+| 4  | "bars"   | 90211 |
+|----+----------+-------|
+| 5  | "blocks" | 16    |
++----+----------+-------+
+(5 rows)
+picodata> select * from orders
++----+-------------+--------+
+| ID | ITEM        | AMOUNT |
++===========================+
+| 1  | "metalware" | 5000   |
+|----+-------------+--------|
+| 2  | "adhesives" | 350    |
+|----+-------------+--------|
+| 3  | "moldings"  | 900    |
+|----+-------------+--------|
+| 4  | "bars"      | 100    |
+|----+-------------+--------|
+| 5  | "blocks"    | 20000  |
++----+-------------+--------+
+(5 rows)
 ```
 </p></details>
 
 Пример левого соединения:
 
 ```sql
-SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-LEFT JOIN "assets"
-ON "characters"."id" = "assets"."id"
+SELECT items.name, items.stock, orders.amount
+FROM  items
+LEFT JOIN orders
+ON items.name = orders.item
 ```
 
 Результат:
 
 ```shell
-+-------------------+-----------------+--------------+
-| characters.name   | characters.year | assets.stock |
-+====================================================+
-| "Woody"           | 1995            | 2561         |
-|-------------------+-----------------+--------------|
-| "Buzz Lightyear"  | 1995            | 4781         |
-|-------------------+-----------------+--------------|
-| "Bo Peep"         | 1995            | nil          |
-|-------------------+-----------------+--------------|
-| "Mr. Potato Head" | 1995            | nil          |
-|-------------------+-----------------+--------------|
-| "Woody"           | 1995            | nil          |
-|-------------------+-----------------+--------------|
-| "Duke Caboom"     | 2019            | nil          |
-+-------------------+-----------------+--------------+
-(6 rows)
++------------+-------------+---------------+
+| ITEMS.NAME | ITEMS.STOCK | ORDERS.AMOUNT |
++==========================================+
+| "bricks"   | 1123        | nil           |
+|------------+-------------+---------------|
+| "panels"   | 998         | nil           |
+|------------+-------------+---------------|
+| "piles"    | 177         | nil           |
+|------------+-------------+---------------|
+| "bars"     | 90211       | 100           |
+|------------+-------------+---------------|
+| "blocks"   | 16          | 20000         |
++------------+-------------+---------------+
+(5 rows)
 ```
 
 Пример внутреннего соединения:
 
 ```sql
-SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-INNER JOIN "assets"
-ON "characters"."id" = "assets"."id"
+SELECT items.name, items.stock, orders.amount
+FROM  items
+INNER JOIN orders
+ON items.name = orders.item
 ```
 
 Результат:
 
 ```shell
-+------------------+-----------------+--------------+
-| characters.name  | characters.year | assets.stock |
-+===================================================+
-| "Woody"          | 1995            | 2561         |
-|------------------+-----------------+--------------|
-| "Buzz Lightyear" | 1995            | 4781         |
-+------------------+-----------------+--------------+
++------------+-------------+---------------+
+| ITEMS.NAME | ITEMS.STOCK | ORDERS.AMOUNT |
++==========================================+
+| "bars"     | 90211       | 100           |
+|------------+-------------+---------------|
+| "blocks"   | 16          | 20000         |
++------------+-------------+---------------+
 (2 rows)
 ```
 
@@ -185,23 +187,27 @@ ON "characters"."id" = "assets"."id"
 <details><summary>Содержимое таблицы</summary><p>
 
 ```sql
-picodata> select * from "cast"
-+------------------+---------------+-------------+
-| character        | actor         | film        |
-+================================================+
-| "Bo Peep"        | "Annie Potts" | "Toy Story" |
-|------------------+---------------+-------------|
-| "Buzz Lightyear" | "Tim Allen"   | "Toy Story" |
-|------------------+---------------+-------------|
-| "Woody"          | "Tom Hanks"   | "Toy Story" |
-+------------------+---------------+-------------+
-(3 rows)
+picodata> select * from "warehouse"
++----+----------+---------+
+| ID | ITEM     | TYPE    |
++=========================+
+| 1  | "bricks" | "heavy" |
+|----+----------+---------|
+| 2  | "bars"   | "light" |
+|----+----------+---------|
+| 3  | "blocks" | "heavy" |
+|----+----------+---------|
+| 4  | "piles"  | "light" |
+|----+----------+---------|
+| 5  | "panels" | "light" |
++----+----------+---------+
+(5 rows)
 ```
 </details>
 
-Сделаем соединение трех таблиц с тем, чтобы узнать актеров всех
-персонажей из `characters` независимо от того, есть ли для
-соответствующих игрушек данные об остатках на складе.
+Сделаем соединение трех таблиц с тем, чтобы получить список всех позиций
+на складе с указанием их типа и остатков независимо от того,
+заказывались для них дополнительные поставки или нет.
 
 <p align="center">
 ![MULTIPLE JOINS](../../images/multiple_joins.svg)
@@ -210,29 +216,31 @@ picodata> select * from "cast"
 Запрос:
 
 ```sql
-SELECT "characters"."name", "assets"."stock", "cast"."actor"
-FROM "characters"
-LEFT JOIN "assets"
-ON "characters"."id" = "assets"."id"
-JOIN "cast"
-ON "characters"."name" = "cast"."character"
+SELECT warehouse.item, warehouse.type, items.stock, orders.amount
+FROM warehouse
+INNER JOIN items
+ON warehouse.id = items.id
+LEFT JOIN orders
+ON items.name = orders.item
 ```
 
 Результат:
 
 ```shell
-+------------------+--------------+---------------+
-| characters.name  | assets.stock | cast.actor    |
-+=================================================+
-| "Woody"          | 2561         | "Tom Hanks"   |
-|------------------+--------------+---------------|
-| "Buzz Lightyear" | 4781         | "Tim Allen"   |
-|------------------+--------------+---------------|
-| "Bo Peep"        | nil          | "Annie Potts" |
-|------------------+--------------+---------------|
-| "Woody"          | nil          | "Tom Hanks"   |
-+------------------+--------------+---------------+
-(4 rows)
++----------------+----------------+-------------+---------------+
+| WAREHOUSE.ITEM | WAREHOUSE.TYPE | ITEMS.STOCK | ORDERS.AMOUNT |
++===============================================================+
+| "bricks"       | "heavy"        | 1123        | nil           |
+|----------------+----------------+-------------+---------------|
+| "bars"         | "light"        | 998         | nil           |
+|----------------+----------------+-------------+---------------|
+| "blocks"       | "heavy"        | 177         | nil           |
+|----------------+----------------+-------------+---------------|
+| "piles"        | "light"        | 90211       | 100           |
+|----------------+----------------+-------------+---------------|
+| "panels"       | "light"        | 16          | 20000         |
++----------------+----------------+-------------+---------------+
+(5 rows)
 ```
 
 ## Перемещение данных {: #join_motions }
@@ -257,23 +265,27 @@ ON "characters"."name" = "cast"."character"
 равенство колонок, которые входят в ключи распределения соответствующих
 таблиц.
 
-К примеру, в условии соединения указано `ON "characters"."id" =
-"assets"."id"`, и таблицы "characters" и "assets" обе распределены по
+К примеру, в условии соединения указано `ON "items"."id" =
+"orders"."id"`, и таблицы "items" и "orders" обе распределены по
 своим колонкам "id":
 
 ```sql
-picodata> EXPLAIN SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-LEFT JOIN "assets"
-ON "characters"."id" = "assets"."id"
-projection ("characters"."name"::string -> "name", "characters"."year"::integer -> "year", "assets"."stock"::integer -> "stock")
-    left join on ROW("characters"."id"::integer) = ROW("assets"."id"::integer)
-        scan "characters"
-            projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name", "characters"."year"::integer -> "year")
-                scan "characters"
-        scan "assets"
-            projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name", "assets"."stock"::integer -> "stock")
-                scan "assets"
+picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+FROM  items
+INNER JOIN orders
+ON items.id = orders.id
+projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+    join on ROW("ITEMS"."ID"::integer) = ROW("ORDERS"."ID"::integer)
+        scan "ITEMS"
+            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+                scan "ITEMS"
+        scan "ORDERS"
+            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                scan "ORDERS"
+execution options:
+sql_vdbe_max_steps = 45000
+vtable_max_rows = 5000
+
 ```
 
 ### Частичное перемещение {: #segment_motion }
@@ -281,24 +293,27 @@ projection ("characters"."name"::string -> "name", "characters"."year"::integer 
 Частичное перемещение означает, что недостающая часть внутренней таблицы
 должна быть скопирована на узлы, содержащие данные внешней таблицы.
 
-К примеру, в условии соединения указано `ON "characters"."id" =
-"assets"."id"`, но таблица "characters" распределена по колонке "id", а
-"assets" — по какой-то другой колонке:
+К примеру, в условии соединения указано `ON "items"."id" =
+"orders"."id"`, но таблица "items" распределена по колонке "id", а
+"orders" — по какой-то другой колонке:
 
 ```sql
-picodata> EXPLAIN SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-LEFT JOIN "assets"
-ON "characters"."id" = "assets"."id"
-projection ("characters"."name"::string -> "name", "characters"."year"::integer -> "year", "assets2"."stock"::integer -> "stock")
-    left join on ROW("characters"."id"::integer) = ROW("assets"."id"::integer)
-        scan "characters"
-            projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name", "characters"."year"::integer -> "year")
-                scan "characters"
-        motion [policy: segment([ref("id")])]
-            scan "assets"
-                projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name", "assets"."stock"::integer -> "stock")
-                    scan "assets"
+picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+FROM  items
+INNER JOIN orders
+ON items.id = orders.id
+projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+    join on ROW("ITEMS"."ID"::integer) = ROW("ORDERS"."ID"::integer)
+        scan "ITEMS"
+            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+                scan "ITEMS"
+        motion [policy: segment([ref("ID")])]
+            scan "ORDERS"
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                    scan "ORDERS"
+execution options:
+sql_vdbe_max_steps = 45000
+vtable_max_rows = 5000
 ```
 
 ### Полное перемещение {: #full_motion }
@@ -309,57 +324,64 @@ projection ("characters"."name"::string -> "name", "characters"."year"::integer 
 Такая ситуация возникает, если в условии соединения указана колонка
 внешней таблицы, не входящая в ее ключ распределения.
 
-К примеру, в условии соединения указано `ON "characters"."id" =
-"assets"."id"`, но таблица "characters" распределена по какой-то другой
-колонке, в то время как "assets" распределена по "id":
+таким примером может служить равенство `items.name` = `orders.item` при
+том, что оеб таблицы распределены только по `id`:
 
 ```sql
-picodata> EXPLAIN SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-LEFT JOIN "assets"
-ON "characters"."id" = "assets"."id"
-projection ("characters"."name"::string -> "name", "characters"."year"::integer -> "year", "assets"."stock"::integer -> "stock")
-    left join on ROW("characters"."id"::integer) = ROW("assets"."id"::integer)
-        scan "characters"
-            projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name", "characters"."year"::integer -> "year")
-                scan "characters"
+picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+FROM  items
+INNER JOIN orders
+ON items.name = orders.item
+projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+    join on ROW("ITEMS"."NAME"::string) = ROW("ORDERS"."ITEM"::string)
+        scan "ITEMS"
+            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+                scan "ITEMS"
         motion [policy: full]
-            scan "assets"
-                projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name", "assets"."stock"::integer -> "stock")
-                    scan "assets"
+            scan "ORDERS"
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                    scan "ORDERS"
+execution options:
+sql_vdbe_max_steps = 45000
+vtable_max_rows = 5000
 ```
 
 Также, при использовании математических выражений или литералов, перемещение всегда будет полным:
 
 ```sql
-picodata> EXPLAIN SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-LEFT JOIN "assets"
-ON "characters"."id" = 1
-projection ("characters"."name"::string -> "name", "characters"."year"::integer -> "year", "assets"."stock"::integer -> "stock")
-    left join on ROW("characters"."id"::integer) = ROW(1::unsigned)
-        scan "characters"
-            projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name", "characters"."year"::integer -> "year")
-                scan "characters"
+picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+FROM  items
+INNER JOIN orders
+ON items.id > 2
+projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+    join on ROW("ITEMS"."ID"::integer) > ROW(2::unsigned)
+        scan "ITEMS"
+            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+                scan "ITEMS"
         motion [policy: full]
-            scan "assets"
-                projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name", "assets"."stock"::integer -> "stock")
-                    scan "assets"
+            scan "ORDERS"
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                    scan "ORDERS"
+execution options:
+sql_vdbe_max_steps = 45000
+vtable_max_rows = 5000
 ```
 
 ```sql
-picodata> EXPLAIN SELECT "characters"."name", "characters"."year", "assets"."stock"
-FROM "characters"
-LEFT JOIN "assets"
+picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
+FROM  items
+INNER JOIN orders
 ON TRUE
-projection ("characters"."name"::string -> "name", "characters"."year"::integer -> "year", "assets"."stock"::integer -> "stock")
-    left join on true::boolean
-        scan "characters"
-            projection ("characters"."id"::integer -> "id", "characters"."name"::string -> "name", "characters"."year"::integer -> "year")
-                scan "characters"
+projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+    join on true::boolean
+        scan "ITEMS"
+            projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
+                scan "ITEMS"
         motion [policy: full]
-            scan "assets"
-                projection ("assets"."id"::integer -> "id", "assets"."name"::string -> "name", "assets"."stock"::integer -> "stock")
-                    scan "assets"
-
+            scan "ORDERS"
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                    scan "ORDERS"
+execution options:
+sql_vdbe_max_steps = 45000
+vtable_max_rows = 5000
 ```

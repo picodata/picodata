@@ -25,21 +25,36 @@
 * **TABLE** — имя таблицы. Соответствует правилам имен для всех
   [объектов](object.md) в кластере.
 
+
+## Примеры вставки данных {: #examples }
+
+С явным указанием колонок:
+
+```sql
+INSERT INTO warehouse (id, item, type) VALUES (1, 'bricks', 'heavy');
+```
+
+Без указания колонок (при условии, что передаются значения для всех колонок):
+
+```sql
+INSERT INTO warehouse VALUES (1, 'bricks', 'heavy');
+```
+
 ## Обработка конфликтов {: #conflicts }
 
 В некоторых случаях вставка кортежа может вернуть ошибку, например, при
 попытке вставить кортеж с уже существующим индексом:
 
 ```sql
-INSERT INTO "characters" ("id", "name", "year") VALUES (10, 'Duke Caboom', 2019);
+INSERT INTO warehouse (id, item, type)
+VALUES (1, 'bricks', 'heavy');
+```
+
+Результат:
+
+```
 ---
-- null
-- 'sbroad: Lua error (IR dispatch): LuaError(ExecutionError("sbroad: failed to create
-  transaction: RolledBack(FailedTo(Insert, Some(Space), \"TupleFound: Duplicate key
-  exists in unique index \\\"primary_key\\\" in space \\\"characters\\\" with old
-  tuple - [10, 2695, \\\"The Dummies\\\", 2019] and new tuple - [10, 2695, \\\"Duke
-  Caboom\\\", 2019]\"))"))'
-...
+sbroad: Lua error (IR dispatch): LuaError(ExecutionError("sbroad: failed to create transaction: RolledBack(FailedTo(Insert, Some(Space), \"TupleFound: Duplicate key exists in unique index \\\"WAREHOUSE_pkey\\\" in space \\\"WAREHOUSE\\\" with old tuple - [1, 1934, \\\"bricks\\\", \\\"heavy\\\"] and new tuple - [1, 1934, \\\"bricks\\\", \\\"heavy\\\"]\"))"))
 ```
 
 Для обработки таких ситуаций можно использовать необязательный параметр
@@ -74,24 +89,30 @@ INSERT INTO "characters" ("id", "name", "year") VALUES (10, 'Duke Caboom', 2019)
 поведение `DO FAIL`.
 
 ```sql
-INSERT INTO "characters" ("id", "name", "year")
-VALUES (10, 'Duke Caboom', 2019)
+INSERT INTO warehouse (id, item, type)
+VALUES (1, 'bricks', 'heavy')
 ON CONFLICT DO NOTHING;
----
-- row_count: 0
-...
+```
+
+Результат:
+
+```
+0
 ```
 
 Для успешной вставки (замены кортежа) следует использовать вариант `DO
 REPLACE`:
 
 ```sql
-INSERT INTO "characters" ("id", "name", "year")
-VALUES (10, 'Duke Caboom', 2019)
-ON CONFLICT DO REPLACE ;
----
-- row_count: 1
-...
+INSERT INTO warehouse (id, item, type)
+VALUES (1, 'bricks', 'heavy')
+ON CONFLICT DO REPLACE;
+```
+
+Результат:
+
+```
+1
 ```
 
 Ошибка вставки может также быть вызвана ограничениями [неблокирующего
@@ -108,8 +129,3 @@ SQL](non_block.md). Если речь идет о запросе на встав
 назначен типа с плавающей запятой (например, `values(?), {2.5}` в
 `double 2.5`). См. [подробнее](../sql_types.md) о типах данных.
 
-## Примеры {: #examples }
-
-```sql
-INSERT INTO assets VALUES (1, 'Woody', 2561);
-```

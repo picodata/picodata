@@ -27,7 +27,7 @@
 * **COUNT** — количество значений в колонке;
 * **MIN** — минимальное значение;
 * **MAX** — максимальное значение;
-* **SUM** — сумма значений (если строк нет, возвращает `null`);
+* **SUM** — сумма значений (если строк нет, возвращает `NULL`);
 * **TOTAL** — сумма значений (если строк нет, возвращает `0`);
 * **GROUP_CONCAT** — соединяет строковые значения выражений с помощью
   разделителя.
@@ -37,23 +37,22 @@
 Подсчет общего числа товаров на складе:
 
 ```sql
-SELECT SUM(stock) FROM assets;
+SELECT SUM(stock) FROM items;
 ```
 
 Получение строки из имен, соединенных через запятую:
 
 ```sql
-SELECT GROUP_CONCAT(name, ', ') FROM characters;
+SELECT GROUP_CONCAT(name, ', ') FROM items;
 ```
 
 Вывод в консоль:
 
 ```
----
-- metadata:
-  - {'name': 'COL_1', 'type': 'string'}
-  rows:
-  - ['Woody, Buzz Lightyear, Bo Peep, Mr. Potato Head, Slinky Dog, Barbie, Daisy, Forky,
-      Dragon, The Dummies']
-...
++------------------------------------------------+
+| COL_1                                          |
++================================================+
+| "metalware, adhesives, moldings, bars, blocks" |
++------------------------------------------------+
+(1 rows)
 ```

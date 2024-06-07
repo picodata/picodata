@@ -39,7 +39,7 @@
 Простой запрос удаляет все данные из указанной таблицы:
 
 ```sql
-DELETE FROM characters OPTION (
+DELETE FROM warehouse OPTION (
     VTABLE_MAX_ROWS = 100,
     SQL_VDBE_MAX_STEPS = 15000
 )
@@ -48,19 +48,13 @@ DELETE FROM characters OPTION (
 Запрос с условием позволяет удалить только нужный кортеж:
 
 ```sql
-DELETE FROM characters where id = 1;
+DELETE FROM warehouse where id = 1;
 ```
 
 Или несколько строк:
 
 ```sql
-DELETE FROM characters WHERE id IN (1,2,3);
+DELETE FROM warehouse WHERE id IN (1,2,3);
 ```
 
-В всех случаях в выводе в консоль будет указано количество удаленных кортежей. Например:
-
-```
----
-- row_count: 3
-...
-```
+В всех случаях в выводе в консоль будет указано количество удаленных кортежей.
