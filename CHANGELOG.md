@@ -17,7 +17,6 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports common table expressions (CTE).
 - SQL supports `CASE` expression.
 - New property in tier table - `can_vote`. Indicates whether instances from tier can be considered as voter in raft protocol.
-- New http server method - `/metrics`. Exposes instance metrics in prometheus format.
 - SQL supports `PRIMARY KEY` next to column declaration
 
 <!--
@@ -50,6 +49,11 @@ with the `YY.MINOR.MICRO` scheme.
 - Support index drop with SQL.
 - Primary indexes change there naming convention: now it is "{table_name}_pkey".
 -->
+
+--------------------------------------------------------------------------------
+## [24.3.2] - 2024-06-10
+
+- New HTTP endpoint `/metrics` exposes instance metrics in prometheus format
 
 --------------------------------------------------------------------------------
 ## [24.2.4] - 2024-06-03
