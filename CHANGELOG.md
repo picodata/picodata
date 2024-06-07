@@ -22,6 +22,11 @@ with the `YY.MINOR.MICRO` scheme.
 -->
 
 --------------------------------------------------------------------------------
+## [24.3.2] - 2024-06-10
+
+- New HTTP endpoint `/metrics` exposes instance metrics in prometheus format
+
+--------------------------------------------------------------------------------
 ## [24.2.4] - 2024-06-03
 
 - Fix invalid socket path error at startup
