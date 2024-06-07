@@ -51,6 +51,16 @@ with the `YY.MINOR.MICRO` scheme.
 - Primary indexes change there naming convention: now it is "{table_name}_pkey".
 -->
 
+--------------------------------------------------------------------------------
+## [24.2.4] - 2024-06-03
+
+- Fix invalid socket path error at startup
+- Fix insufficient privileges for sbroad's temp tables breaks legit sql queries
+- Fix panic in case of reference used in sql query
+
+--------------------------------------------------------------------------------
+## [24.2.3] - 2024-05-28
+
 - Fix `picodata admin` 100\% CPU usage when server closes the socket
 - Fix `picodata connect` error after granting a role to the user
 - Fix `ALTER USER alice WITH NOLOGIN`
