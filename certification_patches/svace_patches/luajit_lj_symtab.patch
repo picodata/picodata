@@ -1,5 +1,5 @@
 diff --git a/src/lj_symtab.c b/src/lj_symtab.c
-index 38b5e9e1..18959a7b 100644
+index 38b5e9e1..765efc93 100644
 --- a/src/lj_symtab.c
 +++ b/src/lj_symtab.c
 @@ -200,6 +200,9 @@ static int dump_sht_symtab(const char *elf_name, struct lj_wbuf *buf,
@@ -12,3 +12,15 @@ index 38b5e9e1..18959a7b 100644
        ElfW(Shdr) strtab_hdr = section_headers[sym_hdr.sh_link];
        size_t symtab_size = sym_hdr.sh_size;
  
+@@ -215,6 +218,11 @@ static int dump_sht_symtab(const char *elf_name, struct lj_wbuf *buf,
+   if (sym_off == 0 || strtab_off == 0 || sym_cnt == 0)
+     goto error;
+ 
++  if (sym_cnt > (SIZE_MAX / sizeof(ElfW(Sym)))) {
++    fprintf(stderr, "sym_cnt > SIZE_MAX / sizeof(ElfW(Sym)) (prevented integer overflow) in %s:%d", __FILE__, __LINE__);
++    abort();
++  }
++
+   /* Load symtab into memory. */
+   sym = lj_mem_new(L, sym_cnt * sizeof(ElfW(Sym)));
+   if (sym == NULL)
