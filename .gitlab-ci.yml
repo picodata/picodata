@@ -103,7 +103,7 @@ variables:
       /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
         --build-arg GIT_COMMIT=${CI_COMMIT_SHA} ${PUSH_DOCKER} \
         --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
-        --destination $DESTINATION    
+        --destination $DESTINATION
 
 build-base-image:
   interruptible: true
@@ -176,7 +176,7 @@ test-linux:
   cache:
     - <<: *py_cache
     - <<: *base_cache
-    - <<: *base_node    
+    - <<: *base_node
   script:
     - |
       # Check rust version consistency
@@ -218,7 +218,7 @@ test-linux:
 
     # -vv shows extended diff for failures
     - >
-      BUILD_PROFILE=$BUILD_PROFILE pipenv run pytest
+      BUILD_PROFILE=$BUILD_PROFILE pipenv run pytest -vv
       --color=yes
       --numprocesses auto
       --junitxml=junit_pytest.xml
@@ -461,7 +461,7 @@ deploy-docker:
       - DOCKERFILE: helm/picodata-diag.Dockerfile
         DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_SHA}
       - DOCKERFILE: helm/picodata.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_SHA}    
+        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_SHA}
 
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
