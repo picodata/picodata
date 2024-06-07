@@ -22,15 +22,20 @@ tarantool-patch:
 
 build: tarantool-patch
 	. ~/.cargo/env && \
-	cargo build --locked --features webui
+	cargo build --locked \
+		-p picodata --features picodata/webui \
+		-p gostech-audit-log
 
 build-release: tarantool-patch
 	. ~/.cargo/env && \
-	cargo build --locked --release --features webui
+	cargo build --locked --release \
+		-p picodata --features picodata/webui \
+		-p gostech-audit-log
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin
 	install -m 0755 target/*/picodata $(DESTDIR)/usr/bin/picodata
+	install -m 0755 target/*/gostech-audit-log $(DESTDIR)/usr/bin/gostech-audit-log
 
 fmt:
 	cargo fmt
