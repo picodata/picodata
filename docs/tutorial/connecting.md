@@ -111,3 +111,130 @@ picodata connect alice@localhost:3301
 См. также:
 
 - [Аргументы командной строки](../reference/cli.md)
+
+## Pgproto {: #pgproto }
+
+Модуль Pgproto реализует протокол PostgreSQL путем эмуляции сервера
+PostgreSQL. Основная цель Pgproto — предоставить пользователям возможность
+взаимодействовать с Picodata с помощью большого числа хорошо знакомых
+инструментов и библиотек, написанных для PostgreSQL.
+
+### Настройка Pgproto {: #pgproto_setup }
+
+Для запуска сервера Pgproto, принимающего подключения PostgreSQL по адресу
+`localhost:5432`, нужно [запустить](../reference/cli.md#run) инстанс Picodata,
+используя [опцию](../reference/cli.md#run_pg_listen) `--pg-listen`:
+
+```bash
+picodata run --pg-listen localhost:5432
+```
+
+Подключаться к серверу Pgproto могут только пользователи с паролем,
+совместимым с PostgreSQL. Для создания пользователя `postgres` с подходящим
+паролем в [консоли администратора](#admin_console) нужно выполнить команду:
+
+```sql
+CREATE USER "postgres" WITH PASSWORD 'P@ssw0rd' USING md5
+```
+
+!!! note "Примечание"
+    В настоящее время только аутентификация по хешу MD5 совместима
+    с PostgreSQL.
+
+Для выдачи разрешения на создание таблиц пользователю `postgres` в
+[консоли администратора](#admin_console) нужно выполнить команду:
+
+```sql
+GRANT CREATE TABLE TO "postgres"
+```
+
+Полученное разрешение позволит пользователю `postgres` отправить в Picodata
+запрос CREATE TABLE, пример которого приведен [далее](#examples).
+
+### Подключение к Pgproto через psql {: #pgproto_psql_connect }
+
+Подключение к Picodata через Pgproto осуществляется с помощью
+интерактивного терминала PostgreSQL
+[psql](https://www.postgresql.org/docs/current/app-psql.html).
+
+Команда для подключения к Pgproto через psql:
+
+```bash title="Вариант № 1"
+psql -U postgres -h localhost -p 5432 -W "sslmode=disable"
+```
+
+```bash title="Вариант № 2"
+psql "user=postgres host=localhost port=5432 password=P@ssw0rd sslmode=disable"
+```
+
+По умолчанию SSL отключен в Pgproto, поэтому его также следует отключить
+на стороне psql, используя опцию `sslmode`.
+
+??? abstract "Включение протокола SSL в Pgproto"
+    Чтобы использовать протокол SSL при подключении к Pgproto, необходимо
+    сделать следующее:
+
+    1. Задать параметр `instance.pg.ssl: true`
+    [в файле конфигурации](../reference/config.md#instance_pg_ssl)
+    1. Добавить в [рабочую директорию инстанса](../reference/cli.md#run_data_dir)
+    `<DATA_DIR>` SSL-сертификаты:
+        * `server.crt`
+        * `server.key`
+
+### Примеры {: #examples }
+
+После подключения к Pgproto запросы можно будет отправлять в интерактивной
+сессии psql. Примеры:
+
+```sql title="Запрос CREATE TABLE"
+postgres=> CREATE TABLE WAREHOUSE (
+    W_ID INTEGER NOT NULL,
+    W_NAME VARCHAR(10) NOT NULL,
+    W_TAX DOUBLE,
+    W_YTD DOUBLE,
+    PRIMARY KEY (W_ID)
+)
+USING MEMTX DISTRIBUTED BY (W_ID);
+CREATE TABLE
+```
+
+```sql title="Запрос INSERT"
+postgres=> INSERT INTO WAREHOUSE (W_ID, W_NAME) VALUES (1, 'aaaa'), (2, 'aaab'), (3, 'aaac'), (4, 'aaad');
+INSERT 0 4
+```
+
+```sql title="Запрос SELECT"
+postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
+ "W_ID" | "W_NAME"
+--------+----------
+      1 | aaaa
+      2 | aaab
+      3 | aaac
+      4 | aaad
+(4 rows)
+```
+
+```sql title="Запрос SELECT с предложением WHERE"
+postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
+ "W_NAME"
+----------
+ aaaa
+(1 row)
+```
+
+См. также:
+
+* [CREATE TABLE](../reference/sql/create_table.md)
+* [INSERT](../reference/sql/insert.md)
+* [SELECT](../reference/sql/select.md)
+
+### Ограничения Pgproto {: #pgproto_limitations }
+
+ * Поступающие запросы без изменений передаются в Picodata в текстовом виде,
+ поэтому возможно выполнение только поддерживаемых в Picodata запросов
+ * [Системные каталоги
+ PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html) пока
+ не поддерживаются
+ * Pgproto работает в режиме
+[autocommit](https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html),
+т. к. Picodata не поддерживает интерактивные транзакции

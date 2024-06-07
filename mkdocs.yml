@@ -43,7 +43,6 @@ nav:
     - tutorial/audit_log.md
     - tutorial/backup.md
     - tutorial/integration.md
-    - tutorial/pgproto.md
   - Справочные материалы:
     - reference/cli.md
     - reference/config.md

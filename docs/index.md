@@ -33,7 +33,6 @@ Picodata — это распределенная система промышле
 * [Использование журнала аудита](tutorial/audit_log.md)
 * [Резервное копирование](tutorial/backup.md)
 * [Интеграция с внешними системами](tutorial/integration.md)
-* [Интеграция с PostgresSQL](tutorial/pgproto.md)
 
 ### Справочные материалы {: #reference }
 

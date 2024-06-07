@@ -213,7 +213,7 @@ admin](#admin). Данный способ использует обычный т
 
 ### --pg-listen {: #run_pg_listen }
 
-Адрес сервера [pgproto](../tutorial/pgproto.md).
+Адрес сервера [Pgproto](../tutorial/connecting.md#pgproto).
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`
 
