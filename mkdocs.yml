@@ -55,6 +55,7 @@ nav:
       - reference/sql_types.md
       - reference/sql/parametrization.md
       - reference/ansi_sql.md
+      - reference/legend.md
       - Команды:
         - reference/sql/alter_procedure.md
         - reference/sql/alter_user.md

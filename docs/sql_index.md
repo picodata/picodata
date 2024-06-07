@@ -9,6 +9,7 @@
 * [Типы данных](reference/sql_types.md)
 * [Параметризованные запросы](reference/sql/parametrization.md)
 * [Совместимость с ANSI](reference/ansi_sql.md)
+* [Тестовые таблицы](reference/legend.md)
 
 ## Команды {: #commands }
 
