@@ -1,0 +1,26 @@
+diff --git a/src/lj_ccallback.c b/src/lj_ccallback.c
+index 3738c234..630e9452 100644
+--- a/src/lj_ccallback.c
++++ b/src/lj_ccallback.c
+@@ -3,6 +3,7 @@
+ ** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
+ */
+ 
++#include "stdio.h"
+ #include "lj_obj.h"
+ 
+ #if LJ_HASFFI
+@@ -537,7 +538,12 @@ static void callback_conv_args(CTState *cts, lua_State *L)
+   if (slot < cts->cb.sizeid && (id = cts->cb.cbid[slot]) != 0) {
+     ct = ctype_get(cts, id);
+     rid = ctype_cid(ct->info);  /* Return type. x86: +(spadj<<16). */
+-    fn = funcV(lj_tab_getint(cts->miscmap, (int32_t)slot));
++    cTValue *tv = lj_tab_getint(cts->miscmap, (int32_t)slot);
++    if (LJ_UNLIKELY(tv == NULL)) { // assert
++      fprintf(stderr, "tv == NULL in %s:%d", __FILE__, __LINE__);
++      abort();
++    }
++    fn = funcV(tv);
+     fntp = LJ_TFUNC;
+   } else {  /* Must set up frame first, before throwing the error. */
+     ct = NULL;
