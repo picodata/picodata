@@ -1,0 +1,23 @@
+diff --git a/src/lj_opt_narrow.c b/src/lj_opt_narrow.c
+index db0da10f..60e1d9f4 100644
+--- a/src/lj_opt_narrow.c
++++ b/src/lj_opt_narrow.c
+@@ -4,6 +4,7 @@
+ ** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
+ */
+ 
++#include "stdio.h"
+ #define lj_opt_narrow_c
+ #define LUA_CORE
+ 
+@@ -390,6 +391,10 @@ static IRRef narrow_conv_emit(jit_State *J, NarrowConv *nc)
+ 	  (uint32_t)IR(narrow_ref(sp[0]))->i + 0x40000000u < 0x80000000u)
+ 	  guardot = 0;
+ 	else  /* Otherwise cache a stronger check. */
++    if (LJ_UNLIKELY(sp < nc->stack+1)) { // assert
++      fprintf(stderr, "stack underflow in %s:%d", __FILE__, __LINE__);
++      abort();
++    }
+ 	  mode += IRCONV_CHECK-IRCONV_INDEX;
+       }
+       sp[-1] = emitir(op+guardot, sp[-1], sp[0]);
