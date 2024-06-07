@@ -1,0 +1,23 @@
+diff --git a/src/lj_vmmath.c b/src/lj_vmmath.c
+index 506867f8..04e4e052 100644
+--- a/src/lj_vmmath.c
++++ b/src/lj_vmmath.c
+@@ -8,6 +8,7 @@
+ 
+ #include <errno.h>
+ #include <math.h>
++#include <stdio.h>
+ 
+ #include "lj_obj.h"
+ #include "lj_ir.h"
+@@ -64,6 +65,10 @@ int32_t LJ_FASTCALL lj_vm_modi(int32_t a, int32_t b)
+   uint32_t y, ua, ub;
+   /* This must be checked before using this function. */
+   lj_assertX(b != 0, "modulo with zero divisor");
++  if (LJ_UNLIKELY(b == 0)) { // assert
++    fprintf(stderr, "modulo with zero divisor %s:%d", __FILE__, __LINE__);
++    abort();
++  }
+   ua = a < 0 ? (uint32_t)-a : (uint32_t)a;
+   ub = b < 0 ? (uint32_t)-b : (uint32_t)b;
+   y = ua % ub;
