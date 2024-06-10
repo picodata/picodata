@@ -1,6 +1,10 @@
 #![cfg(feature = "picodata")]
 
+use serde::de::DeserializeOwned;
+use std::collections::HashMap;
+use std::io::Read;
 use tarantool::error::{Error, TarantoolError};
+use tarantool::ffi::sql::IPROTO_DATA;
 use tarantool::index::IndexType;
 use tarantool::space::{Field, Space};
 
@@ -30,8 +34,26 @@ fn drop_sql_test_space(space: Space) -> tarantool::Result<()> {
     space.drop()
 }
 
+fn decode_dql_result<OUT>(stream: &mut (impl Read + Sized)) -> OUT
+where
+    OUT: DeserializeOwned,
+{
+    let map_len = rmp::decode::read_map_len(stream).unwrap();
+    let mut data = None;
+    for _ in 0..map_len {
+        let key = rmp::decode::read_pfix(stream).unwrap();
+        if key != IPROTO_DATA {
+            let _ = rmpv::decode::read_value(stream).unwrap();
+            continue;
+        }
+        data = Some(rmpv::decode::read_value(stream).unwrap());
+    }
+    let data = data.unwrap();
+    rmpv::ext::from_value::<OUT>(data).unwrap()
+}
+
 pub fn prepared_invalid_query() {
-    let maybe_stmt = tarantool::sql::prepare("SELECT * FROM UNKNOWN_SPACE");
+    let maybe_stmt = tarantool::sql::prepare("SELECT * FROM UNKNOWN_SPACE".to_string());
     assert!(maybe_stmt.is_err());
     assert!(matches!(
         maybe_stmt.err().unwrap(),
@@ -42,8 +64,8 @@ pub fn prepared_invalid_query() {
 pub fn prepared_source_query() {
     let sp = create_sql_test_space("SQL_TEST").unwrap();
 
-    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST").unwrap();
-    assert_eq!(stmt.source(), Ok("SELECT * FROM SQL_TEST"));
+    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST".to_string()).unwrap();
+    assert_eq!(stmt.source(), "SELECT * FROM SQL_TEST");
 
     drop_sql_test_space(sp).unwrap();
 }
@@ -56,15 +78,22 @@ pub fn prepared_no_params() {
     sp.insert(&(3, "three")).unwrap();
     sp.insert(&(4, "four")).unwrap();
 
-    let sql = "SELECT * FROM SQL_TEST";
+    let sql = String::from("SELECT * FROM SQL_TEST");
     let stmt = tarantool::sql::prepare(sql).unwrap();
 
-    let vec = stmt.execute::<_, Vec<(u64, String)>>(&()).unwrap();
+    let mut stream = stmt.execute_raw(&(), 100).unwrap();
+    let result = decode_dql_result::<Vec<(u64, String)>>(&mut stream);
 
-    assert_eq!((1, "one".to_string()), vec[0]);
-    assert_eq!((2, "two".to_string()), vec[1]);
-    assert_eq!((3, "three".to_string()), vec[2]);
-    assert_eq!((4, "four".to_string()), vec[3]);
+    assert_eq!((1, "one".to_string()), result[0]);
+    assert_eq!((2, "two".to_string()), result[1]);
+    assert_eq!((3, "three".to_string()), result[2]);
+    assert_eq!((4, "four".to_string()), result[3]);
+
+    let sql = "SELECT * FROM SQL_TEST WHERE ID = 1";
+    let mut stream = tarantool::sql::prepare_and_execute_raw(sql, &(), 100).unwrap();
+    let result = decode_dql_result::<Vec<(u64, String)>>(&mut stream);
+    assert_eq!(1, result.len());
+    assert_eq!((1, "one".to_string()), result[0]);
 
     drop_sql_test_space(sp).unwrap();
 }
@@ -81,9 +110,10 @@ pub fn prepared_large_query() {
 
         i += 4;
     }
-    let sql = "SELECT * FROM SQL_TEST";
+    let sql = String::from("SELECT * FROM SQL_TEST");
     let stmt = tarantool::sql::prepare(sql).unwrap();
-    let result = stmt.execute::<_, Vec<(u64, String)>>(&()).unwrap();
+    let mut stream = stmt.execute_raw(&(), 0).unwrap();
+    let result = decode_dql_result::<Vec<(u64, String)>>(&mut stream);
 
     let mut i = 0;
     while i < 10000 {
@@ -100,9 +130,20 @@ pub fn prepared_large_query() {
 pub fn prepared_invalid_params() {
     let sp = create_sql_test_space("SQL_TEST").unwrap();
 
-    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?").unwrap();
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&("not uint value",));
+    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?".to_string()).unwrap();
+    let result = stmt.execute_raw(&("not uint value"), 0);
 
+    assert!(result.is_err());
+    assert!(matches!(
+        result.err().unwrap(),
+        Error::Tarantool(TarantoolError { .. })
+    ));
+
+    let result = tarantool::sql::prepare_and_execute_raw(
+        "SELECT * FROM SQL_TEST WHERE ID = ?",
+        &("not uint value"),
+        0,
+    );
     assert!(result.is_err());
     assert!(matches!(
         result.err().unwrap(),
@@ -120,24 +161,36 @@ pub fn prepared_with_unnamed_params() {
     sp.insert(&(103, "three")).unwrap();
     sp.insert(&(104, "four")).unwrap();
 
-    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?").unwrap();
+    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ?".to_string()).unwrap();
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(102,)).unwrap();
+    let mut stream = stmt.execute_raw(&(102,), 0).unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(2, result.len());
     assert_eq!((103, "three".to_string()), result[0]);
     assert_eq!((104, "four".to_string()), result[1]);
 
-    let result = stmt.execute::<_, Vec<(u8, String)>>(&(103,)).unwrap();
+    let mut stream = stmt.execute_raw(&(103,), 0).unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((104, "four".to_string()), result[0]);
 
     let stmt2 =
-        tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ? AND VALUE = ?").unwrap();
-    let result = stmt2
-        .execute::<_, Vec<(u8, String)>>(&(102, "three"))
-        .unwrap();
+        tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > ? AND VALUE = ?".to_string())
+            .unwrap();
+    let mut stream = stmt2.execute_raw(&(102, "three"), 0).unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((103, "three".to_string()), result[0]);
+
+    let mut stream = tarantool::sql::prepare_and_execute_raw(
+        "SELECT * FROM SQL_TEST WHERE ID = ? AND VALUE = ?",
+        &(101, "one"),
+        0,
+    )
+    .unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
+    assert_eq!(1, result.len());
+    assert_eq!((101, "one".to_string()), result[0]);
 
     drop_sql_test_space(sp).unwrap();
 }
@@ -150,43 +203,52 @@ pub fn prepared_with_named_params() {
     sp.insert(&(3, "three")).unwrap();
     sp.insert(&(4, "four")).unwrap();
 
-    #[derive(serde::Serialize)]
-    struct IdBind {
-        #[serde(rename = ":ID")]
-        id: u64,
+    fn bind_id(id: u64) -> HashMap<String, u64> {
+        let mut map = HashMap::new();
+        map.insert(":ID".to_string(), id);
+        map
     }
 
-    #[derive(serde::Serialize)]
-    struct NameBind {
-        #[serde(rename = ":NAME")]
-        name: String,
+    fn bind_name(name: &str) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert(":NAME".to_string(), name.to_string());
+        map
     }
 
-    let stmt = tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > :ID").unwrap();
+    let stmt =
+        tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > :ID".to_string()).unwrap();
 
-    let result: Vec<(u8, String)> = stmt.execute(&(IdBind { id: 2 },)).unwrap();
+    let mut stream = stmt.execute_raw(&[bind_id(2)], 0).unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(2, result.len());
     assert_eq!((3, "three".to_string()), result[0]);
     assert_eq!((4, "four".to_string()), result[1]);
 
-    let result = stmt
-        .execute::<_, Vec<(u8, String)>>(&(IdBind { id: 3 },))
-        .unwrap();
+    let mut stream = stmt.execute_raw(&[bind_id(3)], 0).unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((4, "four".to_string()), result[0]);
 
-    let stmt2 =
-        tarantool::sql::prepare("SELECT * FROM SQL_TEST WHERE ID > :ID AND VALUE = :NAME").unwrap();
-    let result = stmt2
-        .execute::<_, Vec<(u8, String)>>(&(
-            IdBind { id: 2 },
-            NameBind {
-                name: "three".to_string(),
-            },
-        ))
+    let stmt2 = tarantool::sql::prepare(
+        "SELECT * FROM SQL_TEST WHERE ID > :ID AND VALUE = :NAME".to_string(),
+    )
+    .unwrap();
+    let mut stream = stmt2
+        .execute_raw(&(bind_id(2), bind_name("three")), 0)
         .unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
     assert_eq!(1, result.len());
     assert_eq!((3, "three".to_string()), result[0]);
+
+    let mut stream = tarantool::sql::prepare_and_execute_raw(
+        "SELECT * FROM SQL_TEST WHERE ID = :ID AND VALUE = :NAME",
+        &(bind_id(1), bind_name("one")),
+        0,
+    )
+    .unwrap();
+    let result = decode_dql_result::<Vec<(u8, String)>>(&mut stream);
+    assert_eq!(1, result.len());
+    assert_eq!((1, "one".to_string()), result[0]);
 
     drop_sql_test_space(sp).unwrap();
 }

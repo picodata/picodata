@@ -152,6 +152,8 @@
 ### Fixed (picodata)
 
 ### Breaking changes (picodata)
+- SQL module was totally refactored: all its public structures functions and FFIs have
+  been changed.
 
 # [4.0.0] Jan 12 2024
 

@@ -2,149 +2,124 @@
 
 use crate::error::TarantoolError;
 use crate::ffi;
-use crate::ffi::sql::{Bind, ObufWrapper, Port, PortSql, SqlStatement};
-use serde::{de::DeserializeOwned, Serialize};
-use std::collections::HashMap;
-use std::ffi::CStr;
+use crate::ffi::sql::ObufWrapper;
+use serde::Serialize;
 use std::io::Read;
 use std::os::raw::c_char;
 use std::str;
 
-/// Create new SQL prepared statement.
+/// Returns the hash, used as the statement ID, generated from the SQL query text.
+pub fn calculate_hash(sql: &str) -> u32 {
+    unsafe { ffi::sql::sql_stmt_calculate_id(sql.as_ptr() as *const c_char, sql.len()) }
+}
+
+/// Executes an SQL query without storing the prepared statement in the instance
+/// cache and returns a wrapper around the raw msgpack bytes.
+pub fn prepare_and_execute_raw<IN>(
+    query: &str,
+    bind_params: &IN,
+    vdbe_max_steps: u64,
+) -> crate::Result<impl Read>
+where
+    IN: Serialize,
+{
+    let mut buf = ObufWrapper::new(1024);
+    // 0x90 is an empty mp array
+    let mut param_data = vec![0x90];
+    if std::mem::size_of::<IN>() != 0 {
+        param_data = rmp_serde::to_vec(bind_params)?;
+        debug_assert!(crate::msgpack::skip_value(&mut std::io::Cursor::new(&param_data)).is_ok());
+    }
+    let param_ptr = param_data.as_ptr() as *const u8;
+    let execute_result = unsafe {
+        ffi::sql::sql_prepare_and_execute_ext(
+            query.as_ptr() as *const u8,
+            query.len() as i32,
+            param_ptr,
+            vdbe_max_steps,
+            buf.obuf(),
+        )
+    };
+    if execute_result < 0 {
+        return Err(TarantoolError::last().into());
+    }
+    Ok(buf)
+}
+
+/// Creates new SQL prepared statement and stores it in the session.
 /// query - SQL query.
-pub fn prepare(query: &str) -> crate::Result<Statement> {
-    let port = Port::zeroed();
+///
+/// Keep in mind that a prepared statement is stored in the instance cache as
+/// long as its reference counter is non-zero. The counter increases only when
+/// a new statement is added to a session. Repeatedly calling prepare on an
+/// already existing statement within the same session does not increase the
+/// instance cache counter. However, calling prepare on the statement in a
+/// different session without the statement does increase the counter.
+
+pub fn prepare(query: String) -> crate::Result<Statement> {
+    let mut stmt_id: u32 = 0;
 
     if unsafe {
-        ffi::sql::sql_prepare(
-            query.as_ptr() as *const c_char,
-            query.len() as u32,
-            &port as *const Port,
-        )
+        ffi::sql::sql_prepare_ext(query.as_ptr(), query.len() as u32, &mut stmt_id as *mut u32)
     } < 0
     {
         return Err(TarantoolError::last().into());
     }
 
-    let sql_port = &port as *const Port as *const PortSql;
-    let stmt = unsafe { (*sql_port).sql_stmt };
-    let stmt_id =
-        unsafe { ffi::sql::sql_stmt_calculate_id(query.as_ptr() as *const c_char, query.len()) };
+    Ok(Statement { query, id: stmt_id })
+}
 
-    Ok(Statement {
-        inner: stmt,
-        id: stmt_id,
-    })
+/// Removes SQL prepared statement from the session.
+///
+/// The statement is removed from the session, and its reference counter in
+/// the instance cache is decremented. If the counter reaches zero, the
+/// statement is removed from the instance cache.
+pub fn unprepare(stmt: Statement) {
+    unsafe {
+        ffi::sql::sql_unprepare(stmt.id);
+    }
 }
 
 /// SQL prepared statement.
+#[derive(Default, Debug)]
 pub struct Statement {
-    inner: *const SqlStatement,
+    query: String,
     id: u32,
 }
 
 impl Statement {
     /// Returns original query.
-    pub fn source(&self) -> Result<&str, std::str::Utf8Error> {
-        unsafe {
-            let query = ffi::sql::sql_stmt_query_str(self.inner);
-            CStr::from_ptr(query)
-        }
-        .to_str()
+    pub fn source(&self) -> &str {
+        self.query.as_str()
     }
 
-    /// Returns internal Tarantool id of the prepared statement.
+    /// Returns the statement ID generated from the SQL query text.
     pub fn id(&self) -> u32 {
         self.id
     }
 
     /// Executes prepared statement and returns a wrapper over the raw msgpack bytes.
-    pub fn execute_raw<IN>(&self, bind_params: &IN) -> crate::Result<impl Read>
+    pub fn execute_raw<IN>(&self, bind_params: &IN, vdbe_max_steps: u64) -> crate::Result<impl Read>
     where
         IN: Serialize,
     {
-        let mut port = Port::zeroed();
-
-        let execute_result = if std::mem::size_of::<IN>() != 0 {
-            let params = rmp_serde::to_vec_named(bind_params)?;
-            let mut bind_ptr: *const Bind = unsafe { std::mem::zeroed() };
-            let bind_cnt = unsafe {
-                ffi::sql::sql_bind_list_decode(
-                    params.as_ptr() as *const c_char,
-                    &mut bind_ptr as *mut *const Bind,
-                )
-            };
-            if bind_cnt < 0 {
-                return Err(TarantoolError::last().into());
-            }
-
-            unsafe {
-                ffi::sql::sql_execute_prepared_ext(
-                    self.id,
-                    bind_ptr as *const Bind,
-                    bind_cnt as u32,
-                    &port as *const Port,
-                )
-            }
-        } else {
-            unsafe {
-                ffi::sql::sql_execute_prepared_ext(
-                    self.id,
-                    std::ptr::null::<Bind>() as *const Bind,
-                    0,
-                    &port as *const Port,
-                )
-            }
+        let mut buf = ObufWrapper::new(1024);
+        // 0x90 is an empty mp array
+        let mut param_data = vec![0x90];
+        if std::mem::size_of::<IN>() != 0 {
+            param_data = rmp_serde::to_vec(bind_params)?;
+            debug_assert!(
+                crate::msgpack::skip_value(&mut std::io::Cursor::new(&param_data)).is_ok()
+            );
+        }
+        let param_ptr = param_data.as_ptr() as *const u8;
+        let execute_result = unsafe {
+            ffi::sql::sql_execute_prepared_ext(self.id, param_ptr, vdbe_max_steps, buf.obuf())
         };
+
         if execute_result < 0 {
-            // Tarantool has already called `port_destroy()` and has possibly
-            // trashed `vtab` pointer. We need to reset it to avoid UB.
-            port.vtab = std::ptr::null();
             return Err(TarantoolError::last().into());
         }
-
-        let buf = ObufWrapper::new(1024);
-
-        unsafe {
-            ((*port.vtab).dump_msgpack)(&port as *const Port, buf.obuf());
-        };
         Ok(buf)
-    }
-
-    /// Executes a *returning data* prepared statement with binding variables.
-    ///
-    /// Example:
-    /// ```no_run
-    /// #[cfg(feature = "picodata")]
-    /// {
-    ///     use tarantool::sql;
-    ///
-    ///     let stmt = sql::prepare("SELECT * FROM S WHERE ID > ?").unwrap();
-    ///     let result: Vec<(u8, String)> = stmt.execute(&(100,)).unwrap();
-    ///     println!("SQL query result: {:?}", result);
-    /// }
-    /// ```
-    pub fn execute<IN, OUT>(&self, bind_params: &IN) -> crate::Result<OUT>
-    where
-        IN: Serialize,
-        OUT: DeserializeOwned,
-    {
-        let buf = self.execute_raw(bind_params)?;
-        let mut map = rmp_serde::decode::from_read::<_, HashMap<u32, rmpv::Value>>(buf)?;
-        let data = map.remove(&ffi::sql::IPROTO_DATA).ok_or_else(|| {
-            rmp_serde::decode::Error::Syntax("Invalid execution result format".to_string())
-        })?;
-        let values = rmpv::ext::from_value::<OUT>(data)
-            .map_err(|e| rmp_serde::decode::Error::Syntax(e.to_string()))?;
-
-        Ok(values)
-    }
-}
-
-impl Drop for Statement {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::sql::sql_unprepare(self.id);
-        }
     }
 }
