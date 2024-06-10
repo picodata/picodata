@@ -16,9 +16,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `UNION` operator.
 - SQL supports common table expressions (CTE).
 - SQL supports `CASE` expression.
-- New property in tier table - `can_vote`. Indicates whether instances from tier can be considered as voter in raft protocol.
 - SQL supports `PRIMARY KEY` next to column declaration
-- System table `_pico_index` format changed, now `parts` are stored by field name instead of index
 
 <!--
 - New feature `tier` - a group of instances with own replication factor.
@@ -45,11 +43,33 @@ with the `YY.MINOR.MICRO` scheme.
 - New rpc entrypoint: `.proc_get_config` which returns the effective
   picodata configuration.
 
-- Change _pico_index table structure.
 - Support index creation with SQL.
 - Support index drop with SQL.
-- Primary indexes change there naming convention: now it is "{table_name}_pkey".
 -->
+
+--------------------------------------------------------------------------------
+## [24.4.1] - upcoming
+
+### Compatibility
+
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots
+
+- System table `_pico_table` format changed, the field `distribution`
+  now is a map
+
+- System table `_pico_tier` format changed, a new field `can_vote` was
+  added (_boolean_)
+
+- Rename all indexes adding a prefix containing the table name, e.g.
+  `name` -> `_pico_table_name`
+
+- System table `_pico_index` format changed, now `parts` are stored by
+  field name instead of an index, other fields were rearranged
+  significantly, see [Architecture — System tables]
+
+[Architecture — System tables]:
+  https://docs.picodata.io/picodata/24.4/architecture/system_tables/
 
 --------------------------------------------------------------------------------
 ## [24.3.2] - 2024-06-10
