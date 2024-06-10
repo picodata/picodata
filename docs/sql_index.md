@@ -38,8 +38,9 @@
 
 * [Использование JOIN](reference/sql/join.md)
 
-## Функции и операторы {: #functions }
+## Функции и выражения {: #functions_and_expressions }
 
 * [Агрегатные функции](reference/sql/aggregate.md)
+* [CASE](reference/sql/case.md)
 * [CAST](reference/sql/cast.md)
 * [TRIM](reference/sql/trim.md)

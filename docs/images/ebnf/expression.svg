@@ -1,476 +1,1599 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="775" height="1541" viewBox="0 0 775 1541">
-   <defs>
-      <style type="text/css">
-    @namespace "http://www.w3.org/2000/svg";
-    .line                 {fill: none; stroke: #330000; stroke-width: 1;}
-    .bold-line            {stroke: #140000; shape-rendering: crispEdges; stroke-width: 2;}
-    .thin-line            {stroke: #1F0000; shape-rendering: crispEdges}
-    .filled               {fill: #330000; stroke: none;}
-    text.terminal         {font-family: Verdana, Sans-serif;
-                            font-size: 12px;
-                            fill: #140000;
-                            font-weight: bold;
-                          }
-    text.nonterminal      {font-family: Verdana, Sans-serif;
-                            font-size: 12px;
-                            fill: #1A0000;
-                            font-weight: normal;
-                          }
-    text.regexp           {font-family: Verdana, Sans-serif;
-                            font-size: 12px;
-                            fill: #1F0000;
-                            font-weight: normal;
-                          }
-    rect, circle, polygon {fill: #330000; stroke: #330000;}
-    rect.terminal         {fill: #FF4D4D; stroke: #330000; stroke-width: 1;}
-    rect.nonterminal      {fill: #FF9E9E; stroke: #330000; stroke-width: 1;}
-    rect.text             {fill: none; stroke: none;}
-    polygon.regexp        {fill: #FFC7C7; stroke: #330000; stroke-width: 1;}
-  </style>
-   </defs>
-   <polygon points="9 17 1 13 1 21"/>
-   <polygon points="17 17 9 13 9 21"/>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="table">
-      <rect x="71" y="35" width="52" height="32"/>
-      <rect x="69" y="33" width="52" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="79" y="53">table</text>
-   </a>
-   <rect x="143" y="35" width="24" height="32" rx="10"/>
-   <rect x="141"
-         y="33"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="151" y="53">.</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../object"
-      xlink:title="column">
-      <rect x="207" y="3" width="64" height="32"/>
-      <rect x="205" y="1" width="64" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="215" y="21">column</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="51" y="79" width="90" height="32"/>
-      <rect x="49" y="77" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="97">expression</text>
-   </a>
-   <rect x="181" y="79" width="36" height="32" rx="10"/>
-   <rect x="179"
-         y="77"
-         width="36"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="189" y="97">IS</text>
-   <rect x="257" y="111" width="48" height="32" rx="10"/>
-   <rect x="255"
-         y="109"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="265" y="129">NOT</text>
-   <rect x="345" y="79" width="56" height="32" rx="10"/>
-   <rect x="343"
-         y="77"
-         width="56"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="353" y="97">NULL</text>
-   <rect x="201" y="155" width="40" height="32" rx="10"/>
-   <rect x="199"
-         y="153"
-         width="40"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="173">OR</text>
-   <rect x="201" y="199" width="48" height="32" rx="10"/>
-   <rect x="199"
-         y="197"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="217">AND</text>
-   <rect x="201" y="243" width="28" height="32" rx="10"/>
-   <rect x="199"
-         y="241"
-         width="28"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="261">*</text>
-   <rect x="201" y="287" width="28" height="32" rx="10"/>
-   <rect x="199"
-         y="285"
-         width="28"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="305">/</text>
-   <rect x="201" y="331" width="30" height="32" rx="10"/>
-   <rect x="199"
-         y="329"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="349">+</text>
-   <rect x="201" y="375" width="26" height="32" rx="10"/>
-   <rect x="199"
-         y="373"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="393">-</text>
-   <rect x="201" y="419" width="30" height="32" rx="10"/>
-   <rect x="199"
-         y="417"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="437">=</text>
-   <rect x="201" y="463" width="30" height="32" rx="10"/>
-   <rect x="199"
-         y="461"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="481">&gt;</text>
-   <rect x="201" y="507" width="30" height="32" rx="10"/>
-   <rect x="199"
-         y="505"
-         width="30"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="525">&lt;</text>
-   <rect x="201" y="551" width="40" height="32" rx="10"/>
-   <rect x="199"
-         y="549"
-         width="40"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="569">&gt;=</text>
-   <rect x="201" y="595" width="40" height="32" rx="10"/>
-   <rect x="199"
-         y="593"
-         width="40"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="613">&lt;=</text>
-   <rect x="201" y="639" width="40" height="32" rx="10"/>
-   <rect x="199"
-         y="637"
-         width="40"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="657">&lt;&gt;</text>
-   <rect x="201" y="683" width="34" height="32" rx="10"/>
-   <rect x="199"
-         y="681"
-         width="34"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="701">!=</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="289" y="155" width="90" height="32"/>
-      <rect x="287" y="153" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="297" y="173">expression</text>
-   </a>
-   <rect x="201" y="759" width="48" height="32" rx="10"/>
-   <rect x="199"
-         y="757"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="209" y="777">NOT</text>
-   <rect x="309" y="727" width="86" height="32" rx="10"/>
-   <rect x="307"
-         y="725"
-         width="86"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="317" y="745">BETWEEN</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="415" y="727" width="90" height="32"/>
-      <rect x="413" y="725" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="423" y="745">expression</text>
-   </a>
-   <rect x="525" y="727" width="48" height="32" rx="10"/>
-   <rect x="523"
-         y="725"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="533" y="745">AND</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="593" y="727" width="90" height="32"/>
-      <rect x="591" y="725" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="601" y="745">expression</text>
-   </a>
-   <rect x="309" y="771" width="36" height="32" rx="10"/>
-   <rect x="307"
-         y="769"
-         width="36"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="317" y="789">IN</text>
-   <rect x="365" y="771" width="26" height="32" rx="10"/>
-   <rect x="363"
-         y="769"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="373" y="789">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../select"
-      xlink:title="select">
-      <rect x="431" y="771" width="58" height="32"/>
-      <rect x="429" y="769" width="58" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="439" y="789">select</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../values"
-      xlink:title="values">
-      <rect x="431" y="815" width="60" height="32"/>
-      <rect x="429" y="813" width="60" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="439" y="833">values</text>
-   </a>
-   <rect x="531" y="771" width="26" height="32" rx="10"/>
-   <rect x="529"
-         y="769"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="539" y="789">)</text>
-   <rect x="91" y="891" width="48" height="32" rx="10"/>
-   <rect x="89"
-         y="889"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="99" y="909">NOT</text>
-   <rect x="179" y="859" width="70" height="32" rx="10"/>
-   <rect x="177"
-         y="857"
-         width="70"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="187" y="877">EXISTS</text>
-   <rect x="269" y="859" width="26" height="32" rx="10"/>
-   <rect x="267"
-         y="857"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="277" y="877">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../select"
-      xlink:title="select">
-      <rect x="335" y="859" width="58" height="32"/>
-      <rect x="333" y="857" width="58" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="343" y="877">select</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../values"
-      xlink:title="values">
-      <rect x="335" y="903" width="60" height="32"/>
-      <rect x="333" y="901" width="60" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="343" y="921">values</text>
-   </a>
-   <rect x="71" y="947" width="56" height="32" rx="10"/>
-   <rect x="69"
-         y="945"
-         width="56"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="79" y="965">TRIM</text>
-   <rect x="147" y="947" width="26" height="32" rx="10"/>
-   <rect x="145"
-         y="945"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="155" y="965">(</text>
-   <rect x="233" y="979" width="82" height="32" rx="10"/>
-   <rect x="231"
-         y="977"
-         width="82"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="241" y="997">LEADING</text>
-   <rect x="233" y="1023" width="88" height="32" rx="10"/>
-   <rect x="231"
-         y="1021"
-         width="88"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="241" y="1041">TRAILING</text>
-   <rect x="233" y="1067" width="58" height="32" rx="10"/>
-   <rect x="231"
-         y="1065"
-         width="58"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="241" y="1085">BOTH</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="361" y="947" width="90" height="32"/>
-      <rect x="359" y="945" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="369" y="965">expression</text>
-   </a>
-   <rect x="213" y="1111" width="82" height="32" rx="10"/>
-   <rect x="211"
-         y="1109"
-         width="82"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="221" y="1129">LEADING</text>
-   <rect x="213" y="1155" width="88" height="32" rx="10"/>
-   <rect x="211"
-         y="1153"
-         width="88"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="221" y="1173">TRAILING</text>
-   <rect x="213" y="1199" width="58" height="32" rx="10"/>
-   <rect x="211"
-         y="1197"
-         width="58"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="221" y="1217">BOTH</text>
-   <rect x="491" y="947" width="60" height="32" rx="10"/>
-   <rect x="489"
-         y="945"
-         width="60"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="499" y="965">FROM</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="571" y="947" width="90" height="32"/>
-      <rect x="569" y="945" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="579" y="965">expression</text>
-   </a>
-   <rect x="71" y="1243" width="26" height="32" rx="10"/>
-   <rect x="69"
-         y="1241"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="79" y="1261">(</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../select"
-      xlink:title="select">
-      <rect x="137" y="1243" width="58" height="32"/>
-      <rect x="135" y="1241" width="58" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="145" y="1261">select</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../values"
-      xlink:title="values">
-      <rect x="137" y="1287" width="60" height="32"/>
-      <rect x="135" y="1285" width="60" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="145" y="1305">values</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="157" y="1375" width="90" height="32"/>
-      <rect x="155" y="1373" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="165" y="1393">expression</text>
-   </a>
-   <rect x="157" y="1331" width="24" height="32" rx="10"/>
-   <rect x="155"
-         y="1329"
-         width="24"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="165" y="1349">,</text>
-   <rect x="701" y="859" width="26" height="32" rx="10"/>
-   <rect x="699"
-         y="857"
-         width="26"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="709" y="877">)</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#literal"
-      xlink:title="literal">
-      <rect x="51" y="1419" width="56" height="32"/>
-      <rect x="49" y="1417" width="56" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="1437">literal</text>
-   </a>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="../cast"
-      xlink:title="cast">
-      <rect x="51" y="1463" width="46" height="32"/>
-      <rect x="49" y="1461" width="46" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="59" y="1481">cast</text>
-   </a>
-   <rect x="51" y="1507" width="48" height="32" rx="10"/>
-   <rect x="49"
-         y="1505"
-         width="48"
-         height="32"
-         class="terminal"
-         rx="10"/>
-   <text class="terminal" x="59" y="1525">NOT</text>
-   <a xmlns:xlink="http://www.w3.org/1999/xlink"
-      xlink:href="#expression"
-      xlink:title="expression">
-      <rect x="119" y="1507" width="90" height="32"/>
-      <rect x="117" y="1505" width="90" height="32" class="nonterminal"/>
-      <text class="nonterminal" x="127" y="1525">expression</text>
-   </a>
-   <path class="line"
-         d="m17 17 h2 m40 0 h10 m0 0 h106 m-136 0 h20 m116 0 h20 m-156 0 q10 0 10 10 m136 0 q0 -10 10 -10 m-146 10 v12 m136 0 v-12 m-136 12 q0 10 10 10 m116 0 q10 0 10 -10 m-126 10 h10 m52 0 h10 m0 0 h10 m24 0 h10 m20 -32 h10 m64 0 h10 m0 0 h456 m-716 0 h20 m696 0 h20 m-736 0 q10 0 10 10 m716 0 q0 -10 10 -10 m-726 10 v56 m716 0 v-56 m-716 56 q0 10 10 10 m696 0 q10 0 10 -10 m-706 10 h10 m90 0 h10 m20 0 h10 m36 0 h10 m20 0 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m20 -32 h10 m56 0 h10 m0 0 h302 m-562 0 h20 m542 0 h20 m-582 0 q10 0 10 10 m562 0 q0 -10 10 -10 m-572 10 v56 m562 0 v-56 m-562 56 q0 10 10 10 m542 0 q10 0 10 -10 m-532 10 h10 m40 0 h10 m0 0 h8 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m28 0 h10 m0 0 h20 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m28 0 h10 m0 0 h20 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m26 0 h10 m0 0 h22 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m40 0 h10 m0 0 h8 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m40 0 h10 m0 0 h8 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m40 0 h10 m0 0 h8 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m34 0 h10 m0 0 h14 m20 -528 h10 m90 0 h10 m0 0 h324 m-552 -10 v20 m562 0 v-20 m-562 20 v552 m562 0 v-552 m-562 552 q0 10 10 10 m542 0 q10 0 10 -10 m-532 10 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m40 -32 h10 m86 0 h10 m0 0 h10 m90 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m90 0 h10 m-414 0 h20 m394 0 h20 m-434 0 q10 0 10 10 m414 0 q0 -10 10 -10 m-424 10 v24 m414 0 v-24 m-414 24 q0 10 10 10 m394 0 q10 0 10 -10 m-404 10 h10 m36 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m58 0 h10 m0 0 h2 m-100 0 h20 m80 0 h20 m-120 0 q10 0 10 10 m100 0 q0 -10 10 -10 m-110 10 v24 m100 0 v-24 m-100 24 q0 10 10 10 m80 0 q10 0 10 -10 m-90 10 h10 m60 0 h10 m20 -44 h10 m26 0 h10 m0 0 h126 m40 -692 h4 m-706 -10 v20 m716 0 v-20 m-716 20 v760 m716 0 v-760 m-716 760 q0 10 10 10 m696 0 q10 0 10 -10 m-666 10 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m20 -32 h10 m70 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m58 0 h10 m0 0 h2 m-100 0 h20 m80 0 h20 m-120 0 q10 0 10 10 m100 0 q0 -10 10 -10 m-110 10 v24 m100 0 v-24 m-100 24 q0 10 10 10 m80 0 q10 0 10 -10 m-90 10 h10 m60 0 h10 m20 -44 h246 m-630 0 h20 m610 0 h20 m-650 0 q10 0 10 10 m630 0 q0 -10 10 -10 m-640 10 v68 m630 0 v-68 m-630 68 q0 10 10 10 m610 0 q10 0 10 -10 m-620 10 h10 m56 0 h10 m0 0 h10 m26 0 h10 m40 0 h10 m0 0 h98 m-128 0 h20 m108 0 h20 m-148 0 q10 0 10 10 m128 0 q0 -10 10 -10 m-138 10 v12 m128 0 v-12 m-128 12 q0 10 10 10 m108 0 q10 0 10 -10 m-118 10 h10 m82 0 h10 m0 0 h6 m-118 -10 v20 m128 0 v-20 m-128 20 v24 m128 0 v-24 m-128 24 q0 10 10 10 m108 0 q10 0 10 -10 m-118 10 h10 m88 0 h10 m-118 -10 v20 m128 0 v-20 m-128 20 v24 m128 0 v-24 m-128 24 q0 10 10 10 m108 0 q10 0 10 -10 m-118 10 h10 m58 0 h10 m0 0 h30 m20 -120 h10 m90 0 h10 m-278 0 h20 m258 0 h20 m-298 0 q10 0 10 10 m278 0 q0 -10 10 -10 m-288 10 v144 m278 0 v-144 m-278 144 q0 10 10 10 m258 0 q10 0 10 -10 m-268 10 h10 m82 0 h10 m0 0 h156 m-268 -10 v20 m278 0 v-20 m-278 20 v24 m278 0 v-24 m-278 24 q0 10 10 10 m258 0 q10 0 10 -10 m-268 10 h10 m88 0 h10 m0 0 h150 m-268 -10 v20 m278 0 v-20 m-278 20 v24 m278 0 v-24 m-278 24 q0 10 10 10 m258 0 q10 0 10 -10 m-268 10 h10 m58 0 h10 m0 0 h180 m20 -252 h10 m60 0 h10 m0 0 h10 m90 0 h10 m-620 -10 v20 m630 0 v-20 m-630 20 v276 m630 0 v-276 m-630 276 q0 10 10 10 m610 0 q10 0 10 -10 m-620 10 h10 m26 0 h10 m20 0 h10 m58 0 h10 m0 0 h72 m-170 0 h20 m150 0 h20 m-190 0 q10 0 10 10 m170 0 q0 -10 10 -10 m-180 10 v24 m170 0 v-24 m-170 24 q0 10 10 10 m150 0 q10 0 10 -10 m-160 10 h10 m60 0 h10 m0 0 h70 m-160 -10 v20 m170 0 v-20 m-170 20 v68 m170 0 v-68 m-170 68 q0 10 10 10 m150 0 q10 0 10 -10 m-140 10 h10 m90 0 h10 m-130 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m110 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-110 0 h10 m24 0 h10 m0 0 h66 m40 -88 h374 m20 -384 h10 m26 0 h10 m-706 -10 v20 m716 0 v-20 m-716 20 v540 m716 0 v-540 m-716 540 q0 10 10 10 m696 0 q10 0 10 -10 m-706 10 h10 m56 0 h10 m0 0 h620 m-706 -10 v20 m716 0 v-20 m-716 20 v24 m716 0 v-24 m-716 24 q0 10 10 10 m696 0 q10 0 10 -10 m-706 10 h10 m46 0 h10 m0 0 h630 m-706 -10 v20 m716 0 v-20 m-716 20 v24 m716 0 v-24 m-716 24 q0 10 10 10 m696 0 q10 0 10 -10 m-706 10 h10 m48 0 h10 m0 0 h10 m90 0 h10 m0 0 h518 m23 -1504 h-3"/>
-   <polygon points="765 17 773 13 773 21"/>
-   <polygon points="765 17 757 13 757 21"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1013"
+   height="1771"
+   viewBox="0 0 1013 1771"
+   version="1.1"
+   id="svg148"
+   sodipodi:docname="expression.svg"
+   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview148"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.72655476"
+     inkscape:cx="454.88656"
+     inkscape:cy="1355.7134"
+     inkscape:window-width="1858"
+     inkscape:window-height="1014"
+     inkscape:window-x="62"
+     inkscape:window-y="29"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg148" />
+  <defs
+     id="defs1">
+    <style
+       type="text/css"
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
+.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #330000; stroke: none; }
+text.terminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #140000;                            font-weight: bold; }
+text.nonterminal { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1A0000;                            font-weight: normal; }
+text.regexp { font-family: HelveticaNeueCyr, Sans-serif;                            font-size: 14px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #330000; stroke: #330000; }
+rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }
+rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
+</style>
+  </defs>
+  <polygon
+     points="9 17 1 13 1 21"
+     id="polygon1" />
+  <polygon
+     points="17 17 9 13 9 21"
+     id="polygon2" />
+  <a
+     xlink:href="../object"
+     xlink:title="table"
+     id="a3">
+    <rect
+       x="71"
+       y="35"
+       width="52"
+       height="32"
+       id="rect2" />
+    <rect
+       x="69"
+       y="33"
+       width="52"
+       height="32"
+       class="nonterminal"
+       id="rect3" />
+    <text
+       class="nonterminal"
+       x="79"
+       y="53"
+       id="text3">table</text>
+  </a>
+  <rect
+     x="143"
+     y="35"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect4" />
+  <rect
+     x="141"
+     y="33"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect5" />
+  <text
+     class="terminal"
+     x="151"
+     y="53"
+     id="text5">.</text>
+  <a
+     xlink:href="../object"
+     xlink:title="column"
+     id="a7">
+    <rect
+       x="207"
+       y="3"
+       width="64"
+       height="32"
+       id="rect6" />
+    <rect
+       x="205"
+       y="1"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect7" />
+    <text
+       class="nonterminal"
+       x="215"
+       y="21"
+       id="text7">column</text>
+  </a>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a9">
+    <rect
+       x="51"
+       y="79"
+       width="90"
+       height="32"
+       id="rect8" />
+    <rect
+       x="49"
+       y="77"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect9" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="97"
+       id="text9">expression</text>
+  </a>
+  <rect
+     x="181"
+     y="79"
+     width="36"
+     height="32"
+     rx="10"
+     id="rect10" />
+  <rect
+     x="179"
+     y="77"
+     width="36"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect11" />
+  <text
+     class="terminal"
+     x="189"
+     y="97"
+     id="text11">IS</text>
+  <rect
+     x="257"
+     y="111"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect12" />
+  <rect
+     x="255"
+     y="109"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect13" />
+  <text
+     class="terminal"
+     x="265"
+     y="129"
+     id="text13">NOT</text>
+  <rect
+     x="345"
+     y="79"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect14" />
+  <rect
+     x="343"
+     y="77"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect15" />
+  <text
+     class="terminal"
+     x="353"
+     y="97"
+     id="text15">NULL</text>
+  <rect
+     x="201"
+     y="155"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect16" />
+  <rect
+     x="199"
+     y="153"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect17" />
+  <text
+     class="terminal"
+     x="209"
+     y="173"
+     id="text17">OR</text>
+  <rect
+     x="201"
+     y="199"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect18" />
+  <rect
+     x="199"
+     y="197"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect19" />
+  <text
+     class="terminal"
+     x="209"
+     y="217"
+     id="text19">AND</text>
+  <rect
+     x="201"
+     y="243"
+     width="28"
+     height="32"
+     rx="10"
+     id="rect20" />
+  <rect
+     x="199"
+     y="241"
+     width="28"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect21" />
+  <text
+     class="terminal"
+     x="209"
+     y="261"
+     id="text21">*</text>
+  <rect
+     x="201"
+     y="287"
+     width="28"
+     height="32"
+     rx="10"
+     id="rect22" />
+  <rect
+     x="199"
+     y="285"
+     width="28"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect23" />
+  <text
+     class="terminal"
+     x="209"
+     y="305"
+     id="text23">/</text>
+  <rect
+     x="201"
+     y="331"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect24" />
+  <rect
+     x="199"
+     y="329"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect25" />
+  <text
+     class="terminal"
+     x="209"
+     y="349"
+     id="text25">+</text>
+  <rect
+     x="201"
+     y="375"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect26" />
+  <rect
+     x="199"
+     y="373"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect27" />
+  <text
+     class="terminal"
+     x="209"
+     y="393"
+     id="text27">-</text>
+  <rect
+     x="201"
+     y="419"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect28" />
+  <rect
+     x="199"
+     y="417"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect29" />
+  <text
+     class="terminal"
+     x="209"
+     y="437"
+     id="text29">=</text>
+  <rect
+     x="201"
+     y="463"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect30" />
+  <rect
+     x="199"
+     y="461"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect31" />
+  <text
+     class="terminal"
+     x="209"
+     y="481"
+     id="text31">&gt;</text>
+  <rect
+     x="201"
+     y="507"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect32" />
+  <rect
+     x="199"
+     y="505"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect33" />
+  <text
+     class="terminal"
+     x="209"
+     y="525"
+     id="text33">&lt;</text>
+  <rect
+     x="201"
+     y="551"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect34" />
+  <rect
+     x="199"
+     y="549"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect35" />
+  <text
+     class="terminal"
+     x="209"
+     y="569"
+     id="text35">&gt;=</text>
+  <rect
+     x="201"
+     y="595"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect36" />
+  <rect
+     x="199"
+     y="593"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect37" />
+  <text
+     class="terminal"
+     x="209"
+     y="613"
+     id="text37">&lt;=</text>
+  <rect
+     x="201"
+     y="639"
+     width="40"
+     height="32"
+     rx="10"
+     id="rect38" />
+  <rect
+     x="199"
+     y="637"
+     width="40"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect39" />
+  <text
+     class="terminal"
+     x="209"
+     y="657"
+     id="text39">&lt;&gt;</text>
+  <rect
+     x="201"
+     y="683"
+     width="34"
+     height="32"
+     rx="10"
+     id="rect40" />
+  <rect
+     x="199"
+     y="681"
+     width="34"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect41" />
+  <text
+     class="terminal"
+     x="209"
+     y="701"
+     id="text41">!=</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a43">
+    <rect
+       x="289"
+       y="155"
+       width="90"
+       height="32"
+       id="rect42" />
+    <rect
+       x="287"
+       y="153"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect43" />
+    <text
+       class="nonterminal"
+       x="297"
+       y="173"
+       id="text43">expression</text>
+  </a>
+  <rect
+     x="201"
+     y="759"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect44" />
+  <rect
+     x="199"
+     y="757"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect45" />
+  <text
+     class="terminal"
+     x="209"
+     y="777"
+     id="text45">NOT</text>
+  <rect
+     x="309"
+     y="727"
+     width="86"
+     height="32"
+     rx="10"
+     id="rect46" />
+  <rect
+     x="307"
+     y="725"
+     width="86"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect47" />
+  <text
+     class="terminal"
+     x="317"
+     y="745"
+     id="text47">BETWEEN</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a49">
+    <rect
+       x="415"
+       y="727"
+       width="90"
+       height="32"
+       id="rect48" />
+    <rect
+       x="413"
+       y="725"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect49" />
+    <text
+       class="nonterminal"
+       x="423"
+       y="745"
+       id="text49">expression</text>
+  </a>
+  <rect
+     x="525"
+     y="727"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect50" />
+  <rect
+     x="523"
+     y="725"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect51" />
+  <text
+     class="terminal"
+     x="533"
+     y="745"
+     id="text51">AND</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a53">
+    <rect
+       x="593"
+       y="727"
+       width="90"
+       height="32"
+       id="rect52" />
+    <rect
+       x="591"
+       y="725"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect53" />
+    <text
+       class="nonterminal"
+       x="601"
+       y="745"
+       id="text53">expression</text>
+  </a>
+  <rect
+     x="309"
+     y="771"
+     width="36"
+     height="32"
+     rx="10"
+     id="rect54" />
+  <rect
+     x="307"
+     y="769"
+     width="36"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect55" />
+  <text
+     class="terminal"
+     x="317"
+     y="789"
+     id="text55">IN</text>
+  <rect
+     x="365"
+     y="771"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect56" />
+  <rect
+     x="363"
+     y="769"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect57" />
+  <text
+     class="terminal"
+     x="373"
+     y="789"
+     id="text57">(</text>
+  <a
+     xlink:href="../select"
+     xlink:title="select"
+     id="a59">
+    <rect
+       x="431"
+       y="771"
+       width="58"
+       height="32"
+       id="rect58" />
+    <rect
+       x="429"
+       y="769"
+       width="58"
+       height="32"
+       class="nonterminal"
+       id="rect59" />
+    <text
+       class="nonterminal"
+       x="439"
+       y="789"
+       id="text59">select</text>
+  </a>
+  <a
+     xlink:href="../values"
+     xlink:title="values"
+     id="a61">
+    <rect
+       x="431"
+       y="815"
+       width="60"
+       height="32"
+       id="rect60" />
+    <rect
+       x="429"
+       y="813"
+       width="60"
+       height="32"
+       class="nonterminal"
+       id="rect61" />
+    <text
+       class="nonterminal"
+       x="439"
+       y="833"
+       id="text61">values</text>
+  </a>
+  <rect
+     x="531"
+     y="771"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect62" />
+  <rect
+     x="529"
+     y="769"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect63" />
+  <text
+     class="terminal"
+     x="539"
+     y="789"
+     id="text63">)</text>
+  <rect
+     x="91"
+     y="891"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect64" />
+  <rect
+     x="89"
+     y="889"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect65" />
+  <text
+     class="terminal"
+     x="99"
+     y="909"
+     id="text65">NOT</text>
+  <rect
+     x="179"
+     y="859"
+     width="70"
+     height="32"
+     rx="10"
+     id="rect66" />
+  <rect
+     x="177"
+     y="857"
+     width="70"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect67" />
+  <text
+     class="terminal"
+     x="187"
+     y="877"
+     id="text67">EXISTS</text>
+  <rect
+     x="269"
+     y="859"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect68" />
+  <rect
+     x="267"
+     y="857"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect69" />
+  <text
+     class="terminal"
+     x="277"
+     y="877"
+     id="text69">(</text>
+  <a
+     xlink:href="../select"
+     xlink:title="select"
+     id="a71">
+    <rect
+       x="335"
+       y="859"
+       width="58"
+       height="32"
+       id="rect70" />
+    <rect
+       x="333"
+       y="857"
+       width="58"
+       height="32"
+       class="nonterminal"
+       id="rect71" />
+    <text
+       class="nonterminal"
+       x="343"
+       y="877"
+       id="text71">select</text>
+  </a>
+  <a
+     xlink:href="../values"
+     xlink:title="values"
+     id="a73">
+    <rect
+       x="335"
+       y="903"
+       width="60"
+       height="32"
+       id="rect72" />
+    <rect
+       x="333"
+       y="901"
+       width="60"
+       height="32"
+       class="nonterminal"
+       id="rect73" />
+    <text
+       class="nonterminal"
+       x="343"
+       y="921"
+       id="text73">values</text>
+  </a>
+  <rect
+     x="91"
+     y="947"
+     width="84"
+     height="32"
+     rx="10"
+     id="rect74" />
+  <rect
+     x="89"
+     y="945"
+     width="84"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect75" />
+  <text
+     class="terminal"
+     x="99"
+     y="965"
+     id="text75">TO_DATE</text>
+  <rect
+     x="91"
+     y="991"
+     width="86"
+     height="32"
+     rx="10"
+     id="rect76" />
+  <rect
+     x="89"
+     y="989"
+     width="86"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect77" />
+  <text
+     class="terminal"
+     x="99"
+     y="1009"
+     id="text77">TO_CHAR</text>
+  <rect
+     x="217"
+     y="947"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect78" />
+  <rect
+     x="215"
+     y="945"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect79" />
+  <text
+     class="terminal"
+     x="225"
+     y="965"
+     id="text79">(</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a81">
+    <rect
+       x="263"
+       y="947"
+       width="90"
+       height="32"
+       id="rect80" />
+    <rect
+       x="261"
+       y="945"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect81" />
+    <text
+       class="nonterminal"
+       x="271"
+       y="965"
+       id="text81">expression</text>
+  </a>
+  <rect
+     x="373"
+     y="947"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect82" />
+  <rect
+     x="371"
+     y="945"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect83" />
+  <text
+     class="terminal"
+     x="381"
+     y="965"
+     id="text83">,</text>
+  <a
+     xlink:href=""
+     xlink:title="format"
+     id="a85">
+    <rect
+       x="417"
+       y="947"
+       width="62"
+       height="32"
+       id="rect84" />
+    <rect
+       x="415"
+       y="945"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect85" />
+    <text
+       class="nonterminal"
+       x="425"
+       y="965"
+       id="text85">format</text>
+  </a>
+  <rect
+     x="71"
+     y="1035"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect86" />
+  <rect
+     x="69"
+     y="1033"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect87" />
+  <text
+     class="terminal"
+     x="79"
+     y="1053"
+     id="text87">TRIM</text>
+  <rect
+     x="147"
+     y="1035"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect88" />
+  <rect
+     x="145"
+     y="1033"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect89" />
+  <text
+     class="terminal"
+     x="155"
+     y="1053"
+     id="text89">(</text>
+  <rect
+     x="233"
+     y="1067"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect90" />
+  <rect
+     x="231"
+     y="1065"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect91" />
+  <text
+     class="terminal"
+     x="241"
+     y="1085"
+     id="text91">LEADING</text>
+  <rect
+     x="233"
+     y="1111"
+     width="88"
+     height="32"
+     rx="10"
+     id="rect92" />
+  <rect
+     x="231"
+     y="1109"
+     width="88"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect93" />
+  <text
+     class="terminal"
+     x="241"
+     y="1129"
+     id="text93">TRAILING</text>
+  <rect
+     x="233"
+     y="1155"
+     width="58"
+     height="32"
+     rx="10"
+     id="rect94" />
+  <rect
+     x="231"
+     y="1153"
+     width="58"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect95" />
+  <text
+     class="terminal"
+     x="241"
+     y="1173"
+     id="text95">BOTH</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a97">
+    <rect
+       x="361"
+       y="1035"
+       width="90"
+       height="32"
+       id="rect96" />
+    <rect
+       x="359"
+       y="1033"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect97" />
+    <text
+       class="nonterminal"
+       x="369"
+       y="1053"
+       id="text97">expression</text>
+  </a>
+  <rect
+     x="213"
+     y="1199"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect98" />
+  <rect
+     x="211"
+     y="1197"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect99" />
+  <text
+     class="terminal"
+     x="221"
+     y="1217"
+     id="text99">LEADING</text>
+  <rect
+     x="213"
+     y="1243"
+     width="88"
+     height="32"
+     rx="10"
+     id="rect100" />
+  <rect
+     x="211"
+     y="1241"
+     width="88"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect101" />
+  <text
+     class="terminal"
+     x="221"
+     y="1261"
+     id="text101">TRAILING</text>
+  <rect
+     x="213"
+     y="1287"
+     width="58"
+     height="32"
+     rx="10"
+     id="rect102" />
+  <rect
+     x="211"
+     y="1285"
+     width="58"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect103" />
+  <text
+     class="terminal"
+     x="221"
+     y="1305"
+     id="text103">BOTH</text>
+  <rect
+     x="491"
+     y="1035"
+     width="60"
+     height="32"
+     rx="10"
+     id="rect104" />
+  <rect
+     x="489"
+     y="1033"
+     width="60"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect105" />
+  <text
+     class="terminal"
+     x="499"
+     y="1053"
+     id="text105">FROM</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a107">
+    <rect
+       x="571"
+       y="1035"
+       width="90"
+       height="32"
+       id="rect106" />
+    <rect
+       x="569"
+       y="1033"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect107" />
+    <text
+       class="nonterminal"
+       x="579"
+       y="1053"
+       id="text107">expression</text>
+  </a>
+  <rect
+     x="71"
+     y="1331"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect108" />
+  <rect
+     x="69"
+     y="1329"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect109" />
+  <text
+     class="terminal"
+     x="79"
+     y="1349"
+     id="text109">(</text>
+  <a
+     xlink:href="../select"
+     xlink:title="select"
+     id="a111">
+    <rect
+       x="137"
+       y="1331"
+       width="58"
+       height="32"
+       id="rect110" />
+    <rect
+       x="135"
+       y="1329"
+       width="58"
+       height="32"
+       class="nonterminal"
+       id="rect111" />
+    <text
+       class="nonterminal"
+       x="145"
+       y="1349"
+       id="text111">select</text>
+  </a>
+  <a
+     xlink:href="../values"
+     xlink:title="values"
+     id="a113">
+    <rect
+       x="137"
+       y="1375"
+       width="60"
+       height="32"
+       id="rect112" />
+    <rect
+       x="135"
+       y="1373"
+       width="60"
+       height="32"
+       class="nonterminal"
+       id="rect113" />
+    <text
+       class="nonterminal"
+       x="145"
+       y="1393"
+       id="text113">values</text>
+  </a>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a115">
+    <rect
+       x="157"
+       y="1463"
+       width="90"
+       height="32"
+       id="rect114" />
+    <rect
+       x="155"
+       y="1461"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect115" />
+    <text
+       class="nonterminal"
+       x="165"
+       y="1481"
+       id="text115">expression</text>
+  </a>
+  <rect
+     x="157"
+     y="1419"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect116" />
+  <rect
+     x="155"
+     y="1417"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect117" />
+  <text
+     class="terminal"
+     x="165"
+     y="1437"
+     id="text117">,</text>
+  <rect
+     x="701"
+     y="859"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect118" />
+  <rect
+     x="699"
+     y="857"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect119" />
+  <text
+     class="terminal"
+     x="709"
+     y="877"
+     id="text119">)</text>
+  <a
+     xlink:href="#literal"
+     xlink:title="literal"
+     id="a121">
+    <rect
+       x="51"
+       y="1507"
+       width="56"
+       height="32"
+       id="rect120" />
+    <rect
+       x="49"
+       y="1505"
+       width="56"
+       height="32"
+       class="nonterminal"
+       id="rect121" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="1525"
+       id="text121">literal</text>
+  </a>
+  <a
+     xlink:href="../cast"
+     xlink:title="cast"
+     id="a123">
+    <rect
+       x="51"
+       y="1551"
+       width="46"
+       height="32"
+       id="rect122" />
+    <rect
+       x="49"
+       y="1549"
+       width="46"
+       height="32"
+       class="nonterminal"
+       id="rect123" />
+    <text
+       class="nonterminal"
+       x="59"
+       y="1569"
+       id="text123">cast</text>
+  </a>
+  <rect
+     x="51"
+     y="1595"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect124" />
+  <rect
+     x="49"
+     y="1593"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect125" />
+  <text
+     class="terminal"
+     x="59"
+     y="1613"
+     id="text125">NOT</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a127">
+    <rect
+       x="119"
+       y="1595"
+       width="90"
+       height="32"
+       id="rect126" />
+    <rect
+       x="117"
+       y="1593"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect127" />
+    <text
+       class="nonterminal"
+       x="127"
+       y="1613"
+       id="text127">expression</text>
+  </a>
+  <rect
+     x="51"
+     y="1639"
+     width="128"
+     height="32"
+     rx="10"
+     id="rect128" />
+  <rect
+     x="49"
+     y="1637"
+     width="128"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect129" />
+  <text
+     class="terminal"
+     x="59"
+     y="1657"
+     id="text129">CURRENT_DATE</text>
+  <rect
+     x="51"
+     y="1705"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect130" />
+  <rect
+     x="49"
+     y="1703"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect131" />
+  <text
+     class="terminal"
+     x="59"
+     y="1723"
+     id="text131">CASE</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a133">
+    <rect
+       x="147"
+       y="1737"
+       width="90"
+       height="32"
+       id="rect132" />
+    <rect
+       x="145"
+       y="1735"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect133" />
+    <text
+       class="nonterminal"
+       x="155"
+       y="1755"
+       id="text133">expression</text>
+  </a>
+  <rect
+     x="297"
+     y="1705"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect134" />
+  <rect
+     x="295"
+     y="1703"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect135" />
+  <text
+     class="terminal"
+     x="305"
+     y="1723"
+     id="text135">WHEN</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a137">
+    <rect
+       x="379"
+       y="1705"
+       width="90"
+       height="32"
+       id="rect136" />
+    <rect
+       x="377"
+       y="1703"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect137" />
+    <text
+       class="nonterminal"
+       x="387"
+       y="1723"
+       id="text137">expression</text>
+  </a>
+  <rect
+     x="489"
+     y="1705"
+     width="56"
+     height="32"
+     rx="10"
+     id="rect138" />
+  <rect
+     x="487"
+     y="1703"
+     width="56"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect139" />
+  <text
+     class="terminal"
+     x="497"
+     y="1723"
+     id="text139">THEN</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a141">
+    <rect
+       x="565"
+       y="1705"
+       width="90"
+       height="32"
+       id="rect140" />
+    <rect
+       x="563"
+       y="1703"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect141" />
+    <text
+       class="nonterminal"
+       x="573"
+       y="1723"
+       id="text141">expression</text>
+  </a>
+  <rect
+     x="715"
+     y="1737"
+     width="52"
+     height="32"
+     rx="10"
+     id="rect142" />
+  <rect
+     x="713"
+     y="1735"
+     width="52"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect143" />
+  <text
+     class="terminal"
+     x="723"
+     y="1755"
+     id="text143">ELSE</text>
+  <a
+     xlink:href="#expression"
+     xlink:title="expression"
+     id="a145">
+    <rect
+       x="787"
+       y="1737"
+       width="90"
+       height="32"
+       id="rect144" />
+    <rect
+       x="785"
+       y="1735"
+       width="90"
+       height="32"
+       class="nonterminal"
+       id="rect145" />
+    <text
+       class="nonterminal"
+       x="795"
+       y="1755"
+       id="text145">expression</text>
+  </a>
+  <rect
+     x="917"
+     y="1705"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect146" />
+  <rect
+     x="915"
+     y="1703"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect147" />
+  <text
+     class="terminal"
+     x="925"
+     y="1723"
+     id="text147">END</text>
+  <path
+     class="line"
+     d="m17 17 h2 m40 0 h10 m0 0 h106 m-136 0 h20 m116 0 h20 m-156 0 q10 0 10 10 m136 0 q0 -10 10 -10 m-146 10 v12 m136 0 v-12 m-136 12 q0 10 10 10 m116 0 q10 0 10 -10 m-126 10 h10 m52 0 h10 m0 0 h10 m24 0 h10 m20 -32 h10 m64 0 h10 m0 0 h694 m-954 0 h20 m934 0 h20 m-974 0 q10 0 10 10 m954 0 q0 -10 10 -10 m-964 10 v56 m954 0 v-56 m-954 56 q0 10 10 10 m934 0 q10 0 10 -10 m-944 10 h10 m90 0 h10 m20 0 h10 m36 0 h10 m20 0 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m20 -32 h10 m56 0 h10 m0 0 h302 m-562 0 h20 m542 0 h20 m-582 0 q10 0 10 10 m562 0 q0 -10 10 -10 m-572 10 v56 m562 0 v-56 m-562 56 q0 10 10 10 m542 0 q10 0 10 -10 m-532 10 h10 m40 0 h10 m0 0 h8 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m28 0 h10 m0 0 h20 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m28 0 h10 m0 0 h20 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m26 0 h10 m0 0 h22 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m30 0 h10 m0 0 h18 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m40 0 h10 m0 0 h8 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m40 0 h10 m0 0 h8 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m40 0 h10 m0 0 h8 m-78 -10 v20 m88 0 v-20 m-88 20 v24 m88 0 v-24 m-88 24 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m34 0 h10 m0 0 h14 m20 -528 h10 m90 0 h10 m0 0 h324 m-552 -10 v20 m562 0 v-20 m-562 20 v552 m562 0 v-552 m-562 552 q0 10 10 10 m542 0 q10 0 10 -10 m-532 10 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m40 -32 h10 m86 0 h10 m0 0 h10 m90 0 h10 m0 0 h10 m48 0 h10 m0 0 h10 m90 0 h10 m-414 0 h20 m394 0 h20 m-434 0 q10 0 10 10 m414 0 q0 -10 10 -10 m-424 10 v24 m414 0 v-24 m-414 24 q0 10 10 10 m394 0 q10 0 10 -10 m-404 10 h10 m36 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m58 0 h10 m0 0 h2 m-100 0 h20 m80 0 h20 m-120 0 q10 0 10 10 m100 0 q0 -10 10 -10 m-110 10 v24 m100 0 v-24 m-100 24 q0 10 10 10 m80 0 q10 0 10 -10 m-90 10 h10 m60 0 h10 m20 -44 h10 m26 0 h10 m0 0 h126 m40 -692 h242 m-944 -10 v20 m954 0 v-20 m-954 20 v760 m954 0 v-760 m-954 760 q0 10 10 10 m934 0 q10 0 10 -10 m-904 10 h10 m0 0 h58 m-88 0 h20 m68 0 h20 m-108 0 q10 0 10 10 m88 0 q0 -10 10 -10 m-98 10 v12 m88 0 v-12 m-88 12 q0 10 10 10 m68 0 q10 0 10 -10 m-78 10 h10 m48 0 h10 m20 -32 h10 m70 0 h10 m0 0 h10 m26 0 h10 m20 0 h10 m58 0 h10 m0 0 h2 m-100 0 h20 m80 0 h20 m-120 0 q10 0 10 10 m100 0 q0 -10 10 -10 m-110 10 v24 m100 0 v-24 m-100 24 q0 10 10 10 m80 0 q10 0 10 -10 m-90 10 h10 m60 0 h10 m20 -44 h246 m-630 0 h20 m610 0 h20 m-650 0 q10 0 10 10 m630 0 q0 -10 10 -10 m-640 10 v68 m630 0 v-68 m-630 68 q0 10 10 10 m610 0 q10 0 10 -10 m-600 10 h10 m84 0 h10 m0 0 h2 m-126 0 h20 m106 0 h20 m-146 0 q10 0 10 10 m126 0 q0 -10 10 -10 m-136 10 v24 m126 0 v-24 m-126 24 q0 10 10 10 m106 0 q10 0 10 -10 m-116 10 h10 m86 0 h10 m20 -44 h10 m26 0 h10 m0 0 h10 m90 0 h10 m0 0 h10 m24 0 h10 m0 0 h10 m62 0 h10 m0 0 h182 m-620 -10 v20 m630 0 v-20 m-630 20 v68 m630 0 v-68 m-630 68 q0 10 10 10 m610 0 q10 0 10 -10 m-620 10 h10 m56 0 h10 m0 0 h10 m26 0 h10 m40 0 h10 m0 0 h98 m-128 0 h20 m108 0 h20 m-148 0 q10 0 10 10 m128 0 q0 -10 10 -10 m-138 10 v12 m128 0 v-12 m-128 12 q0 10 10 10 m108 0 q10 0 10 -10 m-118 10 h10 m82 0 h10 m0 0 h6 m-118 -10 v20 m128 0 v-20 m-128 20 v24 m128 0 v-24 m-128 24 q0 10 10 10 m108 0 q10 0 10 -10 m-118 10 h10 m88 0 h10 m-118 -10 v20 m128 0 v-20 m-128 20 v24 m128 0 v-24 m-128 24 q0 10 10 10 m108 0 q10 0 10 -10 m-118 10 h10 m58 0 h10 m0 0 h30 m20 -120 h10 m90 0 h10 m-278 0 h20 m258 0 h20 m-298 0 q10 0 10 10 m278 0 q0 -10 10 -10 m-288 10 v144 m278 0 v-144 m-278 144 q0 10 10 10 m258 0 q10 0 10 -10 m-268 10 h10 m82 0 h10 m0 0 h156 m-268 -10 v20 m278 0 v-20 m-278 20 v24 m278 0 v-24 m-278 24 q0 10 10 10 m258 0 q10 0 10 -10 m-268 10 h10 m88 0 h10 m0 0 h150 m-268 -10 v20 m278 0 v-20 m-278 20 v24 m278 0 v-24 m-278 24 q0 10 10 10 m258 0 q10 0 10 -10 m-268 10 h10 m58 0 h10 m0 0 h180 m20 -252 h10 m60 0 h10 m0 0 h10 m90 0 h10 m-620 -10 v20 m630 0 v-20 m-630 20 v276 m630 0 v-276 m-630 276 q0 10 10 10 m610 0 q10 0 10 -10 m-620 10 h10 m26 0 h10 m20 0 h10 m58 0 h10 m0 0 h72 m-170 0 h20 m150 0 h20 m-190 0 q10 0 10 10 m170 0 q0 -10 10 -10 m-180 10 v24 m170 0 v-24 m-170 24 q0 10 10 10 m150 0 q10 0 10 -10 m-160 10 h10 m60 0 h10 m0 0 h70 m-160 -10 v20 m170 0 v-20 m-170 20 v68 m170 0 v-68 m-170 68 q0 10 10 10 m150 0 q10 0 10 -10 m-140 10 h10 m90 0 h10 m-130 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m110 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-110 0 h10 m24 0 h10 m0 0 h66 m40 -88 h374 m20 -472 h10 m26 0 h10 m0 0 h238 m-944 -10 v20 m954 0 v-20 m-954 20 v628 m954 0 v-628 m-954 628 q0 10 10 10 m934 0 q10 0 10 -10 m-944 10 h10 m56 0 h10 m0 0 h858 m-944 -10 v20 m954 0 v-20 m-954 20 v24 m954 0 v-24 m-954 24 q0 10 10 10 m934 0 q10 0 10 -10 m-944 10 h10 m46 0 h10 m0 0 h868 m-944 -10 v20 m954 0 v-20 m-954 20 v24 m954 0 v-24 m-954 24 q0 10 10 10 m934 0 q10 0 10 -10 m-944 10 h10 m48 0 h10 m0 0 h10 m90 0 h10 m0 0 h756 m-944 -10 v20 m954 0 v-20 m-954 20 v24 m954 0 v-24 m-954 24 q0 10 10 10 m934 0 q10 0 10 -10 m-944 10 h10 m128 0 h10 m0 0 h786 m-944 -10 v20 m954 0 v-20 m-954 20 v46 m954 0 v-46 m-954 46 q0 10 10 10 m934 0 q10 0 10 -10 m-944 10 h10 m56 0 h10 m20 0 h10 m0 0 h100 m-130 0 h20 m110 0 h20 m-150 0 q10 0 10 10 m130 0 q0 -10 10 -10 m-140 10 v12 m130 0 v-12 m-130 12 q0 10 10 10 m110 0 q10 0 10 -10 m-120 10 h10 m90 0 h10 m40 -32 h10 m62 0 h10 m0 0 h10 m90 0 h10 m0 0 h10 m56 0 h10 m0 0 h10 m90 0 h10 m-398 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -12 q0 -10 10 -10 m378 32 l20 0 m-20 0 q10 0 10 -10 l0 -12 q0 -10 -10 -10 m-378 0 h10 m0 0 h368 m40 32 h10 m0 0 h172 m-202 0 h20 m182 0 h20 m-222 0 q10 0 10 10 m202 0 q0 -10 10 -10 m-212 10 v12 m202 0 v-12 m-202 12 q0 10 10 10 m182 0 q10 0 10 -10 m-192 10 h10 m52 0 h10 m0 0 h10 m90 0 h10 m20 -32 h10 m48 0 h10 m23 -1702 h-3"
+     id="path147" />
+  <polygon
+     points="1003 17 1011 13 1011 21"
+     id="polygon147" />
+  <polygon
+     points="1003 17 995 13 995 21"
+     id="polygon148" />
 </svg>
