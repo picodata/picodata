@@ -10,14 +10,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## Unreleased
 
-- SQL supports `trim` function.
-- SQL supports `to_char`, `to_date` functions.
-- SQL supports `ORDER BY` clause.
-- SQL supports `UNION` operator.
-- SQL supports common table expressions (CTE).
-- SQL supports `CASE` expression.
-- SQL supports `PRIMARY KEY` next to column declaration
-
 <!--
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have
@@ -43,12 +35,26 @@ with the `YY.MINOR.MICRO` scheme.
 - New rpc entrypoint: `.proc_get_config` which returns the effective
   picodata configuration.
 
-- Support index creation with SQL.
-- Support index drop with SQL.
 -->
 
 --------------------------------------------------------------------------------
 ## [24.4.1] - upcoming
+
+### SQL
+
+- New commands [CREATE INDEX] and [DROP INDEX]
+- Support `SELECT ... ORDER BY`
+- Support `SELECT ... UNION ... SELECT ... UNION`
+- Support common table expressions (CTE)
+- Support [CASE][sql_case] expression
+- New function [TRIM][sql_trim]
+- New functions `TO_CHAR`, `TO_DATE`
+- Allow `PRIMARY KEY` next to column declaration
+
+[CREATE INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/create_index/
+[DROP INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/drop_index/
+[sql_case]: https://docs.picodata.io/picodata/24.4/reference/sql/case/
+[sql_trim]: https://docs.picodata.io/picodata/24.4/reference/sql/trim/
 
 ### Compatibility
 
