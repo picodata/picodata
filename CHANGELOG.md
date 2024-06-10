@@ -40,6 +40,23 @@ with the `YY.MINOR.MICRO` scheme.
 --------------------------------------------------------------------------------
 ## [24.4.1] - upcoming
 
+### Pgproto
+
+- Allow connecting to the cluster using PostgreSQL protocol, see
+  [Tutorial — Connecting — Pgproto]:
+
+  ```
+  picodata run --pg-listen localhost:5432
+  psql
+
+  CREATE TABLE ...
+  INSERT ...
+  SELECT ...
+  ```
+
+[Tutorial — Connecting — Pgproto]:
+  https://docs.picodata.io/picodata/24.4/tutorial/connecting/#pgproto
+
 ### SQL
 
 - New commands [CREATE INDEX] and [DROP INDEX]
