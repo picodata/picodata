@@ -42,7 +42,7 @@ API, предоставляемых самой СУБД.
 ## Включение журнала {: #enable_audit_log }
 
 По умолчанию, запись событий не ведется. Включить журнал можно при
-[запуске инстанса](../reference/cli.md#run_audit)
+запуске инстанса, указав параметр [picodata run --audit].
 <!-- - с помощью API-функции [pico.audit()](../reference/api.md#picoaudit) -->
 
 Для примера, задействуем файл журнала при запуске инстанса:
@@ -58,6 +58,8 @@ picodata run --audit=/tmp/audit.log
 ```bash
 picodata run --audit=syslog:
 ```
+
+[picodata run --audit]: ../reference/cli.md#run_audit
 
 ## Получение доступа к журналу {: #access_audit_log }
 
