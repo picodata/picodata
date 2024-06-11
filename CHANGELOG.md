@@ -15,23 +15,8 @@ with the `YY.MINOR.MICRO` scheme.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
-- New option `picodata run -c` for specifying any configuration parameters in
-  the same naming scheme as in the config.yaml file.
 - New option `picodata run --tier` specifies whether an
   instance belongs to a tier.
-- New configuration parameters:
-    - `instance.memtx.checkpoint_count`
-    - `instance.memtx.checkpoint_interval`
-    - `instance.vinyl.memory`
-    - `instance.vinyl.cache`
-    - `instance.iproto.max_concurrent_messages`
-    - `instance.log.format`
-- Changed configuration parameter names:
-    - `instance.log` -> `instance.log.destination`
-    - `instance.log_level` -> `instance.log.level`
-    - `instance.memtx_memory` -> `instance.memtx.memory`
-- New subcommand `picodata config default` for generating contents of the
-  config.yaml file with default parameter values.
 - New rpc entrypoint: `.proc_get_config` which returns the effective
   picodata configuration.
 
@@ -72,6 +57,26 @@ with the `YY.MINOR.MICRO` scheme.
 [DROP INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/drop_index/
 [sql_case]: https://docs.picodata.io/picodata/24.4/reference/sql/case/
 [sql_trim]: https://docs.picodata.io/picodata/24.4/reference/sql/trim/
+
+### Configuration
+
+- Provide a new way of configuring instances via config file in a yaml
+  format, see [Reference — Configuration file]. It extends the variety
+  of previously available methods — environment variables and
+  command-line arguments
+
+- New option `picodata run --config` provides a path to the config file
+
+- New option `picodata run -c` overrides single parameter using the same
+  naming
+
+- New command `picodata config default` generates contents of the
+  config file with default parameter values
+
+- New RPC API `.proc_get_config` returns the effective configuration
+
+[Reference — Configuration file]:
+  https://docs.picodata.io/picodata/24.4/reference/config/
 
 ### Compatibility
 
