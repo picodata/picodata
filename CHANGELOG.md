@@ -39,6 +39,10 @@ with the `YY.MINOR.MICRO` scheme.
   SELECT ...
   ```
 
+- The feature is currently in beta. It does NOT automatically imply
+  complete compatibility with PostgreSQL's extensive features, SQL
+  syntax, etc
+
 [Tutorial — Connecting — Pgproto]:
   https://docs.picodata.io/picodata/24.4/tutorial/connecting/#pgproto
 
