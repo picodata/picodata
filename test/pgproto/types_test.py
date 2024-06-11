@@ -2,6 +2,7 @@ from conftest import Postgres
 import psycopg
 from decimal import Decimal
 from uuid import UUID
+import pg8000.native as pg8000  # type: ignore
 
 
 def test_decimal(postgres: Postgres):
@@ -130,3 +131,39 @@ def test_uuid(postgres: Postgres):
     # test binary encoding
     cur = conn.execute(""" SELECT * FROM T; """, binary=True)
     assert sorted(cur.fetchall()) == [(id1,), (id2,)]
+
+
+def test_text_and_varchar(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
+    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+
+    conn = pg8000.Connection(
+        user, password=password, host=postgres.host, port=postgres.port
+    )
+
+    conn.run(
+        """
+        CREATE TABLE T (
+            S TEXT NOT NULL,
+            PRIMARY KEY (S)
+        )
+        USING MEMTX DISTRIBUTED BY (S);
+        """
+    )
+
+    # encode string parameter as varchar
+    varchar_oid = 1043
+    conn.run("INSERT INTO T VALUES (:p);", p="value1", types={"p": varchar_oid})
+
+    # encode string parameter as text
+    text_oid = 25
+    conn.run("INSERT INTO T VALUES (:p);", p="value2", types={"p": text_oid})
+
+    # verify that the values were insert
+    rows = conn.run("SELECT * FROM T;")
+    assert rows == [["value1"], ["value2"]]

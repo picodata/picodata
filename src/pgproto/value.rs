@@ -256,7 +256,7 @@ impl PgValue {
             Type::FLOAT8 | Type::FLOAT4 => {
                 PgValue::float(s.parse::<f64>().map_err(DecodingError::new)?)
             }
-            Type::TEXT => PgValue::text(s),
+            Type::TEXT | Type::VARCHAR => PgValue::text(s),
             Type::BOOL => PgValue::boolean(decode_text_as_bool(&s.to_lowercase())?),
             Type::NUMERIC => PgValue::decimal(decode_text_as_decimal(&s)?),
             Type::UUID => PgValue::uuid(Uuid::from_str(&s).map_err(DecodingError::new)?),
@@ -283,7 +283,7 @@ impl PgValue {
             Type::INT2 => PgValue::integer(do_decode_binary::<i16>(&ty, bytes)?.into()),
             Type::FLOAT8 => PgValue::float(do_decode_binary::<f64>(&ty, bytes)?),
             Type::FLOAT4 => PgValue::float(do_decode_binary::<f32>(&ty, bytes)?.into()),
-            Type::TEXT => PgValue::text(do_decode_binary(&ty, bytes)?),
+            Type::TEXT | Type::VARCHAR => PgValue::text(do_decode_binary(&ty, bytes)?),
             Type::BOOL => PgValue::boolean(do_decode_binary(&ty, bytes)?),
             Type::NUMERIC => PgValue::decimal(decode_decimal_binary(bytes)?),
             Type::UUID => PgValue::uuid(decode_uuid_binary(bytes)?),
