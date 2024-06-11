@@ -25,11 +25,13 @@ variables:
   BASE_IMAGE_LATEST: latest
   MAIN_BRANCH: &main-branch master
   CARGO_HOME: /data/shared-storage/picodata/.cargo
-  DOCKER_AUTH_CONFIG: $DOCKER_AUTH_RW
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
   CACHE_COMPRESSION_LEVEL: "fastest"
   GET_SOURCES_ATTEMPTS: 3
+  PARENT_BRANCH: $CI_COMMIT_BRANCH
+  PARENT_CI_COMMIT_SHA: $CI_COMMIT_SHA
+  PARENT_PROJECT_PATH: ${CI_PROJECT_PATH}.git
   # k8s runner config
   KUBERNETES_CPU_REQUEST: 6
   KUBERNETES_MEMORY_REQUEST: "6Gi"
@@ -87,40 +89,26 @@ variables:
     files:
       - Pipfile.lock
 
-.kaniko_image: &kaniko_image
-  image:
-    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.20.1-debug
-    entrypoint: [""]
-  variables:
-    GIT_DEPTH: 1
-    GIT_SUBMODULE_STRATEGY: none
-    PUSH_DOCKER: ""
-  before_script:
-    - mkdir -p /kaniko/.docker
-    - echo "$DOCKER_AUTH_CONFIG" > /kaniko/.docker/config.json
-  script:
-    - |
-      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE} \
-        --build-arg GIT_COMMIT=${CI_COMMIT_SHA} ${PUSH_DOCKER} \
-        --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup \
-        --destination $DESTINATION
-
 build-base-image:
   interruptible: true
   stage: build-base-image
-  <<: *kaniko_image
   rules:
     - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *if-build-base-changes-on-dev-branch
       variables:
-        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
     - <<: *else
       when: never
   variables:
     DOCKERFILE: docker-build-base/Dockerfile
     DESTINATION: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    PUSH_DOCKER: ""
+  trigger:
+    project: picodata/devops/picodata-in-docker
+    branch: main
+    strategy: depend
 
 .test:
   interruptible: true
@@ -332,7 +320,6 @@ test-mac-m1:
 .test-helm:
   interruptible: true
   stage: test
-  <<: *kaniko_image
   rules:
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       changes:
@@ -345,16 +332,20 @@ test-mac-m1:
     - when: manual
       allow_failure: true
   variables:
-    PUSH_DOCKER: ""
+    PUSH_DOCKER: "--no-push"
 
 test-helm-image:
   extends: .test-helm
   parallel:
     matrix:
       - DOCKERFILE: helm/picodata-diag.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_SHA}
+        DESTINATION: ${REGISTRY}/picodata-diag:${PARENT_CI_COMMIT_SHA}
       - DOCKERFILE: helm/picodata.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_SHA}
+        DESTINATION: ${REGISTRY}/picodata:${PARENT_CI_COMMIT_SHA}
+  trigger:
+    project: picodata/devops/picodata-in-docker
+    branch: main
+    strategy: depend
 
 gamayun-prepare:
   extends: .test
@@ -449,7 +440,8 @@ pack-on-tag:
 
 .deploy-docker-tmpl:
   stage: docker
-  <<: *kaniko_image
+  variables:
+    PUSH_DOCKER: ""
   rules:
     - if: $CI_COMMIT_TAG
 
@@ -458,10 +450,14 @@ deploy-docker:
   parallel:
     matrix:
       - DOCKERFILE: helm/picodata-diag.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_SHA}
+        DESTINATION: ${REGISTRY}/picodata-diag:${PARENT_CI_COMMIT_SHA}
       - DOCKERFILE: helm/picodata.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_SHA}
-
+        DESTINATION: ${REGISTRY}/picodata:${PARENT_CI_COMMIT_SHA}
+  trigger:
+    project: picodata/devops/picodata-in-docker
+    branch: main
+    strategy: depend
+    
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
 upload-picodata-to-binary:
