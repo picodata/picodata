@@ -2045,7 +2045,7 @@ class Postgres:
             yaml=f"""
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
 instance:
     pg:

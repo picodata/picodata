@@ -171,7 +171,7 @@ Using configuration file '{args_path}'.");
 
         // This isn't set by set_defaults_explicitly, because we expect the
         // tiers to be specified explicitly when the config file is provided.
-        config.cluster.tiers.insert(
+        config.cluster.tier.insert(
             DEFAULT_TIER.into(),
             TierConfig {
                 can_vote: true,
@@ -180,7 +180,7 @@ Using configuration file '{args_path}'.");
             },
         );
 
-        // Same story as with `cluster.tiers`, the cluster_id must be provided
+        // Same story as with `cluster.tier`, the cluster_id must be provided
         // in the config file.
         config.cluster.cluster_id = Some("demo".into());
 
@@ -295,7 +295,7 @@ Using configuration file '{args_path}'.");
         }
 
         if !args.peers.is_empty() {
-            config_from_args.instance.peers = Some(args.peers);
+            config_from_args.instance.peer = Some(args.peers);
         }
 
         if let Some(log_level) = args.log_level {
@@ -392,9 +392,9 @@ Using configuration file '{args_path}'.");
         // it to define the list of initial tiers. However if config file wasn't
         // specified, there's no way to define tiers, so we just ignore that
         // case and create a dummy "default" tier.
-        if self.cluster.tiers.is_empty() {
+        if self.cluster.tier.is_empty() {
             return Err(Error::invalid_configuration(
-                "empty `cluster.tiers` section which is required to define the initial tiers",
+                "empty `cluster.tier` section which is required to define the initial tiers",
             ));
         }
 
@@ -479,7 +479,7 @@ Using configuration file '{args_path}'.");
     /// Checks specific to reloading a config file on an initialized istance are
     /// done in [`Self::validate_reload`].
     fn validate_common(&self) -> Result<(), Error> {
-        for (name, info) in &self.cluster.tiers {
+        for (name, info) in &self.cluster.tier {
             if let Some(explicit_name) = &info.name {
                 return Err(Error::InvalidConfiguration(format!(
                     "tier '{name}' has an explicit name field '{explicit_name}', which is not allowed. Tier name is always derived from the outer dictionary's key"
@@ -702,8 +702,8 @@ fn value_is_specified(path: &str, value: &rmpv::Value) -> bool {
         return false;
     }
 
-    if path == "cluster.tiers" && matches!(&value, rmpv::Value::Map(m) if m.is_empty()) {
-        // Special case: config.tiers has type HashMap
+    if path == "cluster.tier" && matches!(&value, rmpv::Value::Map(m) if m.is_empty()) {
+        // Special case: config.tier has type HashMap
         // and it must be set explicitly in the config file
         return false;
     }
@@ -769,7 +769,7 @@ pub struct ClusterConfig {
     pub cluster_id: Option<String>,
 
     #[serde(deserialize_with = "deserialize_map_forbid_duplicate_keys")]
-    pub tiers: HashMap<String, TierConfig>,
+    pub tier: HashMap<String, TierConfig>,
 
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
@@ -783,9 +783,9 @@ pub struct ClusterConfig {
 
 impl ClusterConfig {
     pub fn tiers(&self) -> HashMap<String, Tier> {
-        let mut tier_defs = HashMap::with_capacity(self.tiers.len());
+        let mut tier_defs = HashMap::with_capacity(self.tier.len());
 
-        let contains_default_tier_definition = self.tiers.get(DEFAULT_TIER).is_some();
+        let contains_default_tier_definition = self.tier.get(DEFAULT_TIER).is_some();
         if !contains_default_tier_definition {
             tier_defs.insert(
                 DEFAULT_TIER.into(),
@@ -797,7 +797,7 @@ impl ClusterConfig {
             );
         }
 
-        for (name, info) in &self.tiers {
+        for (name, info) in &self.tier {
             let replication_factor = info
                 .replication_factor
                 .unwrap_or_else(|| self.default_replication_factor());
@@ -855,7 +855,7 @@ pub struct InstanceConfig {
             port: DEFAULT_IPROTO_PORT.into(),
         }]
     )]
-    pub peers: Option<Vec<Address>>,
+    pub peer: Option<Vec<Address>>,
 
     #[introspection(
         config_default = Address {
@@ -956,7 +956,7 @@ impl InstanceConfig {
 
     #[inline]
     pub fn peers(&self) -> Vec<Address> {
-        self.peers
+        self.peer
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
@@ -1255,7 +1255,7 @@ mod tests {
 cluster:
     cluster_id: foobar
 
-    tiers:
+    tier:
         voter:
             can_vote: true
 
@@ -1280,7 +1280,7 @@ goo-goo: ga-ga
     fn duplicate_tiers_is_error() {
         let yaml = r###"
 cluster:
-    tiers:
+    tier:
         voter:
             can_vote: true
 
@@ -1292,7 +1292,7 @@ cluster:
         let err = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "invalid configuration: cluster.tiers: duplicate key `voter` found at line 3 column 9"
+            "invalid configuration: cluster.tier: duplicate key `voter` found at line 3 column 9"
         );
     }
 
@@ -1300,7 +1300,7 @@ cluster:
     fn cluster_id_is_required() {
         let yaml = r###"
 cluster:
-    tiers:
+    tier:
         default:
 instance:
 "###;
@@ -1311,7 +1311,7 @@ instance:
         let yaml = r###"
 cluster:
     cluster_id: foo
-    tiers:
+    tier:
         default:
 instance:
     cluster_id: bar
@@ -1330,25 +1330,25 @@ cluster:
         let err = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "invalid configuration: cluster: missing field `tiers` at line 2 column 5"
+            "invalid configuration: cluster: missing field `tier` at line 2 column 5"
         );
 
         let yaml = r###"
 cluster:
     cluster_id: test
-    tiers:
+    tier:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         let err = config.validate_from_file().unwrap_err();
         assert_eq!(
             err.to_string(),
-            "invalid configuration: empty `cluster.tiers` section which is required to define the initial tiers"
+            "invalid configuration: empty `cluster.tier` section which is required to define the initial tiers"
         );
 
         let yaml = r###"
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
@@ -1505,13 +1505,13 @@ instance:
         }
 
         //
-        // peers parsing
+        // peer parsing
         //
         {
             // empty config means default
             let yaml = r###"
 instance:
-    peers:
+    peer:
 "###;
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
@@ -1529,7 +1529,7 @@ instance:
             // only config
             let yaml = r###"
 instance:
-    peers:
+    peer:
         - bobbert:420
         - tomathan:69
 "###;
@@ -1610,7 +1610,7 @@ instance:
 
             // --config-parameter > --peer
             let config = setup_for_tests(Some(yaml), &["run",
-                "-c", "instance.peers=[  host:123  , ghost :321, гост:666]",
+                "-c", "instance.peer=[  host:123  , ghost :321, гост:666]",
             ]).unwrap();
 
             assert_eq!(

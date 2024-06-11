@@ -255,7 +255,7 @@ def test_whoami_in_different_tiers(cluster: Cluster):
         yaml="""
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         storage:
             replication_factor: 2
             can_vote: true
@@ -529,7 +529,7 @@ def test_proc_instance_info(cluster: Cluster):
         yaml="""
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         storage:
             replication_factor: 2
         router:

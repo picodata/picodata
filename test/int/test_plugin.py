@@ -1024,7 +1024,7 @@ def test_set_topology(cluster: Cluster):
 cluster_cfg = """
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         red:
             replication_factor: 1
         blue:

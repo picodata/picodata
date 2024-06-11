@@ -107,7 +107,7 @@ def test_instance_from_falsy_tier_is_not_voter(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    tiers:
+    tier:
         storage:
             replication_factor: 1
             can_vote: true
@@ -151,7 +151,7 @@ def test_deploy_crash_with_wrong_bootstrap_leader(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    tiers:
+    tier:
         storage:
             replication_factor: 1
             can_vote: false

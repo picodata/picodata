@@ -7,7 +7,7 @@ def test_config_works(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    tiers:
+    tier:
         default:
 instance:
     cluster_id: test
@@ -37,12 +37,12 @@ def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     cluster.set_config_file(
         yaml=f"""
 cluster:
-    tiers:
+    tier:
         deluxe:
 instance:
     data_dir: {data_dir}
     listen: {listen}
-    peers:
+    peer:
         - {listen}
     cluster_id: my-cluster
     instance_id: my-instance
@@ -74,7 +74,7 @@ instance:
     config = instance.call(".proc_get_config")
     assert config == dict(
         cluster=dict(
-            tiers=dict(
+            tier=dict(
                 value=dict(deluxe=dict(can_vote=True)),
                 source="config_file",
             ),
@@ -101,7 +101,7 @@ instance:
                 level=dict(value="verbose", source="commandline_or_environment"),
                 format=dict(value="plain", source="default"),
             ),
-            peers=dict(value=[f"{host}:{port}"], source="config_file"),
+            peer=dict(value=[f"{host}:{port}"], source="config_file"),
             memtx=dict(
                 memory=dict(value=64 * 1024 * 1024, source="default"),
                 checkpoint_count=dict(value=2, source="default"),
@@ -133,7 +133,7 @@ def test_default_path_to_config_file(cluster: Cluster):
             """
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
 instance:
     memtx:
@@ -153,7 +153,7 @@ instance:
             """
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
 instance:
     memtx:
@@ -205,12 +205,12 @@ def test_config_file_with_empty_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    tiers:
+    tier:
 """
     )
     i1 = cluster.add_instance(wait_online=False)
     err = """\
-invalid configuration: empty `cluster.tiers` section which is required to define the initial tiers\
+invalid configuration: empty `cluster.tier` section which is required to define the initial tiers\
 """  # noqa: E501
     crawler = log_crawler(i1, err.strip())
 
@@ -237,7 +237,7 @@ def test_config_file_with_garbage(cluster: Cluster):
         yaml="""
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
     replication_topology: mobius
 
@@ -284,7 +284,7 @@ def test_config_file_box_cfg_parameters(cluster: Cluster):
 # just the required part
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
 """
     )
@@ -323,7 +323,7 @@ cluster:
         yaml="""
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         default:
 
 instance:
@@ -409,7 +409,7 @@ def test_default_tier_without_default_replication_factor(cluster: Cluster):
         yaml="""
 cluster:
     cluster_id: test
-    tiers:
+    tier:
         not_default:
 """
     )
@@ -429,7 +429,7 @@ def test_default_tier_with_default_replication_factor(cluster: Cluster):
 cluster:
     default_replication_factor: 3
     cluster_id: test
-    tiers:
+    tier:
         not_default:
 """
     )
