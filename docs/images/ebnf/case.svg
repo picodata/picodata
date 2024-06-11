@@ -72,7 +72,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="CASE" />
   <a
-     xlink:href="../select/#expression"
+     xlink:href="#expression"
      xlink:title="expression"
      id="a5">
     <path
@@ -107,7 +107,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="WHEN" />
   <a
-     xlink:href="../select/#expression"
+     xlink:href="#expression"
      xlink:title="expression"
      id="a9">
     <path
@@ -142,7 +142,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="THEN" />
   <a
-     xlink:href="../select/#expression"
+     xlink:href="#expression"
      xlink:title="expression"
      id="a13">
     <path
@@ -177,7 +177,7 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      style="font-weight:bold;font-size:14px;font-family:HelveticaNeueCyr, Sans-serif;fill:#140000"
      aria-label="ELSE" />
   <a
-     xlink:href="../select/#expression"
+     xlink:href="#expression"
      xlink:title="expression"
      id="a17">
     <path
