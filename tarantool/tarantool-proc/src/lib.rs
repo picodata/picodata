@@ -334,15 +334,15 @@ mod msgpack {
             .iter()
             .map(|f| {
                 let name = f.ident.as_ref().expect("only named fields here");
-                let field_repr = format_ident!("{}", name).to_string();
-                let field_repr = proc_macro2::Literal::byte_string(field_repr.as_bytes());
+                let field_raw_repr = format_ident!("{}", name).to_string();
+                let field_repr = proc_macro2::Literal::byte_string(field_raw_repr.as_bytes());
                 let var_name = format_ident!("_field_{}", name);
                 let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(f));
 
                 let read_key = quote_spanned!{f.span()=>
                     if as_map {
                         let len = rmp::decode::read_str_len(r)
-                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("field name"))?;
+                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err).with_part("field name"))?;
                         let decoded_field_name = r.get(0..(len as usize))
                             .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
                         *r = &r[(len as usize)..]; // advance
@@ -453,6 +453,14 @@ mod msgpack {
         match *data {
             Data::Struct(ref data) => match data.fields {
                 Fields::Named(ref fields) => {
+                    let first_field_name = fields
+                        .named
+                        .first()
+                        .expect("not a unit struct")
+                        .ident
+                        .as_ref()
+                        .expect("not an unnamed struct")
+                        .to_string();
                     let fields = decode_named_fields(fields, tarantool_crate, None);
                     quote! {
                         let as_map = match context.struct_style() {
@@ -463,10 +471,10 @@ mod msgpack {
                         // TODO: Assert map and array len with number of struct fields
                         if as_map {
                             #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
-                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
                         } else {
                             #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre_with_field::<Self>(err, #first_field_name))?;
                         }
                         #fields
                     }
@@ -481,7 +489,7 @@ mod msgpack {
                     let fields = decode_unnamed_fields(fields, tarantool_crate, None);
                     quote! {
                         #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
                         #fields
                     }
                 }
@@ -516,7 +524,7 @@ mod msgpack {
                                 quote! {
                                     #variant_repr => {
                                         #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
                                         let as_map = false;
                                         #fields
                                     }
@@ -527,7 +535,7 @@ mod msgpack {
                                 quote! {
                                     #variant_repr => {
                                         #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
                                         let as_map = false;
                                         #fields
                                     }
@@ -548,9 +556,9 @@ mod msgpack {
                 quote! {
                     // TODO: assert map len 1
                     #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
-                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
                     let len = rmp::decode::read_str_len(r)
-                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("variant name"))?;
+                        .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err).with_part("variant name"))?;
                     let variant_name = r.get(0..(len as usize))
                         .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("variant name"))?;
                     *r = &r[(len as usize)..]; // advance

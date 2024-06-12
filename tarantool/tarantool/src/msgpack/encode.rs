@@ -18,6 +18,8 @@ use std::ops::Deref;
 
 pub use tarantool_proc::{Decode, Encode};
 
+use rmp::decode::{NumValueReadError, ValueReadError};
+
 /// Encodes `value` as a vector of bytes in msgpack.
 ///
 /// See [`Encode`].
@@ -180,7 +182,7 @@ impl Display for DecodeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "failed decoding {}", self.ty)?;
         if let Some(ref part) = self.part {
-            write!(f, "({})", part)?;
+            write!(f, " ({})", part)?;
         }
         write!(f, ": {}", self.source)
     }
@@ -203,6 +205,43 @@ impl DecodeError {
         self.part = Some(part.to_string());
         self
     }
+
+    #[inline(always)]
+    pub fn from_vre<DecodedTy>(value: ValueReadError) -> Self {
+        match value {
+            ValueReadError::TypeMismatch(marker) => {
+                let message = format!("got {marker:?}");
+                Self::new::<DecodedTy>(value).with_part(message)
+            }
+            err @ ValueReadError::InvalidDataRead(_)
+            | err @ ValueReadError::InvalidMarkerRead(_) => Self::new::<DecodedTy>(err),
+        }
+    }
+
+    #[inline(always)]
+    pub fn from_vre_with_field<DecodedTy>(value: ValueReadError, field: impl ToString) -> Self {
+        match value {
+            ValueReadError::TypeMismatch(marker) => {
+                let message = format!("got {marker:?} in field {}", field.to_string());
+                Self::new::<DecodedTy>(value).with_part(message)
+            }
+            err @ ValueReadError::InvalidDataRead(_)
+            | err @ ValueReadError::InvalidMarkerRead(_) => Self::new::<DecodedTy>(err),
+        }
+    }
+
+    #[inline(always)]
+    pub fn from_nvre<DecodedTy>(value: NumValueReadError) -> Self {
+        match value {
+            NumValueReadError::TypeMismatch(marker) => {
+                let message = format!("got {marker:?}");
+                Self::new::<DecodedTy>(value).with_part(message)
+            }
+            err @ NumValueReadError::InvalidDataRead(_)
+            | err @ NumValueReadError::InvalidMarkerRead(_)
+            | err @ NumValueReadError::OutOfRange => Self::new::<DecodedTy>(err),
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -212,7 +251,7 @@ impl DecodeError {
 impl Decode for () {
     #[inline(always)]
     fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
-        rmp::decode::read_nil(r).map_err(DecodeError::new::<Self>)?;
+        rmp::decode::read_nil(r).map_err(DecodeError::from_vre::<Self>)?;
         Ok(())
     }
 }
@@ -247,7 +286,7 @@ where
         // This will allow some users to handle empty input the way they want,
         // if they want to.
         if !r.is_empty() && r[0] == super::MARKER_NULL {
-            rmp::decode::read_nil(r).map_err(DecodeError::new::<Self>)?;
+            rmp::decode::read_nil(r).map_err(DecodeError::from_vre::<Self>)?;
             Ok(None)
         } else {
             T::decode(r, context).map(Some)
@@ -261,7 +300,7 @@ where
 {
     #[inline]
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut res = Vec::with_capacity(n);
         for i in 0..n {
             res.push(
@@ -280,7 +319,7 @@ where
 {
     #[inline]
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut res = HashSet::with_capacity(n);
         for i in 0..n {
             let v = T::decode(r, context)
@@ -297,7 +336,7 @@ where
 {
     #[inline]
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut res = BTreeSet::new();
         for i in 0..n {
             let v = T::decode(r, context)
@@ -313,7 +352,7 @@ where
     T: Decode,
 {
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_array_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         if n != N {
             return Err(DecodeError::new::<Self>(format!(
                 "expected array count {N}, got {n}"
@@ -371,7 +410,7 @@ where
 impl Decode for String {
     #[inline]
     fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_str_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let n = rmp::decode::read_str_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut buf = vec![0; n];
         r.read_exact(&mut buf).map_err(DecodeError::new::<Self>)?;
         String::from_utf8(buf).map_err(DecodeError::new::<Self>)
@@ -405,7 +444,7 @@ where
 {
     #[inline]
     fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
+        let n = rmp::decode::read_map_len(r).map_err(DecodeError::from_vre::<Self>)?;
         let mut res = HashMap::with_capacity(n as _);
         for i in 0..n {
             let k = K::decode(r, context)
@@ -421,7 +460,7 @@ where
 impl Decode for char {
     #[inline(always)]
     fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
-        let n = rmp::decode::read_str_len(r).map_err(DecodeError::new::<Self>)? as usize;
+        let n = rmp::decode::read_str_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         if n == 0 {
             return Err(DecodeError::new::<char>(
                 "expected a msgpack non-empty string, got string length 0",
@@ -448,14 +487,14 @@ impl Decode for char {
     }
 }
 
-macro_rules! impl_simple_decode {
+macro_rules! impl_simple_int_decode {
     ($(($t:ty, $f:tt))+) => {
         $(
             impl Decode for $t{
                 #[inline(always)]
                 fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
-                        .map_err(DecodeError::new::<Self>)?;
+                        .map_err(DecodeError::from_nvre::<Self>)?;
                     Ok(value)
                 }
             }
@@ -463,7 +502,22 @@ macro_rules! impl_simple_decode {
     }
 }
 
-impl_simple_decode! {
+macro_rules! impl_simple_decode {
+    ($(($t:ty, $f:tt))+) => {
+        $(
+            impl Decode for $t{
+                #[inline(always)]
+                fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+                    let value = rmp::decode::$f(r)
+                        .map_err(DecodeError::from_vre::<Self>)?;
+                    Ok(value)
+                }
+            }
+        )+
+    }
+}
+
+impl_simple_int_decode! {
     (u8, read_int)
     (u16, read_int)
     (u32, read_int)
@@ -474,6 +528,9 @@ impl_simple_decode! {
     (i32, read_int)
     (i64, read_int)
     (isize, read_int)
+}
+
+impl_simple_decode! {
     (f32, read_f32)
     (f64, read_f64)
     (bool, read_bool)
@@ -921,8 +978,8 @@ mod tests {
         let err = decode::<Test2>(bytes.as_slice()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2(field not_b): \
-            failed decoding f32: the type decoded isn't match with the expected one"
+            "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2 (field not_b): \
+            failed decoding f32 (got FixPos(42)): the type decoded isn't match with the expected one"
         );
 
         // Override, encode as map
@@ -1012,7 +1069,7 @@ mod tests {
         let err = decode::<Test3>(&bytes).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test3: the type decoded isn't match with the expected one"
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test3 (got FixMap(1) in field not_b): the type decoded isn't match with the expected one"
         );
         // Try to decode as a different struct with only field is also raw with different context
         let err = Test3::decode(&mut bytes.as_slice(), &ctx).unwrap_err();
@@ -1052,7 +1109,7 @@ mod tests {
         let err = decode::<Test4>(bytes.as_slice()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test4: the type decoded isn't match with the expected one"
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test4 (got FixMap(3) in field b): the type decoded isn't match with the expected one"
         );
 
         // Encode and decode with complex multibyte members of struct
@@ -1107,7 +1164,7 @@ mod tests {
         let err = decode::<Test2>(&bytes).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test2: the type decoded isn't match with the expected one"
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test2 (got FixMap(3) in field b): the type decoded isn't match with the expected one"
         );
 
         // Encode unnamed struct fields with raw attribute
@@ -1121,8 +1178,8 @@ mod tests {
         let err = decode::<Test6>(&bytes).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test6(field 0): \
-            failed decoding alloc::vec::Vec<alloc::string::String>: the type decoded isn't match with the expected one"
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test6 (field 0): \
+            failed decoding alloc::vec::Vec<alloc::string::String> (got FixPos(42)): the type decoded isn't match with the expected one"
         );
 
         // Check for parsing scope of valid msgpack in multibyte scenario
@@ -1193,7 +1250,7 @@ mod tests {
         let err = decode::<Test7>(&bytes).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test7(field 0): failed decoding alloc::vec::Vec<u8>: the type decoded isn't match with the expected one"
+            "failed decoding tarantool::msgpack::encode::tests::encode_raw::Test7 (field 0): failed decoding alloc::vec::Vec<u8> (got FixPos(52)): the type decoded isn't match with the expected one"
         );
         let decoded = Test8::decode(&mut bytes.as_slice(), &ctx).unwrap();
         assert_eq!(
@@ -1222,6 +1279,58 @@ mod tests {
         // Wants to be encoded as array
         struct Inner {
             i: usize,
+            s: String,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        // Wants to be encoded as map
+        #[encode(as_map)]
+        struct OuterDeep {
+            i: usize,
+            s: String,
+            inner: Inner1Deep,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Inner1Deep {
+            i: usize,
+            s: String,
+            inner: Inner2Deep,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        // Wants to be encoded as array
+        struct Inner2Deep {
+            i: usize,
+            s: String,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        // Wants to be encoded as map
+        #[encode(as_map)]
+        struct OuterMismatch {
+            i: usize,
+            s: String,
+            inner: Inner1Mismatch,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        struct Inner1Mismatch {
+            i: usize,
+            s: String,
+            inner: Inner2Mismatch,
+        }
+
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate")]
+        // Wants to be encoded as array
+        struct Inner2Mismatch {
+            i: f32,
             s: String,
         }
 
@@ -1265,8 +1374,7 @@ mod tests {
 
         // Because we forced as array when encoding, we need to force as array when decoding
         let e = Outer::decode(&mut bytes.as_slice(), &Context::default()).unwrap_err();
-        // TODO: better error messages <https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/176>
-        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer: the type decoded isn't match with the expected one");
+        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer (got FixArray(3)): the type decoded isn't match with the expected one");
 
         let test_dec = Outer::decode(&mut bytes.as_slice(), &ctx_as_array).unwrap();
         assert_eq!(test_dec, test);
@@ -1289,14 +1397,29 @@ mod tests {
                 ),
             ]),
         );
-
         // Because we forced as map when encoding, we need to force as map when decoding
         let e = Outer::decode(&mut bytes.as_slice(), &Context::default()).unwrap_err();
-        // TODO: better error messages <https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/176>
-        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer(field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner: the type decoded isn't match with the expected one");
-
+        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer (field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner (got FixMap(2) in field i): the type decoded isn't match with the expected one");
         let test_dec = Outer::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
         assert_eq!(test_dec, test);
+
+        // Encode as map with deeply nested error of type mismatch
+        let mut bytes = vec![];
+        let test_deep = OuterDeep {
+            i: 1,
+            s: "abc".into(),
+            inner: Inner1Deep {
+                i: 2,
+                s: "def".into(),
+                inner: Inner2Deep {
+                    i: 3,
+                    s: "ghi".into(),
+                },
+            },
+        };
+        test_deep.encode(&mut bytes, &ctx_as_map).unwrap();
+        let e = OuterMismatch::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap_err();
+        assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::OuterMismatch (field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner1Mismatch (field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner2Mismatch (field i): failed decoding f32 (got FixPos(3)): the type decoded isn't match with the expected one")
     }
 
     #[test]
@@ -1516,7 +1639,7 @@ mod tests {
         let err = decode::<[DropChecker; 4]>(b"\x94\xc0\xc0\x01\xc0").unwrap_err();
         assert_eq!(unsafe { DROP_COUNT }, 2);
 
-        assert_eq!(err.to_string(), "failed decoding [tarantool::msgpack::encode::tests::encode_array::DropChecker; 4](element 2): failed decoding (): the type decoded isn't match with the expected one");
+        assert_eq!(err.to_string(), "failed decoding [tarantool::msgpack::encode::tests::encode_array::DropChecker; 4] (element 2): failed decoding () (got FixPos(1)): the type decoded isn't match with the expected one");
     }
 
     #[test]
