@@ -2185,7 +2185,7 @@ def test_sql_alter_login(cluster: Cluster):
     assert acl["row_count"] == 1
     with pytest.raises(
         Exception,
-        match=f"AccessDenied: Grant Login from '{username}' is denied for {other_username}",
+        match=f"Grant Login from '{username}' is denied for {other_username}",
     ):
         acl = i1.sql(
             f"alter user {username} with login",
@@ -2194,7 +2194,7 @@ def test_sql_alter_login(cluster: Cluster):
         )
     with pytest.raises(
         Exception,
-        match=f"AccessDenied: Revoke Login from '{username}' is denied for {other_username}",
+        match=f"Revoke Login from '{username}' is denied for {other_username}",
     ):
         acl = i1.sql(
             f"alter user {username} with nologin",
@@ -2624,9 +2624,7 @@ def test_sql_privileges(cluster: Cluster):
     # ------------------------
     # Check SQL read privilege
     # ------------------------
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Read access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
         i1.sql(f""" select * from "{table_name}" """, user=username, password=alice_pwd)
     # Grant read privilege
     i1.sudo_sql(f""" grant read on table "{table_name}" to "{username}" """)
@@ -2641,9 +2639,7 @@ def test_sql_privileges(cluster: Cluster):
     # -------------------------
     # Check SQL write privilege
     # -------------------------
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Write access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
         i1.sql(
             f""" insert into "{table_name}" values (1, 2) """,
             user=username,
@@ -2665,49 +2661,37 @@ def test_sql_privileges(cluster: Cluster):
     # -----------------------------------
     # Check SQL write and read privileges
     # -----------------------------------
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Read access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
         i1.sql(
             f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Read access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
         i1.sql(
             f""" update "{table_name}" set "b" = 42 """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Read access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant read privilege
     i1.sudo_sql(f""" grant read on table "{table_name}" to "{username}" """)
 
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Write access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
         i1.sql(
             f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Write access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
         i1.sql(
             f""" update "{table_name}" set "b" = 42 """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(
-        ReturnError, match=f"AccessDenied: Write access to space '{table_name}'"
-    ):
+    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant write privilege
@@ -3064,7 +3048,7 @@ def test_call_procedure(cluster: Cluster):
     )
     assert acl["row_count"] == 1
     with pytest.raises(
-        ReturnError, match="AccessDenied: Execute access to function 'proc1' is denied"
+        ReturnError, match="Execute access to function 'proc1' is denied"
     ):
         i1.sql(""" call "proc1"(3, 3) """, user=username, password=alice_pwd)
 
@@ -3330,7 +3314,7 @@ def test_procedure_privileges(cluster: Cluster):
     def check_execute_access_denied(fun, username, pwd, *args):
         with pytest.raises(
             ReturnError,
-            match=f"AccessDenied: Execute access to function '{fun}' "
+            match=f"Execute access to function '{fun}' "
             + f"is denied for user '{username}'",
         ):
             call_procedure(fun, *args, as_user=username, as_pwd=pwd)
@@ -3338,7 +3322,7 @@ def test_procedure_privileges(cluster: Cluster):
     def check_create_access_denied(fun, username, pwd):
         with pytest.raises(
             ReturnError,
-            match=f"AccessDenied: Create access to function '{fun}' "
+            match=f"Create access to function '{fun}' "
             + f"is denied for user '{username}'",
         ):
             create_procedure(fun, 0, as_user=username, as_pwd=pwd)
@@ -3346,7 +3330,7 @@ def test_procedure_privileges(cluster: Cluster):
     def check_drop_access_denied(fun, username, pwd):
         with pytest.raises(
             ReturnError,
-            match=f"AccessDenied: Drop access to function '{fun}' "
+            match=f"Drop access to function '{fun}' "
             + f"is denied for user '{username}'",
         ):
             drop_procedure(fun, as_user=username, as_pwd=pwd)
@@ -3354,7 +3338,7 @@ def test_procedure_privileges(cluster: Cluster):
     def check_rename_access_denied(old_name, new_name, username, pwd):
         with pytest.raises(
             ReturnError,
-            match=f"AccessDenied: Alter access to function '{old_name}' "
+            match=f"Alter access to function '{old_name}' "
             + f"is denied for user '{username}'",
         ):
             rename_procedure(old_name, new_name, as_user=username, as_pwd=pwd)
@@ -3430,14 +3414,14 @@ def test_procedure_privileges(cluster: Cluster):
     # Check that user can't grant create procedure (only admin can)
     with pytest.raises(
         ReturnError,
-        match=f"AccessDenied: Grant to routine '' is denied for user '{alice}'",
+        match=f"Grant to routine '' is denied for user '{alice}'",
     ):
         grant_procedure("create", bob, as_user=alice, as_pwd=alice_pwd)
 
     # Check that user can't grant execute procedure (only admin can)
     with pytest.raises(
         ReturnError,
-        match=f"AccessDenied: Grant to routine '' is denied for user '{alice}'",
+        match=f"Grant to routine '' is denied for user '{alice}'",
     ):
         grant_procedure("execute", bob, as_user=alice, as_pwd=alice_pwd)
 
@@ -3527,7 +3511,7 @@ def test_rename_user(cluster: Cluster):
     with pytest.raises(
         ReturnError,
         match="""\
-box error: AccessDenied: Alter access to user 'boba' is denied for user 'biba'\
+Alter access to user 'boba' is denied for user 'biba'\
 """,
     ):
         data = i1.sql(

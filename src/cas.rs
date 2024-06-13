@@ -442,17 +442,6 @@ pub enum Error {
     #[error("InvalidOpKind: Expected one of Acl, Dml, DdlPrepare or DdlAbort, got {0}")]
     InvalidOpKind(Box<Op>),
 
-    /// Dml command is too big to fit in raft log tuple.
-    /// Assuming reasonable raft_entry_max_size property, this should never happen.
-    #[error(
-        "TooBigOp: op size ({op_size}) exceeds raft entry max size ({tuple_max_size}), op: {op:?}"
-    )]
-    TooBigOp {
-        op: Box<Dml>,
-        op_size: u64,
-        tuple_max_size: u64,
-    },
-
     #[error("InvalidOp: empty batch")]
     EmptyBatch,
 }

@@ -104,8 +104,8 @@ def test_cas_errors(instance: Instance):
             [1, 2, 3],
         )
     assert error.value.args == (
-        "ER_PROC_C",
-        "box error: FieldType: Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
+        "ER_FIELD_TYPE",
+        "Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
     )
 
     # Delete of undeletable property
@@ -116,8 +116,8 @@ def test_cas_errors(instance: Instance):
             ["next_schema_version"],
         )
     assert error.value.args == (
-        "ER_PROC_C",
-        "box error: ProcLua: property next_schema_version cannot be deleted",  # noqa: E501
+        "ER_PROC_LUA",
+        "property next_schema_version cannot be deleted",  # noqa: E501
     )
 
     # Incorrect type of builtin property
@@ -128,8 +128,8 @@ def test_cas_errors(instance: Instance):
             ["global_schema_version", "this is not a version number"],
         )
     assert error.value.args == (
-        "ER_PROC_C",
-        """box error: ProcLua: incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
+        "ER_PROC_LUA",
+        """incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
     )
 
     # Too many values for builtin property
@@ -140,8 +140,8 @@ def test_cas_errors(instance: Instance):
             ["password_min_length", 13, 37],
         )
     assert error.value.args == (
-        "ER_PROC_C",
-        "box error: ProcLua: too many fields: got 3, expected 2",
+        "ER_PROC_LUA",
+        "too many fields: got 3, expected 2",
     )
 
     # Not enough values for builtin property
@@ -152,8 +152,8 @@ def test_cas_errors(instance: Instance):
             ["auto_offline_timeout"],
         )
     assert error.value.args == (
-        "ER_PROC_C",
-        "box error: FieldMissing: Tuple field 2 (value) required by space format is missing",  # noqa: E501
+        "ER_INDEX_FIELD_COUNT",
+        "Tuple field 2 (value) required by space format is missing",  # noqa: E501
     )
 
     # Resulting raft log entry is too big
@@ -168,8 +168,8 @@ def test_cas_errors(instance: Instance):
             ["X", "X" * size],
         )
     assert error.value.args == (
-        "ER_PROC_C",
-        "box error: MemtxMaxTupleSize: tuple size 1048593 exceeds the allowed limit",  # noqa: E501
+        "ER_SLAB_ALLOC_MAX",
+        "tuple size 1048593 exceeds the allowed limit",  # noqa: E501
     )
 
 

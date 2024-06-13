@@ -3,7 +3,9 @@ use std::fmt::{Debug, Display};
 use crate::instance::InstanceId;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
-use tarantool::error::{BoxError, IntoBoxError};
+use tarantool::error::BoxError;
+use tarantool::error::IntoBoxError;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber::r#async::timeout;
 use tarantool::tlua::LuaError;
 use thiserror::Error;
@@ -184,7 +186,11 @@ where
 }
 
 impl IntoBoxError for Error {
+    #[inline]
     fn into_box_error(self) -> BoxError {
-        self.to_string().into_box_error()
+        match self {
+            Self::Tarantool(e) => e.into_box_error(),
+            other => BoxError::new(TarantoolErrorCode::ProcC, other.to_string()),
+        }
     }
 }
