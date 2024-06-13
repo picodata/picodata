@@ -10,6 +10,9 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## Unreleased
 
+- sql supports inferring not null constraint on primary key
+columns.
+
 <!--
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have

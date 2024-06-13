@@ -96,7 +96,7 @@ def test_cache_works_for_dml_query(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int not null, primary key (a))
+        create table t (a int, primary key (a))
         using memtx
         distributed by (a)
         option (timeout = 3)
@@ -106,7 +106,7 @@ def test_cache_works_for_dml_query(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table not_t (b int not null, primary key (b))
+        create table not_t (b int, primary key (b))
         using memtx
         distributed by (b)
         option (timeout = 3)
@@ -203,7 +203,7 @@ def test_select(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int not null, primary key (a))
+        create table t (a int, primary key (a))
         using memtx
         distributed by (a)
         option (timeout = 3)
@@ -244,7 +244,7 @@ def test_uuid(
     # first table with uuid is creating
     ddl = i1.sql(
         """
-        create table t1 (id uuid not null, primary key (id))
+        create table t1 (id uuid, primary key (id))
         using memtx
         distributed by (id)
         option (timeout = 3)
@@ -301,7 +301,7 @@ def test_pg_params(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int not null, b int, primary key (a))
+        create table t (a int, b int, primary key (a))
         using memtx
         distributed by (a)
         option (timeout = 3)
@@ -415,7 +415,7 @@ def test_datetime(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int not null, d datetime not null, primary key (a))
+        create table t (a int, d datetime not null, primary key (a))
         using memtx
         distributed by (a)
         option (timeout = 3)
@@ -486,7 +486,7 @@ def test_datetime(cluster: Cluster):
     # check we can create table sharded by datetime column
     ddl = i1.sql(
         """
-        create table t2 (a int not null, d datetime not null, primary key (a))
+        create table t2 (a int, d datetime not null, primary key (a))
         using memtx
         distributed by (d)
         option (timeout = 3)
@@ -558,7 +558,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table g (a int not null, b int not null, primary key (a))
+        create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
         option (timeout = 3)
@@ -571,7 +571,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table s (c int not null, primary key (c))
+        create table s (c int, primary key (c))
         using memtx
         distributed by (c)
         option (timeout = 3)
@@ -707,7 +707,7 @@ def test_aggregates_on_global_tbl(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table g (a int not null, b int not null, primary key (a))
+        create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
         option (timeout = 3)
@@ -750,7 +750,7 @@ def test_join_with_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table g (a int not null, b int not null, primary key (a))
+        create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
         option (timeout = 3)
@@ -764,7 +764,7 @@ def test_join_with_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table s (c int not null, primary key (c))
+        create table s (c int, primary key (c))
         using memtx
         distributed by (c)
         option (timeout = 3)
@@ -945,7 +945,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table g (a int not null, b int not null, primary key (a))
+        create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
         option (timeout = 3)
@@ -959,7 +959,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table s (c int not null, d int not null, primary key (c))
+        create table s (c int, d int not null, primary key (c))
         using memtx
         distributed by (c)
         option (timeout = 3)
@@ -1132,7 +1132,7 @@ def test_union_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table g (a int not null, b int not null, primary key (a))
+        create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
         option (timeout = 3)
@@ -1146,7 +1146,7 @@ def test_union_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table s (c int not null, d int not null, primary key (c))
+        create table s (c int, d int not null, primary key (c))
         using memtx
         distributed by (c)
         option (timeout = 3)
@@ -1282,7 +1282,7 @@ def test_union_on_global_tbls(cluster: Cluster):
 def test_trim(instance: Instance):
     instance.sql(
         """
-        create table t (s string not null, primary key (s))
+        create table t (s string, primary key (s))
         using memtx
         distributed by (s)
         """
@@ -1322,7 +1322,7 @@ def test_except_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table g (a int not null, b int not null, primary key (a))
+        create table g (a int, b int not null, primary key (a))
         using memtx
         distributed globally
         option (timeout = 3)
@@ -1335,7 +1335,7 @@ def test_except_on_global_tbls(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table s (c int not null, d int not null, primary key (c))
+        create table s (c int, d int not null, primary key (c))
         using memtx
         distributed by (c)
         option (timeout = 3)
@@ -1465,7 +1465,7 @@ def test_hash(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table t (a int not null, primary key (a))
+        create table t (a int, primary key (a))
         using memtx
         distributed by (a)
     """
@@ -1490,7 +1490,7 @@ def test_select_lowercase_name(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table "lowercase_name" ("id" int not null, primary key ("id"))
+        create table "lowercase_name" ("id" int, primary key ("id"))
         distributed by ("id")
     """
     )
@@ -1527,7 +1527,7 @@ def test_create_drop_table(cluster: Cluster):
 
     ddl = i1.sql(
         """
-        create table "t" ("a" integer not null, "b" int not null, primary key ("b", "a"))
+        create table "t" ("a" integer, "b" int, primary key ("b", "a"))
         using memtx
         distributed by ("a", "b")
         option (timeout = 3)
@@ -1538,7 +1538,7 @@ def test_create_drop_table(cluster: Cluster):
     # Already exists -> ok.
     ddl = i1.sql(
         """
-        create table "t" ("a" integer not null, "b" int not null, primary key ("b", "a"))
+        create table "t" ("a" integer, "b" int, primary key ("b", "a"))
         using memtx
         distributed by ("a", "b")
         option (timeout = 3)
@@ -1551,7 +1551,7 @@ def test_create_drop_table(cluster: Cluster):
     # Already exists with different format -> error.
     ddl = i1.sql(
         """
-        create table "t" ("key" string not null, "value" string not null, primary key ("key"))
+        create table "t" ("key" string, "value" string not null, primary key ("key"))
         using memtx
         distributed by ("key")
         option (timeout = 3)
@@ -1578,7 +1578,7 @@ def test_create_drop_table(cluster: Cluster):
 
     ddl = i2.sql(
         """
-        create table "t" ("a" integer not null, "b" int not null, primary key ("b", "a"))
+        create table "t" ("a" integer, "b" int, primary key ("b", "a"))
         using memtx
         distributed by ("a", "b")
     """
@@ -1595,7 +1595,7 @@ def test_create_drop_table(cluster: Cluster):
     # Check vinyl space
     ddl = i1.sql(
         """
-        create table "t" ("key" string not null, "value" string not null, primary key ("key"))
+        create table "t" ("key" string, "value" string not null, primary key ("key"))
         using vinyl
         distributed by ("key")
         option (timeout = 3)
@@ -1614,7 +1614,7 @@ def test_create_drop_table(cluster: Cluster):
     # Check global space
     ddl = i1.sql(
         """
-        create table "global_t" ("key" string not null, "value" string not null,
+        create table "global_t" ("key" string, "value" string not null,
         primary key ("key"))
         using memtx
         distributed globally
@@ -1626,7 +1626,7 @@ def test_create_drop_table(cluster: Cluster):
     with pytest.raises(TarantoolError, match="global spaces can use only memtx engine"):
         i1.sql(
             """
-            create table "t" ("key" string not null, "value" string not null,
+            create table "t" ("key" string, "value" string not null,
             primary key ("key"))
             using vinyl
             distributed globally
@@ -1645,7 +1645,7 @@ def test_create_drop_table(cluster: Cluster):
     with pytest.raises(TarantoolError, match="Primary key has been already declared"):
         i1.sql(
             """
-            create table "primary_t" (a int not null primary key, b int, primary key (a))
+            create table "primary_t" (a int primary key, b int, primary key (a))
             distributed by (a)
             """
         )
@@ -1661,7 +1661,7 @@ def test_create_drop_table(cluster: Cluster):
     ):
         i1.sql(
             """
-            create table "primary_t" (a int primary key)
+            create table "primary_t" (a int null primary key)
             distributed by (a)
             """
         )
