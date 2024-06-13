@@ -225,8 +225,8 @@ USER](../reference/sql/create_user.md).
 Пример:
 
 ```sql
-CREATE USER alice WITH PASSWORD 'T0tallysecret' USING chap-sha1
-CREATE USER bob USING ldap
+CREATE USER "alice" WITH PASSWORD 'P@ssw0rd' USING chap-sha1
+CREATE USER "bob" USING ldap
 ```
 
 Для имени пользователя (и в целом для объектов в Picodata) действуют
@@ -250,8 +250,8 @@ USER](../reference/sql/alter_user.md).
 Пример блокировки / разблокировки пользователя:
 
 ```sql
-ALTER USER alice WITH NOLOGIN
-ALTER USER alice WITH LOGIN
+ALTER USER "alice" WITH NOLOGIN
+ALTER USER "alice" WITH LOGIN
 ```
 
 Для выполнения команды требуется привилегия `ALTER USER` на
@@ -273,7 +273,7 @@ GRANT ALTER USER TO <grantee>
 Пример:
 
 ```sql
-DROP USER alice
+DROP USER "alice"
 ```
 
 Для выполнения команды требуется привилегия `DROP USER` на
