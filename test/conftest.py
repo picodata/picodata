@@ -1829,7 +1829,9 @@ def cluster(
 
 
 @pytest.fixture
-def instance(cluster: Cluster, port_distributor: PortDistributor, pytestconfig) -> Generator[Instance, None, None]:
+def unstarted_instance(
+    cluster: Cluster, port_distributor: PortDistributor, pytestconfig
+) -> Generator[Instance, None, None]:
     """Returns a deployed instance forming a single-node cluster."""
     instance = cluster.add_instance(wait_online=False)
 
@@ -1844,9 +1846,14 @@ def instance(cluster: Cluster, port_distributor: PortDistributor, pytestconfig) 
     os.chmod(password_file, 0o600)
     instance.service_password_file = password_file
 
-    instance.start()
-    instance.wait_online()
     yield instance
+
+
+@pytest.fixture
+def instance(unstarted_instance: Instance):
+    unstarted_instance.start()
+    unstarted_instance.wait_online()
+    yield unstarted_instance
 
 
 @pytest.fixture
@@ -1991,6 +1998,7 @@ class AuditServer:
     def cmd(self, binary_path: str) -> str:
         target_dir = os.path.dirname(binary_path)
         binary = os.path.realpath(os.path.join(target_dir, "gostech-audit-log"))
+        assert os.path.exists(binary)
         args = f"--url http://{BASE_HOST}:{self.port}/log --debug"
 
         return f"| {binary} {args}"
@@ -2000,6 +2008,12 @@ class AuditServer:
         while not self.queue.empty():
             result.append(self.queue.get())
         return result
+
+    def take_until_name(self, name: str):
+        while True:
+            event = self.queue.get(timeout=2)
+            if event["name"] == name:
+                return event
 
     def stop(self):
         if self.process is None:
