@@ -442,7 +442,13 @@ class Connection(tarantool.Connection):  # type: ignore
 
     def sql(self, sql: str, *params, options={}) -> dict:
         """Run SQL query and return result"""
-        return self.call("pico.sql", sql, params, options)
+        return self.call(
+            ".proc_sql_dispatch",
+            sql,
+            params,
+            options.get("query_id"),
+            options.get("traceable"),
+        )[0]
 
     def sudo_sql(
         self,

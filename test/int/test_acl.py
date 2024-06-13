@@ -1019,7 +1019,7 @@ def test_circular_grants_for_role(cluster: Cluster):
 
     def throws_on_grant(grantee, granted):
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"Granting role {granted.upper()} to role {grantee.upper()} would create a loop",
         ):
             i1.sql(f"GRANT {granted} to {grantee}")
@@ -1049,19 +1049,19 @@ def test_alter_system_user(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="altering guest user's password is not allowed",
     ):
         i1.sql("alter user \"guest\" with password 'Validpa55word'")
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="dropping system user is not allowed",
     ):
         i1.sql('drop user "guest"')
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="dropping system role is not allowed",
     ):
         i1.sql('drop role "public"')
@@ -1097,7 +1097,7 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
         # alice on the same connection should receive error that access is denied
         with pytest.raises(
             Exception,
-            match="Execute access to function 'pico.sql' is denied for user 'alice'",
+            match="Execute access to function '.proc_sql_dispatch' is denied for user 'alice'",
         ):
             conn.sql("insert into t values(2);")
 

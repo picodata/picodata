@@ -8,7 +8,6 @@ use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{error_injection, sql, tlog, traft};
-use std::fs::File;
 use std::io;
 use std::io::ErrorKind;
 use tarantool::cbus;

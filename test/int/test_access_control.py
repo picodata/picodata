@@ -1,10 +1,7 @@
 import pytest
 from typing import TypedDict
 
-from conftest import (
-    Cluster,
-    ReturnError,
-)
+from conftest import Cluster, TarantoolError, ReturnError
 
 
 class AsUser(TypedDict):
@@ -42,7 +39,7 @@ def test_access_global_table(cluster: Cluster):
     """
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Create access to space 'friends_of_peppa' is denied for user 'alice'",
     ):
         i1.sql(create_table_friends_of_peppa, **as_alice)
@@ -66,7 +63,7 @@ def test_access_global_table(cluster: Cluster):
 
     # Bob can't read it by default
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Read access to space 'friends_of_peppa' is denied for user 'bob'",
     ):
         i1.sql("""select * from "friends_of_peppa" """, **as_bob)
@@ -104,7 +101,7 @@ def test_access_sharded_table(cluster: Cluster):
     """
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Create access to space 'wonderland' is denied for user 'alice'",
     ):
         i1.sql(create_table_wonderland, **as_alice)
@@ -127,7 +124,7 @@ def test_access_sharded_table(cluster: Cluster):
 
     # Bob can't read it by default
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Read access to space 'wonderland' is denied for user 'bob'",
     ):
         i1.sql("""select * from "wonderland" """, **as_bob)
@@ -144,7 +141,7 @@ def test_access_sharded_table(cluster: Cluster):
 
     # But Bob still can't write it
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Write access to space 'wonderland' is denied for user 'bob'",
     ):
         i1.sql("""insert into "wonderland" values ('snail', 1)""", **as_bob)

@@ -5,7 +5,15 @@ import uuid
 # mypy: disable-error-code="attr-defined"
 from tarantool import Datetime as tt_datetime
 
-from conftest import Cluster, Instance, KeyDef, KeyPart, ReturnError, Retriable
+from conftest import (
+    Cluster,
+    Instance,
+    KeyDef,
+    KeyPart,
+    Retriable,
+    ReturnError,
+    TarantoolError,
+)
 
 
 def test_pico_sql(cluster: Cluster):
@@ -292,7 +300,7 @@ def test_pg_params(cluster: Cluster):
     )
     assert data["rows"] == [[3, 2, 1, 2, 3]]
 
-    with pytest.raises(ReturnError, match="invalid parameters usage"):
+    with pytest.raises(TarantoolError, match="invalid parameters usage"):
         i1.sql(
             """
             select $1, ? from t
@@ -399,7 +407,7 @@ def test_datetime(cluster: Cluster):
 
     # invalid format
     # FIXME: better error message
-    with pytest.raises(ReturnError, match="could not parse"):
+    with pytest.raises(TarantoolError, match="could not parse"):
         i1.sql("""select to_date('2020/20/20', '%Y/%d/%m') from t where a = 1""")
 
     # check we can group on datetime column
@@ -463,7 +471,7 @@ def test_datetime(cluster: Cluster):
 
     # check we can't insert out of limits date
     # FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/639
-    with pytest.raises(ReturnError, match="failed to decode tuple"):
+    with pytest.raises(TarantoolError, match="failed to decode tuple"):
         i1.sql(
             """
             insert into t2 select cast(COLUMN_1 as int), to_date(COLUMN_2, '') from (values
@@ -472,7 +480,7 @@ def test_datetime(cluster: Cluster):
             """
         )
 
-    with pytest.raises(ReturnError, match="failed to decode tuple"):
+    with pytest.raises(TarantoolError, match="failed to decode tuple"):
         i1.sql(
             """
             insert into t2 select cast(COLUMN_1 as int), to_date(COLUMN_2, '') from (values
@@ -1524,7 +1532,7 @@ def test_create_drop_table(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     # already dropped -> error, no such table
-    with pytest.raises(ReturnError, match="""sbroad: space t not found"""):
+    with pytest.raises(TarantoolError, match="""sbroad: space t not found"""):
         i2.sql(
             """
             drop table "t"
@@ -1579,7 +1587,7 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    with pytest.raises(ReturnError, match="global spaces can use only memtx engine"):
+    with pytest.raises(TarantoolError, match="global spaces can use only memtx engine"):
         i1.sql(
             """
             create table "t" ("key" string not null, "value" string not null,
@@ -1591,21 +1599,21 @@ def test_create_drop_table(cluster: Cluster):
         )
 
     # Check table creation with different forms of primary key declaration.
-    with pytest.raises(ReturnError, match="Primary key has been already declared"):
+    with pytest.raises(TarantoolError, match="Primary key has been already declared"):
         i1.sql(
             """
             create table "primary_t" (a int not null primary key, b int not null primary key)
             distributed by (a)
             """
         )
-    with pytest.raises(ReturnError, match="Primary key has been already declared"):
+    with pytest.raises(TarantoolError, match="Primary key has been already declared"):
         i1.sql(
             """
             create table "primary_t" (a int not null primary key, b int, primary key (a))
             distributed by (a)
             """
         )
-    with pytest.raises(ReturnError, match="Primary key has been already declared"):
+    with pytest.raises(TarantoolError, match="Primary key has been already declared"):
         i1.sql(
             """
             create table "primary_t" (a int not null primary key, b int, primary key (b))
@@ -1613,7 +1621,7 @@ def test_create_drop_table(cluster: Cluster):
             """
         )
     with pytest.raises(
-        ReturnError, match="Primary key mustn't contain nullable columns"
+        TarantoolError, match="Primary key mustn't contain nullable columns"
     ):
         i1.sql(
             """
@@ -1622,7 +1630,7 @@ def test_create_drop_table(cluster: Cluster):
             """
         )
 
-    with pytest.raises(ReturnError, match="Primary key must be declared"):
+    with pytest.raises(TarantoolError, match="Primary key must be declared"):
         i1.sql(
             """
             create table "primary_t" (a int)
@@ -1644,7 +1652,7 @@ def test_check_format(cluster: Cluster):
     i1, i2 = cluster.instances
 
     # Primary key missing.
-    with pytest.raises(ReturnError, match="Primary key column b not found"):
+    with pytest.raises(TarantoolError, match="Primary key column b not found"):
         i1.sql(
             """
         create table "error" ("a" integer, primary key ("b"))
@@ -1653,7 +1661,7 @@ def test_check_format(cluster: Cluster):
     """
         )
     # Sharding key missing.
-    with pytest.raises(ReturnError, match="Sharding key column b not found"):
+    with pytest.raises(TarantoolError, match="Sharding key column b not found"):
         i1.sql(
             """
         create table "error" ("a" integer not null, primary key ("a"))
@@ -1663,7 +1671,7 @@ def test_check_format(cluster: Cluster):
         )
     # Nullable primary key.
     with pytest.raises(
-        ReturnError, match="Primary key mustn't contain nullable columns"
+        TarantoolError, match="Primary key mustn't contain nullable columns"
     ):
         i1.sql(
             """
@@ -1734,7 +1742,7 @@ def test_insert(cluster: Cluster):
 
     # Wrong parameters number.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="invalid node: parameter node does not refer to an expression",
     ):
         i1.sql(
@@ -1743,7 +1751,7 @@ def test_insert(cluster: Cluster):
         """
         )
     with pytest.raises(
-        ReturnError, match="Expected at least 2 values for parameters. Got 1"
+        TarantoolError, match="Expected at least 2 values for parameters. Got 1"
     ):
         i1.sql(
             """
@@ -1823,7 +1831,7 @@ def test_sql_limits(cluster: Cluster):
     assert dml["row_count"] == 2
 
     with pytest.raises(
-        ReturnError, match="Reached a limit on max executed vdbe opcodes. Limit: 5"
+        TarantoolError, match="Reached a limit on max executed vdbe opcodes. Limit: 5"
     ):
         i1.sql(
             """
@@ -1839,7 +1847,7 @@ def test_sql_limits(cluster: Cluster):
     assert dql["rows"] == [[1, 1]]
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=r"Exceeded maximum number of rows \(1\) in virtual table: 2",
     ):
         i1.sql(
@@ -1867,7 +1875,7 @@ def test_sql_acl_password_length(cluster: Cluster):
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
-    with pytest.raises(ReturnError, match="password is too short"):
+    with pytest.raises(TarantoolError, match="password is too short"):
         i1.sql(
             """
             create user {username} with password '{password}'
@@ -1969,18 +1977,18 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
     # Zero timeout should return timeout error.
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.sql(f"drop user {username} option (timeout = 0)")
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.sql(f"drop role {username} option (timeout = 0)")
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.sql(
             f"""
             create user {username} with password '{password}'
             option (timeout = 0)
         """
         )
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.sql(
             f"""
             alter user {username} with password '{password}'
@@ -1989,23 +1997,27 @@ def test_sql_acl_users_roles(cluster: Cluster):
         )
 
     # Username in single quotes is unsupported.
-    with pytest.raises(ReturnError, match="rule parsing error"):
+    with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(f"drop user '{username}'")
-    with pytest.raises(ReturnError, match="rule parsing error"):
+    with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(f"create user '{username}' with password '{password}'")
-    with pytest.raises(ReturnError, match="rule parsing error"):
+    with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(f"alter user '{username}' with password '{password}'")
     # Rolename in single quotes is unsupported.
-    with pytest.raises(ReturnError, match="rule parsing error"):
+    with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(f"drop role '{username}'")
 
     # Can't create same user with different auth methods.
-    with pytest.raises(ReturnError, match="already exists with different auth method"):
+    with pytest.raises(
+        TarantoolError, match="already exists with different auth method"
+    ):
         i1.sql(f"create user {username} with password '{password}' using md5")
         i1.sql(f"create user {username} with password '{password}' using chap-sha1")
 
     # Can't create same user with different password.
-    with pytest.raises(ReturnError, match="already exists with different auth method"):
+    with pytest.raises(
+        TarantoolError, match="already exists with different auth method"
+    ):
         i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
         i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
     acl = i1.sql(f"drop user {username}")
@@ -2013,7 +2025,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Attempt to drop role with name of user should return error.
     with pytest.raises(
-        ReturnError, match=f"User {username} exists. Unable to drop user."
+        TarantoolError, match=f"User {username} exists. Unable to drop user."
     ):
         i1.sql(f""" create user "{username}" with password '{password}' """)
         i1.sql(f""" drop role "{username}" """)
@@ -2070,7 +2082,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
         f""" create user "{username}" with password 'Validpassw0rd' using md5 """
     )
     assert acl["row_count"] == 1
-    with pytest.raises(ReturnError, match="User with the same name already exists"):
+    with pytest.raises(TarantoolError, match="User with the same name already exists"):
         i1.sql(f'create role "{username}"')
     acl = i1.sql(f'drop user "{username}"')
     assert acl["row_count"] == 1
@@ -2084,13 +2096,13 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
     # Unable to alter role.
     with pytest.raises(
-        ReturnError, match=f"Role {rolename} exists. Unable to alter role."
+        TarantoolError, match=f"Role {rolename} exists. Unable to alter role."
     ):
         i1.sql(f"alter user \"{rolename}\" with password '{password}'")
 
     # Attempt to drop user with name of role should return error.
     with pytest.raises(
-        ReturnError, match=f"Role {rolename} exists. Unable to drop role."
+        TarantoolError, match=f"Role {rolename} exists. Unable to drop role."
     ):
         i1.sql(f""" drop user "{rolename}" """)
 
@@ -2257,32 +2269,34 @@ def test_sql_acl_privileges(cluster: Cluster):
     # =========================ERRORs======================
     # Attempt to grant unsupported privileges.
     with pytest.raises(
-        ReturnError, match=r"Supported privileges are: \[Read, Write, Alter, Drop\]"
+        TarantoolError, match=r"Supported privileges are: \[Read, Write, Alter, Drop\]"
     ):
         i1.sql(f""" grant create on table {table_name} to {username} """)
     with pytest.raises(
-        ReturnError, match=r"Supported privileges are: \[Create, Alter, Drop\]"
+        TarantoolError, match=r"Supported privileges are: \[Create, Alter, Drop\]"
     ):
         i1.sql(f""" grant read user to {username} """)
-    with pytest.raises(ReturnError, match=r"Supported privileges are: \[Alter, Drop\]"):
+    with pytest.raises(
+        TarantoolError, match=r"Supported privileges are: \[Alter, Drop\]"
+    ):
         i1.sql(f""" grant create on user {username} to {rolename} """)
     with pytest.raises(
-        ReturnError, match=r"Supported privileges are: \[Create, Drop\]"
+        TarantoolError, match=r"Supported privileges are: \[Create, Drop\]"
     ):
         i1.sql(f""" grant alter role to {username} """)
-    with pytest.raises(ReturnError, match=r"Supported privileges are: \[Drop\]"):
+    with pytest.raises(TarantoolError, match=r"Supported privileges are: \[Drop\]"):
         i1.sql(f""" grant create on role {rolename} to {username} """)
 
     # Attempt to grant unexisted role.
-    with pytest.raises(ReturnError, match="There is no role with name SUPER"):
+    with pytest.raises(TarantoolError, match="There is no role with name SUPER"):
         i1.sql(f""" grant SUPER to {username} """)
     # Attempt to grant TO unexisted role.
     with pytest.raises(
-        ReturnError, match="Nor user, neither role with name SUPER exists"
+        TarantoolError, match="Nor user, neither role with name SUPER exists"
     ):
         i1.sql(f""" grant {rolename} to SUPER """)
     # Attempt to revoke unexisted role.
-    with pytest.raises(ReturnError, match="There is no role with name SUPER"):
+    with pytest.raises(TarantoolError, match="There is no role with name SUPER"):
         i1.sql(f""" revoke SUPER from {username} """)
     # Attempt to revoke privilege that hasn't been granted yet do noting.
     acl = i1.sql(f""" revoke read on table {table_name} from {username} """)
@@ -2373,7 +2387,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     # ------------------READ---------------------------------
     # * READ is not available.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=rf"Read access to space '{table_name}' is denied for user '{username}'",
     ):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
@@ -2390,7 +2404,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert acl["row_count"] == 1
     # * After revoke READ fails again.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=rf"Read access to space '{table_name}' is denied for user '{username}'",
     ):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
@@ -2400,7 +2414,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert acl["row_count"] == 1
     # * WRITE is not available.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=rf"Write access to space '{table_name}' is denied for user '{username}'",
     ):
         i1.sql(
@@ -2421,7 +2435,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert acl["row_count"] == 1
     # * WRITE fails again.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=rf"Write access to space '{table_name}' is denied for user '{username}'",
     ):
         i1.sql(
@@ -2513,7 +2527,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert len(privs_rows) == default_privileges_number
     # * Read from table is prohibited for user initially.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=rf"Read access to space '{table_name}' is denied for user '{username}'",
     ):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
@@ -2541,7 +2555,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert len(privs_rows) == default_privileges_number + 1  # default + role for user
     # * Check read is prohibited again.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=rf"Read access to space '{table_name}' is denied for user '{username}'",
     ):
         i1.sql(f""" select * from {table_name} """, user=username, password=password)
@@ -2624,7 +2638,7 @@ def test_sql_privileges(cluster: Cluster):
     # ------------------------
     # Check SQL read privilege
     # ------------------------
-    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Read access to space '{table_name}'"):
         i1.sql(f""" select * from "{table_name}" """, user=username, password=alice_pwd)
     # Grant read privilege
     i1.sudo_sql(f""" grant read on table "{table_name}" to "{username}" """)
@@ -2639,7 +2653,7 @@ def test_sql_privileges(cluster: Cluster):
     # -------------------------
     # Check SQL write privilege
     # -------------------------
-    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Write access to space '{table_name}'"):
         i1.sql(
             f""" insert into "{table_name}" values (1, 2) """,
             user=username,
@@ -2661,37 +2675,37 @@ def test_sql_privileges(cluster: Cluster):
     # -----------------------------------
     # Check SQL write and read privileges
     # -----------------------------------
-    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Read access to space '{table_name}'"):
         i1.sql(
             f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Read access to space '{table_name}'"):
         i1.sql(
             f""" update "{table_name}" set "b" = 42 """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(ReturnError, match=f"Read access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Read access to space '{table_name}'"):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant read privilege
     i1.sudo_sql(f""" grant read on table "{table_name}" to "{username}" """)
 
-    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Write access to space '{table_name}'"):
         i1.sql(
             f""" insert into "{table_name}" select "a" + 1, "b" from "{table_name}"  """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Write access to space '{table_name}'"):
         i1.sql(
             f""" update "{table_name}" set "b" = 42 """,
             user=username,
             password=alice_pwd,
         )
-    with pytest.raises(ReturnError, match=f"Write access to space '{table_name}'"):
+    with pytest.raises(TarantoolError, match=f"Write access to space '{table_name}'"):
         i1.sql(f""" delete from "{table_name}" """, user=username, password=alice_pwd)
 
     # Grant write privilege
@@ -2772,7 +2786,7 @@ def test_create_drop_procedure(cluster: Cluster):
     # Check that we can't create a procedure with the same name but different
     # signature.
     with pytest.raises(
-        ReturnError, match="routine PROC1 already exists with different parameters"
+        TarantoolError, match="routine PROC1 already exists with different parameters"
     ):
         i2.sql(
             """
@@ -2783,7 +2797,7 @@ def test_create_drop_procedure(cluster: Cluster):
             """
         )
     with pytest.raises(
-        ReturnError, match="routine PROC1 already exists with a different body"
+        TarantoolError, match="routine PROC1 already exists with a different body"
     ):
         i2.sql(
             """
@@ -2805,7 +2819,7 @@ def test_create_drop_procedure(cluster: Cluster):
         )
         """
     )
-    with pytest.raises(ReturnError, match="ddl operation was aborted"):
+    with pytest.raises(TarantoolError, match="ddl operation was aborted"):
         i1.sql(
             """
             create procedure proc2()
@@ -2848,14 +2862,14 @@ def test_create_drop_procedure(cluster: Cluster):
 
     # Check that dropping raises an error in case of parameters mismatch.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=r"routine exists but with a different signature: PROC1\(integer\)",
     ):
         data = i2.sql(""" drop procedure proc1(decimal) """)
 
     # Check that dropping raises an error in case of parameters mismatch.
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=r"routine exists but with a different signature: PROC1\(integer\)",
     ):
         data = i2.sql(""" drop procedure proc1(integer, integer) """)
@@ -2895,7 +2909,7 @@ def test_sql_user_password_checks(cluster: Cluster):
     i1, _ = cluster.instances
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="invalid password: password should contains at least one uppercase letter",
     ):
         i1.sql(
@@ -2906,7 +2920,7 @@ def test_sql_user_password_checks(cluster: Cluster):
         )
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="invalid password: password should contains at least one lowercase letter",
     ):
         i1.sql(
@@ -2917,7 +2931,7 @@ def test_sql_user_password_checks(cluster: Cluster):
         )
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="invalid password: password should contains at least one digit",
     ):
         i1.sql(
@@ -2957,7 +2971,7 @@ def test_sql_user_password_checks(cluster: Cluster):
     cluster.raft_wait_index(ret)
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="invalid password: password should contains at least one special character",
     ):
         i1.sql(
@@ -3015,17 +3029,17 @@ def test_call_procedure(cluster: Cluster):
     assert data["row_count"] == 1
 
     # Check that procedure returns an error when called with wrong number of arguments.
-    with pytest.raises(ReturnError, match=r"""expected 1 parameter\(s\), got 0"""):
+    with pytest.raises(TarantoolError, match=r"""expected 1 parameter\(s\), got 0"""):
         i2.sql(""" call "proc2"() """)
-    with pytest.raises(ReturnError, match=r"""expected 1 parameter\(s\), got 2"""):
+    with pytest.raises(TarantoolError, match=r"""expected 1 parameter\(s\), got 2"""):
         i2.sql(""" call "proc2"(3, 3) """)
     # Check that procedure returns an error when called with the wrong argument type.
     error_msg = "expected integer for parameter on position 0, got string"
-    with pytest.raises(ReturnError, match=error_msg):
+    with pytest.raises(TarantoolError, match=error_msg):
         i2.sql(""" call "proc2"('hello') """)
 
     # Check internal statement errors are propagated.
-    with pytest.raises(ReturnError, match="Duplicate key exists in unique index"):
+    with pytest.raises(TarantoolError, match="Duplicate key exists in unique index"):
         i2.sql(""" call "proc2"(1) """)
 
     # Check parameters are passed correctly.
@@ -3048,7 +3062,7 @@ def test_call_procedure(cluster: Cluster):
     )
     assert acl["row_count"] == 1
     with pytest.raises(
-        ReturnError, match="Execute access to function 'proc1' is denied"
+        TarantoolError, match="Execute access to function 'proc1' is denied"
     ):
         i1.sql(""" call "proc1"(3, 3) """, user=username, password=alice_pwd)
 
@@ -3126,7 +3140,7 @@ def test_rename_procedure(cluster: Cluster):
     )
     assert data["row_count"] == 1
 
-    with pytest.raises(ReturnError, match="Name 'FOO' is already taken"):
+    with pytest.raises(TarantoolError, match="Name 'FOO' is already taken"):
         data = i1.sql(
             """
             alter procedure bar()
@@ -3135,7 +3149,7 @@ def test_rename_procedure(cluster: Cluster):
         )
 
     with pytest.raises(
-        ReturnError, match="routine exists but with a different signature: BAR()"
+        TarantoolError, match="routine exists but with a different signature: BAR()"
     ):
         data = i1.sql(
             """
@@ -3154,7 +3168,8 @@ def test_rename_procedure(cluster: Cluster):
     )
     assert acl["row_count"] == 1
     with pytest.raises(
-        ReturnError, match="Alter access to function 'BAR' is denied for user 'alice'"
+        TarantoolError,
+        match="Alter access to function 'BAR' is denied for user 'alice'",
     ):
         i1.sql(
             """alter procedure bar rename to buzz""", user=username, password=alice_pwd
@@ -3171,7 +3186,7 @@ def test_rename_procedure(cluster: Cluster):
         )
         """
     )
-    with pytest.raises(ReturnError, match="ddl operation was aborted"):
+    with pytest.raises(TarantoolError, match="ddl operation was aborted"):
         i1.sql(
             """
             alter procEdurE foo rENaME tO "foobar"
@@ -3313,7 +3328,7 @@ def test_procedure_privileges(cluster: Cluster):
 
     def check_execute_access_denied(fun, username, pwd, *args):
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"Execute access to function '{fun}' "
             + f"is denied for user '{username}'",
         ):
@@ -3321,7 +3336,7 @@ def test_procedure_privileges(cluster: Cluster):
 
     def check_create_access_denied(fun, username, pwd):
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"Create access to function '{fun}' "
             + f"is denied for user '{username}'",
         ):
@@ -3329,7 +3344,7 @@ def test_procedure_privileges(cluster: Cluster):
 
     def check_drop_access_denied(fun, username, pwd):
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"Drop access to function '{fun}' "
             + f"is denied for user '{username}'",
         ):
@@ -3337,7 +3352,7 @@ def test_procedure_privileges(cluster: Cluster):
 
     def check_rename_access_denied(old_name, new_name, username, pwd):
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"Alter access to function '{old_name}' "
             + f"is denied for user '{username}'",
         ):
@@ -3413,14 +3428,14 @@ def test_procedure_privileges(cluster: Cluster):
 
     # Check that user can't grant create procedure (only admin can)
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=f"Grant to routine '' is denied for user '{alice}'",
     ):
         grant_procedure("create", bob, as_user=alice, as_pwd=alice_pwd)
 
     # Check that user can't grant execute procedure (only admin can)
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=f"Grant to routine '' is denied for user '{alice}'",
     ):
         grant_procedure("execute", bob, as_user=alice, as_pwd=alice_pwd)
@@ -3453,21 +3468,21 @@ def test_procedure_privileges(cluster: Cluster):
 
     # check we can't grant create specific procedure
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="sbroad: invalid privilege",
     ):
         grant_procedure("create", bob, "FOO")
 
     # check we can't grant to non-existing user
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Nor user, neither role with name pasha exists",
     ):
         grant_procedure("drop", "pasha", "FOO")
 
     # check we can't revoke from non-existing user
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Nor user, neither role with name pasha exists",
     ):
         revoke_procedure("execute", "pasha", "FOO")
@@ -3497,7 +3512,7 @@ def test_rename_user(cluster: Cluster):
 
     # Existed name
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=f'User with name "{biba}" exists. Unable to rename user "{boba}"',
     ):
         data = i1.sudo_sql(
@@ -3509,7 +3524,7 @@ def test_rename_user(cluster: Cluster):
 
     # Without privileges they cannot rename each other
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="""\
 Alter access to user 'boba' is denied for user 'biba'\
 """,
@@ -3599,7 +3614,7 @@ def test_index(cluster: Cluster):
     invalid_unique = (
         "unique index for the sharded table must duplicate its sharding key columns"
     )
-    with pytest.raises(ReturnError, match=invalid_unique):
+    with pytest.raises(TarantoolError, match=invalid_unique):
         i1.sql(""" create unique index i2 on t using tree (b) """)
 
     # Successful unique tree index creation on the sharding key.
@@ -3615,25 +3630,25 @@ def test_index(cluster: Cluster):
 
     # Fail to create a tree index with wrong options.
     invalid_tree_option = "index type tree does not support option"
-    with pytest.raises(ReturnError, match=invalid_tree_option):
+    with pytest.raises(TarantoolError, match=invalid_tree_option):
         i1.sql(""" create index i5 on t using tree (c) with (distance = euclid) """)
-    with pytest.raises(ReturnError, match=invalid_tree_option):
+    with pytest.raises(TarantoolError, match=invalid_tree_option):
         i1.sql(""" create index i6 on t using tree (c) with (dimension = 42) """)
 
     # RTree indexes can't be created via SQL at the moment as they require array columns
     # that are not supported yet.
     non_array_rtree = "index type rtree does not support column type"
-    with pytest.raises(ReturnError, match=non_array_rtree):
+    with pytest.raises(TarantoolError, match=non_array_rtree):
         i1.sql(""" create index i11 on t using rtree (b) """)
 
     # Fail to create an rtree index from nullable columns.
     nullable_rtree = "index type rtree does not support nullable columns"
-    with pytest.raises(ReturnError, match=nullable_rtree):
+    with pytest.raises(TarantoolError, match=nullable_rtree):
         i1.sql(""" create index i12 on t using rtree (c) """)
 
     # Fail to create an rtree index with wrong options.
     invalid_rtree_option = "index type rtree does not support option"
-    with pytest.raises(ReturnError, match=invalid_rtree_option):
+    with pytest.raises(TarantoolError, match=invalid_rtree_option):
         i1.sql(""" create index i13 on t using rtree (b) with (hint = true) """)
 
     # Successful bitset index creation.
@@ -3641,17 +3656,17 @@ def test_index(cluster: Cluster):
 
     # Fail to create a bitset index from nullable columns.
     nullable_bitset = "index type bitset does not support nullable columns"
-    with pytest.raises(ReturnError, match=nullable_bitset):
+    with pytest.raises(TarantoolError, match=nullable_bitset):
         i1.sql(""" create index i15 on t using bitset (c) """)
 
     # Fail to create unique bitset index.
     unique_bitset = "index type bitset does not support unique indexes"
-    with pytest.raises(ReturnError, match=unique_bitset):
+    with pytest.raises(TarantoolError, match=unique_bitset):
         i1.sql(""" create unique index i16 on t using bitset (a) """)
 
     # Fail to create bitset index with column types other then string, number or varbinary.
     invalid_bitset = "index type bitset does not support column type"
-    with pytest.raises(ReturnError, match=invalid_bitset):
+    with pytest.raises(TarantoolError, match=invalid_bitset):
         i1.sql(""" create index i17 on v using bitset (a) """)
 
     # Successful hash index creation.
@@ -3660,18 +3675,18 @@ def test_index(cluster: Cluster):
 
     # Fail to create a non-unique hash index.
     non_unique_hash = "index type hash does not support non-unique indexes"
-    with pytest.raises(ReturnError, match=non_unique_hash):
+    with pytest.raises(TarantoolError, match=non_unique_hash):
         i1.sql(""" create index i18 on t using hash (c) """)
 
     # Fail to create an index on memtex table with vinyl options.
     invalid_memtx = "table engine memtx does not support option"
-    with pytest.raises(ReturnError, match=invalid_memtx):
+    with pytest.raises(TarantoolError, match=invalid_memtx):
         i1.sql(""" create index i7 on t (b) with (page_size = 42) """)
-    with pytest.raises(ReturnError, match=invalid_memtx):
+    with pytest.raises(TarantoolError, match=invalid_memtx):
         i1.sql(""" create index i8 on t (b) with (range_size = 42) """)
-    with pytest.raises(ReturnError, match=invalid_memtx):
+    with pytest.raises(TarantoolError, match=invalid_memtx):
         i1.sql(""" create index i9 on t (b) with (run_count_per_level = 42) """)
-    with pytest.raises(ReturnError, match=invalid_memtx):
+    with pytest.raises(TarantoolError, match=invalid_memtx):
         i1.sql(""" create index i10 on t (b) with (run_size_ratio = 0.1) """)
 
     # Successful index drop.
@@ -3688,7 +3703,7 @@ def test_index(cluster: Cluster):
 
     ddl = i1.sql(""" create index i19 on t (b)""")
     assert ddl["row_count"] == 1
-    with pytest.raises(ReturnError, match="index I19 already exists"):
+    with pytest.raises(TarantoolError, match="index I19 already exists"):
         i1.sql(""" create index i19 on v (b)""")
 
 
@@ -3809,12 +3824,12 @@ def test_order_by(cluster: Cluster):
     ]
 
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Ordering index \\(4\\) is bigger than child projection output length \\(3\\)",
     ):
         i1.sql(""" select * from "null_t" order by 4 """)
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match="Using parameter as a standalone ORDER BY expression doesn't influence sorting",
     ):
         i1.sql(""" select * from "null_t" order by ? """)
@@ -4038,7 +4053,7 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
 
     for table_name, other_table_name in zip(table_names, reversed(table_names)):
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"""index {table_name}_bucket_id already exists with a different signature""",
         ):
             # try to create existing index
@@ -4048,7 +4063,7 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
             )
 
         with pytest.raises(
-            ReturnError,
+            TarantoolError,
             match=f"""index {other_table_name}_bucket_id already exists""",
         ):
             # try to create non existing index with existing name

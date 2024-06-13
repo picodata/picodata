@@ -283,24 +283,24 @@ pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
 fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
     match e {
         Error::Sbroad(SbroadError::ParsingError(entity, message)) if message.contains('\n') => {
- // Tweak the error message so that tarantool's yaml handler
-                // prints it in human-readable form
-                //
-                // `+ 20` for message prefix
-                // `+ 1` for one extra '\n' at the end
-                let mut buffer = String::with_capacity(message.len() + 21);
-                buffer.push_str("rule parsing error: ");
-                for line in message.lines() {
-                    // There must not be any spaces at the end of lines,
-                    // otherwise the string will be formatted incorrectly
-                    buffer.push_str(line.trim_end());
-                    buffer.push('\n');
-                }
-                // There must be at least one empty line so that tarantool
-                // formats the string correctly (it's a special hack they use
-                // for the help feature in the lua console).
+            // Tweak the error message so that tarantool's yaml handler
+            // prints it in human-readable form
+            //
+            // `+ 20` for message prefix
+            // `+ 1` for one extra '\n' at the end
+            let mut buffer = String::with_capacity(message.len() + 21);
+            buffer.push_str("rule parsing error: ");
+            for line in message.lines() {
+                // There must not be any spaces at the end of lines,
+                // otherwise the string will be formatted incorrectly
+                buffer.push_str(line.trim_end());
                 buffer.push('\n');
-                BoxError::new(TarantoolErrorCode::SqlUnrecognizedSyntax, buffer).into()
+            }
+            // There must be at least one empty line so that tarantool
+            // formats the string correctly (it's a special hack they use
+            // for the help feature in the lua console).
+            buffer.push('\n');
+            BoxError::new(TarantoolErrorCode::SqlUnrecognizedSyntax, buffer).into()
         }
         e => e,
     }
