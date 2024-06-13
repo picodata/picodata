@@ -2,6 +2,7 @@ from conftest import Instance
 from urllib.request import urlopen
 import pytest
 import json
+import requests  # type: ignore
 
 
 @pytest.mark.webui
@@ -79,3 +80,10 @@ def test_webui(instance: Instance):
             "memory": {"usable": 67108864, "used": 33554432},
             "instancesCurrentGradeOnline": 1,
         }
+
+
+@pytest.mark.webui
+def test_metrics_ok(instance: Instance) -> None:
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    response = requests.get(f"http://{http_listen}/metrics")
+    assert response.ok
