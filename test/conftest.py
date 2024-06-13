@@ -32,7 +32,7 @@ from typing import (
     Type,
 )
 from itertools import count
-from contextlib import contextmanager, suppress
+from contextlib import closing, contextmanager, suppress
 from dataclasses import dataclass, field
 import tarantool
 from tarantool.error import (  # type: ignore
@@ -95,8 +95,33 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
                 item.add_marker(skip)
 
 
+def can_bind(port):
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((BASE_HOST, port))
+        except socket.error:
+            eprint(f"Cant bind to {port}. Skipping")
+            return False
+        return True
+
+
+class PortDistributor:
+    def __init__(self, start: int, end: int) -> None:
+        self.gen = iter(range(start, end))
+
+    def get(self) -> int:
+        for port in self.gen:
+            if can_bind(port):
+                return port
+
+        raise Exception(
+            "No more free ports left in configured range, consider enlarging it"
+        )
+
+
 @pytest.fixture(scope="session")
-def port_range(xdist_worker_number: int) -> tuple[int, int]:
+def port_distributor(xdist_worker_number: int) -> PortDistributor:
     """
     Return pair (base_port, max_port) available for current pytest subprocess.
     Ensures that all ports in this range are not in use.
@@ -104,21 +129,14 @@ def port_range(xdist_worker_number: int) -> tuple[int, int]:
 
     Note: this function has a side-effect.
     """
-
     assert isinstance(xdist_worker_number, int)
     assert xdist_worker_number >= 0
     base_port = BASE_PORT + xdist_worker_number * PORT_RANGE
 
-    max_port = base_port + PORT_RANGE - 1
+    max_port = base_port + PORT_RANGE
     assert max_port <= 65535
 
-    for port in range(base_port, max_port + 1):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind((BASE_HOST, port))
-        s.close()
-
-    return (base_port, max_port)
+    return PortDistributor(start=base_port, end=max_port)
 
 
 @pytest.fixture(scope="session")
@@ -560,7 +578,7 @@ class Instance:
         # fmt: on
 
     def __repr__(self):
-        return f"Instance({self.instance_id}, listen={self.listen})"
+        return f"Instance({self.instance_id}, listen={self.listen} cluster={self.cluster_id})"
 
     def __hash__(self):
         return hash((self.cluster_id, self.instance_id))
@@ -1270,14 +1288,13 @@ class Cluster:
     data_dir: str
     plugin_dir: str
     base_host: str
-    base_port: int
-    max_port: int
+    port_distributor: PortDistributor
     instances: list[Instance] = field(default_factory=list)
     config_path: str | None = None
     service_password_file: str | None = None
 
     def __repr__(self):
-        return f'Cluster("{self.base_host}:{self.base_port}", n={len(self.instances)})'
+        return f'Cluster("{self.base_host}", n={len(self.instances)})'
 
     def __getitem__(self, item: int) -> Instance:
         return self.instances[item]
@@ -1372,8 +1389,12 @@ class Cluster:
             case _:
                 raise Exception("unreachable")
 
-        port = self.base_port + i
-        assert self.base_port <= port <= self.max_port
+        port = self.port_distributor.get()
+        if not self.instances:
+            bootstrap_port = port
+        else:
+            assert isinstance(self.instances[0].port, int)  # for mypy
+            bootstrap_port = self.instances[0].port
 
         instance = Instance(
             binary_path=self.binary_path,
@@ -1385,7 +1406,7 @@ class Cluster:
             plugin_dir=self.plugin_dir,
             host=self.base_host,
             port=port,
-            peers=peers or [f"{self.base_host}:{self.base_port + 1}"],
+            peers=peers or [f"{self.base_host}:{bootstrap_port}"],
             color=CLUSTER_COLORS[len(self.instances) % len(CLUSTER_COLORS)],
             failure_domain=failure_domain,
             init_replication_factor=init_replication_factor,
@@ -1791,32 +1812,30 @@ def cluster_ids(xdist_worker_number) -> Iterator[str]:
 
 @pytest.fixture
 def cluster(
-    binary_path, tmpdir, cluster_ids, port_range
+    binary_path, tmpdir, cluster_ids, port_distributor
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     plugin_dir = os.getcwd() + "/test/testplug"
-    base_port, max_port = port_range
     cluster = Cluster(
         binary_path=binary_path,
         id=next(cluster_ids),
         data_dir=tmpdir,
         plugin_dir=plugin_dir,
         base_host=BASE_HOST,
-        base_port=base_port,
-        max_port=max_port,
+        port_distributor=port_distributor,
     )
     yield cluster
     cluster.kill()
 
 
 @pytest.fixture
-def instance(cluster: Cluster, pytestconfig) -> Generator[Instance, None, None]:
+def instance(cluster: Cluster, port_distributor: PortDistributor, pytestconfig) -> Generator[Instance, None, None]:
     """Returns a deployed instance forming a single-node cluster."""
     instance = cluster.add_instance(wait_online=False)
 
     has_webui = bool(pytestconfig.getoption("--with-webui"))
     if has_webui:
-        listen = f"{cluster.base_host}:{cluster.base_port + 80}"
+        listen = f"{cluster.base_host}:{port_distributor.get()}"
         instance.env["PICODATA_HTTP_LISTEN"] = listen
 
     password_file = f"{cluster.data_dir}/password.txt"

@@ -1,4 +1,4 @@
-from conftest import Cluster, Instance, log_crawler, color
+from conftest import Cluster, Instance, PortDistributor, log_crawler, color
 import os
 import subprocess
 
@@ -29,9 +29,9 @@ instance:
     assert instance.eval("return box.cfg.memtx_memory") == 42069
 
 
-def test_pico_config(cluster: Cluster):
+def test_pico_config(cluster: Cluster, port_distributor: PortDistributor):
     host = cluster.base_host
-    port = cluster.base_port + 1
+    port = port_distributor.get()
     listen = f"{host}:{port}"
     data_dir = f"{cluster.data_dir}/my-instance"
     cluster.set_config_file(

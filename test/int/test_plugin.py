@@ -1,7 +1,10 @@
-import pytest
+from dataclasses import dataclass, field
 import time
+from typing import Any, Dict, List, Optional
+
+import pytest
+
 from conftest import Cluster, ReturnError, retrying, Instance, TarantoolError
-from typing import Any, Optional
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -21,30 +24,27 @@ _PLUGIN_WITH_MIGRATION_SERVICES = ["testservice_2"]
 # ---------------------------------- Test helper classes {-----------------------------------------
 
 
+@dataclass
 class PluginReflection:
     """PluginReflection used to describe the expected state of the plugin"""
 
     # plugin name
     name: str
     # list of plugin services
-    services: list[str]
+    services: List[str]
     # instances in cluster
-    instances: list[Instance]
+    instances: List[Instance]
     # plugin topology
-    topology: dict[Instance, list[str]] = {}
+    topology: Dict[Instance, List[str]] = field(default_factory=dict)
     # if True - assert_synced checks that plugin are installed
     installed: bool = False
     # if True - assert_synced checks that plugin are enabled
     enabled: bool = False
     # plugin data [table -> tuples] map
-    data: dict[str, Optional[list[Any]]] = {}
+    data: Dict[str, Optional[List[Any]]] = field(default_factory=dict)
 
-    def __init__(self, name: str, services: list[str], *instances):
-        """Create reflection with empty topology"""
-        self.name = name
-        self.services = services
-        self.instances = list(instances)
-        for i in instances:
+    def __post__init__(self):
+        for i in self.instances:
             self.topology[i] = []
 
     @staticmethod
@@ -53,9 +53,9 @@ class PluginReflection:
         topology = {}
         for i in instances:
             topology[i] = _PLUGIN_SERVICES
-        return PluginReflection(_PLUGIN, _PLUGIN_SERVICES, *instances).set_topology(
-            topology
-        )
+        return PluginReflection(
+            name=_PLUGIN, services=_PLUGIN_SERVICES, instances=list(instances)
+        ).set_topology(topology)
 
     def install(self, installed: bool):
         self.installed = installed
@@ -217,13 +217,13 @@ def test_invalid_manifest_plugin(cluster: Cluster):
         ReturnError, match="Error while discovering manifest for plugin"
     ):
         i1.call("pico.install_plugin", "non-existent")
-    PluginReflection("non-existent", [], i1, i2).assert_synced()
+    PluginReflection("non-existent", [], [i1, i2]).assert_synced()
 
     # try to use invalid manifest (with undefined plugin name)
     with pytest.raises(ReturnError, match="missing field `name`"):
         i1.call("pico.install_plugin", "testplug_broken_manifest_1")
     PluginReflection(
-        "testplug_broken_manifest_1", _PLUGIN_SERVICES, i1, i2
+        "testplug_broken_manifest_1", _PLUGIN_SERVICES, [i1, i2]
     ).assert_synced()
 
     # try to use invalid manifest (with invalid default configuration)
@@ -242,7 +242,7 @@ def test_invalid_manifest_plugin(cluster: Cluster):
             _DEFAULT_TIER,
         )
         i1.call("pico.enable_plugin", "testplug_broken_manifest_2")
-    PluginReflection("testplug_broken_manifest_2", _PLUGIN_SERVICES, i1, i2).install(
+    PluginReflection("testplug_broken_manifest_2", _PLUGIN_SERVICES, [i1, i2]).install(
         True
     ).assert_synced()
 
@@ -252,8 +252,7 @@ def test_invalid_manifest_plugin(cluster: Cluster):
     PluginReflection(
         "testplug_broken_manifest_3",
         ["testservice_1", "testservice_2", "testservice_3"],
-        i1,
-        i2,
+        [i1, i2],
     ).assert_synced()
     PluginReflection.assert_cb_called("testservice_1", "on_start", 0, i1, i2)
 
@@ -274,7 +273,7 @@ def test_plugin_install(cluster: Cluster):
     """
 
     i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    expected_state = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
 
     # check default behaviour
     i1.call("pico.install_plugin", _PLUGIN)
@@ -415,10 +414,12 @@ def test_plugin_remove(cluster: Cluster):
 def test_two_plugin_install_and_enable(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     p1_ref = PluginReflection.default(i1, i2)
-    topology = {i1: _PLUGIN_SMALL_SERVICES, i2: _PLUGIN_SMALL_SERVICES}
     p2_ref = PluginReflection(
-        _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2
-    ).set_topology(topology)
+        _PLUGIN_SMALL,
+        _PLUGIN_SMALL_SERVICES,
+        [i1, i2],
+        topology={i1: _PLUGIN_SMALL_SERVICES, i2: _PLUGIN_SMALL_SERVICES},
+    )
 
     install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
     p1_ref = p1_ref.install(True).enable(True)
@@ -512,7 +513,7 @@ def test_plugin_disable_error_on_stop(cluster: Cluster):
 
 def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
 
     # inject error into second instance
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
@@ -551,7 +552,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
 
 def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
 
     # inject timeout into second instance
     plugin_ref.inject_error("testservice_1", "on_start_sleep_sec", 3, i2)
@@ -607,7 +608,7 @@ _NO_DATA: dict[str, None] = {
 def test_migration_on_plugin_install(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
@@ -624,7 +625,7 @@ def test_migration_on_plugin_install(cluster: Cluster):
 def test_migration_file_invalid_ext(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     # the first file in a migration list has an invalid extension
@@ -639,7 +640,7 @@ def test_migration_file_invalid_ext(cluster: Cluster):
 def test_migration_apply_err(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     # second file in a migration list applied with error
@@ -655,7 +656,7 @@ def test_migration_apply_err(cluster: Cluster):
 def test_migration_client_down(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, i1, i2
+        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     # client down while applied migration
@@ -904,14 +905,15 @@ def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4)
     p1_ref = PluginReflection.default(i1, i2, i3, i4)
     p2_ref = PluginReflection(
-        _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2, i3, i4
-    ).set_topology(
-        {
+        _PLUGIN_SMALL,
+        _PLUGIN_SMALL_SERVICES,
+        instances=[i1, i2, i3, i4],
+        topology={
             i1: _PLUGIN_SMALL_SERVICES,
             i2: _PLUGIN_SMALL_SERVICES,
             i3: _PLUGIN_SMALL_SERVICES,
             i4: _PLUGIN_SMALL_SERVICES,
-        }
+        },
     )
 
     # install and enable two plugins
@@ -933,8 +935,11 @@ def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
     p3 = "testplug_small_svc2"
     p3_svc = ["testservice_2"]
     # add third plugin
-    p3_ref = PluginReflection(p3, p3_svc, i1, i2, i3, i4).set_topology(
-        {i1: p3_svc, i2: p3_svc, i3: p3_svc, i4: p3_svc}
+    p3_ref = PluginReflection(
+        p3,
+        p3_svc,
+        instances=[i1, i2, i3, i4],
+        topology={i1: p3_svc, i2: p3_svc, i3: p3_svc, i4: p3_svc},
     )
     install_and_enable_plugin(i1, p3, p3_svc)
     p3_ref = p3_ref.install(True).enable(True)
@@ -981,7 +986,7 @@ def test_four_plugin_install_and_enable2(cluster: Cluster):
 
 def test_set_topology(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
 
     # set topology to non-existent plugin is forbidden
     with pytest.raises(
@@ -1036,7 +1041,7 @@ def test_set_topology_for_single_plugin(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
@@ -1063,8 +1068,8 @@ def test_set_topology_for_multiple_plugins(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    p1_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
-    p2_ref = PluginReflection(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2, i3)
+    p1_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
+    p2_ref = PluginReflection(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, [i1, i2, i3])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.install_plugin", _PLUGIN_SMALL)
@@ -1105,7 +1110,7 @@ def test_update_topology_1(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
@@ -1151,7 +1156,7 @@ def test_update_topology_2(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
@@ -1194,7 +1199,7 @@ def test_update_topology_3(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
@@ -1236,8 +1241,8 @@ def test_set_topology_after_compaction(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    p1_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2, i3)
-    p2_ref = PluginReflection(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, i1, i2, i3)
+    p1_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
+    p2_ref = PluginReflection(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, [i1, i2, i3])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.install_plugin", _PLUGIN_SMALL)
@@ -1300,7 +1305,7 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=True, tier="red")
     i2 = cluster.add_instance(wait_online=True, tier="blue")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, i1, i2)
+    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
 
     i1.call("pico.install_plugin", _PLUGIN)
     i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
