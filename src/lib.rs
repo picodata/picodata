@@ -325,6 +325,9 @@ fn set_console_prompt() {
 }
 
 fn redirect_interactive_sql() {
+    // set_sql_executor still needs some kind of lua wrapper around our Proc API
+    //  - `.proc_dispatch_sql`. So this might be the only case where we still need
+    // `pico.sql`
     tarantool::exec(
         r#"
         local console = require('console')

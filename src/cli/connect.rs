@@ -223,7 +223,15 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
                 }
             }
             Command::Expression(line) => {
-                let response = ::tarantool::fiber::block_on(client.call("pico.sql", &(line,)))?;
+                let response = ::tarantool::fiber::block_on(client.call(
+                    ".proc_sql_dispatch",
+                    &(
+                        line,
+                        Vec::<()>::new(),
+                        Option::<()>::None,
+                        Option::<()>::None,
+                    ),
+                ))?;
 
                 let res: ResultSet = response.decode().map_err(|err| {
                     ReplError::Other(format!("error occured while processing output: {}", err))
