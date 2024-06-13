@@ -44,7 +44,7 @@ def test_extended_dml(pg_client: PgClient):
 
     assert len(pg_client.statements["available"]) == 0
     assert len(pg_client.portals["available"]) == 0
-    dml = """ insert into "t" values (?, ?) """
+    dml = """ insert into "t" values ($1::int, $2::text) """
     pg_client.parse("", dml)
     assert len(pg_client.statements["available"]) == 1
     assert len(pg_client.portals["available"]) == 0
@@ -54,7 +54,7 @@ def test_extended_dml(pg_client: PgClient):
 
     desc = pg_client.describe_stmt("")
     # params were not specified, so they are treated as text
-    assert desc["param_oids"] == [25, 25]
+    assert desc["param_oids"] == [20, 25]
     assert desc["query_type"] == 2
     assert desc["command_tag"] == 9
     assert desc["metadata"] == []
@@ -333,38 +333,38 @@ def test_param_oids(pg_client: PgClient):
     """
     )
 
-    sql = """ insert into "t" values (?, ?) """
-    pg_client.parse("", sql, [1, 2])
+    sql = """ insert into "t" values ($1, $2) """
+    pg_client.parse("", sql, [20, 25])
     pg_client.bind("", "", [1, "a"], [])
     desc = pg_client.describe_stmt("")
-    assert desc["param_oids"] == [1, 2]
+    assert desc["param_oids"] == [20, 25]
     assert desc["query_type"] == 2
     assert desc["command_tag"] == 9
     assert desc["metadata"] == []
 
-    sql = """ insert into "t" values (?, ?) """
-    pg_client.parse("", sql, [42, 42])
+    sql = """ insert into "t" values ($1, $2) """
+    pg_client.parse("", sql, [20, 25])
     pg_client.bind("", "", [1, "a"], [])
     desc = pg_client.describe_stmt("")
-    assert desc["param_oids"] == [42, 42]
+    assert desc["param_oids"] == [20, 25]
     assert desc["query_type"] == 2
     assert desc["command_tag"] == 9
     assert desc["metadata"] == []
 
-    sql = """ insert into "t" values (1, ?) """
-    pg_client.parse("", sql, [1])
+    sql = """ insert into "t" values (1, $1) """
+    pg_client.parse("", sql, [25])
     pg_client.bind("", "", [1, "a"], [])
     desc = pg_client.describe_stmt("")
-    assert desc["param_oids"] == [1]
+    assert desc["param_oids"] == [25]
     assert desc["query_type"] == 2
     assert desc["command_tag"] == 9
     assert desc["metadata"] == []
 
-    sql = """ insert into "t" values (?, ?) """
+    sql = """ insert into "t" values ($1::int, $2::text) """
     pg_client.parse("", sql)
     pg_client.bind("", "", [1, "a"], [])
     desc = pg_client.describe_stmt("")
-    assert desc["param_oids"] == [25, 25]
+    assert desc["param_oids"] == [20, 25]
     assert desc["query_type"] == 2
     assert desc["command_tag"] == 9
     assert desc["metadata"] == []

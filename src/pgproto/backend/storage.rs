@@ -7,14 +7,16 @@ use crate::{
         error::{PgError, PgErrorCode, PgResult},
         value::{FieldFormat, PgValue},
     },
+    sql::{dispatch, router::RouterRuntime},
     storage::PropertyName,
     tlog,
     traft::node,
 };
+use postgres_types::{Oid, Type as PgType};
 use rmpv::Value;
 use sbroad::{
     executor::{ir::ExecutionPlan, Query},
-    ir::Plan,
+    ir::{relation::Type as SbroadType, Plan},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -30,9 +32,6 @@ use tarantool::{
     proc::{Return, ReturnMsgpack},
     tuple::{FunctionCtx, Tuple},
 };
-
-use crate::sql::dispatch;
-use crate::sql::router::RouterRuntime;
 
 pub type ClientId = u32;
 
@@ -227,8 +226,6 @@ where
     result
 }
 
-pub type Oid = u32;
-
 #[derive(Debug, Default)]
 pub struct StatementInner {
     id: String,
@@ -248,10 +245,10 @@ impl StatementInner {
     fn new(
         id: String,
         query_pattern: String,
-        plan: Plan,
+        mut plan: Plan,
         specified_param_oids: Vec<u32>,
     ) -> PgResult<Self> {
-        let param_oids = derive_param_oids(&plan, specified_param_oids)?;
+        let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
         Ok(Self {
             id,
@@ -360,30 +357,61 @@ impl Drop for StatementHolder {
     }
 }
 
-// TODO: use const from pgwire once pgproto is merged to picodata
-const TEXT_OID: u32 = 25;
+pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> PgResult<postgres_types::Type> {
+    match ty {
+        SbroadType::Boolean => Ok(PgType::BOOL),
+        SbroadType::Decimal => Ok(PgType::NUMERIC),
+        SbroadType::Double | SbroadType::Number => Ok(PgType::FLOAT8),
+        SbroadType::Integer | SbroadType::Unsigned => Ok(PgType::INT8),
+        SbroadType::String => Ok(PgType::TEXT),
+        SbroadType::Uuid => Ok(PgType::UUID),
+        SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(PgType::JSON),
+        SbroadType::Datetime => Ok(PgType::TIMESTAMPTZ),
+        unsupported_type => Err(PgError::FeatureNotSupported(unsupported_type.to_string())),
+    }
+}
 
-fn derive_param_oids(plan: &Plan, mut param_oids: Vec<Oid>) -> PgResult<Vec<Oid>> {
-    let params_count = plan.get_param_set().len();
-    if params_count < param_oids.len() {
-        return Err(PgError::ProtocolViolation(format!(
-            "query has {} parameters, but {} were given",
-            params_count,
-            param_oids.len()
-        )));
+pub(super) fn pg_type_to_sbroad(ty: &PgType) -> PgResult<SbroadType> {
+    match ty {
+        &PgType::BOOL => Ok(SbroadType::Boolean),
+        &PgType::NUMERIC => Ok(SbroadType::Decimal),
+        &PgType::FLOAT8 => Ok(SbroadType::Double),
+        &PgType::INT8 | &PgType::INT4 | &PgType::INT2 => Ok(SbroadType::Integer),
+        &PgType::TEXT | &PgType::VARCHAR => Ok(SbroadType::String),
+        &PgType::UUID => Ok(SbroadType::Uuid),
+        &PgType::TIMESTAMPTZ => Ok(SbroadType::Datetime),
+        unsupported_type => Err(PgError::FeatureNotSupported(unsupported_type.to_string())),
+    }
+}
+
+pub fn derive_param_oids(plan: &mut Plan, param_oids: Vec<Oid>) -> PgResult<Vec<Oid>> {
+    let client_types = param_oids
+        .iter()
+        .map(|oid| {
+            PgType::from_oid(*oid)
+                .map(|ty| {
+                    pg_type_to_sbroad(&ty)
+                        .map_err(|_| PgError::FeatureNotSupported(format!("{ty} parameters")))
+                })
+                .transpose()
+        })
+        .collect::<PgResult<Vec<_>>>()?;
+    let inferred_types = plan.infer_pg_parameters_types(&client_types)?;
+    let mut oids = inferred_types
+        .iter()
+        .map(|ty| sbroad_type_to_pg(ty).map(|pg| pg.oid()))
+        .collect::<PgResult<Vec<_>>>()?;
+    // Sbroad does not support PgType::INT2 and PgType::INT4 types, so we map them to
+    // Sborad::Integer (8-byte integer), which is then mapped back to PgType::INT8, potentially
+    // losing the original type information. Therefore, we need to restore the original types.
+    for (n, oid) in param_oids.iter().enumerate() {
+        if *oid == PgType::INT8.oid() || *oid == PgType::INT4.oid() || *oid == PgType::INT2.oid() {
+            assert!(inferred_types[n] == SbroadType::Integer);
+            oids[n] = *oid;
+        }
     }
 
-    // Postgres derives oids of unspecified parameters depending on the context.
-    // If oid cannot be derived, it is treated as text.
-    let text_oid = TEXT_OID;
-    param_oids.iter_mut().for_each(|oid| {
-        // 0 means unspecified type
-        if *oid == 0 {
-            *oid = text_oid;
-        }
-    });
-    param_oids.resize(params_count, text_oid);
-    Ok(param_oids)
+    Ok(oids)
 }
 
 #[derive(Debug, Default)]
@@ -591,5 +619,46 @@ impl UserPortalNames {
 impl Return for UserPortalNames {
     fn ret(self, ctx: FunctionCtx) -> c_int {
         ReturnMsgpack(self).ret(ctx)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{pg_type_to_sbroad, sbroad_type_to_pg};
+    use postgres_types::Type as PgType;
+    use sbroad::ir::relation::Type as SbroadType;
+
+    #[test]
+    fn test_sbroad_type_to_pg() {
+        for (sbroad, expected_pg) in vec![
+            (SbroadType::Array, PgType::JSON),
+            (SbroadType::Decimal, PgType::NUMERIC),
+            (SbroadType::Double, PgType::FLOAT8),
+            (SbroadType::Integer, PgType::INT8),
+            (SbroadType::Unsigned, PgType::INT8),
+            (SbroadType::String, PgType::TEXT),
+            (SbroadType::Uuid, PgType::UUID),
+            (SbroadType::Any, PgType::JSON),
+            (SbroadType::Array, PgType::JSON),
+            (SbroadType::Map, PgType::JSON),
+        ] {
+            assert!(sbroad_type_to_pg(&sbroad).unwrap() == expected_pg)
+        }
+    }
+
+    #[test]
+    fn test_pg_type_to_sbroad() {
+        for (pg, expected_sbroad) in vec![
+            (PgType::BOOL, SbroadType::Boolean),
+            (PgType::NUMERIC, SbroadType::Decimal),
+            (PgType::FLOAT8, SbroadType::Double),
+            (PgType::INT8, SbroadType::Integer),
+            (PgType::INT4, SbroadType::Integer),
+            (PgType::INT2, SbroadType::Integer),
+            (PgType::TEXT, SbroadType::String),
+            (PgType::UUID, SbroadType::Uuid),
+        ] {
+            assert!(pg_type_to_sbroad(&pg).unwrap() == expected_sbroad)
+        }
     }
 }

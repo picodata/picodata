@@ -184,7 +184,7 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::Values { .. }
                 | Relational::ValuesRow { .. } => Ok(CommandTag::Select),
             },
-            Node::Expression(_) | Node::Parameter => Err(SbroadError::Invalid(
+            Node::Expression(_) | Node::Parameter(_) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(smol_str::format_smolstr!(
                     "{node:?} can't be converted to CommandTag"

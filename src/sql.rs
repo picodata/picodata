@@ -190,7 +190,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
 
         // XXX: add Node::take_node method to simplify the following 2 lines
         let ir_node = ir_plan_mut.get_mut_node(top_id)?;
-        let ir_node = std::mem::replace(ir_node, IrNode::Parameter);
+        let ir_node = std::mem::replace(ir_node, IrNode::Parameter(None));
         let node = node::global()?;
         let result = reenterable_schema_change_request(node, ir_node)?;
         let tuple = Tuple::new(&(result,))?;
@@ -222,7 +222,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 let mut params: Vec<Value> = Vec::with_capacity(values.len());
                 for (pos, value_id) in values.into_iter().enumerate() {
                     let constant_node = ir_plan.get_mut_node(value_id)?;
-                    let constant_node = std::mem::replace(constant_node, IrNode::Parameter);
+                    let constant_node = std::mem::replace(constant_node, IrNode::Parameter(None));
                     let value = match constant_node {
                         IrNode::Expression(Expression::Constant { value, .. }) => value,
                         _ => {

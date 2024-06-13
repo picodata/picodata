@@ -3,7 +3,6 @@ use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::{api::results::DataRowEncoder, error::PgWireResult, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::{LuaValue, Value as SbroadValue};
-use serde::de::DeserializeOwned;
 use smol_str::{StrExt, ToSmolStr};
 use std::{
     error::Error,
