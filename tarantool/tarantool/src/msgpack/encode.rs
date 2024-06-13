@@ -90,6 +90,8 @@ impl Context {
 }
 
 /// Defines the (de)serialization style for structs.
+/// NOTE: switching context on tuple structs to `ForceAsMap`
+/// will be silently ignored and forced as `MP_ARRAY`.
 ///
 /// See [`Encode`], [`Decode`].
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -99,6 +101,9 @@ pub enum StructStyle {
     Default,
     /// Overrides struct level attributes such as `as_map`.
     /// Forces the struct and all nested structs to be serialized as `MP_MAP`.
+    ///
+    /// Switching context on tuple structs to `ForceAsMap`
+    /// will be silently ignored and forced as `MP_ARRAY`.
     ForceAsMap,
     /// Overrides struct level attributes such as `as_map`.
     /// Forces the struct and all nested struct to be serialized as `MP_ARRAY`.
