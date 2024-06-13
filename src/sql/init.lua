@@ -43,7 +43,10 @@ local function sql(...)
     )
 
     if ok == false then
-        return nil, tostring(res)
+        if res.code == box.error.SQL_SYNTAX_NEAR_TOKEN then
+            res = tostring(res)
+        end
+        return nil, res
     end
 
     return helper.format_result(res[1])

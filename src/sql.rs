@@ -42,6 +42,8 @@ use tarantool::schema::function::func_next_reserved_id;
 use crate::storage::Clusterwide;
 use ::tarantool::access_control::{box_access_check_space, PrivType};
 use ::tarantool::auth::{AuthData, AuthDef, AuthMethod};
+use ::tarantool::error::BoxError;
+use ::tarantool::error::TarantoolErrorCode;
 use ::tarantool::proc;
 use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
@@ -285,12 +287,14 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
     let res = dispatch_sql_query(encoded_params);
     res.map_err(|e| {
         match e {
-            Error::Sbroad(SbroadError::ParsingError(entity, message)) if message.contains('\n') => {
+            Error::Sbroad(SbroadError::ParsingError(_, message)) if message.contains('\n') => {
                 // Tweak the error message so that tarantool's yaml handler
                 // prints it in human-readable form
                 //
-                // `+ 1` here for one extra '\n' at the end
-                let mut buffer = String::with_capacity(message.len() + 1);
+                // `+ 20` for message prefix
+                // `+ 1` for one extra '\n' at the end
+                let mut buffer = String::with_capacity(message.len() + 21);
+                buffer.push_str("rule parsing error: ");
                 for line in message.lines() {
                     // There must not be any spaces at the end of lines,
                     // otherwise the string will be formatted incorrectly
@@ -301,7 +305,7 @@ pub fn dispatch_query(encoded_params: EncodedPatternWithParams) -> traft::Result
                 // formats the string correctly (it's a special hack they use
                 // for the help feature in the lua console).
                 buffer.push('\n');
-                SbroadError::ParsingError(entity, buffer.into()).into()
+                BoxError::new(TarantoolErrorCode::SqlUnrecognizedSyntax, buffer).into()
             }
             e => e,
         }

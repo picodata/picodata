@@ -90,7 +90,7 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     cli.sendline("box.c\t\t")
-    cli.expect_exact("sbroad: rule parsing error:")
+    cli.expect_exact("rule parsing error:")
     cli.expect_exact("picodata> ")
 
     # something happens on completion in Lua mode
@@ -251,7 +251,7 @@ def test_lua_console_sql_error_messages(cluster: Cluster):
         == """---
 - null
 - |+
-  sbroad: rule parsing error:  --> 1:9
+  rule parsing error:  --> 1:9
     |
   1 |  create table foo
     |         ^---
