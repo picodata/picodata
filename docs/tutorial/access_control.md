@@ -145,6 +145,7 @@ Picodata предоставляет несколько встроенных уч
 
 ```sql
 CREATE ROLE "db_admin";
+GRANT READ TABLE TO "db_admin";
 GRANT CREATE TABLE TO "db_admin";
 GRANT CREATE USER TO "db_admin";
 GRANT CREATE ROLE TO "db_admin";
@@ -156,8 +157,8 @@ GRANT "db_admin" to <grantee>
 
 - создавать учетные записи пользователей БД
 - модифицировать, блокировать и удалять учетные записи пользователей БД
-- управлять конфигурацией БД <!-- схемой данных -->
-- назначать права доступа пользователям БД к объектам доступа БД
+- управлять конфигурацией БД через создание и удаление таблиц БД
+- назначать права доступа пользователям БД к таблицам БД
 - создавать резервные копии БД и восстанавливать БД из резервной копии
 - создавать, модифицировать и удалять хранимые процедуры
 
@@ -176,24 +177,15 @@ GRANT "db_admin" to <grantee>
 
 Picodata позволяет наделить пользователя БД следующими правами:
 
-- создавать и манипулировать таблицами БД
-- создавать и манипулировать хранимыми процедурами
+- создавать и манипулировать записями в таблицах БД
 - выполнять хранимые процедуры
 
 Для этого используйте следующие SQL-команды:
 
 ```sql
-GRANT CREATE TABLE TO <grantee>
-GRANT ALTER ON TABLE <table name> TO <grantee>
-GRANT DROP ON TABLE <table name> TO <grantee>
-GRANT READ ON TABLE <table name> TO <grantee>
-GRANT WRITE ON TABLE <table name> TO <grantee>
-
-GRANT CREATE PROCEDURE TO <grantee>
-GRANT ALTER ON PROCEDURE <procedure name> TO <grantee>
-GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
-
-GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
+GRANT WRITE TO TABLE <table name> TO <grantee>;
+GRANT READ TO TABLE <table name> TO <grantee>;
+GRANT EXECUTE PROCEDURE <procedure name> TO <grantee>;
 ```
 
 ### Роли {: #roles }
