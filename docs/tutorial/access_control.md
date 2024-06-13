@@ -160,28 +160,7 @@ GRANT CREATE PROCEDURE TO <grantee>
 - создавать, модифицировать и удалять хранимые процедуры
 
 При создании объекта пользователь становится его владельцем и
-автоматически получает на него следующие права (в зависимости от типа
-объекта):
-
-```sql
--- CREATE TABLE <table name> ...
-GRANT ALTER ON TABLE <table name> TO <owner>
-GRANT DROP ON TABLE <table name> TO <owner>
-GRANT READ ON TABLE <table name> TO <owner>
-GRANT WRITE ON TABLE <table name> TO <owner>
-
--- CREATE USER <user name>
-GRANT ALTER ON USER <user name> TO <owner>
-GRANT DROP ON USER <user name> TO <owner>
-
--- CREATE ROLE <role name>
-GRANT DROP ON ROLE <role name> TO <owner>
-
--- CREATE PROCEDURE <procedure name>
-GRANT ALTER ON PROCEDURE <procedure name> TO <owner>
-GRANT EXECUTE ON PROCEDURE <procedure name> TO <owner>
-GRANT DROP ON PROCEDURE <procedure name> TO <owner>
-```
+автоматически получает на него неотъемлемые полные привилегии.
 
 #### Пользователь БД {: #db_user }
 
