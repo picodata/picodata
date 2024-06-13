@@ -144,10 +144,12 @@ Picodata предоставляет несколько встроенных уч
 набором SQL-команд:
 
 ```sql
-GRANT CREATE TABLE TO <grantee>
-GRANT CREATE USER TO <grantee>
-GRANT CREATE ROLE TO <grantee>
-GRANT CREATE PROCEDURE TO <grantee>
+CREATE ROLE "db_admin";
+GRANT CREATE TABLE TO "db_admin";
+GRANT CREATE USER TO "db_admin";
+GRANT CREATE ROLE TO "db_admin";
+GRANT CREATE PROCEDURE TO "db_admin";
+GRANT "db_admin" to <grantee>
 ```
 
 Это обеспечивает наличие у администратора БД следующих прав:
