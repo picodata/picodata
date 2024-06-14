@@ -220,10 +220,12 @@ async fn send_logs(
         let cert = fs::read(&args.certificate).await?;
         let key = fs::read(&args.private_key).await?;
         let id = reqwest::Identity::from_pkcs8_pem(&cert, &key)?;
-        builder = builder
-            .identity(id)
-            .danger_accept_invalid_certs(true)
-            .use_native_tls();
+        builder = builder.identity(id).use_native_tls();
+
+        #[cfg(test)]
+        {
+            builder = builder.danger_accept_invalid_certs(true);
+        };
     }
 
     if !args.ca_certificate.is_empty() {
