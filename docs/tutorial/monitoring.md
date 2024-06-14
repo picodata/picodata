@@ -89,5 +89,54 @@ box.space._pico_property:get("current_schema_version")
 Каждое изменение схемы данных в кластере приводит к
 увеличению этого номера.
 
-Подробнее о работе с данными в Picodata см. в разделе
-[Работа с данными SQL](sql_examples.md).
+## Метрики инстанса {: #instance_metrics }
+
+Функциональность сбора метрик позволяет получать параметры работы СУБД
+из инстанса Picodata и предоставлять доступ к ним для внешних систем в
+формате Prometheus.
+
+
+### Включение сбора метрик {: #enable_metrics }
+
+Модуль сбора метрик автоматически включается при использовании
+встроенного HTTP-сервера в Picodata. Для этого нужно при запуске
+инстанса использовать параметр `--http-listen` и задать адрес
+веб-сервера. Например:
+
+```shell
+picodata run --http-listen '127.0.0.1:8081'
+```
+
+### Получение метрик {: #access_metrics }
+
+Метрики инстанса Picodata можно получить в консоли, используя `curl`:
+
+```shell
+curl --location 'http://127.0.0.1:8081/metrics'
+```
+
+Для интеграции Picodata с системой мониторинга событий и оповещений
+[Prometheus](https://prometheus.io) настройте новую цель в файле
+`/etc/prometheus/prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['127.0.0.1::9090']
+
+  - job_name: 'picodata'
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8081']
+```
+
+<!-- См. также:
+
+- [Справочник метрик](../reference/metrics.md)
+ -->
