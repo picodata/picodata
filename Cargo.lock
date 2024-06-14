@@ -181,10 +181,10 @@ dependencies = [
  "actix-utils",
  "futures-core",
  "impl-more",
+ "openssl",
  "pin-project-lite",
- "rustls-pki-types",
  "tokio",
- "tokio-rustls",
+ "tokio-openssl",
  "tokio-util",
  "tracing",
 ]
@@ -1580,6 +1580,7 @@ dependencies = [
  "chrono",
  "clap 4.5.4",
  "log",
+ "openssl",
  "reqwest",
  "serde",
  "serde_json",
@@ -4043,6 +4044,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbae76ab933c85776efabc971569dd6119c580d8f5d448769dec1764bf796ef2"
 dependencies = [
  "native-tls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-openssl"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ffab79df67727f6acf57f1ff743091873c24c579b1e2ce4d8f53e47ded4d63d"
+dependencies = [
+ "futures-util",
+ "openssl",
+ "openssl-sys",
  "tokio",
 ]
 
