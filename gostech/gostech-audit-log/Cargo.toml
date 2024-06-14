@@ -12,10 +12,11 @@ tokio = { version = "1.29.1", features = ["full"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = { version = "1.0.115" }
 chrono = { version = "0.4" }
-reqwest = { version = "0.12.3", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12.3", features = ["json", "native-tls"] }
 clap = { version = "4.4.11", features = ["derive"] }
 thiserror = { version = "1.0.58" }
 log = { version = "0.4.21" }
 simple_logger = { version = "4.3.3" }
+
+[dev-dependencies]
 actix-web = { version = "4", features = ["rustls-0_22"] }
-rustls = { version = "0.22" }

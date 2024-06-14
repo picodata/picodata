@@ -228,18 +228,18 @@ async fn send_logs(
     if !args.certificate.is_empty() && !args.private_key.is_empty() {
         let cert = fs::read(&args.certificate).await?;
         let key = fs::read(&args.private_key).await?;
-        let id = reqwest::Identity::from_pem(&[cert, key].concat())?;
+        let id = reqwest::Identity::from_pkcs8_pem(&cert, &key)?;
         builder = builder
             .identity(id)
             .danger_accept_invalid_certs(true)
-            .use_rustls_tls();
+            .use_native_tls();
     }
 
     if !args.ca_certificate.is_empty() {
         let ca: Vec<u8> = fs::read(&args.ca_certificate).await?;
         builder = builder
             .add_root_certificate(reqwest::tls::Certificate::from_pem(&ca)?)
-            .use_rustls_tls();
+            .use_native_tls();
     }
 
     let client = builder.build()?;
