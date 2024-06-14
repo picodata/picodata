@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.4.0-32-g7f3221f6`.
+Описание соответствует версии Picodata `24.4.0-57-g8a306f0e`.
 
 ### _pico_table
 
@@ -35,7 +35,7 @@
 Индексы:
 
 * `_pico_index_id` (unique), parts: `[table_id, id]`
-* `_pico_index_name` (unique), parts: `[table_id, name]`
+* `_pico_index_name` (unique), parts: `[name]`
 
 ### _pico_routine
 
