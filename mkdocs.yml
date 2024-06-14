@@ -97,6 +97,7 @@ nav:
     - architecture/rpc_api.md
   - Плагины:
     - plugins/synapse.md
+    - plugins/gostech_audit_log.md
   - Обеспечение безопасности:
     - security/os.md
     - security/runtime.md
