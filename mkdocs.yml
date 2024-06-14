@@ -18,6 +18,7 @@ edit_uri: -/blob/main/docs/
 not_in_nav: |
   index.md
   reference/api.md
+  reference/metrics.md
   architecture/clusterwide_schema.md
 
 # Навигация
