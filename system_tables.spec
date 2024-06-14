@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.3.0-198-gd6d59362`.
+Описание соответствует версии Picodata `24.4.0-32-g7f3221f6`.
 
 ### _pico_table
 
@@ -170,6 +170,8 @@
 * `services`: (_array_)
 * `version`: (_string_)
 * `description`: (_string_)
+* `migration_list`: (_array_)
+* `migration_progress`: (_integer_)
 
 Индексы:
 
@@ -184,7 +186,6 @@
 * `version`: (_string_)
 * `tiers`: (_array_)
 * `configuration`: (_any_)
-* `schema_version`: (_unsigned_)
 * `description`: (_string_)
 
 Индексы:
