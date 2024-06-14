@@ -42,7 +42,6 @@ nav:
     - tutorial/monitoring.md
     - tutorial/audit_log.md
     - tutorial/backup.md
-    - tutorial/integration.md
   - Справочные материалы:
     - reference/cli.md
     - reference/config.md
