@@ -450,9 +450,9 @@ deploy-docker:
   parallel:
     matrix:
       - DOCKERFILE: helm/picodata-diag.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata-diag:${PARENT_CI_COMMIT_SHA}
+        DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_TAG}
       - DOCKERFILE: helm/picodata.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:${PARENT_CI_COMMIT_SHA}
+        DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
