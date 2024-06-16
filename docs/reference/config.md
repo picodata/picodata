@@ -40,7 +40,7 @@ picodata run --config <PATH>
 ``` yaml title="config.yaml"
 cluster:
   cluster_id: demo # (4)!
-  tiers:
+  tier:
     default:
       replication_factor: 1 # (20)!
       can_vote: true # (21)!
@@ -52,7 +52,7 @@ instance:
   replicaset_id: null # (15)!
   tier: default # (18)!
   failure_domain: {} # (6)!
-  peers: # (13)!
+  peer: # (13)!
   - localhost:3301
   listen: localhost:3301 # (10)!
   advertise_address: localhost:3301 # (2)!
@@ -98,8 +98,8 @@ instance:
 17. [🔗 picodata run --shredding](cli.md#run_shredding)
 18. [🔗 picodata run --tier](cli.md#run_tier)
 19. [🔗 picodata run --pg-listen](cli.md#run_pg_listen)
-20. [cluster.tiers.<tier_name\>.replication_factor](#cluster_tiers_tier_replication_factor)
-21. [cluster.tiers.<tier_name\>.can_vote](#cluster_tiers_tier_can_vote)
+20. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
+21. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 22. [instance.log.format](#instance_log_format)
 23. [instance.memtx.memory](#instance_memtx_memory)
 24. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
@@ -115,7 +115,7 @@ instance:
 
 ## Параметры файла конфигурации {: #config_file_parameters }
 
-### cluster.tiers.<tier_name\>.replication_factor {: #cluster_tiers_tier_replication_factor }
+### cluster.tier.<tier_name\>.replication_factor {: #cluster_tier_tier_replication_factor }
 
 [Фактор репликации](../overview/glossary.md#replication_factor) тира *<tier_name\>*.
 
@@ -124,7 +124,7 @@ instance:
 * Тип: *int*
 * Значение по умолчанию: `1`
 
-### cluster.tiers.<tier_name\>.can_vote {: #cluster_tiers_tier_can_vote }
+### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
 Признак тира *<tier_name\>*, определяющий возможность инстансов участвовать
 в голосовании на выборах [raft-лидера](../overview/glossary.md#raft_leader).
