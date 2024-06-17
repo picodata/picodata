@@ -375,6 +375,7 @@ mod tests {
 
     use actix_web::web;
     use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+    use path::PathBuf;
     use std::str::FromStr;
     use std::{net, thread, time};
     use tokio::{runtime, sync::mpsc as tmpsc, sync::oneshot, time as ttime};
@@ -401,8 +402,7 @@ mod tests {
     fn server(
         addr: &str,
         sender: tmpsc::Sender<()>,
-        key_file: String,
-        cert_file: String,
+        key_cert: Option<(PathBuf, PathBuf)>,
     ) -> Server {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
@@ -432,25 +432,21 @@ mod tests {
                             .app_data(web::Data::new(sender.clone()))
                             .route("/log", web::post().to(handler))
                     });
-                    let server = if !key_file.is_empty() && !cert_file.is_empty() {
+
+                    let server = if let Some((key, cert)) = key_cert {
                         let mut ssl_builder =
                             SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
                         ssl_builder
-                            .set_private_key_file(key_file, SslFiletype::PEM)
+                            .set_private_key_file(key, SslFiletype::PEM)
                             .unwrap();
-                        ssl_builder.set_certificate_chain_file(cert_file).unwrap();
-                        builder
-                            .bind_openssl(addr, ssl_builder)
-                            .expect("Failed to bind.")
-                            .workers(1)
-                            .run()
+                        ssl_builder.set_certificate_chain_file(cert).unwrap();
+                        builder.bind_openssl(addr, ssl_builder)
                     } else {
-                        builder
-                            .bind(addr)
-                            .expect("Failed to bind.")
-                            .workers(1)
-                            .run()
-                    };
+                        builder.bind(addr)
+                    }
+                    .expect("Failed to bind.");
+
+                    let server = server.workers(1).run();
 
                     let handle = server.handle();
                     let task = tokio::spawn(async move { server.await.expect("Failed to run") });
@@ -473,7 +469,7 @@ mod tests {
         _ = simple_logger::init_with_level(log::Level::Debug);
         let (s, mut r) = tmpsc::channel(256);
 
-        let server = server("127.0.0.1:4005", s, String::new(), String::new());
+        let server = server("127.0.0.1:4005", s, None);
 
         let args = sync::Arc::new(Args {
             url: format!("http://{}/log", server.addr()),
@@ -528,8 +524,10 @@ mod tests {
         let server = server(
             "127.0.0.1:4006",
             s,
-            String::from("key.pem"),
-            String::from("cert.pem"),
+            Some((
+                PathBuf::from("test/server.key.pem"),
+                PathBuf::from("test/server.cert.pem"),
+            )),
         );
 
         let args = sync::Arc::new(Args {
@@ -537,9 +535,9 @@ mod tests {
             filename: String::from("audit.log"),
             r#type: Type::File,
             debug: true,
-            certificate: String::from("client.cert.pem"),
-            private_key: String::from("client.key.pem"),
-            ca_certificate: String::from("cert.pem"),
+            certificate: String::from("test/client.cert.pem"),
+            private_key: String::from("test/client.key.pem"),
+            ca_certificate: String::from("test/server.cert.pem"),
         });
 
         let lines = reader(args.clone()).await.expect("Failed to get reader.");
