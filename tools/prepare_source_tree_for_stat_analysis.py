@@ -95,7 +95,7 @@ def apply_patches():
         for fname in glob.glob(glob_pattern):
             print("Removing:", REPO_DIR / fname)
 
-            (REPO_DIR / fname).unlink(missing_ok=DEBUG)
+            (REPO_DIR / fname).unlink()
 
     apply_from_dir(GAMAYUN_PATCHES)
 
