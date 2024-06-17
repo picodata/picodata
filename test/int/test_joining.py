@@ -1,5 +1,4 @@
 import pytest
-import time
 
 from conftest import (
     Cluster,
@@ -366,8 +365,7 @@ def test_pico_service_invalid_password(cluster: Cluster):
     # to call .proc_discover, but i2 doesn't know the password.
     #
     # And we don't exit from "discovery" stage on error
-    time.sleep(1)
-    assert lc.matched
+    lc.wait_matched()
     i2.terminate()
 
     # Now i2 knows the password so it successfully joins

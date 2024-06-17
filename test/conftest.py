@@ -352,6 +352,10 @@ assert color.green("text") == "\x1b[32mtext\x1b[0m"
 assert color.intense_red("text") == "\x1b[31;1mtext\x1b[0m"
 
 
+class ProcessDead(Exception):
+    pass
+
+
 class Retriable:
     """A utility class for handling retries.
 
@@ -377,7 +381,7 @@ class Retriable:
         self,
         timeout: int | float,
         rps: int | float,
-        fatal: Type[Exception] | Tuple[Exception, ...] = (),
+        fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
     ) -> None:
         """
         Build the retriable call context
@@ -484,10 +488,6 @@ class Connection(tarantool.Connection):  # type: ignore
         ret = self.sql(sql, *params)
         self.eval("box.session.su(...)", old_euid)
         return ret
-
-
-class ProcessDead(Exception):
-    pass
 
 
 @dataclass
@@ -1960,6 +1960,12 @@ class log_crawler:
             return
 
         self.matched = True
+
+    def wait_matched(self, timeout=3):
+        def must_match():
+            assert self.matched
+
+        Retriable(timeout=timeout, rps=4).call(func=must_match)
 
 
 class AuditServer:
