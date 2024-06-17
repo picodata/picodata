@@ -14,7 +14,7 @@ RPC API используется в следующих сценариях:
 - Инстансы взаимодействуют друг с другом под служебной учетной записью
   `pico_service`
 - Тестирование pytest использует для подключения клиент tarantool-python
-- Подключение `picodata connect` использует вызов [.proc_sql](#proc_sql)
+- Подключение `picodata connect` использует вызов [.proc_sql_dispatch](#proc_sql_dispatch)
 <!-- - Синтаксис вызова из Lua: `box.func[".proc_version_info"]:call()` -->
 <!-- - Команда `picodata expel` использует вызов [.proc_expel_instance](#proc_expel_instance) -->
 
@@ -63,18 +63,21 @@ fn proc_version_info() -> VersionInfo
 [semver]: https://semver.org/
 
 --------------------------------------------------------------------------------
-### .proc_sql {: #proc_sql }
+### .proc_sql_dispatch {: #proc_sql_dispatch }
 
 ```rust
-fn proc_sql(query, options) -> Result
+fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
 ```
 
 Выполняет распределенный SQL-запрос.
 
 Аргументы:
 
-- `query`: (MP_STR) запрос SQL
-- `options`: (optional MP_MAP) TODO
+- `pattern`: (MP_STR) запрос SQL
+- `params`: (MP_ARRAY) параметры для подставления в `pattern` в случае
+  [параметризованного запроса][parametrization]
+- `id`: (optional MP_STR) id SQL запроса
+- `traceable`: (optional MP_BOOL) включение отслеживания статистики запроса
 
 Возвращаемое значение:
 
@@ -96,6 +99,8 @@ fn proc_sql(query, options) -> Result
 См. также:
 
 - [Инструкции и руководства — Работа с данными SQL](../tutorial/sql_examples.md)
+
+[parametrization]: ../reference/sql/parametrization
 
 ## Service API {: #service_api }
 
