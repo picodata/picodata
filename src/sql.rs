@@ -282,7 +282,7 @@ pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
 
 fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
     match e {
-        Error::Sbroad(SbroadError::ParsingError(entity, message)) if message.contains('\n') => {
+        Error::Sbroad(SbroadError::ParsingError(_, message)) if message.contains('\n') => {
             // Tweak the error message so that tarantool's yaml handler
             // prints it in human-readable form
             //
