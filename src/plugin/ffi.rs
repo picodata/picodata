@@ -66,6 +66,18 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
     ))
 }
 
+impl From<node::RaftState> for types::RaftState {
+    #[inline(always)]
+    fn from(state: node::RaftState) -> Self {
+        match state {
+            node::RaftState::Follower => Self::Follower,
+            node::RaftState::Candidate => Self::Candidate,
+            node::RaftState::Leader => Self::Leader,
+            node::RaftState::PreCandidate => Self::PreCandidate,
+        }
+    }
+}
+
 #[no_mangle]
 #[sabi_extern_fn]
 extern "C" fn pico_ffi_raft_info() -> types::RaftInfo {
@@ -76,7 +88,7 @@ extern "C" fn pico_ffi_raft_info() -> types::RaftInfo {
         info.term,
         info.applied,
         info.leader_id,
-        info.state.to_string(),
+        info.state.into(),
     )
 }
 

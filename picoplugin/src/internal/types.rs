@@ -335,24 +335,33 @@ impl InstanceInfo {
     }
 }
 
-#[derive(StableAbi, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct RaftInfo {
     id: u64,
     term: u64,
     applied: u64,
     leader_id: u64,
-    state: RString,
+    state: RaftState,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum RaftState {
+    Follower,
+    Candidate,
+    Leader,
+    PreCandidate,
 }
 
 impl RaftInfo {
-    pub fn new(id: u64, term: u64, applied: u64, leader_id: u64, state: String) -> Self {
+    pub fn new(id: u64, term: u64, applied: u64, leader_id: u64, state: RaftState) -> Self {
         Self {
             id,
             term,
             applied,
             leader_id,
-            state: RString::from(state),
+            state,
         }
     }
 
@@ -381,7 +390,7 @@ impl RaftInfo {
     /// - Candidate
     /// - Leader
     /// - PreCandidate
-    pub fn state(&self) -> &str {
-        self.state.as_str()
+    pub fn state(&self) -> RaftState {
+        self.state
     }
 }

@@ -19,6 +19,5 @@ extern "C" {
     #[allow(improper_ctypes)]
     pub fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()>;
 
-    #[allow(improper_ctypes)]
     pub fn pico_ffi_raft_info() -> types::RaftInfo;
 }
