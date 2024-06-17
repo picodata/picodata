@@ -56,7 +56,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется `admin.sock` в рабочей директории инстанса.
 
-Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`
+Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
+Аналогичный параметр файла конфигурации: `instance.admin_socket`
 
 ### --advertise {: #run_advertise }
 
@@ -67,7 +68,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется значение параметра [--listen](#run_listen).
 
-Аналогичная переменная окружения: `PICODATA_ADVERTISE`
+Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
+Аналогичный параметр файла конфигурации: `instance.advertise_address`
 
 ### --audit {: #run_audit }
 
@@ -91,7 +93,8 @@ picodata run [OPTIONS]
     picodata run --audit 'syslog:'
     ```
 
-Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`
+Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`<br>
+Аналогичный параметр файла конфигурации: `instance.audit`
 
 ### --cluster-id {: #run_cluster_id }
 
@@ -101,7 +104,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется имя `demo`.
 
-Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`
+Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`<br>
+Аналогичный параметр файла конфигурации: `cluster.cluster_id`
 
 ### --config {: #run_config }
 
@@ -139,7 +143,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется текущая директория `./`.
 
-Аналогичная переменная окружения: `PICODATA_DATA_DIR`
+Аналогичная переменная окружения: `PICODATA_DATA_DIR`<br>
+Аналогичный параметр файла конфигурации: `instance.data_dir`
 
 ### --failure-domain {: #run_failure_domain }
 
@@ -153,7 +158,8 @@ picodata run [OPTIONS]
 доступности до тех пор, пока не будет достигнут желаемый [фактор
 репликации].
 
-Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`
+Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`<br>
+Аналогичный параметр файла конфигурации: `instance.failure_domain`
 
 [зоны доступности]: ../tutorial/deploy.md#failure_domains
 [фактор репликации]: ../overview/glossary.md#replication_factor
@@ -164,7 +170,8 @@ picodata run [OPTIONS]
 
 Адрес HTTP-сервера.
 
-Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`
+Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
+Аналогичный параметр файла конфигурации: `instance.http_listen`
 
 ### --init-replication-factor {: #run_init_replication_factor }
 
@@ -175,7 +182,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется значение `1`.
 
-Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`
+Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
+Аналогичный параметр файла конфигурации: `cluster.default_replication_factor`
 
 ### --instance-id {: #run_instance_id }
 
@@ -184,7 +192,8 @@ picodata run [OPTIONS]
 Имя инстанса. При отсутствии параметра значение будет автоматически
 сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
 
-Аналогичная переменная окружения: `PICODATA_INSTANCE_ID`
+Аналогичная переменная окружения: `PICODATA_INSTANCE_ID`<br>
+Аналогичный параметр файла конфигурации: `instance.instance_id`
 
 ### --listen {: #run_listen }
 
@@ -194,7 +203,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется значение `localhost:3301`.
 
-Аналогичная переменная окружения: `PICODATA_LISTEN`
+Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
+Аналогичный параметр файла конфигурации: `instance.listen`
 
 ### --log {: #run_log }
 
@@ -219,7 +229,8 @@ picodata run [OPTIONS]
 
 По умолчанию отладочный журнал выводится в stderr.
 
-Аналогичная переменная окружения: `PICODATA_LOG`
+Аналогичная переменная окружения: `PICODATA_LOG`<br>
+Аналогичный параметр файла конфигурации: `instance.log.destination`
 
 ### --log-level {: #run_log_level }
 
@@ -230,7 +241,8 @@ picodata run [OPTIONS]
 Возможные значения: `fatal`, `system`, `error`, `crit`, `warn`, `info`,
 `verbose`, `debug`<br>
 Значение по умолчанию: `info`<br>
-Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`
+Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`<br>
+Аналогичный параметр файла конфигурации: `instance.log.level`
 
 ### --memtx-memory {: #run_memtx_memory }
 
@@ -241,7 +253,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется 64 MБ.
 
-Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`
+Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
+Аналогичный параметр файла конфигурации: `instance.memtx.memory`
 
 ### --peer {: #run_peer }
 
@@ -252,13 +265,15 @@ picodata run [OPTIONS]
 
 По умолчанию используется значение `localhost:3301`.
 
-Аналогичная переменная окружения: `PICODATA_PEER`
+Аналогичная переменная окружения: `PICODATA_PEER`<br>
+Аналогичный параметр файла конфигурации: `instance.peers`
 
 ### --pg-listen {: #run_pg_listen }
 
 Адрес сервера [Pgproto](../tutorial/connecting.md#pgproto).
 
-Аналогичная переменная окружения: `PICODATA_PG_LISTEN`
+Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
+Аналогичный параметр файла конфигурации: `instance.pg.listen`
 
 ### --plugin-dir {: #run_plugin_dir }
 
@@ -266,7 +281,8 @@ picodata run [OPTIONS]
 
 Путь к директории, содержащей файлы плагинов.
 
-Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`
+Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
+Аналогичный параметр файла конфигурации: `instance.plugin_dir`
 
 ### --replicaset-id {: #run_replicaset_id }
 
@@ -276,7 +292,8 @@ picodata run [OPTIONS]
 инстанса к уже существующему кластеру. При отсутствии параметра
 репликасет будет выбран автоматически на основе зон доступности.
 
-Аналогичная переменная окружения: `PICODATA_REPLICASET_ID`
+Аналогичная переменная окружения: `PICODATA_REPLICASET_ID`<br>
+Аналогичный параметр файла конфигурации: `instance.replicaset_id`
 
 ### --script {: #run_script }
 
@@ -299,7 +316,8 @@ picodata run [OPTIONS]
 невозможно. При отсутствии параметра в качестве пароля используется
 пустая строка, см. [Безопасный запуск](../tutorial/run.md#secure_run).
 
-Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`
+Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
+Аналогичный параметр файла конфигурации: `instance.service_password_file`
 
 ### --shredding {: #run_shredding }
 
@@ -309,7 +327,8 @@ picodata run [OPTIONS]
 многократной перезаписи специальными битовыми последовательностями, см.
 [Безопасный запуск](../tutorial/run.md#secure_run).
 
-Аналогичная переменная окружения: `PICODATA_SHREDDING`
+Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
+Аналогичный параметр файла конфигурации: `instance.shredding`
 
 [runfiles]: ../architecture/instance_runtime_files.md
 
@@ -323,7 +342,8 @@ picodata run [OPTIONS]
 
 По умолчанию используется имя `default`.
 
-Аналогичная переменная окружения: `PICODATA_INSTANCE_TIER`
+Аналогичная переменная окружения: `PICODATA_INSTANCE_TIER`<br>
+Аналогичный параметр файла конфигурации: `instance.tier`
 
 <!-- ********************************************************************** -->
 ## picodata admin {: #admin }
