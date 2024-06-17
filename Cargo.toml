@@ -78,6 +78,8 @@ pretty_assertions = "0.6.1"
 [build-dependencies]
 nix = { version = "0.26.4", features = ["fs"] }
 jobserver = "0.1.26"
+syn = { version = "^1.0", features = [ "full", "extra-traits", "printing" ] }
+quote = "^1.0"
 
 [patch.crates-io]
 nix = { git = "https://git.picodata.io/picodata/picodata/nix.git", branch = "fix-memfd-create-for-older-libc-backport-26-4" }

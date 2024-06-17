@@ -1,20 +1,16 @@
 use crate::cas::{compare_and_swap, Bound, Range, Request};
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::GradeVariant;
+use crate::traft::node;
 use crate::traft::op::{Dml, Op};
-use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
 use crate::{cas, traft};
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
 use abi_stable::std_types::{RDuration, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
-use picoplugin::internal::types::GradeVariant as StableGradeVariant;
-use picoplugin::internal::types::{
-    Bound as StableBound, BoundKind as StableBoundKind, Dml as StableDML, DmlInner,
-    Grade as StableGrade, InstanceInfo as StableInstanceInfo, Predicate as StablePredicate,
-    RaftInfo as StableRaftInfo,
-};
-use picoplugin::internal::types::{Op as SafeOp, OpInner};
+use picoplugin::internal::types;
+use picoplugin::internal::types::DmlInner;
+use picoplugin::internal::types::OpInner;
 use std::time::Duration;
 use tarantool::error::IntoBoxError;
 use tarantool::tuple::{RawByteBuf, TupleBuffer};
@@ -31,26 +27,26 @@ extern "C" fn pico_ffi_rpc_version() -> RTuple!(*const u8, usize) {
     Tuple2(version.as_ptr(), version.len())
 }
 
-impl From<GradeVariant> for StableGradeVariant {
+impl From<GradeVariant> for types::GradeVariant {
     fn from(variant: GradeVariant) -> Self {
         match variant {
-            GradeVariant::Offline => StableGradeVariant::Offline,
-            GradeVariant::Replicated => StableGradeVariant::Replicated,
-            GradeVariant::Online => StableGradeVariant::Online,
-            GradeVariant::Expelled => StableGradeVariant::Expelled,
+            GradeVariant::Offline => types::GradeVariant::Offline,
+            GradeVariant::Replicated => types::GradeVariant::Replicated,
+            GradeVariant::Online => types::GradeVariant::Online,
+            GradeVariant::Expelled => types::GradeVariant::Expelled,
         }
     }
 }
 
 #[no_mangle]
 #[sabi_extern_fn]
-extern "C" fn pico_ffi_instance_info() -> RResult<StableInstanceInfo, ()> {
+extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
     let node = node::global().expect("node must be already initialized");
     let info = match InstanceInfo::try_get(node, None) {
         Ok(info) => info,
         Err(e) => return error_into_tt_error(e),
     };
-    ROk(StableInstanceInfo::new(
+    ROk(types::InstanceInfo::new(
         info.raft_id,
         info.advertise_address,
         info.instance_id.0,
@@ -58,11 +54,11 @@ extern "C" fn pico_ffi_instance_info() -> RResult<StableInstanceInfo, ()> {
         info.replicaset_id.0,
         info.replicaset_uuid,
         info.cluster_id,
-        StableGrade::new(
+        types::Grade::new(
             info.current_grade.variant.into(),
             info.current_grade.incarnation,
         ),
-        StableGrade::new(
+        types::Grade::new(
             info.target_grade.variant.into(),
             info.target_grade.incarnation,
         ),
@@ -72,10 +68,10 @@ extern "C" fn pico_ffi_instance_info() -> RResult<StableInstanceInfo, ()> {
 
 #[no_mangle]
 #[sabi_extern_fn]
-extern "C" fn pico_ffi_raft_info() -> StableRaftInfo {
+extern "C" fn pico_ffi_raft_info() -> types::RaftInfo {
     let node = node::global().expect("node must be already initialized");
     let info = RaftInfo::get(node);
-    StableRaftInfo::new(
+    types::RaftInfo::new(
         info.id,
         info.term,
         info.applied,
@@ -84,8 +80,8 @@ extern "C" fn pico_ffi_raft_info() -> StableRaftInfo {
     )
 }
 
-impl From<StableDML> for Dml {
-    fn from(value: StableDML) -> Self {
+impl From<types::Dml> for Dml {
+    fn from(value: types::Dml) -> Self {
         match value.0 {
             DmlInner::Insert {
                 table,
@@ -136,8 +132,8 @@ impl From<StableDML> for Dml {
     }
 }
 
-impl From<SafeOp> for Op {
-    fn from(value: SafeOp) -> Self {
+impl From<types::Op> for Op {
+    fn from(value: types::Op) -> Self {
         match value.0 {
             OpInner::Nop => Op::Nop,
             OpInner::Dml(safe_dml) => Op::Dml(safe_dml.into()),
@@ -148,24 +144,24 @@ impl From<SafeOp> for Op {
     }
 }
 
-impl From<StableBound> for Bound {
-    fn from(value: StableBound) -> Self {
+impl From<types::Bound> for Bound {
+    fn from(value: types::Bound) -> Self {
         match value.kind {
-            StableBoundKind::Included => {
+            types::BoundKind::Included => {
                 let raw = value.key.expect("should be Some").to_vec();
                 Bound::included(&RawByteBuf(raw))
             }
-            StableBoundKind::Excluded => {
+            types::BoundKind::Excluded => {
                 let raw = value.key.expect("should be Some").to_vec();
                 Bound::included(&RawByteBuf(raw))
             }
-            StableBoundKind::Unbounded => Bound::unbounded(),
+            types::BoundKind::Unbounded => Bound::unbounded(),
         }
     }
 }
 
-impl From<StablePredicate> for cas::Predicate {
-    fn from(value: StablePredicate) -> Self {
+impl From<types::Predicate> for cas::Predicate {
+    fn from(value: types::Predicate) -> Self {
         cas::Predicate {
             index: value.index,
             term: value.term,
@@ -189,9 +185,9 @@ fn error_into_tt_error<T>(source: impl IntoBoxError) -> RResult<T, ()> {
 
 #[no_mangle]
 #[sabi_extern_fn]
-pub fn pico_ffi_cas(
-    op: SafeOp,
-    predicate: StablePredicate,
+extern "C" fn pico_ffi_cas(
+    op: types::Op,
+    predicate: types::Predicate,
     timeout: RDuration,
 ) -> RResult<ROption<RTuple!(u64, u64)>, ()> {
     let op = Op::from(op);
@@ -214,10 +210,7 @@ pub fn pico_ffi_cas(
 
 #[no_mangle]
 #[sabi_extern_fn]
-pub fn pico_ffi_wait_index(
-    index: RaftIndex,
-    timeout: RDuration,
-) -> RResult<ROption<RaftIndex>, ()> {
+extern "C" fn pico_ffi_wait_index(index: u64, timeout: RDuration) -> RResult<ROption<u64>, ()> {
     let node = node::global().expect("node is initialized before plugins");
     match node.wait_index(index, timeout.into()) {
         Ok(idx) => ROk(RSome(idx)),

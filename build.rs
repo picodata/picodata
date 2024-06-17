@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -8,6 +9,8 @@ use std::process::Stdio;
 
 // See also: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 fn main() {
+    do_compile_time_checks();
+
     let jobserver = unsafe { jobserver::Client::from_env() };
     let jobserver = jobserver.as_ref();
 
@@ -70,6 +73,98 @@ fn main() {
     println!("cargo:rerun-if-changed=http/http");
     #[cfg(feature = "webui")]
     rerun_if_webui_changed();
+}
+
+fn do_compile_time_checks() {
+    let definitions_filename = "src/plugin/ffi.rs";
+    println!("cargo:rerun-if-changed={definitions_filename}");
+    let declarations_filename = "picoplugin/src/internal/ffi.rs";
+    println!("cargo:rerun-if-changed={declarations_filename}");
+
+    if std::env::var("SKIP_FFI_CHECK").is_ok() {
+        // Must exist only after the `rerun-if-changed` directives
+        return;
+    }
+
+    let definitions_source = std::fs::read_to_string(definitions_filename).unwrap();
+    let Ok(definitions_ast) = syn::parse_file(&definitions_source) else {
+        // Parse errors will be reported by the compiler, just bail out ASAP
+        return;
+    };
+
+    let declarations_source = std::fs::read_to_string(declarations_filename).unwrap();
+    let Ok(declarations_ast) = syn::parse_file(&declarations_source) else {
+        // Parse errors will be reported by the compiler, just bail out ASAP
+        return;
+    };
+
+    let mut definitions = HashMap::new();
+    for item in definitions_ast.items {
+        let syn::Item::Fn(f) = item else {
+            continue;
+        };
+        let Some(abi) = &f.sig.abi else {
+            continue;
+        };
+        let Some(abi_name) = &abi.name else {
+            continue;
+        };
+        if abi_name.value() != "C" {
+            continue;
+        }
+
+        let name = f.sig.ident.to_string();
+        definitions.insert(name, f);
+    }
+
+    let mut declarations = HashMap::new();
+    for item in declarations_ast.items {
+        let syn::Item::ForeignMod(m) = item else {
+            continue;
+        };
+        for foreign_item in m.items {
+            let syn::ForeignItem::Fn(f) = foreign_item else {
+                continue;
+            };
+            let name = f.sig.ident.to_string();
+            declarations.insert(name, f);
+        }
+    }
+
+    for (name, decl) in &declarations {
+        let Some(def) = definitions.get(name) else {
+            let line = decl.sig.ident.span().start().line;
+            println!("cargo:warning={declarations_filename}:{line}: found a declaration for `fn {name}` which is not defined in file {definitions_filename}");
+            std::process::exit(1);
+        };
+
+        // Compare ignoring ABI because only definition specifies it
+        let mut def_sig_no_abi = def.sig.clone();
+        def_sig_no_abi.abi.take();
+
+        if def_sig_no_abi != decl.sig {
+            let def_sig = &def.sig;
+            let def_line = def.sig.ident.span().start().line;
+            let def_sig = quote::quote! { #def_sig }.to_string();
+
+            let decl_sig = &decl.sig;
+            let decl_line = decl.sig.ident.span().start().line;
+            let decl_sig = quote::quote! { #decl_sig }.to_string();
+            println!("cargo:warning=Signature mismatch for `fn {name}`");
+            println!(
+                "
+--> {definitions_filename}:{def_line}
+|
+| {def_sig}
+
+--> {declarations_filename}:{decl_line}
+|
+| {decl_sig}
+    "
+            );
+            std::process::exit(1);
+        }
+    }
 }
 
 fn set_git_describe_env_var() {
