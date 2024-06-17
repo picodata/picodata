@@ -4,8 +4,15 @@ from typing import Any, Dict, List, Optional
 import pytest
 import uuid
 import msgpack  # type: ignore
+from conftest import (
+    Cluster,
+    ReturnError,
+    Retriable,
+    Instance,
+    TarantoolError,
+    log_crawler,
+)
 from decimal import Decimal
-from conftest import Cluster, ReturnError, Retriable, Instance, TarantoolError
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -1771,3 +1778,15 @@ def test_sdk_sql(cluster: Cluster):
     assert sql_result == [
         [1, "Ruslan and Ludmila", Decimal("1.1"), "2023-11-11T02:03:19.354210-03:00"]
     ]
+
+
+def test_sdk_log(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+    crawler = log_crawler(i1, "TEST MESSAGE")
+    install_and_enable_plugin(
+        i1,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        default_config={"test_type": "log"},
+    )
+    assert crawler.matched

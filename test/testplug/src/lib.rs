@@ -1,4 +1,5 @@
 use picoplugin::internal::types::{Dml, Op, Predicate};
+use picoplugin::log::rs_log;
 use picoplugin::plugin::interface::{CallbackResult, DDL};
 use picoplugin::plugin::prelude::*;
 use picoplugin::sql::types::SqlValue;
@@ -12,7 +13,7 @@ use picoplugin::system::tarantool::util::DisplayAsHexBytes;
 use picoplugin::system::tarantool::{fiber, index, tlua};
 use picoplugin::transport::context::Context;
 use picoplugin::transport::rpc;
-use picoplugin::{internal, system};
+use picoplugin::{internal, log, system};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::fmt::Display;
@@ -370,6 +371,14 @@ impl Service for Service3 {
                     ],
                 )
                 .unwrap();
+            }
+            "log" => {
+                static TARANTOOL_LOGGER: tarantool::log::TarantoolLogger =
+                    tarantool::log::TarantoolLogger::new();
+                rs_log::set_logger(&TARANTOOL_LOGGER)
+                    .map(|()| rs_log::set_max_level(rs_log::LevelFilter::Info))
+                    .unwrap();
+                log::info!("TEST MESSAGE");
             }
             _ => {
                 panic!("invalid test type")
