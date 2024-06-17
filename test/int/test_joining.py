@@ -9,6 +9,8 @@ from conftest import (
     ProcessDead,
 )
 
+ER_OTHER = 10000
+
 
 @pytest.fixture
 def cluster2(cluster: Cluster):
@@ -202,7 +204,7 @@ def test_cluster_id_mismatch(instance: Instance):
             timeout_seconds=1,
         )
     assert e.value.args == (
-        "ER_PROC_C",
+        ER_OTHER,
         f'cluster_id mismatch: cluster_id of the instance = "wrong-cluster-id", cluster_id of the cluster = "{instance.cluster_id}"',  # noqa: E501
     )
 

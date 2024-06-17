@@ -1,4 +1,5 @@
 pub mod background;
+pub mod error_code;
 pub mod internal;
 pub mod interplay;
 pub mod log;

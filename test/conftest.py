@@ -229,7 +229,14 @@ def normalize_net_box_result(func):
                     # Error handling in Tarantool connector is awful.
                     # It returns error codes as raw numbers.
                     # Here we format them for easier use in pytest assertions.
-                    raise TarantoolError(tnt_strerror(code)[0], arg) from exc
+                    error_info = tnt_strerror(code)
+                    match error_info:
+                        case (str(error_type), _):
+                            raise TarantoolError(error_type, arg) from exc
+                        case "UNDEFINED":
+                            raise TarantoolError(code, arg) from exc
+                        case _:
+                            raise RuntimeError("unreachable")
                 case _:
                     raise exc from exc
 

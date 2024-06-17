@@ -45,6 +45,7 @@ pub mod cbus;
 pub mod cli;
 pub mod config;
 pub mod discovery;
+pub mod error_code;
 pub mod error_injection;
 pub mod failure_domain;
 pub mod governor;

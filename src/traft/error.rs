@@ -1,11 +1,11 @@
 use std::fmt::{Debug, Display};
 
+use crate::error_code::ErrorCode;
 use crate::instance::InstanceId;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
 use tarantool::error::BoxError;
 use tarantool::error::IntoBoxError;
-use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber::r#async::timeout;
 use tarantool::tlua::LuaError;
 use thiserror::Error;
@@ -187,10 +187,14 @@ where
 
 impl IntoBoxError for Error {
     #[inline]
+    #[track_caller]
     fn into_box_error(self) -> BoxError {
         match self {
             Self::Tarantool(e) => e.into_box_error(),
-            other => BoxError::new(TarantoolErrorCode::ProcC, other.to_string()),
+            Self::NotALeader => BoxError::new(ErrorCode::NotALeader, "not a leader"),
+            Self::Other(e) => BoxError::new(ErrorCode::Other, e.to_string()),
+            // TODO: give other error types specific codes
+            other => BoxError::new(ErrorCode::Other, other.to_string()),
         }
     }
 }
