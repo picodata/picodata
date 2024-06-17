@@ -12,7 +12,7 @@ use tarantool::uuid::Uuid;
 
 pub fn type_from_name(name: &str) -> PgResult<Type> {
     match name {
-        "integer" => Ok(Type::INT8),
+        "integer" | "unsigned" => Ok(Type::INT8),
         "string" => Ok(Type::TEXT),
         "boolean" => Ok(Type::BOOL),
         "double" => Ok(Type::FLOAT8),

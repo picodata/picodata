@@ -3,6 +3,7 @@ import psycopg
 from decimal import Decimal
 from uuid import UUID
 import pg8000.native as pg8000  # type: ignore
+import pytest
 
 
 def test_decimal(postgres: Postgres):
@@ -167,3 +168,70 @@ def test_text_and_varchar(postgres: Postgres):
     # verify that the values were insert
     rows = conn.run("SELECT * FROM T;")
     assert rows == [["value1"], ["value2"]]
+
+
+def test_unsigned(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    # create a postgres user using a postgres compatible password
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
+    # allow user to create tables
+    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+
+    # connect to the server and enable autocommit as we
+    # don't support interactive transactions
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    conn.execute(
+        """
+        CREATE TABLE T (
+            ID UNSIGNED NOT NULL,
+            PRIMARY KEY (ID)
+        )
+        USING MEMTX DISTRIBUTED BY (ID);
+        """
+    )
+
+    u = 1
+    u64_max = 18_446_744_073_709_551_615
+
+    conn.execute(""" INSERT INTO T VALUES(%t); """, (u,))
+
+    # test text encoding
+    cur = conn.execute(""" SELECT * FROM T; """, binary=False)
+    assert sorted(cur.fetchall()) == [(u,)]
+
+    cur = conn.execute(""" SELECT 1 FROM T; """, binary=False)
+    assert sorted(cur.fetchall()) == [(1,)]
+
+    # test binary encoding
+    cur = conn.execute(""" SELECT * FROM T; """, binary=True)
+    assert sorted(cur.fetchall()) == [(u,)]
+
+    cur = conn.execute(""" SELECT 1 FROM T; """, binary=True)
+    assert sorted(cur.fetchall()) == [(1,)]
+
+    # Note: u64::MAX can be sent because psycopg sends it as numeric
+    conn.execute(""" INSERT INTO T VALUES(%t); """, (u64_max,))
+
+    # text encoding fails as u64::MAX can't be encoded as i64
+    with pytest.raises(
+        psycopg.InternalError,
+        match="encoding error: out of range integral type conversion attempted",
+    ):
+        cur = conn.execute(""" SELECT * FROM T; """, binary=False)
+
+    # binary encoding fails as u64::MAX can't be encoded as i64
+    with pytest.raises(
+        psycopg.InternalError,
+        match="encoding error: out of range integral type conversion attempted",
+    ):
+        cur = conn.execute(""" SELECT * FROM T; """, binary=True)
