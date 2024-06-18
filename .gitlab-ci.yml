@@ -462,6 +462,11 @@ deploy-docker:
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
 upload-picodata-to-binary:
   stage: stress-test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      when: always
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      when: manual
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
   variables:
@@ -484,6 +489,11 @@ downstream-stress-test:
   interruptible: true
   # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
   stage: stress-test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      when: always
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      when: manual
   trigger:
     project: picodata/devops/proxmox/sbroad-nt
     branch: main
