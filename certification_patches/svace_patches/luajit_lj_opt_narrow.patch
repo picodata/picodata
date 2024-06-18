@@ -1,5 +1,5 @@
 diff --git a/src/lj_opt_narrow.c b/src/lj_opt_narrow.c
-index db0da10f..60e1d9f4 100644
+index db0da10f..04cf614c 100644
 --- a/src/lj_opt_narrow.c
 +++ b/src/lj_opt_narrow.c
 @@ -4,6 +4,7 @@
@@ -10,14 +10,31 @@ index db0da10f..60e1d9f4 100644
  #define lj_opt_narrow_c
  #define LUA_CORE
  
-@@ -390,6 +391,10 @@ static IRRef narrow_conv_emit(jit_State *J, NarrowConv *nc)
- 	  (uint32_t)IR(narrow_ref(sp[0]))->i + 0x40000000u < 0x80000000u)
- 	  guardot = 0;
- 	else  /* Otherwise cache a stronger check. */
-+    if (LJ_UNLIKELY(sp < nc->stack+1)) { // assert
-+      fprintf(stderr, "stack underflow in %s:%d", __FILE__, __LINE__);
-+      abort();
-+    }
- 	  mode += IRCONV_CHECK-IRCONV_INDEX;
+@@ -386,16 +387,21 @@ static IRRef narrow_conv_emit(jit_State *J, NarrowConv *nc)
+       sp--;
+       /* Omit some overflow checks for array indexing. See comments above. */
+       if ((mode & IRCONV_CONVMASK) == IRCONV_INDEX) {
+-	if (next == last && irref_isk(narrow_ref(sp[0])) &&
+-	  (uint32_t)IR(narrow_ref(sp[0]))->i + 0x40000000u < 0x80000000u)
+-	  guardot = 0;
+-	else  /* Otherwise cache a stronger check. */
+-	  mode += IRCONV_CHECK-IRCONV_INDEX;
++        if (next == last && irref_isk(narrow_ref(sp[0])) &&
++          (uint32_t)IR(narrow_ref(sp[0]))->i + 0x40000000u < 0x80000000u)
++          guardot = 0;
++        else  /* Otherwise cache a stronger check. */
++          mode += IRCONV_CHECK-IRCONV_INDEX;
++      }
++
++      if (LJ_UNLIKELY(sp < nc->stack+1)) { // assert
++        fprintf(stderr, "stack underflow in %s:%d", __FILE__, __LINE__);
++        abort();
        }
        sp[-1] = emitir(op+guardot, sp[-1], sp[0]);
+       /* Add to cache. */
+       if (narrow_ref(ref))
+-	narrow_bpc_set(J, narrow_ref(ref), narrow_ref(sp[-1]), mode);
++	      narrow_bpc_set(J, narrow_ref(ref), narrow_ref(sp[-1]), mode);
+     }
+   }
+   lj_assertJ(sp == nc->stack+1, "stack misalignment");
