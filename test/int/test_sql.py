@@ -1611,6 +1611,23 @@ def test_create_drop_table(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
+    # Check NOT NULL inferred on PRIMARY KEY
+    ddl = i1.sql(
+        """
+        create table "t" (a int primary key)
+        distributed by (a)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql(
+        """
+        drop table "t"
+        option (timeout = 3)
+    """
+    )
+    assert ddl["row_count"] == 1
+
     # Check global space
     ddl = i1.sql(
         """
@@ -1656,16 +1673,6 @@ def test_create_drop_table(cluster: Cluster):
             distributed by (a)
             """
         )
-    with pytest.raises(
-        TarantoolError, match="Primary key mustn't contain nullable columns"
-    ):
-        i1.sql(
-            """
-            create table "primary_t" (a int null primary key)
-            distributed by (a)
-            """
-        )
-
     with pytest.raises(TarantoolError, match="Primary key must be declared"):
         i1.sql(
             """
