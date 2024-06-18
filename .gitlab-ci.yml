@@ -467,6 +467,7 @@ upload-picodata-to-binary:
       when: always
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       when: manual
+      allow_failure: true
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
   variables:
@@ -494,6 +495,7 @@ downstream-stress-test:
       when: always
     - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
       when: manual
+      allow_failure: true
   trigger:
     project: picodata/devops/proxmox/sbroad-nt
     branch: main
