@@ -551,3 +551,44 @@ def test_admin_connection_info_and_help(cluster: Cluster):
     cli.sendcontrol("d")
     cli.expect_exact("Bye")
     cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_with_incorrect_url(cluster: Cluster):
+    i1 = cluster.add_instance()
+
+    def connect_to(address):
+        cli = pexpect.spawn(
+            cwd=i1.data_dir,
+            command=i1.binary_path,
+            args=["connect", address],
+            encoding="utf-8",
+            timeout=1,
+        )
+        cli.logfile = sys.stdout
+        return cli
+
+    # GL685
+    cli = connect_to("unix:/tmp/socket")
+    cli.expect_exact(
+        "CRITICAL: Error while parsing instance port '/tmp/socket': invalid digit found in string"
+    )
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("trash:not_a_port")
+    cli.expect_exact(
+        "CRITICAL: Error while parsing instance port 'not_a_port': invalid digit found in string"
+    )
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("random:999999999")
+    cli.expect_exact(
+        "CRITICAL: Error while parsing instance port '999999999': number "
+        "too large to fit in target type"
+    )
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("random:-1")
+    cli.expect_exact(
+        "CRITICAL: Error while parsing instance port '-1': invalid digit found in string"
+    )
+    cli.expect_exact(pexpect.EOF)

@@ -171,11 +171,18 @@ pub fn determine_credentials_and_connect(
     config.creds = Some((user.into(), password));
     config.auth_method = auth_method;
 
-    let client = ::tarantool::fiber::block_on(Client::connect_with_config(
-        &address.host,
-        address.port.parse().unwrap(),
-        config,
-    ))?;
+    let port = match address.port.parse::<u16>() {
+        Ok(port) => port,
+        Err(err) => {
+            return Err(Error::other(ReplError::Other(format!(
+                "Error while parsing instance port '{}': {err}",
+                address.port
+            ))))
+        }
+    };
+
+    let client =
+        ::tarantool::fiber::block_on(Client::connect_with_config(&address.host, port, config))?;
 
     Ok((client, user.into()))
 }
