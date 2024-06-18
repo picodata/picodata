@@ -103,6 +103,9 @@ columns.
   field name instead of an index, other fields were rearranged
   significantly, see [Architecture — System tables]
 
+- Rename RPC APIs related to SQL: dispatch_query -> proc_sql_dispatch;
+  execute -> proc_sql_execute
+
 [Architecture — System tables]:
   https://docs.picodata.io/picodata/24.4/architecture/system_tables/
 
