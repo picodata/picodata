@@ -94,7 +94,7 @@ fn read_migration_queries_from_file_async(filename: &str) -> Result<MigrationQue
     let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
 
     tlog!(Info, "parsing migrations file '{filename}'");
-    let t0 = Instant::now();
+    let t0 = Instant::now_accurate();
 
     std::thread::scope(|s| -> std::io::Result<_> {
         std::thread::Builder::new()
@@ -608,7 +608,7 @@ command; -- pico.UP
 
     #[test]
     fn test_migration_up() {
-        let no_deadline = Instant::now().saturating_add(tarantool::clock::INFINITY);
+        let no_deadline = Instant::now_accurate().saturating_add(tarantool::clock::INFINITY);
 
         let source = r#"
 -- pico.UP

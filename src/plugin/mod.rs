@@ -363,10 +363,10 @@ fn do_plugin_cas(
     let raft_storage = &node.raft_storage;
 
     loop {
-        let index = node.read_index(deadline.duration_since(Instant::now()))?;
+        let index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
         if let Some(try_again_condition) = try_again_condition {
             if try_again_condition(node)? {
-                node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+                node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
                 continue;
             }
         }
@@ -381,10 +381,10 @@ fn do_plugin_cas(
             // FIXME: access rules will be implemented in future release
             effective_user_id(),
         )?;
-        let cas_result = compare_and_swap(&req, deadline.duration_since(Instant::now()));
+        let cas_result = compare_and_swap(&req, deadline.duration_since(Instant::now_fiber()));
         match cas_result {
             Ok((index, term)) => {
-                node.wait_index(index, deadline.duration_since(Instant::now()))?;
+                node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
                 if term != raft::Storage::term(raft_storage, index)? {
                     // leader switched - retry
                     node.wait_status();
@@ -433,8 +433,8 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
     )?;
 
     while node.storage.properties.plugin_install()?.is_some() {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
-        index = node.read_index(deadline.duration_since(Instant::now()))?;
+        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
+        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
     }
 
     let Some(plugin) = node.storage.plugin.get(name)? else {
@@ -466,7 +466,7 @@ pub fn enable_plugin(
     on_start_timeout: Duration,
     timeout: Duration,
 ) -> traft::Result<()> {
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
 
     let node = node::global()?;
 
@@ -484,8 +484,8 @@ pub fn enable_plugin(
     )?;
 
     while node.storage.properties.pending_plugin_enable()?.is_some() {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
-        index = node.read_index(deadline.duration_since(Instant::now()))?;
+        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
+        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
     }
 
     let plugin = node
@@ -508,7 +508,7 @@ pub fn update_plugin_service_configuration(
     new_cfg_raw: &[u8],
     timeout: Duration,
 ) -> traft::Result<()> {
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
 
     let node = node::global()?;
     node.plugin_manager
@@ -540,7 +540,7 @@ pub fn update_plugin_service_configuration(
 /// 2) update routes in `_pico_service_route`
 /// 3) set `_pico_plugin.enable` to `false`
 pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> {
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
     let op = Op::PluginDisable {
         name: plugin_name.to_string(),
@@ -563,8 +563,8 @@ pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()>
     )?;
 
     while node.storage.properties.pending_plugin_disable()?.is_some() {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
-        index = node.read_index(deadline.duration_since(Instant::now()))?;
+        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
+        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
     }
 
     Ok(())
@@ -578,7 +578,7 @@ pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()>
 /// * `timeout`: operation timeout
 /// * `force`: whether true if plugin should be removed without DOWN migration, false elsewhere
 pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft::Result<()> {
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
 
     let node = node::global()?;
     let maybe_plugin = node.storage.plugin.get(plugin_name)?;
@@ -660,7 +660,7 @@ impl TopologyUpdateOp {
 }
 
 fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()> {
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
 
     let mb_service = node
@@ -702,8 +702,8 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
         .pending_plugin_topology_update()?
         .is_some()
     {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
-        index = node.read_index(deadline.duration_since(Instant::now()))?;
+        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
+        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
     }
 
     let service = node

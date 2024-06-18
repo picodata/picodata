@@ -810,7 +810,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     //   flood.
     // - It's fine to retry "connection refused" errors.
     let resp: rpc::join::Response = loop {
-        let now = Instant::now();
+        let now = Instant::now_fiber();
         // TODO: exponential delay
         let timeout = Duration::from_secs(1);
         match fiber::block_on(rpc::network_call(&instance_address, &req)) {
@@ -958,7 +958,7 @@ fn postjoin(
 
     // We will shut down, if we don't receive a confirmation of target grade
     // change from leader before this time.
-    let activation_deadline = Instant::now().saturating_add(Duration::from_secs(10));
+    let activation_deadline = Instant::now_fiber().saturating_add(Duration::from_secs(10));
 
     // This will be doubled on each retry.
     let mut retry_timeout = Duration::from_millis(250);

@@ -715,7 +715,7 @@ fn reenterable_schema_change_request(
         }
     };
     let timeout = duration_from_secs_f64_clamped(timeout);
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
 
     // Check parameters
     let params = match ir_node {
@@ -959,14 +959,14 @@ fn reenterable_schema_change_request(
     let _su = session::su(ADMIN_ID).expect("cant fail because admin should always have session");
 
     'retry: loop {
-        if Instant::now() > deadline {
+        if Instant::now_fiber() > deadline {
             return Err(Error::Timeout);
         }
 
-        let index = node.read_index(deadline.duration_since(Instant::now()))?;
+        let index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
 
         if storage.properties.pending_schema_change()?.is_some() {
-            node.wait_index(index + 1, deadline.duration_since(Instant::now()))?;
+            node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
             continue 'retry;
         }
 
@@ -1365,7 +1365,7 @@ fn reenterable_schema_change_request(
         // Note: as_user doesnt really serve any purpose for DDL checks
         // It'll change when access control checks will be introduced for DDL
         let req = crate::cas::Request::new(op, predicate, current_user)?;
-        let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now()));
+        let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now_fiber()));
         let (index, term) = unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {
@@ -1376,9 +1376,9 @@ fn reenterable_schema_change_request(
             }
         );
 
-        node.wait_index(index, deadline.duration_since(Instant::now()))?;
+        node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
         if is_ddl_prepare {
-            wait_for_ddl_commit(index, deadline.duration_since(Instant::now()))?;
+            wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
         }
 
         if term != raft::Storage::term(&node.raft_storage, index)? {
