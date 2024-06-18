@@ -14,7 +14,6 @@ use crate::tlog;
 use crate::util::Uppercase;
 
 const DEFAULT_TIMEOUT: u64 = 60;
-const PICO_USER: &'static str = "pico_service";
 
 /// Struct for box.slab.info() result
 #[derive(Deserialize)]
@@ -212,7 +211,7 @@ fn get_instance_data(full_address: &String) -> InstanceDataResponse {
     match Conn::new(
         full_address,
         ConnOptions {
-            user: PICO_USER.to_string(),
+            user: crate::pico_service::PICO_SERVICE_USER_NAME.to_string(),
             password: crate::pico_service::pico_service_password().into(),
             ..ConnOptions::default()
         },

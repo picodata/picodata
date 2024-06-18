@@ -438,6 +438,12 @@ fn set_login_check(storage: Clusterwide) {
         tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
             match compute_auth_verdict(user.clone(), status) {
                 Verdict::AuthOk => {
+                    // We don't want to spam admins with
+                    // unneeded info about internal user
+                    if user == PICO_SERVICE_USER_NAME {
+                        return;
+                    }
+
                     crate::audit!(
                         message: "successfully authenticated user `{user}`",
                         title: "auth_ok",
