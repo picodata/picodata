@@ -1,13 +1,22 @@
 diff --git a/src/box/sql/trigger.c b/src/box/sql/trigger.c
-index 9b5e74320..993c9ae97 100644
+index 9b5e74320..56d2727b1 100644
 --- a/src/box/sql/trigger.c
 +++ b/src/box/sql/trigger.c
-@@ -422,6 +422,8 @@ struct sql_trigger *
+@@ -356,6 +356,8 @@ sql_trigger_replace(const char *name, uint32_t space_id,
+ 	assert(trigger == NULL || strcmp(name, trigger->zName) == 0);
+ 
+ 	struct space *space = space_cache_find(space_id);
++	if (space == NULL) // assert
++		panic("space == NULL in %s:%d", __FILE__, __LINE__);
+ 	assert(space != NULL);
+ 	*old_trigger = NULL;
+ 
+@@ -422,6 +424,8 @@ struct sql_trigger *
  space_trigger_list(uint32_t space_id)
  {
  	struct space *space = space_cache_find(space_id);
 +	if (space == NULL) // assert
-+		panic("rc == NULL in %s:%d", __FILE__, __LINE__);
++		panic("space == NULL in %s:%d", __FILE__, __LINE__);
  	assert(space != NULL);
  	assert(space->def != NULL);
  	return space->sql_triggers;
