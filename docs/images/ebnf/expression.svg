@@ -908,8 +908,10 @@ polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
      y="965"
      id="text83">,</text>
   <a
-     xlink:href=""
+     href="https://man.freebsd.org/cgi/man.cgi?query=strftime"
      xlink:title="format"
+     target="_blank"
+     rel="noopener"
      id="a85">
     <rect
        x="417"
