@@ -1,6 +1,6 @@
 //! Picodata internal API.
 pub mod cas;
-mod ffi;
+pub(crate) mod ffi;
 pub mod types;
 
 use crate::internal::ffi::{

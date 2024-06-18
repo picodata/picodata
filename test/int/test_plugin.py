@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 from conftest import Cluster, ReturnError, retrying, Instance, TarantoolError
+from decimal import Decimal
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -268,9 +269,17 @@ def test_invalid_manifest_plugin(cluster: Cluster):
     PluginReflection.assert_cb_called("testservice_1", "on_start", 0, i1, i2)
 
 
-def install_and_enable_plugin(instance, plugin, services, timeout=_3_SEC):
+def install_and_enable_plugin(
+    instance, plugin, services, timeout=_3_SEC, default_config=None
+):
     instance.call("pico.install_plugin", plugin, timeout=timeout)
     for s in services:
+        if default_config is not None:
+            instance.eval(
+                f"box.space._pico_service:update"
+                f"({{'{plugin}', '{s}', '0.1.0'}}, {{ {{'=', 'configuration', ... }} }})",
+                default_config,
+            )
         instance.call("pico.service_append_tier", plugin, s, _DEFAULT_TIER)
     instance.call("pico.enable_plugin", plugin, timeout=timeout)
 
@@ -1365,3 +1374,24 @@ def test_sdk_internal(cluster: Cluster):
 
     cas_result_sdk = i1.eval("return box.space.AUTHOR:select()")
     assert cas_result_sdk == [[101, "Alexander Blok"]]
+
+
+def test_sdk_sql(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    install_and_enable_plugin(
+        i1,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        default_config={"test_type": "sql"},
+    )
+
+    sql_result = i1.eval("return box.space.BOOK:select()")
+    # remove bucket id and convert datetime to string
+    for r in sql_result:
+        r.pop(1)
+        r[3] = str(r[3])
+
+    assert sql_result == [
+        [1, "Ruslan and Ludmila", Decimal("1.1"), "2023-11-11T02:03:19.354210-03:00"]
+    ]

@@ -3904,6 +3904,8 @@ dependencies = [
  "picoplugin",
  "rand 0.9.0-alpha.1",
  "serde",
+ "time",
+ "time-macros",
 ]
 
 [[package]]

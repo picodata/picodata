@@ -1,6 +1,9 @@
 use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::plugin::interface::{CallbackResult, DDL};
 use picoplugin::plugin::prelude::*;
+use picoplugin::sql::types::SqlValue;
+use picoplugin::system::tarantool::datetime::Datetime;
+use picoplugin::system::tarantool::decimal::Decimal;
 use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
 use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
 use picoplugin::system::tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
@@ -9,8 +12,10 @@ use picoplugin::system::tarantool::{fiber, index, tlua};
 use picoplugin::{internal, system};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync;
 use std::time::Duration;
+use time_macros::datetime;
 
 struct ErrInjection;
 
@@ -347,6 +352,19 @@ impl Service for Service3 {
                 )
                 .unwrap();
                 internal::cas::wait_index(idx, Duration::from_secs(10)).unwrap();
+            }
+            "sql" => {
+                // DO SQL
+                picoplugin::sql::query(
+                    "INSERT INTO book (id, name, cost, last_buy) VALUES (?, ?, ?, ?)",
+                    vec![
+                        SqlValue::unsigned(1),
+                        SqlValue::string("Ruslan and Ludmila"),
+                        SqlValue::decimal(Decimal::from_str("1.1").unwrap()),
+                        SqlValue::datetime(datetime!(2023-11-11 2:03:19.35421 -3).into()),
+                    ],
+                )
+                .unwrap();
             }
             _ => {
                 panic!("invalid test type")
