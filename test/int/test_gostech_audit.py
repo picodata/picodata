@@ -19,7 +19,6 @@ from conftest import (
 def instance_with_gostech_audit(
     unstarted_instance: Instance, port_distributor: PortDistributor
 ) -> Generator[Tuple[Instance, AuditServer], None, None]:
-
     audit_server = AuditServer(port_distributor.get())
     audit_server.start()
     unstarted_instance.audit = audit_server.cmd(unstarted_instance.binary_path)
