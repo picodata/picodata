@@ -1182,7 +1182,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>TO_DATE</td>
-            <td class="td3 center">TO_DATE</td>
+            <td class="td3 center">[TO_DATE](sql/to_date.md)</td>
             <td></td>
         </tr>
         <tr>

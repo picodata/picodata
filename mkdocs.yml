@@ -86,6 +86,8 @@ nav:
         - reference/sql/case.md
         - reference/sql/cast.md
         - reference/sql/trim.md
+        - Дата и время:
+          - reference/sql/to_date.md
     - reference/audit_events.md
   - Архитектура:
     - architecture/distributed_sql.md
