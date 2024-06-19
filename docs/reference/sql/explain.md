@@ -90,10 +90,9 @@ WHERE amount > 1000;
 except
     projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME")
         scan "ITEMS"
-        projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
-            selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)
-                scan "ORDERS"
-
+    projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
+        selection ROW("ORDERS"."AMOUNT"::integer) > ROW(1000::unsigned)
+            scan "ORDERS"
 ```
 
 В таком плане запроса присутствует два блока `projection`, перед
@@ -228,14 +227,14 @@ update "WAREHOUSE"
 которой отличается ключ шардирования:
 
 ```sql
-EXPLAIN INSERT INTO orders SELECT * FROM items WHERE id = 5;
+EXPLAIN INSERT INTO orders (id, item, amount) SELECT * FROM items WHERE id = 5;
 ```
 
 Вывод в консоль:
 
 ```
 insert "ORDERS" on conflict: fail
-    motion [policy: segment([ref("NAME")])]
+    motion [policy: local segment([ref("ID")])]
         projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
             selection ROW("ITEMS"."ID"::integer) = ROW(5::unsigned)
                 scan "ITEMS"
@@ -256,7 +255,7 @@ ON orders.id=new_table.nmbr;
 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
     join on ROW("ORDERS"."ID"::integer) = ROW("NEW_TABLE"."NMBR"::integer)
         scan "ORDERS"
-            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
         motion [policy: segment([ref("NMBR")])]
             scan "NEW_TABLE"

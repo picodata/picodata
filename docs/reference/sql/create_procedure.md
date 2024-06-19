@@ -41,7 +41,7 @@
 Процедура для добавления новых строк в таблицу `warehouse`:
 
 ```sql
-CREATE PROCEDURE proc (int, text, int)
+CREATE PROCEDURE proc (int, text, text)
 AS $$INSERT INTO warehouse VALUES($1, $2, $3)$$
 OPTION (TIMEOUT = 5.0)
 ```
@@ -49,5 +49,5 @@ OPTION (TIMEOUT = 5.0)
 где:
 
 - `proc` — название процедуры
-- `int, text, int` — типы аргументов процедуры
-- `$1, $2, $3`— позиции значений из аргументов процедуры
+- `int, text, text` — типы аргументов процедуры
+- `$1, $2, $3` — позиции значений из аргументов процедуры

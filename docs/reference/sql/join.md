@@ -88,7 +88,7 @@ Picodata поддерживает два типа соединения: `INNER J
 месте отсутствующих значений будет `nil`.
 
 Покажем это на примере соединения по равенству колонок для таблиц
-`items` и `orders`:
+`items` и `orders`.
 
 ??? example "Тестовые таблицы"
     Примеры использования команд включают в себя запросы к [тестовым
@@ -149,29 +149,6 @@ ON items.name = orders.item
 Соединять можно не только две, но и большее число таблиц. В запросе с
 несколькими соединениями могут быть использованы разные комбинации
 левого и внутреннего соединения.
-
-Для примера с двумя соединениями задействуем третью тестовую таблицу.
-
-<details><summary>Содержимое таблицы</summary><p>
-
-```sql
-picodata> select * from "warehouse"
-+----+----------+---------+
-| ID | ITEM     | TYPE    |
-+=========================+
-| 1  | "bricks" | "heavy" |
-|----+----------+---------|
-| 2  | "bars"   | "light" |
-|----+----------+---------|
-| 3  | "blocks" | "heavy" |
-|----+----------+---------|
-| 4  | "piles"  | "light" |
-|----+----------+---------|
-| 5  | "panels" | "light" |
-+----+----------+---------+
-(5 rows)
-```
-</details>
 
 Сделаем соединение трех таблиц с тем, чтобы получить список всех позиций
 на складе с указанием их типа и остатков независимо от того,
@@ -248,12 +225,11 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
             projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
                 scan "ITEMS"
         scan "ORDERS"
-            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
 execution options:
 sql_vdbe_max_steps = 45000
 vtable_max_rows = 5000
-
 ```
 
 ### Частичное перемещение {: #segment_motion }
@@ -275,10 +251,9 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
         scan "ITEMS"
             projection ("ITEMS"."ID"::integer -> "ID", "ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK")
                 scan "ITEMS"
-        motion [policy: segment([ref("ID")])]
-            scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
-                    scan "ORDERS"
+        scan "ORDERS"
+            projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
+                scan "ORDERS"
 execution options:
 sql_vdbe_max_steps = 45000
 vtable_max_rows = 5000
@@ -307,7 +282,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 scan "ITEMS"
         motion [policy: full]
             scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
 sql_vdbe_max_steps = 45000
@@ -328,7 +303,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 scan "ITEMS"
         motion [policy: full]
             scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
 sql_vdbe_max_steps = 45000
@@ -347,7 +322,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 scan "ITEMS"
         motion [policy: full]
             scan "ORDERS"
-                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
+                projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
 sql_vdbe_max_steps = 45000

@@ -94,13 +94,11 @@
 
 ### Получение данных из таблицы с фильтрацией {: #select_with_filter }
 
-
 ```sql
-SELECT name from ITEM WHERE STOCK > 1000;
+SELECT name from items WHERE stock > 1000;
 ```
 
 ### Получение данных без повторов {: #select_distinct }
-
 
 ```sql
 SELECT DISTINCT type FROM warehouse;
@@ -159,7 +157,6 @@ GROUP BY type;
 ```
 
 <!--
-
 ### Группировка с последующей фильтрацией по сгруппированным данным {: #group_and_filter }
 
 ```sql
@@ -168,7 +165,6 @@ GROUP BY type
 HAVING c > 3;
 
 sbroad: column with name "C" not found
-
 ```
 -->
 
