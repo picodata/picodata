@@ -55,6 +55,10 @@
 
 ## Примеры {: #examples }
 
+??? example "Тестовые таблицы"
+    Примеры использования команд включают в себя запросы к [тестовым
+    таблицам](../legend.md).
+
 ```sql
 CREATE INDEX product_quantity
 ON deliveries

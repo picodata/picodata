@@ -24,6 +24,10 @@
 
 ## Примеры {: #examples }
 
+??? example "Тестовые таблицы"
+    Примеры использования команд включают в себя запросы к [тестовым
+    таблицам](../legend.md).
+
 ```sql
 SELECT * FROM warehouse OPTION(SQL_VDBE_MAX_STEPS = 30, VTABLE_MAX_ROWS = 5);
 +----+----------+---------+
