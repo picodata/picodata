@@ -263,7 +263,13 @@ pub fn inject() {
     }
 
     #[tarantool::proc]
-    fn proc_inject_global<'a>(#[inject(&global())] data: &'a GlobalData, i: usize) -> &'a str {
+    fn proc_inject_global<'a>(
+        /// Test doc-comment with separate attribute
+        #[inject(&global())]
+        data: &'a GlobalData,
+        /// Test doc-comment only
+        i: usize,
+    ) -> &'a str {
         &data.data[i]
     }
 

@@ -892,7 +892,8 @@ impl Inputs {
             };
             let mut inject_expr = None;
             attrs.retain(|attr| {
-                if attr.path.is_ident("inject") {
+                let path = &attr.path;
+                if path.is_ident("inject") {
                     match attr.parse_args() {
                         Ok(AttrInject { expr, .. }) => {
                             inject_expr = Some(expr);
@@ -901,7 +902,8 @@ impl Inputs {
                         Err(e) => panic!("attribute argument error: {}", e),
                     }
                 } else {
-                    true
+                    // Skip doc comments as they are not allowed for inner functions
+                    !path.is_ident("doc")
                 }
             });
             if let Some(expr) = inject_expr {

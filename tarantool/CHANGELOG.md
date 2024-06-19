@@ -87,6 +87,8 @@
 - Pushing `ViaMsgpack` didn't work in release mode.
 - Enums defined with `define_str_enum!` can now deserialize from owned `String`.
   Could be seen when deserializing from `rmpv::Value::String`.
+- Stored procedures defined with `#[tarantool::proc]` used to fail to compile
+  with doc-comments on the function parameters.
 
 ### Deprecated
 
