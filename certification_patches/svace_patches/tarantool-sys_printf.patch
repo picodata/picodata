@@ -1,5 +1,5 @@
 diff --git a/src/box/sql/printf.c b/src/box/sql/printf.c
-index 67e41665e..c9acf7601 100644
+index 67e41665e..cdf2a08ab 100644
 --- a/src/box/sql/printf.c
 +++ b/src/box/sql/printf.c
 @@ -424,8 +424,9 @@ sqlVXPrintf(StrAccum * pAccum,	/* Accumulate results here */
@@ -14,3 +14,13 @@ index 67e41665e..c9acf7601 100644
  			}
  			if (precision < etBUFSIZE - 10) {
  				nOut = etBUFSIZE;
+@@ -794,6 +795,9 @@ sqlVXPrintf(StrAccum * pAccum,	/* Accumulate results here */
+ 		width -= length;
+ 		if (width > 0 && !flag_leftjustify)
+ 			sqlAppendChar(pAccum, width, ' ');
++
++		if (bufpt == NULL) // assert
++			panic("bufpt == NULL in %s:%d", __FILE__, __LINE__);
+ 		sqlStrAccumAppend(pAccum, bufpt, length);
+ 		if (width > 0 && flag_leftjustify)
+ 			sqlAppendChar(pAccum, width, ' ');
