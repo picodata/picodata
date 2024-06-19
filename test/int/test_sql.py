@@ -1619,6 +1619,14 @@ def test_create_drop_table(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
+    with pytest.raises(
+        TarantoolError,
+        match=(
+            "Tuple field 1 \\(A\\) type does not match one required"
+            " by operation: expected integer, got nil"
+        ),
+    ):
+        i1.sql('insert into "t" values (null)')
 
     ddl = i2.sql(
         """
