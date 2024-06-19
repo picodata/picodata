@@ -1,5 +1,5 @@
 diff --git a/src/lj_opt_narrow.c b/src/lj_opt_narrow.c
-index db0da10f..04cf614c 100644
+index db0da10f..a23f7ae1 100644
 --- a/src/lj_opt_narrow.c
 +++ b/src/lj_opt_narrow.c
 @@ -4,6 +4,7 @@
@@ -10,7 +10,18 @@ index db0da10f..04cf614c 100644
  #define lj_opt_narrow_c
  #define LUA_CORE
  
-@@ -386,16 +387,21 @@ static IRRef narrow_conv_emit(jit_State *J, NarrowConv *nc)
+@@ -373,6 +374,10 @@ static IRRef narrow_conv_emit(jit_State *J, NarrowConv *nc)
+       *sp++ = emitir_raw(convot, ref, convop2);  /* Raw emit avoids a loop. */
+     } else if (op == NARROW_SEXT) {
+       lj_assertJ(sp >= nc->stack+1, "stack underflow");
++      if (LJ_UNLIKELY(sp < nc->stack+1)) { // assert
++        fprintf(stderr, "stack underflow in %s:%d", __FILE__, __LINE__);
++        abort();
++      }
+       sp[-1] = emitir(IRT(IR_CONV, IRT_I64), sp[-1],
+ 		      (IRT_I64<<5)|IRT_INT|IRCONV_SEXT);
+     } else if (op == NARROW_INT) {
+@@ -386,16 +391,21 @@ static IRRef narrow_conv_emit(jit_State *J, NarrowConv *nc)
        sp--;
        /* Omit some overflow checks for array indexing. See comments above. */
        if ((mode & IRCONV_CONVMASK) == IRCONV_INDEX) {
