@@ -126,12 +126,13 @@ macro_rules! define_clusterwide_tables {
                 }
             }
 
-            pub fn description(&self) -> Option<String> {
+            pub fn description(&self) -> String {
                 match self {
                     $( Self::$cw_space_var => $space_struct::description_from_doc_comments(), )+
                 }
             }
 
+            #[allow(unused)]
             const fn doc_comments_raw(&self) -> &'static [&'static str] {
                 match self {
                     $( Self::$cw_space_var => $space_struct::DOC_COMMENTS_RAW, )+
@@ -1111,7 +1112,7 @@ pub trait TClusterwideTable {
     const INDEX_NAMES: &'static [&'static str];
     const DOC_COMMENTS_RAW: &'static [&'static str];
 
-    fn description_from_doc_comments() -> Option<String> {
+    fn description_from_doc_comments() -> String {
         let mut res = String::with_capacity(256);
 
         let mut lines = Self::DOC_COMMENTS_RAW.iter();
@@ -1138,11 +1139,7 @@ pub trait TClusterwideTable {
             }
         }
 
-        if res.is_empty() {
-            return None;
-        }
-
-        Some(res)
+        res
     }
 }
 

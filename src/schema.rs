@@ -70,7 +70,7 @@ pub struct TableDef {
     pub operable: bool,
     pub engine: SpaceEngineType,
     pub owner: UserId,
-    pub description: Option<String>,
+    pub description: String,
 }
 
 impl TableDef {
@@ -90,7 +90,7 @@ impl TableDef {
             Field::from(("operable", FieldType::Boolean)).is_nullable(false),
             Field::from(("engine", FieldType::String)).is_nullable(false),
             Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
-            Field::from(("description", FieldType::String)).is_nullable(true),
+            Field::from(("description", FieldType::String)).is_nullable(false),
         ]
     }
 
@@ -110,7 +110,7 @@ impl TableDef {
             operable: true,
             engine: SpaceEngineType::Blackhole,
             owner: 42,
-            description: Some("Very important, don't delete!".into()),
+            description: "A table for tests".into(),
         }
     }
 

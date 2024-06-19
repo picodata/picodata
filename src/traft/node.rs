@@ -1615,7 +1615,8 @@ impl NodeImpl {
                     operable: false,
                     engine,
                     owner,
-                    description: None,
+                    // TODO: add description field into Ddl::CreateTable
+                    description: "".into(),
                 };
                 let res = self.storage.tables.insert(&table_def);
                 if let Err(e) = res {

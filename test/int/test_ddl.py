@@ -90,7 +90,7 @@ def test_ddl_lua_api(cluster: Cluster):
         True,
         "memtx",
         initiator_id,
-        None,
+        "",
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -114,7 +114,7 @@ def test_ddl_lua_api(cluster: Cluster):
         True,
         "memtx",
         initiator_id,
-        None,
+        "",
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -134,7 +134,7 @@ def test_ddl_lua_api(cluster: Cluster):
         True,
         "vinyl",
         initiator_id,
-        None,
+        "",
     ]
     cluster.create_table(
         dict(
@@ -292,7 +292,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         True,
         "memtx",
         initiator_id,
-        None,
+        "",
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
@@ -411,7 +411,7 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         True,
         "memtx",
         initiator_id,
-        None,
+        "",
     ]
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
