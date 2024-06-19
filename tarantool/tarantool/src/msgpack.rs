@@ -287,6 +287,20 @@ pub fn preserve_read(from: &mut &[u8]) -> Result<Vec<u8>> {
     Ok(into)
 }
 
+/// Reads from a slice of valid MessagePack stream values a string, preserving read bytes.
+/// Returns a pair of bytes indicating the beginning and end of a string.
+pub fn str_bounds(mut stream: &[u8]) -> Result<(usize, usize)> {
+    use rmp::Marker;
+
+    match Marker::from_u8(stream[0]) {
+        Marker::FixStr(len) => Ok((1, len as usize + 1)),
+        Marker::Str8 => Ok((2, rmp::decode::read_str_len(&mut stream)? as usize + 2)),
+        Marker::Str16 => Ok((3, rmp::decode::read_str_len(&mut stream)? as usize + 3)),
+        Marker::Str32 => Ok((5, rmp::decode::read_str_len(&mut stream)? as usize + 5)),
+        marker => Err(rmp::decode::ValueReadError::TypeMismatch(marker))?,
+    }
+}
+
 /// Write to `w` a msgpack array with values from `arr`.
 pub fn write_array<T>(w: &mut impl std::io::Write, arr: &[T]) -> Result<()>
 where

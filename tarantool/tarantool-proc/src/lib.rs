@@ -29,11 +29,12 @@ pub fn test(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 mod msgpack {
     use darling::FromDeriveInput;
+    use proc_macro2::TokenStream;
     use proc_macro_error::{abort, SpanRange};
     use quote::{format_ident, quote, quote_spanned, ToTokens};
     use syn::{
         parse_quote, spanned::Spanned, Data, Field, Fields, FieldsNamed, FieldsUnnamed,
-        GenericParam, Generics, Ident, Index, Path,
+        GenericParam, Generics, Ident, Index, Path, Type,
     };
 
     #[derive(Default, FromDeriveInput)]
@@ -43,6 +44,8 @@ mod msgpack {
         pub as_map: bool,
         /// Path to tarantool crate.
         pub tarantool: Option<String>,
+        /// Allows optional fields of unnamed structs to be decoded if values are not presented.
+        pub allow_array_optionals: bool,
     }
 
     pub fn add_trait_bounds(mut generics: Generics, tarantool_crate: &Path) -> Generics {
@@ -54,6 +57,25 @@ mod msgpack {
             }
         }
         generics
+    }
+
+    trait TypeExt {
+        fn is_option(&self) -> bool;
+    }
+
+    impl TypeExt for Type {
+        fn is_option(&self) -> bool {
+            if let Type::Path(ref typepath) = self {
+                typepath
+                    .path
+                    .segments
+                    .last()
+                    .map(|segment| segment.ident == "Option")
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        }
     }
 
     /// Defines how field will be encoded or decoded according to attribute on it.
@@ -218,8 +240,10 @@ mod msgpack {
         data: &Data,
         tarantool_crate: &Path,
         attrs_span: impl Fn() -> SpanRange,
-        as_map: bool,
+        args: &Args,
     ) -> proc_macro2::TokenStream {
+        let as_map = args.as_map;
+
         match *data {
             Data::Struct(ref data) => match data.fields {
                 Fields::Named(ref fields) => {
@@ -327,58 +351,27 @@ mod msgpack {
         fields: &FieldsNamed,
         tarantool_crate: &Path,
         enum_variant: Option<&syn::Ident>,
-    ) -> proc_macro2::TokenStream {
+        allow_array_optionals: bool,
+    ) -> TokenStream {
         let mut var_names = Vec::with_capacity(fields.named.len());
-        let code: proc_macro2::TokenStream = fields
+        let mut met_option = false;
+        let code: TokenStream = fields
             .named
             .iter()
             .map(|f| {
-                let name = f.ident.as_ref().expect("only named fields here");
-                let field_raw_repr = format_ident!("{}", name).to_string();
-                let field_repr = proc_macro2::Literal::byte_string(field_raw_repr.as_bytes());
-                let var_name = format_ident!("_field_{}", name);
-                let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(f));
-
-                let read_key = quote_spanned!{f.span()=>
-                    if as_map {
-                        let len = rmp::decode::read_str_len(r)
-                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err).with_part("field name"))?;
-                        let decoded_field_name = r.get(0..(len as usize))
-                            .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
-                        *r = &r[(len as usize)..]; // advance
-                        if decoded_field_name != #field_repr {
-                            let field_repr = String::from_utf8(#field_repr.to_vec()).expect("is valid utf8");
-                            let err = if let Ok(decoded_field_name) = String::from_utf8(decoded_field_name.to_vec()) {
-                                format!("expected field {}, got {}", field_repr, decoded_field_name)
-                            } else {
-                                format!("expected field {}, got invalid utf8 {:?}", field_repr, decoded_field_name)
-                            };
-                            return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err));
-                        }
-                    }
-                };
-                let out = if let Some(attr) = field_attr {
-                    match attr {
-                        FieldAttr::Raw => quote_spanned!{f.span()=>
-                            use #tarantool_crate::msgpack::preserve_read;
-
-                            #read_key
-                            let #var_name = preserve_read(r).expect("only valid msgpack here");
-                        },
-                        // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
-                        // to overwrite external structure encoding behavior
-                        FieldAttr::Map => return syn::Error::new(f.span(), "`as_map` is not currently supported").to_compile_error(),
-                        FieldAttr::Vec => return syn::Error::new(f.span(), "`as_vec` is not currently supported").to_compile_error(),
-                    }
+                if f.ty.is_option() {
+                    met_option = true;
+                    decode_named_optional_field(f, tarantool_crate, &mut var_names, allow_array_optionals)
                 } else {
-                    quote_spanned! {f.span()=>
-                        #read_key
-                        let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
-                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#name))))?;
+                    if met_option && allow_array_optionals {
+                        return syn::Error::new(
+                            f.span(),
+                            "optional fields must be the last in the parameter list if allow_array_optionals is enabled",
+                        )
+                        .to_compile_error();
                     }
-                };
-                var_names.push(var_name);
-                out
+                    decode_named_required_field(f, tarantool_crate, &mut var_names)
+                }
             })
             .collect();
         let field_names = fields.named.iter().map(|f| &f.ident);
@@ -395,40 +388,157 @@ mod msgpack {
         }
     }
 
+    #[inline]
+    fn decode_named_optional_field(
+        field: &Field,
+        tarantool_crate: &Path,
+        names: &mut Vec<Ident>,
+        allow_array_optionals: bool,
+    ) -> TokenStream {
+        let field_type = &field.ty;
+        let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(field));
+
+        let field_ident = field.ident.as_ref().expect("only named fields here");
+        let field_repr = format_ident!("{}", field_ident).to_string();
+        let field_name = proc_macro2::Literal::byte_string(field_repr.as_bytes());
+        let var_name = format_ident!("_field_{}", field_ident);
+
+        let read_key = quote_spanned! {field.span()=>
+            if as_map {
+                use #tarantool_crate::msgpack::str_bounds;
+
+                let (byte_len, field_name_len_spaced) = str_bounds(r)
+                    .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part("field name"))?;
+                let decoded_field_name = r.get(byte_len..field_name_len_spaced).unwrap();
+                if decoded_field_name != #field_name {
+                    is_none = true;
+                } else {
+                    let len = rmp::decode::read_str_len(r).unwrap();
+                    *r = &r[(len as usize)..]; // advance if matches field name
+                }
+            }
+        };
+
+        // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
+        let out = match field_attr {
+            Some(FieldAttr::Map) => unimplemented!("`as_map` is not currently supported"),
+            Some(FieldAttr::Vec) => unimplemented!("`as_vec` is not currently supported"),
+            Some(FieldAttr::Raw) => quote_spanned! {field.span()=>
+                    let mut #var_name: #field_type = None;
+                    let mut is_none = false;
+
+                    #read_key
+                    if !is_none {
+                        #var_name = Some(#tarantool_crate::msgpack::preserve_read(r).expect("only valid msgpack here"));
+                    }
+            },
+            None => quote_spanned! {field.span()=>
+                let mut #var_name: #field_type = None;
+                let mut is_none = false;
+
+                #read_key
+                if !is_none {
+                    match #tarantool_crate::msgpack::Decode::decode(r, context) {
+                        Ok(val) => #var_name = Some(val),
+                        Err(err) => {
+                            let nulled = err.part == Some("got Null".to_owned());
+                            let markered = err.source.get(err.source.len() - 33..).unwrap_or("")== "failed to read MessagePack marker";
+
+                            if !nulled && !#allow_array_optionals && !as_map {
+                                Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("decoding optional fields in named structs with `AS_ARRAY` context is not allowed without `allow_array_optionals` attribute"))?;
+                            } else if !nulled && !markered && #allow_array_optionals {
+                                Err(err)?;
+                            }
+                        },
+                    }
+                }
+            },
+        };
+
+        names.push(var_name);
+        out
+    }
+
+    #[inline]
+    fn decode_named_required_field(
+        field: &Field,
+        tarantool_crate: &Path,
+        names: &mut Vec<Ident>,
+    ) -> TokenStream {
+        let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(field));
+
+        let field_ident = field.ident.as_ref().expect("only named fields here");
+        let field_repr = format_ident!("{}", field_ident).to_string();
+        let field_name = proc_macro2::Literal::byte_string(field_repr.as_bytes());
+        let var_name = format_ident!("_field_{}", field_ident);
+
+        let read_key = quote_spanned! {field.span()=>
+            if as_map {
+                let len = rmp::decode::read_str_len(r)
+                    .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err).with_part("field name"))?;
+                let decoded_field_name = r.get(0..(len as usize))
+                    .ok_or_else(|| #tarantool_crate::msgpack::DecodeError::new::<Self>("not enough data").with_part("field name"))?;
+                *r = &r[(len as usize)..]; // advance
+                if decoded_field_name != #field_name {
+                    let field_name = String::from_utf8(#field_name.to_vec()).expect("is valid utf8");
+                    let err = if let Ok(decoded_field_name) = String::from_utf8(decoded_field_name.to_vec()) {
+                        format!("expected field {}, got {}", field_name, decoded_field_name)
+                    } else {
+                        format!("expected field {}, got invalid utf8 {:?}", field_name, decoded_field_name)
+                    };
+                    return Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err));
+                }
+            }
+        };
+
+        // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
+        let out = if let Some(FieldAttr::Raw) = field_attr {
+            quote_spanned! {field.span()=>
+                #read_key
+                let #var_name = #tarantool_crate::msgpack::preserve_read(r).expect("only valid msgpack here");
+            }
+        } else if let Some(FieldAttr::Map) = field_attr {
+            unimplemented!("`as_map` is not currently supported");
+        } else if let Some(FieldAttr::Vec) = field_attr {
+            unimplemented!("`as_vec` is not currently supported");
+        } else {
+            quote_spanned! {field.span()=>
+                #read_key
+                let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
+                    .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#field_ident))))?;
+            }
+        };
+
+        names.push(var_name);
+        out
+    }
+
     fn decode_unnamed_fields(
         fields: &FieldsUnnamed,
         tarantool_crate: &Path,
         enum_variant: Option<&syn::Ident>,
+        allow_array_optionals: bool,
     ) -> proc_macro2::TokenStream {
         let mut var_names = Vec::with_capacity(fields.unnamed.len());
+        let mut met_option = false;
         let code: proc_macro2::TokenStream = fields
             .unnamed
             .iter()
             .enumerate()
             .map(|(i, f)| {
-                let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(f));
-                let index = Index::from(i);
-                let var_name = quote::format_ident!("_field_{}", index);
-                let out = if let Some(attr) = field_attr {
-                    match attr {
-                        FieldAttr::Raw => quote_spanned!{f.span()=>
-                            use #tarantool_crate::msgpack::preserve_read;
-
-                            let #var_name = preserve_read(r).expect("only valid msgpack here");
-                        },
-                        // TODO: allow `#[encode(as_map)]` and `#[encode(as_vec)]` for struct fields
-                        // to overwrite external structure encoding behavior
-                        FieldAttr::Map => return syn::Error::new(f.span(), "`as_map` is not currently supported").to_compile_error(),
-                        FieldAttr::Vec => return syn::Error::new(f.span(), "`as_vec` is not currently supported").to_compile_error(),
-                    }
+                let is_option = f.ty.is_option();
+                if is_option {
+                    met_option = true;
+                    decode_unnamed_optional_field(f, i, tarantool_crate, &mut var_names)
+                } else if met_option && allow_array_optionals {
+                    return syn::Error::new(
+                        f.span(),
+                        "optional fields must be the last in the parameter list with `allow_array_optionals` attribute",
+                    )
+                    .to_compile_error();
                 } else {
-                    quote_spanned! {f.span()=>
-                        let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
-                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", #i)))?;
-                    }
-                };
-                var_names.push(var_name);
-                out
+                    decode_unnamed_required_field(f, i, tarantool_crate, &mut var_names)
+                }
             })
             .collect();
         let enum_variant = if let Some(variant) = enum_variant {
@@ -444,12 +554,82 @@ mod msgpack {
         }
     }
 
+    fn decode_unnamed_optional_field(
+        field: &Field,
+        index: usize,
+        tarantool_crate: &Path,
+        names: &mut Vec<Ident>,
+    ) -> TokenStream {
+        let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(field));
+        let field_type = &field.ty;
+
+        let field_index = Index::from(index);
+        let var_name = quote::format_ident!("_field_{}", field_index);
+
+        let out = match field_attr {
+            Some(FieldAttr::Map) => unimplemented!("`as_map` is not currently supported"),
+            Some(FieldAttr::Vec) => unimplemented!("`as_vec` is not currently supported"),
+            Some(FieldAttr::Raw) => quote_spanned! {field.span()=>
+                let #var_name = #tarantool_crate::msgpack::preserve_read(r).expect("only valid msgpack here");
+            },
+            None => quote_spanned! {field.span()=>
+                let mut #var_name: #field_type = None;
+                match #tarantool_crate::msgpack::Decode::decode(r, context) {
+                    Ok(val) => #var_name = Some(val),
+                    Err(err) => {
+                        let nulled = err.part == Some("got Null".to_owned());
+                        let markered = err.source.get(err.source.len() - 33..).unwrap_or("")== "failed to read MessagePack marker";
+
+                        if !nulled && !markered {
+                            Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("{}", stringify!(#field_index))))?;
+                        }
+                    },
+                }
+            },
+        };
+
+        names.push(var_name);
+        out
+    }
+
+    fn decode_unnamed_required_field(
+        field: &Field,
+        index: usize,
+        tarantool_crate: &Path,
+        names: &mut Vec<Ident>,
+    ) -> TokenStream {
+        let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(field));
+
+        let field_index = Index::from(index);
+        let var_name = quote::format_ident!("_field_{}", field_index);
+
+        let out = if let Some(FieldAttr::Raw) = field_attr {
+            quote_spanned! {field.span()=>
+                let #var_name = #tarantool_crate::msgpack::preserve_read(r).expect("only valid msgpack here");
+            }
+        } else if let Some(FieldAttr::Map) = field_attr {
+            unimplemented!("`as_map` is not currently supported");
+        } else if let Some(FieldAttr::Vec) = field_attr {
+            unimplemented!("`as_vec` is not currently supported");
+        } else {
+            quote_spanned! {field.span()=>
+                let #var_name = #tarantool_crate::msgpack::Decode::decode(r, context)
+                    .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", #index)))?;
+            }
+        };
+
+        names.push(var_name);
+        out
+    }
+
     pub fn decode_fields(
         data: &Data,
         tarantool_crate: &Path,
         attrs_span: impl Fn() -> SpanRange,
-        as_map: bool,
+        args: &Args,
     ) -> proc_macro2::TokenStream {
+        let as_map = args.as_map;
+
         match *data {
             Data::Struct(ref data) => match data.fields {
                 Fields::Named(ref fields) => {
@@ -461,7 +641,12 @@ mod msgpack {
                         .as_ref()
                         .expect("not an unnamed struct")
                         .to_string();
-                    let fields = decode_named_fields(fields, tarantool_crate, None);
+                    let fields = decode_named_fields(
+                        fields,
+                        tarantool_crate,
+                        None,
+                        args.allow_array_optionals,
+                    );
                     quote! {
                         let as_map = match context.struct_style() {
                             StructStyle::Default => #as_map,
@@ -486,8 +671,28 @@ mod msgpack {
                             "`as_map` attribute can be specified only for structs with named fields"
                         );
                     }
-                    let fields = decode_unnamed_fields(fields, tarantool_crate, None);
+
+                    let mut option_key = TokenStream::new();
+                    if fields.unnamed.len() == 1 {
+                        let first_field = fields.unnamed.first().expect("len is sufficient");
+                        let is_option = first_field.ty.is_option();
+                        if is_option {
+                            option_key = quote! {
+                                if r.is_empty() {
+                                    return Ok(Self(None));
+                                }
+                            };
+                        }
+                    }
+
+                    let fields = decode_unnamed_fields(
+                        fields,
+                        tarantool_crate,
+                        None,
+                        args.allow_array_optionals,
+                    );
                     quote! {
+                        #option_key
                         #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
                         #fields
@@ -519,7 +724,7 @@ mod msgpack {
 
                         match variant.fields {
                             Fields::Named(ref fields) => {
-                                let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident));
+                                let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident), args.allow_array_optionals);
                                 // TODO: allow `#[encode(as_map)]` for struct variants
                                 quote! {
                                     #variant_repr => {
@@ -531,7 +736,7 @@ mod msgpack {
                                 }
                             },
                             Fields::Unnamed(ref fields) => {
-                                let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident));
+                                let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident), args.allow_array_optionals);
                                 quote! {
                                     #variant_repr => {
                                         #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
@@ -604,8 +809,8 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
 
     // Get attribute arguments
     let args: msgpack::Args = darling::FromDeriveInput::from_derive_input(&input).unwrap();
-    let tarantool_crate = args.tarantool.unwrap_or_else(|| "tarantool".to_string());
-    let tarantool_crate = Ident::new(tarantool_crate.as_str(), Span::call_site()).into();
+    let tarantool_crate = args.tarantool.as_deref().unwrap_or("tarantool");
+    let tarantool_crate = Ident::new(tarantool_crate, Span::call_site()).into();
 
     // Add a bound to every type parameter.
     let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
@@ -616,7 +821,7 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
         // Use a closure as the function might be costly, but is only used for errors
         // and we don't want to slow down compilation.
         || attrs_span(&input.attrs),
-        args.as_map,
+        &args,
     );
     let expanded = quote! {
         // The generated impl.
@@ -648,8 +853,8 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
 
     // Get attribute arguments
     let args: msgpack::Args = darling::FromDeriveInput::from_derive_input(&input).unwrap();
-    let tarantool_crate = args.tarantool.unwrap_or_else(|| "tarantool".to_string());
-    let tarantool_crate = Ident::new(tarantool_crate.as_str(), Span::call_site()).into();
+    let tarantool_crate = args.tarantool.as_deref().unwrap_or("tarantool");
+    let tarantool_crate = Ident::new(tarantool_crate, Span::call_site()).into();
 
     // Add a bound to every type parameter.
     let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
@@ -660,7 +865,7 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
         // Use a closure as the function might be costly, but is only used for errors
         // and we don't want to slow down compilation.
         || attrs_span(&input.attrs),
-        args.as_map,
+        &args,
     );
     let expanded = quote! {
         // The generated impl.

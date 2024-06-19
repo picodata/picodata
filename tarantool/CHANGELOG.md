@@ -46,6 +46,7 @@
   with `Vec<u8>` type, representing raw MessagePack.
 - added `Decimal::into_raw` functions
 - added `Tuple::as_ptr` functions
+- Custom Encode/Decode allows skipping `Option` fields
 
 ### Changed
 

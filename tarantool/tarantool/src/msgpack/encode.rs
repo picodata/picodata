@@ -141,6 +141,10 @@ pub enum StructStyle {
 /// to interpret field or variant value as raw MessagePack value. This will validate them at runtime
 /// and directly write to or read from buffer.
 ///
+/// Fields with type `Option<T>` can be skipped in msgpack if decoding MP_MAP.
+/// In case of an MP_ARRAY (if `#[encode(allow_array_optionals)]` is enabled) only last fields
+/// with type of `Option<T>` can be skipped.
+///
 /// It should replace `tuple::Decode` when it's ready.
 ///
 /// # Example
@@ -172,7 +176,7 @@ pub struct DecodeError {
     /// Type being decoded.
     ty: &'static str,
     /// Field, element or some other part of the decoded type.
-    part: Option<String>,
+    pub part: Option<String>,
     // It is just a string for simplicicty as we need Clone, Sync, etc.
     /// The error that is wrapped by this error.
     source: String,
@@ -206,6 +210,7 @@ impl DecodeError {
         self
     }
 
+    /// VRE is [`rmp::decode::ValueReadError`](https://docs.rs/rmp/latest/rmp/decode/enum.ValueReadError.html)
     #[inline(always)]
     pub fn from_vre<DecodedTy>(value: ValueReadError) -> Self {
         match value {
@@ -218,6 +223,7 @@ impl DecodeError {
         }
     }
 
+    /// VRE is [`rmp::decode::ValueReadError`](https://docs.rs/rmp/latest/rmp/decode/enum.ValueReadError.html)
     #[inline(always)]
     pub fn from_vre_with_field<DecodedTy>(value: ValueReadError, field: impl ToString) -> Self {
         match value {
@@ -230,6 +236,7 @@ impl DecodeError {
         }
     }
 
+    /// NVRE is [`rmp::decode::NumValueReadError`](https://docs.rs/rmp/latest/rmp/decode/enum.NumValueReadError.html)
     #[inline(always)]
     pub fn from_nvre<DecodedTy>(value: NumValueReadError) -> Self {
         match value {
@@ -895,6 +902,9 @@ mod tests {
     use rmpv::Value;
     use std::{collections::BTreeMap, io::Cursor};
 
+    const MAP_CTX: &Context = &Context::DEFAULT.with_struct_style(StructStyle::ForceAsMap);
+    const ARR_CTX: &Context = &Context::DEFAULT.with_struct_style(StructStyle::ForceAsArray);
+
     #[track_caller]
     fn assert_value(mut bytes: &[u8], v: rmpv::Value) {
         let got = rmpv::decode::read_value(&mut bytes).unwrap();
@@ -932,10 +942,9 @@ mod tests {
         assert_eq!(test_dec, test);
 
         // Try (de)encoding as part of a struct as map
-        let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
         let mut bytes = vec![];
-        test.encode(&mut bytes, &ctx_as_map).unwrap();
-        let test_dec = Test::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
+        test.encode(&mut bytes, MAP_CTX).unwrap();
+        let test_dec = Test::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
         assert_eq!(test_dec, test);
 
         // Try (de)encoding as part of vec
@@ -983,22 +992,302 @@ mod tests {
         );
 
         // Override, encode as map
-        let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
         let mut bytes = vec![];
-        test_1.encode(&mut bytes, &ctx_as_map).unwrap();
+        test_1.encode(&mut bytes, MAP_CTX).unwrap();
         assert_value(
             &bytes,
             Value::Map(vec![(Value::from("b"), Value::from(42))]),
         );
-        let test_1_dec = Test1::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
+        let test_1_dec = Test1::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
         assert_eq!(test_1_dec, test_1);
 
         // Try decoding as a different struct
-        let e = Test2::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap_err();
+        let e = Test2::decode(&mut bytes.as_slice(), MAP_CTX).unwrap_err();
         assert_eq!(
             e.to_string(),
             "failed decoding tarantool::msgpack::encode::tests::encode_struct::Test2: expected field not_b, got b"
         );
+    }
+
+    #[test]
+    fn decode_optionals() {
+        use std::f32::consts::TAU;
+
+        #[derive(Debug, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct TestNamedForbidden {
+            a: Option<Vec<String>>,
+            b: Vec<i32>,
+            c: Option<f32>,
+            d: Option<f32>,
+        }
+
+        // map context, optional field is null (ok)
+        let test_named_forbidden_helper_map = Value::Map(vec![
+            (Value::from("a"), Value::Nil),
+            (
+                Value::from("b"),
+                Value::Array(vec![Value::from(42), Value::from(52)]),
+            ),
+            (Value::from("c"), Value::Nil),
+            (Value::from("d"), Value::from(TAU)),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_forbidden_helper_map).unwrap();
+        let decoded_map = TestNamedForbidden::decode(&mut encoded.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(
+            decoded_map,
+            TestNamedForbidden {
+                a: None,
+                b: vec![42, 52],
+                c: None,
+                d: Some(TAU),
+            }
+        );
+
+        // map context, optional field is missing (ok)
+        let test_named_forbidden_helper_map = Value::Map(vec![
+            (
+                Value::from("b"),
+                Value::Array(vec![Value::from(42), Value::from(52)]),
+            ),
+            (Value::from("c"), Value::Nil),
+            (Value::from("d"), Value::from(TAU)),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_forbidden_helper_map).unwrap();
+        let decoded_map = TestNamedForbidden::decode(&mut encoded.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(
+            decoded_map,
+            TestNamedForbidden {
+                a: None,
+                b: vec![42, 52],
+                c: None,
+                d: Some(TAU),
+            }
+        );
+
+        // array context, optional field is null (ok)
+        let test_named_forbidden_helper_arr = Value::Array(vec![
+            Value::Nil,
+            Value::Array(vec![Value::from(42), Value::from(52)]),
+            Value::Nil,
+            Value::from(TAU),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_forbidden_helper_arr).unwrap();
+        let decoded_arr = TestNamedForbidden::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_arr,
+            TestNamedForbidden {
+                a: None,
+                b: vec![42, 52],
+                c: None,
+                d: Some(TAU),
+            }
+        );
+
+        // array context, optional field is missing (error)
+        let test_named_forbidden_helper_arr = Value::Array(vec![
+            Value::Array(vec![Value::from(42), Value::from(52)]),
+            Value::Nil,
+            Value::from(TAU),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_forbidden_helper_arr).unwrap();
+        let err = TestNamedForbidden::decode(&mut encoded.as_slice(), ARR_CTX).unwrap_err();
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestNamedForbidden: decoding optional fields in named structs with `AS_ARRAY` context is not allowed without `allow_array_optionals` attribute");
+
+        #[derive(Debug, Decode, PartialEq)]
+        #[encode(tarantool = "crate", allow_array_optionals)]
+        struct TestNamedAllowed {
+            a: Vec<i32>,
+            b: Option<f32>,
+            c: Option<bool>,
+        }
+
+        // map context, optional field is null (ok)
+        let test_named_allowed_helper_map = Value::Map(vec![
+            (
+                Value::from("a"),
+                Value::Array(vec![Value::from(42), Value::from(52)]),
+            ),
+            (Value::from("b"), Value::Nil),
+            (Value::from("c"), Value::from(false)),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_allowed_helper_map).unwrap();
+        let decoded_map = TestNamedAllowed::decode(&mut encoded.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(
+            decoded_map,
+            TestNamedAllowed {
+                a: vec![42, 52],
+                b: None,
+                c: Some(false),
+            }
+        );
+
+        // map context, optional field is missing (ok)
+        let test_named_allowed_helper_map = Value::Map(vec![
+            (
+                Value::from("a"),
+                Value::Array(vec![Value::from(42), Value::from(52)]),
+            ),
+            (Value::from("c"), Value::from(false)),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_allowed_helper_map).unwrap();
+        let decoded_map = TestNamedAllowed::decode(&mut encoded.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(
+            decoded_map,
+            TestNamedAllowed {
+                a: vec![42, 52],
+                b: None,
+                c: Some(false),
+            }
+        );
+
+        // array context, optional field is null (ok)
+        let test_named_allowed_helper_arr = Value::Array(vec![
+            Value::Array(vec![Value::from(42), Value::from(52)]),
+            Value::Nil,
+            Value::from(false),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_allowed_helper_arr).unwrap();
+        let decoded_arr = TestNamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_arr,
+            TestNamedAllowed {
+                a: vec![42, 52],
+                b: None,
+                c: Some(false),
+            }
+        );
+
+        // array context, optional field is missing (err)
+        let test_named_allowed_helper_arr = Value::Array(vec![
+            Value::Array(vec![Value::from(42), Value::from(52)]),
+            Value::from(false),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_allowed_helper_arr).unwrap();
+        let err = TestNamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "failed decoding f32 (got False): the type decoded isn't match with the expected one"
+        );
+
+        // array context, last optional field is missing (ok)
+        let test_named_allowed_helper_arr = Value::Array(vec![
+            Value::Array(vec![Value::from(42), Value::from(52)]),
+            Value::from(TAU),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_allowed_helper_arr).unwrap();
+        let decoded_arr = TestNamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_arr,
+            TestNamedAllowed {
+                a: vec![42, 52],
+                b: Some(TAU),
+                c: None
+            }
+        );
+
+        // array context, more than one optional fields in a row are missing (ok)
+        let test_named_allowed_helper_arr =
+            Value::Array(vec![Value::Array(vec![Value::from(42), Value::from(52)])]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_named_allowed_helper_arr).unwrap();
+        let decoded_arr = TestNamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_arr,
+            TestNamedAllowed {
+                a: vec![42, 52],
+                b: None,
+                c: None
+            }
+        );
+
+        #[derive(Debug, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct TestUnnamedForbidden(Option<f32>, i32, Option<i32>, Option<Vec<String>>);
+
+        // array context, optional field is null (ok), equal to the same map context
+        let test_unnamed_forbidden_helper_arr = Value::Array(vec![
+            Value::Nil,
+            Value::from(42),
+            Value::Nil,
+            Value::Array(vec![Value::from("hello"), Value::from("world")]),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_unnamed_forbidden_helper_arr).unwrap();
+        let decoded_arr = TestUnnamedForbidden::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_arr,
+            TestUnnamedForbidden(None, 42, None, Some(vec!["hello".into(), "world".into()]))
+        );
+        let decoded_map = TestUnnamedForbidden::decode(&mut encoded.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_arr, decoded_map);
+
+        // array context, optional field is missing (err), equal to the same map context
+        let test_unnamed_forbidden_helper_arr = Value::Array(vec![
+            Value::from(42),
+            Value::Array(vec![Value::from("hello"), Value::from("world")]),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_unnamed_forbidden_helper_arr).unwrap();
+        let err_arr = TestUnnamedForbidden::decode(&mut encoded.as_slice(), ARR_CTX).unwrap_err();
+        assert_eq!(err_arr.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestUnnamedForbidden (0): failed decoding f32 (got FixPos(42)): the type decoded isn't match with the expected one");
+        let err_map = TestUnnamedForbidden::decode(&mut encoded.as_slice(), MAP_CTX).unwrap_err();
+        assert_eq!(err_map.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestUnnamedForbidden (0): failed decoding f32 (got FixPos(42)): the type decoded isn't match with the expected one");
+
+        #[derive(Debug, Decode, PartialEq)]
+        #[encode(tarantool = "crate", allow_array_optionals)]
+        struct TestUnnamedAllowed(i32, Option<i32>, Option<Vec<String>>);
+
+        // array context, optional field is null (ok), equal to the same map context
+        let test_unnamed_allowed_helper_arr = Value::Array(vec![
+            Value::from(42),
+            Value::Nil,
+            Value::Array(vec![Value::from("hello"), Value::from("world")]),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_unnamed_allowed_helper_arr).unwrap();
+        let decoded_arr = TestUnnamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_arr,
+            TestUnnamedAllowed(42, None, Some(vec!["hello".into(), "world".into()]))
+        );
+        let decoded_map = TestUnnamedAllowed::decode(&mut encoded.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_arr, decoded_map);
+
+        // array context, optional field is missing (err), equal to the same map context
+        let test_unnamed_allowed_helper_arr = Value::Array(vec![
+            Value::from(42),
+            Value::Array(vec![Value::from("hello"), Value::from("world")]),
+        ]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_unnamed_allowed_helper_arr).unwrap();
+        let err_arr = TestUnnamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap_err();
+        assert_eq!(err_arr.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestUnnamedAllowed (1): failed decoding i32 (got FixArray(2)): the type decoded isn't match with the expected one");
+        let err_map = TestUnnamedAllowed::decode(&mut encoded.as_slice(), MAP_CTX).unwrap_err();
+        assert_eq!(err_map.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestUnnamedAllowed (1): failed decoding i32 (got FixArray(2)): the type decoded isn't match with the expected one");
+
+        // array context, last optional field is missing (ok)
+        let test_unnamed_allowed_helper_arr = Value::Array(vec![Value::from(42), Value::from(52)]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_unnamed_allowed_helper_arr).unwrap();
+        let decoded_arr = TestUnnamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, TestUnnamedAllowed(42, Some(52), None));
+
+        // array context, more than one optional fields in a row are missing (ok)
+        let test_unnamed_allowed_helper_arr = Value::Array(vec![Value::from(42)]);
+        let mut encoded = Vec::new();
+        rmpv::encode::write_value(&mut encoded, &test_unnamed_allowed_helper_arr).unwrap();
+        let decoded_arr = TestUnnamedAllowed::decode(&mut encoded.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, TestUnnamedAllowed(42, None, None));
     }
 
     #[test]
@@ -1380,9 +1669,8 @@ mod tests {
         assert_eq!(test_dec, test);
 
         // Override, encode as map
-        let ctx_as_map = Context::default().with_struct_style(StructStyle::ForceAsMap);
         let mut bytes = vec![];
-        test.encode(&mut bytes, &ctx_as_map).unwrap();
+        test.encode(&mut bytes, MAP_CTX).unwrap();
         assert_value(
             &bytes,
             Value::Map(vec![
@@ -1400,7 +1688,7 @@ mod tests {
         // Because we forced as map when encoding, we need to force as map when decoding
         let e = Outer::decode(&mut bytes.as_slice(), &Context::default()).unwrap_err();
         assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Outer (field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner (got FixMap(2) in field i): the type decoded isn't match with the expected one");
-        let test_dec = Outer::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap();
+        let test_dec = Outer::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
         assert_eq!(test_dec, test);
 
         // Encode as map with deeply nested error of type mismatch
@@ -1417,8 +1705,8 @@ mod tests {
                 },
             },
         };
-        test_deep.encode(&mut bytes, &ctx_as_map).unwrap();
-        let e = OuterMismatch::decode(&mut bytes.as_slice(), &ctx_as_map).unwrap_err();
+        test_deep.encode(&mut bytes, MAP_CTX).unwrap();
+        let e = OuterMismatch::decode(&mut bytes.as_slice(), MAP_CTX).unwrap_err();
         assert_eq!(e.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::OuterMismatch (field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner1Mismatch (field inner): failed decoding tarantool::msgpack::encode::tests::encode_nested_struct::Inner2Mismatch (field i): failed decoding f32 (got FixPos(3)): the type decoded isn't match with the expected one")
     }
 
