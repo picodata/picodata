@@ -145,6 +145,7 @@ fn test_one(test: &TestCase) {
 
     crate::schema::init_user_pico_service();
 
+    ::tarantool::fiber::set_name(test.name());
     test.run();
     std::process::exit(0i32);
 }
