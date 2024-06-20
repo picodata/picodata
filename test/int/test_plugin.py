@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 import time
 from typing import Any, Dict, List, Optional
-
 import pytest
-
+import uuid
+import msgpack  # type: ignore
 from conftest import Cluster, ReturnError, retrying, Instance, TarantoolError
 from decimal import Decimal
 
@@ -22,6 +22,12 @@ _PLUGIN_WITH_MIGRATION = "testplug_w_migration"
 _PLUGIN_WITH_MIGRATION_SERVICES = ["testservice_2"]
 _PLUGIN_W_SDK = "testplug_sdk"
 _PLUGIN_W_SDK_SERVICES = ["testservice_3"]
+SERVICE_W_RPC = "service_with_rpc_tests"
+
+REQUEST_ID = 1
+PLUGIN_NAME = 2
+SERVICE_NAME = 3
+PLUGIN_VERSION = 4
 
 # ---------------------------------- Test helper classes {-----------------------------------------
 
@@ -1343,6 +1349,373 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
 
     # assert that topology doesn't change
     plugin_ref.assert_synced()
+
+
+# -------------------------- RPC SDK tests -------------------------------------
+
+
+def make_context(override: dict[Any, Any] = {}) -> dict[Any, Any]:
+    context = {
+        REQUEST_ID: uuid.uuid4(),
+        PLUGIN_NAME: _PLUGIN_W_SDK,
+        SERVICE_NAME: SERVICE_W_RPC,
+        PLUGIN_VERSION: "0.1.0",
+        "timeout": 5.0,
+    }
+    context.update(override)
+    return context
+
+
+def test_plugin_rpc_sdk_basic_errors(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+
+    plugin_name = _PLUGIN_W_SDK
+    service_name = SERVICE_W_RPC
+    install_and_enable_plugin(i1, plugin_name, [service_name])
+
+    #
+    # Check errors in .proc_rpc_dispatch (before handler is handled)
+    #
+    with pytest.raises(TarantoolError, match="expected 3 arguments"):
+        i1.call(".proc_rpc_dispatch")
+
+    with pytest.raises(
+        TarantoolError, match=r"first argument \(path\) must be a string"
+    ):
+        i1.call(".proc_rpc_dispatch", ["not", "string"], b"", {})
+
+    with pytest.raises(
+        TarantoolError, match=r"second argument \(input\) must be binary data"
+    ):
+        i1.call(".proc_rpc_dispatch", "/ping", ["not", "binary"], {})
+
+    with pytest.raises(
+        TarantoolError,
+        match=r"failed to decode third argument \(context\): expected a map",
+    ):
+        i1.call(".proc_rpc_dispatch", "/ping", b"", ["not", "map"])
+
+    with pytest.raises(TarantoolError, match="context must contain a request_id"):
+        i1.call(".proc_rpc_dispatch", "/ping", b"", {})
+
+    with pytest.raises(TarantoolError, match="no RPC endpoint `[^`]*` is registered"):
+        i1.call(".proc_rpc_dispatch", "/unknown-route", b"", make_context())
+
+    # Note: plugin.service is a part of the route, so if service or plugin name
+    # is incorrect, the response is there's no handler
+    context = make_context({PLUGIN_NAME: "NO_SUCH_PLUGIN"})
+    with pytest.raises(TarantoolError, match="no RPC endpoint `[^`]*` is registered"):
+        i1.call(".proc_rpc_dispatch", "/ping", b"", context)
+
+    context = make_context({SERVICE_NAME: "NO_SUCH_SERVICE"})
+    with pytest.raises(TarantoolError, match="no RPC endpoint `[^`]*` is registered"):
+        i1.call(".proc_rpc_dispatch", "/ping", b"", context)
+
+    context = make_context({PLUGIN_VERSION: "0.2.0"})
+    with pytest.raises(
+        TarantoolError,
+        match=r"incompatible version \(requestor: 0.2.0, handler: 0.1.0\)",
+    ):
+        i1.call(".proc_rpc_dispatch", "/ping", b"", context)
+
+
+def test_plugin_rpc_sdk_register_endpoint(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+
+    plugin_name = _PLUGIN_W_SDK
+    service_name = SERVICE_W_RPC
+    install_and_enable_plugin(i1, plugin_name, [service_name])
+
+    input: dict[str, Any]
+    #
+    # Check errors when registering an RPC endpoint
+    #
+    with pytest.raises(TarantoolError, match="path must be specified for RPC endpoint"):
+        context = make_context()
+        input = dict()
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    with pytest.raises(
+        TarantoolError, match="plugin.service must be specified for RPC endpoint"
+    ):
+        context = make_context()
+        input = dict(
+            path="",
+        )
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    with pytest.raises(TarantoolError, match="RPC route path cannot be empty"):
+        context = make_context()
+        input = dict(
+            path="",
+            service_info=(plugin_name, service_name, "0.1.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    with pytest.raises(
+        TarantoolError, match="RPC route path must start with '/', got 'bad-path'"
+    ):
+        context = make_context()
+        input = dict(
+            path="bad-path",
+            service_info=(plugin_name, service_name, "0.1.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    with pytest.raises(TarantoolError, match="RPC route plugin name cannot be empty"):
+        context = make_context()
+        input = dict(
+            path="/good-path",
+            service_info=("", service_name, "0.1.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    with pytest.raises(
+        TarantoolError, match="RPC endpoint `[^`]*` is already registered"
+    ):
+        context = make_context()
+        input = dict(
+            path="/register",
+            service_info=(plugin_name, service_name, "0.1.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    with pytest.raises(
+        TarantoolError,
+        match="RPC endpoint `[^`]*` is already registered with a different version",
+    ):
+        context = make_context()
+        input = dict(
+            path="/register",
+            service_info=(plugin_name, service_name, "0.2.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
+
+    # Check all RPC endpoints get unregistered
+    i1.call("pico.disable_plugin", plugin_name)
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"no RPC endpoint `{plugin_name}.{service_name}/register` is registered",
+    ):
+        context = make_context()
+        i1.call(".proc_rpc_dispatch", "/register", b"", context)
+
+    with pytest.raises(
+        TarantoolError,
+        match=f"no RPC endpoint `{plugin_name}.{service_name}/ping` is registered",
+    ):
+        context = make_context()
+        i1.call(".proc_rpc_dispatch", "/ping", b"", context)
+
+
+def test_plugin_rpc_sdk_send_request(cluster: Cluster):
+    i1 = cluster.add_instance(replicaset_id="r1", wait_online=False)
+    i2 = cluster.add_instance(replicaset_id="r1", wait_online=False)
+    i3 = cluster.add_instance(replicaset_id="r2", wait_online=False)
+    i4 = cluster.add_instance(replicaset_id="r2", wait_online=False)
+    cluster.wait_online()
+
+    def replicaset_master_id(replicaset_id: str) -> str:
+        return i1.eval(
+            "return box.space._pico_replicaset:get(...).target_master_id", replicaset_id
+        )
+
+    def any_bucket_id(instance: Instance) -> str:
+        return instance.eval(
+            """for _, t in box.space._bucket:pairs() do
+                if t.status == 'active' then
+                    return t.id
+                end
+            end"""
+        )
+
+    plugin_name = "testplug_sdk"
+    service_name = "service_with_rpc_tests"
+    install_and_enable_plugin(i1, plugin_name, [service_name])
+
+    # Call simple RPC endpoint, check context is passed correctly
+    context = make_context(
+        dict(
+            foo="bar",
+            bool=True,
+            int=420,
+            array=[1, "two", 3.14],
+        )
+    )
+    output = i1.call(".proc_rpc_dispatch", "/echo-context", b"hello!", context)
+    assert msgpack.loads(output) == dict(
+        request_id=str(context[REQUEST_ID]),
+        plugin_name=context[PLUGIN_NAME],
+        service_name=context[SERVICE_NAME],
+        plugin_version=context[PLUGIN_VERSION],
+        path="/echo-context",
+        foo="bar",
+        bool=True,
+        int=420,
+        array=[1, "two", 3.14],
+        timeout=5.0,
+    )
+
+    input: dict[str, Any]
+
+    # Check calling RPC to a specific instance_id via the plugin SDK
+    # Note: /proxy endpoint redirects the request
+    context = make_context()
+    input = dict(
+        path="/ping",
+        instance_id=i2.instance_id,
+        input="how are you?",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert msgpack.loads(output) == ["pong", i2.instance_id, b"how are you?"]
+
+    # Check calling RPC to ANY instance via the plugin SDK
+    context = make_context()
+    input = dict(
+        path="/ping",
+        input="random-target",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_id, echo = msgpack.loads(output)
+    assert pong == "pong"
+    assert instance_id in [i2.instance_id, i3.instance_id, i4.instance_id]
+    assert echo == b"random-target"
+
+    # Check calling RPC to a specific replicaset via the plugin SDK
+    context = make_context()
+    input = dict(
+        path="/ping",
+        replicaset_id="r2",
+        input="replicaset:any",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_id, echo = msgpack.loads(output)
+    assert pong == "pong"
+    assert instance_id in [i3.instance_id, i4.instance_id]
+    assert echo == b"replicaset:any"
+
+    # Check calling RPC to a master of a specific replicaset via the plugin SDK
+    context = make_context()
+    input = dict(
+        path="/ping",
+        replicaset_id="r2",
+        to_master=True,
+        input="replicaset:master",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_id, echo = msgpack.loads(output)
+    assert pong == "pong"
+    assert instance_id == replicaset_master_id("r2")
+    assert echo == b"replicaset:master"
+
+    # Check calling RPC by bucket_id via the plugin SDK
+    context = make_context()
+    input = dict(
+        path="/ping",
+        bucket_id=any_bucket_id(i1),
+        input="bucket_id:any",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_id, echo = msgpack.loads(output)
+    assert pong == "pong"
+    assert instance_id == i2.instance_id  # shouldn't call self
+    assert echo == b"bucket_id:any"
+
+    # Check calling RPC by bucket_id to master via the plugin SDK
+    context = make_context()
+    input = dict(
+        path="/ping",
+        bucket_id=any_bucket_id(i3),
+        to_master=True,
+        input="bucket_id:master",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_id, echo = msgpack.loads(output)
+    assert pong == "pong"
+    assert instance_id == replicaset_master_id("r2")
+    assert echo == b"bucket_id:master"
+
+    # Check calling builtin picodata stored procedures via plugin SDK
+    context = make_context()
+    input = dict(
+        path=".proc_instance_info",
+        instance_id="i1",
+        input=msgpack.dumps([]),
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert msgpack.loads(output) == i1.call(".proc_instance_info")
+
+    # Check requesting RPC to unknown plugin
+    with pytest.raises(
+        TarantoolError,
+        match=f"service 'NO_SUCH_PLUGIN.{service_name}' is not running on i1",
+    ):
+        context = make_context()
+        input = dict(
+            path="/ping",
+            instance_id="i1",
+            input=msgpack.dumps([]),
+            service_info=("NO_SUCH_PLUGIN", service_name, "0.1.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check requesting RPC to unknown service
+    with pytest.raises(
+        TarantoolError,
+        match=f"service '{plugin_name}.NO_SUCH_SERVICE' is not running on i1",
+    ):
+        context = make_context()
+        input = dict(
+            path="/ping",
+            instance_id="i1",
+            input=msgpack.dumps([]),
+            service_info=(plugin_name, "NO_SUCH_SERVICE", "0.1.0"),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check requesting RPC to unknown instance
+    with pytest.raises(
+        TarantoolError,
+        # FIXME: do a better error message
+        match=f"service '{plugin_name}.{service_name}' is not running on NO_SUCH_INSTANCE",
+    ):
+        context = make_context()
+        input = dict(
+            path="/ping",
+            instance_id="NO_SUCH_INSTANCE",
+            input=msgpack.dumps([]),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check requesting RPC to unknown replicaset
+    with pytest.raises(
+        TarantoolError,
+        # FIXME: do a better error message
+        match='replicaset with id "NO_SUCH_REPLICASET" not found',
+    ):
+        context = make_context()
+        input = dict(
+            path="/ping",
+            replicaset_id="NO_SUCH_REPLICASET",
+            input=msgpack.dumps([]),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check requesting RPC to unknown bucket id
+    with pytest.raises(
+        TarantoolError,
+        match="Bucket 9999 cannot be found.",
+    ):
+        context = make_context()
+        input = dict(
+            path="/ping",
+            bucket_id=9999,
+            input=msgpack.dumps([]),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # TODO: check calling to poisoned service
 
 
 def test_sdk_internal(cluster: Cluster):

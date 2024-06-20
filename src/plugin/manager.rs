@@ -1,4 +1,5 @@
 use crate::info::InstanceInfo;
+use crate::plugin::rpc;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
 use crate::plugin::{
     remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
@@ -731,6 +732,8 @@ fn stop_service(service: &mut Service, context: &PicoContext) {
             DisplayErrorLocation(&error),
         );
     }
+
+    rpc::server::unregister_all_rpc_handlers(service);
 }
 
 /// Plugin manager inner loop, using for handle async events (must be run in a separate fiber).

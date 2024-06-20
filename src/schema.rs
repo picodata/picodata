@@ -438,7 +438,7 @@ impl IndexDef {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Plugin
+// PluginDef
 ////////////////////////////////////////////////////////////////////////////////
 
 /// Plugin defenition in _pico_plugin system table.
@@ -501,6 +501,10 @@ impl PluginDef {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ServiceDef
+////////////////////////////////////////////////////////////////////////////////
+
 /// Plugin service defenition in _pico_service system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceDef {
@@ -553,6 +557,10 @@ impl ServiceDef {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ServiceRouteItem
+////////////////////////////////////////////////////////////////////////////////
+
 /// Single route definition in _pico_service_route system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceRouteItem {
@@ -569,6 +577,11 @@ pub struct ServiceRouteItem {
 impl Encode for ServiceRouteItem {}
 
 impl ServiceRouteItem {
+    /// Index of field "poison" in the table _pico_service_route format.
+    ///
+    /// Index of first field is 0.
+    pub const FIELD_POISON: u32 = 3;
+
     pub fn new_healthy(
         instance_id: InstanceId,
         plugin_name: impl ToString,
@@ -2723,5 +2736,7 @@ mod test {
         let tuple_data = s.to_tuple_buffer().unwrap();
         let format = ServiceRouteItem::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "ServiceRouteItem::format");
+
+        assert_eq!(format[ServiceRouteItem::FIELD_POISON as usize].name, "poison");
     }
 }

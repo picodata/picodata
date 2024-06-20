@@ -1,13 +1,39 @@
 use crate::instance::Instance;
+use crate::instance::InstanceId;
 use crate::instance::StateVariant::*;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
 use crate::replicaset::Weight;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::traft::error::Error;
 use crate::traft::RaftId;
-use ::tarantool::tlua;
 use std::collections::HashMap;
+use tarantool::tlua;
+
+pub fn get_replicaset_priority_list(replicaset_uuid: &str) -> Result<Vec<InstanceId>, Error> {
+    let lua = tarantool::lua_state();
+    let pico: tlua::LuaTable<_> = lua
+        .get("pico")
+        .ok_or_else(|| Error::other("pico lua module disapeared"))?;
+
+    let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_priority_list")?;
+    func.call_with_args(replicaset_uuid)
+        .map_err(|e| tlua::LuaError::from(e).into())
+}
+
+/// Returns the replicaset uuid and an array of replicas in descending priority
+/// order.
+pub fn get_replicaset_uuid_by_bucket_id(bucket_id: u64) -> Result<String, Error> {
+    let lua = tarantool::lua_state();
+    let pico: tlua::LuaTable<_> = lua
+        .get("pico")
+        .ok_or_else(|| Error::other("pico lua module disapeared"))?;
+
+    let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_uuid_by_bucket_id")?;
+    func.call_with_args(bucket_id)
+        .map_err(|e| tlua::LuaError::from(e).into())
+}
 
 #[rustfmt::skip]
 #[derive(serde::Serialize, serde::Deserialize)]

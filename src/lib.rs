@@ -280,6 +280,8 @@ fn start_webui() {
 /// Those are used for inter-instance communication
 /// (discovery, rpc, public proc api).
 fn init_handlers() {
+    plugin::rpc::server::init_handlers();
+
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         lua.exec_with(

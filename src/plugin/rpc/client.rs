@@ -1,0 +1,326 @@
+use crate::error_code::ErrorCode;
+use crate::instance::InstanceId;
+use crate::plugin::rpc;
+use crate::replicaset::Replicaset;
+use crate::schema::ServiceRouteItem;
+use crate::schema::ServiceRouteKey;
+use crate::tlog;
+use crate::traft::error::Error;
+use crate::traft::network::ConnectionPool;
+use crate::traft::node::Node;
+use crate::vshard;
+use picoplugin::transport::context::ContextFieldId;
+use picoplugin::transport::rpc::client::FfiSafeRpcTargetSpecifier;
+use picoplugin::util::copy_to_region;
+use std::time::Duration;
+use tarantool::error::BoxError;
+use tarantool::error::Error as TntError;
+use tarantool::error::IntoBoxError;
+use tarantool::error::TarantoolErrorCode;
+use tarantool::fiber;
+use tarantool::tuple::TupleBuffer;
+use tarantool::tuple::{RawByteBuf, RawBytes};
+use tarantool::uuid::Uuid;
+
+////////////////////////////////////////////////////////////////////////////////
+// rpc out
+////////////////////////////////////////////////////////////////////////////////
+
+/// Returns data allocated on the region allocator (or statically allocated).
+pub(crate) fn send_rpc_request(
+    plugin: &str,
+    service: &str,
+    plugin_version: &str,
+    target: &FfiSafeRpcTargetSpecifier,
+    path: &str,
+    input: &[u8],
+    timeout: f64,
+) -> Result<&'static [u8], Error> {
+    let node = crate::traft::node::global()?;
+    let pool = &node.plugin_manager.pool;
+
+    let timeout = Duration::from_secs_f64(timeout);
+
+    let instance_id = resolve_rpc_target(plugin, service, target, node)?;
+
+    let mut buffer = Vec::new();
+    let request_id = Uuid::random();
+    encode_request_arguments(
+        &mut buffer,
+        path,
+        input,
+        &request_id,
+        plugin,
+        service,
+        plugin_version,
+    )
+    .expect("can't fail encoding into an array");
+    // Safe because buffer contains a msgpack array
+    let args = unsafe { TupleBuffer::from_vec_unchecked(buffer) };
+
+    tlog!(Debug, "sending plugin rpc request";
+        "instance_id" => %instance_id,
+        "request_id" => %request_id,
+        "path" => path,
+    );
+    let future = pool.call_raw(
+        &instance_id,
+        crate::stringify_cfunc!(rpc::server::proc_rpc_dispatch),
+        &args,
+        Some(timeout),
+    )?;
+    // FIXME: remove this extra allocation for RawByteBuf
+    let output: RawByteBuf = fiber::block_on(future)?;
+
+    let mut output = &**output;
+    let output_len = rmp::decode::read_bin_len(&mut output).map_err(|e| {
+        BoxError::new(
+            TarantoolErrorCode::InvalidMsgpack,
+            format!("expected bin: {e}"),
+        )
+    })?;
+    if output.len() != output_len as usize {
+        #[rustfmt::skip]
+        return Err(BoxError::new(TarantoolErrorCode::InvalidMsgpack, format!("this is weird: {output_len} != {}", output.len())).into());
+    }
+
+    let res = copy_to_region(output)?;
+    Ok(res)
+}
+
+fn encode_request_arguments(
+    buffer: &mut Vec<u8>,
+    path: &str,
+    input: &[u8],
+    request_id: &Uuid,
+    plugin: &str,
+    service: &str,
+    plugin_version: &str,
+) -> Result<(), TntError> {
+    buffer.reserve(
+        // array header
+        1
+        // str path
+        + 5 + path.len()
+        // bin input
+        + 5 + input.len()
+        // context header
+        + 1
+        // key + uuid
+        + 1 + 18
+        // key + str plugin
+        + 1 + 5 + plugin.len()
+        // key + str service
+        + 1 + 5 + service.len()
+        // key + str plugin_version
+        + 1 + 5 + plugin_version.len(),
+    );
+
+    rmp::encode::write_array_len(buffer, 3)?;
+
+    // Encode path
+    rmp::encode::write_str(buffer, path)?;
+
+    // Encode input
+    rmp::encode::write_bin(buffer, input)?;
+
+    // Encode context
+    {
+        rmp::encode::write_map_len(buffer, 4)?;
+
+        // Encode request_id
+        rmp::encode::write_uint(buffer, ContextFieldId::RequestId as _)?;
+        rmp_serde::encode::write(buffer, request_id)?;
+
+        // Encode service
+        rmp::encode::write_uint(buffer, ContextFieldId::PluginName as _)?;
+        rmp_serde::encode::write(buffer, plugin)?;
+
+        // Encode service
+        rmp::encode::write_uint(buffer, ContextFieldId::ServiceName as _)?;
+        rmp_serde::encode::write(buffer, service)?;
+
+        // Encode plugin_version
+        rmp::encode::write_uint(buffer, ContextFieldId::PluginVersion as _)?;
+        rmp_serde::encode::write(buffer, plugin_version)?;
+    }
+
+    Ok(())
+}
+
+fn resolve_rpc_target(
+    plugin: &str,
+    service: &str,
+    target: &FfiSafeRpcTargetSpecifier,
+    node: &Node,
+) -> Result<InstanceId, Error> {
+    let mut instance_id = None;
+    match target {
+        FfiSafeRpcTargetSpecifier::InstanceId(iid) => {
+            // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
+            instance_id = Some(InstanceId::from(unsafe { iid.as_str() }));
+        }
+
+        &FfiSafeRpcTargetSpecifier::Replicaset {
+            replicaset_id,
+            to_master: true,
+        } => {
+            // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
+            let replicaset_id = unsafe { replicaset_id.as_str() };
+            let tuple = node.storage.replicasets.get_raw(replicaset_id)?;
+            let Some(master_id) = tuple
+                .field(Replicaset::FIELD_TARGET_MASTER_ID)
+                .map_err(IntoBoxError::into_box_error)?
+            else {
+                #[rustfmt::skip]
+                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_id' field in _pico_replicaset tuple").into());
+            };
+            instance_id = Some(master_id);
+        }
+
+        &FfiSafeRpcTargetSpecifier::BucketId {
+            bucket_id,
+            to_master: true,
+        } => {
+            let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(bucket_id)?;
+            let tuple = node.storage.replicasets.by_uuid_raw(&replicaset_uuid)?;
+            let Some(master_id) = tuple
+                .field(Replicaset::FIELD_TARGET_MASTER_ID)
+                .map_err(IntoBoxError::into_box_error)?
+            else {
+                #[rustfmt::skip]
+                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_id' field in _pico_replicaset tuple").into());
+            };
+            instance_id = Some(master_id);
+        }
+
+        // These cases are handled below
+        #[rustfmt::skip]
+        FfiSafeRpcTargetSpecifier::BucketId { to_master: false, .. } => {}
+        #[rustfmt::skip]
+        FfiSafeRpcTargetSpecifier::Replicaset { to_master: false, .. } => {}
+        FfiSafeRpcTargetSpecifier::Any => {}
+    }
+
+    if let Some(instance_id) = instance_id {
+        // A single instance was chosen
+        check_route_to_instance(node, plugin, service, &instance_id)?;
+        return Ok(instance_id);
+    } else {
+        // Need to pick an instance from a group, fallthrough
+    }
+
+    let my_instance_id = node
+        .raft_storage
+        .instance_id()?
+        .expect("should be persisted at this point");
+
+    let mut candidates = node
+        .storage
+        .service_route_table
+        .get_available_instances(plugin, service)?;
+    #[rustfmt::skip]
+    if candidates.is_empty() {
+        if node.storage.service.get_any_version(plugin, service)?.is_none() {
+            return Err(BoxError::new(ErrorCode::NoSuchService, "service '{plugin}.{service}' not found").into());
+        } else {
+            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not started on any instance")).into());
+        }
+    };
+
+    let mut replicaset_uuid = None;
+    match target {
+        #[rustfmt::skip]
+        FfiSafeRpcTargetSpecifier::InstanceId { .. }
+        | FfiSafeRpcTargetSpecifier::Replicaset { to_master: true, .. }
+        | FfiSafeRpcTargetSpecifier::BucketId { to_master: true, .. } => unreachable!("handled above"),
+
+        &FfiSafeRpcTargetSpecifier::Replicaset {
+            replicaset_id,
+            to_master: false,
+        } => {
+            // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
+            let replicaset_id = unsafe { replicaset_id.as_str() };
+            let tuple = node.storage.replicasets.get_raw(replicaset_id)?;
+            let Some(res) = tuple
+                .field(Replicaset::FIELD_REPLICASET_UUID)
+                .map_err(IntoBoxError::into_box_error)?
+            else {
+                #[rustfmt::skip]
+                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'replicaset_uuid' field in _pico_replicaset tuple").into());
+            };
+            replicaset_uuid = Some(res);
+        }
+
+        &FfiSafeRpcTargetSpecifier::BucketId {
+            bucket_id,
+            to_master: false,
+        } => {
+            replicaset_uuid = Some(vshard::get_replicaset_uuid_by_bucket_id(bucket_id)?);
+        }
+
+        &FfiSafeRpcTargetSpecifier::Any => {}
+    }
+
+    if let Some(replicaset_uuid) = replicaset_uuid {
+        // Need to pick a replica from given replicaset
+
+        let replicas = vshard::get_replicaset_priority_list(&replicaset_uuid)?;
+
+        // XXX: this shouldn't be a problem if replicasets aren't too big,
+        // but if they are we might want to construct a HashSet from candidates
+        for instance_id in replicas {
+            if my_instance_id == instance_id {
+                // Don't want to call self
+                continue;
+            }
+            if candidates.contains(&instance_id) {
+                return Ok(instance_id);
+            }
+        }
+
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::ServiceNotAvailable, format!("no {replicaset_uuid} replicas are available for service {plugin}.{service}")).into());
+    } else {
+        // Need to pick any instance with the given plugin.service
+
+        // TODO: find a better strategy then just the random one
+        let random_index = rand::random::<usize>() % candidates.len();
+        let mut instance_id = std::mem::take(&mut candidates[random_index]);
+        if instance_id == my_instance_id {
+            // Don't want to call self
+            let index = (random_index + 1) % candidates.len();
+            instance_id = std::mem::take(&mut candidates[index]);
+        }
+        return Ok(instance_id);
+    }
+}
+
+fn check_route_to_instance(
+    node: &Node,
+    plugin: &str,
+    service: &str,
+    instance_id: &InstanceId,
+) -> Result<(), Error> {
+    let res = node.storage.service_route_table.get_raw(&ServiceRouteKey {
+        instance_id,
+        plugin_name: plugin,
+        service_name: service,
+    })?;
+    let Some(tuple) = res else {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not running on {instance_id}")).into());
+    };
+    let res = tuple
+        .field(ServiceRouteItem::FIELD_POISON)
+        .map_err(IntoBoxError::into_box_error)?;
+    let Some(is_poisoned) = res else {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::StorageCorrupted, "invalid contents has _pico_service_route").into());
+    };
+    if is_poisoned {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{plugin}.{service}' is poisoned on {instance_id}")).into());
+    }
+    Ok(())
+}

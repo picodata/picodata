@@ -402,6 +402,7 @@ define_clusterwide_tables! {
             }
         }
         Plugin = 526, "_pico_plugin" => {
+            // FIXME: rename to plugins
             Clusterwide::plugin;
 
             /// A struct for accessing info of all known plugins.
@@ -412,6 +413,7 @@ define_clusterwide_tables! {
             }
         }
         Service = 527, "_pico_service" => {
+            // FIXME: rename to services
             Clusterwide::service;
 
             /// A struct for accessing info of all known plugin services.
@@ -3671,9 +3673,16 @@ impl ServiceRouteTable {
         Ok(())
     }
 
+    #[inline]
     pub fn get(&self, key: &ServiceRouteKey) -> tarantool::Result<Option<ServiceRouteItem>> {
         let item = self.space.get(key)?;
         item.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline(always)]
+    pub fn get_raw(&self, key: &ServiceRouteKey) -> tarantool::Result<Option<Tuple>> {
+        let tuple = self.space.get(key)?;
+        Ok(tuple)
     }
 
     pub fn get_by_plugin(&self, plugin: &str) -> tarantool::Result<Vec<ServiceRouteItem>> {
@@ -3694,6 +3703,31 @@ impl ServiceRouteTable {
     ) -> tarantool::Result<Vec<ServiceRouteItem>> {
         let all_routes = self.space.select(IteratorType::Eq, &(i,))?;
         all_routes.map(|t| t.decode()).collect()
+    }
+
+    pub fn get_available_instances(
+        &self,
+        plugin: &str,
+        service: &str,
+    ) -> tarantool::Result<Vec<instance::InstanceId>> {
+        let mut result = vec![];
+
+        // TODO: change the primary index such that this operation is faster
+        let iter = self.space.select(IteratorType::All, &())?;
+        for tuple in iter {
+            let item: ServiceRouteItem = tuple.decode()?;
+            if item.poison {
+                continue;
+            }
+            if item.plugin_name != plugin {
+                continue;
+            }
+            if item.service_name != service {
+                continue;
+            }
+            result.push(item.instance_id);
+        }
+        Ok(result)
     }
 }
 

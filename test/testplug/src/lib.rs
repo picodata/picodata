@@ -2,16 +2,24 @@ use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::plugin::interface::{CallbackResult, DDL};
 use picoplugin::plugin::prelude::*;
 use picoplugin::sql::types::SqlValue;
-use picoplugin::system::tarantool::datetime::Datetime;
 use picoplugin::system::tarantool::decimal::Decimal;
+use picoplugin::system::tarantool::error::BoxError;
+use picoplugin::system::tarantool::error::TarantoolErrorCode;
 use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
 use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
 use picoplugin::system::tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
 use picoplugin::system::tarantool::tuple::Tuple;
+use picoplugin::system::tarantool::util::DisplayAsHexBytes;
 use picoplugin::system::tarantool::{fiber, index, tlua};
+use picoplugin::transport::context::Context;
+use picoplugin::transport::rpc;
+use picoplugin::util::copy_to_region;
+use picoplugin::util::RegionBuffer;
 use picoplugin::{internal, system};
 use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::fmt::Display;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync;
 use std::time::Duration;
@@ -375,6 +383,172 @@ impl Service for Service3 {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// ServiceWithRpcTests
+////////////////////////////////////////////////////////////////////////////////
+struct ServiceWithRpcTests;
+
+fn ping(input: &[u8], context: &mut Context) -> Result<&'static [u8], BoxError> {
+    tarantool::say_info!(
+        "got rpc request {} {}",
+        context.path(),
+        DisplayAsHexBytes(input)
+    );
+
+    let info = internal::instance_info().unwrap();
+    let instance_id = info.instance_id();
+
+    let mut buffer = RegionBuffer::new();
+    rmp_serde::encode::write(
+        &mut buffer,
+        &("pong", instance_id, serde_bytes::Bytes::new(input)),
+    )
+    .unwrap();
+    let (data, _) = buffer.into_raw_parts();
+    Ok(data)
+}
+
+impl Service for ServiceWithRpcTests {
+    type CFG = ();
+
+    fn on_start(&mut self, context: &PicoContext, _: ()) -> CallbackResult<()> {
+        rpc::RouteBuilder::new()
+            .pico_context(context)
+            .path("/ping")
+            .register_raw(ping)
+            .unwrap();
+
+        rpc::RouteBuilder::new()
+            .pico_context(context)
+            .path("/echo-context")
+            .register_raw(|_, context| {
+                let mut fields = context.get_named_fields()?.clone();
+                fields.insert("request_id".into(), context.request_id().to_string().into());
+                fields.insert("path".into(), context.path().into());
+                fields.insert("plugin_name".into(), context.plugin_name().into());
+                fields.insert("service_name".into(), context.service_name().into());
+                fields.insert("plugin_version".into(), context.plugin_version().into());
+
+                let mut buffer = RegionBuffer::new();
+                rmp_serde::encode::write(&mut buffer, &fields).unwrap();
+                let (data, _) = buffer.into_raw_parts();
+                Ok(data)
+            })
+            .unwrap();
+
+        rpc::RouteBuilder::new()
+            .pico_context(context)
+            .path("/register")
+            .register_raw(|input, _| {
+                #[derive(serde::Deserialize, Debug)]
+                struct Request {
+                    path: Option<String>,
+                    service_info: Option<(String, String, String)>,
+                }
+
+                let request: Request = rmp_serde::from_slice(input)
+                    .map_err(|e| BoxError::new(TarantoolErrorCode::IllegalParams, e.to_string()))?;
+
+                let mut builder = rpc::RouteBuilder::new();
+                if let Some(path) = &request.path {
+                    builder = builder.path(path);
+                }
+                if let Some((plugin, service, version)) = &request.service_info {
+                    builder = builder
+                        .plugin_service(plugin, service)
+                        .plugin_version(version);
+                }
+
+                let was_dropped = Rc::new(Cell::new(false));
+                let drop_check = DropCheck(was_dropped.clone());
+
+                let res = builder.register_raw(move |input, context| {
+                    // drop_check is owned by this closure and will be dropped with it
+                    _ = &drop_check;
+                    ping(input, context)
+                });
+
+                if res.is_err() {
+                    assert!(was_dropped.get());
+                }
+
+                res?;
+
+                return Ok(b"");
+
+                struct DropCheck(Rc<Cell<bool>>);
+                impl Drop for DropCheck {
+                    fn drop(&mut self) {
+                        self.0.set(true)
+                    }
+                }
+            })
+            .unwrap();
+
+        rpc::RouteBuilder::new()
+            .pico_context(context)
+            .path("/proxy")
+            .register_raw(|input, context| {
+                tarantool::say_info!(
+                    "got rpc request {} {} {context:#?}",
+                    context.path(),
+                    DisplayAsHexBytes(input)
+                );
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Request {
+                    path: String,
+                    service_info: Option<(String, String, String)>,
+                    instance_id: Option<String>,
+                    replicaset_id: Option<String>,
+                    bucket_id: Option<u64>,
+                    to_master: Option<bool>,
+                    #[serde(with = "serde_bytes")]
+                    input: Vec<u8>,
+                }
+
+                let request: Request = rmp_serde::from_slice(input)
+                    // TODO: impl From<*> for BoxError
+                    .map_err(|e| BoxError::new(TarantoolErrorCode::IllegalParams, e.to_string()))?;
+
+                let mut builder = rpc::RequestBuilder::new();
+                if let Some((plugin, service, version)) = &request.service_info {
+                    builder = builder
+                        .plugin_service(plugin, service)
+                        .plugin_version(version)
+                } else {
+                    builder = builder
+                        .plugin_service(context.plugin_name(), context.service_name())
+                        .plugin_version(context.plugin_version())
+                }
+
+                let mut timeout = Duration::from_secs(10);
+                if let Some(t) = context.get("timeout")? {
+                    timeout = Duration::from_secs_f64(t.float().unwrap());
+                }
+
+                if let Some(instance_id) = &request.instance_id {
+                    builder = builder.instance_id(instance_id);
+                } else if let Some(replicaset_id) = &request.replicaset_id {
+                    builder =
+                        builder.replicaset_id(replicaset_id, request.to_master.unwrap_or(false));
+                } else if let Some(bucket_id) = request.bucket_id {
+                    builder = builder.bucket_id(bucket_id, request.to_master.unwrap_or(false));
+                }
+
+                let output = builder
+                    .path(&request.path)
+                    .raw_input(&request.input)
+                    .timeout(timeout)
+                    .send()?;
+
+                copy_to_region(&output)
+            })
+            .unwrap();
+
+        Ok(())
+    }
+}
 #[service_registrar]
 pub fn service_registrar(reg: &mut ServiceRegistry) {
     ErrInjection::init(&["testservice_1", "testservice_2"]);
@@ -382,4 +556,5 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("testservice_1", "0.1.0", Service1::new);
     reg.add("testservice_2", "0.1.0", Service2::new);
     reg.add("testservice_3", "0.1.0", || Service3);
+    reg.add("service_with_rpc_tests", "0.1.0", || ServiceWithRpcTests);
 }

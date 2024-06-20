@@ -1,6 +1,7 @@
 use crate::cas::{compare_and_swap, Bound, Range, Request};
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
+use crate::plugin::rpc;
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
@@ -11,6 +12,9 @@ use abi_stable::{sabi_extern_fn, RTuple};
 use picoplugin::internal::types;
 use picoplugin::internal::types::{DmlInner, OpInner};
 use picoplugin::sql::types::{SqlValue, SqlValueInner};
+use picoplugin::transport::rpc::client::FfiSafeRpcRequestArguments;
+use picoplugin::transport::rpc::server::FfiRpcHandler;
+use picoplugin::util::FfiSafeBytes;
 use sbroad::ir::value::double::Double;
 use sbroad::ir::value::{LuaValue, Tuple, Value};
 use std::time::Duration;
@@ -329,5 +333,51 @@ extern "C" fn pico_ffi_sql_query(
             ROk(ptr)
         }
         Err(e) => error_into_tt_error(e),
+    }
+}
+
+#[no_mangle]
+extern "C" fn pico_ffi_register_rpc_handler(handler: FfiRpcHandler) -> i32 {
+    if let Err(e) = rpc::server::register_rpc_handler(handler) {
+        e.set_last();
+        return -1;
+    }
+
+    return 0;
+}
+
+/// Send an RPC request with given `arguments` and block the current fiber until
+/// the response is received. `output` will point to data allocated on the
+/// region allocator, so the caller is responsible for calling [`box_region_truncate`].
+///
+/// [`box_region_truncate`]: tarantool::ffi::tarantool::box_region_truncate
+#[no_mangle]
+extern "C" fn pico_ffi_rpc_request(
+    arguments: &FfiSafeRpcRequestArguments,
+    timeout: f64,
+    output: *mut FfiSafeBytes,
+) -> i32 {
+    let (plugin, service, version, target, path, input);
+    // SAFETY: pointers must be valid for the lifetime of this function
+    unsafe {
+        plugin = arguments.plugin.as_str();
+        service = arguments.service.as_str();
+        version = arguments.version.as_str();
+        target = &arguments.target;
+        path = arguments.path.as_str();
+        input = arguments.input.as_bytes();
+    };
+
+    match rpc::client::send_rpc_request(plugin, service, version, target, path, input, timeout) {
+        Ok(out) => {
+            // SAFETY: pointers must be valid for the lifetime of this function
+            unsafe { std::ptr::write(output, out.into()) }
+
+            return 0;
+        }
+        Err(e) => {
+            e.into_box_error().set_last();
+            return -1;
+        }
     }
 }

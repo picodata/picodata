@@ -6,5 +6,8 @@ services:
     description: testservice_3 descr
     default_configuration:
       test_type: "internal"
+  - name: service_with_rpc_tests
+    description:
+    default_configuration:
 migration:
   - migr.db

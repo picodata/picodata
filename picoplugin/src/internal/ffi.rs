@@ -1,5 +1,8 @@
 use crate::internal::types;
 use crate::sql::types::SqlValue;
+use crate::transport::rpc::client::FfiSafeRpcRequestArguments;
+use crate::transport::rpc::server::FfiRpcHandler;
+use crate::util::FfiSafeBytes;
 use abi_stable::derive_macro_reexports::{ROption, RResult};
 use abi_stable::std_types::{RDuration, RVec};
 use abi_stable::RTuple;
@@ -32,4 +35,12 @@ extern "C" {
         query_len: usize,
         params: RVec<SqlValue>,
     ) -> RResult<*mut BoxTuple, ()>;
+
+    pub fn pico_ffi_register_rpc_handler(handler: FfiRpcHandler) -> i32;
+
+    pub fn pico_ffi_rpc_request(
+        arguments: &FfiSafeRpcRequestArguments,
+        timeout: f64,
+        output: *mut FfiSafeBytes,
+    ) -> i32;
 }

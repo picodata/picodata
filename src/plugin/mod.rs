@@ -1,6 +1,7 @@
 mod ffi;
 pub mod manager;
 pub mod migration;
+pub mod rpc;
 pub mod topology;
 
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};

@@ -3,5 +3,6 @@
 //!
 //! This module also contains useful functional for integrate tracing, metrics and other tools into
 //! your application.
+pub mod context;
 pub mod http;
 pub mod rpc;

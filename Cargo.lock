@@ -4096,7 +4096,10 @@ dependencies = [
  "linkme 0.3.26",
  "picoplugin",
  "rand 0.9.0-alpha.1",
+ "rmp-serde",
+ "rmpv",
  "serde",
+ "serde_bytes",
  "time",
  "time-macros",
 ]

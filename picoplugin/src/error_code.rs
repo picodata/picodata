@@ -29,6 +29,12 @@ tarantool::define_enum_with_introspection! {
         /// Contents of a builtin table has invalid format.
         StorageCorrupted = 10002,
 
+        NoSuchService = 10011,
+        ServiceNotStarted = 10012,
+        ServicePoisoned = 10013,
+        ServiceNotAvailable = 10014,
+        WrongPluginVersion = 10015,
+
         // TODO: put in particular compare-and-swap related ones, but also other ones
 
         /// Not an actual error code, just designates the start of the range.

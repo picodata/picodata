@@ -1374,6 +1374,9 @@ class Cluster:
                 audit=audit,
             )
 
+        return self.wait_online()
+
+    def wait_online(self) -> list[Instance]:
         for instance in self.instances:
             instance.start()
 
