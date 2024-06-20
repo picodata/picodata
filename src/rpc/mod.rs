@@ -11,6 +11,7 @@ use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::Result;
 
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io;
 
@@ -28,6 +29,35 @@ pub mod replication;
 pub mod sharding;
 pub mod snapshot;
 pub mod update_instance;
+
+static mut STATIC_PROCS: Option<HashSet<String>> = None;
+
+#[inline(always)]
+pub fn init_static_proc_set() {
+    let mut map = HashSet::new();
+    for proc in ::tarantool::proc::all_procs().iter() {
+        map.insert(format!(".{}", proc.name()));
+    }
+
+    // Safety: safe as long as only called from tx thread
+    unsafe {
+        assert!(STATIC_PROCS.is_none());
+        STATIC_PROCS = Some(map);
+    }
+}
+
+#[inline(always)]
+pub fn to_static_proc_name(name: &str) -> Option<&'static str> {
+    // Safety: safe as long as only called from tx thread
+    let name_ref = unsafe {
+        STATIC_PROCS
+            .as_ref()
+            .expect("should be initialized at startup")
+            .get(name)?
+    };
+
+    Some(name_ref)
+}
 
 /// Types implementing this trait represent an RPC's (remote procedure call)
 /// arguments. This trait contains information about the request.

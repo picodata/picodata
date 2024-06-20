@@ -43,6 +43,10 @@ pub(crate) fn send_rpc_request(
 
     let instance_id = resolve_rpc_target(plugin, service, target, node)?;
 
+    if path.starts_with('.') {
+        return call_builtin_stored_proc(pool, path, input, &instance_id, timeout);
+    }
+
     let mut buffer = Vec::new();
     let request_id = Uuid::random();
     encode_request_arguments(
@@ -86,6 +90,28 @@ pub(crate) fn send_rpc_request(
 
     let res = copy_to_region(output)?;
     Ok(res)
+}
+
+fn call_builtin_stored_proc(
+    pool: &ConnectionPool,
+    proc: &str,
+    input: &[u8],
+    instance_id: &InstanceId,
+    timeout: Duration,
+) -> Result<&'static [u8], Error> {
+    // Call a builtin picodata stored procedure
+    let Some(proc) = crate::rpc::to_static_proc_name(proc) else {
+        #[rustfmt::skip]
+        return Err(BoxError::new(TarantoolErrorCode::NoSuchFunction, format!("unknown static stored procedure {proc}")).into());
+    };
+
+    let args = RawBytes::new(input);
+
+    let future = pool.call_raw(instance_id, proc, args, Some(timeout))?;
+    // FIXME: remove this extra allocation for RawByteBuf
+    let output: RawByteBuf = fiber::block_on(future)?;
+
+    copy_to_region(&output).map_err(Into::into)
 }
 
 fn encode_request_arguments(

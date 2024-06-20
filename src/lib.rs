@@ -282,6 +282,8 @@ fn start_webui() {
 fn init_handlers() {
     plugin::rpc::server::init_handlers();
 
+    rpc::init_static_proc_set();
+
     let lua = ::tarantool::lua_state();
     for proc in ::tarantool::proc::all_procs().iter() {
         lua.exec_with(
