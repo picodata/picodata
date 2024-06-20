@@ -532,7 +532,8 @@ impl Clusterwide {
                 continue;
             }
 
-            let mut iter: Option<Peekable<ReadViewIterator<'static>>> = None;
+            type IteratorType<'a> = Option<Peekable<ReadViewIterator<'a>>>;
+            let mut iter: IteratorType<'static> = None;
             if space_id == position.space_id {
                 // Get a cached iterator
                 if let Entry::Occupied(mut kv) = rv.unfinished_iterators.entry(position) {
@@ -562,7 +563,7 @@ impl Clusterwide {
                 // next to the corresponding read views (which they are) and
                 // that iterators are dropped at the same time as read views
                 // (which they are). So it's safe.
-                unsafe { iter = std::mem::transmute(it) };
+                unsafe { iter = std::mem::transmute::<IteratorType, IteratorType<'static>>(it) };
             }
             let mut iter = iter.expect("just made sure it's Some");
 
