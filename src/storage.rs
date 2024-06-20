@@ -1960,6 +1960,19 @@ impl Instances {
     }
 
     /// Finds an instance by `id` (see trait [`InstanceId`]).
+    #[inline(always)]
+    pub fn try_get(&self, id: &impl InstanceId) -> Result<Option<Instance>> {
+        let res = id.find_in(self);
+        let tuple = match res {
+            Ok(tuple) => tuple,
+            Err(Error::NoSuchInstance { .. }) => return Ok(None),
+            Err(e) => return Err(e),
+        };
+
+        let res = tuple.decode()?;
+        Ok(res)
+    }
+
     /// Returns the tuple without deserializing.
     #[inline(always)]
     pub fn get_raw(&self, id: &impl InstanceId) -> Result<Tuple> {
@@ -1972,7 +1985,7 @@ impl Instances {
     pub fn contains(&self, id: &impl InstanceId) -> Result<bool> {
         match id.find_in(self) {
             Ok(_) => Ok(true),
-            Err(Error::NoInstanceWithInstanceId(_)) => Ok(false),
+            Err(Error::NoSuchInstance { .. }) => Ok(false),
             Err(err) => Err(err),
         }
     }
@@ -2051,7 +2064,7 @@ impl InstanceId for RaftId {
         instances
             .index_raft_id
             .get(&[self])?
-            .ok_or(Error::NoInstanceWithRaftId(*self))
+            .ok_or(Error::NoSuchInstance(Ok(*self)))
     }
 }
 
@@ -2061,7 +2074,7 @@ impl InstanceId for instance::InstanceId {
         instances
             .index_instance_id
             .get(&[self])?
-            .ok_or_else(|| Error::NoInstanceWithInstanceId(self.clone()))
+            .ok_or_else(|| Error::NoSuchInstance(Err(self.clone())))
     }
 }
 

@@ -52,10 +52,8 @@ pub enum Error {
     Lua(#[from] LuaError),
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
-    #[error("instance with id {0} not found")]
-    NoInstanceWithRaftId(RaftId),
-    #[error("instance with id \"{0}\" not found")]
-    NoInstanceWithInstanceId(InstanceId),
+    #[error("instance with id {} not found", DisplayIdOfInstance(.0))]
+    NoSuchInstance(Result<RaftId, InstanceId>),
     #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "uuid" } else { "id" })]
     NoSuchReplicaset { id: String, id_is_uuid: bool },
     #[error("address of peer with id {0} not found")]
@@ -91,6 +89,17 @@ pub enum Error {
 
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),
+}
+
+struct DisplayIdOfInstance<'a>(pub &'a Result<RaftId, InstanceId>);
+impl std::fmt::Display for DisplayIdOfInstance<'_> {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.0 {
+            Ok(raft_id) => write!(f, "{raft_id}"),
+            Err(instance_id) => write!(f, "\"{instance_id}\""),
+        }
+    }
 }
 
 impl Error {
