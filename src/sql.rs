@@ -771,7 +771,7 @@ fn reenterable_schema_change_request(
                 columns,
                 ty: index_type,
                 opts,
-                owner: current_user,
+                initiator: current_user,
             };
             params.validate(storage)?;
             Params::CreateIndex(params)

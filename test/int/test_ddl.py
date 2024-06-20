@@ -325,7 +325,6 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         [["id", "unsigned", None, False, None]],
         True,
         2,
-        PICO_SERVICE_ID,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -444,7 +443,6 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         [["id", "unsigned", None, False, None]],
         True,
         schema_version,
-        PICO_SERVICE_ID,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -471,7 +469,6 @@ def test_ddl_create_sharded_space(cluster: Cluster):
         [["bucket_id", "unsigned", None, False, None]],
         True,
         schema_version,
-        PICO_SERVICE_ID,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def
     assert i2.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def

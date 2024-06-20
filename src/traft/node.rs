@@ -1088,7 +1088,7 @@ impl NodeImpl {
                         index_id,
                         space_id,
                         name,
-                        owner,
+                        initiator,
                         ..
                     } => {
                         self.storage
@@ -1096,7 +1096,7 @@ impl NodeImpl {
                             .update_operable(space_id, index_id, true)
                             .expect("storage shouldn't fail");
 
-                        let initiator_def = user_by_id(owner).expect("user must exist");
+                        let initiator_def = user_by_id(initiator).expect("user must exist");
 
                         crate::audit!(
                             message: "created index `{name}`",
@@ -1553,7 +1553,6 @@ impl NodeImpl {
                     parts: primary_key,
                     operable: false,
                     schema_version,
-                    owner,
                 };
                 let res = self.storage.indexes.insert(&primary_key_def);
                 if let Err(e) = res {
@@ -1592,7 +1591,6 @@ impl NodeImpl {
                                 .is_nullable(false)],
                             operable: false,
                             schema_version,
-                            owner,
                         };
                         let res = self.storage.indexes.insert(&bucket_id_def);
                         if let Err(e) = res {
@@ -1632,7 +1630,7 @@ impl NodeImpl {
                 ty,
                 opts,
                 by_fields,
-                owner,
+                ..
             } => {
                 let index_def = IndexDef {
                     table_id: space_id,
@@ -1643,7 +1641,6 @@ impl NodeImpl {
                     parts: by_fields,
                     operable: false,
                     schema_version,
-                    owner,
                 };
                 self.storage
                     .indexes

@@ -1415,7 +1415,6 @@ impl Properties {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
-            owner: ADMIN_ID,
         }]
     }
 
@@ -1682,7 +1681,6 @@ impl Replicasets {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
-            owner: ADMIN_ID,
         }]
     }
 
@@ -1748,7 +1746,6 @@ impl PeerAddresses {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
-            owner: ADMIN_ID,
         }]
     }
 
@@ -1858,7 +1855,6 @@ impl Instances {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -1870,7 +1866,6 @@ impl Instances {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -1884,7 +1879,6 @@ impl Instances {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
         ]
     }
@@ -2258,7 +2252,6 @@ impl Tables {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -2270,7 +2263,6 @@ impl Tables {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
         ]
     }
@@ -2398,7 +2390,6 @@ impl Indexes {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -2410,7 +2401,6 @@ impl Indexes {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
         ]
     }
@@ -2899,7 +2889,6 @@ impl Users {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -2911,7 +2900,6 @@ impl Users {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
         ]
     }
@@ -3039,7 +3027,6 @@ impl Privileges {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -3054,7 +3041,6 @@ impl Privileges {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
         ]
     }
@@ -3229,7 +3215,6 @@ impl Tiers {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
             schema_version: INITIAL_SCHEMA_VERSION,
-            owner: ADMIN_ID,
         }]
     }
 
@@ -3307,7 +3292,6 @@ impl Routines {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
             IndexDef {
                 table_id: Self::TABLE_ID,
@@ -3319,7 +3303,6 @@ impl Routines {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
                 schema_version: INITIAL_SCHEMA_VERSION,
-                owner: ADMIN_ID,
             },
         ]
     }
@@ -3424,7 +3407,6 @@ impl Plugins {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            owner: ADMIN_ID,
         }]
     }
 
@@ -3507,7 +3489,6 @@ impl Services {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            owner: ADMIN_ID,
         }]
     }
 
@@ -3615,7 +3596,6 @@ impl ServiceRouteTable {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
-            owner: ADMIN_ID,
         }]
     }
 

@@ -785,7 +785,7 @@ impl ClusterConfig {
     pub fn tiers(&self) -> HashMap<String, Tier> {
         let mut tier_defs = HashMap::with_capacity(self.tier.len());
 
-        let contains_default_tier_definition = self.tier.get(DEFAULT_TIER).is_some();
+        let contains_default_tier_definition = self.tier.contains_key(DEFAULT_TIER);
         if !contains_default_tier_definition {
             tier_defs.insert(
                 DEFAULT_TIER.into(),

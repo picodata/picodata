@@ -869,7 +869,7 @@ mod tests {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             by_fields: vec![],
-            owner: ADMIN_ID,
+            initiator: ADMIN_ID,
         });
         let drop_index = builder.with_op(Ddl::DropIndex {
             space_id,

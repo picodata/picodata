@@ -341,7 +341,6 @@ pub struct IndexDef {
     pub parts: Vec<Part>,
     pub operable: bool,
     pub schema_version: u64,
-    pub owner: UserId,
 }
 
 impl Encode for IndexDef {}
@@ -363,7 +362,6 @@ impl IndexDef {
             Field::from(("parts", FieldType::Array)).is_nullable(false),
             Field::from(("operable", FieldType::Boolean)).is_nullable(false),
             Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
-            Field::from(("owner", FieldType::Unsigned)).is_nullable(false),
         ]
     }
 
@@ -379,7 +377,6 @@ impl IndexDef {
             parts: vec![],
             operable: true,
             schema_version: 420,
-            owner: 42,
         }
     }
 
@@ -1651,7 +1648,7 @@ pub struct CreateIndexParams {
     pub(crate) columns: Vec<String>,
     pub(crate) ty: IndexType,
     pub(crate) opts: Vec<IndexOption>,
-    pub(crate) owner: UserId,
+    pub(crate) initiator: UserId,
 }
 
 impl CreateIndexParams {
@@ -1745,7 +1742,7 @@ impl CreateIndexParams {
             ty: self.ty,
             by_fields,
             opts: self.opts.clone(),
-            owner: self.owner,
+            initiator: self.initiator,
         };
         Ok(ddl)
     }

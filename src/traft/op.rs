@@ -642,7 +642,7 @@ pub enum Ddl {
         ty: IndexType,
         opts: Vec<IndexOption>,
         by_fields: Vec<Part>,
-        owner: UserId,
+        initiator: UserId,
     },
     DropIndex {
         space_id: SpaceId,
