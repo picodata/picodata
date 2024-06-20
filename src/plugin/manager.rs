@@ -11,6 +11,7 @@ use crate::{tlog, traft};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use libloading::{Library, Symbol};
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
+use picoplugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
 use std::fs;
 use std::rc::Rc;
@@ -300,15 +301,7 @@ impl PluginManager {
         if let Some(plugin_state) = plugin {
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
-                if let RErr(_) = service.inner.on_stop(&ctx) {
-                    let error = BoxError::last();
-                    tlog!(
-                        Error,
-                        "plugin {} service {} `on_stop` error: {error}",
-                        service.plugin_name,
-                        service.name
-                    );
-                }
+                stop_service(&mut service, ctx.clone());
             }
         }
 
@@ -326,15 +319,7 @@ impl PluginManager {
         for services in services_to_stop {
             for service in services.iter() {
                 let mut service = service.lock();
-                if let RErr(_) = service.inner.on_stop(&ctx) {
-                    let error = BoxError::last();
-                    tlog!(
-                        Error,
-                        "plugin {} service {} `on_stop` error: {error}",
-                        service.plugin_name,
-                        service.name
-                    );
-                }
+                stop_service(&mut service, ctx.clone());
             }
         }
     }
@@ -544,15 +529,7 @@ impl PluginManager {
         // call `on_stop` callback and drop service
         let ctx = context_from_node(node);
         let mut service = service_to_del.lock();
-        if let RErr(_) = service.inner.on_stop(&ctx) {
-            let error = BoxError::last();
-            tlog!(
-                Error,
-                "plugin {} service {} `on_stop` error: {error}",
-                service.plugin_name,
-                service.name
-            );
-        }
+        stop_service(&mut service, ctx);
     }
 
     fn get_plugin_services(&self, plugin: &str) -> Result<PluginServices> {
@@ -604,7 +581,7 @@ impl PluginManager {
         if let Some(plugin_state) = maybe_plugin_state {
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
-                service.inner.on_stop(&ctx);
+                stop_service(&mut service, ctx.clone());
             }
         }
         Ok(())
@@ -717,6 +694,20 @@ impl Drop for PluginManager {
         if let Some(r#loop) = self._loop.take() {
             r#loop.join();
         }
+    }
+}
+
+#[track_caller]
+fn stop_service(service: &mut Service, context: PicoContext) {
+    if service.inner.on_stop(&context).is_err() {
+        let error = BoxError::last();
+        tlog!(
+            Error,
+            "plugin {} service {} `on_stop` error: {}{error}",
+            service.plugin_name,
+            service.name,
+            DisplayErrorLocation(&error),
+        );
     }
 }
 

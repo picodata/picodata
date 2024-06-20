@@ -11,7 +11,7 @@ use tarantool::error::{BoxError, IntoBoxError};
 
 /// Context of current instance. Produced by picodata.
 #[repr(C)]
-#[derive(StableAbi)]
+#[derive(StableAbi, Debug, Clone)]
 pub struct PicoContext {
     is_master: bool,
 }
