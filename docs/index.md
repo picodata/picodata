@@ -35,9 +35,9 @@ Picodata — это распределенная система промышле
 
 ### Справочные материалы {: #reference }
 
+* [Язык SQL](sql_index.md)
 * [Аргументы командной строки](reference/cli.md)
 * [Файл конфигурации](reference/config.md)
-* [Язык SQL](sql_index.md)
 * [Регистрируемые события безопасности](reference/audit_events.md)
 
 ### Архитектура {: #architecture }

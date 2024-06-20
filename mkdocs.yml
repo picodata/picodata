@@ -44,8 +44,6 @@ nav:
     - tutorial/audit_log.md
     - tutorial/backup.md
   - Справочные материалы:
-    - reference/cli.md
-    - reference/config.md
     - Язык SQL:
       - Оглавление: sql_index.md
       - reference/sql/dcl.md
@@ -88,6 +86,8 @@ nav:
         - reference/sql/trim.md
         - Дата и время:
           - reference/sql/to_date.md
+    - reference/cli.md
+    - reference/config.md
     - reference/audit_events.md
   - Архитектура:
     - architecture/distributed_sql.md
