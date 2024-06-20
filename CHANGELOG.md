@@ -19,6 +19,7 @@ with the `YY.MINOR.MICRO` scheme.
   instance belongs to a tier.
 - New rpc entrypoint: `.proc_get_config` which returns the effective
   picodata configuration.
+- New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`.
 
 -->
 

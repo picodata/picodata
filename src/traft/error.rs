@@ -56,6 +56,8 @@ pub enum Error {
     NoInstanceWithRaftId(RaftId),
     #[error("instance with id \"{0}\" not found")]
     NoInstanceWithInstanceId(InstanceId),
+    #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "uuid" } else { "id" })]
+    NoSuchReplicaset { id: String, id_is_uuid: bool },
     #[error("address of peer with id {0} not found")]
     AddressUnknownForRaftId(RaftId),
     #[error("address of peer with id \"{0}\" not found")]

@@ -352,7 +352,8 @@ define_clusterwide_tables! {
             pub struct Replicasets {
                 space: Space,
                 #[primary]
-                index: Index => "_pico_replicaset_id",
+                index_replicaset_id:   Index => "_pico_replicaset_id",
+                index_replicaset_uuid: Index => "_pico_replicaset_uuid",
             }
         }
 
@@ -1413,8 +1414,8 @@ impl Properties {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
         }]
     }
@@ -1654,14 +1655,25 @@ impl Replicasets {
             .if_not_exists(true)
             .create()?;
 
-        let index = space
+        let index_replicaset_id = space
             .index_builder("_pico_replicaset_id")
             .unique(true)
             .part("replicaset_id")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index })
+        let index_replicaset_uuid = space
+            .index_builder("_pico_replicaset_uuid")
+            .unique(true)
+            .part("replicaset_uuid")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self {
+            space,
+            index_replicaset_id,
+            index_replicaset_uuid,
+        })
     }
 
     #[inline(always)]
@@ -1671,18 +1683,35 @@ impl Replicasets {
 
     #[inline]
     pub fn index_definitions() -> Vec<IndexDef> {
-        vec![IndexDef {
-            table_id: Self::TABLE_ID,
-            // Primary index
-            id: 0,
-            name: "_pico_replicaset_id".into(),
-            ty: IndexType::Tree,
-            opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
-            operable: true,
-            schema_version: INITIAL_SCHEMA_VERSION,
-        }]
+        vec![
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                // Primary index
+                id: 0,
+                name: "_pico_replicaset_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![
+                    Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)
+                ],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 1,
+                name: "_pico_replicaset_uuid".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(true)],
+                parts: vec![
+                    Part::from(("replicaset_uuid", IndexFieldType::String)).is_nullable(false)
+                ],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+        ]
     }
 
     #[allow(unused)]
@@ -1690,6 +1719,29 @@ impl Replicasets {
     pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {
         let tuple = self.space.get(&[replicaset_id])?;
         tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline(always)]
+    pub fn get_raw(&self, replicaset_id: &str) -> Result<Tuple> {
+        let Some(tuple) = self.space.get(&[replicaset_id])? else {
+            return Err(Error::NoSuchReplicaset {
+                id: replicaset_id.into(),
+                id_is_uuid: false,
+            });
+        };
+        Ok(tuple)
+    }
+
+    #[allow(unused)]
+    #[inline]
+    pub fn by_uuid_raw(&self, replicaset_uuid: &str) -> Result<Tuple> {
+        let Some(tuple) = self.index_replicaset_uuid.get(&[replicaset_uuid])? else {
+            return Err(Error::NoSuchReplicaset {
+                id: replicaset_uuid.into(),
+                id_is_uuid: true,
+            });
+        };
+        Ok(tuple)
     }
 }
 
@@ -1744,8 +1796,8 @@ impl PeerAddresses {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
         }]
     }
@@ -1853,8 +1905,8 @@ impl Instances {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("instance_id", IndexFieldType::String)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -1864,8 +1916,8 @@ impl Instances {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("raft_id", IndexFieldType::Unsigned)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -1877,8 +1929,8 @@ impl Instances {
                 parts: vec![
                     Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)
                 ],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
@@ -2250,8 +2302,8 @@ impl Tables {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -2261,8 +2313,8 @@ impl Tables {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
@@ -2388,8 +2440,8 @@ impl Indexes {
                     Part::from(("table_id", IndexFieldType::Unsigned)).is_nullable(false),
                     Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false),
                 ],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -2399,8 +2451,8 @@ impl Indexes {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
@@ -2887,8 +2939,8 @@ impl Users {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -2898,8 +2950,8 @@ impl Users {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
@@ -3025,8 +3077,8 @@ impl Privileges {
                     Part::from(("object_id", IndexFieldType::Integer)).is_nullable(false),
                     Part::from(("privilege", IndexFieldType::String)).is_nullable(false),
                 ],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -3039,8 +3091,8 @@ impl Privileges {
                     Part::from(("object_type", IndexFieldType::String)).is_nullable(false),
                     Part::from(("object_id", IndexFieldType::Integer)).is_nullable(false),
                 ],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]
@@ -3213,8 +3265,8 @@ impl Tiers {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-            // This means the local schema is already up to date and main loop doesn't need to do anything
             operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
         }]
     }
@@ -3290,8 +3342,8 @@ impl Routines {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("id", IndexFieldType::Unsigned)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
             IndexDef {
@@ -3301,8 +3353,8 @@ impl Routines {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
-                // This means the local schema is already up to date and main loop doesn't need to do anything
                 operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
         ]

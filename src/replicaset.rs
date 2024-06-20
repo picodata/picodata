@@ -50,6 +50,14 @@ pub struct Replicaset {
 impl Encode for Replicaset {}
 
 impl Replicaset {
+    /// Index of field "replicaset_uuid" in the table _pico_replicaset format.
+    ///
+    /// Index of first field is 0.
+    pub const FIELD_REPLICASET_UUID: u32 = 1;
+
+    /// Index of field "target_master_id" in the table _pico_replicaset format.
+    pub const FIELD_TARGET_MASTER_ID: u32 = 3;
+
     #[inline]
     pub fn with_one_instance(master: &Instance) -> Replicaset {
         Replicaset {
@@ -151,5 +159,14 @@ mod tests {
         let tuple_data = r.to_tuple_buffer().unwrap();
         let format = Replicaset::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "Replicaset::format");
+
+        assert_eq!(
+            format[Replicaset::FIELD_REPLICASET_UUID as usize].name,
+            "replicaset_uuid"
+        );
+        assert_eq!(
+            format[Replicaset::FIELD_TARGET_MASTER_ID as usize].name,
+            "target_master_id"
+        );
     }
 }
