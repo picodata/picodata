@@ -354,8 +354,8 @@ impl PoolWorker {
         timeout: Option<Duration>,
         cb: impl FnOnce(Result<Response>) + 'static,
     ) where
-        Args: ToTupleBuffer,
-        Response: serde::de::DeserializeOwned,
+        Args: ToTupleBuffer + ?Sized,
+        Response: tarantool::tuple::DecodeOwned,
     {
         let args = unwrap_ok_or!(args.to_tuple_buffer(),
             Err(e) => { return cb(Err(e.into())) }
@@ -426,6 +426,8 @@ impl ConnectionPool {
     }
 
     fn get_or_create_by_raft_id(&self, raft_id: RaftId) -> Result<&PoolWorker> {
+        // TODO(gmoshkin): Check if there's a possible race here. Put a comment
+        // here that there isn't one when done, or write a good test.
         // SAFETY: shared state mutations in this function are guarded by no yield guards
         // which makes them safe in context of tx thread.
         {
@@ -550,8 +552,8 @@ impl ConnectionPool {
         timeout: Option<Duration>,
     ) -> Result<impl Future<Output = Result<Response>>>
     where
-        Response: serde::de::DeserializeOwned + 'static,
-        Args: ToTupleBuffer,
+        Response: tarantool::tuple::DecodeOwned + 'static,
+        Args: ToTupleBuffer + ?Sized,
     {
         let (tx, mut rx) = oneshot::channel();
         id.get_or_create_in(self)?

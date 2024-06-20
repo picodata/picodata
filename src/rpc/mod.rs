@@ -42,9 +42,15 @@ pub trait RequestArgs: Encode + DecodeOwned {
 #[inline(always)]
 pub fn decode_iproto_return_value<T>(tuple: tarantool::tuple::Tuple) -> tarantool::Result<T>
 where
-    T: serde::de::DeserializeOwned,
+    T: tarantool::tuple::DecodeOwned,
 {
-    let (res,) = tuple.decode()?;
+    let tuple_len = tuple.len();
+    if tuple_len != 1 {
+        return Err(tarantool::error::Error::other(format!("failed to decode rpc response: expected a msgpack array of length 1, found array of length {tuple_len}")));
+    }
+    let res = tuple
+        .field(0)?
+        .expect("already checked there's enough fields");
     Ok(res)
 }
 
@@ -67,7 +73,7 @@ pub async fn network_call_raw<A, R>(
 ) -> ::tarantool::Result<R>
 where
     A: tarantool::tuple::ToTupleBuffer,
-    R: serde::de::DeserializeOwned + 'static,
+    R: tarantool::tuple::DecodeOwned + 'static,
 {
     // TODO: move address parsing into client
     let (address, port) = address.rsplit_once(':').ok_or_else(|| {
