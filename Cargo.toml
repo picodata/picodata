@@ -52,7 +52,7 @@ linkme = "0.3.14"
 # Bundled modules e.g. picodata SDK
 pico_proc_macro = { path = "./pico_proc_macro" }
 picodata-sdk = { path = "./sdk/picodata-sdk" }
-picoplugin = { path = "./picoplugin" }
+picoplugin = { path = "./picoplugin", features = ["internal_test"] }
 
 [dependencies.protobuf]
 version = "2.27"

@@ -27,3 +27,6 @@ reqwest = "0.12"
 path = "./../tarantool/tarantool"
 version = "5.0"
 features = ["picodata", "test", "tokio_components"]
+
+[features]
+internal_test = []
