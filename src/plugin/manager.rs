@@ -24,6 +24,12 @@ fn context_from_node(node: &Node) -> PicoContext {
     PicoContext::new(!node.is_readonly())
 }
 
+fn context_set_service_info(context: &mut PicoContext, service: &Service) {
+    context.plugin_name = service.plugin_name.as_str().into();
+    context.service_name = service.name.as_str().into();
+    context.plugin_version = service.version.as_str().into();
+}
+
 type PluginServices = Vec<Rc<fiber::Mutex<Service>>>;
 
 /// Represent loaded part of a plugin - services and flag of plugin activation.
@@ -148,9 +154,10 @@ impl PluginManager {
                 if let Some(service_inner) = maybe_service {
                     let service = Service {
                         _lib: lib.clone(),
-                        name: service_def.name.to_string(),
+                        name: service_def.name.clone(),
+                        version: service_def.version.clone(),
                         inner: service_inner,
-                        plugin_name: plugin_def.name.to_string(),
+                        plugin_name: plugin_def.name.clone(),
                     };
                     loaded_services.push(service);
                     return false;
@@ -301,7 +308,7 @@ impl PluginManager {
         if let Some(plugin_state) = plugin {
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
-                stop_service(&mut service, ctx.clone());
+                stop_service(&mut service, &ctx);
             }
         }
 
@@ -319,7 +326,7 @@ impl PluginManager {
         for services in services_to_stop {
             for service in services.iter() {
                 let mut service = service.lock();
-                stop_service(&mut service, ctx.clone());
+                stop_service(&mut service, &ctx);
             }
         }
     }
@@ -333,7 +340,7 @@ impl PluginManager {
         new_cfg_raw: &[u8],
     ) -> traft::Result<()> {
         let node = node::global()?;
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
         let storage = &node.storage;
 
         let maybe_service = {
@@ -352,6 +359,7 @@ impl PluginManager {
             .ok_or_else(|| PluginError::ServiceNotFound(service.to_string(), plugin.to_string()))?;
 
         let mut service = service.lock();
+        context_set_service_info(&mut ctx, &service);
 
         let change_config_result = service.inner.on_config_change(
             &ctx,
@@ -407,7 +415,7 @@ impl PluginManager {
     /// Call `on_leader_change` at services. Poison services if error at callbacks happens.
     fn handle_rs_leader_change(&self) -> traft::Result<()> {
         let node = node::global()?;
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
         let storage = &node.storage;
         let instance_info = InstanceInfo::try_get(node, None)?;
         let mut routes_to_replace = vec![];
@@ -419,9 +427,13 @@ impl PluginManager {
             }
 
             for service in plugin_state.services.iter() {
-                let service_name = service.lock().name.clone();
-                let plugin_name = service.lock().plugin_name.clone();
-                let result = service.lock().inner.on_leader_change(&ctx);
+                let mut service = service.lock();
+                let service_name = service.name.clone();
+                let plugin_name = service.plugin_name.clone();
+                context_set_service_info(&mut ctx, &service);
+                let result = service.inner.on_leader_change(&ctx);
+                // Release the lock
+                drop(service);
 
                 match result {
                     RResult::ROk(_) => {
@@ -487,9 +499,10 @@ impl PluginManager {
             .ok_or_else(|| PluginError::ServiceNotFound(service.to_string(), plugin.to_string()))?;
 
         // call `on_start` callback
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
         let cfg_raw =
             rmp_serde::encode::to_vec_named(&service_defs[0].configuration).expect("out of memory");
+        context_set_service_info(&mut ctx, &new_service);
         if let RErr(_) = new_service
             .inner
             .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
@@ -529,7 +542,7 @@ impl PluginManager {
         // call `on_stop` callback and drop service
         let ctx = context_from_node(node);
         let mut service = service_to_del.lock();
-        stop_service(&mut service, ctx);
+        stop_service(&mut service, &ctx);
     }
 
     fn get_plugin_services(&self, plugin: &str) -> Result<PluginServices> {
@@ -545,7 +558,7 @@ impl PluginManager {
         let services = self.get_plugin_services(plugin)?;
 
         let node = node::global().expect("must be initialized");
-        let ctx = context_from_node(node);
+        let mut ctx = context_from_node(node);
 
         for service in services.iter() {
             let mut service = service.lock();
@@ -557,6 +570,7 @@ impl PluginManager {
             let cfg_raw =
                 rmp_serde::encode::to_vec_named(&def.configuration).expect("out of memory");
 
+            context_set_service_info(&mut ctx, &service);
             if let RErr(_) = service
                 .inner
                 .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
@@ -581,7 +595,7 @@ impl PluginManager {
         if let Some(plugin_state) = maybe_plugin_state {
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
-                stop_service(&mut service, ctx.clone());
+                stop_service(&mut service, &ctx);
             }
         }
         Ok(())
@@ -698,7 +712,10 @@ impl Drop for PluginManager {
 }
 
 #[track_caller]
-fn stop_service(service: &mut Service, context: PicoContext) {
+fn stop_service(service: &mut Service, context: &PicoContext) {
+    // SAFETY: It's always safe to clone the context on picodata's side.
+    let mut context = unsafe { context.clone() };
+    context_set_service_info(&mut context, service);
     if service.inner.on_stop(&context).is_err() {
         let error = BoxError::last();
         tlog!(

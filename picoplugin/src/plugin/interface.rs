@@ -1,3 +1,4 @@
+use crate::util::FfiSafeStr;
 use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
 use abi_stable::{sabi_trait, RTuple, StableAbi};
 use linkme::distributed_slice;
@@ -11,19 +12,60 @@ use tarantool::error::{BoxError, IntoBoxError};
 
 /// Context of current instance. Produced by picodata.
 #[repr(C)]
-#[derive(StableAbi, Debug, Clone)]
+#[derive(StableAbi, Debug)]
 pub struct PicoContext {
     is_master: bool,
+
+    pub plugin_name: FfiSafeStr,
+    pub service_name: FfiSafeStr,
+    pub plugin_version: FfiSafeStr,
 }
 
 impl PicoContext {
+    #[inline]
     pub fn new(is_master: bool) -> PicoContext {
-        Self { is_master }
+        Self {
+            is_master,
+            plugin_name: "<unset>".into(),
+            service_name: "<unset>".into(),
+            plugin_version: "<unset>".into(),
+        }
+    }
+
+    /// Note: this is for internal use only. Plugin developers should never
+    /// be copying pico context.
+    #[inline]
+    pub unsafe fn clone(&self) -> Self {
+        Self {
+            is_master: self.is_master,
+            plugin_name: self.plugin_name.clone(),
+            service_name: self.service_name.clone(),
+            plugin_version: self.plugin_version.clone(),
+        }
     }
 
     /// Return true if the current instance is a replicaset leader.
+    #[inline]
     pub fn is_master(&self) -> bool {
         self.is_master
+    }
+
+    #[inline]
+    pub fn plugin_name(&self) -> &str {
+        // SAFETY: safe because lifetime is managed by borrow checker
+        unsafe { self.plugin_name.as_str() }
+    }
+
+    #[inline]
+    pub fn service_name(&self) -> &str {
+        // SAFETY: safe because lifetime is managed by borrow checker
+        unsafe { self.service_name.as_str() }
+    }
+
+    #[inline]
+    pub fn plugin_version(&self) -> &str {
+        // SAFETY: safe because lifetime is managed by borrow checker
+        unsafe { self.plugin_version.as_str() }
     }
 }
 

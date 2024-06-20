@@ -99,6 +99,7 @@ type Result<T> = std::result::Result<T, PluginError>;
 pub struct Service {
     inner: ServiceBox,
     pub name: String,
+    pub version: String,
     pub plugin_name: String,
     _lib: Rc<Library>,
 }
