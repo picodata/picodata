@@ -66,11 +66,16 @@ test = ["tester"]
 all = ["default", "test"]
 internal_test = ["test", "tlua/internal_test", "pretty_assertions", "tempfile"]
 # This feature switches tarantool module decimal support to use rust dec crate
-# instead of decimal impl available in tarantool. This feature is considered as a temporary hack
-# for sbroad tests. Having two implementations of decimal in use at the same time 
-# is problematic because libdecnumber versions used by both of the options are not exactly 
-# the same. Thus deviations in behaviour between them are possible (up to UB if struct 
-# definitions become out of sync)
+# instead of decimal impl available in tarantool.
+# This feature has two use cases,the primary one is decimal support for rust module used with
+# vanilla tarantool (without our fork). In vanilla many needed symbols are not exported,
+# so we cant use tarantool builtin decimal.
+# Another case that is considered as a temporary hack are sbroad unit tests. Currently they
+# are run outside tarantool. So tarantool symbols are not available there. Thus standalone
+# option usage. This is expected to be resolved.
+# Beware: having two implementations of decimal (one in tarantool and one on the rust side)
+# in use at the same time is problematic because libdecnumber versions used by both of the
+# options are not exactly the same. Thus deviations in behaviour between them are possible
 standalone_decimal = ["dec"]
 
 
