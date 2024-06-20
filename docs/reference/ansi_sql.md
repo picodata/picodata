@@ -1176,7 +1176,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>TO_CHAR</td>
-            <td class="td3 center">TO_CHAR</td>
+            <td class="td3 center">[TO_CHAR](sql/to_char.md)</td>
             <td></td>
         </tr>
         <tr>

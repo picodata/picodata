@@ -48,4 +48,5 @@
 
 ### Дата и время {: #date_and_time }
 
+* [TO_CHAR](reference/sql/to_char.md)
 * [TO_DATE](reference/sql/to_date.md)
