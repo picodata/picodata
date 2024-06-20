@@ -90,6 +90,8 @@
   Could be seen when deserializing from `rmpv::Value::String`.
 - Stored procedures defined with `#[tarantool::proc]` used to fail to compile
   with doc-comments on the function parameters.
+- `msgpack::skip_value` now returns error in case there wasn't enough data to
+  skip a msgpack value.
 
 ### Deprecated
 

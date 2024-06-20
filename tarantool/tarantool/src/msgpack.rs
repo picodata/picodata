@@ -35,7 +35,29 @@ macro_rules! slice_read_be_to {
 
 // Even though function only seeks forward, we still use it
 // at non-sliceable context, so this trait bound has to stay.
+#[inline]
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
+    skip_value_inner(cur)?;
+    let position = cur.stream_position()?;
+    let end = cur.seek(SeekFrom::End(0))? as isize;
+    let overflow = position as isize - end;
+    if overflow > 0 {
+        return Err(
+            // Note: we use ValueReadError here for the sake of consistency
+            // although maybe we should instead change all the error values here
+            // because rmp's error messages are not the most user-friendly ones.
+            rmp::decode::ValueReadError::InvalidDataRead(
+                // Note: particular error value doesn't matter, because `rmp` just ignores it.
+                std::io::ErrorKind::InvalidData.into(),
+            )
+            .into(),
+        );
+    }
+    cur.seek(SeekFrom::Start(position))?;
+    Ok(())
+}
+
+fn skip_value_inner(cur: &mut (impl Read + Seek)) -> Result<()> {
     use rmp::Marker;
 
     match rmp::decode::read_marker(cur)? {
@@ -1074,5 +1096,64 @@ mod tests {
         let d: ViaMsgpack<std::time::Duration> = lua.eval("return {420, 69}").unwrap();
         assert_eq!(d.0.as_secs(), 420);
         assert_eq!(d.0.subsec_nanos(), 69);
+    }
+
+    #[inline]
+    fn remaining_slice<T>(cursor: &Cursor<T>) -> &[u8]
+    where
+        T: AsRef<[u8]>,
+    {
+        let start = cursor.position() as usize;
+        cursor.get_ref().as_ref().get(start..).unwrap_or(&[])
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn skip_value_error() {
+        // \xa1: header string of length 1
+        let mut buffer = Cursor::new(b"\xa1");
+        let e = skip_value(&mut buffer).unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "msgpack read error: failed to read MessagePack data");
+
+        // \xc1: invalid msgpack header (the only one)
+        let mut buffer = Cursor::new(b"\xc1");
+        let e = skip_value(&mut buffer).unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "msgpack read error: the type decoded isn't match with the expected one");
+
+        // \x91: header array of length 1
+        let mut buffer = Cursor::new(b"\x91");
+        let e = skip_value(&mut buffer).unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "msgpack read error: failed to read MessagePack marker");
+
+        // \x91: header array of length 1
+        // \x92: header array of length 2
+        let mut buffer = Cursor::new(b"\x91\x92");
+        let e = skip_value(&mut buffer).unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "msgpack read error: failed to read MessagePack marker");
+
+        // \x91: header array of length 1
+        // \x92: header array of length 2
+        // \xa0: empty string (length 0)
+        let mut buffer = Cursor::new(b"\x91\x92\xa0");
+        let e = skip_value(&mut buffer).unwrap_err();
+        #[rustfmt::skip]
+        assert_eq!(e.to_string(), "msgpack read error: failed to read MessagePack marker");
+
+        // \x91: header array of length 1
+        // \x92: header array of length 2
+        // \xa0: empty string (length 0)
+        let mut buffer = Cursor::new(b"\x91\x92\xa0\xa0");
+        skip_value(&mut buffer).unwrap();
+        assert_eq!(remaining_slice(&buffer), b"");
+
+        // \x91: header array of length 1
+        // \x92: header array of length 2
+        // \xa0: empty string (length 0)
+        let mut buffer = Cursor::new(b"\x91\x92\xa0\xa0more stuff");
+        skip_value(&mut buffer).unwrap();
+        assert_eq!(remaining_slice(&buffer), b"more stuff");
     }
 }
