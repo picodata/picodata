@@ -5,6 +5,9 @@ use crate::plugin::{
     PluginError, PluginEvent, Result, Service, PLUGIN_DIR,
 };
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey};
+use crate::storage::Clusterwide;
+use crate::traft::network::ConnectionPool;
+use crate::traft::network::WorkerOptions;
 use crate::traft::node;
 use crate::traft::node::Node;
 use crate::{tlog, traft};
@@ -44,34 +47,36 @@ pub struct PluginManager {
     /// There are two mutex here to avoid the situation when one long service callback
     /// will block other services.
     plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>>,
+
+    /// A connection pool for plugin RPC needs.
+    pub(crate) pool: ConnectionPool,
+
     /// Queue of async events.
     events_queue: Option<fiber::channel::Channel<PluginAsyncEvent>>,
     /// Fiber for handle async events, those handlers need it for avoided yield's.
     _loop: Option<fiber::JoinHandle<'static, ()>>,
 }
 
-impl Default for PluginManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl PluginManager {
     /// Create a new plugin manager.
-    pub fn new() -> Self {
+    pub fn new(storage: Clusterwide) -> Self {
         let (rx, tx) = fiber::channel::Channel::new(1000).into_clones();
         let plugins: Rc<fiber::Mutex<HashMap<String, PluginState>>> =
             Rc::new(fiber::Mutex::default());
 
+        let options = WorkerOptions::default();
+        let pool = ConnectionPool::new(storage, options);
+
         let r#loop = Loop::new(plugins.clone());
         let defer_events_fiber = fiber::Builder::new()
-            .name("plugin manager loop")
+            .name("plugin_manager_loop")
             .func(move || r#loop.run(tx))
             .defer()
             .expect("Plugin manager fiber should not fail");
 
         Self {
             plugins,
+            pool,
             events_queue: Some(rx),
             _loop: defer_events_fiber.into(),
         }

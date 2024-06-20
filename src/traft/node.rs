@@ -195,7 +195,7 @@ impl Node {
         let instance_reachability = instance_reachability_manager(storage.clone());
         pool.instance_reachability = instance_reachability.clone();
         let pool = Rc::new(pool);
-        let plugin_manager = Rc::new(PluginManager::new());
+        let plugin_manager = Rc::new(PluginManager::new(storage.clone()));
 
         let node_impl = NodeImpl::new(
             pool.clone(),
