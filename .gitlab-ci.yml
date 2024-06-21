@@ -22,8 +22,8 @@ workflow:
 variables:
   REGISTRY: docker-public.binary.picodata.io
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
-  BASE_IMAGE_LATEST: latest
-  MAIN_BRANCH: &main-branch master
+  BASE_IMAGE_LATEST: "24.4"
+  MAIN_BRANCH: &main-branch "24.4"
   CARGO_HOME: /data/shared-storage/picodata/.cargo
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
@@ -457,7 +457,7 @@ deploy-docker:
     project: picodata/devops/picodata-in-docker
     branch: main
     strategy: depend
-    
+
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
 upload-picodata-to-binary:
