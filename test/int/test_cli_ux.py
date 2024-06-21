@@ -7,17 +7,22 @@ def test_connect_ux(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
     i1.wait_online()
+    i1.create_user(with_name="andy", with_password="Testpa55")
+    i1.sudo_sql('GRANT CREATE TABLE TO "andy"')
 
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=["connect", f"{i1.host}:{i1.port}"],
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
         encoding="utf-8",
         timeout=1,
     )
     cli.logfile = sys.stdout
 
+    cli.expect_exact("Enter password for andy: ")
+    cli.sendline("Testpa55")
+
     cli.expect_exact(
-        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
+        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
@@ -40,6 +45,35 @@ def test_connect_ux(cluster: Cluster):
     # nothing happens for completion
     cli.sendline("\t\t")
     cli.expect_exact("picodata> ")
+
+    # ensure that server responds on correct query
+    cli.sendline(
+        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id)"
+    )
+    cli.expect_exact("1")
+
+    # ensure that server responds on invalid query
+    cli.sendline("invalid query")
+    cli.expect_exact("rule parsing error")
+
+    # ensure that server responds after processing invalid query
+    cli.sendline("INSERT INTO ids VALUES(1)")
+    cli.expect_exact("1")
+
+    cli.sendline("SELECT * FROM ids")
+    cli.expect_exact("+----+")
+    cli.expect_exact("| ID |")
+    cli.expect_exact("+====+")
+    cli.expect_exact("| 1  |")
+    cli.expect_exact("+----+")
+    cli.expect_exact("(1 rows)")
+
+    cli.sendline("EXPLAIN SELECT * FROM ids")
+    cli.expect_exact('projection ("IDS"."ID"::integer -> "ID")')
+    cli.expect_exact('scan "IDS"')
+    cli.expect_exact("execution options:")
+    cli.expect_exact("sql_vdbe_max_steps = 45000")
+    cli.expect_exact("vtable_max_rows = 5000")
 
 
 def test_admin_ux(cluster: Cluster):
