@@ -10,11 +10,6 @@ with the `YY.MINOR.MICRO` scheme.
 
 ## Unreleased
 
-- sql supports inferring not null constraint on primary key
-columns.
-- SQL supports `INSERT`, `UPDATE`, `DELETE` for global tables.
-`INSERT ON CONFLICT` is not supported.
-
 <!--
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have
@@ -28,7 +23,7 @@ columns.
 -->
 
 --------------------------------------------------------------------------------
-## [24.4.1] - upcoming
+## [24.4.1] - 2024-06-21
 
 ### Pgproto
 
@@ -62,6 +57,8 @@ columns.
 - New functions `TO_CHAR`, `TO_DATE`
 - Allow `PRIMARY KEY` next to column declaration
 - Support `SET ...` and `SET TRANSACTION ...` but they are ignored
+- Support inferring not null constraint on primary key columns
+- Support `INSERT`, `UPDATE`, `DELETE` in global tables
 
 [CREATE INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/create_index/
 [DROP INDEX]: https://docs.picodata.io/picodata/24.4/reference/sql/drop_index/
