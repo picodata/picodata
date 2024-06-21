@@ -2300,7 +2300,7 @@ impl MainLoop {
 
         let state = MainLoopState {
             node_impl,
-            next_tick: Instant::now_accurate(),
+            next_tick: Instant::now_fiber(),
             loop_waker: loop_waker_rx,
             stop_flag: stop_flag.clone(),
         };
@@ -2332,7 +2332,7 @@ impl MainLoop {
             .read_state_wakers
             .retain(|_, waker| !waker.is_closed());
 
-        let now = Instant::now_accurate();
+        let now = Instant::now_fiber();
         if now > state.next_tick {
             state.next_tick = now.saturating_add(Self::TICK);
             node_impl.raw_node.tick();
