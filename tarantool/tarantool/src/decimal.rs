@@ -1147,7 +1147,7 @@ mod standalone_decimal {
             let data = {
                 let mut data = vec![];
                 let (bcd, scale) = self.inner.clone().to_packed_bcd().unwrap();
-                rmp::encode::write_i32(&mut data, scale).unwrap();
+                rmp::encode::write_sint(&mut data, scale as i64).unwrap();
                 data.extend(bcd);
                 data
             };
@@ -1881,5 +1881,40 @@ mod tests {
         let _should_not_panic = Decimal::from(1).pow(1_i16);
         let _should_not_panic = Decimal::from(1).pow(1_u8);
         let _should_not_panic = Decimal::from(1).pow(1_i8);
+    }
+
+    #[crate::test(tarantool = "crate")]
+    fn decimal_msgpack_exact_bytes() {
+        // Serialized version is obtained like that:
+        // decimal = require('decimal')
+        // msgpack = require('msgpack')
+        // msgpack.encode(decimal.new('3333.3333'))
+        let examples: &[(Decimal, &[u8])] = &[
+            (decimal!(0.33), &[199, 3, 1, 2, 3, 60]),
+            (decimal!(0.3333), &[214, 1, 4, 3, 51, 60]),
+            (decimal!(3.33), &[199, 3, 1, 2, 51, 60]),
+            (decimal!(33333.33), &[199, 5, 1, 2, 51, 51, 51, 60]),
+            (decimal!(0), &[213, 1, 0, 12]),
+            (decimal!(14), &[199, 3, 1, 0, 1, 76]),
+        ];
+
+        for (value, serialized) in examples {
+            // serialized value has the same representation as expected
+            let new_serialized = rmp_serde::encode::to_vec(value).expect("cant serialize decimal");
+            assert_eq!(
+                serialized, &new_serialized,
+                "{value} was not encoded correctly"
+            );
+            // we can deserialize from expected bytes to the same value
+            let new_value: Decimal =
+                rmp_serde::decode::from_slice(serialized).expect("cant deserialize decimal");
+            assert_eq!(&new_value, value);
+        }
+
+        // separately test that we can decode from the shape we used to encode decimals with standalonoe_decimal
+        // see https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/200
+        let value: Decimal = rmp_serde::decode::from_slice(&[199, 7, 1, 210, 0, 0, 0, 2, 3, 60])
+            .expect("cant deserialize decimal");
+        assert_eq!(value, decimal!(0.33));
     }
 }
