@@ -965,16 +965,16 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i5 = cluster.add_instance(wait_online=True, replicaset_id="R99")
 
     # Set up.
-    space_name = "trinkets"
+    table_name = "trinkets"
     cluster.create_table(
         dict(
-            name=space_name,
+            name=table_name,
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
             distribution="global",
         ),
     )
-    index = i1.cas("insert", space_name, [9])
+    index = i1.cas("insert", table_name, [9])
     for i in cluster.instances:
         i.raft_wait_index(index)
 
@@ -982,20 +982,28 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4.terminate()
     i5.terminate()
 
+    table_id = i1.sudo_sql(
+        """
+        SELECT "id" FROM "_pico_table" WHERE "name"=?
+        """,
+        table_name,
+    )["rows"][0][0]
+
     # Ddl fails because all masters must be present.
     with pytest.raises(ReturnError, match="timeout"):
-        i1.drop_table(space_name)
+        i1.drop_table(table_name)
 
-    entry, *_ = i1.call(
-        "box.space._raft_log:select", None, dict(iterator="lt", limit=1)
-    )
     # Has not yet been finalized
-    assert entry[4][0] == "ddl_prepare"
+    pending_schema_change = i1.call(
+        "box.space._pico_property:get", "pending_schema_change"
+    )
+    assert pending_schema_change[1][0] == "drop_table"
+    assert pending_schema_change[1][1] == table_id
 
     # Space is not yet dropped.
-    assert i1.call("box.space._space.index.name:get", space_name) is not None
-    assert i2.call("box.space._space.index.name:get", space_name) is not None
-    assert i3.call("box.space._space.index.name:get", space_name) is not None
+    assert i1.call("box.space._space.index.name:get", table_name) is not None
+    assert i2.call("box.space._space.index.name:get", table_name) is not None
+    assert i3.call("box.space._space.index.name:get", table_name) is not None
 
     # And no data is lost yet.
     assert i1.call("box.space.trinkets:get", 9) == [9]
@@ -1005,15 +1013,15 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     # But the space is marked not operable.
     assert not i1.eval(
         "return box.space._pico_table.index._pico_table_name:get(...).operable",
-        space_name,
+        table_name,
     )
     assert not i2.eval(
         "return box.space._pico_table.index._pico_table_name:get(...).operable",
-        space_name,
+        table_name,
     )
     assert not i3.eval(
         "return box.space._pico_table.index._pico_table_name:get(...).operable",
-        space_name,
+        table_name,
     )
 
     # TODO: test manual ddl abort
@@ -1026,15 +1034,15 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     time.sleep(2)
 
     # Now space is dropped.
-    assert i1.call("box.space._space.index.name:get", space_name) is None
-    assert i2.call("box.space._space.index.name:get", space_name) is None
-    assert i3.call("box.space._space.index.name:get", space_name) is None
-    assert i4.call("box.space._space.index.name:get", space_name) is None
+    assert i1.call("box.space._space.index.name:get", table_name) is None
+    assert i2.call("box.space._space.index.name:get", table_name) is None
+    assert i3.call("box.space._space.index.name:get", table_name) is None
+    assert i4.call("box.space._space.index.name:get", table_name) is None
 
     # And a replica catches up by raft log successfully.
     i5.start()
     i5.wait_online()
-    assert i5.call("box.space._space.index.name:get", space_name) is None
+    assert i5.call("box.space._space.index.name:get", table_name) is None
 
 
 ################################################################################

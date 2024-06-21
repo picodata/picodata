@@ -462,8 +462,9 @@ class Connection(tarantool.Connection):  # type: ignore
     def eval(self, expr, *args, on_push=None, on_push_ctx=None):
         return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
 
-    def sql(self, sql: str, *params, options={}) -> dict:
+    def sql(self, sql: str, *params, options=None) -> dict:
         """Run SQL query and return result"""
+        options = options or {}
         return self.call(
             ".proc_sql_dispatch",
             sql,
@@ -666,7 +667,7 @@ class Instance:
         self,
         sql: str,
         *params,
-        options={},
+        options: Optional[Dict[str, Any]] = None,
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 3,
@@ -685,7 +686,7 @@ class Instance:
     ) -> dict:
         """Run SQL query as admin and return result"""
         with self.connect(timeout, user=user, password=password) as conn:
-            return conn.sudo_sql(sql, params)
+            return conn.sudo_sql(sql, *params)
 
     def create_user(
         self,
