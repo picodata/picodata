@@ -2473,7 +2473,7 @@ dependencies = [
 
 [[package]]
 name = "picodata"
-version = "24.4.0"
+version = "24.5.0"
 dependencies = [
  "abi_stable",
  "ahash 0.7.8",
