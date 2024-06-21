@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.4.0-57-g8a306f0e`.
+Описание соответствует версии Picodata `24.4.0-113-gde5810fa`.
 
 ### _pico_table
 
@@ -12,6 +12,7 @@
 * `operable`: (_boolean_)
 * `engine`: (_string_)
 * `owner`: (_unsigned_)
+* `description`: (_string_)
 
 Индексы:
 
