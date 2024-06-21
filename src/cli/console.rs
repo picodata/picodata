@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::env;
 use std::fs::read_to_string;
 use std::io;
@@ -51,26 +52,18 @@ pub enum Command {
 pub struct Console<H: Helper> {
     editor: Editor<H, FileHistory>,
     history_file_path: PathBuf,
+    delimiter: Option<String>,
+    // Queue for handling lines with several delimiters.
+    buffer: VecDeque<String>,
 }
 
 impl<T: Helper> Console<T> {
     const HISTORY_FILE_NAME: &'static str = ".picodata_history";
     const PROMPT: &'static str = "picodata> ";
+    const SPECIAL_COMMAND_PREFIX: &'static str = "\\";
 
-    // Ideally we should have an enum for all commands. For now we have only two options, usual line
-    // and only one special command. To not overengineer things at this point just handle this as ifs.
-    // When the set of commands grows it makes total sense to transform this to clear parse/execute pipeline
-    // and separate enum variants for each command variant.
-    fn process_line(&self, line: &str) -> Result<ControlFlow<Command>> {
-        if line.is_empty() {
-            return Ok(ControlFlow::Continue(()));
-        }
-
-        if !line.starts_with('\\') {
-            return Ok(ControlFlow::Break(Command::Expression(line.into())));
-        }
-
-        if line == "\\e" {
+    fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
+        if command == "\\e" {
             let editor = match env::var_os("EDITOR") {
                 Some(e) => e,
                 None => {
@@ -94,61 +87,149 @@ impl<T: Helper> Console<T> {
             let line = read_to_string(temp.path()).map_err(ReplError::Io)?;
 
             return Ok(ControlFlow::Break(Command::Expression(line)));
-        } else if ["\\help", "\\h"].contains(&line) {
+        } else if ["\\help", "\\h"].contains(&command) {
             return Ok(ControlFlow::Break(Command::Control(
                 SpecialCommand::PrintHelp,
             )));
-        } else if line == "\\lua" {
+        } else if command == "\\lua" {
             return Ok(ControlFlow::Break(Command::Control(
                 SpecialCommand::SwitchLanguageToLua,
             )));
-        } else if line == "\\sql" {
+        } else if command == "\\sql" {
             return Ok(ControlFlow::Break(Command::Control(
                 SpecialCommand::SwitchLanguageToSql,
             )));
         }
 
-        let splitted = line.split_whitespace().collect::<Vec<_>>();
-        if splitted.len() > 2
-            && (splitted[0] == "\\s" || splitted[0] == "\\set")
-            && (splitted[1] == "language" || splitted[1] == "l" || splitted[1] == "lang")
-        {
-            if splitted[2] == "lua" {
-                return Ok(ControlFlow::Break(Command::Control(
+        enum ConsoleLanguage {
+            Lua,
+            Sql,
+        }
+
+        enum ConsoleCommand {
+            SetLanguage(ConsoleLanguage),
+            // None represent default delimiter (pressing enter in console and eof in case of pipe)
+            SetDelimiter(Option<String>),
+            Invalid,
+        }
+
+        fn parse_special_command(command: &str) -> ConsoleCommand {
+            let splitted = command.split_whitespace().collect::<Vec<_>>();
+
+            if splitted.len() < 3 {
+                return ConsoleCommand::Invalid;
+            }
+
+            if splitted[0] != "\\s" && splitted[0] != "\\set" {
+                return ConsoleCommand::Invalid;
+            }
+
+            if splitted[1] == "language" || splitted[1] == "l" || splitted[1] == "lang" {
+                if splitted[2] == "lua" {
+                    return ConsoleCommand::SetLanguage(ConsoleLanguage::Lua);
+                }
+
+                if splitted[2] == "sql" {
+                    return ConsoleCommand::SetLanguage(ConsoleLanguage::Sql);
+                }
+            }
+
+            if splitted[1] == "delimiter" || splitted[1] == "d" || splitted[1] == "delim" {
+                let delimiter = splitted[2];
+                if delimiter == "default" {
+                    return ConsoleCommand::SetDelimiter(None);
+                }
+
+                return ConsoleCommand::SetDelimiter(Some(delimiter.into()));
+            }
+
+            ConsoleCommand::Invalid
+        }
+
+        match parse_special_command(command) {
+            ConsoleCommand::SetLanguage(language) => match language {
+                ConsoleLanguage::Lua => Ok(ControlFlow::Break(Command::Control(
                     SpecialCommand::SwitchLanguageToLua,
-                )));
-            } else if splitted[2] == "sql" {
-                return Ok(ControlFlow::Break(Command::Control(
+                ))),
+                ConsoleLanguage::Sql => Ok(ControlFlow::Break(Command::Control(
                     SpecialCommand::SwitchLanguageToSql,
-                )));
+                ))),
+            },
+            ConsoleCommand::SetDelimiter(delimiter) => {
+                match delimiter {
+                    Some(custom) => {
+                        self.write(&format!("Delimiter changed to '{custom}'"));
+                        self.delimiter = Some(custom);
+                    }
+                    None => {
+                        self.write("Delimiter changed to default");
+                        self.delimiter = None;
+                    }
+                }
+                Ok(ControlFlow::Continue(()))
+            }
+            ConsoleCommand::Invalid => {
+                self.write("Unknown special sequence");
+                Ok(ControlFlow::Continue(()))
+            }
+        }
+    }
+
+    fn process_input(&mut self, input: &str) -> Result<ControlFlow<Command>> {
+        if input.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
+            return self.handle_special_command(input);
+        }
+
+        Ok(ControlFlow::Break(Command::Expression(input.into())))
+    }
+
+    fn update_history(&mut self, command: Command) -> Result<Option<Command>> {
+        // do not save special commands
+        if let Command::Expression(expression) = &command {
+            if let Err(e) = self.editor.add_history_entry(expression) {
+                println!("error while updating history: {e}");
+            }
+            if let Err(e) = self.editor.save_history(&self.history_file_path) {
+                println!("error while saving history: {e}");
             }
         }
 
-        self.write("Unknown special sequence");
-        Ok(ControlFlow::Continue(()))
+        Ok(Some(command))
     }
 
-    fn update_history(&mut self, line: &str) -> Result<()> {
-        self.editor.add_history_entry(line)?;
-        Ok(self.editor.save_history(&self.history_file_path)?)
-    }
-
-    /// Reads from stdin. Takes into account treating special symbols.
     pub fn read(&mut self) -> Result<Option<Command>> {
         loop {
+            // firstly try to consume buffer filled for example from one line with several delimiters,
+            // then read from stdin
+            while let Some(input) = self.buffer.pop_front() {
+                match self.process_input(&input)? {
+                    ControlFlow::Continue(_) => continue,
+                    ControlFlow::Break(command) => return self.update_history(command),
+                }
+            }
+
             let readline = self.editor.readline(Self::PROMPT);
+
             match readline {
-                Ok(line) => {
-                    let command = match self.process_line(&line)? {
-                        ControlFlow::Continue(_) => continue,
-                        ControlFlow::Break(command) => command,
+                Ok(input) => {
+                    let statement = {
+                        if let Some(ref delimiter) = self.delimiter {
+                            let splitted = input.split(delimiter).collect::<Vec<_>>();
+                            for command in &splitted[1..] {
+                                self.buffer.push_back(command.to_string())
+                            }
+
+                            // We are sure that splitting any string results in a non empty vector
+                            splitted[0].to_string()
+                        } else {
+                            input.to_string()
+                        }
                     };
 
-                    if let Err(e) = self.update_history(&line) {
-                        println!("{}: {}", self.history_file_path.display(), e);
+                    match self.process_input(&statement)? {
+                        ControlFlow::Continue(_) => continue,
+                        ControlFlow::Break(command) => return self.update_history(command),
                     }
-
-                    return Ok(Some(command));
                 }
                 Err(ReadlineError::Interrupted) => {
                     self.write("CTRL+C");
@@ -208,6 +289,8 @@ impl Console<LuaHelper> {
         Ok(Console {
             editor,
             history_file_path,
+            delimiter: None,
+            buffer: VecDeque::new(),
         })
     }
 }
@@ -219,6 +302,8 @@ impl Console<()> {
         Ok(Console {
             editor,
             history_file_path,
+            delimiter: None,
+            buffer: VecDeque::new(),
         })
     }
 }

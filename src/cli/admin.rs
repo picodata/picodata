@@ -243,16 +243,18 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
 
     const HELP_MESSAGE: &'static str = "
     Available backslash commands:
-        \\e            Open the editor specified by the EDITOR environment variable
-        \\help         Show this screen
-        \\sql          Switch console language to SQL (default)
-        \\lua          Switch console language to Lua (deprecated)
+        \\e                              Open the editor specified by the EDITOR environment variable
+        \\help                           Show this screen
+        \\sql                            Switch console language to SQL (default)
+        \\lua                            Switch console language to Lua (deprecated)
+        \\set delimiter shiny-delimiter  Set console delimiter to 'shiny-delimiter'
+        \\set delimiter default          Reset console delimiter to default (enter)
 
     Available hotkeys:
-        Enter         Submit the request
-        Alt  + Enter  Insert a newline character
-        Ctrl + C      Discard current input
-        Ctrl + D      Quit interactive console";
+        Enter                           Submit the request
+        Alt  + Enter                    Insert a newline character
+        Ctrl + C                        Discard current input
+        Ctrl + D                        Quit interactive console";
 
     while let Some(command) = console.read()? {
         let mut temp_client = client.borrow_mut();

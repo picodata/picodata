@@ -11,6 +11,8 @@ with the `YY.MINOR.MICRO` scheme.
 ## Unreleased
 
 <!--
+- Multiline input is available in `picodata admin` and `picodata connect`.
+- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`.
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which

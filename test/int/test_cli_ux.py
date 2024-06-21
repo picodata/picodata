@@ -51,14 +51,17 @@ def test_connect_ux(cluster: Cluster):
         "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id)"
     )
     cli.expect_exact("1")
+    cli.expect_exact("picodata> ")
 
     # ensure that server responds on invalid query
     cli.sendline("invalid query")
     cli.expect_exact("rule parsing error")
+    cli.expect_exact("picodata> ")
 
     # ensure that server responds after processing invalid query
     cli.sendline("INSERT INTO ids VALUES(1)")
     cli.expect_exact("1")
+    cli.expect_exact("picodata> ")
 
     cli.sendline("SELECT * FROM ids")
     cli.expect_exact("+----+")
@@ -67,6 +70,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("| 1  |")
     cli.expect_exact("+----+")
     cli.expect_exact("(1 rows)")
+    cli.expect_exact("picodata> ")
 
     cli.sendline("EXPLAIN SELECT * FROM ids")
     cli.expect_exact('projection ("IDS"."ID"::integer -> "ID")')
@@ -74,6 +78,10 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
+
+    # hitting enter sends query to the server
+    cli.sendline("")
+    cli.expect_exact("rule parsing error")
 
 
 def test_admin_ux(cluster: Cluster):
@@ -324,3 +332,75 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.expect_exact(
         "CRITICAL: Server closed the connection unexpectedly. Try to reconnect."
     )
+
+
+def test_input_with_custom_delimiter(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+    i1.create_user(with_name="andy", with_password="Testpa55")
+    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for andy: ")
+    cli.sendline("Testpa55")
+
+    cli.expect_exact(
+        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
+    )
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
+
+    cli.sendline("\\set delimiter ;")
+    cli.expect_exact("Delimiter changed to ';'")
+
+    # several commands in one line
+    cli.sendline(
+        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
+        "INSERT INTO ids VALUES(1);"
+        "SELECT * FROM ids;"
+    )
+
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("+----+")
+    cli.expect_exact("| ID |")
+    cli.expect_exact("+====+")
+    cli.expect_exact("| 1  |")
+    cli.expect_exact("+----+")
+    cli.expect_exact("(1 rows)")
+
+    # client doesn't send query until delimiter
+    cli.sendline("invalid query")
+    cli.expect_exact("picodata> ")
+    cli.sendline("waiting until delimiter")
+    cli.expect_exact("picodata> ")
+    cli.sendline(";")
+    cli.expect_exact("rule parsing error:  --> 1:1")
+
+    # treating ';;;' with delimiter ';' as 3 empty queries
+    cli.sendline(";;;")
+    cli.expect_exact("rule parsing error:  --> 1:1")
+    cli.expect_exact("rule parsing error:  --> 1:1")
+    cli.expect_exact("rule parsing error:  --> 1:1")
+
+    # reset delimiter works --
+    cli.sendline("\\set delimiter default;")
+    cli.expect_exact("Delimiter changed to default")
+
+    # ensure that delimiter resets to default - parsed only first statement `create table`
+    # which is created
+    cli.sendline(
+        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
+        "INSERT INTO ids VALUES(1);"
+        "SELECT * FROM ids;"
+    )
+
+    cli.sendline("0\n" "picodata> ")
