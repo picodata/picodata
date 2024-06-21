@@ -238,13 +238,38 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
                         Option::<()>::None,
                         Option::<()>::None,
                     ),
-                ))?;
+                ));
 
-                let res: ResultSet = response.decode().map_err(|err| {
-                    ReplError::Other(format!("error occured while processing output: {}", err))
-                })?;
+                let res = match response {
+                    Ok(tuple) => {
+                        let res = tuple.decode::<Vec<ResultSet>>().map_err(|err| {
+                            ReplError::Other(format!(
+                                "Error occurred while decoding response: {}",
+                                err
+                            ))
+                        })?;
 
-                console.write(&res.to_string());
+                        // There should always be exactly one element in the outer tuple
+                        let Some(res) = res.first() else {
+                            return Err(ReplError::Other("Invalid form of response".to_string()));
+                        };
+
+                        res.to_string()
+                    }
+
+                    Err(err) => match err {
+                        tarantool::network::ClientError::ErrorResponse(err) => err.to_string(),
+                        tarantool::network::ClientError::ConnectionClosed(_) => {
+                            return Err(ReplError::Other(
+                                "Server closed the connection unexpectedly. Try to reconnect."
+                                    .into(),
+                            ))
+                        }
+                        e => return Err(e.into()),
+                    },
+                };
+
+                console.write(&res);
             }
         };
     }

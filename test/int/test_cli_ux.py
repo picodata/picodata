@@ -261,3 +261,30 @@ def test_lua_console_sql_error_messages(cluster: Cluster):
 ...
 """
     )
+
+
+def test_connect_pretty_message_on_server_crash(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}"],
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact(
+        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
+    )
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
+
+    i1.terminate()
+
+    cli.sendline("ping")
+    cli.expect_exact(
+        "CRITICAL: Server closed the connection unexpectedly. Try to reconnect."
+    )
