@@ -153,6 +153,8 @@ pub struct FfiRpcHandler {
     service_name: FfiSafeStr,
     /// Points into [`Self::string_storage`].
     plugin_version: FfiSafeStr,
+    /// Points into [`Self::string_storage`].
+    route_repr: FfiSafeStr,
 
     /// This data is owned by this struct (freed on drop).
     /// This slice stores all of the strings above, so that when it's needed to
@@ -178,9 +180,11 @@ impl FfiRpcHandler {
         //
         // Store the strings in a contiguous slice of memory and set the pointers appropriately
         //
-        let total_string_len = identifier.path.len()
-            + identifier.plugin.len()
+        let total_string_len = identifier.plugin.len()
+            // For an extra '.' between plugin and service names
+            + 1
             + identifier.service.len()
+            + identifier.path.len()
             + identifier.version.len();
         let mut string_storage = Vec::with_capacity(total_string_len);
         let start = string_storage.as_mut_ptr();
@@ -192,10 +196,17 @@ impl FfiRpcHandler {
             p = p.add(s.len());
             res
         };
-        let path = push_and_get_slice(identifier.path);
         let plugin_name = push_and_get_slice(identifier.plugin);
+        push_and_get_slice(".".into());
         let service_name = push_and_get_slice(identifier.service);
+        let path = push_and_get_slice(identifier.path);
         let plugin_version = push_and_get_slice(identifier.version);
+        let route_repr = unsafe {
+            FfiSafeStr::from_raw_parts(
+                NonNull::new_unchecked(start),
+                total_string_len - plugin_version.len(),
+            )
+        };
 
         debug_assert_eq!(
             start,
@@ -218,6 +229,7 @@ impl FfiRpcHandler {
             plugin_name,
             service_name,
             plugin_version,
+            route_repr,
             string_storage: string_storage.into(),
         }
     }
@@ -306,6 +318,12 @@ impl FfiRpcHandler {
     pub fn service(&self) -> &str {
         // SAFETY: data is alive for the lifetime of `&self`, and borrow checker does it's thing
         unsafe { self.service_name.as_str() }
+    }
+
+    #[inline(always)]
+    pub fn route_repr(&self) -> &str {
+        // SAFETY: data is alive for the lifetime of `&self`, and borrow checker does it's thing
+        unsafe { self.route_repr.as_str() }
     }
 
     #[inline(always)]

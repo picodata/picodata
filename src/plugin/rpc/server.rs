@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
+use tarantool::fiber;
 use tarantool::tuple::RawBytes;
 use tarantool::unwrap_ok_or;
 
@@ -75,6 +76,7 @@ pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError>
 
     // TODO: check service is not poisoned
 
+    fiber::set_name(handler.route_repr());
     let output = handler
         .call(input, &context)
         .map_err(|()| BoxError::last())?;
