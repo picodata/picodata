@@ -18,7 +18,6 @@ import subprocess
 import msgpack  # type: ignore
 from rand.params import generate_seed
 from functools import reduce
-from datetime import datetime
 from typing import (
     Any,
     Callable,
@@ -1922,19 +1921,6 @@ def pg_client(instance: Instance) -> Generator[PgClient, None, None]:
     storage = PgStorage(instance)
     yield storage.new_client(0)
     storage.flush()
-
-
-def retrying(fn, timeout=3):
-    # Usage example:
-    #   retrying(lambda: assert(value == 1))
-    #   retrying(lambda: assert(value == 1), timeout = 5)
-    start = datetime.now()
-    while True:
-        try:
-            return fn()
-        except AssertionError as ex:
-            if (datetime.now() - start).seconds > timeout:
-                raise ex from ex
 
 
 def pid_alive(pid):

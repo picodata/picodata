@@ -13,7 +13,6 @@ from conftest import (
     Instance,
     Cluster,
     Retriable,
-    retrying,
 )
 
 
@@ -381,7 +380,7 @@ def test_join_expel_instance(cluster: Cluster):
     assert create_db["initiator"] == "admin"
 
     cluster.expel(i2)
-    retrying(lambda: assert_instance_expelled(i2, i1))
+    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i2, i1))
 
     expel_instance = take_until_title(events, "expel_instance")
     assert expel_instance is not None

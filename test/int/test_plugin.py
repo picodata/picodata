@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional
 import pytest
 import uuid
 import msgpack  # type: ignore
-from conftest import Cluster, ReturnError, retrying, Instance, TarantoolError
 from decimal import Decimal
+from conftest import Cluster, ReturnError, Retriable, Instance, TarantoolError
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -376,7 +376,7 @@ def test_plugin_disable(cluster: Cluster):
     plugin_ref.assert_synced()
 
     # retrying, cause routing table update asynchronously
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
     # assert that `on_stop` callbacks successfully called
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
     plugin_ref.assert_cb_called("testservice_2", "on_stop", 1, i1, i2)
@@ -426,7 +426,7 @@ def test_plugin_remove(cluster: Cluster):
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
 
     # retrying, cause routing table update asynchronously
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
     i1.call("pico.remove_plugin", _PLUGIN)
     plugin_ref = plugin_ref.install(False)
@@ -523,7 +523,7 @@ def test_plugin_disable_error_on_stop(cluster: Cluster):
     i1.call("pico.disable_plugin", _PLUGIN, timeout=_3_SEC)
     # retrying, cause routing table update asynchronously
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
     i1.call("pico.remove_plugin", _PLUGIN, timeout=_3_SEC)
     plugin_ref = plugin_ref.install(False)
@@ -550,7 +550,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
 
     # plugin installed but disabled
     plugin_ref = plugin_ref.install(True).set_topology({i1: [], i2: []})
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
 
     # inject error into both instances
@@ -561,7 +561,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
         install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
 
     # plugin installed but disabled
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 2, i1, i2)
 
     # remove errors
@@ -593,7 +593,7 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
 
     # assert that plugin installed, disabled and on_stop called on both instances
     plugin_ref = plugin_ref.install(True).set_topology({i1: [], i2: []})
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
 
     # inject timeout into both instances
@@ -605,7 +605,7 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     time.sleep(2)
 
     # assert that plugin installed, disabled and on_stop called on both instances
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 2, i1, i2)
 
 
@@ -737,7 +737,9 @@ def test_on_config_update(cluster: Cluster):
         "true, bar = 102, baz = {'a', 'b'}})"
     )
     # retrying, cause new service configuration callback call asynchronously
-    retrying(lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG, i1, i2))
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG, i1, i2)
+    )
 
 
 def test_plugin_double_config_update(cluster: Cluster):
@@ -756,7 +758,7 @@ def test_plugin_double_config_update(cluster: Cluster):
     )
     # both configs were applied
     # retrying, cause callback call asynchronously
-    retrying(
+    Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_cb_called(
             "testservice_1", "on_config_change", 2, i1, i2
         )
@@ -773,7 +775,7 @@ def test_plugin_double_config_update(cluster: Cluster):
     )
     # both configs were applied and result config may be any of applied
     # retrying, cause callback call asynchronously
-    retrying(
+    Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_cb_called(
             "testservice_1", "on_config_change", 4, i1, i2
         )
@@ -803,13 +805,17 @@ def test_error_on_config_update(cluster: Cluster):
     assert cfg_space == _NEW_CFG
     cfg_seen = plugin_ref.get_seen_config("testservice_1", i1)
     assert cfg_seen == _DEFAULT_CFG
-    retrying(lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG, i2))
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG, i2)
+    )
 
     # assert that the first instance now has a poison service
     # and the second instance is not poisoned
     # retrying, cause routing table update asynchronously
-    retrying(lambda: plugin_ref.assert_route_poisoned(i1.instance_id, "testservice_1"))
-    retrying(
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_route_poisoned(i1.instance_id, "testservice_1")
+    )
+    Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_route_poisoned(
             i2.instance_id, "testservice_1", poisoned=False
         )
@@ -834,7 +840,9 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
 
     # assert that the first instance now has a poison service
     # retrying, cause routing table update asynchronously
-    retrying(lambda: plugin_ref.assert_route_poisoned(i1.instance_id, "testservice_1"))
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_route_poisoned(i1.instance_id, "testservice_1")
+    )
 
     plugin_ref.remove_error("testservice_1", "on_cfg_change", i1)
 
@@ -844,7 +852,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     )
 
     # retrying, cause routing table update asynchronously
-    retrying(
+    Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_route_poisoned(
             i1.instance_id, "testservice_1", poisoned=False
         )
@@ -1159,7 +1167,7 @@ def test_update_topology_1(cluster: Cluster):
     plugin_ref = plugin_ref.set_topology(
         {i1: [_PLUGIN_SERVICES[1]], i2: [_PLUGIN_SERVICES[0]], i3: []}
     )
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[0], "on_start", 1, i1, i2)
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[1], "on_start", 1, i1)
@@ -1204,7 +1212,7 @@ def test_update_topology_2(cluster: Cluster):
     plugin_ref = plugin_ref.set_topology(
         {i1: _PLUGIN_SERVICES, i2: [_PLUGIN_SERVICES[0]], i3: []}
     )
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[0], "on_start", 1, i1, i2)
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[1], "on_start", 1, i1)
@@ -1245,7 +1253,7 @@ def test_update_topology_3(cluster: Cluster):
     i1.call("pico.service_remove_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
 
     plugin_ref = plugin_ref.set_topology({i1: [_PLUGIN_SERVICES[1]], i2: [], i3: []})
-    retrying(lambda: plugin_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[0], "on_start", 1, i1)
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[1], "on_start", 1, i1)
@@ -1317,8 +1325,8 @@ def test_set_topology_after_compaction(cluster: Cluster):
     )
     p2_ref = p2_ref.set_topology({i1: [], i2: _PLUGIN_SMALL_SERVICES, i3: []})
 
-    retrying(lambda: p1_ref.assert_synced())
-    retrying(lambda: p2_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: p1_ref.assert_synced())
+    Retriable(timeout=3, rps=5).call(lambda: p2_ref.assert_synced())
 
 
 def test_set_topology_with_error_on_start(cluster: Cluster):

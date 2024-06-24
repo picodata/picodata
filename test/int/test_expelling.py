@@ -1,5 +1,5 @@
 import pytest
-from conftest import Cluster, Instance, retrying, pid_alive
+from conftest import Cluster, Instance, Retriable, pid_alive
 
 
 @pytest.fixture
@@ -38,11 +38,11 @@ def test_expel_follower(cluster3: Cluster):
 
     cluster3.expel(i3, i1)
 
-    retrying(lambda: assert_instance_expelled(i3, i1))
-    retrying(lambda: assert_voters([i1, i2], i1))
+    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i3, i1))
+    Retriable(timeout=3, rps=5).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    # retrying(lambda: assert_pid_down(i3.process.pid))
+    # Retriable(timeout=3, rps=5).call(lambda: assert_pid_down(i3.process.pid))
 
 
 def test_expel_leader(cluster3: Cluster):
@@ -59,11 +59,11 @@ def test_expel_leader(cluster3: Cluster):
 
     cluster3.expel(i1)
 
-    retrying(lambda: assert_instance_expelled(i1, i2))
-    retrying(lambda: assert_voters([i2, i3], i2))
+    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i1, i2))
+    Retriable(timeout=3, rps=5).call(lambda: assert_voters([i2, i3], i2))
 
     # assert i1.process
-    # retrying(lambda: assert_pid_down(i1.process.pid))
+    # Retriable(timeout=3, rps=5).call(lambda: assert_pid_down(i1.process.pid))
 
 
 def test_expel_by_follower(cluster3: Cluster):
@@ -80,11 +80,11 @@ def test_expel_by_follower(cluster3: Cluster):
 
     cluster3.expel(i3, i2)
 
-    retrying(lambda: assert_instance_expelled(i3, i1))
-    retrying(lambda: assert_voters([i1, i2], i1))
+    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i3, i1))
+    Retriable(timeout=3, rps=5).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    # retrying(lambda: assert_pid_down(i3.process.pid))
+    # Retriable(timeout=3, rps=5).call(lambda: assert_pid_down(i3.process.pid))
 
 
 def test_raft_id_after_expel(cluster: Cluster):
@@ -100,7 +100,7 @@ def test_raft_id_after_expel(cluster: Cluster):
     assert i3.raft_id == 3
 
     cluster.expel(i3, i1)
-    retrying(lambda: assert_instance_expelled(i3, i1))
+    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i3, i1))
 
     i4 = cluster.add_instance()
     assert i4.raft_id == 4

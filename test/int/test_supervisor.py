@@ -6,7 +6,7 @@ import pytest
 from conftest import (
     Cluster,
     Instance,
-    retrying,
+    Retriable,
     pid_alive,
     pgrep_tree,
 )
@@ -36,7 +36,7 @@ def test_instance_kill(instance: Instance):
 
     instance.kill()
 
-    retrying(lambda: assert_all_pids_down(pids))
+    Retriable(timeout=3, rps=5).call(lambda: assert_all_pids_down(pids))
 
 
 def test_sigkill_parent(instance: Instance):
@@ -51,7 +51,7 @@ def test_sigkill_parent(instance: Instance):
     os.kill(instance.process.pid, signal.SIGKILL)
     os.waitpid(instance.process.pid, 0)
 
-    retrying(lambda: assert_all_pids_down(pids))
+    Retriable(timeout=3, rps=5).call(lambda: assert_all_pids_down(pids))
 
 
 def test_sigint_parent(instance: Instance):
@@ -85,7 +85,7 @@ def test_sigint_parent(instance: Instance):
     os.kill(child_pid, signal.SIGCONT)
     assert instance.process.wait(timeout=1) == 0
 
-    retrying(lambda: assert_all_pids_down(pids))
+    Retriable(timeout=3, rps=5).call(lambda: assert_all_pids_down(pids))
 
 
 def test_sigsegv_child(instance: Instance):
@@ -105,4 +105,4 @@ def test_sigsegv_child(instance: Instance):
     # and not SIGSEGV.
     assert instance.process.wait(timeout=5) == signal.SIGABRT
 
-    retrying(lambda: assert_all_pids_down(pids))
+    Retriable(timeout=3, rps=5).call(lambda: assert_all_pids_down(pids))
