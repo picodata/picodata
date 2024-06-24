@@ -1617,6 +1617,10 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     assert instance_id == replicaset_master_id("r2")
     assert echo == b"replicaset:master"
 
+    # Make sure buckets are balanced before routing via bucket_id to eliminate
+    # flakiness due to bucket rebalancing
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+
     # Check calling RPC by bucket_id via the plugin SDK
     context = make_context()
     input = dict(

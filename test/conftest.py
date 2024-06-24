@@ -1664,8 +1664,9 @@ class Cluster:
         self,
         i: Instance,
         expected: int,
+        max_retries: int = 10,
     ):
-        tries = 4
+        attempt = 1
         previous_active = None
         while True:
             for j in self.instances:
@@ -1683,12 +1684,19 @@ class Cluster:
             if actual_active == expected:
                 return
 
+            print(
+                f"\x1b[33mwaiting for bucket rebalancing, was: {previous_active}, became: {actual_active} (#{attempt})\x1b[0m"  # noqa: E501
+            )
+
             if actual_active == previous_active:
-                if tries > 0:
-                    tries -= 1
+                if attempt < max_retries:
+                    attempt += 1
                 else:
                     print("vshard.storage.info.bucket.active stopped changing")
                     assert actual_active == expected
+            else:
+                # Something changed -> reset retry counter
+                attempt = 1
 
             previous_active = actual_active
 
