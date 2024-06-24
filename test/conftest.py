@@ -1660,6 +1660,40 @@ class Cluster:
         eprint(f"CaS:\n  {predicate=}\n  {dml=}")
         return instance.call("pico.cas", dml, predicate, user=user, password=password)
 
+    def wait_until_instance_has_this_many_active_buckets(
+        self,
+        i: Instance,
+        expected: int,
+    ):
+        tries = 4
+        previous_active = None
+        while True:
+            for j in self.instances:
+                j.eval(
+                    """
+                    if vshard.storage.internal.rebalancer_fiber ~= nil then
+                        vshard.storage.rebalancer_wakeup()
+                    end
+                """
+                )
+
+            actual_active = Retriable(timeout=5, rps=10).call(
+                lambda: i.call("vshard.storage.info")["bucket"]["active"]
+            )
+            if actual_active == expected:
+                return
+
+            if actual_active == previous_active:
+                if tries > 0:
+                    tries -= 1
+                else:
+                    print("vshard.storage.info.bucket.active stopped changing")
+                    assert actual_active == expected
+
+            previous_active = actual_active
+
+            time.sleep(0.5)
+
     def masters(self) -> List[Instance]:
         ret = []
         for instance in self.instances:
