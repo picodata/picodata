@@ -1,7 +1,0 @@
-apiVersion: v2
-name: picodata
-description: Helm chart for Picodata.
-
-type: application
-version: 0.0.1
-appVersion: "24.5.0.4"
