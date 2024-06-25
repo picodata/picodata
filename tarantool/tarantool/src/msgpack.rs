@@ -5,7 +5,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 pub mod encode;
 pub use encode::*;
-pub use rmp;
+pub use rmp::{self, Marker};
 
 /// Msgpack encoding of `null`.
 pub const MARKER_NULL: u8 = 0xc0;
@@ -58,8 +58,6 @@ pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
 }
 
 fn skip_value_inner(cur: &mut (impl Read + Seek)) -> Result<()> {
-    use rmp::Marker;
-
     match rmp::decode::read_marker(cur)? {
         Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {}
         Marker::U8 | Marker::I8 => {
@@ -172,8 +170,6 @@ fn skip_value_inner(cur: &mut (impl Read + Seek)) -> Result<()> {
 /// Reads appropriate amount of bytes according to marker from raw bytes
 /// of MessagePack, returning those bytes back in a `Vec<u8>` format.
 pub fn preserve_read(from: &mut &[u8]) -> Result<Vec<u8>> {
-    use rmp::Marker;
-
     let mut into = Vec::new();
     match Marker::from_u8(from[0]) {
         Marker::FixPos(_) | Marker::FixNeg(_) | Marker::Null | Marker::True | Marker::False => {
@@ -310,8 +306,6 @@ pub fn preserve_read(from: &mut &[u8]) -> Result<Vec<u8>> {
 /// Reads from a slice of valid MessagePack stream values a string, preserving read bytes.
 /// Returns a pair of bytes indicating the beginning and end of a string.
 pub fn str_bounds(mut stream: &[u8]) -> Result<(usize, usize)> {
-    use rmp::Marker;
-
     match Marker::from_u8(stream[0]) {
         Marker::FixStr(len) => Ok((1, len as usize + 1)),
         Marker::Str8 => Ok((2, rmp::decode::read_str_len(&mut stream)? as usize + 2)),

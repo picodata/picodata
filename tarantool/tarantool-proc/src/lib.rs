@@ -50,6 +50,8 @@ mod msgpack {
         pub tarantool: Option<String>,
         /// Allows optional fields of unnamed structs to be decoded if values are not presented.
         pub allow_array_optionals: bool,
+        /// https://serde.rs/enum-representations.html#untagged
+        pub untagged: bool,
     }
 
     pub fn add_trait_bounds(mut generics: Generics, tarantool_crate: &Path) -> Generics {
@@ -247,44 +249,52 @@ mod msgpack {
         args: &Args,
     ) -> proc_macro2::TokenStream {
         let as_map = args.as_map;
-
+        let is_untagged = args.untagged;
         match *data {
-            Data::Struct(ref data) => match data.fields {
-                Fields::Named(ref fields) => {
-                    let field_count = fields.named.len() as u32;
-                    let fields = encode_named_fields(fields, tarantool_crate, true);
-                    quote! {
-                        let as_map = match context.struct_style() {
-                            StructStyle::Default => #as_map,
-                            StructStyle::ForceAsMap => true,
-                            StructStyle::ForceAsArray => false,
-                        };
-                        if as_map {
-                            #tarantool_crate::msgpack::rmp::encode::write_map_len(w, #field_count)?;
-                        } else {
-                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+            Data::Struct(ref data) => {
+                if is_untagged {
+                    abort!(
+                        attrs_span(),
+                        "untagged encode representation is allowed only for enums"
+                    );
+                }
+                match data.fields {
+                    Fields::Named(ref fields) => {
+                        let field_count = fields.named.len() as u32;
+                        let fields = encode_named_fields(fields, tarantool_crate, true);
+                        quote! {
+                            let as_map = match context.struct_style() {
+                                StructStyle::Default => #as_map,
+                                StructStyle::ForceAsMap => true,
+                                StructStyle::ForceAsArray => false,
+                            };
+                            if as_map {
+                                #tarantool_crate::msgpack::rmp::encode::write_map_len(w, #field_count)?;
+                            } else {
+                                #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                            }
+                            #fields
                         }
-                        #fields
+                    }
+                    Fields::Unnamed(ref fields) => {
+                        if as_map {
+                            abort!(
+                                attrs_span(),
+                                "`as_map` attribute can be specified only for structs with named fields"
+                            );
+                        }
+                        let field_count = fields.unnamed.len() as u32;
+                        let fields = encode_unnamed_fields(fields, tarantool_crate);
+                        quote! {
+                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                            #fields
+                        }
+                    }
+                    Fields::Unit => {
+                        quote!(#tarantool_crate::msgpack::Encode::encode(&(), w, context)?;)
                     }
                 }
-                Fields::Unnamed(ref fields) => {
-                    if as_map {
-                        abort!(
-                            attrs_span(),
-                            "`as_map` attribute can be specified only for structs with named fields"
-                        );
-                    }
-                    let field_count = fields.unnamed.len() as u32;
-                    let fields = encode_unnamed_fields(fields, tarantool_crate);
-                    quote! {
-                        #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
-                        #fields
-                    }
-                }
-                Fields::Unit => {
-                    quote!(#tarantool_crate::msgpack::Encode::encode(&(), w, context)?;)
-                }
-            },
+            }
             Data::Enum(ref variants) => {
                 if as_map {
                     abort!(
@@ -304,12 +314,22 @@ mod msgpack {
                                 let field_names = fields.named.iter().map(|field| field.ident.clone());
                                 let fields = encode_named_fields(fields, tarantool_crate, false);
                                 // TODO: allow `#[encode(as_map)]` for struct variants
-                                quote! {
-                                     Self::#variant_name { #(#field_names),*} => {
-                                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
-                                        #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
-                                        let as_map = false;
-                                        #fields
+                                if is_untagged {
+                                    quote! {
+                                        Self::#variant_name { #(#field_names),*} => {
+                                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                                            let as_map = false;
+                                            #fields
+                                        }
+                                    }
+                                } else {
+                                    quote! {
+                                        Self::#variant_name { #(#field_names),*} => {
+                                            #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
+                                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                                            let as_map = false;
+                                            #fields
+                                        }
                                     }
                                 }
                             },
@@ -321,29 +341,52 @@ mod msgpack {
                                         #tarantool_crate::msgpack::Encode::encode(#field_name, w, context)?;
                                     })
                                     .collect();
-                                quote! {
-                                    Self::#variant_name ( #(#field_names),* ) => {
-                                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
-                                        #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
-                                        #fields
+                                if is_untagged {
+                                    quote! {
+                                        Self::#variant_name ( #(#field_names),*) => {
+                                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                                            #fields
+                                        }
                                     }
-                               }
+                                } else {
+                                    quote! {
+                                        Self::#variant_name ( #(#field_names),*) => {
+                                            #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
+                                            #tarantool_crate::msgpack::rmp::encode::write_array_len(w, #field_count)?;
+                                            #fields
+                                        }
+                                    }
+                                }
                             }
                             Fields::Unit => {
-                                quote! {
-                                    Self::#variant_name => {
-                                        #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
-                                        #tarantool_crate::msgpack::Encode::encode(&(), w, context)?;
+                                if is_untagged {
+                                    quote! {
+                                        Self::#variant_name => #tarantool_crate::msgpack::Encode::encode(&(), w, context)?,
+                                    }
+                                } else {
+                                    quote! {
+                                        Self::#variant_name => {
+                                            #tarantool_crate::msgpack::rmp::encode::write_str(w, #variant_repr)?;
+                                            #tarantool_crate::msgpack::Encode::encode(&(), w, context)?;
+                                        }
                                     }
                                 }
                             },
                         }
                     })
                     .collect();
-                quote! {
-                    #tarantool_crate::msgpack::rmp::encode::write_map_len(w, 1)?;
-                    match self {
-                        #variants
+                if is_untagged {
+                    quote! {
+                        match self {
+                            #variants
+                        }
+                    }
+                } else {
+                    quote! {
+                        #tarantool_crate::msgpack::rmp::encode::write_map_len(w, 1)?;
+                        match self {
+                            #variants
+                        }
                     }
                 }
             }
@@ -355,8 +398,10 @@ mod msgpack {
         fields: &FieldsNamed,
         tarantool_crate: &Path,
         enum_variant: Option<&syn::Ident>,
-        allow_array_optionals: bool,
+        args: &Args,
     ) -> TokenStream {
+        let allow_array_optionals = args.allow_array_optionals;
+
         let mut var_names = Vec::with_capacity(fields.named.len());
         let mut met_option = false;
         let fields_amount = fields.named.len();
@@ -532,8 +577,10 @@ mod msgpack {
         fields: &FieldsUnnamed,
         tarantool_crate: &Path,
         enum_variant: Option<&syn::Ident>,
-        allow_array_optionals: bool,
+        args: &Args,
     ) -> proc_macro2::TokenStream {
+        let allow_array_optionals = args.allow_array_optionals;
+
         let mut var_names = Vec::with_capacity(fields.unnamed.len());
         let mut met_option = false;
         let code: proc_macro2::TokenStream = fields
@@ -646,84 +693,81 @@ mod msgpack {
         tarantool_crate: &Path,
         attrs_span: impl Fn() -> SpanRange,
         args: &Args,
-    ) -> proc_macro2::TokenStream {
+    ) -> TokenStream {
         let as_map = args.as_map;
+        let is_untagged = args.untagged;
+
+        if is_untagged {
+            return decode_untagged(data, tarantool_crate, attrs_span);
+        }
 
         match *data {
-            Data::Struct(ref data) => match data.fields {
-                Fields::Named(ref fields) => {
-                    let first_field_name = fields
-                        .named
-                        .first()
-                        .expect("not a unit struct")
-                        .ident
-                        .as_ref()
-                        .expect("not an unnamed struct")
-                        .to_string();
-                    let fields = decode_named_fields(
-                        fields,
-                        tarantool_crate,
-                        None,
-                        args.allow_array_optionals,
-                    );
-                    quote! {
-                        let as_map = match context.struct_style() {
-                            StructStyle::Default => #as_map,
-                            StructStyle::ForceAsMap => true,
-                            StructStyle::ForceAsArray => false,
-                        };
-                        // TODO: Assert map and array len with number of struct fields
-                        if as_map {
-                            #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
-                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
-                        } else {
-                            #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre_with_field::<Self>(err, #first_field_name))?;
-                        }
-                        #fields
-                    }
-                }
-                Fields::Unnamed(ref fields) => {
-                    if as_map {
-                        abort!(
-                            attrs_span(),
-                            "`as_map` attribute can be specified only for structs with named fields"
-                        );
-                    }
-
-                    let mut option_key = TokenStream::new();
-                    if fields.unnamed.len() == 1 {
-                        let first_field = fields.unnamed.first().expect("len is sufficient");
-                        let is_option = first_field.ty.is_option();
-                        if is_option {
-                            option_key = quote! {
-                                if r.is_empty() {
-                                    return Ok(Self(None));
-                                }
+            Data::Struct(ref data) => {
+                match data.fields {
+                    Fields::Named(ref fields) => {
+                        let first_field_name = fields
+                            .named
+                            .first()
+                            .expect("not a unit struct")
+                            .ident
+                            .as_ref()
+                            .expect("not an unnamed struct")
+                            .to_string();
+                        let fields = decode_named_fields(fields, tarantool_crate, None, args);
+                        quote! {
+                            let as_map = match context.struct_style() {
+                                StructStyle::Default => #as_map,
+                                StructStyle::ForceAsMap => true,
+                                StructStyle::ForceAsArray => false,
                             };
+                            // TODO: Assert map and array len with number of struct fields
+                            if as_map {
+                                #tarantool_crate::msgpack::rmp::decode::read_map_len(r)
+                                    .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
+                            } else {
+                                #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
+                                    .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre_with_field::<Self>(err, #first_field_name))?;
+                            }
+                            #fields
                         }
                     }
+                    Fields::Unnamed(ref fields) => {
+                        if as_map {
+                            abort!(
+                                attrs_span(),
+                                "`as_map` attribute can be specified only for structs with named fields"
+                            );
+                        }
 
-                    let fields = decode_unnamed_fields(
-                        fields,
-                        tarantool_crate,
-                        None,
-                        args.allow_array_optionals,
-                    );
-                    quote! {
-                        #option_key
-                        #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
-                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
-                        #fields
+                        let mut option_key = TokenStream::new();
+                        if fields.unnamed.len() == 1 {
+                            let first_field = fields.unnamed.first().expect("len is sufficient");
+                            let is_option = first_field.ty.is_option();
+                            if is_option {
+                                option_key = quote! {
+                                    if r.is_empty() {
+                                        return Ok(Self(None));
+                                    }
+                                };
+                            }
+                        }
+
+                        let fields = decode_unnamed_fields(fields, tarantool_crate, None, args);
+                        quote! {
+                            #option_key
+                            #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
+                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::from_vre::<Self>(err))?;
+                            #fields
+                        }
+                    }
+                    Fields::Unit => {
+                        quote! {
+                            let () = #tarantool_crate::msgpack::Decode::decode(r, context)?;
+                            Ok(Self)
+                        }
                     }
                 }
-                Fields::Unit => {
-                    quote! {
-                        let () = #tarantool_crate::msgpack::Decode::decode(r, context)?;
-                        Ok(Self)
-                    }
-                }
-            },
+            }
             Data::Enum(ref variants) => {
                 if as_map {
                     abort!(
@@ -743,7 +787,7 @@ mod msgpack {
 
                         match variant.fields {
                             Fields::Named(ref fields) => {
-                                let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident), args.allow_array_optionals);
+                                let fields = decode_named_fields(fields, tarantool_crate, Some(&variant.ident), args);
                                 // TODO: allow `#[encode(as_map)]` for struct variants
                                 quote! {
                                     #variant_repr => {
@@ -755,7 +799,7 @@ mod msgpack {
                                 }
                             },
                             Fields::Unnamed(ref fields) => {
-                                let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident), args.allow_array_optionals);
+                                let fields = decode_unnamed_fields(fields, tarantool_crate, Some(&variant.ident), args);
                                 quote! {
                                     #variant_repr => {
                                         #tarantool_crate::msgpack::rmp::decode::read_array_len(r)
@@ -800,6 +844,150 @@ mod msgpack {
                 }
             }
             Data::Union(_) => unimplemented!(),
+        }
+    }
+
+    pub fn decode_untagged(
+        data: &Data,
+        tarantool_crate: &Path,
+        attrs_span: impl Fn() -> SpanRange,
+    ) -> TokenStream {
+        let out = match *data {
+            Data::Struct(_) => abort!(
+                attrs_span(),
+                "untagged decode representation is allowed only for enums"
+            ),
+            Data::Union(_) => unimplemented!(),
+            Data::Enum(ref variants) => {
+                let variants = variants.variants.iter();
+                let variants_amount = variants.len();
+                if variants_amount == 0 {
+                    abort!(
+                        attrs_span(),
+                        "deserialization of enum with no variants is not possible"
+                    );
+                }
+
+                variants
+                    .flat_map(|variant| {
+                        let variant_ident = &variant.ident;
+
+                        match variant.fields {
+                            Fields::Unit => {
+                                quote! {
+                                    // https://doc.rust-lang.org/beta/unstable-book/language-features/try-blocks.html (2016 -_-)
+                                    let mut r_copied = r.clone();
+                                    let mut try_unit = || -> Result<(), #tarantool_crate::msgpack::DecodeError> {
+                                        let () = #tarantool_crate::msgpack::Decode::decode(r, context)
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                        checker = Some(Self::#variant_ident);
+                                        Ok(())
+                                    };
+
+                                    if try_unit().is_ok() {
+                                        let diff_len = r.len() - r_copied.len();
+                                        *r = &r[diff_len..];
+                                        return Result::<Self, #tarantool_crate::msgpack::DecodeError>::Ok(checker.unwrap());
+                                    }
+                                }
+                            },
+                            Fields::Unnamed(ref fields) => {
+                                let fields = &fields.unnamed;
+                                let fields_amount = fields.len();
+                                let mut var_names = Vec::with_capacity(fields.len());
+                                let code: TokenStream = fields
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, field)| {
+                                        let field_index = Index::from(index);
+                                        let var_name = quote::format_ident!("_field_{}", field_index);
+                                        let var_type = &field.ty;
+
+                                        let out = quote_spanned! {field.span()=>
+                                            let #var_name: #var_type = #tarantool_crate::msgpack::Decode::decode(r_copied, context)
+                                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", #index)))?;
+                                        };
+
+                                        var_names.push(var_name);
+                                        out
+                                    })
+                                    .collect();
+                                quote! {
+                                    // https://doc.rust-lang.org/beta/unstable-book/language-features/try-blocks.html (2016 -_-)
+                                    let mut r_copied = &mut r.clone();
+                                    let mut try_unnamed = || -> Result<(), #tarantool_crate::msgpack::DecodeError> {
+                                        let amount = #tarantool_crate::msgpack::rmp::decode::read_array_len(r_copied)
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                        if amount as usize != #fields_amount {
+                                            Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("non-equal amount of type fields"))?;
+                                        }
+                                        #code
+                                        checker = Some(Self::#variant_ident(
+                                            #(#var_names),*
+                                        ));
+                                        Ok(())
+                                    };
+
+                                    if try_unnamed().is_ok() {
+                                        let diff_len = r.len() - r_copied.len();
+                                        *r = &r[diff_len..];
+                                        return Result::<Self, #tarantool_crate::msgpack::DecodeError>::Ok(checker.unwrap());
+                                    }
+                                }
+                            },
+                            Fields::Named(ref fields) => {
+                                let fields = &fields.named;
+                                let fields_amount = fields.len();
+                                let field_names = fields.iter().map(|field| &field.ident);
+                                let mut var_names = Vec::with_capacity(fields.len());
+                                let code: TokenStream = fields
+                                    .iter()
+                                    .map(|field| {
+                                        let field_ident = field.ident.as_ref().expect("only named fields here");
+                                        let var_name = format_ident!("_field_{}", field_ident);
+                                        let var_type = &field.ty;
+
+                                        let out = quote_spanned! {field.span()=>
+                                            let #var_name: #var_type = #tarantool_crate::msgpack::Decode::decode(r_copied, context)
+                                                .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#field_ident))))?;
+                                        };
+
+                                        var_names.push(var_name);
+                                        out
+                                    })
+                                    .collect();
+                                quote! {
+                                    // https://doc.rust-lang.org/beta/unstable-book/language-features/try-blocks.html (2016 -_-)
+                                    let mut r_copied = &mut r.clone();
+                                    let mut try_named = || -> Result<(), #tarantool_crate::msgpack::DecodeError> {
+                                        let amount = #tarantool_crate::msgpack::rmp::decode::read_array_len(r_copied)
+                                            .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
+                                        if amount as usize != #fields_amount {
+                                            Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("non-equal amount of type fields"))?;
+                                        }
+                                        #code
+                                        checker = Some(Self::#variant_ident {
+                                            #(#field_names: #var_names),*
+                                        });
+                                        Ok(())
+                                    };
+
+                                    if try_named().is_ok() {
+                                        let diff_len = r.len() - r_copied.len();
+                                        *r = &r[diff_len..];
+                                        return Result::<Self, #tarantool_crate::msgpack::DecodeError>::Ok(checker.unwrap());
+                                    }
+                                }
+                            },
+                        }
+                    })
+                    .collect::<TokenStream>()
+            }
+        };
+        quote! {
+            let mut checker: Option<Self> = None;
+            #out
+            Result::<Self, #tarantool_crate::msgpack::DecodeError>::Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("received stream didn't match any enum variant"))
         }
     }
 }

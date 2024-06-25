@@ -13,6 +13,7 @@
 - `network::protocol::codec::Header::encode_from_parts` function
 - `network::protocol::codec::iproto_key::SQL_INFO` constant
 - Added optional argument timeout to `network::client::Client::connect_with_config`
+- Untagged enum represention as in serde with `#[encode(untagged)]` attribute
 
 ### Changed
 - `network::protocol::codec::IProtoType` uses C language representation
