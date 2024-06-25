@@ -16,6 +16,7 @@ use crate::unwrap_ok_or;
 
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
+use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 
 use tarantool::error::Error as TntError;
@@ -281,7 +282,11 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     }
 
     // Check remaining unstable entries.
-    let unstable = raft_log.entries(last_persisted + 1, u64::MAX)?;
+    let unstable = raft_log.entries(
+        last_persisted + 1,
+        u64::MAX,
+        GetEntriesContext::empty(false),
+    )?;
     for entry in unstable {
         assert_eq!(entry.term, status.term);
         let Ok(cx) = EntryContext::from_raft_entry(&entry) else {

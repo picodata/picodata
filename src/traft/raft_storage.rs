@@ -1,5 +1,6 @@
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
+use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 use ::tarantool::index::IteratorType;
 use ::tarantool::space::{Space, SpaceId, SpaceType};
@@ -529,6 +530,10 @@ impl raft::Storage for RaftSpaceAccess {
     /// missing (either `high > last_index` or it's really missing).
     /// Raft-rs will panic in this case, but it's fair.
     ///
+    /// - Arguments - `context` sets entry fetching mode (sync/async)
+    /// Currently, only sync fetching is supported
+    /// `context` is ignored and by default: `GetEntriesContext::empty(false)`
+    ///
     /// # See also
     ///
     /// Result handling [@github].
@@ -545,6 +550,7 @@ impl raft::Storage for RaftSpaceAccess {
         low: RaftIndex,
         high: RaftIndex,
         limit: impl Into<Option<u64>>,
+        _context: GetEntriesContext,
     ) -> Result<Vec<raft::Entry>, RaftError> {
         if low <= self.compacted_index().cvt_err()? {
             return Err(RaftError::Store(StorageError::Compacted));
@@ -628,7 +634,9 @@ impl raft::Storage for RaftSpaceAccess {
         }
     }
 
-    fn snapshot(&self, idx: RaftIndex) -> Result<raft::Snapshot, RaftError> {
+    /// Currently we don't use `_to` parameter
+    /// because it is ignored in the raft-rs(0-7-0) implementation.
+    fn snapshot(&self, idx: RaftIndex, _to: u64) -> Result<raft::Snapshot, RaftError> {
         let applied = self.applied_entry_id().cvt_err()?;
         if applied.index < idx {
             crate::warn_or_panic!(
@@ -776,7 +784,16 @@ mod tests {
         assert_eq!(S::term(&storage, 99), Ok(9));
         assert_err!(S::term(&storage, 100), "log unavailable");
 
-        assert_eq!(S::entries(&storage, 100, 100, u64::MAX), Ok(vec![]));
+        assert_eq!(
+            S::entries(
+                &storage,
+                100,
+                100,
+                u64::MAX,
+                GetEntriesContext::empty(false)
+            ),
+            Ok(vec![])
+        );
 
         // Part 3. Add some new entries.
         let test_entries = vec![
@@ -796,12 +813,24 @@ mod tests {
         assert_err!(S::term(&storage, last + 1), "log unavailable");
 
         assert_err!(
-            S::entries(&storage, first - 1, last + 1, u64::MAX),
+            S::entries(
+                &storage,
+                first - 1,
+                last + 1,
+                u64::MAX,
+                GetEntriesContext::empty(false)
+            ),
             "log compacted"
         );
 
         assert_err!(
-            S::entries(&storage, first, last + 2, u64::MAX),
+            S::entries(
+                &storage,
+                first,
+                last + 2,
+                u64::MAX,
+                GetEntriesContext::empty(false)
+            ),
             "log unavailable"
         );
 
@@ -810,7 +839,13 @@ mod tests {
         // [@github]: https://github.com/tikv/raft-rs/blob/v0.6.0/src/raft_log.rs#L388
         //
         assert_eq!(
-            S::entries(&storage, first, last + 1, u64::MAX),
+            S::entries(
+                &storage,
+                first,
+                last + 1,
+                u64::MAX,
+                GetEntriesContext::empty(false)
+            ),
             Ok(test_entries)
         );
     }
@@ -826,13 +861,25 @@ mod tests {
         let (first, last) = (1, 1);
         raft_log.put(&(1337, first, term, "", ())).unwrap();
         assert_err_starts_with!(
-            S::entries(&storage, first, last + 1, u64::MAX),
+            S::entries(
+                &storage,
+                first,
+                last + 1,
+                u64::MAX,
+                GetEntriesContext::empty(false)
+            ),
             "unknown error failed to decode tuple: unknown entry type (1337)"
         );
 
         raft_log.put(&(0, first, term, "", false)).unwrap();
         assert_err_starts_with!(
-            S::entries(&storage, first, last + 1, u64::MAX),
+            S::entries(
+                &storage,
+                first,
+                last + 1,
+                u64::MAX,
+                GetEntriesContext::empty(false),
+            ),
             concat!(
                 "unknown error",
                 " failed to decode tuple:",
@@ -844,11 +891,20 @@ mod tests {
         raft_log.put(&(0, 1, term, "", ())).unwrap();
         // skip index 2
         raft_log.put(&(0, 3, term, "", ())).unwrap();
-        assert_err!(S::entries(&storage, 1, 4, u64::MAX), "log unavailable");
+        assert_err!(
+            S::entries(&storage, 1, 4, u64::MAX, GetEntriesContext::empty(false),),
+            "log unavailable"
+        );
 
         raft_log.primary_key().drop().unwrap();
         assert_err_starts_with!(
-            S::entries(&storage, first, last + 1, u64::MAX),
+            S::entries(
+                &storage,
+                first,
+                last + 1,
+                u64::MAX,
+                GetEntriesContext::empty(false),
+            ),
             concat!(
                 "unknown error",
                 " box error:",
@@ -859,7 +915,13 @@ mod tests {
 
         raft_log.drop().unwrap();
         assert_err_starts_with!(
-            S::entries(&storage, first, last + 1, u64::MAX),
+            S::entries(
+                &storage,
+                first,
+                last + 1,
+                u64::MAX,
+                GetEntriesContext::empty(false),
+            ),
             format!(
                 concat!(
                     "unknown error",
@@ -884,7 +946,8 @@ mod tests {
         }
         let applied = 8;
         storage.persist_applied(applied).unwrap();
-        let entries = |lo, hi| S::entries(&storage, lo, hi, u64::MAX);
+        let entries =
+            |lo, hi| S::entries(&storage, lo, hi, u64::MAX, GetEntriesContext::empty(false));
         let compact_log = |up_to| transaction(|| storage.compact_log(up_to));
 
         assert_eq!(S::first_index(&storage), Ok(first));
