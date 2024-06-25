@@ -458,6 +458,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
 
     data = i2.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 2], [3, 1], [4, 2]]
+    i1.raft_read_index()
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 2], [3, 1], [4, 2]]
 
@@ -466,6 +467,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 1], [3, 1], [4, 1]]
+    i1.raft_read_index()
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 1], [3, 1], [4, 1]]
 
@@ -480,6 +482,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
     assert data["rows"] == [[1, 2], [2, 2], [3, 2], [4, 2]]
+    i1.raft_read_index()
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[1, 2], [2, 2], [3, 2], [4, 2]]
 
@@ -502,9 +505,10 @@ def test_dml_on_global_tbls(cluster: Cluster):
         """
     )
     assert data["row_count"] == 4
-    data = i1.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
     data = i2.sql("select * from global_t")
+    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
+    i1.raft_read_index()
+    data = i1.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
 
     # check delete
@@ -519,6 +523,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
     Retriable(rps=5, timeout=10).call(q1)
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[5, 1]]
+    i2.raft_read_index()
     data = i2.sql("select * from global_t")
     assert data["rows"] == [[5, 1]]
 
@@ -541,6 +546,7 @@ vtable_max_rows = 5000"""
 
     data = i2.sql("select * from global_t")
     assert data["rows"] == []
+    i1.raft_read_index()
     data = i1.sql("select * from global_t")
     assert data["rows"] == []
 
@@ -550,10 +556,12 @@ vtable_max_rows = 5000"""
 
     data = i2.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
+    i1.raft_read_index()
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
 
     def check_table_contents(contents):
+        i1.raft_read_index()
         data = i1.sql("select * from t")
         assert sorted(data["rows"]) == contents
 
