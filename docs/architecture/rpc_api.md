@@ -76,8 +76,10 @@ fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
 - `pattern`: (MP_STR) запрос SQL
 - `params`: (MP_ARRAY) параметры для подставления в `pattern` в случае
   [параметризованного запроса][parametrization]
-- `id`: (optional MP_STR) id SQL запроса
-- `traceable`: (optional MP_BOOL) включение отслеживания статистики запроса
+- `id`: (optional MP_STR) id SQL запроса,
+  используется для идентификции запроса в таблицах статистики
+- `traceable`: (optional MP_BOOL) включение отслеживания статистики запроса.
+  запрос попадёт в таблицы статистики с вероятностью 1% при `false` и 100% при `true`
 
 Возвращаемое значение:
 
@@ -100,7 +102,7 @@ fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
 
 - [Инструкции и руководства — Работа с данными SQL](../tutorial/sql_examples.md)
 
-[parametrization]: ../reference/sql/parametrization
+[parametrization]: ../reference/sql/parametrization.md
 
 ## Service API {: #service_api }
 
@@ -177,6 +179,38 @@ fn proc_runtime_info() -> RuntimeInfo
       <br>формат: `MP_MAP { host = MP_STR, port = MP_UINT}`
       <br>поле отсутствует в ответе если инстанс запущен без параметра
       [picodata run --http-listen](../reference/cli.md#run_http_listen)
+
+--------------------------------------------------------------------------------
+### .proc_sql_execute {: #proc_sql_execute }
+
+```rust
+fn proc_sql_execute(..) -> Result
+```
+
+Выполняет часть плана SQL-запроса на локальном инстансе.
+
+Аргументы:
+
+Сериализованный план запроса.
+
+Возвращаемое значение:
+
+- (MP_MAP `DqlResult`) при чтении данных
+  <br>Поля:
+
+    - `metadata` (MP_ARRAY), массив описаний столбцов таблицы в формате
+      `MP_ARRAY [ MP_MAP { name = MP_STR, type = MP_STR }, ...]`
+    - `rows` (MP_ARRAY), результат выполнения читающего запроса в формате
+      `MP_ARRAY [ MP_ARRAY row, ...]`
+
+- (MP_MAP `DmlResult`) при модификации данных
+  <br>Поля:
+
+    - `row_count` (MP_INT), количество измененных строк
+
+Для более высокоуровневого RPC смотрите [.proc_sql_dispatch](#proc_sql_dispatch)
+
+[bincode]: https://github.com/bincode-org/bincode
 
 --------------------------------------------------------------------------------
 ### .proc_raft_promote {: #proc_raft_promote }
