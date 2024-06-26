@@ -20,6 +20,8 @@ with the `YY.MINOR.MICRO` scheme.
 - New rpc entrypoint: `.proc_get_config` which returns the effective
   picodata configuration.
 - New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`.
+- Fix error "Read access to space '_raft_state' is denied"
+  when executing a DML query on global tables
 
 -->
 

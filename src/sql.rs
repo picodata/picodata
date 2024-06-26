@@ -1491,7 +1491,9 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
 
     let raft_node = node::global()?;
     let raft_index = raft_node.get_index();
-    let raft_term = raft::Storage::term(&raft_node.raft_storage, raft_index)?;
+    let raft_term = with_su(ADMIN_ID, || -> traft::Result<u64> {
+        Ok(raft::Storage::term(&raft_node.raft_storage, raft_index)?)
+    })??;
 
     // Materialize reading subtree and extract some needed data from Plan
     let (table_id, dml_kind, vtable) = {
@@ -1587,31 +1589,35 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
         ops.push(op);
     }
 
-    let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
-    let node = node::global()?;
-    let deadline = Instant::now_fiber().saturating_add(timeout);
+    // CAS must be done under admin, as we access system spaces
+    // there.
+    with_su(ADMIN_ID, || -> traft::Result<ConsumerResult> {
+        let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
+        let node = node::global()?;
+        let deadline = Instant::now_fiber().saturating_add(timeout);
 
-    let ops_count = ops.len();
-    let op = crate::traft::op::Op::BatchDml { ops };
+        let ops_count = ops.len();
+        let op = crate::traft::op::Op::BatchDml { ops };
 
-    let predicate = Predicate {
-        index: raft_index,
-        term: raft_term,
-        ranges: vec![],
-    };
-    let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
-    let (index, term) =
-        crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now_fiber()))?;
-    node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-    let current_term = raft::Storage::term(&node.raft_storage, index)?;
-    if current_term != term {
-        return Err(Error::TermMismatch {
-            requested: term,
-            current: current_term,
-        });
-    }
+        let predicate = Predicate {
+            index: raft_index,
+            term: raft_term,
+            ranges: vec![],
+        };
+        let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
+        let (index, term) =
+            crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now_fiber()))?;
+        node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
+        let current_term = raft::Storage::term(&raft_node.raft_storage, raft_index)?;
+        if current_term != term {
+            return Err(Error::TermMismatch {
+                requested: term,
+                current: current_term,
+            });
+        }
 
-    Ok(ConsumerResult {
-        row_count: ops_count as u64,
-    })
+        Ok(ConsumerResult {
+            row_count: ops_count as u64,
+        })
+    })?
 }

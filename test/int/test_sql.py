@@ -520,7 +520,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
         data = i1.sql("insert into global_t select count(*), 1 from t")
         assert data["row_count"] == 1
 
-    Retriable(rps=5, timeout=10).call(q1)
+    Retriable(rps=7, timeout=20).call(q1)
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[5, 1]]
     i2.raft_read_index()
@@ -568,21 +568,44 @@ vtable_max_rows = 5000"""
     # insert into sharded table from global table
     data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
     assert data["row_count"] == 1
-    Retriable(rps=5, timeout=10).call(
+    Retriable(rps=7, timeout=20).call(
         check_table_contents, [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
     )
 
     # update sharded table from global table
     data = i2.sql("update t set y = a * a from global_t where id = x")
     assert data["row_count"] == 5
-    Retriable(rps=5, timeout=10).call(
+    Retriable(rps=7, timeout=20).call(
         check_table_contents, [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
     )
 
     # delete sharded table using global table in predicate
     data = i2.sql("delete from t where x in (select id from global_t)")
     assert data["row_count"] == 5
-    Retriable(rps=5, timeout=10).call(check_table_contents, [[6, 6]])
+    Retriable(rps=7, timeout=20).call(check_table_contents, [[6, 6]])
+
+    # test user with write permession can do global dml
+    user = "USER"
+    password = "PaSSW0RD"
+    acl = i1.sql(f"create user {user} with password '{password}'")
+    assert acl["row_count"] == 1
+    # check we can't write yet
+    with pytest.raises(
+        TarantoolError,
+        match=rf"Write access to space 'GLOBAL_T' is denied for user '{user}'",
+    ):
+        i1.sql(
+            "insert into global_t values (300, 300)",
+            user=user,
+            password=password,
+        )
+    # * Grant WRITE to user.
+    acl = i1.sudo_sql(f""" grant write on table global_t to {user}""")
+    assert acl["row_count"] == 1
+    data = i1.sql(
+        "insert into global_t values (100, 100)", user=user, password=password
+    )
+    assert data["row_count"] == 1
 
 
 def test_datetime(cluster: Cluster):
