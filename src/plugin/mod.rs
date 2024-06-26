@@ -254,7 +254,6 @@ impl Manifest {
             version: self.version.to_string(),
             description: self.description.to_string(),
             migration_list: self.migration.clone(),
-            migration_progress: -1,
         }
     }
 
@@ -526,7 +525,13 @@ fn do_plugin_cas(
 /// Install plugin:
 /// 1) check that plugin is ready for run at all instances
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
-pub fn install_plugin(ident: PluginIdentifier, timeout: Duration) -> traft::Result<()> {
+pub fn install_plugin(
+    ident: PluginIdentifier,
+    migrate: bool,
+    timeout: Duration,
+    migrate_timeout: Duration,
+    migrate_rollback_timeout: Duration,
+) -> traft::Result<()> {
     let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
     let manifest = Manifest::load(&ident)?;
@@ -554,20 +559,81 @@ pub fn install_plugin(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
         return Err(PluginError::InstallationAborted.into());
     };
 
-    if error_injection::is_enabled("PLUGIN_MIGRATION_CLIENT_DOWN") {
-        return Ok(());
-    }
-
-    let plugin_identity = plugin.into_identity();
-    let migration_result =
-        migration::apply_up_migrations(&plugin_identity, &manifest.migration, deadline);
-    if let Err(e) = migration_result {
-        if let Err(err) = remove_plugin(&plugin_identity, Duration::from_secs(2), true) {
-            tlog!(Error, "rollback plugin installation error: {err}");
+    if migrate {
+        if error_injection::is_enabled("PLUGIN_MIGRATION_CLIENT_DOWN") {
+            return Ok(());
         }
-        return Err(e.into());
+
+        let plugin_identity = plugin.into_identity();
+        let migration_result =
+            migration_up(&plugin_identity, migrate_timeout, migrate_rollback_timeout);
+        if let Err(e) = migration_result {
+            if let Err(err) = remove_plugin(&plugin_identity, Duration::from_secs(2), false) {
+                tlog!(Error, "rollback plugin installation error: {err}");
+            }
+            return Err(e.into());
+        }
     }
 
+    Ok(())
+}
+
+pub fn migration_up(
+    ident: &PluginIdentifier,
+    timeout: Duration,
+    rollback_timeout: Duration,
+) -> traft::Result<()> {
+    let deadline = fiber::clock().saturating_add(timeout);
+    let node = node::global()?;
+
+    // plugin must be already installed
+    let installed = node.storage.plugin.contains(ident)?;
+    if !installed {
+        return Err(PluginError::PluginNotFound(ident.clone()).into());
+    }
+    // get manifest for loading of migration files
+    let manifest = Manifest::load(ident)?;
+
+    let already_applied_migrations = node
+        .storage
+        .plugin_migration
+        .get_files_by_plugin(&ident.name)?;
+    if already_applied_migrations.len() > manifest.migration.len() {
+        return Err(PluginError::Migration(migration::Error::InconsistentMigrationList).into());
+    }
+
+    let mut migration_delta = manifest.migration;
+    for (i, migration_file) in migration_delta
+        .drain(..already_applied_migrations.len())
+        .enumerate()
+    {
+        if migration_file != already_applied_migrations[i].migration_file {
+            return Err(PluginError::Migration(migration::Error::InconsistentMigrationList).into());
+        }
+    }
+
+    migration::apply_up_migrations(ident, &migration_delta, deadline, rollback_timeout)?;
+    Ok(())
+}
+
+pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Result<()> {
+    let deadline = fiber::clock().saturating_add(timeout);
+    let node = node::global()?;
+
+    // plugin must be already installed
+    let installed = node.storage.plugin.contains(&ident)?;
+    if !installed {
+        return Err(PluginError::PluginNotFound(ident).into());
+    }
+
+    let migration_list = node
+        .storage
+        .plugin_migration
+        .get_files_by_plugin(&ident.name)?
+        .into_iter()
+        .map(|rec| rec.migration_file)
+        .collect::<Vec<_>>();
+    migration::apply_down_migrations(&ident, &migration_list, deadline);
     Ok(())
 }
 
@@ -690,11 +756,11 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 ///
 /// * `ident`: identity of plugin to remove
 /// * `timeout`: operation timeout
-/// * `force`: whether true if plugin should be removed without DOWN migration, false elsewhere
+/// * `drop_data`: whether true if plugin should be removed with DOWN migration, false elsewhere
 pub fn remove_plugin(
     ident: &PluginIdentifier,
     timeout: Duration,
-    force: bool,
+    drop_data: bool,
 ) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
 
@@ -726,11 +792,17 @@ pub fn remove_plugin(
         deadline,
     )?;
 
-    if !force {
+    if drop_data {
         if let Some(plugin) = maybe_plugin {
-            let migration_list = plugin.migration_list;
+            let migration_list = node
+                .storage
+                .plugin_migration
+                .get_files_by_plugin(&ident.name)?
+                .into_iter()
+                .map(|rec| rec.migration_file)
+                .collect::<Vec<_>>();
             let ident = PluginIdentifier::new(plugin.name, plugin.version);
-            migration::apply_down_migrations(&ident, &migration_list);
+            migration::apply_down_migrations(&ident, &migration_list, deadline);
         }
     }
 

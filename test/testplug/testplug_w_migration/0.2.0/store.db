@@ -1,0 +1,13 @@
+-- pico.UP
+
+CREATE TABLE store (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY (id);
+
+INSERT INTO store (id, name) VALUES
+    (1, 'OZON'),
+    (2, 'Yandex'),
+    (3, 'Wildberries');
+
+-- pico.DOWN
+DROP TABLE store;

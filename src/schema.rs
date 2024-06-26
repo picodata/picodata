@@ -461,8 +461,6 @@ pub struct PluginDef {
     pub description: String,
     /// List of migration files.
     pub migration_list: Vec<String>,
-    /// Number of a last migration file (-1 if no migration files applied).
-    pub migration_progress: i32,
 }
 
 impl Encode for PluginDef {}
@@ -470,8 +468,6 @@ impl Encode for PluginDef {}
 impl PluginDef {
     /// Index (0-based) of field "enable" in the _pico_plugin table format.
     pub const FIELD_ENABLE: usize = 1;
-    /// Index (0-based) of field "migration_progress" in the _pico_plugin table format.
-    pub const FIELD_MIGRATION_PROGRESS: usize = 6;
 
     /// Format of the _pico_plugin global table.
     #[inline(always)]
@@ -484,7 +480,6 @@ impl PluginDef {
             Field::from(("version", FieldType::String)).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
             Field::from(("migration_list", FieldType::Array)).is_nullable(false),
-            Field::from(("migration_progress", FieldType::Integer)).is_nullable(false),
         ]
     }
 
@@ -497,7 +492,6 @@ impl PluginDef {
             version: "0.0.1".into(),
             description: "description".to_string(),
             migration_list: vec![],
-            migration_progress: -1,
         }
     }
 
@@ -663,6 +657,37 @@ pub struct ServiceRouteKey<'a> {
 }
 
 impl<'a> Encode for ServiceRouteKey<'a> {}
+
+/// Single record in _pico_plugin_migration system table.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PluginMigrationRecord {
+    /// Instance id.
+    pub plugin_name: String,
+    /// Plugin name.
+    pub migration_file: String,
+}
+
+impl Encode for PluginMigrationRecord {}
+
+impl PluginMigrationRecord {
+    /// Format of the _pico_plugin_migration global table.
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("plugin_name", FieldType::String)).is_nullable(false),
+            Field::from(("migration_file", FieldType::String)).is_nullable(false),
+        ]
+    }
+
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self {
+            plugin_name: "plugin".to_string(),
+            migration_file: "migration_1.db".to_string(),
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // UserDef
@@ -2750,7 +2775,6 @@ mod test {
         let format = PluginDef::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PluginDef::format");
         assert_eq!(format[PluginDef::FIELD_ENABLE].name, "enabled");
-        assert_eq!(format[PluginDef::FIELD_MIGRATION_PROGRESS].name, "migration_progress");
     }
 
     #[test]
@@ -2771,5 +2795,14 @@ mod test {
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "ServiceRouteItem::format");
 
         assert_eq!(format[ServiceRouteItem::FIELD_POISON as usize].name, "poison");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn plugin_migration_matches_format() {
+        let p = PluginMigrationRecord::for_tests();
+        let tuple_data = p.to_tuple_buffer().unwrap();
+        let format = PluginMigrationRecord::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PluginMigrationRecord::format");
     }
 }

@@ -1,0 +1,13 @@
+-- pico.UP
+
+CREATE TABLE manager (id INTEGER NOT NULL, name TEXT NOT NULL, store_id INTEGER NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY (id);
+
+INSERT INTO manager (id, name, store_id) VALUES
+    (1, 'Manager 1', 1),
+    (2, 'Manager 2', 1),
+    (3, 'Manager 3', 2);
+
+-- pico.DOWN
+DROP TABLE manager;

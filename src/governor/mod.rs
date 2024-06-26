@@ -141,7 +141,21 @@ impl Loop {
                     .plugin
                     .get_all_versions(&ident.name)
                     .expect("storage should not fail");
-                (ident, installed_plugins, services, timeout)
+                let applied_migrations = storage
+                    .plugin_migration
+                    .get_files_by_plugin(&ident.name)
+                    .expect("storage should not fail")
+                    .into_iter()
+                    .map(|record| record.migration_file)
+                    .collect();
+
+                (
+                    ident,
+                    installed_plugins,
+                    services,
+                    applied_migrations,
+                    timeout,
+                )
             });
         let disable_plugin = storage
             .properties

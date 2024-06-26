@@ -39,7 +39,13 @@ pub(super) fn action_plan<'i>(
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
     install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
-    enable_plugin: Option<&'i (PluginIdentifier, Vec<PluginDef>, Vec<ServiceDef>, Duration)>,
+    enable_plugin: Option<&'i (
+        PluginIdentifier,
+        Vec<PluginDef>,
+        Vec<ServiceDef>,
+        Vec<String>,
+        Duration,
+    )>,
     disable_plugin: Option<&'i [ServiceRouteItem]>,
     update_plugin_topology: Option<(PluginDef, ServiceDef, TopologyUpdateOp)>,
 ) -> Result<Plan<'i>> {
@@ -495,7 +501,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // enable plugin
-    if let Some((ident, installed_plugins, services, on_start_timeout)) = enable_plugin {
+    if let Some((ident, installed_plugins, services, applied_migrations, on_start_timeout)) = enable_plugin {
         let rpc = rpc::enable_plugin::Request {
             term,
             applied,
@@ -513,6 +519,18 @@ pub(super) fn action_plan<'i>(
             .iter()
             .find(|p| p.version == ident.version);
 
+        fn is_subset(source: &[String], needle: &[String]) -> bool {
+            if needle.len() > source.len() {
+                return false;
+            }
+            for i in 0..needle.len() {
+                if &source[i] != &needle[i] {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         match (already_enabled_plugin, same_version_plugin) {
             (Some(already_enabled_plugin), Some(same_version_plugin))
                 if already_enabled_plugin.version == same_version_plugin.version =>
@@ -524,8 +542,7 @@ pub(super) fn action_plan<'i>(
                 tlog!(Error, "Trying to enable plugin but different version of the same plugin already enabled");
             }
             (_, Some(same_version_plugin))
-                if same_version_plugin.migration_list.len() as i32 - 1
-                    != same_version_plugin.migration_progress =>
+                if !is_subset(&applied_migrations, &same_version_plugin.migration_list) =>
             {
                 // migration is partially applied - do nothing
                 tlog!(Error, "Trying to enable a non-fully installed plugin (migration is partially applied)");

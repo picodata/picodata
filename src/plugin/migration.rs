@@ -1,7 +1,6 @@
-use crate::cas::Range;
 use crate::cbus::ENDPOINT_NAME;
 use crate::plugin::{do_plugin_cas, PluginIdentifier, PLUGIN_DIR};
-use crate::schema::{PluginDef, ADMIN_ID};
+use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
@@ -10,9 +9,9 @@ use crate::util::QuoteEscapingStyle;
 use crate::{error_injection, sql, tlog, traft};
 use std::io;
 use std::io::ErrorKind;
+use std::time::Duration;
 use tarantool::cbus;
 use tarantool::fiber;
-use tarantool::space::UpdateOps;
 use tarantool::time::Instant;
 
 const MIGRATION_FILE_EXT: &'static str = "db";
@@ -40,6 +39,9 @@ pub enum Error {
 
     #[error("Update migration progress: {0}")]
     UpdateProgress(String),
+
+    #[error("inconsistent with previous version migration list")]
+    InconsistentMigrationList,
 }
 
 const MAX_COMMAND_LENGTH_TO_SHOW: usize = 256;
@@ -322,6 +324,30 @@ fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
     }
 }
 
+fn down_single_file_with_commit(
+    plugin_name: &str,
+    queries: &MigrationQueries,
+    applier: &impl SqlApplier,
+    deadline: Instant,
+) {
+    down_single_file(queries, applier);
+
+    let node = node::global().expect("node must be already initialized");
+    let dml = Dml::delete(
+        ClusterwideTable::PluginMigration,
+        &[&plugin_name, queries.filename.as_str()],
+        ADMIN_ID,
+    )
+    .expect("encoding should not fail");
+    tlog!(Debug, "updating global storage with DOWN migration");
+    if let Err(e) = do_plugin_cas(node, Op::Dml(dml), vec![], None, deadline) {
+        tlog!(
+            Debug,
+            "failed: updating global storage with regular DOWN migration progress: {e}"
+        );
+    }
+}
+
 /// Apply UP part from migration files. If one of migration files migrated with errors,
 /// then rollback happens: for file that triggered error and all previously migrated files
 /// DOWN part is called.
@@ -335,6 +361,7 @@ pub fn apply_up_migrations(
     plugin_ident: &PluginIdentifier,
     migrations: &[String],
     deadline: Instant,
+    rollback_timeout: Duration,
 ) -> crate::plugin::Result<()> {
     // checking the existence of migration files
     let mut migration_files = vec![];
@@ -367,12 +394,13 @@ pub fn apply_up_migrations(
         migration_files.push(migration_path.display().to_string());
     }
 
-    fn handle_err(to_revert: &[MigrationQueries]) {
+    let handle_err = |to_revert: &[MigrationQueries]| {
+        let deadline = fiber::clock().saturating_add(rollback_timeout);
         let it = to_revert.iter().rev();
         for queries in it {
-            down_single_file(queries, &SBroadApplier);
+            down_single_file_with_commit(&plugin_ident.name, queries, &SBroadApplier, deadline);
         }
-    }
+    };
 
     let mut seen_queries = Vec::with_capacity(migration_files.len());
 
@@ -406,24 +434,17 @@ pub fn apply_up_migrations(
             return Err(e.into());
         }
 
-        let mut enable_ops = UpdateOps::new();
-        enable_ops
-            .assign(PluginDef::FIELD_MIGRATION_PROGRESS, num)
-            .expect("serialization cannot fail");
-        let update_dml = Dml::update(
-            ClusterwideTable::Plugin,
-            &[&plugin_ident.name, &plugin_ident.version],
-            enable_ops,
+        let dml = Dml::replace(
+            ClusterwideTable::PluginMigration,
+            &[&plugin_ident.name, &queries.filename],
             ADMIN_ID,
         )?;
-        let ranges = vec![Range::new(ClusterwideTable::Plugin).eq([&plugin_ident.name])];
-
         tlog!(
             Debug,
             "updating global storage with migrations progress {num}/{}",
             migration_files.len()
         );
-        if let Err(e) = do_plugin_cas(node, Op::Dml(update_dml), ranges, None, deadline) {
+        if let Err(e) = do_plugin_cas(node, Op::Dml(dml), vec![], None, deadline) {
             tlog!(
                 Debug,
                 "failed: updating global storage with migrations progress: {e}"
@@ -444,7 +465,11 @@ pub fn apply_up_migrations(
 ///
 /// * `plugin_identity`: plugin for which migrations belong to
 /// * `migrations`: list of migration file names
-pub fn apply_down_migrations(plugin_identity: &PluginIdentifier, migrations: &[String]) {
+pub fn apply_down_migrations(
+    plugin_identity: &PluginIdentifier,
+    migrations: &[String],
+    deadline: Instant,
+) {
     let iter = migrations.iter().rev().zip(0..);
     for (db_file, num) in iter {
         #[rustfmt::skip]
@@ -465,7 +490,7 @@ pub fn apply_down_migrations(plugin_identity: &PluginIdentifier, migrations: &[S
             }
         );
 
-        down_single_file(&queries, &SBroadApplier);
+        down_single_file_with_commit(&plugin_identity.name, &queries, &SBroadApplier, deadline);
     }
     #[rustfmt::skip]
     tlog!(Info, "applying `DOWN` migrations, progress: {0}/{0}", migrations.len());

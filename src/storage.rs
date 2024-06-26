@@ -24,7 +24,8 @@ use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
 use crate::schema::{
-    Distribution, PrivilegeType, SchemaObjectType, ServiceDef, ServiceRouteItem, ServiceRouteKey,
+    Distribution, PluginMigrationRecord, PrivilegeType, SchemaObjectType, ServiceDef,
+    ServiceRouteItem, ServiceRouteKey,
 };
 use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
@@ -431,6 +432,16 @@ define_clusterwide_tables! {
                 space: Space,
                 #[primary]
                 primary_key: Index => "_pico_service_routing_key",
+            }
+        }
+        PluginMigration = 529, "_pico_plugin_migration" => {
+            Clusterwide::plugin_migration;
+
+            /// A struct for accessing info of applied plugin migrations.
+            pub struct PluginMigration {
+                space: Space,
+                #[primary]
+                index_name: Index => "_pico_plugin_migration_key",
             }
         }
     }
@@ -3787,6 +3798,66 @@ impl ServiceRouteTable {
             result.push(item.instance_id);
         }
         Ok(result)
+    }
+}
+
+impl PluginMigration {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index_name = space
+            .index_builder("_pico_plugin_migration_key")
+            .unique(true)
+            .part("plugin_name")
+            .part("migration_file")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, index_name })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        PluginMigrationRecord::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_plugin_migration_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("migration_file", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+
+    #[inline]
+    pub fn put(&self, plugin_name: &str, migration_file: &str) -> tarantool::Result<()> {
+        self.space.replace(&(plugin_name, migration_file))?;
+        Ok(())
+    }
+
+    pub fn get_files_by_plugin(
+        &self,
+        plugin_name: &str,
+    ) -> tarantool::Result<Vec<PluginMigrationRecord>> {
+        self.space
+            .select(IteratorType::Eq, &(plugin_name,))?
+            .map(|t| t.decode())
+            .collect()
     }
 }
 
