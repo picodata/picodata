@@ -729,6 +729,29 @@ class Instance:
         with self.connect(timeout, user=user, password=password) as conn:
             return conn.sudo_sql(sql, *params)
 
+    def retriable_sql(
+        self,
+        sql: str,
+        *params,
+        rps: int | float = 5,
+        retry_timeout: int | float = 25,
+        user: str | None = None,
+        is_sudo: bool = False,
+        password: str | None = None,
+        timeout: int | float = 5,
+        fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
+    ) -> dict:
+        """Retry SQL query with constant rate until success or fatal is raised"""
+
+        def do_sql():
+            if is_sudo:
+                return self.sudo_sql(
+                    sql, *params, user=user, password=password, timeout=timeout
+                )
+            return self.sql(sql, *params, user=user, password=password, timeout=timeout)
+
+        return Retriable(rps, retry_timeout).call(do_sql)
+
     def create_user(
         self,
         with_name: str,

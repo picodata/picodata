@@ -10,7 +10,6 @@ from conftest import (
     Instance,
     KeyDef,
     KeyPart,
-    Retriable,
     ReturnError,
     TarantoolError,
 )
@@ -516,11 +515,9 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 4
 
     # test reading subtree with motion
-    def q1():
-        data = i1.sql("insert into global_t select count(*), 1 from t")
-        assert data["row_count"] == 1
+    data = i1.retriable_sql("insert into global_t select count(*), 1 from t")
+    assert data["row_count"] == 1
 
-    Retriable(rps=7, timeout=20).call(q1)
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[5, 1]]
     i2.raft_read_index()
@@ -560,29 +557,26 @@ vtable_max_rows = 5000"""
     data = i1.sql("select * from global_t")
     assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
 
-    def check_table_contents(contents):
-        i1.raft_read_index()
-        data = i1.sql("select * from t")
-        assert sorted(data["rows"]) == contents
-
     # insert into sharded table from global table
     data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
     assert data["row_count"] == 1
-    Retriable(rps=7, timeout=20).call(
-        check_table_contents, [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
-    )
+    i1.raft_read_index()
+    data = i1.retriable_sql("select * from t")
+    assert sorted(data["rows"]) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
 
     # update sharded table from global table
     data = i2.sql("update t set y = a * a from global_t where id = x")
     assert data["row_count"] == 5
-    Retriable(rps=7, timeout=20).call(
-        check_table_contents, [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
-    )
+    i1.raft_read_index()
+    data = i1.retriable_sql("select * from t")
+    assert sorted(data["rows"]) == [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
 
     # delete sharded table using global table in predicate
     data = i2.sql("delete from t where x in (select id from global_t)")
     assert data["row_count"] == 5
-    Retriable(rps=7, timeout=20).call(check_table_contents, [[6, 6]])
+    i1.raft_read_index()
+    data = i1.retriable_sql("select * from t", retry_timeout=60, timeout=8)
+    assert sorted(data["rows"]) == [[6, 6]]
 
     # test user with write permession can do global dml
     user = "USER"
@@ -788,121 +782,91 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
     # TODO: remove retries and add more instances when
     # https://git.picodata.io/picodata/picodata/sbroad/-/issues/542
     # is done.
-    def check_sq_with_segment_dist():
-        data = i1.sql(
-            """
-            select b from g
-            where b in (select c from s where c in (2, 10))
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == [[2]]
+    data = i1.retriable_sql(
+        """
+        select b from g
+        where b in (select c from s where c in (2, 10))
+        """
+    )
+    assert data["rows"] == [[2]]
 
-    Retriable(rps=5, timeout=6).call(check_sq_with_segment_dist)
+    data = i1.retriable_sql(
+        """
+        select b from g
+        where b in (select sum(c) from s)
+        """
+    )
+    assert len(data["rows"]) == 0
 
-    def check_sq_with_single_distribution():
-        data = i1.sql(
-            """
-            select b from g
-            where b in (select sum(c) from s)
-            """,
-            timeout=2,
-        )
-        assert len(data["rows"]) == 0
+    data = i1.retriable_sql(
+        """
+        select b from g
+        where b in (select c * 5 from s)
+        """,
+    )
+    assert data["rows"] == [[5]]
 
-    Retriable(rps=5, timeout=6).call(check_sq_with_single_distribution)
+    # first subquery selects [1], [2], [3]
+    # second subquery must add additional [4] tuple
+    data = i1.retriable_sql(
+        """
+        select b from g
+        where b in (select c from s) or a in (select count(*) from s)
+        """,
+        timeout=2,
+    )
+    assert data["rows"] == [[1], [2], [3], [4]]
 
-    def check_sq_with_any_distribution():
-        data = i1.sql(
-            """
-            select b from g
-            where b in (select c * 5 from s)
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == [[5]]
+    data = i1.retriable_sql(
+        """
+        select b from g
+        where b in (select c from s) and a in (select count(*) from s)
+        """,
+        timeout=2,
+    )
+    assert len(data["rows"]) == 0
 
-    Retriable(rps=5, timeout=6).call(check_sq_with_any_distribution)
+    data = i1.retriable_sql(
+        """
+        select c from s inner join
+        (select c as c1 from s)
+        on c = c1 + 3 and c in (select a from g)
+        """,
+        timeout=2,
+    )
+    assert data["rows"] == []
 
-    def check_sqs_joined_with_or():
-        # first subquery selects [1], [2], [3]
-        # second subquery must add additional [4] tuple
-        data = i1.sql(
-            """
-            select b from g
-            where b in (select c from s) or a in (select count(*) from s)
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == [[1], [2], [3], [4]]
+    # Full join because of 'OR'
+    data = i1.retriable_sql(
+        """
+        select min(c) from s inner join
+        (select c as c1 from s)
+        on c = c1 + 3 or c in (select a from g)
+        """,
+        timeout=2,
+    )
+    assert data["rows"] == [[1]]
 
-    Retriable(rps=5, timeout=6).call(check_sqs_joined_with_or)
+    data = i1.retriable_sql(
+        """
+        select a from g
+        where b in (select c from s where c = 1) or
+        b in (select c from s where c = 3)
+        """,
+        timeout=2,
+    )
+    assert data["rows"] == [[1], [3]]
 
-    def check_sqs_joined_with_and():
-        data = i1.sql(
-            """
-            select b from g
-            where b in (select c from s) and a in (select count(*) from s)
-            """,
-            timeout=2,
-        )
-        assert len(data["rows"]) == 0
-
-    Retriable(rps=5, timeout=6).call(check_sqs_joined_with_and)
-
-    def check_sq_in_join_condition_joined_with_and():
-        data = i1.sql(
-            """
-            select c from s inner join
-            (select c as c1 from s)
-            on c = c1 + 3 and c in (select a from g)
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == []
-
-    Retriable(rps=5, timeout=6).call(check_sq_in_join_condition_joined_with_and)
-
-    def check_sq_in_join_condition_joined_with_or():
-        # Full join because of 'OR'
-        data = i1.sql(
-            """
-            select min(c) from s inner join
-            (select c as c1 from s)
-            on c = c1 + 3 or c in (select a from g)
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == [[1]]
-
-    Retriable(rps=5, timeout=6).call(check_sq_in_join_condition_joined_with_or)
-
-    def check_bucket_discovery_when_sqs_joined_with_or():
-        data = i1.sql(
-            """
-            select a from g
-            where b in (select c from s where c = 1) or
-            b in (select c from s where c = 3)
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == [[1], [3]]
-
-    Retriable(rps=5, timeout=6).call(check_bucket_discovery_when_sqs_joined_with_or)
-
-    def check_sqs_joined_with_or_and():
-        data = i1.sql(
-            """
-            select a from g
-            where b in (select c from s where c = 1) or
-            b in (select c from s where c = 3) and
-            a < (select sum(c) from s)
-            """,
-            timeout=2,
-        )
-        assert data["rows"] == [[1], [3]]
-
-    Retriable(rps=5, timeout=6).call(check_sqs_joined_with_or_and)
+    data = i1.retriable_sql(
+        """
+        select a from g
+        where b in (select c from s where c = 1) or
+        b in (select c from s where c = 3) and
+        a < (select sum(c) from s)
+        """,
+        timeout=2,
+    )
+    assert data["rows"] == [[1], [3]]
 
 
 def test_aggregates_on_global_tbl(cluster: Cluster):
@@ -987,167 +951,132 @@ def test_join_with_global_tbls(cluster: Cluster):
 
     expected_rows = [[1], [1], [3]]
 
-    def check_inner_join_global_vs_segment():
-        data = i1.sql(
-            """
-            select b from g
-            join s on g.a = s.c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == expected_rows
-
-    Retriable(rps=5, timeout=6).call(check_inner_join_global_vs_segment)
-
-    def check_inner_join_segment_vs_global():
-        data = i1.sql(
-            """
-            select b from s
-            join g on g.a = s.c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == expected_rows
-
-    Retriable(rps=5, timeout=6).call(check_inner_join_segment_vs_global)
-
-    def check_inner_join_segment_vs_global_sq_in_cond():
-        data = i1.sql(
-            """
-            select c from s
-            join g on 1 = 1 and
-            c in (select a*a from g)
-            group by c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[1], [4]]
-
-    Retriable(rps=5, timeout=6).call(check_inner_join_segment_vs_global_sq_in_cond)
-
-    def check_left_join_segment_vs_global_sq_in_cond():
-        data = i1.sql(
-            """
-            select c, cast(sum(a) as int) from s
-            left join g on 1 = 1 and
-            c in (select a*a from g)
-            where c < 4
-            group by c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [
-            [1, 6],
-            [2, None],
-            [3, None],
-        ]
-
-    Retriable(rps=5, timeout=6).call(check_left_join_segment_vs_global_sq_in_cond)
-
-    def check_left_join_any_vs_global():
-        data = i1.sql(
-            """
-            select c, b from
-            (select c*c as c from s)
-            left join g on c = b
-            where c < 5
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1], [4, None]]
-
-    Retriable(rps=5, timeout=6).call(check_left_join_any_vs_global)
-
-    def check_inner_join_any_vs_global():
-        data = i1.sql(
-            """
-            select c, b from
-            (select c*c as c from s)
-            inner join g on c = b
-            where c < 5
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1]]
-
-    Retriable(rps=5, timeout=6).call(check_inner_join_any_vs_global)
-
-    def check_left_join_single_vs_global():
-        data = i1.sql(
-            """
-            select c, a from
-            (select count(*) as c from s)
-            left join g on c = a + 2
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[5, 3]]
-
-    Retriable(rps=5, timeout=6).call(check_left_join_single_vs_global)
-
-    def check_left_join_global_with_expr_in_proj_vs_segment():
-        data = i1.sql(
-            """
-            select b, c from (select b + 3 as b from g)
-            left join s on b = c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[4, 4], [4, 4], [6, None]]
-
-    Retriable(rps=5, timeout=6).call(
-        check_left_join_global_with_expr_in_proj_vs_segment
+    data = i1.retriable_sql(
+        """
+        select b from g
+        join s on g.a = s.c
+        """,
+        timeout=2,
     )
+    assert sorted(data["rows"], key=lambda e: e[0]) == expected_rows
 
-    def check_left_join_global_vs_any_false_condition():
-        data = i1.sql(
-            """
-            select b, c from g
-            left join
-            (select c*c as c from s where c > 3)
-            on b = c
-            """,
-            timeout=2,
+    data = i1.retriable_sql(
+        """
+        select b from s
+        join g on g.a = s.c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == expected_rows
+
+    data = i1.retriable_sql(
+        """
+        select c from s
+        join g on 1 = 1 and
+        c in (select a*a from g)
+        group by c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[1], [4]]
+
+    data = i1.retriable_sql(
+        """
+        select c, cast(sum(a) as int) from s
+        left join g on 1 = 1 and
+        c in (select a*a from g)
+        where c < 4
+        group by c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [
+        [1, 6],
+        [2, None],
+        [3, None],
+    ]
+
+    data = i1.retriable_sql(
+        """
+        select c, b from
+        (select c*c as c from s)
+        left join g on c = b
+        where c < 5
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1], [4, None]]
+
+    data = i1.retriable_sql(
+        """
+        select c, b from
+        (select c*c as c from s)
+        inner join g on c = b
+        where c < 5
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1]]
+
+    data = i1.retriable_sql(
+        """
+        select c, a from
+        (select count(*) as c from s)
+        left join g on c = a + 2
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[5, 3]]
+
+    data = i1.retriable_sql(
+        """
+        select b, c from (select b + 3 as b from g)
+        left join s on b = c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[4, 4], [4, 4], [6, None]]
+
+    data = i1.retriable_sql(
+        """
+        select b, c from g
+        left join
+        (select c*c as c from s where c > 3)
+        on b = c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [
+        [1, None],
+        [1, None],
+        [3, None],
+    ]
+
+    data = i1.retriable_sql(
+        """
+        select b, c from g
+        left join
+        (select c*c as c from s where c < 3)
+        on b = c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1], [3, None]]
+
+    data = i1.retriable_sql(
+        """
+        select a, b, c from (
+            select a, b from g
+            inner join (select a + 2 as u from g)
+            on a = u
         )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [
-            [1, None],
-            [1, None],
-            [3, None],
-        ]
-
-    Retriable(rps=5, timeout=6).call(check_left_join_global_vs_any_false_condition)
-
-    def check_left_join_global_vs_any():
-        data = i1.sql(
-            """
-            select b, c from g
-            left join
-            (select c*c as c from s where c < 3)
-            on b = c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1], [3, None]]
-
-    Retriable(rps=5, timeout=6).call(check_left_join_global_vs_any)
-
-    def check_left_join_complex_global_child_vs_any():
-        data = i1.sql(
-            """
-            select a, b, c from (
-                select a, b from g
-                inner join (select a + 2 as u from g)
-                on a = u
-            )
-            left join
-            (select c + 1 as c from s where c = 2)
-            on b = c
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda e: e[0]) == [[3, 3, 3]]
-
-    Retriable(rps=5, timeout=6).call(check_left_join_complex_global_child_vs_any)
+        left join
+        (select c + 1 as c from s where c = 2)
+        on b = c
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda e: e[0]) == [[3, 3, 3]]
 
 
 def test_union_all_on_global_tbls(cluster: Cluster):
@@ -1185,159 +1114,129 @@ def test_union_all_on_global_tbls(cluster: Cluster):
 
     expected = [[1], [2], [2], [2], [2], [2]]
 
-    def check_global_vs_any():
-        data = i1.sql(
-            """
-            select b from g
-            union all
-            select d from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    data = i1.retriable_sql(
+        """
+        select b from g
+        union all
+        select d from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    Retriable(rps=5, timeout=6).call(check_global_vs_any)
+    data = i1.retriable_sql(
+        """
+        select d from s
+        union all
+        select b from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    def check_any_vs_global():
-        data = i1.sql(
-            """
-            select d from s
-            union all
-            select b from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
-
-    Retriable(rps=5, timeout=6).call(check_any_vs_global)
-
-    def check_global_vs_global():
-        data = i1.sql(
-            """
-            select b from g
-            union all
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [
-            [1],
-            [1],
-            [2],
-            [2],
-            [2],
-            [3],
-        ]
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_global)
+    data = i1.retriable_sql(
+        """
+        select b from g
+        union all
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [
+        [1],
+        [1],
+        [2],
+        [2],
+        [2],
+        [3],
+    ]
 
     expected = [[1], [1], [2], [2], [3], [3]]
 
-    def check_global_vs_segment():
-        data = i1.sql(
-            """
-            select a from g
-            union all
-            select c from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    data = i1.retriable_sql(
+        """
+        select a from g
+        union all
+        select c from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    Retriable(rps=5, timeout=6).call(check_global_vs_segment)
-
-    def check_segment_vs_global():
-        data = i1.sql(
-            """
-            select c from s
-            union all
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
-
-    Retriable(rps=5, timeout=6).call(check_segment_vs_global)
+    data = i1.retriable_sql(
+        """
+        select c from s
+        union all
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
     expected = [[1], [2], [3], [6]]
 
-    def check_single_vs_global():
-        data = i1.sql(
-            """
-            select sum(c) from s
-            union all
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    data = i1.retriable_sql(
+        """
+        select sum(c) from s
+        union all
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    Retriable(rps=5, timeout=6).call(check_single_vs_global)
-
-    def check_global_vs_single():
-        data = i1.sql(
-            """
-            select a from g
-            union all
-            select sum(c) from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_single)
+    data = i1.retriable_sql(
+        """
+        select a from g
+        union all
+        select sum(c) from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
     # some arbitrary queries
 
-    def check_multiple_union_all():
-        data = i1.sql(
-            """
-            select a from g
-            where a = 2
-            union all
-            select d from s
-            group by d
-            union all
-            select a from g
-            where b = 1
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2], [2]]
+    data = i1.retriable_sql(
+        """
+        select a from g
+        where a = 2
+        union all
+        select d from s
+        group by d
+        union all
+        select a from g
+        where b = 1
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2], [2]]
 
-    Retriable(rps=5, timeout=6).call(check_multiple_union_all)
+    data = i1.retriable_sql(
+        """
+        select a from g
+        where a in (select d from s)
+        union all
+        select c from s
+        where c = 3
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[2], [3]]
 
-    def check_union_with_where():
-        data = i1.sql(
-            """
-            select a from g
-            where a in (select d from s)
-            union all
-            select c from s
-            where c = 3
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[2], [3]]
-
-    Retriable(rps=5, timeout=6).call(check_union_with_where)
-
-    def check_complex_segment_child():
-        data = i1.sql(
-            """
-            select a, b from g
-            where a in (select d from s)
-            union all
-            select d, sum(u) from s
-            inner join (select c as u from s)
-            on d = u or u = 1
-            group by d
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[2, 2], [2, 9]]
-
-    Retriable(rps=5, timeout=6).call(check_complex_segment_child)
+    data = i1.retriable_sql(
+        """
+        select a, b from g
+        where a in (select d from s)
+        union all
+        select d, sum(u) from s
+        inner join (select c as u from s)
+        on d = u or u = 1
+        group by d
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[2, 2], [2, 9]]
 
 
 def test_union_on_global_tbls(cluster: Cluster):
@@ -1372,125 +1271,101 @@ def test_union_on_global_tbls(cluster: Cluster):
 
     expected = [[1], [2]]
 
-    def check_global_vs_any():
-        data = i1.sql(
-            """
-            select b from g
-            union
-            select d from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    data = i1.retriable_sql(
+        """
+        select b from g
+        union
+        select d from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    Retriable(rps=5, timeout=6).call(check_global_vs_any)
+    data = i1.retriable_sql(
+        """
+        select d from s
+        union
+        select b from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    def check_any_vs_global():
-        data = i1.sql(
-            """
-            select d from s
-            union
-            select b from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
-
-    Retriable(rps=5, timeout=6).call(check_any_vs_global)
-
-    def check_global_vs_global():
-        data = i1.sql(
-            """
-            select b from g
-            union
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [
-            [1],
-            [2],
-            [3],
-        ]
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_global)
+    data = i1.retriable_sql(
+        """
+        select b from g
+        union
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [
+        [1],
+        [2],
+        [3],
+    ]
 
     expected = [[1], [2], [3]]
 
-    def check_global_vs_segment():
-        data = i1.sql(
-            """
-            select a from g
-            union
-            select c from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    data = i1.retriable_sql(
+        """
+        select a from g
+        union
+        select c from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    Retriable(rps=5, timeout=6).call(check_global_vs_segment)
-
-    def check_segment_vs_global():
-        data = i1.sql(
-            """
-            select c from s
-            union
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
-
-    Retriable(rps=5, timeout=6).call(check_segment_vs_global)
+    data = i1.retriable_sql(
+        """
+        select c from s
+        union
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
     expected = [[1], [2], [3]]
 
-    def check_single_vs_global():
-        data = i1.sql(
-            """
-            select sum(c) - 3 from s
-            union
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    data = i1.retriable_sql(
+        """
+        select sum(c) - 3 from s
+        union
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    Retriable(rps=5, timeout=6).call(check_single_vs_global)
+    data = i1.retriable_sql(
+        """
+        select a from g
+        union
+        select sum(c) - 3 from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == expected
 
-    def check_global_vs_single():
-        data = i1.sql(
-            """
-            select a from g
-            union
-            select sum(c) - 3 from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == expected
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_single)
-
-    def check_multiple_union():
-        data = i1.sql(
-            """
-            select a from g
-            where a = 2
-            union
-            select d from s
-            group by d
-            union
-            select a from g
-            where b = 1
-            except
-            select null from g
-            where false
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
-
-    Retriable(rps=5, timeout=6).call(check_multiple_union)
+    data = i1.retriable_sql(
+        """
+        select a from g
+        where a = 2
+        union
+        select d from s
+        group by d
+        union
+        select a from g
+        where b = 1
+        except
+        select null from g
+        where false
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
 
 
 def test_trim(instance: Instance):
@@ -1562,120 +1437,98 @@ def test_except_on_global_tbls(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    data = i1.sql("""insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);""")
+    data = i1.retriable_sql(
+        """insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);"""
+    )
     assert data["row_count"] == 5
 
-    def check_global_vs_global():
-        data = i1.sql(
-            """
-            select a from g
-            except
-            select a - 1 from g
-            """,
-            timeout=2,
+    data = i1.retriable_sql(
+        """
+        select a from g
+        except
+        select a - 1 from g
+        """,
+        timeout=2,
+    )
+    assert data["rows"] == [[5]]
+
+    data = i1.retriable_sql(
+        """
+        select a from g
+        except
+        select c from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+
+    data = i1.retriable_sql(
+        """
+        select b from g
+        except
+        select d from s
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[1]]
+
+    data = i1.retriable_sql(
+        """
+        select b from g
+        where b = 1 or b = 2
+        except
+        select sum(d) from s
+        where d = 3
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+
+    data = i1.retriable_sql(
+        """
+        select sum(d) from s
+        where d = 3 or d = 2
+        except
+        select b from g
+        where b = 1 or b = 2
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[5]]
+
+    data = i1.retriable_sql(
+        """
+        select c from s
+        except
+        select a from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[6], [7]]
+
+    data = i1.retriable_sql(
+        """
+        select d from s
+        except
+        select b from g
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[6]]
+
+    data = i1.retriable_sql(
+        """
+        select a + 5 from g
+        where a = 1 or a = 2
+        except select * from (
+        select d from s
+        except
+        select b from g
         )
-        assert data["rows"] == [[5]]
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_global)
-
-    def check_global_vs_segment():
-        data = i1.sql(
-            """
-            select a from g
-            except
-            select c from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_segment)
-
-    def check_global_vs_any():
-        data = i1.sql(
-            """
-            select b from g
-            except
-            select d from s
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[1]]
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_any)
-
-    def check_global_vs_single():
-        data = i1.sql(
-            """
-            select b from g
-            where b = 1 or b = 2
-            except
-            select sum(d) from s
-            where d = 3
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
-
-    Retriable(rps=5, timeout=6).call(check_global_vs_single)
-
-    def check_single_vs_global():
-        data = i1.sql(
-            """
-            select sum(d) from s
-            where d = 3 or d = 2
-            except
-            select b from g
-            where b = 1 or b = 2
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[5]]
-
-    Retriable(rps=5, timeout=6).call(check_single_vs_global)
-
-    def check_segment_vs_global():
-        data = i1.sql(
-            """
-            select c from s
-            except
-            select a from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[6], [7]]
-
-    Retriable(rps=5, timeout=6).call(check_segment_vs_global)
-
-    def check_any_vs_global():
-        data = i1.sql(
-            """
-            select d from s
-            except
-            select b from g
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[6]]
-
-    Retriable(rps=5, timeout=6).call(check_any_vs_global)
-
-    def check_multiple_excepts():
-        data = i1.sql(
-            """
-            select a + 5 from g
-            where a = 1 or a = 2
-            except select * from (
-            select d from s
-            except
-            select b from g
-            )
-            """,
-            timeout=2,
-        )
-        assert sorted(data["rows"], key=lambda x: x[0]) == [[7]]
-
-    Retriable(rps=5, timeout=6).call(check_multiple_excepts)
+        """,
+        timeout=2,
+    )
+    assert sorted(data["rows"], key=lambda x: x[0]) == [[7]]
 
 
 def test_hash(cluster: Cluster):
@@ -2528,7 +2381,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     ddl = i1.sql(
         f"""
         create table {table_name} ("a" int not null, primary key ("a"))
-        distributed by ("a")
+        distributed globally
     """
     )
     assert ddl["row_count"] == 1
@@ -2536,7 +2389,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     ddl = i1.sql(
         f"""
         create table {another_table_name} ("a" int not null, primary key ("a"))
-        distributed by ("a")
+        distributed globally
     """
     )
     assert ddl["row_count"] == 1
@@ -2856,7 +2709,7 @@ def test_distributed_sql_via_set_language(cluster: Cluster):
         {prelude}
         return console.eval('create table t \
             (a integer not null, b int not null, primary key (a)) \
-                using memtx distributed by (b) option (timeout = 3);')
+                using memtx distributed globally option (timeout = 3);')
     """
     )
 
@@ -3082,7 +2935,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
         create table t (a int not null, b int, primary key (a))
         using memtx
-        distributed by (b)
+        distributed globally
         """
     )
     assert data["row_count"] == 1
@@ -3354,11 +3207,11 @@ def test_call_procedure(cluster: Cluster):
         """
     )
     assert data["row_count"] == 1
-    data = i2.sql(""" call "proc1"(1, 1) """)
+    data = i2.retriable_sql(""" call "proc1"(1, 1) """)
     assert data["row_count"] == 1
-    data = i2.sql(""" call "proc1"(1, 1) """)
+    data = i2.retriable_sql(""" call "proc1"(1, 1) """)
     assert data["row_count"] == 0
-    data = i2.sql(""" call "proc1"(2, 2) """)
+    data = i2.retriable_sql(""" call "proc1"(2, 2) """)
     assert data["row_count"] == 1
 
     data = i1.sql(
@@ -3385,9 +3238,9 @@ def test_call_procedure(cluster: Cluster):
         i2.sql(""" call "proc2"(1) """)
 
     # Check parameters are passed correctly.
-    data = i1.sql(""" call "proc2"(?) """, 4)
+    data = i1.retriable_sql(""" call "proc2"(?) """, 4)
     assert data["row_count"] == 1
-    data = i1.sql(
+    data = i1.retriable_sql(
         """ call "proc2"($1) option(sql_vdbe_max_steps = $1, vtable_max_rows = $1)""",
         5,
     )
@@ -3406,7 +3259,12 @@ def test_call_procedure(cluster: Cluster):
     with pytest.raises(
         TarantoolError, match="Execute access to function 'proc1' is denied"
     ):
-        i1.sql(""" call "proc1"(3, 3) """, user=username, password=alice_pwd)
+        i1.retriable_sql(
+            """ call "proc1"(3, 3) """,
+            user=username,
+            password=alice_pwd,
+            fatal=TarantoolError,
+        )
 
 
 def test_rename_procedure(cluster: Cluster):
