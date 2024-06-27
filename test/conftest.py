@@ -223,6 +223,10 @@ def normalize_net_box_result(func):
                 strerror = os.strerror(exc.errno)
                 raise OSError(exc.errno, strerror) from exc
 
+            source_location = None
+            if exc.extra_info:
+                source_location = f"{exc.extra_info.file}:{exc.extra_info.line}"
+
             match exc.args:
                 case (int(code), arg):
                     # Error handling in Tarantool connector is awful.
@@ -231,9 +235,11 @@ def normalize_net_box_result(func):
                     error_info = tnt_strerror(code)
                     match error_info:
                         case (str(error_type), _):
-                            raise TarantoolError(error_type, arg) from exc
+                            raise TarantoolError(
+                                error_type, arg, source_location
+                            ) from exc
                         case "UNDEFINED":
-                            raise TarantoolError(code, arg) from exc
+                            raise TarantoolError(code, arg, source_location) from exc
                         case _:
                             raise RuntimeError("unreachable")
                 case _:

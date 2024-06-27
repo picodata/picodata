@@ -23,7 +23,7 @@ def test_cas_errors(instance: Instance):
             index=index,
             term=term + 1,
         )
-    assert e1.value.args == (
+    assert e1.value.args[:2] == (
         ER_OTHER,
         "operation request from different term 3, current term is 2",
     )
@@ -37,7 +37,7 @@ def test_cas_errors(instance: Instance):
             index=index,
             term=term - 1,
         )
-    assert e2.value.args == (
+    assert e2.value.args[:2] == (
         ER_OTHER,
         "operation request from different term 1, current term is 2",
     )
@@ -51,7 +51,7 @@ def test_cas_errors(instance: Instance):
             index=1,
             term=2,  # actually 1
         )
-    assert e3.value.args == (
+    assert e3.value.args[:2] == (
         ER_OTHER,
         "compare-and-swap: EntryTermMismatch: entry at index 1 has term 1, request implies term 2",
     )
@@ -64,7 +64,7 @@ def test_cas_errors(instance: Instance):
             ["foo", "420"],
             index=2048,
         )
-    assert e4.value.args == (
+    assert e4.value.args[:2] == (
         ER_OTHER,
         "compare-and-swap: NoSuchIndex: "
         + f"raft entry at index 2048 does not exist yet, the last is {index}",
@@ -76,7 +76,7 @@ def test_cas_errors(instance: Instance):
     # Wrong index (compacted)
     with pytest.raises(TarantoolError) as e5:
         instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
-    assert e5.value.args == (
+    assert e5.value.args[:2] == (
         ER_OTHER,
         "compare-and-swap: Compacted: "
         + f"raft index {index-1} is compacted at {index}",
@@ -91,7 +91,7 @@ def test_cas_errors(instance: Instance):
                 [0],
                 ranges=[CasRange(eq=0)],
             )
-        assert e5.value.args == (
+        assert e5.value.args[:2] == (
             ER_OTHER,
             f"compare-and-swap: SpaceNotAllowed: space {space} is prohibited for use "
             + "in a predicate",
@@ -104,7 +104,7 @@ def test_cas_errors(instance: Instance):
             "_pico_property",
             [1, 2, 3],
         )
-    assert error.value.args == (
+    assert error.value.args[:2] == (
         "ER_FIELD_TYPE",
         "Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
     )
@@ -116,7 +116,7 @@ def test_cas_errors(instance: Instance):
             "_pico_property",
             ["next_schema_version"],
         )
-    assert error.value.args == (
+    assert error.value.args[:2] == (
         "ER_PROC_LUA",
         "property next_schema_version cannot be deleted",  # noqa: E501
     )
@@ -128,7 +128,7 @@ def test_cas_errors(instance: Instance):
             "_pico_property",
             ["global_schema_version", "this is not a version number"],
         )
-    assert error.value.args == (
+    assert error.value.args[:2] == (
         "ER_PROC_LUA",
         """incorrect type of property global_schema_version: invalid type: string "this is not a version number", expected u64""",  # noqa: E501
     )
@@ -140,7 +140,7 @@ def test_cas_errors(instance: Instance):
             "_pico_property",
             ["password_min_length", 13, 37],
         )
-    assert error.value.args == (
+    assert error.value.args[:2] == (
         "ER_PROC_LUA",
         "too many fields: got 3, expected 2",
     )
@@ -152,7 +152,7 @@ def test_cas_errors(instance: Instance):
             "_pico_property",
             ["auto_offline_timeout"],
         )
-    assert error.value.args == (
+    assert error.value.args[:2] == (
         "ER_INDEX_FIELD_COUNT",
         "Tuple field 2 (value) required by space format is missing",  # noqa: E501
     )
@@ -168,7 +168,7 @@ def test_cas_errors(instance: Instance):
             "_pico_property",
             ["X", "X" * size],
         )
-    assert error.value.args == (
+    assert error.value.args[:2] == (
         "ER_SLAB_ALLOC_MAX",
         "tuple size 1048593 exceeds the allowed limit",  # noqa: E501
     )
@@ -194,7 +194,7 @@ def test_cas_predicate(instance: Instance):
             index=read_index,
             ranges=[CasRange(eq="fruit")],
         )
-    assert e5.value.args == (
+    assert e5.value.args[:2] == (
         ER_OTHER,
         "compare-and-swap: ConflictFound: "
         + f"found a conflicting entry at index {read_index+1}",
@@ -331,7 +331,7 @@ def test_cas_batch(cluster: Cluster):
             index=ret1,
             ranges=[CasRange(table="some_space", eq="car")],
         )
-    assert err.value.args == (
+    assert err.value.args[:2] == (
         "compare-and-swap: ConflictFound: "
         + f"found a conflicting entry at index {ret1+1}",
     )
@@ -383,7 +383,7 @@ def test_cas_lua_api(cluster: Cluster):
             index=read_index,
             ranges=[CasRange(eq="fruit")],
         )
-    assert e5.value.args == (
+    assert e5.value.args[:2] == (
         "compare-and-swap: ConflictFound: "
         + f"found a conflicting entry at index {read_index+1}",
     )

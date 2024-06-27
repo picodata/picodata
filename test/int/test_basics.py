@@ -26,19 +26,19 @@ def test_call_normalization(instance: Instance):
 
     with pytest.raises(ReturnError) as e1:
         instance.call("dostring", "return nil, 'some error'")
-    assert e1.value.args == ("some error",)
+    assert e1.value.args[:2] == ("some error",)
 
     with pytest.raises(MalformedAPI) as e2:
         instance.call("dostring", "return 'x', 1")
-    assert e2.value.args == ("x", 1)
+    assert e2.value.args[:2] == ("x", 1)
 
     with pytest.raises(TarantoolError) as e3:
         instance.call("error", "lua exception", 0)
-    assert e3.value.args == ("ER_PROC_LUA", "lua exception")
+    assert e3.value.args[:2] == ("ER_PROC_LUA", "lua exception")
 
     with pytest.raises(TarantoolError) as e4:
         instance.call("void")
-    assert e4.value.args == ("ER_NO_SUCH_PROC", "Procedure 'void' is not defined")
+    assert e4.value.args[:2] == ("ER_NO_SUCH_PROC", "Procedure 'void' is not defined")
 
     # Python connector for tarantool misinterprets timeout errors.
     # It should be TimeoutError instead of ECONNRESET
@@ -65,19 +65,19 @@ def test_eval_normalization(instance: Instance):
 
     with pytest.raises(ReturnError) as e1:
         instance.eval("return nil, 'some error'")
-    assert e1.value.args == ("some error",)
+    assert e1.value.args[:2] == ("some error",)
 
     with pytest.raises(MalformedAPI) as e2:
         instance.eval("return 'x', 2")
-    assert e2.value.args == ("x", 2)
+    assert e2.value.args[:2] == ("x", 2)
 
     with pytest.raises(TarantoolError) as e3:
         instance.eval("error('lua exception', 0)")
-    assert e3.value.args == ("ER_PROC_LUA", "lua exception")
+    assert e3.value.args[:2] == ("ER_PROC_LUA", "lua exception")
 
     with pytest.raises(TarantoolError) as e4:
         instance.eval("return box.schema.space.drop(0, 'void')")
-    assert e4.value.args == ("ER_NO_SUCH_SPACE", "Space 'void' does not exist")
+    assert e4.value.args[:2] == ("ER_NO_SUCH_SPACE", "Space 'void' does not exist")
 
 
 def test_process_management(instance: Instance):
@@ -294,7 +294,7 @@ def test_pico_instance_info(instance: Instance):
 
     with pytest.raises(ReturnError) as e:
         instance_info("i2")
-    assert e.value.args == ('instance with id "i2" not found',)
+    assert e.value.args[:2] == ('instance with id "i2" not found',)
 
     assert instance_info() == myself
 

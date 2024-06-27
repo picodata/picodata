@@ -203,7 +203,7 @@ def test_cluster_id_mismatch(instance: Instance):
             instance_id="whatever",
             timeout_seconds=1,
         )
-    assert e.value.args == (
+    assert e.value.args[:2] == (
         ER_OTHER,
         f'cluster_id mismatch: cluster_id of the instance = "wrong-cluster-id", cluster_id of the cluster = "{instance.cluster_id}"',  # noqa: E501
     )
