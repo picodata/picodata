@@ -216,6 +216,9 @@ pub fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
         &SbroadType::Double => Ok(Type::FLOAT8),
         &SbroadType::Decimal => Ok(Type::NUMERIC),
         &SbroadType::Uuid => Ok(Type::UUID),
+        // Currently, we cannot infer the type of array values, so we convert them into text
+        // and send the resulting array of text values, i. e. TEXT_ARRAY.
+        &SbroadType::Array => Ok(Type::TEXT_ARRAY),
         &SbroadType::Any => Ok(Type::ANY),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{}\'",

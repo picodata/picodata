@@ -24,8 +24,8 @@ once_cell = "1.17.1"
 openssl = "0.10.64"
 opentelemetry = "0.17"
 pgwire = "0.23.0"
-postgres-types = { version = "0.2.6", features = ["with-uuid-0_8"]}
 raft = "0.7.0"
+postgres-types = { version = "0.2.6", features = ["with-uuid-0_8", "array-impls"]}
 rand = "0.8.5"
 rmp = "*"
 rmp-serde = "1.0"

@@ -235,3 +235,51 @@ def test_unsigned(postgres: Postgres):
         match="encoding error: out of range integral type conversion attempted",
     ):
         cur = conn.execute(""" SELECT * FROM T; """, binary=True)
+
+
+def test_arrays(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
+
+    postgres.instance.sudo_sql(f'GRANT READ ON TABLE "_pico_user" TO "{user}"')
+
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    # test text encoding
+    cur = conn.execute(
+        """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"id\" = 0; """, binary=False
+    )
+    assert cur.fetchall() == [(["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="],)]
+
+    # test binary encoding
+    cur = conn.execute(
+        """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"id\" = 0; """, binary=True
+    )
+    assert cur.fetchall() == [(["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="],)]
+
+    # text array parameters should throw an error
+    with pytest.raises(
+        psycopg.errors.FeatureNotSupported,
+        match="feature is not supported: type _int2",  # _int2 -> array of integers
+    ):
+        cur = conn.execute(
+            """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"auth\" = %t; """, ([1, 2],)
+        )
+
+    # binary array parameters should throw an error
+    with pytest.raises(
+        psycopg.errors.FeatureNotSupported,
+        match="feature is not supported: type _int2",  # _int2 -> array of integers
+    ):
+        cur = conn.execute(
+            """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"auth\" = %b; """, ([1, 2],)
+        )

@@ -50,6 +50,7 @@ pub enum PgValue {
     Boolean(bool),
     Numeric(Decimal),
     Uuid(Uuid),
+    TextArray(Vec<String>),
     Null,
 }
 
@@ -83,10 +84,24 @@ impl From<Decimal> for PgValue {
     }
 }
 
+impl From<Vec<String>> for PgValue {
+    fn from(value: Vec<String>) -> Self {
+        PgValue::TextArray(value)
+    }
+}
+
 impl From<Uuid> for PgValue {
     fn from(value: Uuid) -> Self {
         PgValue::Uuid(value)
     }
+}
+
+fn rmpv_to_string(value: &rmpv::Value) -> String {
+    if let Some(s) = value.as_str() {
+        // we don't use `to_string` because it wraps string values in quotes
+        return s.into();
+    }
+    value.to_string()
 }
 
 impl TryFrom<rmpv::Value> for PgValue {
@@ -110,6 +125,10 @@ impl TryFrom<rmpv::Value> for PgValue {
                     )))?
                 }
             })),
+            rmpv::Value::Array(values) => {
+                let string_values = values.iter().map(rmpv_to_string).collect();
+                Ok(PgValue::TextArray(string_values))
+            }
             rmpv::Value::String(v) => {
                 let Some(s) = v.as_str() else {
                     Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
@@ -139,6 +158,10 @@ impl From<PgValue> for SbroadValue {
             PgValue::Boolean(val) => SbroadValue::from(val),
             PgValue::Numeric(decimal) => SbroadValue::from(decimal),
             PgValue::Uuid(uuid) => SbroadValue::from(uuid),
+            PgValue::TextArray(values) => {
+                let values: Vec<_> = values.into_iter().map(SbroadValue::from).collect();
+                SbroadValue::from(values)
+            }
             PgValue::Null => SbroadValue::Null,
         }
     }
@@ -268,6 +291,7 @@ impl PgValue {
             PgValue::Integer(number) => number.to_sql_text(&Type::INT8, buf),
             PgValue::Float(float) => float.to_sql_text(&Type::FLOAT8, buf),
             PgValue::Text(string) => string.to_sql_text(&Type::TEXT, buf),
+            PgValue::TextArray(values) => values.to_sql_text(&Type::TEXT_ARRAY, buf),
             PgValue::Boolean(val) => Ok(write_bool_as_text(*val, buf)),
             PgValue::Numeric(decimal) => Ok(write_decimal_as_text(decimal, buf)),
             PgValue::Uuid(uuid) => Ok(write_uuid_as_text(uuid, buf)),
@@ -281,6 +305,7 @@ impl PgValue {
             PgValue::Integer(number) => number.to_sql(&Type::INT8, buf),
             PgValue::Float(float) => float.to_sql(&Type::FLOAT8, buf),
             PgValue::Text(string) => string.to_sql(&Type::TEXT, buf),
+            PgValue::TextArray(values) => values.to_sql(&Type::TEXT_ARRAY, buf),
             PgValue::Numeric(decimal) => write_decimal_as_bin(decimal, buf),
             PgValue::Uuid(uuid) => write_uuid_as_bin(uuid, buf),
             PgValue::Null => Ok(IsNull::Yes),
@@ -318,11 +343,7 @@ impl PgValue {
             Type::BOOL => PgValue::Boolean(decode_text_as_bool(&s.to_lowercase())?),
             Type::NUMERIC => PgValue::Numeric(decode_text_as_decimal(&s)?),
             Type::UUID => PgValue::Uuid(Uuid::from_str(&s).map_err(DecodingError::new)?),
-            _ => {
-                return Err(PgError::FeatureNotSupported(format!(
-                    "unsupported type {ty}"
-                )))
-            }
+            _ => return Err(PgError::FeatureNotSupported(format!("type {ty}"))),
         })
     }
 
@@ -345,11 +366,7 @@ impl PgValue {
             Type::BOOL => PgValue::Boolean(do_decode_binary(&ty, bytes)?),
             Type::NUMERIC => PgValue::Numeric(decode_decimal_binary(bytes)?),
             Type::UUID => PgValue::Uuid(decode_uuid_binary(bytes)?),
-            _ => {
-                return Err(PgError::FeatureNotSupported(format!(
-                    "unsupported type {ty}"
-                )))
-            }
+            _ => return Err(PgError::FeatureNotSupported(format!("type {ty}"))),
         })
     }
 
