@@ -511,7 +511,20 @@ impl Service for ServiceWithRpcTests {
                     // TODO: impl From<*> for BoxError
                     .map_err(|e| BoxError::new(TarantoolErrorCode::IllegalParams, e.to_string()))?;
 
-                let mut builder = rpc::RequestBuilder::new();
+                let mut target = rpc::RequestTarget::Any;
+                if let Some(instance_id) = &request.instance_id {
+                    target = rpc::RequestTarget::InstanceId(instance_id);
+                } else if let Some(replicaset_id) = &request.replicaset_id {
+                    target = rpc::RequestTarget::ReplicasetId(
+                        replicaset_id,
+                        request.to_master.unwrap_or(false),
+                    );
+                } else if let Some(bucket_id) = request.bucket_id {
+                    target =
+                        rpc::RequestTarget::BucketId(bucket_id, request.to_master.unwrap_or(false));
+                }
+
+                let mut builder = rpc::RequestBuilder::new(target);
                 if let Some((plugin, service, version)) = &request.service_info {
                     builder = builder
                         .plugin_service(plugin, service)
@@ -525,15 +538,6 @@ impl Service for ServiceWithRpcTests {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(t) = context.get("timeout")? {
                     timeout = Duration::from_secs_f64(t.float().unwrap());
-                }
-
-                if let Some(instance_id) = &request.instance_id {
-                    builder = builder.instance_id(instance_id);
-                } else if let Some(replicaset_id) = &request.replicaset_id {
-                    builder =
-                        builder.replicaset_id(replicaset_id, request.to_master.unwrap_or(false));
-                } else if let Some(bucket_id) = request.bucket_id {
-                    builder = builder.bucket_id(bucket_id, request.to_master.unwrap_or(false));
                 }
 
                 let output = builder
