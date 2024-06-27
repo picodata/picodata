@@ -18,6 +18,14 @@ use tarantool::uuid::Uuid;
 // Context
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Context stores request metadata. This includes some builin fields, for example:
+/// - [`Context::request_id`],
+/// - [`Context::path`],
+/// - [`Context::plugin_name`],
+/// - [`Context::plugin_version`],
+/// - [`Context::service_name`],
+///
+/// But also supports arbitrary user defined named fields.
 pub struct Context<'a> {
     request_id: Uuid,
     path: &'a str,

@@ -1,8 +1,9 @@
+use super::Request;
+use super::Response;
 use crate::internal::ffi;
 use crate::plugin::interface::PicoContext;
 use crate::transport::context::Context;
 use crate::transport::context::FfiSafeContext;
-use crate::util::copy_to_region;
 use crate::util::FfiSafeBytes;
 use crate::util::FfiSafeStr;
 use std::mem::MaybeUninit;
@@ -14,6 +15,7 @@ use tarantool::error::TarantoolErrorCode;
 // RouteBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
+/// A helper struct for declaring RPC endpoints.
 #[derive(Debug, Clone)]
 pub struct RouteBuilder<'a> {
     plugin: &'a str,
@@ -23,6 +25,9 @@ pub struct RouteBuilder<'a> {
 }
 
 impl<'a> RouteBuilder<'a> {
+    /// A route is required to contain information about the service from which
+    /// it is being registered. Currently it's only possible to automatically
+    /// extract this information from [`PicoContext`].
     #[inline(always)]
     pub fn from_pico_context(context: &'a PicoContext) -> Self {
         Self {
@@ -33,8 +38,15 @@ impl<'a> RouteBuilder<'a> {
         }
     }
 
+    /// A route is required to contain information about the service from which
+    /// it is being registered. Use this method to specify this info explicitly.
+    /// Consider using [`RouteBuilder::from_pico_context`] instead.
+    ///
+    /// # Safety
+    /// The caller must make sure that the info is the actual service info of
+    /// the currently running service.
     #[inline(always)]
-    pub fn from_service_info(plugin: &'a str, service: &'a str, version: &'a str) -> Self {
+    pub unsafe fn from_service_info(plugin: &'a str, service: &'a str, version: &'a str) -> Self {
         Self {
             plugin,
             service,
@@ -43,6 +55,7 @@ impl<'a> RouteBuilder<'a> {
         }
     }
 
+    /// Specify a route path. The path must start with a `'/'` character.
     #[inline]
     pub fn path(mut self, path: &'a str) -> Self {
         if let Some(old) = self.path.take() {
@@ -53,9 +66,12 @@ impl<'a> RouteBuilder<'a> {
         self
     }
 
-    pub fn register_raw<F>(self, f: F) -> Result<(), BoxError>
+    /// Register the RPC endpoint with the currently chosen parameters and the
+    /// provided handler.
+    #[track_caller]
+    pub fn register<F>(self, f: F) -> Result<(), BoxError>
     where
-        F: FnMut(&[u8], &mut Context) -> Result<&'static [u8], BoxError> + 'static,
+        F: FnMut(Request<'_>, &mut Context) -> Result<Response, BoxError> + 'static,
     {
         let Some(path) = self.path else {
             #[rustfmt::skip]
@@ -98,7 +114,7 @@ pub struct FfiRpcRouteIdentifier {
 #[inline]
 fn register_rpc_handler<F>(identifier: &FfiRpcRouteIdentifier, f: F) -> Result<(), BoxError>
 where
-    F: FnMut(&[u8], &mut Context) -> Result<&'static [u8], BoxError> + 'static,
+    F: FnMut(Request<'_>, &mut Context) -> Result<Response, BoxError> + 'static,
 {
     let handler = FfiRpcHandler::new(identifier, f);
 
@@ -157,7 +173,7 @@ impl Drop for FfiRpcHandler {
 impl FfiRpcHandler {
     fn new<F>(identifier: &FfiRpcRouteIdentifier, f: F) -> Self
     where
-        F: FnMut(&[u8], &mut Context) -> Result<&'static [u8], BoxError> + 'static,
+        F: FnMut(Request<'_>, &mut Context) -> Result<Response, BoxError> + 'static,
     {
         let closure = Box::new(f);
         let closure_pointer: *mut F = Box::into_raw(closure);
@@ -226,7 +242,7 @@ impl FfiRpcHandler {
         output: *mut FfiSafeBytes,
     ) -> std::ffi::c_int
     where
-        F: FnMut(&[u8], &mut Context) -> Result<&'static [u8], BoxError> + 'static,
+        F: FnMut(Request<'_>, &mut Context) -> Result<Response, BoxError> + 'static,
     {
         // This is safe. To verify see `register_rpc_handler` above.
         let closure_pointer: *mut F = unsafe { (*handler).closure_pointer.cast::<F>() };
@@ -235,9 +251,10 @@ impl FfiRpcHandler {
         let context = unsafe { &*context };
         let mut context = Context::new(context);
 
+        let request = Request::from_bytes(input);
         let result = (|| {
-            let data = closure(input, &mut context)?;
-            copy_to_region(&data)
+            let response = closure(request, &mut context)?;
+            response.to_region_slice()
         })();
 
         match result {

@@ -4,7 +4,6 @@ use picoplugin::plugin::prelude::*;
 use picoplugin::sql::types::SqlValue;
 use picoplugin::system::tarantool::decimal::Decimal;
 use picoplugin::system::tarantool::error::BoxError;
-use picoplugin::system::tarantool::error::TarantoolErrorCode;
 use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
 use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
 use picoplugin::system::tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
@@ -13,8 +12,6 @@ use picoplugin::system::tarantool::util::DisplayAsHexBytes;
 use picoplugin::system::tarantool::{fiber, index, tlua};
 use picoplugin::transport::context::Context;
 use picoplugin::transport::rpc;
-use picoplugin::util::copy_to_region;
-use picoplugin::util::RegionBuffer;
 use picoplugin::{internal, system};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
@@ -388,24 +385,30 @@ impl Service for Service3 {
 ////////////////////////////////////////////////////////////////////////////////
 struct ServiceWithRpcTests;
 
-fn ping(input: &[u8], context: &mut Context) -> Result<&'static [u8], BoxError> {
+fn ping(input: rpc::Request, context: &mut Context) -> Result<rpc::Response, BoxError> {
+    let raw_input = input.as_bytes();
     tarantool::say_info!(
         "got rpc request {} {}",
         context.path(),
-        DisplayAsHexBytes(input)
+        DisplayAsHexBytes(raw_input)
     );
 
     let info = internal::instance_info().unwrap();
     let instance_id = info.instance_id();
 
-    let mut buffer = RegionBuffer::new();
-    rmp_serde::encode::write(
-        &mut buffer,
-        &("pong", instance_id, serde_bytes::Bytes::new(input)),
-    )
-    .unwrap();
-    let (data, _) = buffer.into_raw_parts();
-    Ok(data)
+    let response = PingResponse {
+        pong: "pong".into(),
+        instance_id: instance_id.into(),
+        raw_input: serde_bytes::ByteBuf::from(raw_input),
+    };
+    rpc::Response::encode_rmp_unnamed(&response)
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PingResponse {
+    pong: String,
+    instance_id: String,
+    raw_input: serde_bytes::ByteBuf,
 }
 
 impl Service for ServiceWithRpcTests {
@@ -414,12 +417,12 @@ impl Service for ServiceWithRpcTests {
     fn on_start(&mut self, context: &PicoContext, _: ()) -> CallbackResult<()> {
         rpc::RouteBuilder::from(context)
             .path("/ping")
-            .register_raw(ping)
+            .register(ping)
             .unwrap();
 
         rpc::RouteBuilder::from(context)
             .path("/echo-context")
-            .register_raw(|_, context| {
+            .register(|_, context| {
                 let mut fields = context.get_named_fields()?.clone();
                 fields.insert("request_id".into(), context.request_id().to_string().into());
                 fields.insert("path".into(), context.path().into());
@@ -427,27 +430,24 @@ impl Service for ServiceWithRpcTests {
                 fields.insert("service_name".into(), context.service_name().into());
                 fields.insert("plugin_version".into(), context.plugin_version().into());
 
-                let mut buffer = RegionBuffer::new();
-                rmp_serde::encode::write(&mut buffer, &fields).unwrap();
-                let (data, _) = buffer.into_raw_parts();
-                Ok(data)
+                rpc::Response::encode_rmp(&fields)
             })
             .unwrap();
 
         rpc::RouteBuilder::from(context)
             .path("/register")
-            .register_raw(|input, _| {
+            .register(|input, _| {
                 #[derive(serde::Deserialize, Debug)]
                 struct Request {
                     path: Option<String>,
                     service_info: (String, String, String),
                 }
 
-                let request: Request = rmp_serde::from_slice(input)
-                    .map_err(|e| BoxError::new(TarantoolErrorCode::IllegalParams, e.to_string()))?;
+                let request: Request = input.decode_rmp()?;
 
                 let (plugin, service, version) = &request.service_info;
-                let mut builder = rpc::RouteBuilder::from_service_info(plugin, service, version);
+                let mut builder =
+                    unsafe { rpc::RouteBuilder::from_service_info(plugin, service, version) };
                 if let Some(path) = &request.path {
                     builder = builder.path(path);
                 }
@@ -455,7 +455,7 @@ impl Service for ServiceWithRpcTests {
                 let was_dropped = Rc::new(Cell::new(false));
                 let drop_check = DropCheck(was_dropped.clone());
 
-                let res = builder.register_raw(move |input, context| {
+                let res = builder.register(move |input, context| {
                     // drop_check is owned by this closure and will be dropped with it
                     _ = &drop_check;
                     ping(input, context)
@@ -467,7 +467,7 @@ impl Service for ServiceWithRpcTests {
 
                 res?;
 
-                return Ok(b"");
+                return Ok(rpc::Response::from_static(b""));
 
                 struct DropCheck(Rc<Cell<bool>>);
                 impl Drop for DropCheck {
@@ -480,11 +480,11 @@ impl Service for ServiceWithRpcTests {
 
         rpc::RouteBuilder::from(context)
             .path("/proxy")
-            .register_raw(|input, context| {
+            .register(|input, context| {
                 tarantool::say_info!(
                     "got rpc request {} {} {context:#?}",
                     context.path(),
-                    DisplayAsHexBytes(input)
+                    DisplayAsHexBytes(input.as_bytes())
                 );
 
                 #[derive(serde::Deserialize, Debug)]
@@ -499,9 +499,7 @@ impl Service for ServiceWithRpcTests {
                     input: Vec<u8>,
                 }
 
-                let request: Request = rmp_serde::from_slice(input)
-                    // TODO: impl From<*> for BoxError
-                    .map_err(|e| BoxError::new(TarantoolErrorCode::IllegalParams, e.to_string()))?;
+                let request: Request = input.decode_rmp()?;
 
                 let mut target = rpc::RequestTarget::Any;
                 if let Some(instance_id) = &request.instance_id {
@@ -534,11 +532,13 @@ impl Service for ServiceWithRpcTests {
 
                 let output = builder
                     .path(&request.path)
-                    .raw_input(&request.input)
+                    .input(rpc::Request::from_bytes(&request.input))
                     .timeout(timeout)
                     .send()?;
 
-                copy_to_region(&output)
+                tarantool::say_info!("{output:?}");
+
+                Ok(output)
             })
             .unwrap();
 

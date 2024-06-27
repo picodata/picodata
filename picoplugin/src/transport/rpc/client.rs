@@ -1,10 +1,10 @@
-use crate::error_code::ErrorCode;
+use super::Request;
+use super::Response;
 use crate::internal::ffi;
 use crate::plugin::interface::PicoContext;
 use crate::util::FfiSafeBytes;
 use crate::util::FfiSafeStr;
 use crate::util::RegionGuard;
-use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::time::Duration;
@@ -12,8 +12,6 @@ use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
 use tarantool::time::Instant;
-use tarantool::unwrap_ok_or;
-use tarantool::util::DisplayAsHexBytes;
 
 ////////////////////////////////////////////////////////////////////////////////
 // RequestBuilder
@@ -25,7 +23,7 @@ pub struct RequestBuilder<'a> {
     plugin_service: Option<(&'a str, &'a str)>,
     version: Option<&'a str>,
     path: Option<&'a str>,
-    input: Option<Cow<'a, [u8]>>,
+    input: Option<Request<'a>>,
     timeout: Option<Duration>,
 }
 
@@ -58,6 +56,8 @@ impl<'a> RequestBuilder<'a> {
         }
     }
 
+    /// Use service info from `context`.
+    /// The request will be sent to an endpoint registered by the specified service.
     #[inline]
     #[track_caller]
     pub fn pico_context(self, context: &'a PicoContext) -> Self {
@@ -65,6 +65,7 @@ impl<'a> RequestBuilder<'a> {
             .plugin_version(context.plugin_version())
     }
 
+    /// The request will be sent to an endpoint registered by the specified service.
     #[inline]
     pub fn plugin_service(mut self, plugin: &'a str, service: &'a str) -> Self {
         let new = (plugin, service);
@@ -76,6 +77,7 @@ impl<'a> RequestBuilder<'a> {
         self
     }
 
+    /// The request will be sent to an endpoint registered by the specified service.
     #[inline]
     pub fn plugin_version(mut self, version: &'a str) -> Self {
         if let Some(old) = self.version.take() {
@@ -86,6 +88,7 @@ impl<'a> RequestBuilder<'a> {
         self
     }
 
+    /// The request will be sent to the endpoint at the given `path`.
     #[inline]
     pub fn path(mut self, path: &'a str) -> Self {
         if let Some(old) = self.path.take() {
@@ -96,35 +99,18 @@ impl<'a> RequestBuilder<'a> {
         self
     }
 
+    /// Specify request arguments.
     #[inline]
-    pub fn raw_input(mut self, input: &'a [u8]) -> Self {
+    pub fn input(mut self, input: Request<'a>) -> Self {
         if let Some(old) = self.input.take() {
             #[rustfmt::skip]
-            tarantool::say_warn!("RequestBuilder input is silently changed from {} to {}", DisplayAsHexBytes(&old), DisplayAsHexBytes(input));
+            tarantool::say_warn!("RequestBuilder input is silently changed from {old:?} to {input:?}");
         }
         self.input = Some(input.into());
         self
     }
 
-    #[inline]
-    pub fn input_rmp<T>(mut self, input: &T) -> Result<Self, BoxError>
-    where
-        T: serde::Serialize + ?Sized,
-    {
-        let data = unwrap_ok_or!(rmp_serde::to_vec(input),
-            Err(e) => {
-                #[rustfmt::skip]
-                return Err(BoxError::new(ErrorCode::Other, format!("failed encoding RPC request inputs: {e}")));
-            }
-        );
-        if let Some(old) = self.input.take() {
-            #[rustfmt::skip]
-            tarantool::say_warn!("RequestBuilder input is silently changed from {} to {}", DisplayAsHexBytes(&old), DisplayAsHexBytes(&data));
-        }
-        self.input = Some(data.into());
-        Ok(self)
-    }
-
+    /// Specify request timeout.
     #[inline]
     pub fn timeout(mut self, timeout: Duration) -> Self {
         if let Some(old) = self.timeout.take() {
@@ -135,11 +121,13 @@ impl<'a> RequestBuilder<'a> {
         self
     }
 
+    /// Specify request deadline.
     #[inline(always)]
     pub fn deadline(self, deadline: Instant) -> Self {
         self.timeout(deadline.duration_since(fiber::clock()))
     }
 
+    #[track_caller]
     fn to_ffi(&self) -> Result<FfiSafeRpcRequestArguments<'a>, BoxError> {
         let Some((plugin, service)) = self.plugin_service else {
             #[rustfmt::skip]
@@ -156,7 +144,7 @@ impl<'a> RequestBuilder<'a> {
             return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "path must be specified for RPC request"));
         };
 
-        let Some(input) = self.input.as_deref() else {
+        let Some(input) = &self.input else {
             #[rustfmt::skip]
             return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "input must be specified for RPC request"));
         };
@@ -169,13 +157,18 @@ impl<'a> RequestBuilder<'a> {
             version: version.into(),
             target,
             path: path.into(),
-            input: input.into(),
+            input: input.as_bytes().into(),
             _marker: PhantomData,
         })
     }
 
+    /// Send the request with the current paramters. This will block the current
+    /// fiber until the response is received or the timeout is reached.
+    ///
+    /// Returns an error if some of the parameters are invalid.
     #[inline]
-    pub fn send(&self) -> Result<Vec<u8>, BoxError> {
+    #[track_caller]
+    pub fn send(&self) -> Result<Response, BoxError> {
         let arguments = self.to_ffi()?;
         let res = send_rpc_request(&arguments, self.timeout)?;
         Ok(res)
@@ -216,7 +209,7 @@ pub enum RequestTarget<'a> {
 fn send_rpc_request(
     arguments: &FfiSafeRpcRequestArguments,
     timeout: Option<Duration>,
-) -> Result<Vec<u8>, BoxError> {
+) -> Result<Response, BoxError> {
     let mut output = MaybeUninit::uninit();
 
     let _guard = RegionGuard::new();
@@ -234,7 +227,7 @@ fn send_rpc_request(
     }
 
     let output = unsafe { output.assume_init().as_bytes() };
-    Ok(output.into())
+    Ok(Response::new_owned(output))
 }
 
 /// **For internal use**.
