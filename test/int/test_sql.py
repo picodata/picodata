@@ -4476,3 +4476,90 @@ cluster:
             select "id" from "_pico_table"
             """
         )
+
+
+def test_metadata(instance: Instance):
+    ddl = instance.sql(
+        """
+        create table t (a int not null, primary key (a))
+        distributed by (a)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    data = instance.sql(""" select * from t """, strip_metadata=False)
+    assert data["metadata"] == [{"name": "A", "type": "integer"}]
+
+    # Previously, we returned metadata from tarantool, not from the plan.
+    # Sometimes it led to disinformation, for example (pay attention to the types):
+    #
+    # picodata> select 1 from g
+    # ---
+    # - metadata:
+    #   - {'name': 'COL_1', 'type': 'integer'}
+    #   rows: []
+    # ...
+    #
+    # picodata> explain select 1 from g
+    # ---
+    # - - projection (1::unsigned -> "COL_1")
+    #   - '    scan "G"'
+    #   - 'execution options:'
+    #   - sql_vdbe_max_steps = 45000
+    #   - vtable_max_rows = 5000
+    # ...
+    data = instance.sql(""" select 1 from t """, strip_metadata=False)
+    assert data["metadata"] == [{"name": "COL_1", "type": "unsigned"}]
+
+    data = instance.sql(""" select -2 + 1 from t """, strip_metadata=False)
+    assert data["metadata"] == [{"name": "COL_1", "type": "integer"}]
+
+    # Test that we can infer the actual type of min/max functions, which depends on the argument.
+    data = instance.sql(""" select min(a) from t """, strip_metadata=False)
+    assert data["metadata"] == [{"name": "COL_1", "type": "integer"}]
+
+    data = instance.sql(""" select min(a) + max(a) from t """, strip_metadata=False)
+    assert data["metadata"] == [{"name": "COL_1", "type": "integer"}]
+
+    # verify that we've fixed the problem from
+    # https://git.picodata.io/picodata/picodata/sbroad/-/issues/632
+    ddl = instance.sql(
+        """
+        CREATE TABLE "testing_space" ( "id" INTEGER NOT NULL, PRIMARY KEY ("id") )
+        DISTRIBUTED BY ("id")
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = instance.sql(
+        """
+        CREATE TABLE "space_simple_shard_key" ( "id" INTEGER NOT NULL, PRIMARY KEY ("id") )
+        DISTRIBUTED BY ("id")
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = instance.sql(
+        """
+        CREATE TABLE "space_simple_shard_key_hist" ( "id" INTEGER NOT NULL, PRIMARY KEY ("id") )
+        DISTRIBUTED BY ("id")
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    data = instance.sql(
+        """
+        SELECT t1."id" as "id" FROM "testing_space" as t1
+        JOIN "space_simple_shard_key" as t2
+        ON t1."id" = t2."id"
+        JOIN "space_simple_shard_key_hist" as t3
+        ON t2."id" = t3."id"
+        WHERE t1."id" = 1
+        """,
+        strip_metadata=False,
+    )
+
+    # It used to return "T1.id" column name in metadata,
+    # though it should return "id" (because of an alias).
+    assert data["metadata"] == [{"name": "id", "type": "integer"}]

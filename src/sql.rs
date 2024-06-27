@@ -23,7 +23,7 @@ use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
     build_delete_args, build_insert_args, build_update_args, decode_msgpack,
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
-    normalize_name_for_space_api,
+    normalize_name_for_space_api, replace_metadata_in_dql_result, try_get_metadata_from_plan,
 };
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
@@ -263,6 +263,8 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         let plan = query.get_exec_plan().get_ir_plan();
         check_table_privileges(plan)?;
 
+        let metadata = try_get_metadata_from_plan(query.get_exec_plan())?;
+
         if query.is_explain() {
             return Ok(*query
                 .produce_explain()?
@@ -275,7 +277,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
             return Ok(Tuple::new(&(res,))?);
         }
 
-        match query.dispatch() {
+        let tuple = match query.dispatch() {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
                     debug!(
@@ -293,7 +295,13 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 }
             }
             Err(e) => Err(Error::from(e)),
+        }?;
+
+        // replace tarantool's metadata with the metadata from the plan
+        if let Some(metadata) = metadata {
+            return Ok(replace_metadata_in_dql_result(&tuple, &metadata)?);
         }
+        Ok(tuple)
     }
 }
 
