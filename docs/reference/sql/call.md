@@ -9,9 +9,8 @@
 
 ### Литерал {: #literal }
 
-<details><summary>Диаграмма</summary><p>
-![Literal](../../images/ebnf/literal.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Literal](../../images/ebnf/literal.svg)
 
 ## Параметры {: #params }
 

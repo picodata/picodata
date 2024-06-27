@@ -9,9 +9,8 @@
 
 ### Тип {: #type }
 
-<details><summary>Диаграмма</summary><p>
-![Type](../../images/ebnf/type.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Type](../../images/ebnf/type.svg)
 
 ## Параметры {: #params }
 

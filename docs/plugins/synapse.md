@@ -95,68 +95,66 @@ Synapse разумно потребляет вычислительные и се
     - настройки подключения к каждому из шардов кластера
 - соотношения таблиц между кластерами
 
-<details><summary>Пример конфигурации с описанием полей</summary>
+??? note "Пример конфигурации с описанием полей"
+    ```yaml
+    runtime: # Настройки tokio-рантайма.
+      name: "sistokio"
+      worker_threads: 2
 
-```yaml
-runtime: # Настройки tokio-рантайма.
-  name: "sistokio"
-  worker_threads: 2
-
-bridges:
-  test: # Название моста, используется в логах.
-    oracle:
-      name: "test" # Название соединения, используется в логах.
-      host: "localhost" # Адрес сервера, может быть dns или ip.
-      port: 1521 # Порт.
-      xstream_db: "TNT" # Название БД (service name), в которой создан xstream.
-      xstream_name: "tntsync" # Название xstream.
-      xstream_username: "c##xstrmadmin" # Имя пользователя, у которого есть права на подключение к xstream и захвату изменений из него.
-      xstream_password: "xstrmadmin" # Пароль пользователя выше.
-      init_db: "TNTPDB" # База данных, из которой необходимо забирать начальные данные.
-      init_enabled: true # Включен или выключен модуль начального наполнения данных.
-      init_username: "PDBADMIN" # Имя пользователя для чтения данных из базы.
-      init_password: "tntPswd" # Пароль пользователя выше.
-      connect_tries: 2 # Сколько попыток подключения делать перед тем, как инициализация плагина будет признана неуспешной.
-
-    postgres:
-      name: "test" # Название соединения, используется в логах.
-      shards: # Если PostgreSQL не шардирован, укажите 1 шард ниже. Для успешной инициализации плагина необходимо подключение ко всем шардам.
-        - host: "localhost" # Адрес шарда.
-          port: 5431 # Port шарда.
-          user: "postgres" # Имя пользователя для записи данных в шард.
-          password: "tntPswd" # Пароль пользователя выше.
-          db: "postgres" # Название БД, в которую пишутся данные.
-          pool_size: 2 # Размер пул потоков.
+    bridges:
+      test: # Название моста, используется в логах.
+        oracle:
+          name: "test" # Название соединения, используется в логах.
+          host: "localhost" # Адрес сервера, может быть dns или ip.
+          port: 1521 # Порт.
+          xstream_db: "TNT" # Название БД (service name), в которой создан xstream.
+          xstream_name: "tntsync" # Название xstream.
+          xstream_username: "c##xstrmadmin" # Имя пользователя, у которого есть права на подключение к xstream и захвату изменений из него.
+          xstream_password: "xstrmadmin" # Пароль пользователя выше.
+          init_db: "TNTPDB" # База данных, из которой необходимо забирать начальные данные.
+          init_enabled: true # Включен или выключен модуль начального наполнения данных.
+          init_username: "PDBADMIN" # Имя пользователя для чтения данных из базы.
+          init_password: "tntPswd" # Пароль пользователя выше.
           connect_tries: 2 # Сколько попыток подключения делать перед тем, как инициализация плагина будет признана неуспешной.
 
-        - host: "localhost"
-          port: 5433
-          user: "postgres"
-          password: "tntPswd"
-          db: "postgres"
-          pool_size: 2
-          connect_tries: 2
+        postgres:
+          name: "test" # Название соединения, используется в логах.
+          shards: # Если PostgreSQL не шардирован, укажите 1 шард ниже. Для успешной инициализации плагина необходимо подключение ко всем шардам.
+            - host: "localhost" # Адрес шарда.
+              port: 5431 # Port шарда.
+              user: "postgres" # Имя пользователя для записи данных в шард.
+              password: "tntPswd" # Пароль пользователя выше.
+              db: "postgres" # Название БД, в которую пишутся данные.
+              pool_size: 2 # Размер пул потоков.
+              connect_tries: 2 # Сколько попыток подключения делать перед тем, как инициализация плагина будет признана неуспешной.
 
-    tables: # Настройка маппинга таблиц и колонок. Изменения в данных таблиц, не описанных ниже, будут проигнорированы.
-      pdbadmin.deal: # Полное имя таблицы в Oracle.
-        pk: ["id"] # Первичный ключ, может быть составным.
-        name: "public.deal" # Полное имя таблицы в PostgreSQL.
-        bindings: # Маппинг колонок в формате: <название колонки в Oracle> : [ "<название колонки в PostgreSQL>", "<тип данных в колонке>"" ].
-          id: ["id", "int"]
-          person_id: ["person_id", "int"]
-          deal_number: ["deal_number", "text"]
-          amount: ["amount", "decimal"]
+            - host: "localhost"
+              port: 5433
+              user: "postgres"
+              password: "tntPswd"
+              db: "postgres"
+              pool_size: 2
+              connect_tries: 2
 
-      pdbadmin.person:
-        pk: ["id"]
-        name: "public.person"
-        bindings:
-          id: ["id", "int"]
-          age: ["age", "int"]
-          salary: ["salary", "decimal"]
-          fullname: ["fullname", "text"]
-```
-</details>
+        tables: # Настройка маппинга таблиц и колонок. Изменения в данных таблиц, не описанных ниже, будут проигнорированы.
+          pdbadmin.deal: # Полное имя таблицы в Oracle.
+            pk: ["id"] # Первичный ключ, может быть составным.
+            name: "public.deal" # Полное имя таблицы в PostgreSQL.
+            bindings: # Маппинг колонок в формате: <название колонки в Oracle> : [ "<название колонки в PostgreSQL>", "<тип данных в колонке>"" ].
+              id: ["id", "int"]
+              person_id: ["person_id", "int"]
+              deal_number: ["deal_number", "text"]
+              amount: ["amount", "decimal"]
+
+          pdbadmin.person:
+            pk: ["id"]
+            name: "public.person"
+            bindings:
+              id: ["id", "int"]
+              age: ["age", "int"]
+              salary: ["salary", "decimal"]
+              fullname: ["fullname", "text"]
+    ```
 
 Расположение файла конфигурации задается переменной `SYNAPSE_CONFIG`. Например:
 

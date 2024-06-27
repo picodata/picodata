@@ -8,15 +8,13 @@
 
 ### Выражение {: #expression }
 
-<details><summary>Диаграмма</summary><p>
-![Expression](../../images/ebnf/expression.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Expression](../../images/ebnf/expression.svg)
 
 ### Литерал {: #literal }
 
-<details><summary>Диаграмма</summary><p>
-![Literal](../../images/ebnf/literal.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Literal](../../images/ebnf/literal.svg)
 
 ## Параметры {: #params }
 

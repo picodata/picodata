@@ -9,21 +9,18 @@
 
 ### Выражение {: #expression }
 
-<details><summary>Диаграмма</summary><p>
-![Expression](../../images/ebnf/expression.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Expression](../../images/ebnf/expression.svg)
 
 ### Литерал {: #literal }
 
-<details><summary>Диаграмма</summary><p>
-![Literal](../../images/ebnf/literal.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Literal](../../images/ebnf/literal.svg)
 
 ### Тип {: #type }
 
-<details><summary>Диаграмма</summary><p>
-![Type](../../images/ebnf/type.svg)
-</p></details>
+??? note "Диаграмма"
+    ![Type](../../images/ebnf/type.svg)
 
 ## Примеры {: #examples }
 
