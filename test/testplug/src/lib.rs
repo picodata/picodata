@@ -412,14 +412,12 @@ impl Service for ServiceWithRpcTests {
     type CFG = ();
 
     fn on_start(&mut self, context: &PicoContext, _: ()) -> CallbackResult<()> {
-        rpc::RouteBuilder::new()
-            .pico_context(context)
+        rpc::RouteBuilder::from(context)
             .path("/ping")
             .register_raw(ping)
             .unwrap();
 
-        rpc::RouteBuilder::new()
-            .pico_context(context)
+        rpc::RouteBuilder::from(context)
             .path("/echo-context")
             .register_raw(|_, context| {
                 let mut fields = context.get_named_fields()?.clone();
@@ -436,27 +434,22 @@ impl Service for ServiceWithRpcTests {
             })
             .unwrap();
 
-        rpc::RouteBuilder::new()
-            .pico_context(context)
+        rpc::RouteBuilder::from(context)
             .path("/register")
             .register_raw(|input, _| {
                 #[derive(serde::Deserialize, Debug)]
                 struct Request {
                     path: Option<String>,
-                    service_info: Option<(String, String, String)>,
+                    service_info: (String, String, String),
                 }
 
                 let request: Request = rmp_serde::from_slice(input)
                     .map_err(|e| BoxError::new(TarantoolErrorCode::IllegalParams, e.to_string()))?;
 
-                let mut builder = rpc::RouteBuilder::new();
+                let (plugin, service, version) = &request.service_info;
+                let mut builder = rpc::RouteBuilder::from_service_info(plugin, service, version);
                 if let Some(path) = &request.path {
                     builder = builder.path(path);
-                }
-                if let Some((plugin, service, version)) = &request.service_info {
-                    builder = builder
-                        .plugin_service(plugin, service)
-                        .plugin_version(version);
                 }
 
                 let was_dropped = Rc::new(Cell::new(false));
@@ -485,8 +478,7 @@ impl Service for ServiceWithRpcTests {
             })
             .unwrap();
 
-        rpc::RouteBuilder::new()
-            .pico_context(context)
+        rpc::RouteBuilder::from(context)
             .path("/proxy")
             .register_raw(|input, context| {
                 tarantool::say_info!(

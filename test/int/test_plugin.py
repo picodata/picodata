@@ -1440,15 +1440,8 @@ def test_plugin_rpc_sdk_register_endpoint(cluster: Cluster):
     #
     with pytest.raises(TarantoolError, match="path must be specified for RPC endpoint"):
         context = make_context()
-        input = dict()
-        i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
-
-    with pytest.raises(
-        TarantoolError, match="plugin.service must be specified for RPC endpoint"
-    ):
-        context = make_context()
         input = dict(
-            path="",
+            service_info=(plugin_name, service_name, "0.1.0"),
         )
         i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
 

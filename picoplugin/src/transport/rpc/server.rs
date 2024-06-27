@@ -14,45 +14,33 @@ use tarantool::error::TarantoolErrorCode;
 // RouteBuilder
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct RouteBuilder<'a> {
-    plugin_service: Option<(&'a str, &'a str)>,
-    version: Option<&'a str>,
+    plugin: &'a str,
+    service: &'a str,
+    version: &'a str,
     path: Option<&'a str>,
 }
 
 impl<'a> RouteBuilder<'a> {
     #[inline(always)]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn pico_context(self, context: &'a PicoContext) -> Self {
-        self.plugin_service(context.plugin_name(), context.service_name())
-            .plugin_version(context.plugin_version())
-    }
-
-    #[inline]
-    pub fn plugin_service(mut self, plugin: &'a str, service: &'a str) -> Self {
-        let new = (plugin, service);
-        if let Some(old) = self.plugin_service.take() {
-            #[rustfmt::skip]
-            tarantool::say_warn!("RouteBuilder plugin.service is silently changed from {old:?} to {new:?}");
+    pub fn from_pico_context(context: &'a PicoContext) -> Self {
+        Self {
+            plugin: context.plugin_name(),
+            service: context.service_name(),
+            version: context.plugin_version(),
+            path: None,
         }
-        self.plugin_service = Some(new);
-        self
     }
 
-    #[inline]
-    pub fn plugin_version(mut self, version: &'a str) -> Self {
-        if let Some(old) = self.version.take() {
-            #[rustfmt::skip]
-            tarantool::say_warn!("RouteBuilder service version is silently changed from {old:?} to {version:?}");
+    #[inline(always)]
+    pub fn from_service_info(plugin: &'a str, service: &'a str, version: &'a str) -> Self {
+        Self {
+            plugin,
+            service,
+            version,
+            path: None,
         }
-        self.version = Some(version);
-        self
     }
 
     #[inline]
@@ -74,23 +62,20 @@ impl<'a> RouteBuilder<'a> {
             return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "path must be specified for RPC endpoint"));
         };
 
-        let Some((plugin, service)) = self.plugin_service else {
-            #[rustfmt::skip]
-            return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "plugin.service must be specified for RPC endpoint"));
-        };
-
-        let Some(version) = self.version else {
-            #[rustfmt::skip]
-            return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "service version must be specified for RPC endpoint"));
-        };
-
         let identifier = FfiRpcRouteIdentifier {
             path: path.into(),
-            plugin: plugin.into(),
-            service: service.into(),
-            version: version.into(),
+            plugin: self.plugin.into(),
+            service: self.service.into(),
+            version: self.version.into(),
         };
         register_rpc_handler(&identifier, f)
+    }
+}
+
+impl<'a> From<&'a PicoContext> for RouteBuilder<'a> {
+    #[inline(always)]
+    fn from(context: &'a PicoContext) -> Self {
+        Self::from_pico_context(context)
     }
 }
 
