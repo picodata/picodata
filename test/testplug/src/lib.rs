@@ -420,6 +420,12 @@ impl Service for ServiceWithRpcTests {
             .register(ping)
             .unwrap();
 
+        // Note: Registerring the same endpoint twice must work, because on_start callbacks must be idempotent
+        rpc::RouteBuilder::from(context)
+            .path("/ping")
+            .register(ping)
+            .unwrap();
+
         rpc::RouteBuilder::from(context)
             .path("/echo-context")
             .register(|_, context| {

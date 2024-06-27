@@ -84,7 +84,13 @@ impl<'a> RouteBuilder<'a> {
             service: self.service.into(),
             version: self.version.into(),
         };
-        register_rpc_handler(&identifier, f)
+        if let Err(e) = register_rpc_handler(&identifier, f) {
+            // Note: recreating the error to capture the caller's source location
+            #[rustfmt::skip]
+            return Err(BoxError::new(e.error_code(), e.message()));
+        }
+
+        Ok(())
     }
 }
 
@@ -127,6 +133,13 @@ where
     return Ok(());
 }
 
+type RpcHandlerCallback = extern "C" fn(
+    handler: *const FfiRpcHandler,
+    input: FfiSafeBytes,
+    context: *const FfiSafeContext,
+    output: *mut FfiSafeBytes,
+) -> std::ffi::c_int;
+
 /// **For internal use**.
 ///
 /// Use [`RouteBuilder`] instead.
@@ -136,12 +149,7 @@ pub struct FfiRpcHandler {
     /// the fiber region allocator (see [`box_region_alloc`]).
     ///
     /// [`box_region_alloc`]: tarantool::ffi::tarantool::box_region_alloc
-    callback: extern "C" fn(
-        handler: *const FfiRpcHandler,
-        input: FfiSafeBytes,
-        context: *const FfiSafeContext,
-        output: *mut FfiSafeBytes,
-    ) -> std::ffi::c_int,
+    callback: RpcHandlerCallback,
     drop: extern "C" fn(*mut FfiRpcHandler),
 
     closure_pointer: *mut (),
@@ -285,6 +293,11 @@ impl FfiRpcHandler {
             let string_storage = Vec::from_raw_parts(pointer, capacity, capacity);
             drop(string_storage);
         }
+    }
+
+    #[inline(always)]
+    pub fn identity(&self) -> usize {
+        self.callback as *const RpcHandlerCallback as _
     }
 
     #[inline(always)]

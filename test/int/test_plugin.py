@@ -1472,7 +1472,8 @@ def test_plugin_rpc_sdk_register_endpoint(cluster: Cluster):
         i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
 
     with pytest.raises(
-        TarantoolError, match="RPC endpoint `[^`]*` is already registered"
+        TarantoolError,
+        match="RPC endpoint `[^`]*` is already registered with a different handler",
     ):
         context = make_context()
         input = dict(

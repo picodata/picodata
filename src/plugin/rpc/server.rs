@@ -162,12 +162,23 @@ pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
             let old_handler = e.get();
 
             #[rustfmt::skip]
-            let message = if old_handler.version() == handler.version() {
-                format!("RPC endpoint `{plugin}.{service}:v{version}{path}` is already registered", plugin = key.plugin, service = key.service, version = old_handler.version(), path = key.path)
+            if old_handler.version() != handler.version() {
+                let message = format!("RPC endpoint `{plugin}.{service}{path}` is already registered with a different version (old: {old_version}, new: {new_version})", plugin=key.plugin, service=key.service, path=key.path, old_version=old_handler.version(), new_version=handler.version());
+                return Err(BoxError::new(TarantoolErrorCode::FunctionExists, message));
+            } else if old_handler.identity() != handler.identity() {
+                let message = format!("RPC endpoint `{plugin}.{service}:v{version}{path}` is already registered with a different handler", plugin = key.plugin, service = key.service, version = old_handler.version(), path = key.path);
+                return Err(BoxError::new(TarantoolErrorCode::FunctionExists, message));
             } else {
-                format!("RPC endpoint `{plugin}.{service}{path}` is already registered with a different version (old: {old_version}, new: {new_version})", plugin=key.plugin, service=key.service, path=key.path, old_version=old_handler.version(), new_version=handler.version())
+                tlog!(
+                    Info,
+                    "RPC endpoint `{plugin}.{service}:v{version}{path}` is already registered",
+                    plugin = handler.plugin(),
+                    service = handler.service(),
+                    version = handler.version(),
+                    path = handler.path(),
+                );
+                return Ok(());
             };
-            return Err(BoxError::new(TarantoolErrorCode::FunctionExists, message));
         }
     };
 
