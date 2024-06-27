@@ -107,12 +107,7 @@ pub fn proc_pg_execute(
             let is_finished = result.is_portal_finished();
             let rows = result
                 .into_values_stream()
-                .map(|values| {
-                    values
-                        .into_iter()
-                        .map(|v| LuaValue::from(v.into_inner()))
-                        .collect()
-                })
+                .map(|values| values.into_iter().map(LuaValue::from).collect())
                 .collect();
             let result = ProcResult { rows, is_finished };
             rmp_serde::to_vec_named(&vec![result])

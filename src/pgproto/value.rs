@@ -2,7 +2,7 @@ use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::types::ToSqlText;
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
-use sbroad::ir::value::Value;
+use sbroad::ir::value::{LuaValue, Value as SbroadValue};
 use serde::de::DeserializeOwned;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::error::Error;
@@ -49,40 +49,51 @@ impl TryFrom<RawFormat> for Format {
     }
 }
 
-#[derive(Debug)]
-pub struct PgValue(sbroad::ir::value::Value);
+#[derive(Debug, Clone)]
+pub enum PgValue {
+    Integer(i64),
+    Float(f64),
+    // TODO: Consider using smol_str
+    Text(String),
+    Boolean(bool),
+    Numeric(Decimal),
+    Uuid(Uuid),
+    Null,
+}
 
-impl PgValue {
-    pub fn into_inner(self) -> Value {
-        self.0
+impl From<i64> for PgValue {
+    fn from(value: i64) -> Self {
+        PgValue::Integer(value)
     }
+}
 
-    fn integer(value: i64) -> Self {
-        Self(Value::Integer(value))
+impl From<f64> for PgValue {
+    fn from(value: f64) -> Self {
+        PgValue::Float(value)
     }
+}
 
-    fn float(value: f64) -> Self {
-        Self(Value::Double(value.into()))
+impl From<String> for PgValue {
+    fn from(value: String) -> Self {
+        PgValue::Text(value)
     }
+}
 
-    fn text(value: String) -> Self {
-        Self(Value::String(value))
+impl From<bool> for PgValue {
+    fn from(value: bool) -> Self {
+        PgValue::Boolean(value)
     }
+}
 
-    fn boolean(value: bool) -> Self {
-        Self(Value::Boolean(value))
+impl From<Decimal> for PgValue {
+    fn from(value: Decimal) -> Self {
+        PgValue::Numeric(value)
     }
+}
 
-    fn decimal(value: Decimal) -> Self {
-        Self(Value::Decimal(value))
-    }
-
-    fn uuid(value: Uuid) -> Self {
-        Self(Value::Uuid(value))
-    }
-
-    fn null() -> Self {
-        Self(Value::Null)
+impl From<Uuid> for PgValue {
+    fn from(value: Uuid) -> Self {
+        PgValue::Uuid(value)
     }
 }
 
@@ -91,11 +102,11 @@ impl TryFrom<rmpv::Value> for PgValue {
 
     fn try_from(value: rmpv::Value) -> Result<Self, Self::Error> {
         match &value {
-            rmpv::Value::Nil => Ok(PgValue::null()),
-            rmpv::Value::Boolean(v) => Ok(PgValue::boolean(*v)),
-            rmpv::Value::F32(v) => Ok(PgValue::float(*v as _)),
-            rmpv::Value::F64(v) => Ok(PgValue::float(*v)),
-            rmpv::Value::Integer(v) => Ok(PgValue::integer({
+            rmpv::Value::Nil => Ok(PgValue::Null),
+            rmpv::Value::Boolean(v) => Ok(PgValue::Boolean(*v)),
+            rmpv::Value::F32(v) => Ok(PgValue::Float(*v as _)),
+            rmpv::Value::F64(v) => Ok(PgValue::Float(*v)),
+            rmpv::Value::Integer(v) => Ok(PgValue::Integer({
                 if let Some(v) = v.as_i64() {
                     v
                 } else if let Some(v) = v.as_u64() {
@@ -111,19 +122,39 @@ impl TryFrom<rmpv::Value> for PgValue {
                 let Some(s) = v.as_str() else {
                     Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
                 };
-                Ok(PgValue::text(s.to_owned()))
+                Ok(PgValue::Text(s.to_owned()))
             }
             rmpv::Value::Ext(1, _data) => {
                 let decimal = deserialize_rmpv_ext(&value).map_err(EncodingError::new)?;
-                Ok(PgValue::decimal(decimal))
+                Ok(PgValue::Numeric(decimal))
             }
             rmpv::Value::Ext(2, _data) => {
                 let uuid = deserialize_rmpv_ext(&value).map_err(EncodingError::new)?;
-                Ok(PgValue::uuid(uuid))
+                Ok(PgValue::Uuid(uuid))
             }
 
             value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
         }
+    }
+}
+
+impl From<PgValue> for SbroadValue {
+    fn from(value: PgValue) -> Self {
+        match value {
+            PgValue::Integer(number) => SbroadValue::from(number),
+            PgValue::Float(float) => SbroadValue::from(float),
+            PgValue::Text(string) => SbroadValue::from(string),
+            PgValue::Boolean(val) => SbroadValue::from(val),
+            PgValue::Numeric(decimal) => SbroadValue::from(decimal),
+            PgValue::Uuid(uuid) => SbroadValue::from(uuid),
+            PgValue::Null => SbroadValue::Null,
+        }
+    }
+}
+
+impl From<PgValue> for LuaValue {
+    fn from(value: PgValue) -> Self {
+        SbroadValue::from(value).into()
     }
 }
 
@@ -204,28 +235,26 @@ fn decode_uuid_binary(bytes: &Bytes) -> PgResult<Uuid> {
 
 impl PgValue {
     fn encode_text(&self, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
-        match &self.0 {
-            Value::Integer(number) => number.to_sql_text(&Type::INT8, buf),
-            Value::Double(double) => double.value.to_sql_text(&Type::FLOAT8, buf),
-            Value::String(string) => string.to_sql_text(&Type::TEXT, buf),
-            Value::Boolean(val) => Ok(write_bool_as_text(*val, buf)),
-            Value::Decimal(decimal) => Ok(write_decimal_as_text(decimal, buf)),
-            Value::Uuid(uuid) => Ok(write_uuid_as_text(uuid, buf)),
-            Value::Null => Ok(IsNull::Yes),
-            value => Err(format!("unsupported value: {value:?}"))?,
+        match self {
+            PgValue::Integer(number) => number.to_sql_text(&Type::INT8, buf),
+            PgValue::Float(float) => float.to_sql_text(&Type::FLOAT8, buf),
+            PgValue::Text(string) => string.to_sql_text(&Type::TEXT, buf),
+            PgValue::Boolean(val) => Ok(write_bool_as_text(*val, buf)),
+            PgValue::Numeric(decimal) => Ok(write_decimal_as_text(decimal, buf)),
+            PgValue::Uuid(uuid) => Ok(write_uuid_as_text(uuid, buf)),
+            PgValue::Null => Ok(IsNull::Yes),
         }
     }
 
     fn encode_binary(&self, buf: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Send + Sync>> {
-        match &self.0 {
-            Value::Boolean(val) => val.to_sql(&Type::BOOL, buf),
-            Value::Integer(number) => number.to_sql(&Type::INT8, buf),
-            Value::Double(double) => double.value.to_sql(&Type::FLOAT8, buf),
-            Value::String(string) => string.to_sql(&Type::TEXT, buf),
-            Value::Decimal(decimal) => write_decimal_as_bin(decimal, buf),
-            Value::Uuid(uuid) => write_uuid_as_bin(uuid, buf),
-            Value::Null => Ok(IsNull::Yes),
-            value => Err(format!("unsupported value: {value:?}"))?,
+        match self {
+            PgValue::Boolean(val) => val.to_sql(&Type::BOOL, buf),
+            PgValue::Integer(number) => number.to_sql(&Type::INT8, buf),
+            PgValue::Float(float) => float.to_sql(&Type::FLOAT8, buf),
+            PgValue::Text(string) => string.to_sql(&Type::TEXT, buf),
+            PgValue::Numeric(decimal) => write_decimal_as_bin(decimal, buf),
+            PgValue::Uuid(uuid) => write_uuid_as_bin(uuid, buf),
+            PgValue::Null => Ok(IsNull::Yes),
         }
     }
 
@@ -245,21 +274,21 @@ impl PgValue {
 
     fn decode_text(bytes: Option<&Bytes>, ty: Type) -> PgResult<Self> {
         let Some(bytes) = bytes else {
-            return Ok(PgValue::null());
+            return Ok(PgValue::Null);
         };
 
         let s = String::from_utf8(bytes.to_vec()).map_err(DecodingError::new)?;
         Ok(match ty {
             Type::INT8 | Type::INT4 | Type::INT2 => {
-                PgValue::integer(s.parse::<i64>().map_err(DecodingError::new)?)
+                PgValue::Integer(s.parse::<i64>().map_err(DecodingError::new)?)
             }
             Type::FLOAT8 | Type::FLOAT4 => {
-                PgValue::float(s.parse::<f64>().map_err(DecodingError::new)?)
+                PgValue::Float(s.parse::<f64>().map_err(DecodingError::new)?)
             }
-            Type::TEXT | Type::VARCHAR => PgValue::text(s),
-            Type::BOOL => PgValue::boolean(decode_text_as_bool(&s.to_lowercase())?),
-            Type::NUMERIC => PgValue::decimal(decode_text_as_decimal(&s)?),
-            Type::UUID => PgValue::uuid(Uuid::from_str(&s).map_err(DecodingError::new)?),
+            Type::TEXT | Type::VARCHAR => PgValue::Text(s),
+            Type::BOOL => PgValue::Boolean(decode_text_as_bool(&s.to_lowercase())?),
+            Type::NUMERIC => PgValue::Numeric(decode_text_as_decimal(&s)?),
+            Type::UUID => PgValue::Uuid(Uuid::from_str(&s).map_err(DecodingError::new)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"
@@ -274,19 +303,19 @@ impl PgValue {
         }
 
         let Some(bytes) = bytes else {
-            return Ok(PgValue::null());
+            return Ok(PgValue::Null);
         };
 
         Ok(match ty {
-            Type::INT8 => PgValue::integer(do_decode_binary::<i64>(&ty, bytes)?),
-            Type::INT4 => PgValue::integer(do_decode_binary::<i32>(&ty, bytes)?.into()),
-            Type::INT2 => PgValue::integer(do_decode_binary::<i16>(&ty, bytes)?.into()),
-            Type::FLOAT8 => PgValue::float(do_decode_binary::<f64>(&ty, bytes)?),
-            Type::FLOAT4 => PgValue::float(do_decode_binary::<f32>(&ty, bytes)?.into()),
-            Type::TEXT | Type::VARCHAR => PgValue::text(do_decode_binary(&ty, bytes)?),
-            Type::BOOL => PgValue::boolean(do_decode_binary(&ty, bytes)?),
-            Type::NUMERIC => PgValue::decimal(decode_decimal_binary(bytes)?),
-            Type::UUID => PgValue::uuid(decode_uuid_binary(bytes)?),
+            Type::INT8 => PgValue::Integer(do_decode_binary::<i64>(&ty, bytes)?),
+            Type::INT4 => PgValue::Integer(do_decode_binary::<i32>(&ty, bytes)?.into()),
+            Type::INT2 => PgValue::Integer(do_decode_binary::<i16>(&ty, bytes)?.into()),
+            Type::FLOAT8 => PgValue::Float(do_decode_binary::<f64>(&ty, bytes)?),
+            Type::FLOAT4 => PgValue::Float(do_decode_binary::<f32>(&ty, bytes)?.into()),
+            Type::TEXT | Type::VARCHAR => PgValue::Text(do_decode_binary(&ty, bytes)?),
+            Type::BOOL => PgValue::Boolean(do_decode_binary(&ty, bytes)?),
+            Type::NUMERIC => PgValue::Numeric(decode_decimal_binary(bytes)?),
+            Type::UUID => PgValue::Uuid(decode_uuid_binary(bytes)?),
             _ => {
                 return Err(PgError::FeatureNotSupported(format!(
                     "unsupported type {ty}"
