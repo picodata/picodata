@@ -236,3 +236,10 @@ article ul ul ul li {
 h1 > a[class=headerlink] {
     visibility: hidden;
 }
+
+svg > text.terminal,
+svg > a > text.nonterminal {
+    font-size: 14px;
+    dominant-baseline: central;
+    text-anchor: middle;
+}
