@@ -17,8 +17,10 @@
 * **TABLE** — название таблицы. Соответствует правилам имен для всех [объектов](object.md)
   в кластере.
 
-* **PRIMARY KEY** — первичный ключ обеспечивает уникальность и сортировку данных только
-  в рамках одного экземпляра кластера. Глобальную уникальность записи он не дает.
+* **PRIMARY KEY** — первичный ключ, который обеспечивает уникальность и
+  сортировку данных только в рамках одного экземпляра кластера — глобальную
+  уникальность записи он не дает. Хотя бы для одной из колонок первичного ключа
+  должно быть задано ограничение NOT NULL.
 
 * **DISTRIBUTED GLOBALLY** — глобальное распределение таблицы. В результате, данные в
   таблице идентичны на всех экземплярах кластера и синхронизируются через Raft-журнал.
@@ -34,14 +36,21 @@
 
 ## Примеры {: #examples }
 
-Создание шардированной таблицы с использованием движка хранения `memtx`:
-
-```sql
+```sql title="Создание таблицы с использованием движка хранения <code>memtx</code>"
 CREATE TABLE warehouse (
-            id INTEGER NOT NULL,
-            item TEXT NOT NULL,
-            type TEXT NOT NULL,
-            PRIMARY KEY (id))
+    id INTEGER NOT NULL,
+    item TEXT NOT NULL,
+    type TEXT NOT NULL,
+    PRIMARY KEY (id))
+USING memtx DISTRIBUTED BY (id)
+OPTION (TIMEOUT = 3.0);
+```
+
+```sql title="Создание таблицы с ограничением PRIMARY KEY в определении колонки"
+CREATE TABLE warehouse (
+    id INTEGER NOT NULL PRIMARY KEY,
+    item TEXT NOT NULL,
+    type TEXT NOT NULL)
 USING memtx DISTRIBUTED BY (id)
 OPTION (TIMEOUT = 3.0);
 ```
