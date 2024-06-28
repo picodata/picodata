@@ -628,14 +628,15 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">E141-08</span></td>
+            <td class="center"><span class="full">E141-08</span></td>
             <td>Ограничения NOT NULL неявно используются с ограничениями PRIMARY KEY</td>
-            <td class="td3 center"></td>
+            <td class="td3 center">[CREATE TABLE](sql/create_table.md#syntax) -><br>
+                                   PRIMARY KEY</td>
             <td></td>
         </tr>
         <tr>
             <td class="center"><span class="absent">E141-10</span></td>
-            <td>Имена в во внешнем ключе могут указываться в любом порядке</td>
+            <td>Имена во внешнем ключе могут указываться в любом порядке</td>
             <td class="td3 center"></td>
             <td></td>
         </tr>
