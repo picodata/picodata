@@ -26,8 +26,25 @@ RPC API используется в следующих сценариях:
 ## Детали реализации {: #implementation_details }
 
 Функции RPC API представляют собой хранимые процедуры Tarantool
-`box.func`. Аргументы функций описаны в системе типов
+`box.func`. Аргументы и возвращаемые значения функций описаны в системе типов
 [msgpack](https://msgpack.org/).
+
+### Особенности энкодинга {: #proc_encoding }
+
+ - `optional` поле (например `optional MP_INT`) отличается от обычного тем,
+   что на его месте может присутствовать как ожидаемый msgpack тип (`MP_INT`),
+   так и `MP_NIL`. Тем не менее, при формировании запроса, нельзя пропускать
+   это поле. При отсутсвии значения, всегда должен быть указан `MP_NIL`
+
+ - в случае успешного выполнения RPC фунцкии (`IPROTO_OK`) возвращаемое msgpack
+   значение всегда дополнительно обёрнуто в `MP_ARRAY`
+
+ - в случае ошибки выполения RPC функции (`Result::Err` в терминах Rust) в ответе
+   будет iproto сообщение с типом `IPROTO_TYPE_ERROR` содержащее в себе 
+   [описание](https://www.tarantool.io/en/doc/latest/dev_guide/internals/iproto/format/#error-responses)   
+   ошибки
+
+### Привилегии {: #proc_privileges }
 
 Хранимые процедуры Tarantool не входят в модель управления доступом
 Picodata. На них невозможно выдать или отозвать привилегии. Авторизация
@@ -95,8 +112,6 @@ fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
   <br>Поля:
 
     - `row_count` (MP_INT), количество измененных строк
-
-- (MP_NIL, MP_STR) в случае ошибки
 
 См. также:
 
@@ -233,9 +248,7 @@ fn proc_get_index() -> RaftIndex
 
 Возвращает текущий примененный (applied) индекс raft-журнала
 
-Возвращаемое значение:
-
-- (MP_INT)
+Возвращаемое значение: MP_INT
 
 --------------------------------------------------------------------------------
 ### .proc_read_index {: #proc_read_index }
@@ -262,10 +275,7 @@ fn proc_read_index(timeout) -> RaftIndex
 
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
-Возвращаемое значение:
-
-- (MP_INT)
-- (MP_NIL, MP_STR) в случае ошибки
+Возвращаемое значение: MP_INT
 
 --------------------------------------------------------------------------------
 ### .proc_wait_index {: #proc_wait_index }
@@ -283,10 +293,7 @@ fn proc_wait_index(target, timeout) -> RaftIndex
 - `target`: (MP_INT)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
-Возвращаемое значение:
-
-- (MP_INT)
-- (MP_NIL, MP_STR) в случае ошибки
+Возвращаемое значение: MP_INT
 
 --------------------------------------------------------------------------------
 ### .proc_get_vclock {: #proc_get_vclock }
@@ -297,9 +304,7 @@ fn proc_get_vclock() -> Vclock
 
 Возвращает текущее значение [Vclock](../overview/glossary.md#vclock)
 
-Возвращаемое значение:
-
-- (MP_MAP `Vclock`)
+Возвращаемое значение: MP_MAP `Vclock`
 
 --------------------------------------------------------------------------------
 ### .proc_wait_vclock {: #proc_wait_vclock }
@@ -318,11 +323,7 @@ fn proc_wait_vclock(target, timeout) -> Vclock
 - `target`: (MP_MAP `Vclock`)
 - `timeout`: (MP_FLOAT) в секундах
 
-Возвращаемое значение:
-
-- (MP_MAP `Vclock`)
-- (MP_NIL, MP_STR) в случае ошибки
-
+Возвращаемое значение: MP_MAP `Vclock`
 
 --------------------------------------------------------------------------------
 ### .proc_apply_schema_change {: #proc_apply_schema_change }
