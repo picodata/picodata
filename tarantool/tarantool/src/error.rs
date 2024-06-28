@@ -512,7 +512,12 @@ pub fn set_last_error(file_line: Option<(&str, u32)>, code: u32, message: &CStr)
 /// a structured tarantool internal error. In simple cases this may just be an
 /// conversion into an error message, but may also add an error code and/or
 /// additional custom fields. (custom fields not yet implemented).
-pub trait IntoBoxError: Sized {
+///
+/// All of the methods provide a default implementation for your convenience,
+/// so if you don't have do define them explicitly if you don't care about
+/// customizing the resulting `BoxError`'s fields. Your error type only needs
+/// to implement `Display` (which it most likely already implements).
+pub trait IntoBoxError: Sized + Display {
     /// Set `self` as the current fiber's last error.
     #[inline(always)]
     #[track_caller]
@@ -521,7 +526,21 @@ pub trait IntoBoxError: Sized {
     }
 
     /// Convert `self` to `BoxError`.
-    fn into_box_error(self) -> BoxError;
+    #[track_caller]
+    #[inline(always)]
+    fn into_box_error(self) -> BoxError {
+        BoxError::new(self.error_code(), self.to_string())
+    }
+
+    /// Get the error code which would be used for the corresponding BoxError.
+    ///
+    /// For your convenience the default implementation is provided which
+    /// returns the `ER_PROC_C` error code (meaning the error originated from
+    /// a native stored procedure).
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        TarantoolErrorCode::ProcC as _
+    }
 }
 
 impl IntoBoxError for BoxError {
@@ -535,12 +554,18 @@ impl IntoBoxError for BoxError {
     fn into_box_error(self) -> BoxError {
         self
     }
+
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        self.error_code()
+    }
 }
 
 impl IntoBoxError for Error {
     #[inline(always)]
     #[track_caller]
     fn into_box_error(self) -> BoxError {
+        let error_code = self.error_code();
         match self {
             Error::Tarantool(e) => e,
             Error::Remote(e) => {
@@ -550,23 +575,35 @@ impl IntoBoxError for Error {
                 // no way to do that
                 e
             }
-            Error::Decode { .. } => {
-                BoxError::new(TarantoolErrorCode::InvalidMsgpack, self.to_string())
-            }
-            Error::DecodeRmpValue(e) => {
-                BoxError::new(TarantoolErrorCode::InvalidMsgpack, e.to_string())
-            }
-            Error::ValueRead(e) => BoxError::new(TarantoolErrorCode::InvalidMsgpack, e.to_string()),
-            _ => BoxError::new(TarantoolErrorCode::ProcC, self.to_string()),
+            Error::Decode { .. } => BoxError::new(error_code, self.to_string()),
+            Error::DecodeRmpValue(e) => BoxError::new(error_code, e.to_string()),
+            Error::ValueRead(e) => BoxError::new(error_code, e.to_string()),
+            _ => BoxError::new(error_code, self.to_string()),
+        }
+    }
+
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        match self {
+            Error::Tarantool(e) => e.error_code(),
+            Error::Remote(e) => e.error_code(),
+            Error::Decode { .. } => TarantoolErrorCode::InvalidMsgpack as _,
+            Error::DecodeRmpValue { .. } => TarantoolErrorCode::InvalidMsgpack as _,
+            Error::ValueRead { .. } => TarantoolErrorCode::InvalidMsgpack as _,
+            _ => TarantoolErrorCode::ProcC as _,
         }
     }
 }
 
 impl IntoBoxError for String {
-    #[inline(always)]
     #[track_caller]
     fn into_box_error(self) -> BoxError {
-        BoxError::new(TarantoolErrorCode::ProcC, self)
+        BoxError::new(self.error_code(), self)
+    }
+
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        TarantoolErrorCode::ProcC as _
     }
 }
 
@@ -575,6 +612,11 @@ impl IntoBoxError for &str {
     #[track_caller]
     fn into_box_error(self) -> BoxError {
         self.to_owned().into_box_error()
+    }
+
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        TarantoolErrorCode::ProcC as _
     }
 }
 
@@ -591,17 +633,27 @@ impl IntoBoxError for Box<dyn std::error::Error> {
     fn into_box_error(self) -> BoxError {
         (&*self).into_box_error()
     }
+
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        TarantoolErrorCode::ProcC as _
+    }
 }
 
 impl IntoBoxError for &dyn std::error::Error {
     #[inline(always)]
     #[track_caller]
     fn into_box_error(self) -> BoxError {
-        let mut res = BoxError::new(TarantoolErrorCode::ProcC, self.to_string());
+        let mut res = BoxError::new(self.error_code(), self.to_string());
         if let Some(cause) = self.source() {
             res.cause = Some(Box::new(cause.into_box_error()));
         }
         res
+    }
+
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        TarantoolErrorCode::ProcC as _
     }
 }
 

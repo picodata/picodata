@@ -308,6 +308,7 @@ where
     E: IntoBoxError,
 {
     #[inline(always)]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         match self {
             Ok(o) => match ctx.return_mp(&o) {
