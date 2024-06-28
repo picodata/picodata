@@ -49,7 +49,7 @@ pub struct Run {
     #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
     /// Path to configuration file in yaml format.
     ///
-    /// By default the "config.yaml" in the data directory is used.
+    /// `./config.yaml` is used by default, if it exists.
     pub config: Option<PathBuf>,
 
     #[clap(
@@ -61,10 +61,10 @@ pub struct Run {
     /// A list of key-value pairs specifying configuration parameters.
     ///
     /// These will override both parameters provided in the config.yaml file,
-    /// the legacy command-line parameters and the legacy environment variables.
+    /// the command-line parameters and the environment variables.
     ///
     /// Key is a `.` separated path to a configuration parameter.
-    /// Value is a parameter's value using yaml syntax.
+    /// The data in the `VALUE` is interpreted as YAML.
     ///
     /// For example: `-c instance.log_level=verbose`
     ///
@@ -91,7 +91,7 @@ pub struct Run {
         value_name = "[HOST][:PORT]",
         env = "PICODATA_LISTEN"
     )]
-    /// Socket bind address.
+    /// Instance network address.
     ///
     /// By default "localhost:3301" is used.
     pub listen: Option<Address>,
@@ -107,7 +107,9 @@ pub struct Run {
         use_value_delimiter = true,
         env = "PICODATA_PEER"
     )]
-    /// Address(es) of other instance(s)
+    /// A list of network addresses of other instances.
+    /// Used during cluster initialization
+    /// and joining an instance to an existing cluster.
     ///
     /// By default "localhost:3301" is used.
     pub peers: Vec<Address>,
@@ -131,6 +133,8 @@ pub struct Run {
 
     #[clap(long, value_name = "NAME", env = "PICODATA_REPLICASET_ID")]
     /// Name of the replicaset.
+    /// Used during cluster initialization
+    /// and joining an instance to an existing cluster.
     ///
     /// If not specified, a replicaset will be automatically chosen based on the
     /// failure domain settings.
@@ -144,7 +148,6 @@ pub struct Run {
 
     #[clap(long, env = "PICODATA_INIT_REPLICATION_FACTOR", group = "init_cfg")]
     /// Total number of replicas (copies of data) for each replicaset.
-    /// It makes sense only when starting cluster without --init-cfg option.
     ///
     /// By default 1 is used.
     pub init_replication_factor: Option<u8>,
@@ -157,9 +160,7 @@ pub struct Run {
     pub script: Option<PathBuf>,
 
     #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_HTTP_LISTEN")]
-    /// Address to start the HTTP server on. The routing API is exposed
-    /// in Lua as `_G.pico.httpd` variable. If not specified, it won't
-    /// be initialized.
+    /// HTTP server address.
     pub http_listen: Option<Address>,
 
     #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
@@ -182,6 +183,8 @@ pub struct Run {
 
     #[clap(long = "tier", value_name = "TIER", env = "PICODATA_INSTANCE_TIER")]
     /// Name of the tier to which the instance will belong.
+    /// Used during cluster initialization
+    /// and joining an instance to an existing cluster.
     ///
     /// By default "default" is used.
     pub tier: Option<String>,
@@ -237,12 +240,13 @@ pub struct Run {
     ///
     ///    picodata run --log 'syslog:'
     ///
+    /// By default, the diagnostic log is output to stderr.
     pub log: Option<String>,
 
     #[clap(long = "memtx-memory", env = "PICODATA_MEMTX_MEMORY")]
     /// The amount of memory in bytes to allocate for the database engine.
     ///
-    /// By default 67'108'864 is used.
+    /// By default, 64 MiB is used.
     pub memtx_memory: Option<u64>,
 
     #[clap(
