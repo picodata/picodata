@@ -1,11 +1,50 @@
+use crate::config::LogFormat;
 use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
+use std::ffi::CString;
 use tarantool::cbus::unbounded as cbus;
 use tarantool::fiber;
 
 #[inline(always)]
-pub fn set_log_level(lvl: SayLevel) {
-    tarantool::log::set_current_level(lvl)
+pub fn init_core_logger(destination: Option<&str>, level: SayLevel, format: LogFormat) {
+    let mut destination_ptr: *const u8 = std::ptr::null();
+    let destination_cstr;
+    if let Some(destination) = destination {
+        destination_cstr =
+            CString::new(destination).expect("log destination shouldn't contain nul-bytes");
+        destination_ptr = destination_cstr.as_ptr() as _;
+    }
+
+    // SAFETY: `destination_cstr` must outlive this function call.
+    unsafe {
+        say_logger_init(
+            destination_ptr,
+            level as _,
+            // Default behavior of "nonblocking" for corresponding logger type.
+            -1,
+            format.as_cstr().as_ptr() as _,
+        );
+    }
+
+    // TODO: move to tarantool-module
+    extern "C" {
+        /// Initialize the default tarantool logger (accessed via the say_* functions).
+        ///
+        /// Parameters:
+        /// - `init_str`: Destination descriptor. Pass a `null` for default
+        ///    behavior of loggin to stderr.
+        ///    (see also <https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-logging-log>)
+        ///
+        /// - `level`: Log level
+        ///
+        /// - `nonblock`:
+        ///     - `< 0`: Use default for the corresponding logger type
+        ///     - `0`: Always block until the message is written to the destination
+        ///     - `> 0`: Never block until the message is written to the destination
+        ///
+        /// - `format`: Supported values are: "json", "plain"
+        fn say_logger_init(init_str: *const u8, level: i32, nonblock: i32, format: *const u8);
+    }
 }
 
 /// For user experience reasons we do some log messages enhancements (we add
@@ -39,18 +78,9 @@ pub static mut DONT_LOG_KV_FOR_NEXT_SENDING_FROM: bool = false;
 impl StrSerializer {
     /// Format slog's record as plain string. Most suitable for implementing [`slog::Drain`].
     pub fn format_message(record: &slog::Record, values: &slog::OwnedKVList) -> String {
-        let msg = if unsafe { CORE_LOGGER_IS_INITIALIZED } {
-            format!("{}", record.msg())
-        } else {
-            let level = slog_level_to_say_level(record.level());
-            format!(
-                "{color_code}{prefix}{msg}\x1b[0m",
-                color_code = color_for_log_level(level),
-                prefix = prefix_for_log_level(level),
-                msg = record.msg(),
-            )
+        let mut s = StrSerializer {
+            str: format!("{}", record.msg()),
         };
-        let mut s = StrSerializer { str: msg };
 
         // XXX: this is the ugliest hack I've done so far. Basically raft-rs
         // logs the full message it's sending if log level is Debug. But we're
@@ -141,29 +171,6 @@ fn slog_level_to_say_level(level: slog::Level) -> SayLevel {
         slog::Level::Info => SayLevel::Info,
         slog::Level::Debug => SayLevel::Verbose,
         slog::Level::Trace => SayLevel::Debug,
-    }
-}
-
-#[inline]
-fn prefix_for_log_level(level: SayLevel) -> &'static str {
-    match level {
-        SayLevel::System => "SYSTEM ERROR: ",
-        SayLevel::Fatal => "FATAL: ",
-        SayLevel::Crit => "CRITICAL: ",
-        SayLevel::Error => "ERROR: ",
-        SayLevel::Warn => "WARNING: ",
-        SayLevel::Info => "",
-        SayLevel::Verbose => "V: ",
-        SayLevel::Debug => "DBG: ",
-    }
-}
-
-#[inline]
-fn color_for_log_level(level: SayLevel) -> &'static str {
-    match level {
-        SayLevel::System | SayLevel::Fatal | SayLevel::Crit | SayLevel::Error => "\x1b[31m", // red
-        SayLevel::Warn => "\x1b[33m", // yellow
-        SayLevel::Info | SayLevel::Verbose | SayLevel::Debug => "",
     }
 }
 

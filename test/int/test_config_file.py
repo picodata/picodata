@@ -1,6 +1,7 @@
 from conftest import Cluster, Instance, PortDistributor, log_crawler, color
 import os
 import subprocess
+import json
 
 
 def test_config_works(cluster: Cluster):
@@ -315,6 +316,9 @@ cluster:
 
     assert box_cfg["net_msg_max"] == 0x300
 
+    i1.terminate()
+    i1.remove_data()
+
     #
     # Check explicitly set values
     #
@@ -350,8 +354,26 @@ instance:
     # even though this will override any value from the config
     i1.env["PICODATA_LOG_LEVEL"] = "debug"
 
-    i1.restart(remove_data=True)
+    # Check that json output format works
+    json_line_count = 0
+    non_json_lines = []
+
+    def check_parses_as_json(line: bytes):
+        nonlocal json_line_count
+        nonlocal non_json_lines
+        try:
+            json.loads(line)
+            json_line_count += 1
+        except json.JSONDecodeError:
+            non_json_lines.append(line)
+
+    i1.on_output_line(check_parses_as_json)
+    i1.start()
     i1.wait_online()
+
+    assert json_line_count != 0
+    for line in non_json_lines:
+        assert line.startswith(b"[supervisor")
 
     box_cfg = i1.eval("return box.cfg")
 
@@ -476,3 +498,36 @@ def test_output_config_parameters(cluster: Cluster):
     i1.start()
     i1.wait_online()
     assert len(found_params) == len(params_list)
+
+
+def test_logger_configuration(cluster: Cluster):
+    log_file = f"{cluster.data_dir}/i1.log"
+    cluster.set_config_file(
+        yaml=f"""
+cluster:
+    tier:
+        default:
+instance:
+    cluster_id: test
+    log:
+        destination: {log_file}
+"""
+    )
+
+    assert not os.path.exists(log_file)
+
+    i1 = cluster.add_instance(wait_online=True)
+    assert os.path.exists(log_file)
+
+    i1.terminate()
+    os.remove(log_file)
+
+    other_log_file = f"{cluster.data_dir}/other-i1.log"
+    assert not os.path.exists(other_log_file)
+
+    i1.env["PICODATA_LOG"] = other_log_file
+    i1.start()
+    i1.wait_online()
+
+    assert os.path.exists(other_log_file)
+    assert not os.path.exists(log_file)

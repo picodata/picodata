@@ -17,6 +17,8 @@ where
         // SAFETY: the caller is responsible for providing correct E & F.
         let closure = unsafe { Box::<F>::from_raw(data as _) };
         if let Err(e) = closure() {
+            // Print the error message to stderr as well to the logging destination for user friendliness
+            eprintln!("\x1b[31mCRITICAL: {e}\x1b[0m");
             tlog!(Critical, "{e}");
             std::process::exit(1);
         }

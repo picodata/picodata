@@ -86,33 +86,39 @@ impl PicodataConfig {
             }
         });
 
+        let mut config_path = None;
         let mut config_from_file = None;
-        match (&args_path, file_exists(&default_path)) {
-            (Some(args_path), true) => {
-                if args_path != &default_path {
-                    let cwd = cwd.display();
-                    let args_path = args_path.display();
-                    #[rustfmt::skip]
-                    tlog!(Warning, "A path to configuration file '{args_path}' was provided explicitly,
-but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}' also exists.
-Using configuration file '{args_path}'.");
-                }
-
-                config_from_file = Some((Self::read_yaml_file(args_path)?, args_path));
-            }
-            (Some(args_path), false) => {
-                config_from_file = Some((Self::read_yaml_file(args_path)?, args_path));
-            }
-            (None, true) => {
-                #[rustfmt::skip]
-                tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{}'.", cwd.display());
-                config_from_file = Some((Self::read_yaml_file(&default_path)?, &default_path));
-            }
-            (None, false) => {}
+        if let Some(args_path) = &args_path {
+            config_path = Some(args_path);
+            config_from_file = Some(Self::read_yaml_file(args_path)?);
+        } else if file_exists(&default_path) {
+            #[rustfmt::skip]
+            tlog!(Info, "Reading configuration file '{DEFAULT_CONFIG_FILE_NAME}' in the current working directory '{}'.", cwd.display());
+            config_path = Some(&default_path);
+            config_from_file = Some(Self::read_yaml_file(&default_path)?);
         }
 
         let mut parameter_sources = ParameterSourcesMap::default();
-        let mut config = if let Some((mut config, path)) = config_from_file {
+        // Initialize the logger as soon as possible so that as many messages as possible
+        // go into the destination expected by user.
+        init_core_logger_from_args_env_or_config(
+            &args,
+            config_from_file.as_deref(),
+            &mut parameter_sources,
+        )?;
+
+        if let Some(args_path) = &args_path {
+            if args_path != &default_path && file_exists(&default_path) {
+                let cwd = cwd.display();
+                let args_path = args_path.display();
+                #[rustfmt::skip]
+                tlog!(Warning, "A path to configuration file '{args_path}' was provided explicitly,
+but a '{DEFAULT_CONFIG_FILE_NAME}' file in the current working directory '{cwd}' also exists.
+Using configuration file '{args_path}'.");
+            }
+        }
+
+        let mut config = if let Some(mut config) = config_from_file {
             config.validate_from_file()?;
             #[rustfmt::skip]
             mark_non_none_field_sources(&mut parameter_sources, &config, ParameterSource::ConfigFile);
@@ -122,7 +128,8 @@ Using configuration file '{args_path}'.");
                 parameter_sources.insert("instance.config_file".into(), ParameterSource::CommandlineOrEnvironment);
             }
 
-            config.instance.config_file = Some(path.clone());
+            assert!(config_path.is_some());
+            config.instance.config_file = config_path.cloned();
             config
         } else {
             Default::default()
@@ -225,19 +232,9 @@ Using configuration file '{args_path}'.");
         // var has lower priority then other PICODATA_* env vars, while
         // --config-parameters parameter has higher priority then other cli args.
         if let Ok(env) = std::env::var(CONFIG_PARAMETERS_ENV) {
-            for item in env.split(';') {
-                let item = item.trim();
-                if item.is_empty() {
-                    continue;
-                }
-                let Some((path, yaml)) = item.split_once('=') else {
-                    return Err(Error::InvalidConfiguration(format!(
-                        "error when parsing {CONFIG_PARAMETERS_ENV} environment variable: expected '=' after '{item}'",
-                    )));
-                };
-
+            for (path, yaml) in parse_picodata_config_parameters_env(&env)? {
                 config_from_args
-                    .set_field_from_yaml(path.trim(), yaml.trim())
+                    .set_field_from_yaml(path, yaml)
                     .map_err(Error::invalid_configuration)?;
             }
         }
@@ -674,6 +671,109 @@ Using configuration file '{args_path}'.");
             }
         }
     }
+}
+
+/// Gets the logging configuration from all possible sources and initializes the core logger.
+///
+/// Note that this function is an exception to the rule of how we do parameter
+/// handling. This is needed because we the logger must be set up as soon as
+/// possible so that logging messages during handling of other parameters go
+/// into the destination expected by user. All other parameter handling is done
+/// elsewhere in [`PicodataConfig::set_from_args_and_env`].
+fn init_core_logger_from_args_env_or_config(
+    args: &args::Run,
+    config: Option<&PicodataConfig>,
+    sources: &mut ParameterSourcesMap,
+) -> Result<(), Error> {
+    let mut destination = None;
+    let mut level = DEFAULT_LOG_LEVEL;
+    let mut format = DEFAULT_LOG_FORMAT;
+
+    let mut destination_source = ParameterSource::Default;
+    let mut level_source = ParameterSource::Default;
+    let mut format_source = ParameterSource::Default;
+
+    // Config has the lowest priority
+    if let Some(config) = config {
+        if let Some(config_destination) = &config.instance.log.destination {
+            destination_source = ParameterSource::ConfigFile;
+            destination = Some(&**config_destination);
+        }
+
+        if let Some(config_level) = config.instance.log.level {
+            level_source = ParameterSource::ConfigFile;
+            level = config_level;
+        }
+
+        if let Some(config_format) = config.instance.log.format {
+            format_source = ParameterSource::ConfigFile;
+            format = config_format;
+        }
+    }
+
+    // Env is middle priority
+    let env = std::env::var(CONFIG_PARAMETERS_ENV);
+    if let Ok(env) = &env {
+        for (path, value) in parse_picodata_config_parameters_env(env)? {
+            match path {
+                "instance.log.destination" => {
+                    destination_source = ParameterSource::CommandlineOrEnvironment;
+                    destination =
+                        Some(serde_yaml::from_str(value).map_err(Error::invalid_configuration)?)
+                }
+                "instance.log.level" => {
+                    level_source = ParameterSource::CommandlineOrEnvironment;
+                    level = serde_yaml::from_str(value).map_err(Error::invalid_configuration)?
+                }
+                "instance.log.format" => {
+                    format_source = ParameterSource::CommandlineOrEnvironment;
+                    format = serde_yaml::from_str(value).map_err(Error::invalid_configuration)?
+                }
+                _ => {
+                    // Skip for now, it will be checked in `set_from_args_and_env`
+                    // when everything else other than logger configuration is processed.
+                }
+            }
+        }
+    }
+
+    // Arguments have higher priority than env.
+    if let Some(args_destination) = &args.log {
+        destination_source = ParameterSource::CommandlineOrEnvironment;
+        destination = Some(args_destination);
+    }
+
+    if let Some(args_level) = args.log_level {
+        level_source = ParameterSource::CommandlineOrEnvironment;
+        level = args_level;
+    }
+
+    // Format is not configurable from commandline options
+
+    tlog::init_core_logger(destination, level.into(), format);
+
+    sources.insert("instance.log.destination".into(), destination_source);
+    sources.insert("instance.log.level".into(), level_source);
+    sources.insert("instance.log.format".into(), format_source);
+
+    Ok(())
+}
+
+fn parse_picodata_config_parameters_env(value: &str) -> Result<Vec<(&str, &str)>, Error> {
+    let mut result = Vec::new();
+    for item in value.split(';') {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        let Some((path, yaml)) = item.split_once('=') else {
+            return Err(Error::InvalidConfiguration(format!(
+                "error when parsing {CONFIG_PARAMETERS_ENV} environment variable: expected '=' after '{item}'",
+            )));
+        };
+        result.push((path.trim(), yaml.trim()));
+    }
+    Ok(result)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1137,10 +1237,13 @@ pub struct IprotoSection {
 // LogSection
 ////////////////////////////////////////////////////////////////////////////////
 
+const DEFAULT_LOG_LEVEL: args::LogLevel = args::LogLevel::Info;
+const DEFAULT_LOG_FORMAT: LogFormat = LogFormat::Plain;
+
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct LogSection {
-    #[introspection(config_default = args::LogLevel::Info)]
+    #[introspection(config_default = DEFAULT_LOG_LEVEL)]
     pub level: Option<args::LogLevel>,
 
     /// By default, Picodata sends the log to the standard error stream
@@ -1150,7 +1253,7 @@ pub struct LogSection {
     /// - system logger
     pub destination: Option<String>,
 
-    #[introspection(config_default = LogFormat::Plain)]
+    #[introspection(config_default = DEFAULT_LOG_FORMAT)]
     pub format: Option<LogFormat>,
 }
 

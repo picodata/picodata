@@ -11,26 +11,6 @@ use crate::{ipc, tlog, Entrypoint, IpcMessage};
 pub fn main(args: args::Run) -> ! {
     let tt_args = args.tt_args().unwrap();
 
-    let res = PicodataConfig::init(args);
-    let config = crate::unwrap_ok_or!(res,
-        Err(e) => {
-            tlog!(Error, "{e}");
-            std::process::exit(1);
-        }
-    );
-
-    // Set the log level as soon as possible to not miss any messages during
-    // initialization.
-    tlog::set_log_level(config.instance.log_level());
-    config.log_config_params();
-
-    if let Some(filename) = &config.instance.service_password_file {
-        if let Err(e) = crate::pico_service::read_pico_service_password_from_file(filename) {
-            tlog!(Error, "{e}");
-            std::process::exit(1);
-        }
-    }
-
     // Tarantool implicitly parses some environment variables.
     // We don't want them to affect the behavior and thus filter them out.
     for (k, _) in std::env::vars() {
@@ -98,6 +78,20 @@ pub fn main(args: args::Run) -> ! {
                 drop(to_child);
 
                 super::tarantool::main_cb(&tt_args, || {
+                    // Note: this function may log something into the tarantool's logger, which means it must be done within
+                    // the `tarantool::main_cb` otherwise everything will break. The thing is, tarantool's logger needs to know things
+                    // about the current thread and the way it does that is by accessing the `cord_ptr` global variable. For the main
+                    // thread this variable get's initialized in the tarantool's main function. But if we call the logger before this
+                    // point another mechanism called cord_on_demand will activate and initialize the cord in a conflicting way.
+                    // This causes a crash when the cord gets deinitialized during the normal shutdown process, because it leads to double free.
+                    // (This wouldn't be a problem if we just skipped the deinitialization for the main cord, because we don't actually need it
+                    // as the OS will cleanup all the resources anyway, but this is a different story altogether)
+                    let config = PicodataConfig::init(args)?;
+
+                    if let Some(filename) = &config.instance.service_password_file {
+                        crate::pico_service::read_pico_service_password_from_file(filename)?;
+                    }
+
                     // We don't want a child to live without a supervisor.
                     //
                     // Usually, supervisor waits for child forever and retransmits
@@ -125,6 +119,8 @@ pub fn main(args: args::Run) -> ! {
                         tlog!(Critical, "aborting due to panic");
                         std::process::abort();
                     }));
+
+                    config.log_config_params();
 
                     // Note that we don't really need to pass the `config` here,
                     // because it's stored in the global variable which we can
