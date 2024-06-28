@@ -22,6 +22,13 @@ with the `YY.MINOR.MICRO` scheme.
 -->
 
 --------------------------------------------------------------------------------
+## [24.3.3] - 2024-07-03
+
+- Fix invalid socket path error at startup
+- Fix insufficient privileges for sbroad's temp tables breaks legit sql queries
+- Finalize static analysis patches
+
+--------------------------------------------------------------------------------
 ## [24.3.2] - 2024-06-10
 
 - New HTTP endpoint `/metrics` exposes instance metrics in prometheus format
