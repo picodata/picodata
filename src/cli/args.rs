@@ -66,7 +66,7 @@ pub struct Run {
     /// Key is a `.` separated path to a configuration parameter.
     /// The data in the `VALUE` is interpreted as YAML.
     ///
-    /// For example: `-c instance.log_level=verbose`
+    /// For example: `-c instance.log.level=verbose`
     ///
     /// Can also be provided via PICODATA_CONFIG_PARAMETERS environment variable.
     pub config_parameter: Vec<String>,
