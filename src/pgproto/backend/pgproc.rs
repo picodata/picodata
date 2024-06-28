@@ -1,5 +1,6 @@
 use super::{
-    describe::{PortalDescribe, QueryType, StatementDescribe},
+    describe::{PortalDescribe, StatementDescribe},
+    result::{ExecuteResult, FinishedDqlResult, SuspendedDqlResult},
     storage::{UserPortalNames, UserStatementNames},
 };
 use crate::pgproto::{
@@ -95,8 +96,25 @@ pub fn proc_pg_execute(
     traceable: bool,
 ) -> PgResult<Tuple> {
     let result = backend::execute(id, name, max_rows, traceable)?;
-    let bytes = match result.query_type() {
-        QueryType::Explain | QueryType::Dql => {
+    let bytes = match &result {
+        ExecuteResult::AclOrDdl(_) | ExecuteResult::Dml(_) => {
+            let row_count = if let ExecuteResult::Dml(dml) = result {
+                Some(dml.row_count)
+            } else {
+                None
+            };
+
+            #[derive(Serialize)]
+            struct ProcResult {
+                row_count: Option<usize>,
+            }
+            impl Encode for ProcResult {}
+
+            let result = ProcResult { row_count };
+            rmp_serde::to_vec_named(&vec![result])
+        }
+        ExecuteResult::FinishedDql(FinishedDqlResult { rows, .. })
+        | ExecuteResult::SuspendedDql(SuspendedDqlResult { rows }) => {
             #[derive(Serialize)]
             struct ProcResult {
                 rows: Vec<Vec<LuaValue>>,
@@ -104,24 +122,13 @@ pub fn proc_pg_execute(
             }
             impl Encode for ProcResult {}
 
-            let is_finished = result.is_portal_finished();
-            let rows = result
-                .into_values_stream()
+            let is_finished = matches!(result, ExecuteResult::FinishedDql(_));
+            let rows = rows
+                .values()
+                .into_iter()
                 .map(|values| values.into_iter().map(LuaValue::from).collect())
                 .collect();
             let result = ProcResult { rows, is_finished };
-            rmp_serde::to_vec_named(&vec![result])
-        }
-        QueryType::Acl | QueryType::Ddl | QueryType::Dml => {
-            #[derive(Serialize)]
-            struct ProcResult {
-                row_count: Option<usize>,
-            }
-            impl Encode for ProcResult {}
-
-            let result = ProcResult {
-                row_count: result.row_count(),
-            };
             rmp_serde::to_vec_named(&vec![result])
         }
     };

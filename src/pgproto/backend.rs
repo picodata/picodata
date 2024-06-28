@@ -28,10 +28,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use tarantool::session::with_su;
 
 mod pgproc;
-mod result;
 mod storage;
 
 pub mod describe;
+pub mod result;
 
 fn decode_parameter_values(
     params: Vec<Option<Bytes>>,

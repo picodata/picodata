@@ -1,3 +1,6 @@
+use crate::pgproto::backend::result::{
+    AclOrDdlResult, DmlResult, ExecuteResult, FinishedDqlResult, SuspendedDqlResult,
+};
 use crate::pgproto::backend::Backend;
 use crate::pgproto::stream::{BeMessage, FeMessage};
 use crate::pgproto::{
@@ -40,19 +43,33 @@ pub fn process_execute_message(
     backend: &Backend,
     execute: Execute,
 ) -> PgResult<()> {
-    let max_rows = execute.max_rows as i64;
-    let mut execute_result = backend.execute(execute.name, max_rows)?;
-
-    while let Some(row) = execute_result.next_row()? {
-        stream.write_message_noflush(messages::data_row(row))?;
-    }
-
-    if execute_result.is_portal_finished() {
-        let tag = execute_result.command_tag().as_str();
-        stream
-            .write_message_noflush(messages::command_complete(tag, execute_result.row_count()))?;
-    } else {
-        stream.write_message_noflush(messages::portal_suspended())?;
+    match backend.execute(execute.name, execute.max_rows as i64)? {
+        ExecuteResult::AclOrDdl(AclOrDdlResult { tag }) => {
+            stream.write_message_noflush(messages::command_complete(&tag))?;
+        }
+        ExecuteResult::Dml(DmlResult { tag, row_count }) => {
+            stream.write_message_noflush(messages::command_complete_with_row_count(
+                &tag, row_count,
+            ))?;
+        }
+        ExecuteResult::FinishedDql(FinishedDqlResult {
+            mut rows,
+            tag,
+            row_count,
+        }) => {
+            while let Some(row) = rows.encode_next()? {
+                stream.write_message_noflush(messages::data_row(row))?;
+            }
+            stream.write_message_noflush(messages::command_complete_with_row_count(
+                &tag, row_count,
+            ))?;
+        }
+        ExecuteResult::SuspendedDql(SuspendedDqlResult { mut rows }) => {
+            while let Some(row) = rows.encode_next()? {
+                stream.write_message_noflush(messages::data_row(row))?;
+            }
+            stream.write_message_noflush(messages::portal_suspended())?;
+        }
     }
 
     Ok(())
@@ -67,7 +84,7 @@ fn describe_statement(
     let describe = stmt_describe.describe;
 
     let parameter_description = messages::parameter_description(param_oids);
-    if let Some(row_description) = describe.row_description()? {
+    if let Some(row_description) = describe.row_description() {
         Ok((
             parameter_description,
             messages::row_description(row_description),
@@ -79,7 +96,7 @@ fn describe_statement(
 
 fn describe_portal(backend: &Backend, portal: Option<&str>) -> PgResult<BeMessage> {
     let describe = backend.describe_portal(portal)?;
-    if let Some(row_description) = describe.row_description()? {
+    if let Some(row_description) = describe.row_description() {
         Ok(messages::row_description(row_description))
     } else {
         Ok(messages::no_data())

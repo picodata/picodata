@@ -1,5 +1,6 @@
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{BufMut, Bytes, BytesMut};
+use pgwire::api::results::FieldFormat;
 use pgwire::types::ToSqlText;
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::{LuaValue, Value as SbroadValue};
@@ -10,21 +11,6 @@ use std::str::{self, FromStr};
 use tarantool::decimal::Decimal;
 use tarantool::uuid::Uuid;
 
-pub fn type_from_name(name: &str) -> PgResult<Type> {
-    match name {
-        "integer" | "unsigned" => Ok(Type::INT8),
-        "string" => Ok(Type::TEXT),
-        "boolean" => Ok(Type::BOOL),
-        "double" => Ok(Type::FLOAT8),
-        "decimal" => Ok(Type::NUMERIC),
-        "uuid" => Ok(Type::UUID),
-        "any" => Ok(Type::ANY),
-        _ => Err(PgError::FeatureNotSupported(format!(
-            "unknown column type \'{name}\'"
-        ))),
-    }
-}
-
 /// This type is used to send Format over the wire.
 pub type RawFormat = i16;
 
@@ -34,6 +20,12 @@ pub enum Format {
     #[default]
     Text = 0,
     Binary = 1,
+}
+
+impl From<&Format> for FieldFormat {
+    fn from(value: &Format) -> Self {
+        Self::from(*value as i16)
+    }
 }
 
 impl TryFrom<RawFormat> for Format {
@@ -149,6 +141,43 @@ impl From<PgValue> for SbroadValue {
             PgValue::Uuid(uuid) => SbroadValue::from(uuid),
             PgValue::Null => SbroadValue::Null,
         }
+    }
+}
+
+impl ToSqlText for PgValue {
+    fn to_sql_text(
+        &self,
+        _: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>>
+    where
+        Self: Sized,
+    {
+        self.encode_text(out)
+    }
+}
+
+impl ToSql for PgValue {
+    fn to_sql(&self, _: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>>
+    where
+        Self: Sized,
+    {
+        self.encode_binary(out)
+    }
+
+    fn accepts(_: &Type) -> bool
+    where
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    fn to_sql_checked(
+        &self,
+        _: &Type,
+        _: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        unimplemented!()
     }
 }
 

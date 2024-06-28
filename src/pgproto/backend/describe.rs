@@ -1,5 +1,6 @@
-use crate::pgproto::error::PgResult;
-use crate::pgproto::value::{self, Format};
+use crate::pgproto::error::{PgError, PgResult};
+use crate::pgproto::value::Format;
+use pgwire::api::results::FieldInfo;
 use pgwire::messages::data::{FieldDescription, RowDescription};
 use postgres_types::{Oid, Type};
 use sbroad::errors::{Entity, SbroadError};
@@ -8,9 +9,11 @@ use sbroad::ir::block::Block;
 use sbroad::ir::ddl::Ddl;
 use sbroad::ir::expression::Expression;
 use sbroad::ir::operator::Relational;
+use sbroad::ir::relation::Type as SbroadType;
 use sbroad::ir::{Node, Plan};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use std::collections::HashMap;
 use std::iter::zip;
 use std::os::raw::c_int;
 use tarantool::proc::{Return, ReturnMsgpack};
@@ -183,21 +186,46 @@ impl TryFrom<&Node> for CommandTag {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MetadataColumn {
     name: String,
-    #[serde(rename = "type")]
-    ty: String,
+    ty: Type,
+}
+
+impl Serialize for MetadataColumn {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let map = HashMap::from([(self.name.clone(), self.ty.to_string())]);
+        map.serialize(serializer)
+    }
 }
 
 impl MetadataColumn {
-    fn new(name: String, ty: String) -> Self {
+    fn new(name: String, ty: Type) -> Self {
         Self { name, ty }
     }
 }
 
+pub fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
+    match sbroad {
+        &SbroadType::Integer | &SbroadType::Unsigned => Ok(Type::INT8),
+        &SbroadType::String => Ok(Type::TEXT),
+        &SbroadType::Boolean => Ok(Type::BOOL),
+        &SbroadType::Double => Ok(Type::FLOAT8),
+        &SbroadType::Decimal => Ok(Type::NUMERIC),
+        &SbroadType::Uuid => Ok(Type::UUID),
+        &SbroadType::Any => Ok(Type::ANY),
+        _ => Err(PgError::FeatureNotSupported(format!(
+            "unknown column type \'{}\'",
+            sbroad
+        ))),
+    }
+}
+
 /// Get an output format from the dql query plan.
-fn dql_output_format(ir: &Plan) -> Result<Vec<MetadataColumn>, SbroadError> {
+fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
     // Get metadata (column types) from the top node's output tuple.
     let top_id = ir.get_top()?;
     let top_output_id = ir.get_relation_node(top_id)?.output();
@@ -205,23 +233,25 @@ fn dql_output_format(ir: &Plan) -> Result<Vec<MetadataColumn>, SbroadError> {
     let mut metadata = Vec::with_capacity(columns.len());
     for col_id in columns {
         let column = ir.get_expression_node(*col_id)?;
-        let column_type = column.calculate_type(ir)?.to_string();
+        let column_type = column.calculate_type(ir)?;
         let column_name = if let Expression::Alias { name, .. } = column {
             name.clone()
         } else {
             return Err(SbroadError::Invalid(
                 Entity::Expression,
                 Some(smol_str::format_smolstr!("expected alias, got {column:?}")),
-            ));
+            )
+            .into());
         };
-        metadata.push(MetadataColumn::new(column_name.into(), column_type));
+        let ty = pg_type_from_sbroad(&column_type)?;
+        metadata.push(MetadataColumn::new(column_name.into(), ty));
     }
     Ok(metadata)
 }
 
 /// Get the output format of explain message.
 fn explain_output_format() -> Vec<MetadataColumn> {
-    vec![MetadataColumn::new("QUERY PLAN".into(), "string".into())]
+    vec![MetadataColumn::new("QUERY PLAN".into(), Type::TEXT)]
 }
 
 fn field_description(name: String, ty: Type, format: Format) -> FieldDescription {
@@ -253,7 +283,7 @@ fn field_description(name: String, ty: Type, format: Format) -> FieldDescription
 }
 
 /// Contains a query description used by pgproto.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Describe {
     pub command_tag: CommandTag,
     pub query_type: QueryType,
@@ -303,24 +333,20 @@ impl Describe {
         &self.query_type
     }
 
-    pub fn command_tag(&self) -> &CommandTag {
-        &self.command_tag
+    pub fn command_tag(&self) -> CommandTag {
+        self.command_tag.clone()
     }
 
-    pub fn row_description(&self) -> PgResult<Option<RowDescription>> {
+    pub fn row_description(&self) -> Option<RowDescription> {
         match self.query_type() {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml => Ok(None),
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml => None,
             QueryType::Dql | QueryType::Explain => {
                 let row_description = self
                     .metadata
                     .iter()
-                    .map(|col| {
-                        let type_str = col.ty.as_str();
-                        value::type_from_name(type_str)
-                            .map(|ty| field_description(col.name.clone(), ty, Format::Text))
-                    })
-                    .collect::<PgResult<_>>()?;
-                Ok(Some(RowDescription::new(row_description)))
+                    .map(|col| field_description(col.name.clone(), col.ty.clone(), Format::Text))
+                    .collect();
+                Some(RowDescription::new(row_description))
             }
         }
     }
@@ -332,7 +358,7 @@ impl Return for Describe {
     }
 }
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct StatementDescribe {
     #[serde(flatten)]
     pub describe: Describe,
@@ -354,7 +380,7 @@ impl StatementDescribe {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct PortalDescribe {
     #[serde(flatten)]
     pub describe: Describe,
@@ -371,33 +397,37 @@ impl PortalDescribe {
 }
 
 impl PortalDescribe {
-    pub fn row_description(&self) -> PgResult<Option<RowDescription>> {
+    pub fn row_description(&self) -> Option<RowDescription> {
         match self.query_type() {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml => Ok(None),
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml => None,
             QueryType::Dql | QueryType::Explain => {
                 let metadata = &self.describe.metadata;
                 let output_format = &self.output_format;
                 let row_description = zip(metadata, output_format)
                     .map(|(col, format)| {
-                        let type_str = col.ty.as_str();
-                        value::type_from_name(type_str)
-                            .map(|ty| field_description(col.name.clone(), ty, *format))
+                        field_description(col.name.clone(), col.ty.clone(), *format)
                     })
-                    .collect::<PgResult<_>>()?;
-                Ok(Some(RowDescription::new(row_description)))
+                    .collect();
+                Some(RowDescription::new(row_description))
             }
         }
+    }
+
+    pub fn row_info(&self) -> Vec<FieldInfo> {
+        let metadata = &self.describe.metadata;
+        let output_format = &self.output_format;
+        zip(metadata, output_format)
+            .map(|(col, format)| {
+                FieldInfo::new(col.name.clone(), None, None, col.ty.clone(), format.into())
+            })
+            .collect()
     }
 
     pub fn query_type(&self) -> &QueryType {
         self.describe.query_type()
     }
 
-    pub fn command_tag(&self) -> &CommandTag {
+    pub fn command_tag(&self) -> CommandTag {
         self.describe.command_tag()
-    }
-
-    pub fn output_format(&self) -> &[Format] {
-        &self.output_format
     }
 }

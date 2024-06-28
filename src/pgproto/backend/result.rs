@@ -1,89 +1,101 @@
-use crate::pgproto::backend::describe::{CommandTag, PortalDescribe, QueryType};
+use crate::pgproto::backend::describe::CommandTag;
 use crate::pgproto::error::PgResult;
-use crate::pgproto::value::{Format, PgValue};
-use bytes::BytesMut;
+use crate::pgproto::value::PgValue;
+use pgwire::api::results::{DataRowEncoder, FieldInfo};
 use pgwire::messages::data::{DataRow, RowDescription};
-use std::iter::zip;
+use std::sync::Arc;
 use std::vec::IntoIter;
 
-fn encode_row(values: Vec<PgValue>, formats: &[Format], buf: &mut BytesMut) -> PgResult<DataRow> {
-    let row = zip(values, formats)
-        .map(|(v, f)| v.encode(f, buf))
-        .collect::<PgResult<_>>()?;
-    Ok(DataRow::new(row))
+#[derive(Debug)]
+pub struct Rows {
+    desc: Arc<Vec<FieldInfo>>,
+    rows: IntoIter<Vec<PgValue>>,
+}
+
+impl Rows {
+    pub fn new(rows: Vec<Vec<PgValue>>, row_desc: Vec<FieldInfo>) -> Self {
+        Self {
+            rows: rows.into_iter(),
+            desc: Arc::new(row_desc),
+        }
+    }
+
+    pub fn encode_next(&mut self) -> PgResult<Option<DataRow>> {
+        let Some(values) = self.rows.next() else {
+            return Ok(None);
+        };
+
+        let mut encoder = DataRowEncoder::new(Arc::clone(&self.desc));
+        for value in values {
+            encoder.encode_field(&value)?;
+        }
+
+        Ok(Some(encoder.finish()?))
+    }
+
+    pub fn describe(&self) -> RowDescription {
+        RowDescription::new(self.desc.iter().map(Into::into).collect())
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn values(&self) -> Vec<Vec<PgValue>> {
+        self.rows.clone().collect()
+    }
 }
 
 #[derive(Debug)]
-pub struct ExecuteResult {
-    describe: PortalDescribe,
-    values_stream: IntoIter<Vec<PgValue>>,
-    row_count: usize,
-    is_portal_finished: bool,
-    buf: BytesMut,
+pub struct AclOrDdlResult {
+    pub tag: CommandTag,
+}
+
+#[derive(Debug)]
+pub struct DmlResult {
+    pub tag: CommandTag,
+    pub row_count: usize,
+}
+
+#[derive(Debug)]
+pub struct SuspendedDqlResult {
+    pub rows: Rows,
+}
+
+#[derive(Debug)]
+pub struct FinishedDqlResult {
+    pub rows: Rows,
+    pub tag: CommandTag,
+    pub row_count: usize,
+}
+
+#[derive(Debug)]
+pub enum ExecuteResult {
+    AclOrDdl(AclOrDdlResult),
+    Dml(DmlResult),
+    SuspendedDql(SuspendedDqlResult),
+    FinishedDql(FinishedDqlResult),
 }
 
 impl ExecuteResult {
-    /// Create a new finished result. It is used for non-dql queries.
-    pub fn new(row_count: usize, describe: PortalDescribe) -> Self {
-        Self {
-            values_stream: Default::default(),
-            describe,
+    pub fn acl_or_ddl(tag: CommandTag) -> Self {
+        Self::AclOrDdl(AclOrDdlResult { tag })
+    }
+
+    pub fn dml(row_count: usize, tag: CommandTag) -> Self {
+        Self::Dml(DmlResult { row_count, tag })
+    }
+
+    pub fn suspended_dql(rows: Rows) -> Self {
+        Self::SuspendedDql(SuspendedDqlResult { rows })
+    }
+
+    pub fn finished_dql(rows: Rows, tag: CommandTag) -> Self {
+        let row_count = rows.row_count();
+        Self::FinishedDql(FinishedDqlResult {
+            rows,
+            tag,
             row_count,
-            is_portal_finished: true,
-            buf: BytesMut::default(),
-        }
-    }
-
-    /// Create a query result with rows. It is used for dql-like queries.
-    pub fn with_rows(self, rows: Vec<Vec<PgValue>>, is_portal_finished: bool) -> Self {
-        let values_stream = rows.into_iter();
-        Self {
-            values_stream,
-            row_count: 0,
-            is_portal_finished,
-            ..self
-        }
-    }
-
-    pub fn command_tag(&self) -> &CommandTag {
-        self.describe.command_tag()
-    }
-
-    pub fn is_portal_finished(&self) -> bool {
-        self.is_portal_finished
-    }
-
-    pub fn row_description(&self) -> PgResult<Option<RowDescription>> {
-        self.describe.row_description()
-    }
-
-    pub fn row_count(&self) -> Option<usize> {
-        match self.describe.query_type() {
-            QueryType::Dml | QueryType::Dql | QueryType::Explain => Some(self.row_count),
-            _ => None,
-        }
-    }
-
-    /// Try to get next row from the result. If there are no rows, None is returned.
-    ///
-    /// Error is returned in case of an encoding error.
-    pub fn next_row(&mut self) -> PgResult<Option<DataRow>> {
-        let Some(row) = self.values_stream.next() else {
-            return Ok(None);
-        };
-        let row = encode_row(row, self.describe.output_format(), &mut self.buf)?;
-        self.buf.clear();
-        self.row_count += 1;
-        Ok(Some(row))
-    }
-}
-
-impl ExecuteResult {
-    pub fn query_type(&self) -> &QueryType {
-        self.describe.describe.query_type()
-    }
-
-    pub fn into_values_stream(self) -> IntoIter<Vec<PgValue>> {
-        self.values_stream
+        })
     }
 }

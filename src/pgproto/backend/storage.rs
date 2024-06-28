@@ -1,6 +1,6 @@
 use super::describe::QueryType;
 use super::describe::{Describe, PortalDescribe, StatementDescribe};
-use super::result::ExecuteResult;
+use super::result::{ExecuteResult, Rows};
 use crate::pgproto::error::{PgError, PgResult};
 use crate::pgproto::value::{Format, PgValue};
 use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
@@ -459,14 +459,17 @@ impl Portal {
                         _ => unreachable!(),
                     }
                 }
-                PortalState::Running(ref mut rows) => {
-                    let taken = rows.take(max_rows).collect();
-                    if rows.len() == 0 {
+                PortalState::Running(ref mut stored_rows) => {
+                    let taken = stored_rows.take(max_rows).collect();
+                    let rows = Rows::new(taken, self.describe.row_info());
+                    if stored_rows.len() == 0 {
                         self.state = PortalState::Finished(None);
+                        return Ok(ExecuteResult::finished_dql(
+                            rows,
+                            self.describe.command_tag(),
+                        ));
                     }
-                    let is_finished = matches!(self.state, PortalState::Finished(_));
-                    return Ok(ExecuteResult::new(0, self.describe().clone())
-                        .with_rows(taken, is_finished));
+                    return Ok(ExecuteResult::suspended_dql(rows));
                 }
                 _ => {
                     return Err(PgError::Other(
@@ -494,11 +497,12 @@ impl Portal {
         self.state = match self.describe().query_type() {
             QueryType::Dml => {
                 let row_count = get_row_count_from_tuple(&tuple)?;
-                PortalState::Finished(Some(ExecuteResult::new(row_count, self.describe().clone())))
+                let tag = self.describe().command_tag();
+                PortalState::Finished(Some(ExecuteResult::dml(row_count, tag)))
             }
-            QueryType::Acl | QueryType::Ddl => {
-                PortalState::Finished(Some(ExecuteResult::new(0, self.describe().clone())))
-            }
+            QueryType::Acl | QueryType::Ddl => PortalState::Finished(Some(
+                ExecuteResult::acl_or_ddl(self.describe().command_tag()),
+            )),
             QueryType::Dql | QueryType::Explain => {
                 let rows = get_rows_from_tuple(&tuple)?.into_iter();
                 PortalState::Running(rows)

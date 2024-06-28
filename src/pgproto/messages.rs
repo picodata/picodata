@@ -1,10 +1,11 @@
+use super::backend::describe::CommandTag;
 use super::stream::BeMessage;
 use pgwire::error::ErrorInfo;
 use pgwire::messages::data::{self, DataRow, ParameterDescription, RowDescription};
 use pgwire::messages::extendedquery::{
     BindComplete, CloseComplete, ParseComplete, PortalSuspended,
 };
-use pgwire::messages::response::SslResponse;
+use pgwire::messages::response::{ReadyForQuery, SslResponse, TransactionStatus};
 use pgwire::messages::{response, startup::*};
 use postgres_types::Oid;
 
@@ -20,7 +21,7 @@ pub const fn auth_ok() -> BeMessage {
 
 /// ReadyForQuery informs the frontend that it can safely send a new command.
 pub fn ready_for_query() -> BeMessage {
-    BeMessage::ReadyForQuery(response::ReadyForQuery::new(response::READY_STATUS_IDLE))
+    BeMessage::ReadyForQuery(ReadyForQuery::new(TransactionStatus::Idle))
 }
 
 /// ErrorResponse informs the client about the error.
@@ -29,12 +30,12 @@ pub fn error_response(info: ErrorInfo) -> BeMessage {
 }
 
 /// CommandComplete informs the client that there are no more rows.
-pub fn command_complete(tag: &str, row_count: Option<usize>) -> BeMessage {
-    let tag = if let Some(count) = row_count {
-        format!("{tag} {count}")
-    } else {
-        tag.to_owned()
-    };
+pub fn command_complete(tag: &CommandTag) -> BeMessage {
+    BeMessage::CommandComplete(response::CommandComplete::new(tag.as_str().to_owned()))
+}
+
+pub fn command_complete_with_row_count(tag: &CommandTag, row_count: usize) -> BeMessage {
+    let tag = format!("{} {}", tag.as_str(), row_count);
     BeMessage::CommandComplete(response::CommandComplete::new(tag))
 }
 
