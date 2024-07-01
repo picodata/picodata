@@ -201,6 +201,7 @@ pub struct ReturnMsgpack<T>(pub T);
 
 impl<T: Serialize> Return for ReturnMsgpack<T> {
     #[inline(always)]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         unwrap_or_report_err!(ctx.return_mp(&self.0))
     }
@@ -216,6 +217,7 @@ pub trait Return: Sized {
 
 impl Return for Tuple {
     #[inline]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         let res = ctx.return_tuple(&self);
         unwrap_or_report_err!(res)
@@ -227,6 +229,7 @@ where
     E: IntoBoxError,
 {
     #[inline(always)]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
     }
@@ -234,6 +237,7 @@ where
 
 impl Return for TupleBuffer {
     #[inline]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         let res = ctx.return_bytes(self.as_ref());
         unwrap_or_report_err!(res)
@@ -245,6 +249,7 @@ where
     E: IntoBoxError,
 {
     #[inline(always)]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
     }
@@ -252,6 +257,7 @@ where
 
 impl Return for &RawBytes {
     #[inline]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         let res = ctx.return_bytes(self);
         unwrap_or_report_err!(res)
@@ -263,6 +269,7 @@ where
     E: IntoBoxError,
 {
     #[inline(always)]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
     }
@@ -270,6 +277,7 @@ where
 
 impl Return for RawByteBuf {
     #[inline]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         let res = ctx.return_bytes(&self);
         unwrap_or_report_err!(res)
@@ -281,6 +289,7 @@ where
     E: IntoBoxError,
 {
     #[inline(always)]
+    #[track_caller]
     fn ret(self, ctx: FunctionCtx) -> c_int {
         unwrap_or_report_err!(self.map(|t| t.ret(ctx)))
     }
@@ -323,6 +332,7 @@ macro_rules! impl_return {
             Self: Serialize,
         {
             #[inline(always)]
+            #[track_caller]
             fn ret(self, ctx: FunctionCtx) -> c_int {
                 unwrap_or_report_err!(ctx.return_mp(&self))
             }
@@ -357,6 +367,7 @@ macro_rules! impl_return_for_tuple {
             Self: Serialize,
         {
             #[inline(always)]
+            #[track_caller]
             fn ret(self, ctx: FunctionCtx) -> c_int {
                 unwrap_or_report_err!(ctx.return_mp(&self))
             }
