@@ -126,7 +126,8 @@ pub fn proc_pg_execute(
             let rows = rows
                 .values()
                 .into_iter()
-                .map(|values| values.into_iter().map(LuaValue::from).collect())
+                // Note: It's OK to unwrap here as this is testing code.
+                .map(|values| values.into_iter().map(|v| v.try_into().unwrap()).collect())
                 .collect();
             let result = ProcResult { rows, is_finished };
             rmp_serde::to_vec_named(&vec![result])

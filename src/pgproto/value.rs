@@ -7,11 +7,12 @@ use pgwire::{
 };
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::{LuaValue, Value as SbroadValue};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use smol_str::{StrExt, ToSmolStr};
 use std::{
     error::Error,
+    fmt::Debug,
     str::{self, FromStr},
 };
 
@@ -141,6 +142,38 @@ impl ToSql for Decimal {
     postgres_types::to_sql_checked!();
 }
 
+/// Json wrapper for smooth encoding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Json<T>(pub postgres_types::Json<T>);
+
+impl<T> From<postgres_types::Json<T>> for Json<T> {
+    fn from(value: postgres_types::Json<T>) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> ToSql for Json<T>
+where
+    T: Serialize + Debug,
+{
+    fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
+        self.0.to_sql(&Type::JSON, out)
+    }
+
+    postgres_types::accepts!(JSON);
+    postgres_types::to_sql_checked!();
+}
+
+impl<T> ToSqlText for Json<T>
+where
+    T: Serialize + Debug,
+{
+    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
+        // Note: json text representation is the same as binary
+        self.to_sql(&Type::JSON, out)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PgValue {
     Integer(i64),
@@ -151,6 +184,7 @@ pub enum PgValue {
     Numeric(Decimal),
     Uuid(Uuid),
     TextArray(Vec<String>),
+    Json(Json<rmpv::Value>),
     Null,
 }
 
@@ -196,6 +230,7 @@ impl TryFrom<rmpv::Value> for PgValue {
                 let string_values = values.iter().map(rmpv_to_string).collect();
                 Ok(PgValue::TextArray(string_values))
             }
+            rmpv::Value::Map(_) => Ok(PgValue::Json(postgres_types::Json(value).into())),
             rmpv::Value::String(v) => {
                 let Some(s) = v.as_str() else {
                     Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
@@ -216,27 +251,32 @@ impl TryFrom<rmpv::Value> for PgValue {
     }
 }
 
-impl From<PgValue> for SbroadValue {
-    fn from(value: PgValue) -> Self {
+impl TryFrom<PgValue> for SbroadValue {
+    type Error = PgError;
+
+    fn try_from(value: PgValue) -> Result<Self, Self::Error> {
         match value {
-            PgValue::Integer(number) => SbroadValue::from(number),
-            PgValue::Float(float) => SbroadValue::from(float),
-            PgValue::Text(string) => SbroadValue::from(string),
-            PgValue::Boolean(val) => SbroadValue::from(val),
-            PgValue::Numeric(decimal) => SbroadValue::from(decimal.0),
-            PgValue::Uuid(uuid) => SbroadValue::from(uuid.0),
+            PgValue::Integer(number) => Ok(SbroadValue::from(number)),
+            PgValue::Float(float) => Ok(SbroadValue::from(float)),
+            PgValue::Text(string) => Ok(SbroadValue::from(string)),
+            PgValue::Boolean(val) => Ok(SbroadValue::from(val)),
+            PgValue::Numeric(decimal) => Ok(SbroadValue::from(decimal.0)),
+            PgValue::Uuid(uuid) => Ok(SbroadValue::from(uuid.0)),
             PgValue::TextArray(values) => {
                 let values: Vec<_> = values.into_iter().map(SbroadValue::from).collect();
-                SbroadValue::from(values)
+                Ok(SbroadValue::from(values))
             }
-            PgValue::Null => SbroadValue::Null,
+            PgValue::Null => Ok(SbroadValue::Null),
+            PgValue::Json(_) => Err(PgError::FeatureNotSupported("json parameters".into())),
         }
     }
 }
 
-impl From<PgValue> for LuaValue {
-    fn from(value: PgValue) -> Self {
-        SbroadValue::from(value).into()
+impl TryFrom<PgValue> for LuaValue {
+    type Error = PgError;
+
+    fn try_from(value: PgValue) -> Result<Self, Self::Error> {
+        SbroadValue::try_from(value).map(Into::into)
     }
 }
 
@@ -256,6 +296,7 @@ impl PgValue {
             PgValue::Float(v) => do_encode(encoder, v, Type::FLOAT8, format),
             PgValue::Text(v) => do_encode(encoder, v, Type::TEXT, format),
             PgValue::TextArray(v) => do_encode(encoder, v, Type::TEXT_ARRAY, format),
+            PgValue::Json(v) => do_encode(encoder, v, Type::JSON, format),
             PgValue::Boolean(v) => do_encode(encoder, v, Type::BOOL, format),
             PgValue::Numeric(v) => do_encode(encoder, v, Type::NUMERIC, format),
             PgValue::Uuid(v) => do_encode(encoder, v, Type::UUID, format),

@@ -50,7 +50,7 @@ fn decode_parameter_values(
     zip(zip(params, param_oids), formats)
         .map(|((bytes, oid), format)| {
             let value = PgValue::decode(bytes.as_ref(), *oid, *format)?;
-            Ok(value.into())
+            value.try_into()
         })
         .collect()
 }

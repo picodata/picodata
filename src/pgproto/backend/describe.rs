@@ -219,6 +219,7 @@ pub fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
         // Currently, we cannot infer the type of array values, so we convert them into text
         // and send the resulting array of text values, i. e. TEXT_ARRAY.
         &SbroadType::Array => Ok(Type::TEXT_ARRAY),
+        &SbroadType::Map => Ok(Type::JSON),
         &SbroadType::Any => Ok(Type::ANY),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{}\'",

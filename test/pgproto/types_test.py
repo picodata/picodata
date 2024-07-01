@@ -1,5 +1,6 @@
 from conftest import Postgres
 import psycopg
+from psycopg.types.json import Jsonb, Json
 from decimal import Decimal
 from uuid import UUID
 import pg8000.native as pg8000  # type: ignore
@@ -282,4 +283,73 @@ def test_arrays(postgres: Postgres):
     ):
         cur = conn.execute(
             """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"auth\" = %b; """, ([1, 2],)
+        )
+
+
+def test_map(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
+
+    postgres.instance.sudo_sql(f'GRANT READ ON TABLE "_pico_table" TO "{user}"')
+
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    data = postgres.instance.sql(""" SELECT "distribution" FROM "_pico_table" """)
+    distribution = [tuple(row) for row in data["rows"]]
+
+    # test text encoding
+    cur = conn.execute(""" SELECT "distribution" FROM "_pico_table" """, binary=False)
+    assert cur.fetchall() == distribution
+
+    # test binary encoding
+    cur = conn.execute(""" SELECT "distribution" FROM "_pico_table" """, binary=True)
+    assert cur.fetchall() == distribution
+
+    # text json parameters should throw an error
+    with pytest.raises(
+        psycopg.errors.FeatureNotSupported,
+        match="feature is not supported: type json",
+    ):
+        cur = conn.execute(
+            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %t; """,
+            (Json(distribution[0]),),
+        )
+
+    # text jsonb parameters should throw an error
+    with pytest.raises(
+        psycopg.errors.FeatureNotSupported,
+        match="feature is not supported: type jsonb",
+    ):
+        cur = conn.execute(
+            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %t; """,
+            (Jsonb(distribution[0]),),
+        )
+
+    # binary json parameters should throw an error
+    with pytest.raises(
+        psycopg.errors.FeatureNotSupported,
+        match="feature is not supported: type json",
+    ):
+        cur = conn.execute(
+            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
+            (Json(distribution[0]),),
+        )
+
+    # binary jsonb parameters should throw an error
+    with pytest.raises(
+        psycopg.errors.FeatureNotSupported,
+        match="feature is not supported: type jsonb",
+    ):
+        cur = conn.execute(
+            """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
+            (Jsonb(distribution[0]),),
         )
