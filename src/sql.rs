@@ -1589,7 +1589,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
 
     let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
     let node = node::global()?;
-    let deadline = Instant::now().saturating_add(timeout);
+    let deadline = Instant::now_fiber().saturating_add(timeout);
 
     let ops_count = ops.len();
     let op = crate::traft::op::Op::BatchDml { ops };
@@ -1601,8 +1601,8 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
     };
     let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
     let (index, term) =
-        crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now()))?;
-    node.wait_index(index, deadline.duration_since(Instant::now()))?;
+        crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now_fiber()))?;
+    node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
     let current_term = raft::Storage::term(&node.raft_storage, index)?;
     if current_term != term {
         return Err(Error::TermMismatch {

@@ -9,7 +9,7 @@ use std::io::{Read, Write};
 
 pub struct ClientParams {
     pub username: String,
-    pub rest: BTreeMap<String, String>,
+    pub _rest: BTreeMap<String, String>,
 }
 
 fn parse_startup(startup: Startup) -> PgResult<ClientParams> {
@@ -26,7 +26,7 @@ fn parse_startup(startup: Startup) -> PgResult<ClientParams> {
     // Keep in mind that a client is required to send only "user".
     Ok(ClientParams {
         username,
-        rest: parameters,
+        _rest: parameters,
     })
 }
 
