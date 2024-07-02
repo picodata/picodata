@@ -1,6 +1,6 @@
 use super::{
     describe::{PortalDescribe, StatementDescribe},
-    result::{ExecuteResult, FinishedDqlResult, SuspendedDqlResult},
+    result::ExecuteResult,
     storage::{UserPortalNames, UserStatementNames},
 };
 use crate::pgproto::{
@@ -97,9 +97,9 @@ pub fn proc_pg_execute(
 ) -> PgResult<Tuple> {
     let result = backend::execute(id, name, max_rows, traceable)?;
     let bytes = match &result {
-        ExecuteResult::AclOrDdl(_) | ExecuteResult::Dml(_) => {
-            let row_count = if let ExecuteResult::Dml(dml) = result {
-                Some(dml.row_count)
+        ExecuteResult::AclOrDdl { .. } | ExecuteResult::Dml { .. } => {
+            let row_count = if let ExecuteResult::Dml { row_count, .. } = result {
+                Some(row_count)
             } else {
                 None
             };
@@ -113,8 +113,7 @@ pub fn proc_pg_execute(
             let result = ProcResult { row_count };
             rmp_serde::to_vec_named(&vec![result])
         }
-        ExecuteResult::FinishedDql(FinishedDqlResult { rows, .. })
-        | ExecuteResult::SuspendedDql(SuspendedDqlResult { rows }) => {
+        ExecuteResult::FinishedDql { rows, .. } | ExecuteResult::SuspendedDql { rows } => {
             #[derive(Serialize)]
             struct ProcResult {
                 rows: Vec<Vec<LuaValue>>,
@@ -122,7 +121,7 @@ pub fn proc_pg_execute(
             }
             impl Encode for ProcResult {}
 
-            let is_finished = matches!(result, ExecuteResult::FinishedDql(_));
+            let is_finished = matches!(result, ExecuteResult::FinishedDql { .. });
             let rows = rows
                 .values()
                 .into_iter()

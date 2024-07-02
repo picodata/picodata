@@ -1,6 +1,4 @@
-use crate::pgproto::backend::result::{
-    AclOrDdlResult, DmlResult, ExecuteResult, FinishedDqlResult, SuspendedDqlResult,
-};
+use crate::pgproto::backend::result::ExecuteResult;
 use crate::pgproto::backend::Backend;
 use crate::pgproto::stream::{BeMessage, FeMessage};
 use crate::pgproto::{
@@ -44,19 +42,19 @@ pub fn process_execute_message(
     execute: Execute,
 ) -> PgResult<()> {
     match backend.execute(execute.name, execute.max_rows as i64)? {
-        ExecuteResult::AclOrDdl(AclOrDdlResult { tag }) => {
+        ExecuteResult::AclOrDdl { tag } => {
             stream.write_message_noflush(messages::command_complete(&tag))?;
         }
-        ExecuteResult::Dml(DmlResult { tag, row_count }) => {
+        ExecuteResult::Dml { tag, row_count } => {
             stream.write_message_noflush(messages::command_complete_with_row_count(
                 &tag, row_count,
             ))?;
         }
-        ExecuteResult::FinishedDql(FinishedDqlResult {
+        ExecuteResult::FinishedDql {
             mut rows,
             tag,
             row_count,
-        }) => {
+        } => {
             while let Some(row) = rows.encode_next()? {
                 stream.write_message_noflush(messages::data_row(row))?;
             }
@@ -64,7 +62,7 @@ pub fn process_execute_message(
                 &tag, row_count,
             ))?;
         }
-        ExecuteResult::SuspendedDql(SuspendedDqlResult { mut rows }) => {
+        ExecuteResult::SuspendedDql { mut rows } => {
             while let Some(row) = rows.encode_next()? {
                 stream.write_message_noflush(messages::data_row(row))?;
             }

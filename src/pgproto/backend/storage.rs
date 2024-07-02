@@ -464,12 +464,14 @@ impl Portal {
                     let rows = Rows::new(taken, self.describe.row_info());
                     if stored_rows.len() == 0 {
                         self.state = PortalState::Finished(None);
-                        return Ok(ExecuteResult::finished_dql(
+                        let row_count = rows.row_count();
+                        return Ok(ExecuteResult::FinishedDql {
                             rows,
-                            self.describe.command_tag(),
-                        ));
+                            row_count,
+                            tag: self.describe.command_tag(),
+                        });
                     }
-                    return Ok(ExecuteResult::suspended_dql(rows));
+                    return Ok(ExecuteResult::SuspendedDql { rows });
                 }
                 _ => {
                     return Err(PgError::Other(
@@ -498,11 +500,12 @@ impl Portal {
             QueryType::Dml => {
                 let row_count = get_row_count_from_tuple(&tuple)?;
                 let tag = self.describe().command_tag();
-                PortalState::Finished(Some(ExecuteResult::dml(row_count, tag)))
+                PortalState::Finished(Some(ExecuteResult::Dml { row_count, tag }))
             }
-            QueryType::Acl | QueryType::Ddl => PortalState::Finished(Some(
-                ExecuteResult::acl_or_ddl(self.describe().command_tag()),
-            )),
+            QueryType::Acl | QueryType::Ddl => {
+                let tag = self.describe().command_tag();
+                PortalState::Finished(Some(ExecuteResult::AclOrDdl { tag }))
+            }
             QueryType::Dql | QueryType::Explain => {
                 let rows = get_rows_from_tuple(&tuple)?.into_iter();
                 PortalState::Running(rows)

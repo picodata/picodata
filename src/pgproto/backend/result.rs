@@ -47,55 +47,20 @@ impl Rows {
 }
 
 #[derive(Debug)]
-pub struct AclOrDdlResult {
-    pub tag: CommandTag,
-}
-
-#[derive(Debug)]
-pub struct DmlResult {
-    pub tag: CommandTag,
-    pub row_count: usize,
-}
-
-#[derive(Debug)]
-pub struct SuspendedDqlResult {
-    pub rows: Rows,
-}
-
-#[derive(Debug)]
-pub struct FinishedDqlResult {
-    pub rows: Rows,
-    pub tag: CommandTag,
-    pub row_count: usize,
-}
-
-#[derive(Debug)]
 pub enum ExecuteResult {
-    AclOrDdl(AclOrDdlResult),
-    Dml(DmlResult),
-    SuspendedDql(SuspendedDqlResult),
-    FinishedDql(FinishedDqlResult),
-}
-
-impl ExecuteResult {
-    pub fn acl_or_ddl(tag: CommandTag) -> Self {
-        Self::AclOrDdl(AclOrDdlResult { tag })
-    }
-
-    pub fn dml(row_count: usize, tag: CommandTag) -> Self {
-        Self::Dml(DmlResult { row_count, tag })
-    }
-
-    pub fn suspended_dql(rows: Rows) -> Self {
-        Self::SuspendedDql(SuspendedDqlResult { rows })
-    }
-
-    pub fn finished_dql(rows: Rows, tag: CommandTag) -> Self {
-        let row_count = rows.row_count();
-        Self::FinishedDql(FinishedDqlResult {
-            rows,
-            tag,
-            row_count,
-        })
-    }
+    AclOrDdl {
+        tag: CommandTag,
+    },
+    Dml {
+        tag: CommandTag,
+        row_count: usize,
+    },
+    SuspendedDql {
+        rows: Rows,
+    },
+    FinishedDql {
+        rows: Rows,
+        tag: CommandTag,
+        row_count: usize,
+    },
 }
