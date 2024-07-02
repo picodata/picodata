@@ -1531,6 +1531,7 @@ pub(crate) fn setup() {
                 - migrate (optional bool), true whether run UP migration, default: false
                 - migrate_timeout (optional number), in seconds, default: 10
                 - migrate_rollback_timeout (optional number), in seconds, default: 10
+                - if_not_exist (optional bool), in seconds, default: false
         "},
         {
             #[derive(::tarantool::tlua::LuaRead)]
@@ -1539,14 +1540,17 @@ pub(crate) fn setup() {
                 migrate: Option<bool>,
                 migrate_timeout: Option<f64>,
                 migrate_rollback_timeout: Option<f64>,
+                if_not_exist: Option<bool>,
             }
             tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 let mut migrate_timeout = Duration::from_secs(10);
                 let mut migrate_rollback_timeout = Duration::from_secs(10);
                 let mut migrate = false;
+                let mut if_not_exist = false;
                 if let Some(opts) = opts {
                     migrate = opts.migrate.unwrap_or_default();
+                    if_not_exist = opts.if_not_exist.unwrap_or_default();
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
@@ -1557,7 +1561,7 @@ pub(crate) fn setup() {
                         migrate_rollback_timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::install_plugin(PluginIdentifier::new(name, version), migrate, timeout, migrate_timeout, migrate_rollback_timeout)
+                plugin::install_plugin(PluginIdentifier::new(name, version), migrate, timeout, migrate_timeout, migrate_rollback_timeout, if_not_exist)
             })
         },
     );

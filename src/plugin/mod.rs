@@ -4,7 +4,8 @@ pub mod migration;
 pub mod rpc;
 pub mod topology;
 
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
+use crate::schema::{PluginDef, PluginMigrationRecord, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
+use libloading::Library;
 use once_cell::unsync;
 use picoplugin::background::ServiceId;
 use picoplugin::plugin::interface::ServiceBox;
@@ -47,6 +48,8 @@ pub fn set_plugin_dir(path: &Path) {
 
 #[derive(thiserror::Error, Debug)]
 pub enum PluginError {
+    #[error("Plugin already exist")]
+    AlreadyExist,
     #[error("Error while install the plugin")]
     InstallationAborted,
     #[error("Error while enable the plugin")]
@@ -532,11 +535,19 @@ pub fn install_plugin(
     timeout: Duration,
     migrate_timeout: Duration,
     migrate_rollback_timeout: Duration,
+    if_not_exists: bool,
 ) -> traft::Result<()> {
     let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
-    let manifest = Manifest::load(&ident)?;
 
+    let plugin_already_exist = node.storage.plugin.contains(&ident)?;
+    match (if_not_exists, plugin_already_exist) {
+        (true, true) => return Ok(()),
+        (false, true) => return Err(PluginError::AlreadyExist.into()),
+        (_, _) => {}
+    }
+
+    let manifest = Manifest::load(&ident)?;
     let dml = Dml::replace(
         ClusterwideTable::Property,
         &(&PropertyName::PluginInstall, &manifest),
