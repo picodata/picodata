@@ -385,17 +385,6 @@ impl Node {
         fiber::reschedule();
     }
 
-    /// **This function yields**
-    pub fn timeout_now(&self) {
-        let raft_id = self.raft_id();
-        self.step_and_yield(raft::Message {
-            to: raft_id,
-            from: raft_id,
-            msg_type: raft::MessageType::MsgTimeoutNow,
-            ..Default::default()
-        })
-    }
-
     /// Only the conf_change_loop on a leader is eligible to call this function.
     ///
     /// **This function yields**
@@ -2413,6 +2402,6 @@ fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
 #[proc(public = false)]
 fn proc_raft_promote() -> traft::Result<()> {
     let node = global()?;
-    node.timeout_now();
+    node.campaign_and_yield()?;
     Ok(())
 }

@@ -27,7 +27,7 @@ def test_gl119_panic_on_shutdown(cluster2: Cluster):
     os.killpg(i1.process.pid, signal.SIGSTOP)
     i2.call(".proc_raft_promote")
     # it can't win the election because there is no quorum
-    i2.assert_raft_status("Candidate")
+    i2.assert_raft_status("PreCandidate")
 
     crawler = log_crawler(i2, ON_SHUTDOWN_TIMEOUT)
 
