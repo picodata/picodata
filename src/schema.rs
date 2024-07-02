@@ -661,10 +661,12 @@ impl<'a> Encode for ServiceRouteKey<'a> {}
 /// Single record in _pico_plugin_migration system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct PluginMigrationRecord {
-    /// Instance id.
-    pub plugin_name: String,
     /// Plugin name.
+    pub plugin_name: String,
+    /// Migration file path.
     pub migration_file: String,
+    /// MD5 of a migration file content, represented by a hex string.
+    hash: String,
 }
 
 impl Encode for PluginMigrationRecord {}
@@ -677,7 +679,13 @@ impl PluginMigrationRecord {
         vec![
             Field::from(("plugin_name", FieldType::String)).is_nullable(false),
             Field::from(("migration_file", FieldType::String)).is_nullable(false),
+            Field::from(("hash", FieldType::String)).is_nullable(false),
         ]
+    }
+
+    #[inline(always)]
+    pub fn hash(&self) -> &str {
+        &self.hash
     }
 
     #[cfg(test)]
@@ -685,6 +693,7 @@ impl PluginMigrationRecord {
         Self {
             plugin_name: "plugin".to_string(),
             migration_file: "migration_1.db".to_string(),
+            hash: format!("{:x}", md5::compute("test")),
         }
     }
 }

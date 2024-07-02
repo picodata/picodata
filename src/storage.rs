@@ -441,7 +441,7 @@ define_clusterwide_tables! {
             pub struct PluginMigration {
                 space: Space,
                 #[primary]
-                index_name: Index => "_pico_plugin_migration_key",
+                primary_key: Index => "_pico_plugin_migration_primary_key",
             }
         }
     }
@@ -3810,15 +3810,15 @@ impl PluginMigration {
             .if_not_exists(true)
             .create()?;
 
-        let index_name = space
-            .index_builder("_pico_plugin_migration_key")
+        let primary_key = space
+            .index_builder("_pico_plugin_migration_primary_key")
             .unique(true)
             .part("plugin_name")
             .part("migration_file")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index_name })
+        Ok(Self { space, primary_key })
     }
 
     #[inline(always)]
@@ -3831,7 +3831,7 @@ impl PluginMigration {
         vec![IndexDef {
             table_id: Self::TABLE_ID,
             id: 0,
-            name: "_pico_plugin_migration_key".into(),
+            name: "_pico_plugin_migration_primary_key".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![
@@ -3845,8 +3845,13 @@ impl PluginMigration {
     }
 
     #[inline]
-    pub fn put(&self, plugin_name: &str, migration_file: &str) -> tarantool::Result<()> {
-        self.space.replace(&(plugin_name, migration_file))?;
+    pub fn put(
+        &self,
+        plugin_name: &str,
+        migration_file: &str,
+        hash: md5::Digest,
+    ) -> tarantool::Result<()> {
+        self.space.replace(&(plugin_name, migration_file, hash.0))?;
         Ok(())
     }
 

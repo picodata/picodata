@@ -22,6 +22,7 @@ use tarantool::time::Instant;
 
 use crate::cas::{compare_and_swap, Range};
 use crate::info::InstanceInfo;
+use crate::plugin::migration::get_migration_path;
 use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::node::Node;
@@ -565,14 +566,7 @@ pub fn install_plugin(
         }
 
         let plugin_identity = plugin.into_identity();
-        let migration_result =
-            migration_up(&plugin_identity, migrate_timeout, migrate_rollback_timeout);
-        if let Err(e) = migration_result {
-            if let Err(err) = remove_plugin(&plugin_identity, Duration::from_secs(2), false) {
-                tlog!(Error, "rollback plugin installation error: {err}");
-            }
-            return Err(e.into());
-        }
+        migration_up(&plugin_identity, migrate_timeout, migrate_rollback_timeout)?;
     }
 
     Ok(())
@@ -599,7 +593,12 @@ pub fn migration_up(
         .plugin_migration
         .get_files_by_plugin(&ident.name)?;
     if already_applied_migrations.len() > manifest.migration.len() {
-        return Err(PluginError::Migration(migration::Error::InconsistentMigrationList).into());
+        return Err(
+            PluginError::Migration(migration::Error::InconsistentMigrationList(
+                "more migrations have already been applied than are in the manifest".to_string(),
+            ))
+            .into(),
+        );
     }
 
     let mut migration_delta = manifest.migration;
@@ -608,7 +607,26 @@ pub fn migration_up(
         .enumerate()
     {
         if migration_file != already_applied_migrations[i].migration_file {
-            return Err(PluginError::Migration(migration::Error::InconsistentMigrationList).into());
+            return Err(
+                PluginError::Migration(migration::Error::InconsistentMigrationList(format!(
+                    "unknown migration files found in manifest migrations ({migration_file})"
+                )))
+                .into(),
+            );
+        }
+
+        let migration_path = get_migration_path(ident, &migration_file);
+        let hash = migration::calculate_migration_hash(&migration_path.to_string_lossy())
+            .map_err(PluginError::Migration)?;
+        let hash_string = format!("{:x}", hash);
+
+        if hash_string != already_applied_migrations[i].hash() {
+            return Err(
+                PluginError::Migration(migration::Error::InconsistentMigrationList(
+                    format!("unknown migration files found in manifest migrations (mismatched file meta information for {migration_file})")
+                ))
+                .into(),
+            );
         }
     }
 

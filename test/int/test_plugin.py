@@ -779,6 +779,25 @@ def test_migration_separate_command_apply_err(cluster: Cluster):
     expected_state.assert_data_synced()
 
 
+def test_migration_for_changed_migration(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    expected_state = PluginReflection.default()
+
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
+    i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    expected_state = expected_state.set_data(_DATA_V_0_1_0)
+    expected_state.assert_data_synced()
+
+    # increase the version to v0.2.0_broken with changed file author.db
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.2.0_broken", timeout=5)
+
+    error_regex = "inconsistent with previous version migration list, "
+    r"reason: unknown migration files found in manifest migrations "
+    r"\(mismatched file meta information for book\.db\)"
+    with pytest.raises(ReturnError, match=error_regex):
+        i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.2.0_broken")
+
+
 def test_migration_on_plugin_install(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
@@ -856,9 +875,6 @@ def test_migration_on_plugin_next_version_install(cluster: Cluster):
 
 def test_migration_file_invalid_ext(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, "0.1.0", _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
-    )
 
     # the first file in a migration list has an invalid extension
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT", True)
@@ -871,8 +887,6 @@ def test_migration_file_invalid_ext(cluster: Cluster):
             {"migrate": True},
             timeout=5,
         )
-    expected_state = expected_state.install(False)
-    expected_state.assert_synced()
 
 
 def test_migration_apply_err(cluster: Cluster):
@@ -892,7 +906,7 @@ def test_migration_apply_err(cluster: Cluster):
             {"migrate": True},
             timeout=5,
         )
-    expected_state = expected_state.install(False).set_data(_NO_DATA_V_0_1_0)
+    expected_state = expected_state.install(True).set_data(_NO_DATA_V_0_1_0)
     expected_state.assert_synced()
     expected_state.assert_data_synced()
 
@@ -2090,6 +2104,7 @@ def test_sdk_log(cluster: Cluster):
         i1,
         _PLUGIN_W_SDK,
         _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
         default_config={"test_type": "log"},
     )
     assert crawler.matched
@@ -2102,6 +2117,7 @@ def test_sdk_background(cluster: Cluster):
         i1,
         _PLUGIN_W_SDK,
         _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
         default_config={"test_type": "background"},
     )
 

@@ -455,8 +455,8 @@ Insert({_pico_table}, [{_pico_service},"_pico_service",{{"Global":null}},[{{"fie
 Insert({_pico_index}, [{_pico_service},0,"_pico_service_name","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["name","string",null,false,null],["version","string",null,false,null]],true,0]),
 Insert({_pico_table}, [{_pico_service_route},"_pico_service_route",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"plugin_version"}},{{"field_type":"string","is_nullable":false,"name":"service_name"}},{{"field_type":"boolean","is_nullable":false,"name":"poison"}}],0,true,"memtx",1,""]),
 Insert({_pico_index}, [{_pico_service_route},0,"_pico_service_routing_key","tree",[{{"unique":true}}],[["instance_id","string",null,false,null],["plugin_name","string",null,false,null],["plugin_version","string",null,false,null],["service_name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_plugin_migration},0,"_pico_plugin_migration_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0])
+Insert({_pico_table}, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}},{{"field_type":"string","is_nullable":false,"name":"hash"}}],0,true,"memtx",1,""]),
+Insert({_pico_index}, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0])
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|

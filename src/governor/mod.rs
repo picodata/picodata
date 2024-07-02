@@ -36,6 +36,7 @@ use crate::unwrap_ok_or;
 use plan::action_plan;
 use plan::stage::*;
 
+use crate::governor::plan::EnablePluginConfig;
 use crate::plugin::PluginIdentifier;
 use futures::future::try_join_all;
 
@@ -149,13 +150,13 @@ impl Loop {
                     .map(|record| record.migration_file)
                     .collect();
 
-                (
+                EnablePluginConfig {
                     ident,
                     installed_plugins,
                     services,
                     applied_migrations,
                     timeout,
-                )
+                }
             });
         let disable_plugin = storage
             .properties

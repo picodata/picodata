@@ -1935,6 +1935,7 @@ def binary_path(cargo_build: None) -> str:
         f"{test_dir}/testplug/testplug_small_svc2/0.1.0/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_w_migration/0.1.0/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_w_migration/0.2.0/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_sdk/0.1.0/libtestplug.{ext}",
     ]
     for destination in destinations:

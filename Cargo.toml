@@ -44,6 +44,7 @@ thiserror = "1.0"
 uuid = { version = "0.8", features = ["v3", "v4"] } # TODO: update to 1.0
 va_list = ">=0.1.4"
 rust_decimal = { version = "1.35.0", features = ["db-postgres"] }
+md5 = "0.7.0"
 
 # Link- and ABI- related stuff
 abi_stable = "0.11.2"
@@ -79,7 +80,7 @@ pretty_assertions = "0.6.1"
 [build-dependencies]
 nix = { version = "0.26.4", features = ["fs"] }
 jobserver = "0.1.26"
-syn = { version = "^1.0", features = [ "full", "extra-traits", "printing" ] }
+syn = { version = "^1.0", features = ["full", "extra-traits", "printing"] }
 quote = "^1.0"
 
 [patch.crates-io]
@@ -110,6 +111,5 @@ members = [
     "sdk/plugin-example",
     "sdk/plugin-example2",
     "gostech/gostech-audit-log",
-
     "test/testplug",
 ]

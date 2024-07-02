@@ -1,0 +1,10 @@
+description: plugin for test purposes
+name: testplug_w_migration
+version: 0.2.0_broken
+services:
+  - name: testservice_2
+    description: testservice_2 descr
+    default_configuration:
+migration:
+  - author.db
+  - book.db

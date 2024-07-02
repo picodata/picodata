@@ -7,8 +7,11 @@ use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{error_injection, sql, tlog, traft};
+use md5::Digest;
+use std::fs::File;
 use std::io;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Read};
+use std::path::PathBuf;
 use std::time::Duration;
 use tarantool::cbus;
 use tarantool::fiber;
@@ -40,8 +43,8 @@ pub enum Error {
     #[error("Update migration progress: {0}")]
     UpdateProgress(String),
 
-    #[error("inconsistent with previous version migration list")]
-    InconsistentMigrationList,
+    #[error("inconsistent with previous version migration list, reason: {0}")]
+    InconsistentMigrationList(String),
 }
 
 const MAX_COMMAND_LENGTH_TO_SHOW: usize = 256;
@@ -81,6 +84,74 @@ impl std::fmt::Display for DisplayTruncated<'_> {
         f.write_str("...")?;
         Ok(())
     }
+}
+
+pub fn get_migration_path(plugin_ident: &PluginIdentifier, file_name: &str) -> PathBuf {
+    let plugin_dir = PLUGIN_DIR
+        .with(|dir| dir.lock().clone())
+        .join(&plugin_ident.name)
+        .join(&plugin_ident.version);
+    plugin_dir.join(file_name)
+}
+
+pub fn calculate_migration_hash(filename: &str) -> Result<md5::Digest, Error> {
+    let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
+
+    fn calculate_migration_hash_from_file(filename: &str) -> Result<md5::Digest, io::Error> {
+        const BUF_SIZE: usize = 1024;
+        const HASH_SIZE: usize = 16;
+
+        let mut f = File::open(filename)?;
+        let mut buffer = [0; BUF_SIZE + HASH_SIZE];
+        let mut digest = Digest([0; HASH_SIZE]);
+
+        let (file_part, digest_part) = buffer.split_at_mut(BUF_SIZE);
+        assert_eq!(file_part.len(), BUF_SIZE);
+        assert_eq!(digest_part.len(), HASH_SIZE);
+        let mut n = f.read(file_part)?;
+
+        while n != 0 {
+            digest = md5::compute(buffer);
+
+            let (file_part, digest_part) = buffer.split_at_mut(BUF_SIZE);
+            n = f.read(file_part)?;
+            digest_part.copy_from_slice(&digest.0);
+        }
+
+        Ok(digest)
+    }
+
+    tlog!(Info, "hashing migrations file '{filename}'");
+    let t0 = Instant::now_accurate();
+
+    std::thread::scope(|s| -> std::io::Result<_> {
+        std::thread::Builder::new()
+            .name("migrations_parser".into())
+            .spawn_scoped(s, move || {
+                tlog!(Debug, "hashing a migrations file '{filename}'");
+                let res = calculate_migration_hash_from_file(filename)
+                    .map_err(|e| Error::File(filename.to_string(), e));
+                if let Err(e) = &res {
+                    tlog!(Debug, "failed hashing migrations file '{filename}': {e}");
+                }
+
+                sender.send(res)
+            })?;
+        Ok(())
+    })
+    .map_err(|e| Error::ThreadDead(e.to_string()))?;
+
+    let res = receiver.receive().map_err(|e| {
+        #[rustfmt::skip]
+        tlog!(Error, "failed receiving migrations hash from file '{filename}': {e}");
+        Error::ThreadDead(e.to_string())
+    });
+
+    let elapsed = t0.elapsed();
+    #[rustfmt::skip]
+    tlog!(Info, "done hashing migrations file '{filename}', elapsed time: {elapsed:?}");
+
+    res?
 }
 
 #[derive(Debug)]
@@ -365,12 +436,8 @@ pub fn apply_up_migrations(
 ) -> crate::plugin::Result<()> {
     // checking the existence of migration files
     let mut migration_files = vec![];
-    let plugin_dir = PLUGIN_DIR
-        .with(|dir| dir.lock().clone())
-        .join(&plugin_ident.name)
-        .join(&plugin_ident.version);
     for file in migrations {
-        let migration_path = plugin_dir.join(file);
+        let migration_path = get_migration_path(plugin_ident, file);
 
         if error_injection::is_enabled("PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT") {
             return Err(Error::Extension(file.to_string()).into());
@@ -434,9 +501,21 @@ pub fn apply_up_migrations(
             return Err(e.into());
         }
 
+        let hash = match calculate_migration_hash(db_file) {
+            Ok(h) => h,
+            Err(e) => {
+                handle_err(&seen_queries);
+                return Err(e.into());
+            }
+        };
+
         let dml = Dml::replace(
             ClusterwideTable::PluginMigration,
-            &[&plugin_ident.name, &queries.filename],
+            &(
+                &plugin_ident.name,
+                &queries.filename,
+                &format!("{:x}", hash),
+            ),
             ADMIN_ID,
         )?;
         tlog!(
