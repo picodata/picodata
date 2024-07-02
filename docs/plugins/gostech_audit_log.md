@@ -12,9 +12,7 @@
 Схема взаимодействия Picodata и модуля `gostech-audit-log` показана
 ниже.
 
-<div align="center">
 ![](../images/gostech_audit_log.svg)
-</div>
 
 Задача модуля `gostech-audit-log` — разбор [журнала
 аудита](../tutorial/audit_log.md) Picodata и отправка его на указанный

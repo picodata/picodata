@@ -192,12 +192,12 @@ body {
     }
 }
 
-    /* >>>>>>>>>>>>>>>>>>>>>>>> CUSTOM SELECTORS >>>>>>>>>>>>>>>>>>>>>>>> */
+/* >>>>>>>>>>>>>>>>>>>>>>>> CUSTOM SELECTORS >>>>>>>>>>>>>>>>>>>>>>>> */
 
-    /* Hide `.md-icon__mobile` */
-    .md-icon__mobile {
-        display: none;
-    }
+/* Hide `.md-icon__mobile` */
+.md-icon__mobile {
+    display: none;
+}
 
 /* Set `img` dimensions of `.md-icon__mobile` */
 .md-icon__mobile img {
@@ -242,4 +242,11 @@ svg > a > text.nonterminal {
     font-size: 14px;
     dominant-baseline: central;
     text-anchor: middle;
+}
+
+/* Center <img> tags */
+article > p > img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
