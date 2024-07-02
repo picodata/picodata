@@ -5,6 +5,7 @@ from contextlib import contextmanager
 import glob
 import os
 from pathlib import Path
+import shlex
 import subprocess  # nosec
 import sys
 
@@ -102,8 +103,7 @@ def apply_patches():
 
 def restore():
     subprocess.check_call(
-        "git submodule foreach --recursive git restore .",
-        shell=True,
+        shlex.split("git submodule foreach --recursive git restore .")
     )
 
 
