@@ -280,6 +280,20 @@ impl TryFrom<PgValue> for LuaValue {
     }
 }
 
+// Empty strings in arrays need to be wrapped in quotes if text representation is used.
+fn wrap_empty_strings_in_quotes(array: &[String]) -> Vec<String> {
+    array
+        .iter()
+        .map(|s| {
+            if s.is_empty() {
+                "\"\"".into()
+            } else {
+                s.to_owned()
+            }
+        })
+        .collect()
+}
+
 impl PgValue {
     pub fn encode(&self, format: FieldFormat, encoder: &mut DataRowEncoder) -> PgWireResult<()> {
         pub fn do_encode<T: ToSql + ToSqlText>(
@@ -295,7 +309,13 @@ impl PgValue {
             PgValue::Integer(v) => do_encode(encoder, v, Type::INT8, format),
             PgValue::Float(v) => do_encode(encoder, v, Type::FLOAT8, format),
             PgValue::Text(v) => do_encode(encoder, v, Type::TEXT, format),
-            PgValue::TextArray(v) => do_encode(encoder, v, Type::TEXT_ARRAY, format),
+            PgValue::TextArray(v) => {
+                if let FieldFormat::Text = format {
+                    let v = wrap_empty_strings_in_quotes(v);
+                    return do_encode(encoder, &v, Type::TEXT_ARRAY, format);
+                }
+                do_encode(encoder, v, Type::TEXT_ARRAY, format)
+            }
             PgValue::Json(v) => do_encode(encoder, v, Type::JSON, format),
             PgValue::Boolean(v) => do_encode(encoder, v, Type::BOOL, format),
             PgValue::Numeric(v) => do_encode(encoder, v, Type::NUMERIC, format),
