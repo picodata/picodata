@@ -3,12 +3,11 @@ use crate::pgproto::error::PgResult;
 use crate::pgproto::value::PgValue;
 use pgwire::api::results::{DataRowEncoder, FieldInfo};
 use pgwire::messages::data::{DataRow, RowDescription};
-use std::sync::Arc;
 use std::vec::IntoIter;
 
 #[derive(Debug)]
 pub struct Rows {
-    desc: Arc<Vec<FieldInfo>>,
+    desc: Vec<FieldInfo>,
     rows: IntoIter<Vec<PgValue>>,
 }
 
@@ -16,7 +15,7 @@ impl Rows {
     pub fn new(rows: Vec<Vec<PgValue>>, row_desc: Vec<FieldInfo>) -> Self {
         Self {
             rows: rows.into_iter(),
-            desc: Arc::new(row_desc),
+            desc: row_desc,
         }
     }
 
@@ -25,9 +24,10 @@ impl Rows {
             return Ok(None);
         };
 
-        let mut encoder = DataRowEncoder::new(Arc::clone(&self.desc));
-        for value in values {
-            encoder.encode_field(&value)?;
+        let mut encoder = DataRowEncoder::new(Default::default());
+        for (i, value) in values.iter().enumerate() {
+            let format = self.desc.get(i).unwrap().format();
+            value.encode(format, &mut encoder)?;
         }
 
         Ok(Some(encoder.finish()?))
