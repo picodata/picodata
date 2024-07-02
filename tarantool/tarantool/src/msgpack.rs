@@ -33,10 +33,8 @@ macro_rules! slice_read_be_to {
     }};
 }
 
-// TODO: we only ever Seek forward which is equivalent to reading into a buffer
-// and discarding the results. We should refactor this and make it accept a
-// concrete `&mut [u8]`, which will make it much nicer to use and will improve
-// both the build time and the debug perfromance.
+// Even though function only seeks forward, we still use it
+// at non-sliceable context, so this trait bound has to stay.
 pub fn skip_value(cur: &mut (impl Read + Seek)) -> Result<()> {
     use rmp::Marker;
 
