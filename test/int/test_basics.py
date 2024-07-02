@@ -648,15 +648,20 @@ def test_file_shredding(cluster: Cluster, tmp_path):
     # do it twice to remove an old xlog too
     i1.eval("box.snapshot(); box.snapshot()")
 
-    with open(os.path.join(tmp_path, "i1/00000000000000000000.xlog"), "rb") as xlog:
-        xlog_after_shred = xlog.read(100)
-    with open(os.path.join(tmp_path, "i1/00000000000000000000.snap"), "rb") as snap:
-        snap_after_shred = snap.read(100)
+    def check_files_got_shredded():
+        with open(os.path.join(tmp_path, "i1/00000000000000000000.xlog"), "rb") as xlog:
+            xlog_after_shred = xlog.read(100)
+        with open(os.path.join(tmp_path, "i1/00000000000000000000.snap"), "rb") as snap:
+            snap_after_shred = snap.read(100)
 
-    i1.call("pico._inject_error", "KEEP_FILES_AFTER_SHREDDING", False)
+        assert xlog_before_shred != xlog_after_shred
+        assert snap_before_shred != snap_after_shred
 
-    assert xlog_before_shred != xlog_after_shred
-    assert snap_before_shred != snap_after_shred
+    # There's currently no way to synchronously wait for the snapshot to be
+    # generated (and shredded) so we do a retriable call. If this starts getting
+    # flaky try increasing the timeout, although it's very sad if we need to
+    # wait more than 5 seconds for the shredding to take place...
+    Retriable(timeout=5, rps=5).call(check_files_got_shredded)
 
 
 def test_pico_service_password_security_warning(cluster: Cluster):
