@@ -1730,6 +1730,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i1.raft_get_index())
 
     # Already exists -> ok.
     ddl = i1.sql(
@@ -1754,6 +1755,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 0
+    cluster.raft_wait_index(i1.raft_get_index())
 
     ddl = i2.sql(
         """
@@ -1762,6 +1764,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i2.raft_get_index())
 
     # already dropped -> error, no such table
     with pytest.raises(TarantoolError, match="""sbroad: space t not found"""):
@@ -1780,6 +1783,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i2.raft_get_index())
 
     ddl = i1.sql(
         """
@@ -1787,6 +1791,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i1.raft_get_index())
 
     # Check vinyl space
     ddl = i1.sql(
@@ -1798,6 +1803,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i1.raft_get_index())
 
     ddl = i2.sql(
         """
@@ -1806,6 +1812,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i2.raft_get_index())
 
     # Check NOT NULL inferred on PRIMARY KEY
     ddl = i1.sql(
@@ -1815,6 +1822,7 @@ def test_create_drop_table(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i1.raft_get_index())
     with pytest.raises(
         TarantoolError,
         match=(
@@ -1831,6 +1839,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i2.raft_get_index())
 
     # Check global space
     ddl = i1.sql(
@@ -1843,6 +1852,7 @@ def test_create_drop_table(cluster: Cluster):
     """
     )
     assert ddl["row_count"] == 1
+    cluster.raft_wait_index(i1.raft_get_index())
 
     with pytest.raises(TarantoolError, match="global spaces can use only memtx engine"):
         i1.sql(
@@ -3053,6 +3063,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
     )
     assert data["row_count"] == 1
+    cluster.raft_wait_index(i1.raft_get_index())
 
     # Check that the procedure would be created with the expected id.
     next_func_id = i1.eval("return box.internal.generate_func_id(true)")
@@ -3064,6 +3075,8 @@ def test_create_drop_procedure(cluster: Cluster):
         """
     )
     assert data["row_count"] == 1
+    cluster.raft_wait_index(i2.raft_get_index())
+
     data = i1.sql(
         """
         select "id" from "_pico_routine" where "name" = 'PROC1'
@@ -3131,6 +3144,8 @@ def test_create_drop_procedure(cluster: Cluster):
 
     # Check that PROC1 is actually dropped
     i1.sql(""" drop procedure proc1 """)
+    cluster.raft_wait_index(i1.raft_get_index())
+
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
     assert data["rows"] == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
@@ -3139,6 +3154,7 @@ def test_create_drop_procedure(cluster: Cluster):
     # Check that dropping of the same procedure is idempotent.
     i1.sql(""" drop procedure proc1 """)
     i2.sql(""" drop procedure proc1 """)
+    cluster.raft_wait_index(i1.raft_get_index())
 
     # Create proc for dropping.
     data = i2.sql(
@@ -3149,6 +3165,7 @@ def test_create_drop_procedure(cluster: Cluster):
         """
     )
     assert data["row_count"] == 1
+    cluster.raft_wait_index(i2.raft_get_index())
 
     data = i1.sql(
         """
@@ -3180,6 +3197,8 @@ def test_create_drop_procedure(cluster: Cluster):
 
     # Check drop with matching parameters.
     i2.sql(""" drop procedure proc1(integer) """)
+    cluster.raft_wait_index(i2.raft_get_index())
+
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
     assert data["rows"] == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
@@ -3193,6 +3212,8 @@ def test_create_drop_procedure(cluster: Cluster):
         as $$insert into t values(?, ?)$$
         """
     )
+    cluster.raft_wait_index(i2.raft_get_index())
+
     data = i1.sql(
         """
         select "id" from "_pico_routine" where "name" = 'PROC1'
