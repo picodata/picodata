@@ -873,9 +873,7 @@ def test_on_leader_change(cluster: Cluster):
         ops=[("=", "target_master_id", i2.instance_id)],
     )
     cluster.raft_wait_index(index)
-
-    masters = [i for i in cluster.instances if not i.eval("return box.info.ro")]
-    assert masters[0] == i2
+    assert i1.replicaset_master_id() == i2.instance_id
 
     # on_leader_change called at i1 and i2
     # because this is previous and new leader, and not called at i3
@@ -909,9 +907,7 @@ def test_error_on_leader_change(cluster: Cluster):
         ops=[("=", "target_master_id", i2.instance_id)],
     )
     cluster.raft_wait_index(index)
-
-    masters = [i for i in cluster.instances if not i.eval("return box.info.ro")]
-    assert masters[0] == i2
+    assert i1.replicaset_master_id() == i2.instance_id
 
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i2)
 
