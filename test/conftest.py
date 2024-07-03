@@ -668,6 +668,30 @@ class Instance:
         )
         return self.eval(lua)
 
+    def replicaset_master_id(self, timeout: int | float = 6) -> str:
+        """
+        Returns `current_master_id` of this instance's replicaset.
+        Waits until `current_master_id` == `target_master_id` if there's a
+        master switchover in process.
+        """
+
+        def make_attempt():
+            current_master_id = self.eval(
+                """
+                local replicaset_id = pico.instance_info(...).replicaset_id
+                local info = box.space._pico_replicaset:get(replicaset_id)
+                if info.target_master_id ~= info.current_master_id then
+                    error(string.format('master is transitioning from %s to %s', info.current_master_id, info.target_master_id))
+                end
+                return info.current_master_id
+                """,  # noqa: E501
+                self.instance_id,
+            )
+            assert current_master_id
+            return current_master_id
+
+        return Retriable(timeout=timeout, rps=4).call(make_attempt)  # type: ignore
+
     def sql(
         self,
         sql: str,

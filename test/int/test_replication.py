@@ -1,3 +1,4 @@
+# TODO: get rid of funcy, use Retriable instead
 import funcy  # type: ignore
 import pytest
 import time
@@ -15,21 +16,6 @@ def cluster3(cluster: Cluster):
     return cluster
 
 
-@funcy.retry(tries=30, timeout=0.2)
-def wait_repl_master(i: Instance, other_than=None):
-    repl_master = i.eval(
-        """
-        local rid = pico.instance_info(...).replicaset_id
-        return box.space._pico_replicaset:get(rid).current_master_id
-    """,
-        i.instance_id,
-    )
-    assert repl_master
-    if other_than:
-        assert repl_master != other_than
-    return repl_master
-
-
 @funcy.retry(tries=60, timeout=0.2)
 def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
     vclock_actual = i.eval("return box.info.vclock")
@@ -42,13 +28,13 @@ def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
 def test_2_of_3_writable(cluster3: Cluster):
     i1, i2, i3 = cluster3.instances
 
-    rm = wait_repl_master(i1)
-    assert wait_repl_master(i2) == rm
-    assert wait_repl_master(i3) == rm
+    master_id = i1.replicaset_master_id()
+    assert i2.replicaset_master_id() == master_id
+    assert i3.replicaset_master_id() == master_id
 
     master, i2, i3 = sorted(
         [i1, i2, i3],
-        key=lambda i: rm == i.instance_id,
+        key=lambda i: master_id == i.instance_id,
         reverse=True
     )
 
@@ -74,13 +60,20 @@ def test_2_of_3_writable(cluster3: Cluster):
 
     master.terminate()
 
-    rm = wait_repl_master(i2, other_than=rm)
-    assert wait_repl_master(i3) == rm
+    old_master_id = master_id
+
+    def check_master_changed():
+        nonlocal master_id
+        master_id = i2.replicaset_master_id()
+        assert master_id != old_master_id
+
+    Retriable(timeout=6, rps=4).call(check_master_changed)
+    assert i3.replicaset_master_id() == master_id
 
     old_leader = master
     master, i3 = sorted(
         [i2, i3],
-        key=lambda i: i.eval("return box.info.id") == rm,
+        key=lambda i: i.eval("return box.info.id") == master_id,
         reverse=True
     )
 
@@ -102,7 +95,7 @@ def test_2_of_3_writable(cluster3: Cluster):
     print(f"{old_leader=}")
     old_leader.start()
     old_leader.wait_online()
-    assert wait_repl_master(old_leader) == rm
+    assert old_leader.replicaset_master_id() == master_id
     wait_vclock(old_leader, rl_vclock)
     assert old_leader.eval("return box.space.test_space:select()") == [[1], [2]]
 # fmt: on
@@ -133,14 +126,14 @@ def test_master_auto_switchover(cluster: Cluster):
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
 
     # i4 is master as the first member of the replicaset.
-    assert wait_repl_master(i4) == i4.instance_id
-    assert wait_repl_master(i5) == i4.instance_id
+    assert i4.replicaset_master_id() == i4.instance_id
+    assert i5.replicaset_master_id() == i4.instance_id
     assert not i4.eval("return box.info.ro")
     assert i5.eval("return box.info.ro")
 
     # Terminate master to force switchover.
     i4.terminate()
-    assert wait_repl_master(i5) == i5.instance_id
+    assert i5.replicaset_master_id() == i5.instance_id
     assert not i5.eval("return box.info.ro")
 
     # Terminate the last remaining replica, switchover is impossible.
@@ -155,7 +148,7 @@ def test_master_auto_switchover(cluster: Cluster):
     # Wake the master back up, check it's not read only.
     i5.start()
     i5.wait_online()
-    assert wait_repl_master(i5) == i5.instance_id
+    assert i5.replicaset_master_id() == i5.instance_id
     assert not i5.eval("return box.info.ro")
 
     # Terminate it again, to check switchover at catch-up.
@@ -164,13 +157,13 @@ def test_master_auto_switchover(cluster: Cluster):
     i4.wait_online()
 
     # i4 is master again.
-    assert wait_repl_master(i4) == i4.instance_id
+    assert i4.replicaset_master_id() == i4.instance_id
     assert not i4.eval("return box.info.ro")
 
     i5.start()
     i5.wait_online()
     # i5 is still read only.
-    assert wait_repl_master(i5) == i4.instance_id
+    assert i5.replicaset_master_id() == i4.instance_id
     assert i5.eval("return box.info.ro")
 
     # Manually change master back to i5
@@ -182,9 +175,9 @@ def test_master_auto_switchover(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    assert wait_repl_master(i4) == i5.instance_id
+    assert i4.replicaset_master_id() == i5.instance_id
     assert i4.eval("return box.info.ro")
-    assert wait_repl_master(i5) == i5.instance_id
+    assert i5.replicaset_master_id() == i5.instance_id
     assert not i5.eval("return box.info.ro")
 
 
