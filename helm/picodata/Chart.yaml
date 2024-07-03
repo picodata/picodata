@@ -4,4 +4,4 @@ description: Helm chart for Picodata.
 
 type: application
 version: 0.0.1
-appVersion: "24.3.2.4"
+appVersion: "24.3.3.4"
