@@ -18,7 +18,7 @@
 ### Проекция {: #projection }
 
 ??? note "Диаграмма"
-    ![Expression](../../images/ebnf/projection.svg)
+    ![Projection](../../images/ebnf/projection.svg)
 
 ### Выражение {: #expression }
 
