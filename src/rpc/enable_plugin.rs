@@ -23,10 +23,10 @@ crate::define_rpc_request! {
 
         let storage = &node.storage;
 
-        let (plugin_name, _, _) = storage.properties.pending_plugin_enable()?
+        let (identity, _, _) = storage.properties.pending_plugin_enable()?
             .ok_or_else(|| TraftError::other("pending plugin not found"))?;
 
-        let load_result = node.plugin_manager.try_load(&plugin_name);
+        let load_result = node.plugin_manager.try_load(&identity);
 
         match load_result {
              Ok(()) => Ok(Response::Ok),

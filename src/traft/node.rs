@@ -1224,33 +1224,33 @@ impl NodeImpl {
             }
 
             Op::PluginEnable {
-                plugin_name,
+                ident,
                 on_start_timeout,
             } => {
                 let services = self
                     .storage
                     .service
-                    .get_by_plugin(&plugin_name)
+                    .get_by_plugin(&ident)
                     .expect("storage should not fail");
 
                 self.storage
                     .properties
                     .put(
                         PropertyName::PendingPluginEnable,
-                        &(plugin_name, services, on_start_timeout),
+                        &(ident, services, on_start_timeout),
                     )
                     .expect("storage should not fail");
             }
 
             Op::PluginConfigUpdate {
-                plugin_name,
+                ident,
                 service_name,
                 config,
             } => {
                 let maybe_service = self
                     .storage
                     .service
-                    .get_any_version(&plugin_name, &service_name)
+                    .get(&ident, &service_name)
                     .expect("storage should not fail");
 
                 if let Some(mut svc) = maybe_service {
@@ -1267,7 +1267,7 @@ impl NodeImpl {
 
                     if let Err(e) = self.plugin_manager.handle_event_async(
                         PluginAsyncEvent::ServiceConfigurationUpdated {
-                            plugin: svc.plugin_name,
+                            ident,
                             service: svc.name,
                             old_raw: old_cfg_raw,
                             new_raw: new_raw_cfg,
@@ -1278,16 +1278,16 @@ impl NodeImpl {
                 }
             }
 
-            Op::PluginDisable { name } => {
+            Op::PluginDisable { ident } => {
                 self.storage
                     .properties
-                    .put(PropertyName::PendingPluginDisable, &name)
+                    .put(PropertyName::PendingPluginDisable, &ident)
                     .expect("storage should not fail");
 
                 let plugin = self
                     .storage
                     .plugin
-                    .get(&name)
+                    .get(&ident)
                     .expect("storage should not fail");
 
                 if let Some(mut plugin) = plugin {
@@ -1300,17 +1300,17 @@ impl NodeImpl {
 
                 if let Err(e) = self
                     .plugin_manager
-                    .handle_event_async(PluginAsyncEvent::PluginDisabled { name })
+                    .handle_event_async(PluginAsyncEvent::PluginDisabled { name: ident.name })
                 {
                     tlog!(Warning, "async plugin event: {e}");
                 }
             }
 
-            Op::PluginRemove { name } => {
+            Op::PluginRemove { ident } => {
                 let maybe_plugin = self
                     .storage
                     .plugin
-                    .get(&name)
+                    .get(&ident)
                     .expect("storage should not fail");
 
                 if let Some(plugin) = maybe_plugin {
@@ -1321,7 +1321,7 @@ impl NodeImpl {
                     let services = self
                         .storage
                         .service
-                        .get_by_plugin(&plugin.name)
+                        .get_by_plugin(&ident)
                         .expect("storage should not fail");
                     for svc in services {
                         self.storage
@@ -1331,7 +1331,7 @@ impl NodeImpl {
                     }
                     self.storage
                         .plugin
-                        .delete(&plugin.name)
+                        .delete(&ident)
                         .expect("storage should not fail");
                 }
             }

@@ -4,6 +4,7 @@
 use crate::cas::{self, compare_and_swap};
 use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
+use crate::plugin::PluginIdentifier;
 use crate::schema::{self, CreateTableParams, ADMIN_ID};
 use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
@@ -1513,7 +1514,7 @@ pub(crate) fn setup() {
         &l,
         "install_plugin",
         indoc! {"
-        pico.install_plugin(name, [opts])
+        pico.install_plugin(name, version, [opts])
         =================
 
         Install a new plugin on cluster.
@@ -1521,7 +1522,8 @@ pub(crate) fn setup() {
         Params:
 
             1. name - plugin name, manifest with same name must exists in plugin_dir
-            2. opts (optional table)
+            2. version - plugin version
+            3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
         {
@@ -1529,14 +1531,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::install_plugin(&name, timeout)
+                plugin::install_plugin(PluginIdentifier::new(name, version), timeout)
             })
         },
     );
@@ -1547,7 +1549,7 @@ pub(crate) fn setup() {
         &l,
         "enable_plugin",
         indoc! {"
-        pico.enable_plugin(name, [opts])
+        pico.enable_plugin(name, version, [opts])
         =================
 
         Enable plugin in cluster.
@@ -1555,7 +1557,8 @@ pub(crate) fn setup() {
         Params:
 
             1. name - plugin name, plugin should already be installed with `pico.install_plugin` command
-            2. opts (optional table)
+            2. version - plugin version
+            3. opts (optional table)
                 - on_start_timeout (optional number), in seconds, default: 5
                 - timeout (optional number), in seconds, default: 10
         "},
@@ -1565,7 +1568,7 @@ pub(crate) fn setup() {
                 timeout: Option<f64>,
                 on_start_timeout: Option<f64>,
             }
-            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut on_start_timeout = Duration::from_secs(5);
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
@@ -1576,7 +1579,7 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::enable_plugin(&name, on_start_timeout, timeout)
+                plugin::enable_plugin(&PluginIdentifier::new(name, version), on_start_timeout, timeout)
             })
         },
     );
@@ -1587,7 +1590,7 @@ pub(crate) fn setup() {
         &l,
         "service_append_tier",
         indoc! {"
-        pico.service_append_tier(plugin_name, service_name, tier, [opts])
+        pico.service_append_tier(plugin_name, plugin_version, service_name, tier, [opts])
         =================
 
         Append service to a tier, this will enable service on all instances with coressponding tier.
@@ -1595,9 +1598,10 @@ pub(crate) fn setup() {
         Params:
 
             1. plugin_name - plugin name, plugin should already be installed with `pico.install_plugin` command
-            2. service_name - service name
-            3. tier - tier where service must be enabled
-            4. opts (optional table)
+            2. plugin_version - plugin version
+            3. service_name - service name
+            4. tier - tier where service must be enabled
+            5. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
         {
@@ -1605,14 +1609,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function4(|plugin_name: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function5(|plugin_name: String, plugin_version: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::append_tier(&plugin_name, &service_name, &tier, timeout)
+                plugin::append_tier(&PluginIdentifier::new(plugin_name, plugin_version), &service_name, &tier, timeout)
             })
         },
     );
@@ -1623,7 +1627,7 @@ pub(crate) fn setup() {
         &l,
         "service_remove_tier",
         indoc! {"
-        pico.service_remove_tier(plugin_name, service_name, tier, [opts])
+        pico.service_remove_tier(plugin_name, plugin_version, service_name, tier, [opts])
         =================
 
         Remove service from tier, this will disable service on all instances with coressponding tier.
@@ -1631,9 +1635,10 @@ pub(crate) fn setup() {
         Params:
 
             1. plugin_name - plugin name, plugin should already be installed with `pico.install_plugin` command
-            2. service_name - service name
-            3. tier - tier where service must be disabled
-            4. opts (optional table)
+            2. plugin_version - plugin version
+            3. service_name - service name
+            4. tier - tier where service must be disabled
+            5. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
         {
@@ -1641,14 +1646,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function4(|plugin_name: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function5(|plugin_name: String, plugin_version: String, service_name: String, tier: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::remove_tier(&plugin_name, &service_name, &tier, timeout)
+                plugin::remove_tier(&PluginIdentifier::new(plugin_name, plugin_version), &service_name, &tier, timeout)
             })
         },
     );
@@ -1659,7 +1664,7 @@ pub(crate) fn setup() {
         &l,
         "_update_plugin_config",
         indoc! {"
-        pico._update_plugin_config(plugin_name, service_name, new_config, [opts])
+        pico._update_plugin_config(plugin_name, plugin_version, service_name, new_config, [opts])
         =================
 
         Internal API, see src/luamod.rs for the details.
@@ -1667,9 +1672,10 @@ pub(crate) fn setup() {
         Params:
 
             1. plugin_name - plugin name
-            2. service_name - service name
-            3. new_config - new configuration
-            4. opts (optional table)
+            2. plugin_version - plugin version
+            3. service_name - service name
+            4. new_config - new configuration
+            5. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
         {
@@ -1679,14 +1685,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function4(|plugin_name: String, service_name: String, new_cfg_raw: AnyLuaString, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function5(|plugin_name: String, plugin_version: String, service_name: String, new_cfg_raw: AnyLuaString, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::update_plugin_service_configuration(&plugin_name, &service_name, new_cfg_raw.as_bytes(), timeout)
+                plugin::update_plugin_service_configuration(&PluginIdentifier::new(plugin_name, plugin_version), &service_name, new_cfg_raw.as_bytes(), timeout)
             })
         },
     );
@@ -1697,7 +1703,7 @@ pub(crate) fn setup() {
         &l,
         "disable_plugin",
         indoc! {"
-        pico.disable_plugin(name, [opts])
+        pico.disable_plugin(name, version, [opts])
         =================
 
         Disable plugin on cluster, `on_stop` callbacks will be called.
@@ -1705,7 +1711,8 @@ pub(crate) fn setup() {
         Params:
 
             1. name - plugin name to be disabled
-            2. opts (optional table)
+            2. version - plugin version to be disabled
+            3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
         {
@@ -1713,14 +1720,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::disable_plugin(&name, timeout)
+                plugin::disable_plugin(&PluginIdentifier::new(name, version), timeout)
             })
         },
     );
@@ -1731,7 +1738,7 @@ pub(crate) fn setup() {
         &l,
         "remove_plugin",
         indoc! {"
-        pico.remove_plugin(name, [opts])
+        pico.remove_plugin(name, version, [opts])
         =================
 
         Remove a plugin.
@@ -1739,7 +1746,8 @@ pub(crate) fn setup() {
         Params:
 
             1. name - plugin name to be removed from a system
-            2. opts (optional table)
+            2. version - plugin version to be removed from a system
+            3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
         "},
         {
@@ -1747,14 +1755,14 @@ pub(crate) fn setup() {
             struct Opts {
                 timeout: Option<f64>,
             }
-            tlua::function2(|name: String, opts: Option<Opts>| -> traft::Result<()> {
+            tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 if let Some(opts) = opts {
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::remove_plugin(&name, timeout, false)
+                plugin::remove_plugin(&PluginIdentifier::new(name, version), timeout, false)
             })
         },
     );

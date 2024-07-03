@@ -38,6 +38,7 @@ use crate::access_control::UserMetadataKind;
 use crate::cas::{self, compare_and_swap, Request};
 use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
+use crate::plugin::PluginIdentifier;
 use crate::storage::{self, RoutineId, ToEntryIter};
 use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
@@ -499,6 +500,13 @@ impl PluginDef {
             migration_progress: -1,
         }
     }
+
+    pub fn into_identity(self) -> PluginIdentifier {
+        PluginIdentifier {
+            name: self.name,
+            version: self.version,
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -513,10 +521,6 @@ pub struct ServiceDef {
     /// Service name.
     pub name: String,
     /// Service version must be the same as a plugin version.
-    // TODO currently version is unused,
-    // expect service loading algorithm (when version from .so file
-    // should be equal with plugin version from manifest).
-    // This would be change in future, with API breaking changes and plugin rolling update feature.
     pub version: String,
     /// List of tiers where service must be running.
     // FIXME: for future improvements
@@ -568,6 +572,8 @@ pub struct ServiceRouteItem {
     pub instance_id: InstanceId,
     /// Plugin name.
     pub plugin_name: String,
+    /// Plugin version.
+    pub plugin_version: String,
     /// Service name.
     pub service_name: String,
     /// `true` if route is poisoned, `false` otherwise.
@@ -580,16 +586,17 @@ impl ServiceRouteItem {
     /// Index of field "poison" in the table _pico_service_route format.
     ///
     /// Index of first field is 0.
-    pub const FIELD_POISON: u32 = 3;
+    pub const FIELD_POISON: u32 = 4;
 
     pub fn new_healthy(
         instance_id: InstanceId,
-        plugin_name: impl ToString,
+        plugin_ident: &PluginIdentifier,
         service_name: impl ToString,
     ) -> Self {
         Self {
             instance_id,
-            plugin_name: plugin_name.to_string(),
+            plugin_name: plugin_ident.name.clone(),
+            plugin_version: plugin_ident.version.to_string(),
             service_name: service_name.to_string(),
             poison: false,
         }
@@ -597,12 +604,13 @@ impl ServiceRouteItem {
 
     pub fn new_poison(
         instance_id: InstanceId,
-        plugin_name: impl ToString,
+        plugin_ident: &PluginIdentifier,
         service_name: impl ToString,
     ) -> Self {
         Self {
             instance_id,
-            plugin_name: plugin_name.to_string(),
+            plugin_name: plugin_ident.name.clone(),
+            plugin_version: plugin_ident.version.to_string(),
             service_name: service_name.to_string(),
             poison: true,
         }
@@ -615,6 +623,7 @@ impl ServiceRouteItem {
         vec![
             Field::from(("instance_id", FieldType::String)).is_nullable(false),
             Field::from(("plugin_name", FieldType::String)).is_nullable(false),
+            Field::from(("plugin_version", FieldType::String)).is_nullable(false),
             Field::from(("service_name", FieldType::String)).is_nullable(false),
             Field::from(("poison", FieldType::Boolean)).is_nullable(false),
         ]
@@ -625,6 +634,7 @@ impl ServiceRouteItem {
         Self {
             instance_id: InstanceId("i1".to_string()),
             plugin_name: "plugin".to_string(),
+            plugin_version: "version".to_string(),
             service_name: "service".to_string(),
             poison: false,
         }
@@ -634,6 +644,7 @@ impl ServiceRouteItem {
         ServiceRouteKey {
             instance_id: &self.instance_id,
             plugin_name: &self.plugin_name,
+            plugin_version: &self.plugin_version,
             service_name: &self.service_name,
         }
     }
@@ -645,6 +656,8 @@ pub struct ServiceRouteKey<'a> {
     pub instance_id: &'a InstanceId,
     /// Plugin name.
     pub plugin_name: &'a str,
+    /// Plugin version.
+    pub plugin_version: &'a str,
     /// Service name.
     pub service_name: &'a str,
 }

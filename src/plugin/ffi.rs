@@ -1,7 +1,7 @@
 use crate::cas::{compare_and_swap, Bound, Range, Request};
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
-use crate::plugin::rpc;
+use crate::plugin::{rpc, PluginIdentifier};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
@@ -368,7 +368,8 @@ extern "C" fn pico_ffi_rpc_request(
         input = arguments.input.as_bytes();
     };
 
-    match rpc::client::send_rpc_request(plugin, service, version, target, path, input, timeout) {
+    let identity = &PluginIdentifier::new(plugin.to_string(), version.to_string());
+    match rpc::client::send_rpc_request(identity, service, target, path, input, timeout) {
         Ok(out) => {
             // SAFETY: pointers must be valid for the lifetime of this function
             unsafe { std::ptr::write(output, out.into()) }

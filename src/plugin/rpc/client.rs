@@ -1,6 +1,6 @@
 use crate::error_code::ErrorCode;
 use crate::instance::InstanceId;
-use crate::plugin::rpc;
+use crate::plugin::{rpc, PluginIdentifier};
 use crate::replicaset::Replicaset;
 use crate::schema::ServiceRouteItem;
 use crate::schema::ServiceRouteKey;
@@ -28,9 +28,8 @@ use tarantool::uuid::Uuid;
 
 /// Returns data allocated on the region allocator (or statically allocated).
 pub(crate) fn send_rpc_request(
-    plugin: &str,
+    plugin_identity: &PluginIdentifier,
     service: &str,
-    plugin_version: &str,
     target: &FfiSafeRpcTargetSpecifier,
     path: &str,
     input: &[u8],
@@ -41,7 +40,7 @@ pub(crate) fn send_rpc_request(
 
     let timeout = Duration::from_secs_f64(timeout);
 
-    let instance_id = resolve_rpc_target(plugin, service, target, node)?;
+    let instance_id = resolve_rpc_target(plugin_identity, service, target, node)?;
 
     if path.starts_with('.') {
         return call_builtin_stored_proc(pool, path, input, &instance_id, timeout);
@@ -54,9 +53,9 @@ pub(crate) fn send_rpc_request(
         path,
         input,
         &request_id,
-        plugin,
+        &plugin_identity.name,
         service,
-        plugin_version,
+        &plugin_identity.version,
     )
     .expect("can't fail encoding into an array");
     // Safe because buffer contains a msgpack array
@@ -175,7 +174,7 @@ fn encode_request_arguments(
 }
 
 fn resolve_rpc_target(
-    plugin: &str,
+    ident: &PluginIdentifier,
     service: &str,
     target: &FfiSafeRpcTargetSpecifier,
     node: &Node,
@@ -230,7 +229,7 @@ fn resolve_rpc_target(
 
     if let Some(instance_id) = instance_id {
         // A single instance was chosen
-        check_route_to_instance(node, plugin, service, &instance_id)?;
+        check_route_to_instance(node, ident, service, &instance_id)?;
         return Ok(instance_id);
     } else {
         // Need to pick an instance from a group, fallthrough
@@ -244,13 +243,13 @@ fn resolve_rpc_target(
     let mut candidates = node
         .storage
         .service_route_table
-        .get_available_instances(plugin, service)?;
+        .get_available_instances(ident, service)?;
     #[rustfmt::skip]
     if candidates.is_empty() {
-        if node.storage.service.get_any_version(plugin, service)?.is_none() {
+        if node.storage.service.get(ident, service)?.is_none() {
             return Err(BoxError::new(ErrorCode::NoSuchService, "service '{plugin}.{service}' not found").into());
         } else {
-            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not started on any instance")).into());
+            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not started on any instance")).into());
         }
     };
 
@@ -306,7 +305,7 @@ fn resolve_rpc_target(
         }
 
         #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ServiceNotAvailable, format!("no {replicaset_uuid} replicas are available for service {plugin}.{service}")).into());
+        return Err(BoxError::new(ErrorCode::ServiceNotAvailable, format!("no {replicaset_uuid} replicas are available for service {ident}.{service}")).into());
     } else {
         // Need to pick any instance with the given plugin.service
 
@@ -324,18 +323,19 @@ fn resolve_rpc_target(
 
 fn check_route_to_instance(
     node: &Node,
-    plugin: &str,
+    ident: &PluginIdentifier,
     service: &str,
     instance_id: &InstanceId,
 ) -> Result<(), Error> {
     let res = node.storage.service_route_table.get_raw(&ServiceRouteKey {
         instance_id,
-        plugin_name: plugin,
+        plugin_name: &ident.name,
+        plugin_version: &ident.version,
         service_name: service,
     })?;
     let Some(tuple) = res else {
         #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{plugin}.{service}' is not running on {instance_id}")).into());
+        return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_id}")).into());
     };
     let res = tuple
         .field(ServiceRouteItem::FIELD_POISON)
@@ -346,7 +346,7 @@ fn check_route_to_instance(
     };
     if is_poisoned {
         #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{plugin}.{service}' is poisoned on {instance_id}")).into());
+        return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{ident}.{service}' is poisoned on {instance_id}")).into());
     }
     Ok(())
 }

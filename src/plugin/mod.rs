@@ -9,6 +9,7 @@ use once_cell::unsync;
 use picoplugin::plugin::interface::ServiceBox;
 use serde::de::Error;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -71,9 +72,9 @@ pub enum PluginError {
     #[error("Plugin async events queue is full")]
     AsyncEventQueueFull,
     #[error("Plugin `{0}` not found at instance")]
-    PluginNotFound(String),
+    PluginNotFound(PluginIdentifier),
     #[error("Service `{0}` for plugin `{1}` not found at instance")]
-    ServiceNotFound(String, String),
+    ServiceNotFound(String, PluginIdentifier),
     #[error("Remote call error: {0}")]
     RemoteError(String),
     #[error("Remove of enabled plugin is forbidden")]
@@ -84,6 +85,12 @@ pub enum PluginError {
     ServiceCollision(String, String),
     #[error(transparent)]
     Migration(#[from] migration::Error),
+    #[error(
+        "Cannot specify install candidate (there should be only one directory in plugin main dir)"
+    )]
+    AmbiguousInstallCandidate,
+    #[error("Cannot specify enable candidate (there should be only one installed plugin version)")]
+    AmbiguousEnableCandidate,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -206,11 +213,14 @@ pub struct Manifest {
 }
 
 impl Manifest {
-    /// Load manifest from file `{plugin_dir}/{plugin_name}/manifest.yml`.
-    pub fn load(plugin_name: &str) -> Result<Self> {
+    /// Load manifest from file `{plugin_dir}/{plugin_name}/{version}/manifest.yml`.
+    pub fn load(ident: &PluginIdentifier) -> Result<Self> {
+        let plugin_name = ident.name.as_str();
+        let version = ident.version.as_str();
+
         // TODO move this into config (in future)
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
-        let manifest_path = plugin_dir.join(format!("{plugin_name}/manifest.yaml"));
+        let manifest_path = plugin_dir.join(format!("{plugin_name}/{version}/manifest.yaml"));
         // TODO non-blocking needed?
         let file = File::open(&manifest_path).map_err(|e| {
             PluginError::ManifestNotFound(manifest_path.to_string_lossy().to_string(), e)
@@ -219,10 +229,10 @@ impl Manifest {
         let manifest: Manifest = serde_yaml::from_reader(file).map_err(|e| {
             PluginError::InvalidManifest(manifest_path.to_string_lossy().to_string(), e)
         })?;
-        if manifest.name != plugin_name {
+        if manifest.name != plugin_name || manifest.version != version {
             return Err(PluginError::InvalidManifest(
                 manifest_path.to_string_lossy().to_string(),
-                serde_yaml::Error::custom("plugin name should be equal to manifest name"),
+                serde_yaml::Error::custom("plugin name or version should be equal to manifest one"),
             ));
         }
 
@@ -272,14 +282,14 @@ pub enum PluginEvent<'a> {
     InstanceShutdown,
     /// New plugin load at instance.
     PluginLoad {
-        name: &'a str,
+        ident: &'a PluginIdentifier,
         service_defs: &'a [ServiceDef],
     },
     /// Error occurred while the plugin loaded.
     PluginLoadError { name: &'a str },
     /// Request for update service configuration received.
     BeforeServiceConfigurationUpdated {
-        plugin: &'a str,
+        ident: &'a PluginIdentifier,
         service: &'a str,
         new_raw: &'a [u8],
     },
@@ -288,9 +298,15 @@ pub enum PluginEvent<'a> {
     /// Instance promote as a replicaset leader.
     InstancePromote,
     /// Plugin service enabled at instance.
-    ServiceEnabled { plugin: &'a str, service: &'a str },
+    ServiceEnabled {
+        ident: &'a PluginIdentifier,
+        service: &'a str,
+    },
     /// Plugin service disabled at instance.
-    ServiceDisabled { plugin: &'a str, service: &'a str },
+    ServiceDisabled {
+        ident: &'a PluginIdentifier,
+        service: &'a str,
+    },
 }
 
 /// Events that may be fired at picodata
@@ -301,13 +317,34 @@ pub enum PluginEvent<'a> {
 pub enum PluginAsyncEvent {
     /// Plugin service configuration is updated.
     ServiceConfigurationUpdated {
-        plugin: String,
+        ident: PluginIdentifier,
         service: String,
         old_raw: Vec<u8>,
         new_raw: Vec<u8>,
     },
     /// Plugin removed at instance.
     PluginDisabled { name: String },
+}
+
+/// Unique plugin identifier in the system.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct PluginIdentifier {
+    /// Plugin name.
+    pub name: String,
+    /// Plugin version.
+    pub version: String,
+}
+
+impl PluginIdentifier {
+    pub fn new(name: String, version: String) -> Self {
+        Self { name, version }
+    }
+}
+
+impl Display for PluginIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}:{}", self.name, self.version))
+    }
 }
 
 /// Perform clusterwide CAS operation related to plugin routing table.
@@ -487,10 +524,10 @@ fn do_plugin_cas(
 /// Install plugin:
 /// 1) check that plugin is ready for run at all instances
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
-pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
+pub fn install_plugin(ident: PluginIdentifier, timeout: Duration) -> traft::Result<()> {
     let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
-    let manifest = Manifest::load(name)?;
+    let manifest = Manifest::load(&ident)?;
 
     let dml = Dml::replace(
         ClusterwideTable::Property,
@@ -511,7 +548,7 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
         index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    let Some(plugin) = node.storage.plugin.get(name)? else {
+    let Some(plugin) = node.storage.plugin.get(&ident)? else {
         return Err(PluginError::InstallationAborted.into());
     };
 
@@ -519,10 +556,11 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
         return Ok(());
     }
 
+    let plugin_identity = plugin.into_identity();
     let migration_result =
-        migration::apply_up_migrations(&plugin.name, &manifest.migration, deadline);
+        migration::apply_up_migrations(&plugin_identity, &manifest.migration, deadline);
     if let Err(e) = migration_result {
-        if let Err(err) = remove_plugin(&plugin.name, Duration::from_secs(2), true) {
+        if let Err(err) = remove_plugin(&plugin_identity, Duration::from_secs(2), true) {
             tlog!(Error, "rollback plugin installation error: {err}");
         }
         return Err(e.into());
@@ -536,7 +574,7 @@ pub fn install_plugin(name: &str, timeout: Duration) -> traft::Result<()> {
 /// 2) set `_pico_plugin.enable` to `true`
 /// 3) update routes in `_pico_service_route`
 pub fn enable_plugin(
-    name: &str,
+    ident: &PluginIdentifier,
     on_start_timeout: Duration,
     timeout: Duration,
 ) -> traft::Result<()> {
@@ -545,7 +583,7 @@ pub fn enable_plugin(
     let node = node::global()?;
 
     let op = Op::PluginEnable {
-        plugin_name: name.to_string(),
+        ident: ident.clone(),
         on_start_timeout,
     };
 
@@ -565,7 +603,7 @@ pub fn enable_plugin(
     let plugin = node
         .storage
         .plugin
-        .get(name)?
+        .get(ident)?
         .ok_or(PluginError::EnablingAborted)?;
 
     if !plugin.enabled {
@@ -577,7 +615,7 @@ pub fn enable_plugin(
 
 /// Update plugin service configuration.
 pub fn update_plugin_service_configuration(
-    plugin_name: &str,
+    ident: &PluginIdentifier,
     service_name: &str,
     new_cfg_raw: &[u8],
     timeout: Duration,
@@ -587,14 +625,14 @@ pub fn update_plugin_service_configuration(
     let node = node::global()?;
     node.plugin_manager
         .handle_event_sync(PluginEvent::BeforeServiceConfigurationUpdated {
-            plugin: plugin_name,
+            ident,
             service: service_name,
             new_raw: new_cfg_raw,
         })?;
 
     let new_cfg: rmpv::Value = rmp_serde::from_slice(new_cfg_raw).expect("out of memory");
     let op = Op::PluginConfigUpdate {
-        plugin_name: plugin_name.to_string(),
+        ident: ident.clone(),
         service_name: service_name.to_string(),
         config: new_cfg,
     };
@@ -602,7 +640,7 @@ pub fn update_plugin_service_configuration(
     do_plugin_cas(
         node,
         op,
-        vec![Range::new(ClusterwideTable::Service).eq((plugin_name, service_name))],
+        vec![Range::new(ClusterwideTable::Service).eq((&ident.name, service_name, &ident.version))],
         None,
         deadline,
     )
@@ -613,25 +651,25 @@ pub fn update_plugin_service_configuration(
 /// 1) call `on_stop` for each service in plugin
 /// 2) update routes in `_pico_service_route`
 /// 3) set `_pico_plugin.enable` to `false`
-pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()> {
+pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
     let op = Op::PluginDisable {
-        name: plugin_name.to_string(),
+        ident: ident.clone(),
     };
 
     // it is ok to return error here based on local state,
     // we expect that in small count of cases
     // when "plugin does not exist in local state but exist on leader"
     // user will retry disable manually
-    if !node.storage.plugin.contains(plugin_name)? {
-        return Err(PluginNotFound(plugin_name.to_string()).into());
+    if !node.storage.plugin.contains(ident)? {
+        return Err(PluginNotFound(ident.clone()).into());
     }
 
     let mut index = do_plugin_cas(
         node,
         op,
-        vec![Range::new(ClusterwideTable::Plugin).eq([plugin_name])],
+        vec![Range::new(ClusterwideTable::Plugin).eq([&ident.name])],
         Some(|node| Ok(node.storage.properties.pending_plugin_disable()?.is_some())),
         deadline,
     )?;
@@ -648,14 +686,18 @@ pub fn disable_plugin(plugin_name: &str, timeout: Duration) -> traft::Result<()>
 ///
 /// # Arguments
 ///
-/// * `plugin_name`: plugin name to remove
+/// * `ident`: identity of plugin to remove
 /// * `timeout`: operation timeout
 /// * `force`: whether true if plugin should be removed without DOWN migration, false elsewhere
-pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft::Result<()> {
+pub fn remove_plugin(
+    ident: &PluginIdentifier,
+    timeout: Duration,
+    force: bool,
+) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
 
     let node = node::global()?;
-    let maybe_plugin = node.storage.plugin.get(plugin_name)?;
+    let maybe_plugin = node.storage.plugin.get(ident)?;
     // we check this condition on any instance, this will allow
     // to return an error in most situations, but there are still
     // situations when instance is a follower and has not yet received up-to-date
@@ -668,15 +710,15 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft
         return Err(RemoveOfEnabledPlugin.into());
     }
     let op = Op::PluginRemove {
-        name: plugin_name.to_string(),
+        ident: ident.clone(),
     };
 
     do_plugin_cas(
         node,
         op,
         vec![
-            Range::new(ClusterwideTable::Plugin).eq([plugin_name]),
-            Range::new(ClusterwideTable::Service).eq([plugin_name]),
+            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
+            Range::new(ClusterwideTable::Service).eq([&ident.name]),
         ],
         None,
         deadline,
@@ -684,7 +726,9 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft
 
     if !force {
         if let Some(plugin) = maybe_plugin {
-            migration::apply_down_migrations(&plugin.name, &plugin.migration_list);
+            let migration_list = plugin.migration_list;
+            let ident = PluginIdentifier::new(plugin.name, plugin.version);
+            migration::apply_down_migrations(&ident, &migration_list);
         }
     }
 
@@ -695,24 +739,27 @@ pub fn remove_plugin(plugin_name: &str, timeout: Duration, force: bool) -> traft
 pub enum TopologyUpdateOp {
     /// Append service to a new tier.
     Append {
-        plugin_name: String,
+        plugin_identity: PluginIdentifier,
         service_name: String,
         tier: String,
     },
     /// Remove service from a tier.
     Remove {
-        plugin_name: String,
+        plugin_identity: PluginIdentifier,
         service_name: String,
         tier: String,
     },
 }
 
 impl TopologyUpdateOp {
-    #[inline(always)]
-    pub fn plugin_name(&self) -> &str {
+    pub fn plugin_identity(&self) -> &PluginIdentifier {
         match self {
-            TopologyUpdateOp::Append { plugin_name, .. } => plugin_name,
-            TopologyUpdateOp::Remove { plugin_name, .. } => plugin_name,
+            TopologyUpdateOp::Append {
+                plugin_identity, ..
+            } => plugin_identity,
+            TopologyUpdateOp::Remove {
+                plugin_identity, ..
+            } => plugin_identity,
         }
     }
 
@@ -740,19 +787,24 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
     let mb_service = node
         .storage
         .service
-        .get_any_version(upd_op.plugin_name(), upd_op.service_name())?;
+        .get(upd_op.plugin_identity(), upd_op.service_name())?;
 
     if mb_service.is_none() {
         return Err(PluginError::ServiceNotFound(
             upd_op.service_name().to_string(),
-            upd_op.plugin_name().to_string(),
+            upd_op.plugin_identity().clone(),
         )
         .into());
     }
 
+    let ident = upd_op.plugin_identity();
     let ranges = vec![
-        Range::new(ClusterwideTable::Plugin).eq([upd_op.plugin_name()]),
-        Range::new(ClusterwideTable::Service).eq([upd_op.plugin_name(), upd_op.service_name()]),
+        Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
+        Range::new(ClusterwideTable::Service).eq([
+            &ident.name,
+            upd_op.service_name(),
+            &ident.version,
+        ]),
     ];
     let op = Op::PluginUpdateTopology { op: upd_op.clone() };
 
@@ -783,7 +835,7 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
     let service = node
         .storage
         .service
-        .get_any_version(upd_op.plugin_name(), upd_op.service_name())?
+        .get(ident, upd_op.service_name())?
         .ok_or(PluginError::TopologyUpdateAborted)?;
 
     let contains = service.tiers.iter().any(|t| t == upd_op.tier());
@@ -800,14 +852,14 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
 
 /// Enable service on a new tier.
 pub fn append_tier(
-    plugin_name: &str,
+    identity: &PluginIdentifier,
     service_name: &str,
     tier: &str,
     timeout: Duration,
 ) -> traft::Result<()> {
     update_tier(
         TopologyUpdateOp::Append {
-            plugin_name: plugin_name.to_string(),
+            plugin_identity: identity.clone(),
             service_name: service_name.to_string(),
             tier: tier.to_string(),
         },
@@ -817,14 +869,14 @@ pub fn append_tier(
 
 /// Disable service on a new tier.
 pub fn remove_tier(
-    plugin_name: &str,
+    identity: &PluginIdentifier,
     service_name: &str,
     tier: &str,
     timeout: Duration,
 ) -> traft::Result<()> {
     update_tier(
         TopologyUpdateOp::Remove {
-            plugin_name: plugin_name.to_string(),
+            plugin_identity: identity.clone(),
             service_name: service_name.to_string(),
             tier: tier.to_string(),
         },

@@ -45,7 +45,7 @@ use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 use crate::{plugin, tlog};
 
-use crate::plugin::TopologyUpdateOp;
+use crate::plugin::{PluginIdentifier, TopologyUpdateOp};
 use std::borrow::Cow;
 use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map::Entry;
@@ -409,7 +409,7 @@ define_clusterwide_tables! {
             pub struct Plugins {
                 space: Space,
                 #[primary]
-                index_name: Index => "_pico_plugin_name",
+                primary_key: Index => "_pico_plugin_name",
             }
         }
         Service = 527, "_pico_service" => {
@@ -430,7 +430,7 @@ define_clusterwide_tables! {
             pub struct ServiceRouteTable {
                 space: Space,
                 #[primary]
-                index_name: Index => "_pico_service_routing_key",
+                primary_key: Index => "_pico_service_routing_key",
             }
         }
     }
@@ -1343,14 +1343,14 @@ impl PropertyName {
             }
             PropertyName::PendingPluginEnable => {
                 _ = new
-                    .field::<(String, Vec<ServiceDef>, Duration)>(1)
+                    .field::<(PluginIdentifier, Vec<ServiceDef>, Duration)>(1)
                     .map_err(map_err)?;
             }
             PropertyName::PluginInstall => {
                 _ = new.field::<plugin::Manifest>(1).map_err(map_err)?;
             }
             PropertyName::PendingPluginDisable => {
-                _ = new.field::<String>(1).map_err(map_err)?;
+                _ = new.field::<PluginIdentifier>(1).map_err(map_err)?;
             }
             PropertyName::PendingPluginTopologyUpdate => {
                 _ = new.field::<TopologyUpdateOp>(1).map_err(map_err)?;
@@ -1561,12 +1561,12 @@ impl Properties {
     #[inline]
     pub fn pending_plugin_enable(
         &self,
-    ) -> tarantool::Result<Option<(String, Vec<ServiceDef>, Duration)>> {
+    ) -> tarantool::Result<Option<(PluginIdentifier, Vec<ServiceDef>, Duration)>> {
         self.get(PropertyName::PendingPluginEnable)
     }
 
     #[inline]
-    pub fn pending_plugin_disable(&self) -> tarantool::Result<Option<String>> {
+    pub fn pending_plugin_disable(&self) -> tarantool::Result<Option<PluginIdentifier>> {
         self.get(PropertyName::PendingPluginDisable)
     }
 
@@ -3448,14 +3448,15 @@ impl Plugins {
             .if_not_exists(true)
             .create()?;
 
-        let index_name = space
+        let primary_key = space
             .index_builder("_pico_plugin_name")
             .unique(true)
             .part("name")
+            .part("version")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index_name })
+        Ok(Self { space, primary_key })
     }
 
     #[inline(always)]
@@ -3471,7 +3472,10 @@ impl Plugins {
             name: "_pico_plugin_name".into(),
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
-            parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+            parts: vec![
+                Part::from(("name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("version", IndexFieldType::String)).is_nullable(false),
+            ],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             operable: true,
@@ -3485,20 +3489,30 @@ impl Plugins {
     }
 
     #[inline]
-    pub fn delete(&self, plugin_name: &str) -> tarantool::Result<()> {
-        self.space.delete(&(plugin_name,))?;
+    pub fn delete(&self, ident: &PluginIdentifier) -> tarantool::Result<()> {
+        self.space.delete(&(&ident.name, &ident.version))?;
         Ok(())
     }
 
     #[inline]
-    pub fn contains(&self, plugin_name: &str) -> tarantool::Result<bool> {
-        Ok(self.space.get(&(plugin_name,))?.is_some())
+    pub fn contains(&self, ident: &PluginIdentifier) -> tarantool::Result<bool> {
+        Ok(self.space.get(&(&ident.name, &ident.version))?.is_some())
     }
 
     #[inline]
-    pub fn get(&self, plugin_name: &str) -> tarantool::Result<Option<PluginDef>> {
-        let plugin = self.space.get(&(plugin_name,))?;
+    pub fn get(&self, ident: &PluginIdentifier) -> tarantool::Result<Option<PluginDef>> {
+        let plugin = self.space.get(&(&ident.name, &ident.version))?;
         plugin.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn get_all_versions(&self, plugin_name: &str) -> tarantool::Result<Vec<PluginDef>> {
+        let plugins = self
+            .space
+            .select(IteratorType::All, &(plugin_name,))?
+            .map(|tuple| tuple.decode())
+            .collect::<tarantool::Result<Vec<_>>>();
+        plugins
     }
 
     #[inline]
@@ -3569,46 +3583,23 @@ impl Services {
     #[inline]
     pub fn get(
         &self,
-        plugin: &str,
+        plugin_ident: &PluginIdentifier,
         name: &str,
-        version: &str,
     ) -> tarantool::Result<Option<ServiceDef>> {
-        let service = self.space.get(&(&plugin, name, version))?;
+        let service = self
+            .space
+            .get(&(&plugin_ident.name, name, &plugin_ident.version))?;
         service.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline]
-    pub fn get_any_version(
-        &self,
-        plugin: &str,
-        name: &str,
-    ) -> tarantool::Result<Option<ServiceDef>> {
-        let service = self.space.select(IteratorType::Eq, &(plugin, name))?.next();
-        service.as_ref().map(Tuple::decode).transpose()
-    }
-
-    #[inline]
-    pub fn get_by_plugin(&self, plugin: &str) -> tarantool::Result<Vec<ServiceDef>> {
-        let it = self.space.select(IteratorType::Eq, &(plugin,))?;
-        it.map(|t| {
-            let svc = t.decode::<ServiceDef>()?;
-            Ok(svc)
-        })
-        .collect::<tarantool::Result<Vec<ServiceDef>>>()
-    }
-
-    #[inline]
-    pub fn get_by_plugin_and_version(
-        &self,
-        plugin: &str,
-        version: &str,
-    ) -> tarantool::Result<Vec<ServiceDef>> {
-        let it = self.space.select(IteratorType::Eq, &(plugin,))?;
+    pub fn get_by_plugin(&self, ident: &PluginIdentifier) -> tarantool::Result<Vec<ServiceDef>> {
+        let it = self.space.select(IteratorType::Eq, &(&ident.name,))?;
 
         let mut result = vec![];
         for tuple in it {
             let svc = tuple.decode::<ServiceDef>()?;
-            if svc.version == version {
+            if svc.version == ident.version {
                 result.push(svc)
             }
         }
@@ -3631,16 +3622,17 @@ impl ServiceRouteTable {
             .if_not_exists(true)
             .create()?;
 
-        let index_name = space
+        let primary_key = space
             .index_builder("_pico_service_routing_key")
             .unique(true)
             .part("instance_id")
             .part("plugin_name")
+            .part("plugin_version")
             .part("service_name")
             .if_not_exists(true)
             .create()?;
 
-        Ok(Self { space, index_name })
+        Ok(Self { space, primary_key })
     }
 
     #[inline(always)]
@@ -3659,6 +3651,7 @@ impl ServiceRouteTable {
             parts: vec![
                 Part::from(("instance_id", IndexFieldType::String)).is_nullable(false),
                 Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("plugin_version", IndexFieldType::String)).is_nullable(false),
                 Part::from(("service_name", IndexFieldType::String)).is_nullable(false),
             ],
             // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -3685,12 +3678,15 @@ impl ServiceRouteTable {
         Ok(tuple)
     }
 
-    pub fn get_by_plugin(&self, plugin: &str) -> tarantool::Result<Vec<ServiceRouteItem>> {
+    pub fn get_by_plugin(
+        &self,
+        plugin_ident: &PluginIdentifier,
+    ) -> tarantool::Result<Vec<ServiceRouteItem>> {
         let all_routes = self.space.select(IteratorType::All, &())?;
         let mut result = vec![];
         for tuple in all_routes {
             let svc = tuple.decode::<ServiceRouteItem>()?;
-            if svc.plugin_name == plugin {
+            if svc.plugin_name == plugin_ident.name && svc.plugin_version == plugin_ident.version {
                 result.push(svc)
             }
         }
@@ -3707,7 +3703,7 @@ impl ServiceRouteTable {
 
     pub fn get_available_instances(
         &self,
-        plugin: &str,
+        ident: &PluginIdentifier,
         service: &str,
     ) -> tarantool::Result<Vec<instance::InstanceId>> {
         let mut result = vec![];
@@ -3719,7 +3715,10 @@ impl ServiceRouteTable {
             if item.poison {
                 continue;
             }
-            if item.plugin_name != plugin {
+            if item.plugin_name != ident.name {
+                continue;
+            }
+            if item.plugin_version != ident.version {
                 continue;
             }
             if item.service_name != service {

@@ -24,6 +24,7 @@ use crate::unwrap_ok_or;
 use plan::action_plan;
 use plan::stage::*;
 
+use crate::plugin::PluginIdentifier;
 use futures::future::try_join_all;
 
 pub(crate) mod cc;
@@ -111,9 +112,11 @@ impl Loop {
             .plugin_install()
             .expect("storage should never fail")
             .map(|manifest| {
+                let identity =
+                    PluginIdentifier::new(manifest.name.clone(), manifest.version.clone());
                 let installed_plugin = storage
                     .plugin
-                    .get(&manifest.name)
+                    .get(&identity)
                     .expect("storage should not fail");
                 (installed_plugin, manifest)
             });
@@ -121,12 +124,12 @@ impl Loop {
             .properties
             .pending_plugin_enable()
             .expect("storage should never fail")
-            .map(|(plugin_name, services, timeout)| {
-                let installed_plugin = storage
+            .map(|(ident, services, timeout)| {
+                let installed_plugins = storage
                     .plugin
                     .get(&plugin_name)
                     .expect("storage should not fail");
-                (plugin_name, installed_plugin, services, timeout)
+                (ident, installed_plugins, services, timeout)
             });
         let disable_plugin = storage
             .properties
@@ -145,12 +148,12 @@ impl Loop {
             .and_then(|op| {
                 let plugin_def = storage
                     .plugin
-                    .get(op.plugin_name())
+                    .get(op.plugin_identity())
                     .expect("storage should not fail")?;
 
                 let service_def = storage
                     .service
-                    .get_any_version(op.plugin_name(), op.service_name())
+                    .get(op.plugin_identity(), op.service_name())
                     .expect("storage should not fail")?;
 
                 Some((plugin_def, service_def, op))

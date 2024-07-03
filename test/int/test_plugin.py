@@ -45,6 +45,8 @@ class PluginReflection:
 
     # plugin name
     name: str
+    # plugin version
+    version: str
     # list of plugin services
     services: List[str]
     # instances in cluster
@@ -69,7 +71,10 @@ class PluginReflection:
         for i in instances:
             topology[i] = _PLUGIN_SERVICES
         return PluginReflection(
-            name=_PLUGIN, services=_PLUGIN_SERVICES, instances=list(instances)
+            name=_PLUGIN,
+            version="0.1.0",
+            services=_PLUGIN_SERVICES,
+            instances=list(instances),
         ).set_topology(topology)
 
     def install(self, installed: bool):
@@ -97,7 +102,9 @@ class PluginReflection:
         This means that system tables `_pico_plugin`, `_pico_service` and `_pico_service_route`
         contain necessary plugin information."""
         for i in self.instances:
-            plugins = i.eval("return box.space._pico_plugin:select(...)", self.name)
+            plugins = i.eval(
+                "return box.space._pico_plugin:select({...})", self.name, self.version
+            )
             if self.installed:
                 assert len(plugins) == 1
                 assert plugins[0][1] == self.enabled
@@ -106,7 +113,10 @@ class PluginReflection:
 
             for service in self.services:
                 svcs = i.eval(
-                    "return box.space._pico_service:select({...})", self.name, service
+                    "return box.space._pico_service:select({...})",
+                    self.name,
+                    service,
+                    self.version,
                 )
                 if self.installed:
                     assert len(svcs) == 1
@@ -116,13 +126,16 @@ class PluginReflection:
         for i in self.topology:
             expected_services = []
             for service in self.topology[i]:
-                expected_services.append([i.instance_id, self.name, service, False])
+                expected_services.append(
+                    [i.instance_id, self.name, self.version, service, False]
+                )
 
             for neighboring_i in self.topology:
                 routes = neighboring_i.eval(
                     'return box.space._pico_service_route:pairs({...}, {iterator="EQ"}):totable()',
                     i.instance_id,
                     self.name,
+                    self.version,
                 )
                 assert routes == expected_services
 
@@ -215,10 +228,11 @@ class PluginReflection:
                 "return box.space._pico_service_route:get({...})",
                 poison_instance_id,
                 self.name,
+                self.version,
                 service,
             )
             assert route is not None
-            assert route[3] == poisoned
+            assert route[4] == poisoned
 
     @staticmethod
     def assert_data_eq(instance, key, expected):
@@ -241,41 +255,44 @@ def test_invalid_manifest_plugin(cluster: Cluster):
     with pytest.raises(
         ReturnError, match="Error while discovering manifest for plugin"
     ):
-        i1.call("pico.install_plugin", "non-existent")
-    PluginReflection("non-existent", [], [i1, i2]).assert_synced()
+        i1.call("pico.install_plugin", "non-existent", "0.1.0")
+    PluginReflection("non-existent", "0.1.0", [], [i1, i2]).assert_synced()
 
     # try to use invalid manifest (with undefined plugin name)
     with pytest.raises(ReturnError, match="missing field `name`"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_1")
+        i1.call("pico.install_plugin", "testplug_broken_manifest_1", "0.1.0")
     PluginReflection(
-        "testplug_broken_manifest_1", _PLUGIN_SERVICES, [i1, i2]
+        "testplug_broken_manifest_1", "0.1.0", _PLUGIN_SERVICES, [i1, i2]
     ).assert_synced()
 
     # try to use invalid manifest (with invalid default configuration)
     with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_2")
+        i1.call("pico.install_plugin", "testplug_broken_manifest_2", "0.1.0")
         i1.call(
             "pico.service_append_tier",
             "testplug_broken_manifest_2",
+            "0.1.0",
             "testservice_1",
             _DEFAULT_TIER,
         )
         i1.call(
             "pico.service_append_tier",
             "testplug_broken_manifest_2",
+            "0.1.0",
             "testservice_2",
             _DEFAULT_TIER,
         )
-        i1.call("pico.enable_plugin", "testplug_broken_manifest_2")
-    PluginReflection("testplug_broken_manifest_2", _PLUGIN_SERVICES, [i1, i2]).install(
-        True
-    ).assert_synced()
+        i1.call("pico.enable_plugin", "testplug_broken_manifest_2", "0.1.0")
+    PluginReflection(
+        "testplug_broken_manifest_2", "0.1.0", _PLUGIN_SERVICES, [i1, i2]
+    ).install(True).assert_synced()
 
     # try to use invalid manifest (with non-existed extra service)
     with pytest.raises(ReturnError, match="Error while install the plugin"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_3")
+        i1.call("pico.install_plugin", "testplug_broken_manifest_3", "0.1.0")
     PluginReflection(
         "testplug_broken_manifest_3",
+        "0.1.0",
         ["testservice_1", "testservice_2", "testservice_3"],
         [i1, i2],
     ).assert_synced()
@@ -283,9 +300,9 @@ def test_invalid_manifest_plugin(cluster: Cluster):
 
 
 def install_and_enable_plugin(
-    instance, plugin, services, timeout=_3_SEC, default_config=None
+    instance, plugin, services, version="0.1.0", timeout=_3_SEC, default_config=None
 ):
-    instance.call("pico.install_plugin", plugin, timeout=timeout)
+    instance.call("pico.install_plugin", plugin, version, timeout=timeout)
     for s in services:
         if default_config is not None:
             instance.eval(
@@ -293,8 +310,8 @@ def install_and_enable_plugin(
                 f"({{'{plugin}', '{s}', '0.1.0'}}, {{ {{'=', 'configuration', ... }} }})",
                 default_config,
             )
-        instance.call("pico.service_append_tier", plugin, s, _DEFAULT_TIER)
-    instance.call("pico.enable_plugin", plugin, timeout=timeout)
+        instance.call("pico.service_append_tier", plugin, version, s, _DEFAULT_TIER)
+    instance.call("pico.enable_plugin", plugin, version, timeout=timeout)
 
 
 def test_plugin_install(cluster: Cluster):
@@ -306,27 +323,31 @@ def test_plugin_install(cluster: Cluster):
     """
 
     i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
+    expected_state = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2])
 
     # check default behaviour
-    i1.call("pico.install_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
     expected_state = expected_state.install(True)
     expected_state.assert_synced()
 
     # check install already disabled plugin
-    i1.call("pico.install_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
     expected_state.assert_synced()
 
     # enable plugin and check installation of already enabled plugin
-    i1.call("pico.service_append_tier", _PLUGIN, "testservice_1", _DEFAULT_TIER)
-    i1.call("pico.service_append_tier", _PLUGIN, "testservice_2", _DEFAULT_TIER)
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call(
+        "pico.service_append_tier", _PLUGIN, "0.1.0", "testservice_1", _DEFAULT_TIER
+    )
+    i1.call(
+        "pico.service_append_tier", _PLUGIN, "0.1.0", "testservice_2", _DEFAULT_TIER
+    )
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
     expected_state = expected_state.set_topology(
         {i1: _PLUGIN_SERVICES, i2: _PLUGIN_SERVICES}
     ).enable(True)
     expected_state.assert_synced()
 
-    i1.call("pico.install_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
     expected_state.assert_synced()
 
 
@@ -350,7 +371,7 @@ def test_plugin_enable(cluster: Cluster):
     plugin_ref.assert_cb_called("testservice_2", "on_start", 1, i1, i2)
 
     # check enable already enabled plugin
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
     plugin_ref.assert_synced()
     # assert that `on_start` don't call twice
     plugin_ref.assert_cb_called("testservice_1", "on_start", 1, i1, i2)
@@ -379,6 +400,7 @@ def test_plugin_disable(cluster: Cluster):
 
     i1.call("pico.disable_plugin", _PLUGIN)
 
+    i1.call("pico.disable_plugin", _PLUGIN, "0.1.0")
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
     plugin_ref.assert_synced()
 
@@ -389,7 +411,7 @@ def test_plugin_disable(cluster: Cluster):
     plugin_ref.assert_cb_called("testservice_2", "on_stop", 1, i1, i2)
 
     # check disabling of already disabled plugin
-    i1.call("pico.disable_plugin", _PLUGIN)
+    i1.call("pico.disable_plugin", _PLUGIN, "0.1.0")
     plugin_ref.assert_synced()
     # assert that `on_stop` callbacks don't call twice
     plugin_ref.assert_cb_called("testservice_1", "on_stop", 1, i1, i2)
@@ -397,9 +419,9 @@ def test_plugin_disable(cluster: Cluster):
 
     # check that disabling of non-installed plugin return error
     with pytest.raises(
-        ReturnError, match="Plugin `testplug_small` not found at instance"
+        ReturnError, match="Plugin `testplug_small:0.1.0` not found at instance"
     ):
-        i1.call("pico.disable_plugin", _PLUGIN_SMALL)
+        i1.call("pico.disable_plugin", _PLUGIN_SMALL, "0.1.0")
 
 
 def test_plugin_remove(cluster: Cluster):
@@ -419,17 +441,17 @@ def test_plugin_remove(cluster: Cluster):
 
     # check that removing non-disabled plugin return error
     with pytest.raises(ReturnError, match="Remove of enabled plugin is forbidden"):
-        i1.call("pico.remove_plugin", _PLUGIN)
+        i1.call("pico.remove_plugin", _PLUGIN, "0.1.0")
     plugin_ref.assert_synced()
 
     i1.call("pico._inject_error", "PLUGIN_EXIST_AND_ENABLED", True)
     # same, but error not returned to a client
-    i1.call("pico.remove_plugin", _PLUGIN)
+    i1.call("pico.remove_plugin", _PLUGIN, "0.1.0")
     plugin_ref.assert_synced()
     i1.call("pico._inject_error", "PLUGIN_EXIST_AND_ENABLED", False)
 
     # check default behaviour
-    i1.call("pico.disable_plugin", _PLUGIN)
+    i1.call("pico.disable_plugin", _PLUGIN, "0.1.0")
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
 
     # retrying, cause routing table update asynchronously
@@ -438,6 +460,7 @@ def test_plugin_remove(cluster: Cluster):
     i1.call("pico.remove_plugin", _PLUGIN)
     plugin_ref = plugin_ref.install(False)
     plugin_ref.assert_synced()
+    plugin_ref_v2.assert_synced()
 
     # check removing non-installed plugin
     i1.call("pico.remove_plugin", _PLUGIN)
@@ -449,6 +472,7 @@ def test_two_plugin_install_and_enable(cluster: Cluster):
     p1_ref = PluginReflection.default(i1, i2)
     p2_ref = PluginReflection(
         _PLUGIN_SMALL,
+        "0.1.0",
         _PLUGIN_SMALL_SERVICES,
         [i1, i2],
         topology={i1: _PLUGIN_SMALL_SERVICES, i2: _PLUGIN_SMALL_SERVICES},
@@ -527,12 +551,12 @@ def test_plugin_disable_error_on_stop(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_stop", True, i2)
     plugin_ref.inject_error("testservice_2", "on_stop", True, i2)
 
-    i1.call("pico.disable_plugin", _PLUGIN, timeout=_3_SEC)
+    i1.call("pico.disable_plugin", _PLUGIN, "0.1.0", timeout=_3_SEC)
     # retrying, cause routing table update asynchronously
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
     Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
-    i1.call("pico.remove_plugin", _PLUGIN, timeout=_3_SEC)
+    i1.call("pico.remove_plugin", _PLUGIN, "0.1.0", timeout=_3_SEC)
     plugin_ref = plugin_ref.install(False)
     plugin_ref.assert_synced()
 
@@ -546,7 +570,7 @@ def test_plugin_disable_error_on_stop(cluster: Cluster):
 
 def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2])
 
     # inject error into second instance
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
@@ -585,16 +609,22 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
 
 def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2])
 
     # inject timeout into second instance
     plugin_ref.inject_error("testservice_1", "on_start_sleep_sec", 3, i2)
 
     with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.install_plugin", _PLUGIN)
-        i1.call("pico.service_append_tier", _PLUGIN, "testservice_1", _DEFAULT_TIER)
-        i1.call("pico.service_append_tier", _PLUGIN, "testservice_2", _DEFAULT_TIER)
-        i1.call("pico.enable_plugin", _PLUGIN, {"on_start_timeout": 2}, timeout=4)
+        i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+        i1.call(
+            "pico.service_append_tier", _PLUGIN, "0.1.0", "testservice_1", _DEFAULT_TIER
+        )
+        i1.call(
+            "pico.service_append_tier", _PLUGIN, "0.1.0", "testservice_2", _DEFAULT_TIER
+        )
+        i1.call(
+            "pico.enable_plugin", _PLUGIN, "0.1.0", {"on_start_timeout": 2}, timeout=4
+        )
     # need to wait until sleep at i2 called asynchronously
     time.sleep(2)
 
@@ -607,7 +637,9 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start_sleep_sec", 3, i1)
 
     with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.enable_plugin", _PLUGIN, {"on_start_timeout": 2}, timeout=4)
+        i1.call(
+            "pico.enable_plugin", _PLUGIN, "0.1.0", {"on_start_timeout": 2}, timeout=4
+        )
     # need to wait until sleep at i1 and i2 called asynchronously
     time.sleep(2)
 
@@ -641,15 +673,15 @@ _NO_DATA: dict[str, None] = {
 def test_migration_on_plugin_install(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
+        _PLUGIN_WITH_MIGRATION, "0.1.0", _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
-    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
     expected_state = expected_state.install(True).set_data(_DATA)
     expected_state.assert_synced()
     expected_state.assert_data_synced()
 
-    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
     expected_state = expected_state.install(False).set_data(_NO_DATA)
     expected_state.assert_synced()
     expected_state.assert_data_synced()
@@ -658,14 +690,14 @@ def test_migration_on_plugin_install(cluster: Cluster):
 def test_migration_file_invalid_ext(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
+        _PLUGIN_WITH_MIGRATION, "0.1.0", _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     # the first file in a migration list has an invalid extension
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT", True)
 
     with pytest.raises(ReturnError, match="invalid extension"):
-        i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+        i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
     expected_state = expected_state.install(False)
     expected_state.assert_synced()
 
@@ -673,14 +705,14 @@ def test_migration_file_invalid_ext(cluster: Cluster):
 def test_migration_apply_err(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
+        _PLUGIN_WITH_MIGRATION, "0.1.0", _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     # second file in a migration list applied with error
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
 
     with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
-        i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+        i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
     expected_state = expected_state.install(False).set_data(_NO_DATA)
     expected_state.assert_synced()
     expected_state.assert_data_synced()
@@ -689,20 +721,20 @@ def test_migration_apply_err(cluster: Cluster):
 def test_migration_client_down(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION, _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
+        _PLUGIN_WITH_MIGRATION, "0.1.0", _PLUGIN_WITH_MIGRATION_SERVICES, [i1, i2]
     )
 
     # client down while applied migration
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_CLIENT_DOWN", True)
 
-    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
     expected_state = expected_state.install(True)
     expected_state.assert_synced()
 
     with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.enable_plugin", _PLUGIN_WITH_MIGRATION)
+        i1.call("pico.enable_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
 
-    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, timeout=5)
+    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
     expected_state = expected_state.install(False).set_data(_NO_DATA)
     expected_state.assert_synced()
     expected_state.assert_data_synced()
@@ -724,7 +756,7 @@ def test_config_validation(cluster: Cluster):
         ReturnError, match="New configuration validation error:.* test error"
     ):
         i1.eval(
-            "return pico.update_plugin_config('testplug', "
+            "return pico.update_plugin_config('testplug', '0.1.0', "
             "'testservice_1', {foo = true, bar = 102, baz = {'a', 'b'}})"
         )
 
@@ -740,7 +772,7 @@ def test_on_config_update(cluster: Cluster):
     plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
 
     i1.eval(
-        "pico.update_plugin_config('testplug', 'testservice_1', {foo = "
+        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
         "true, bar = 102, baz = {'a', 'b'}})"
     )
     # retrying, cause new service configuration callback call asynchronously
@@ -758,9 +790,9 @@ def test_plugin_double_config_update(cluster: Cluster):
     plugin_ref.assert_synced()
 
     i1.eval(
-        'pico.update_plugin_config("testplug", "testservice_1", {foo = '
+        'pico.update_plugin_config("testplug", "0.1.0", "testservice_1", {foo = '
         'true, bar = 102, baz = {"a", "b"}})'
-        'return pico.update_plugin_config("testplug", "testservice_1",'
+        'return pico.update_plugin_config("testplug", "0.1.0", "testservice_1",'
         '{foo = false, bar = 102, baz = {"a", "b"}})'
     )
     # both configs were applied
@@ -773,11 +805,11 @@ def test_plugin_double_config_update(cluster: Cluster):
     plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
 
     i1.eval(
-        'pico.update_plugin_config("testplug", "testservice_1", {foo = '
+        'pico.update_plugin_config("testplug", "0.1.0", "testservice_1", {foo = '
         'true, bar = 102, baz = {"a", "b"}})'
     )
     i2.eval(
-        'pico.update_plugin_config("testplug", "testservice_1", {foo = '
+        'pico.update_plugin_config("testplug", "0.1.0", "testservice_1", {foo = '
         'true, bar = 102, baz = {"a", "b"}})'
     )
     # both configs were applied and result config may be any of applied
@@ -802,7 +834,7 @@ def test_error_on_config_update(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_cfg_change", "test error", i1)
 
     i1.eval(
-        "pico.update_plugin_config('testplug', 'testservice_1', {foo = "
+        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
         "true, bar = 102, baz = {'a', 'b'}})"
     )
 
@@ -841,7 +873,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_cfg_change", "test error", i1)
 
     i1.eval(
-        "pico.update_plugin_config('testplug', 'testservice_1', {foo = "
+        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
         "true, bar = 102, baz = {'a', 'b'}})"
     )
 
@@ -854,7 +886,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     plugin_ref.remove_error("testservice_1", "on_cfg_change", i1)
 
     i1.eval(
-        "pico.update_plugin_config('testplug', 'testservice_1', {foo = "
+        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
         "false, bar = 102, baz = {'a', 'b'}})"
     )
 
@@ -943,6 +975,7 @@ def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
     p1_ref = PluginReflection.default(i1, i2, i3, i4)
     p2_ref = PluginReflection(
         _PLUGIN_SMALL,
+        "0.1.0",
         _PLUGIN_SMALL_SERVICES,
         instances=[i1, i2, i3, i4],
         topology={
@@ -974,6 +1007,7 @@ def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
     # add third plugin
     p3_ref = PluginReflection(
         p3,
+        "0.1.0",
         p3_svc,
         instances=[i1, i2, i3, i4],
         topology={i1: p3_svc, i2: p3_svc, i3: p3_svc, i4: p3_svc},
@@ -983,12 +1017,12 @@ def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
 
     # update first plugin config
     i1.eval(
-        'pico.update_plugin_config("testplug", "testservice_1", {foo = '
+        'pico.update_plugin_config("testplug", "0.1.0", "testservice_1", {foo = '
         'true, bar = 102, baz = {"a", "b"}})'
     )
 
     # disable second plugin
-    i1.call("pico.disable_plugin", _PLUGIN_SMALL)
+    i1.call("pico.disable_plugin", _PLUGIN_SMALL, "0.1.0")
     p2_ref = p2_ref.enable(False).set_topology({})
     time.sleep(1)
 
@@ -1023,16 +1057,17 @@ def test_four_plugin_install_and_enable2(cluster: Cluster):
 
 def test_set_topology(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2])
 
     # set topology to non-existent plugin is forbidden
     with pytest.raises(
         ReturnError,
-        match="Service `testservice_1` for plugin `non-existent` not found at instance",
+        match="Service `testservice_1` for plugin `non-existent:0.1.0` not found at instance",
     ):
         i1.call(
             "pico.service_append_tier",
             "non-existent",
+            "0.1.0",
             _PLUGIN_SERVICES[0],
             _DEFAULT_TIER,
         )
@@ -1040,16 +1075,24 @@ def test_set_topology(cluster: Cluster):
     # set topology to non-existent plugin service is forbidden
     with pytest.raises(
         ReturnError,
-        match="Service `non-existent` for plugin `testplug` not found at instance",
+        match="Service `non-existent` for plugin `testplug:0.1.0` not found at instance",
     ):
-        i1.call("pico.service_append_tier", _PLUGIN, "non-existent", _DEFAULT_TIER)
+        i1.call(
+            "pico.service_append_tier", _PLUGIN, "0.1.0", "non-existent", _DEFAULT_TIER
+        )
 
     # set non-existent tier to first plugin service,
     # and don't set any tier for second plugin service;
     # both services must never be started
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "non-existent")
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call(
+        "pico.service_append_tier",
+        _PLUGIN,
+        "0.1.0",
+        _PLUGIN_SERVICES[0],
+        "non-existent",
+    )
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
 
     plugin_ref = plugin_ref.install(True).enable(True).set_topology({i1: [], i2: []})
     plugin_ref.assert_synced()
@@ -1078,12 +1121,12 @@ def test_set_topology_for_single_plugin(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2, i3])
 
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "blue")
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "blue")
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
 
     plugin_ref = (
         plugin_ref.install(True)
@@ -1105,18 +1148,24 @@ def test_set_topology_for_multiple_plugins(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    p1_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
-    p2_ref = PluginReflection(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, [i1, i2, i3])
-
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.install_plugin", _PLUGIN_SMALL)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "red")
-    i1.call(
-        "pico.service_append_tier", _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES[0], "blue"
+    p1_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2, i3])
+    p2_ref = PluginReflection(
+        _PLUGIN_SMALL, "0.1.0", _PLUGIN_SMALL_SERVICES, [i1, i2, i3]
     )
-    i1.call("pico.enable_plugin", _PLUGIN)
-    i1.call("pico.enable_plugin", _PLUGIN_SMALL)
+
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.install_plugin", _PLUGIN_SMALL, "0.1.0")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "red")
+    i1.call(
+        "pico.service_append_tier",
+        _PLUGIN_SMALL,
+        "0.1.0",
+        _PLUGIN_SMALL_SERVICES[0],
+        "blue",
+    )
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.enable_plugin", _PLUGIN_SMALL, "0.1.0")
 
     p1_ref = (
         p1_ref.install(True)
@@ -1147,12 +1196,12 @@ def test_update_topology_1(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2, i3])
 
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "red")
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "red")
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
 
     plugin_ref = (
         plugin_ref.install(True)
@@ -1168,8 +1217,8 @@ def test_update_topology_1(cluster: Cluster):
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[0], "on_stop", 0, i1, i2, i3)
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[1], "on_stop", 0, i1, i2, i3)
 
-    i1.call("pico.service_remove_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "blue")
+    i1.call("pico.service_remove_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "blue")
 
     plugin_ref = plugin_ref.set_topology(
         {i1: [_PLUGIN_SERVICES[1]], i2: [_PLUGIN_SERVICES[0]], i3: []}
@@ -1193,12 +1242,12 @@ def test_update_topology_2(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2, i3])
 
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "red")
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "red")
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
 
     plugin_ref = (
         plugin_ref.install(True)
@@ -1214,7 +1263,7 @@ def test_update_topology_2(cluster: Cluster):
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[0], "on_stop", 0, i1, i2, i3)
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[1], "on_stop", 0, i1, i2, i3)
 
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "blue")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "blue")
 
     plugin_ref = plugin_ref.set_topology(
         {i1: _PLUGIN_SERVICES, i2: [_PLUGIN_SERVICES[0]], i3: []}
@@ -1236,12 +1285,12 @@ def test_update_topology_3(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2, i3])
 
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "red")
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "red")
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
 
     plugin_ref = (
         plugin_ref.install(True)
@@ -1257,7 +1306,7 @@ def test_update_topology_3(cluster: Cluster):
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[0], "on_stop", 0, i1, i2, i3)
     plugin_ref.assert_cb_called(_PLUGIN_SERVICES[1], "on_stop", 0, i1, i2, i3)
 
-    i1.call("pico.service_remove_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_remove_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
 
     plugin_ref = plugin_ref.set_topology({i1: [_PLUGIN_SERVICES[1]], i2: [], i3: []})
     Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
@@ -1278,25 +1327,38 @@ def test_set_topology_after_compaction(cluster: Cluster):
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    p1_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2, i3])
-    p2_ref = PluginReflection(_PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES, [i1, i2, i3])
-
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.install_plugin", _PLUGIN_SMALL)
-
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "blue")
-
-    i1.call(
-        "pico.service_append_tier", _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES[0], "blue"
-    )
-    i1.call(
-        "pico.service_append_tier", _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES[0], "green"
+    p1_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2, i3])
+    p2_ref = PluginReflection(
+        _PLUGIN_SMALL,
+        "0.1.0",
+        _PLUGIN_SMALL_SERVICES,
+        [i1, i2, i3],
     )
 
-    i1.call("pico.enable_plugin", _PLUGIN)
-    i1.call("pico.enable_plugin", _PLUGIN_SMALL)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.install_plugin", _PLUGIN_SMALL, "0.1.0")
+
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "blue")
+
+    i1.call(
+        "pico.service_append_tier",
+        _PLUGIN_SMALL,
+        "0.1.0",
+        _PLUGIN_SMALL_SERVICES[0],
+        "blue",
+    )
+    i1.call(
+        "pico.service_append_tier",
+        _PLUGIN_SMALL,
+        "0.1.0",
+        _PLUGIN_SMALL_SERVICES[0],
+        "green",
+    )
+
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.enable_plugin", _PLUGIN_SMALL, "0.1.0")
 
     p1_ref = (
         p1_ref.install(True)
@@ -1314,9 +1376,19 @@ def test_set_topology_after_compaction(cluster: Cluster):
     # terminate i3 and update topology
     i3.terminate()
 
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "green")
     i1.call(
-        "pico.service_remove_tier", _PLUGIN_SMALL, _PLUGIN_SMALL_SERVICES[0], "green"
+        "pico.service_append_tier",
+        _PLUGIN,
+        "0.1.0",
+        _PLUGIN_SERVICES[0],
+        "green",
+    )
+    i1.call(
+        "pico.service_remove_tier",
+        _PLUGIN_SMALL,
+        "0.1.0",
+        _PLUGIN_SMALL_SERVICES[0],
+        "green",
     )
 
     # compact raft log at online instances
@@ -1342,12 +1414,12 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=True, tier="red")
     i2 = cluster.add_instance(wait_online=True, tier="blue")
 
-    plugin_ref = PluginReflection(_PLUGIN, _PLUGIN_SERVICES, [i1, i2])
+    plugin_ref = PluginReflection(_PLUGIN, "0.1.0", _PLUGIN_SERVICES, [i1, i2])
 
-    i1.call("pico.install_plugin", _PLUGIN)
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "red")
-    i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[1], "red")
-    i1.call("pico.enable_plugin", _PLUGIN)
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[0], "red")
+    i1.call("pico.service_append_tier", _PLUGIN, "0.1.0", _PLUGIN_SERVICES[1], "red")
+    i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
 
     plugin_ref = (
         plugin_ref.install(True)
@@ -1360,7 +1432,13 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
 
     with pytest.raises(ReturnError, match="Error while update plugin topology"):
-        i1.call("pico.service_append_tier", _PLUGIN, _PLUGIN_SERVICES[0], "blue")
+        i1.call(
+            "pico.service_append_tier",
+            _PLUGIN,
+            "0.1.0",
+            _PLUGIN_SERVICES[0],
+            "blue",
+        )
 
     # assert that topology doesn't change
     plugin_ref.assert_synced()
@@ -1501,7 +1579,7 @@ def test_plugin_rpc_sdk_register_endpoint(cluster: Cluster):
         i1.call(".proc_rpc_dispatch", "/register", msgpack.dumps(input), context)
 
     # Check all RPC endpoints get unregistered
-    i1.call("pico.disable_plugin", plugin_name)
+    i1.call("pico.disable_plugin", plugin_name, "0.1.0")
 
     with pytest.raises(
         TarantoolError,
@@ -1663,7 +1741,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     # Check requesting RPC to unknown plugin
     with pytest.raises(
         TarantoolError,
-        match=f"service 'NO_SUCH_PLUGIN.{service_name}' is not running on i1",
+        match=f"service 'NO_SUCH_PLUGIN:0.1.0.{service_name}' is not running on i1",
     ):
         context = make_context()
         input = dict(
@@ -1677,7 +1755,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     # Check requesting RPC to unknown service
     with pytest.raises(
         TarantoolError,
-        match=f"service '{plugin_name}.NO_SUCH_SERVICE' is not running on i1",
+        match=f"service '{plugin_name}:0.1.0.NO_SUCH_SERVICE' is not running on i1",
     ):
         context = make_context()
         input = dict(
@@ -1692,7 +1770,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     with pytest.raises(
         TarantoolError,
         # FIXME: do a better error message
-        match=f"service '{plugin_name}.{service_name}' is not running on NO_SUCH_INSTANCE",
+        match=f"service '{plugin_name}:0.1.0.{service_name}' is not running on NO_SUCH_INSTANCE",
     ):
         context = make_context()
         input = dict(

@@ -1,4 +1,4 @@
-use crate::plugin::TopologyUpdateOp;
+use crate::plugin::{PluginIdentifier, TopologyUpdateOp};
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
@@ -51,19 +51,19 @@ pub enum Op {
     /// Provided operation will be set as pending.
     /// Only one operation can exist at the same time.
     PluginEnable {
-        plugin_name: String,
+        ident: PluginIdentifier,
         on_start_timeout: Duration,
     },
     /// Update plugin service configuration.
     PluginConfigUpdate {
-        plugin_name: String,
+        ident: PluginIdentifier,
         service_name: String,
         config: rmpv::Value,
     },
     /// Disable selected plugin.
-    PluginDisable { name: String },
+    PluginDisable { ident: PluginIdentifier },
     /// Remove selected plugin.
-    PluginRemove { name: String },
+    PluginRemove { ident: PluginIdentifier },
     /// Update topology of a plugin service.
     PluginUpdateTopology { op: TopologyUpdateOp },
 }
@@ -237,21 +237,21 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(), )
             }
-            Op::PluginEnable { plugin_name, .. } => {
-                write!(f, "PluginEnablePrepare({})", plugin_name)
+            Op::PluginEnable { ident, .. } => {
+                write!(f, "PluginEnablePrepare({ident})")
             }
             Op::PluginConfigUpdate {
-                plugin_name,
+                ident,
                 service_name,
                 ..
             } => {
-                write!(f, "PluginConfigUpdate({plugin_name}, {service_name})")
+                write!(f, "PluginConfigUpdate({ident}, {service_name})")
             }
-            Op::PluginDisable { name } => {
-                write!(f, "PluginDisable({name})")
+            Op::PluginDisable { ident } => {
+                write!(f, "PluginDisable({ident})")
             }
-            Op::PluginRemove { name } => {
-                write!(f, "PluginRemove({name})")
+            Op::PluginRemove { ident } => {
+                write!(f, "PluginRemove({ident})")
             }
             Op::PluginUpdateTopology { op } => {
                 write!(f, "PluginUpdateTopology({op:?})",)

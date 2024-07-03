@@ -1,6 +1,6 @@
 use crate::cas::Range;
 use crate::cbus::ENDPOINT_NAME;
-use crate::plugin::{do_plugin_cas, PLUGIN_DIR};
+use crate::plugin::{do_plugin_cas, PluginIdentifier, PLUGIN_DIR};
 use crate::schema::{PluginDef, ADMIN_ID};
 use crate::storage::ClusterwideTable;
 use crate::traft::node;
@@ -328,17 +328,20 @@ fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
 ///
 /// # Arguments
 ///
-/// * `plugin_name`: name of plugin for which migrations belong to
+/// * `plugin_ident`: plugin for which migrations belong to
 /// * `migrations`: list of migration file names
 /// * `deadline`: applying deadline
 pub fn apply_up_migrations(
-    plugin_name: &str,
+    plugin_ident: &PluginIdentifier,
     migrations: &[String],
     deadline: Instant,
 ) -> crate::plugin::Result<()> {
     // checking the existence of migration files
     let mut migration_files = vec![];
-    let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone()).join(plugin_name);
+    let plugin_dir = PLUGIN_DIR
+        .with(|dir| dir.lock().clone())
+        .join(&plugin_ident.name)
+        .join(&plugin_ident.version);
     for file in migrations {
         let migration_path = plugin_dir.join(file);
 
@@ -409,11 +412,11 @@ pub fn apply_up_migrations(
             .expect("serialization cannot fail");
         let update_dml = Dml::update(
             ClusterwideTable::Plugin,
-            &[plugin_name],
+            &[&plugin_ident.name, &plugin_ident.version],
             enable_ops,
             ADMIN_ID,
         )?;
-        let ranges = vec![Range::new(ClusterwideTable::Plugin).eq([plugin_name])];
+        let ranges = vec![Range::new(ClusterwideTable::Plugin).eq([&plugin_ident.name])];
 
         tlog!(
             Debug,
@@ -439,15 +442,18 @@ pub fn apply_up_migrations(
 ///
 /// # Arguments
 ///
-/// * `plugin_name`: name of plugin for which migrations belong to
+/// * `plugin_identity`: plugin for which migrations belong to
 /// * `migrations`: list of migration file names
-pub fn apply_down_migrations(plugin_name: &str, migrations: &[String]) {
+pub fn apply_down_migrations(plugin_identity: &PluginIdentifier, migrations: &[String]) {
     let iter = migrations.iter().rev().zip(0..);
     for (db_file, num) in iter {
         #[rustfmt::skip]
         tlog!(Info, "applying `DOWN` migrations, progress: {num}/{}", migrations.len());
 
-        let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone()).join(plugin_name);
+        let plugin_dir = PLUGIN_DIR
+            .with(|dir| dir.lock().clone())
+            .join(&plugin_identity.name)
+            .join(&plugin_identity.version);
         let migration_path = plugin_dir.join(db_file);
         let filename = migration_path.display().to_string();
 

@@ -567,5 +567,8 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     reg.add("testservice_1", "0.1.0", Service1::new);
     reg.add("testservice_2", "0.1.0", Service2::new);
     reg.add("testservice_3", "0.1.0", || Service3);
+
+    reg.add("testservice_1", "0.2.0", Service1::new);
+    reg.add("testservice_2", "0.2.0", Service2::new);
     reg.add("service_with_rpc_tests", "0.1.0", || ServiceWithRpcTests);
 }

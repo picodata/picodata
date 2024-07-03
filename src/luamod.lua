@@ -1256,7 +1256,7 @@ function pico.drop_table(table, opts)
 end
 
 help.update_plugin_config = [[
-pico.drop_table(plugin_name, service_name, new_config, [opts])
+pico.drop_table(plugin_name, plugin_version, service_name, new_config, [opts])
 ======================
 
 Update a plugin service configuration.
@@ -1264,16 +1264,18 @@ Update a plugin service configuration.
 Params:
         1. plugin_name - plugin name
 
-        2. service_name - service name
+        2. plugin_version - plugin version
 
-        3. new_config - new configuration
+        3. service_name - service name
 
-        4. opts (optional table)
+        4. new_config - new configuration
+
+        5. opts (optional table)
             - timeout (optional number), in seconds, default: 10
 ]]
-function pico.update_plugin_config(plugin_name, service_name, new_config, opts)
+function pico.update_plugin_config(plugin_name, plugin_version, service_name, new_config, opts)
     local raw_new_config = require'msgpack'.encode(new_config)
-    return pico._update_plugin_config(plugin_name, service_name, raw_new_config, opts)
+    return pico._update_plugin_config(plugin_name, plugin_version, service_name, raw_new_config, opts)
 end
 
 function pico._replicaset_priority_list(replicaset_uuid)

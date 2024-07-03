@@ -39,7 +39,7 @@ pub(super) fn action_plan<'i>(
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
     install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
-    enable_plugin: Option<&'i (String, Option<PluginDef>, Vec<ServiceDef>, Duration)>,
+    enable_plugin: Option<&'i (PluginIdentifier, Vec<PluginDef>, Vec<ServiceDef>, Duration)>,
     disable_plugin: Option<&'i [ServiceRouteItem]>,
     update_plugin_topology: Option<(PluginDef, ServiceDef, TopologyUpdateOp)>,
 ) -> Result<Plan<'i>> {
@@ -634,7 +634,7 @@ macro_rules! define_plan {
 }
 
 use crate::plugin::topology::TopologyContext;
-use crate::plugin::{topology, TopologyUpdateOp};
+use crate::plugin::{topology, PluginIdentifier, TopologyUpdateOp};
 use stage::*;
 
 pub mod stage {

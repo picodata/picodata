@@ -24,7 +24,7 @@ crate::define_rpc_request! {
             .ok_or_else(|| TraftError::other("pending plugin topology not found"))?;
 
         node.plugin_manager.handle_event_sync(PluginEvent::ServiceEnabled {
-            plugin: op.plugin_name(),
+            ident: op.plugin_identity(),
             service: op.service_name(),
         })?;
 
