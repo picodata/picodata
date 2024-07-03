@@ -53,9 +53,9 @@ instance:
   tier: default # (27)!
   failure_domain: {} # (9)!
   peer: # (20)!
-  - localhost:3301
-  listen: localhost:3301 # (13)!
-  advertise_address: localhost:3301 # (6)!
+  - 127.0.0.1:3301
+  listen: 127.0.0.1:3301 # (13)!
+  advertise_address: 127.0.0.1:3301 # (6)!
   http_listen: null # (10)!
   admin_socket: ./admin.sock # (5)!
   plugin_dir: null # (23)!
@@ -203,7 +203,7 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `localhost:3301`
+* Значение по умолчанию: `127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
 Аналогичная команда:
@@ -337,7 +337,7 @@ picodata run -c instance.iproto.max_concurrent_messages=1536
 Данные:
 
 * Тип: *str*
-* Значение по умолчанию: `localhost:3301`
+* Значение по умолчанию: `127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
 Аналогичная команда:
@@ -468,7 +468,7 @@ picodata run -c instance.memtx.checkpoint_interval=7200.0
 
 <!-- https://yaml.org/spec/1.2.2/#821-block-sequences -->
 * Тип: Block Sequence of *str*
-* Значение по умолчанию: `- localhost:3301`
+* Значение по умолчанию: `- 127.0.0.1:3301`
 
 Аналогичная переменная окружения: `PICODATA_PEER`<br>
 Аналогичная команда:

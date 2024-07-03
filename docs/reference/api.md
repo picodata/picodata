@@ -422,7 +422,7 @@ function instance_info(instance)
  picodata> pico.instance_info()
  ---
  - raft_id: 1
-advertise_address: localhost:3301
+advertise_address: 127.0.0.1:3301
 instance_id: i1
 instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
 replicaset_id: r1

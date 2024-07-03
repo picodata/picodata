@@ -265,7 +265,7 @@ proc_service_configure(
 | plugin\_name | service\_name |    key     | value               |
 |:-------------|:--------------|:----------:|:--------------------|
 | kafka        | consumer      |  mapping   | [ { "topic": "my\_topic", "autocommit": "false", "table": "my\_table" }, { "topic": "my\_topic\_2", "autocommit": "true", "table": "my\_table\_2" } ] |
-| kafka        | consumer      | kafka\_uri | localhost:9092      |
+| kafka        | consumer      | kafka\_uri | 127.0.0.1:9092      |
 
 ## Жизненный цикл плагина {: #plugin_lifecycle }
 

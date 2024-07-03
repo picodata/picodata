@@ -117,7 +117,7 @@ picodata admin pico/data/picodata-1-1/admin.sock
 используйте команду:
 
 ```shell
-picodata connect admin@localhost:13301
+picodata connect admin@127.0.0.1:13301
 ```
 
 Пароль администратора `T0psecret` задан через

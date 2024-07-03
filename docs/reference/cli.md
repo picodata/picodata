@@ -207,7 +207,7 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 
 Сетевой адрес инстанса.
 
-По умолчанию используется значение `localhost:3301`.
+По умолчанию используется значение `127.0.0.1:3301`.
 
 Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
 Аналогичный параметр файла конфигурации: `instance.listen`
@@ -425,9 +425,9 @@ picodata connect [OPTIONS] <ADDRESS>
 **Пример**
 
 ```bash
-$ picodata connect alice@localhost:3301
+$ picodata connect alice@127.0.0.1:3301
 Enter password for alice:
-Connected to interactive console by address "localhost:3301" under "alice" user
+Connected to interactive console by address "127.0.0.1:3301" under "alice" user
 type '\help' for interactive help
 picodata>
 ```
@@ -529,7 +529,7 @@ picodata expel [OPTIONS] <INSTANCE_ID>
 
 Адрес любого инстанса из состава кластера.
 
-Значение по умолчанию: `localhost:3301`
+Значение по умолчанию: `127.0.0.1:3301`
 
 <!--
 ## Сценарии применения команд {: #cases }

@@ -25,7 +25,7 @@ Picodata](install.md).
 [picodata run --http-listen]. Пример команды:
 
 ```bash
-picodata run --http-listen localhost:8080
+picodata run --http-listen 127.0.0.1:8080
 ```
 
 [picodata run --http-listen]: ../reference/cli.md#run_http_listen
