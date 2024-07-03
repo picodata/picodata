@@ -629,7 +629,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 1,
+        timeout: int | float = 5,
     ):
         with self.connect(timeout, user=user, password=password) as conn:
             return conn.call(fn, args)
@@ -640,7 +640,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 1,
+        timeout: int | float = 5,
     ):
         with self.connect(timeout, user=user, password=password) as conn:
             return conn.eval(expr, *args)
