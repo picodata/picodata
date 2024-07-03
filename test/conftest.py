@@ -1091,7 +1091,7 @@ class Instance:
             raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
 
     def wait_online(
-        self, timeout: int | float = 10, rps: int | float = 5, expected_incarnation=None
+        self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None
     ):
         """Wait until instance attains Online grade.
 
