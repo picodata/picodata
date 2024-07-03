@@ -92,12 +92,13 @@ impl<'a> Context<'a> {
         self.raw
     }
 
+    /// Set a named `field` to the `value`. Returns the old value if it was set.
     #[inline(always)]
     pub fn set(
         &mut self,
-        field: String,
+        field: impl Into<Cow<'static, str>>,
         value: impl Into<ContextValue<'static>>,
-    ) -> Result<(), BoxError> {
+    ) -> Result<Option<ContextValue<'a>>, BoxError> {
         // Make sure the map is initialized.
         // TODO: use `OnceCell::get_mut_or_init` when it's stable.
         self.get_named_fields()?;
@@ -109,8 +110,8 @@ impl<'a> Context<'a> {
         let named_fields: &mut ContextNamedFields = res
             .as_mut()
             .expect("if it was an error we would've returned early");
-        named_fields.insert(field.into(), value.into());
-        Ok(())
+        let old_value = named_fields.insert(field.into(), value.into());
+        Ok(old_value)
     }
 
     #[inline(always)]
@@ -250,6 +251,34 @@ impl ContextValue<'_> {
             _ => None,
         }
     }
+
+    /// Returns true if `&self` does not contain any `&str`.
+    ///
+    /// See also [`Self::into_owned`].
+    pub fn is_owned(&self) -> bool {
+        match self {
+            Self::Bool { .. } => true,
+            Self::Int { .. } => true,
+            Self::Float { .. } => true,
+            Self::String(v) => matches!(v, Cow::Owned { .. }),
+            Self::Array(v) => v.iter().all(Self::is_owned),
+        }
+    }
+
+    /// Converts `self` into a version with a `'static` lifetime. This means
+    /// that any `&str` stored inside will be converted to `String`.
+    pub fn into_owned(self) -> ContextValue<'static> {
+        match self {
+            Self::Bool(v) => ContextValue::Bool(v),
+            Self::Int(v) => ContextValue::Int(v),
+            Self::Float(v) => ContextValue::Float(v),
+            // Note: even though this could be Cow::Borrowed(&'static str) which already has 'static lifetime,
+            // rust will not less us know this information, so we must do a redundant allocation.
+            // Let's just wait until "specialization" is stabilized (which will never happen by the way).
+            Self::String(v) => ContextValue::String(Cow::Owned(v.into())),
+            Self::Array(v) => ContextValue::Array(v.into_iter().map(Self::into_owned).collect()),
+        }
+    }
 }
 
 impl From<bool> for ContextValue<'_> {
@@ -299,6 +328,13 @@ impl From<String> for ContextValue<'_> {
     #[inline(always)]
     fn from(s: String) -> Self {
         Self::String(s.into())
+    }
+}
+
+impl<'a> From<Cow<'a, str>> for ContextValue<'a> {
+    #[inline(always)]
+    fn from(s: Cow<'a, str>) -> Self {
+        Self::String(s)
     }
 }
 
@@ -692,16 +728,21 @@ mod tests {
 
         assert!(context.get("bar").unwrap().is_none());
 
-        context.set("bar".into(), "string").unwrap();
+        let old_value = context.set("bar", "string").unwrap();
+        assert!(old_value.is_none());
         assert_eq!(
             *context.get("bar").unwrap().unwrap(),
             ContextValue::from("string")
         );
 
-        context.set("bar".into(), 0xba5).unwrap();
+        let old_value = context.set("bar", 0xba5).unwrap().unwrap();
+        assert_eq!(old_value, ContextValue::from("string"));
         assert_eq!(
             *context.get("bar").unwrap().unwrap(),
             ContextValue::from(0xba5)
         );
+
+        assert!(!old_value.is_owned());
+        assert!(old_value.into_owned().is_owned());
     }
 }
