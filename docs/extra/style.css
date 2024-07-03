@@ -239,9 +239,19 @@ h1 > a[class=headerlink] {
 
 svg > text.terminal,
 svg > a > text.nonterminal {
-    font-size: 14px;
+    font-size: 13px;
     dominant-baseline: central;
     text-anchor: middle;
+}
+
+svg > text.terminal {
+    font-family: Montserrat;
+    font-weight: bold;
+}
+
+svg > a > text.nonterminal {
+    font-family: Montserrat;
+    font-weight: 500;
 }
 
 /* Center <img> tags */
