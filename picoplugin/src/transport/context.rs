@@ -93,15 +93,22 @@ impl<'a> Context<'a> {
     }
 
     #[inline(always)]
-    pub fn set<'b>(
-        &'b mut self,
+    pub fn set(
+        &mut self,
         field: String,
         value: impl Into<ContextValue<'static>>,
-    ) -> Result<(), BoxError>
-    where
-        'b: 'a,
-    {
-        let named_fields = self.get_named_fields_mut()?;
+    ) -> Result<(), BoxError> {
+        // Make sure the map is initialized.
+        // TODO: use `OnceCell::get_mut_or_init` when it's stable.
+        self.get_named_fields()?;
+
+        let res: &mut Result<ContextNamedFields, BoxError> = self
+            .named_fields
+            .get_mut()
+            .expect("just made sure it's there");
+        let named_fields: &mut ContextNamedFields = res
+            .as_mut()
+            .expect("if it was an error we would've returned early");
         named_fields.insert(field.into(), value.into());
         Ok(())
     }
@@ -118,27 +125,6 @@ impl<'a> Context<'a> {
             .get_or_init(|| decode_msgpack_string_fields(self.raw))
             .as_ref()
             .map_err(Clone::clone)
-    }
-
-    #[inline]
-    pub fn get_named_fields_mut<'b>(
-        &'b mut self,
-    ) -> Result<&'b mut ContextNamedFields<'a>, BoxError>
-    where
-        'b: 'a,
-    {
-        // Make sure the map is initialized.
-        // TODO: use `OnceCell::get_mut_or_init` when it's stable.
-        self.get_named_fields()?;
-
-        let res: &mut Result<ContextNamedFields, BoxError> = self
-            .named_fields
-            .get_mut()
-            .expect("just made sure it's there");
-        let named_fields: &mut ContextNamedFields = res
-            .as_mut()
-            .expect("if it was an error we would've returned early");
-        Ok(named_fields)
     }
 }
 
@@ -654,7 +640,7 @@ mod tests {
         data.extend(b"\xa5float\xcb\x40\x09\x1e\xb8\x51\xeb\x85\x1f");
         data.extend(b"\xa5array\x93\x01\xa3two\x03");
 
-        let context = FfiSafeContext::decode_msgpack("path", &data).unwrap();
+        let context = FfiSafeContext::decode_msgpack_impl("path", &data).unwrap();
         let context = Context::new(&context);
         assert_eq!(
             context.request_id,
@@ -690,6 +676,32 @@ mod tests {
                 ContextValue::from(3)
             ])
         );
-        assert!(context.get("no such key").unwrap().is_none());
+        assert!(context.get("bar").unwrap().is_none());
+    }
+
+    #[tarantool::test]
+    fn context_get_set() {
+        let mut data = Vec::new();
+        data.extend(b"\x84");
+        data.extend(b"\x01\xd8\x020123456789abcdef");
+        data.extend(b"\x04\xa51.2.3");
+        data.extend(b"\x03\xa7service");
+        data.extend(b"\x02\xa6plugin");
+        let context = FfiSafeContext::decode_msgpack_impl("path", &data).unwrap();
+        let mut context = Context::new(&context);
+
+        assert!(context.get("bar").unwrap().is_none());
+
+        context.set("bar".into(), "string").unwrap();
+        assert_eq!(
+            *context.get("bar").unwrap().unwrap(),
+            ContextValue::from("string")
+        );
+
+        context.set("bar".into(), 0xba5).unwrap();
+        assert_eq!(
+            *context.get("bar").unwrap().unwrap(),
+            ContextValue::from(0xba5)
+        );
     }
 }
