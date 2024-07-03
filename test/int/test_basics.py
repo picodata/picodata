@@ -295,7 +295,7 @@ def test_pico_instance_info(instance: Instance):
 
 
 def test_raft_log(instance: Instance):
-    raft_log = instance.call("pico.raft_log", dict(max_width=100000))
+    raft_log = instance.call("pico.raft_log", dict(max_width=99000))
 
     raft_log = str.join("\n", raft_log)
 
@@ -377,101 +377,101 @@ def test_raft_log(instance: Instance):
 |index|term|contents|
 +-----+----+--------+
 |  0  | 1  |BatchDml(
-Replace({_pico_peer_address}, [1,"127.0.0.1:{p}"]),
-Insert({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
-Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"]))|
-|  0  | 1  |BatchDml(Insert({_pico_tier}, ["default",1,true]))|
+Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
+Insert(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
+Insert(_pico_replicaset, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"]))|
+|  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true]))|
 |  0  | 1  |BatchDml(
-Insert({_pico_property}, ["global_schema_version",0]),
-Insert({_pico_property}, ["next_schema_version",1]),
-Insert({_pico_property}, ["current_vshard_config_version",0]),
-Insert({_pico_property}, ["target_vshard_config_version",0]),
-Insert({_pico_property}, ["password_min_length",8]),
-Insert({_pico_property}, ["password_enforce_uppercase",true]),
-Insert({_pico_property}, ["password_enforce_lowercase",true]),
-Insert({_pico_property}, ["password_enforce_digits",true]),
-Insert({_pico_property}, ["password_enforce_specialchars",false]),
-Insert({_pico_property}, ["auto_offline_timeout",5.0]),
-Insert({_pico_property}, ["max_heartbeat_period",5.0]),
-Insert({_pico_property}, ["max_pg_statements",1024]),
-Insert({_pico_property}, ["max_pg_portals",1024]),
-Insert({_pico_property}, ["snapshot_chunk_max_size",16777216]),
-Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0]))|
+Insert(_pico_property, ["global_schema_version",0]),
+Insert(_pico_property, ["next_schema_version",1]),
+Insert(_pico_property, ["current_vshard_config_version",0]),
+Insert(_pico_property, ["target_vshard_config_version",0]),
+Insert(_pico_property, ["password_min_length",8]),
+Insert(_pico_property, ["password_enforce_uppercase",true]),
+Insert(_pico_property, ["password_enforce_lowercase",true]),
+Insert(_pico_property, ["password_enforce_digits",true]),
+Insert(_pico_property, ["password_enforce_specialchars",false]),
+Insert(_pico_property, ["auto_offline_timeout",5.0]),
+Insert(_pico_property, ["max_heartbeat_period",5.0]),
+Insert(_pico_property, ["max_pg_statements",1024]),
+Insert(_pico_property, ["max_pg_portals",1024]),
+Insert(_pico_property, ["snapshot_chunk_max_size",16777216]),
+Insert(_pico_property, ["snapshot_read_view_close_timeout",86400.0]))|
 |  0  | 1  |BatchDml(
-Insert({_pico_user}, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"]),
-Insert({_pico_privilege}, ["login","universe",0,0,1,0]),
-Insert({_pico_privilege}, ["execute","role",2,0,1,0]),
-Insert({_pico_user}, [1,"admin",0,["chap-sha1",""],1,"user"]),
-Insert({_pico_privilege}, ["read","universe",0,1,1,0]),
-Insert({_pico_privilege}, ["write","universe",0,1,1,0]),
-Insert({_pico_privilege}, ["execute","universe",0,1,1,0]),
-Insert({_pico_privilege}, ["login","universe",0,1,1,0]),
-Insert({_pico_privilege}, ["create","universe",0,1,1,0]),
-Insert({_pico_privilege}, ["drop","universe",0,1,1,0]),
-Insert({_pico_privilege}, ["alter","universe",0,1,1,0]),
-Insert({_pico_user}, [32,"pico_service",0,["chap-sha1","WMA2zaUdjou7vy+epavxEa2kRPA="],1,"user"]),
-Insert({_pico_privilege}, ["read","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["write","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["execute","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["login","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["create","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["drop","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["alter","universe",0,32,1,0]),
-Insert({_pico_privilege}, ["execute","role",3,32,1,0]),
-Insert({_pico_user}, [2,"public",0,null,1,"role"]),
-Insert({_pico_user}, [31,"super",0,null,1,"role"]))|
+Insert(_pico_user, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"]),
+Insert(_pico_privilege, ["login","universe",0,0,1,0]),
+Insert(_pico_privilege, ["execute","role",2,0,1,0]),
+Insert(_pico_user, [1,"admin",0,["chap-sha1",""],1,"user"]),
+Insert(_pico_privilege, ["read","universe",0,1,1,0]),
+Insert(_pico_privilege, ["write","universe",0,1,1,0]),
+Insert(_pico_privilege, ["execute","universe",0,1,1,0]),
+Insert(_pico_privilege, ["login","universe",0,1,1,0]),
+Insert(_pico_privilege, ["create","universe",0,1,1,0]),
+Insert(_pico_privilege, ["drop","universe",0,1,1,0]),
+Insert(_pico_privilege, ["alter","universe",0,1,1,0]),
+Insert(_pico_user, [32,"pico_service",0,["chap-sha1","WMA2zaUdjou7vy+epavxEa2kRPA="],1,"user"]),
+Insert(_pico_privilege, ["read","universe",0,32,1,0]),
+Insert(_pico_privilege, ["write","universe",0,32,1,0]),
+Insert(_pico_privilege, ["execute","universe",0,32,1,0]),
+Insert(_pico_privilege, ["login","universe",0,32,1,0]),
+Insert(_pico_privilege, ["create","universe",0,32,1,0]),
+Insert(_pico_privilege, ["drop","universe",0,32,1,0]),
+Insert(_pico_privilege, ["alter","universe",0,32,1,0]),
+Insert(_pico_privilege, ["execute","role",3,32,1,0]),
+Insert(_pico_user, [2,"public",0,null,1,"role"]),
+Insert(_pico_user, [31,"super",0,null,1,"role"]))|
 |  0  | 1  |BatchDml(
-Insert({_pico_table}, [{_pico_table},"_pico_table",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"map","is_nullable":false,"name":"distribution"}},{{"field_type":"array","is_nullable":false,"name":"format"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"string","is_nullable":false,"name":"engine"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,"Stores metadata of all the cluster tables in picodata."]),
-Insert({_pico_index}, [{_pico_table},0,"_pico_table_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_table},1,"_pico_table_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_index},"_pico_index",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"table_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"type"}},{{"field_type":"array","is_nullable":false,"name":"opts"}},{{"field_type":"array","is_nullable":false,"name":"parts"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}],[["table_id","unsigned",null,false,null],["id","unsigned",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"instance_uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_instance},0,"_pico_instance_id","tree",[{{"unique":true}}],[["instance_id","string",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_instance},1,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_instance},2,"_pico_instance_replicaset_id","tree",[{{"unique":false}}],[["replicaset_id","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_property},"_pico_property",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":false,"name":"value"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_property},0,"_pico_property_key","tree",[{{"unique":true}}],[["key","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_replicaset},"_pico_replicaset",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"string","is_nullable":false,"name":"current_master_id"}},{{"field_type":"string","is_nullable":false,"name":"target_master_id"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"double","is_nullable":false,"name":"weight"}},{{"field_type":"string","is_nullable":false,"name":"weight_origin"}},{{"field_type":"string","is_nullable":false,"name":"state"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_replicaset},0,"_pico_replicaset_id","tree",[{{"unique":true}}],[["replicaset_id","string",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_replicaset},1,"_pico_replicaset_uuid","tree",[{{"unique":true}}],[["replicaset_uuid","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_user},"_pico_user",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"array","is_nullable":true,"name":"auth"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"type"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_user},0,"_pico_user_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_user},1,"_pico_user_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_privilege},0,"_pico_privilege_primary","tree",[{{"unique":true}}],[["grantee_id","unsigned",null,false,null],["object_type","string",null,false,null],["object_id","integer",null,false,null],["privilege","string",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_privilege},1,"_pico_privilege_object","tree",[{{"unique":false}}],[["object_type","string",null,false,null],["object_id","integer",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_tier},0,"_pico_tier_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_routine},"_pico_routine",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"array","is_nullable":false,"name":"params"}},{{"field_type":"array","is_nullable":false,"name":"returns"}},{{"field_type":"string","is_nullable":false,"name":"language"}},{{"field_type":"string","is_nullable":false,"name":"body"}},{{"field_type":"string","is_nullable":false,"name":"security"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_routine},0,"_pico_routine_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
-Insert({_pico_index}, [{_pico_routine},1,"_pico_routine_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_plugin},"_pico_plugin",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"boolean","is_nullable":false,"name":"enabled"}},{{"field_type":"array","is_nullable":false,"name":"services"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"string","is_nullable":false,"name":"description"}},{{"field_type":"array","is_nullable":false,"name":"migration_list"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_plugin},0,"_pico_plugin_name","tree",[{{"unique":true}}],[["name","string",null,false,null],["version","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_service},"_pico_service",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"array","is_nullable":false,"name":"tiers"}},{{"field_type":"any","is_nullable":false,"name":"configuration"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_service},0,"_pico_service_name","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["name","string",null,false,null],["version","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_service_route},"_pico_service_route",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"plugin_version"}},{{"field_type":"string","is_nullable":false,"name":"service_name"}},{{"field_type":"boolean","is_nullable":false,"name":"poison"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_service_route},0,"_pico_service_routing_key","tree",[{{"unique":true}}],[["instance_id","string",null,false,null],["plugin_name","string",null,false,null],["plugin_version","string",null,false,null],["service_name","string",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}},{{"field_type":"string","is_nullable":false,"name":"hash"}}],0,true,"memtx",1,""]),
-Insert({_pico_index}, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0])
+Insert(_pico_table, [{_pico_table},"_pico_table",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"map","is_nullable":false,"name":"distribution"}},{{"field_type":"array","is_nullable":false,"name":"format"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"string","is_nullable":false,"name":"engine"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,"Stores metadata of all the cluster tables in picodata."]),
+Insert(_pico_index, [{_pico_table},0,"_pico_table_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_table},1,"_pico_table_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_index},"_pico_index",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"table_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"type"}},{{"field_type":"array","is_nullable":false,"name":"opts"}},{{"field_type":"array","is_nullable":false,"name":"parts"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}],[["table_id","unsigned",null,false,null],["id","unsigned",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"instance_uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_instance},0,"_pico_instance_id","tree",[{{"unique":true}}],[["instance_id","string",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_instance},1,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_instance},2,"_pico_instance_replicaset_id","tree",[{{"unique":false}}],[["replicaset_id","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_property},"_pico_property",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":false,"name":"value"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_property},0,"_pico_property_key","tree",[{{"unique":true}}],[["key","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_replicaset},"_pico_replicaset",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"string","is_nullable":false,"name":"current_master_id"}},{{"field_type":"string","is_nullable":false,"name":"target_master_id"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"double","is_nullable":false,"name":"weight"}},{{"field_type":"string","is_nullable":false,"name":"weight_origin"}},{{"field_type":"string","is_nullable":false,"name":"state"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_replicaset},0,"_pico_replicaset_id","tree",[{{"unique":true}}],[["replicaset_id","string",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_replicaset},1,"_pico_replicaset_uuid","tree",[{{"unique":true}}],[["replicaset_uuid","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_user},"_pico_user",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"array","is_nullable":true,"name":"auth"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"type"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_user},0,"_pico_user_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_user},1,"_pico_user_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_privilege},0,"_pico_privilege_primary","tree",[{{"unique":true}}],[["grantee_id","unsigned",null,false,null],["object_type","string",null,false,null],["object_id","integer",null,false,null],["privilege","string",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_privilege},1,"_pico_privilege_object","tree",[{{"unique":false}}],[["object_type","string",null,false,null],["object_id","integer",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_tier},0,"_pico_tier_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_routine},"_pico_routine",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"array","is_nullable":false,"name":"params"}},{{"field_type":"array","is_nullable":false,"name":"returns"}},{{"field_type":"string","is_nullable":false,"name":"language"}},{{"field_type":"string","is_nullable":false,"name":"body"}},{{"field_type":"string","is_nullable":false,"name":"security"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_routine},0,"_pico_routine_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
+Insert(_pico_index, [{_pico_routine},1,"_pico_routine_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_plugin},"_pico_plugin",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"boolean","is_nullable":false,"name":"enabled"}},{{"field_type":"array","is_nullable":false,"name":"services"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"string","is_nullable":false,"name":"description"}},{{"field_type":"array","is_nullable":false,"name":"migration_list"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_plugin},0,"_pico_plugin_name","tree",[{{"unique":true}}],[["name","string",null,false,null],["version","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_service},"_pico_service",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"array","is_nullable":false,"name":"tiers"}},{{"field_type":"any","is_nullable":false,"name":"configuration"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_service},0,"_pico_service_name","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["name","string",null,false,null],["version","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_service_route},"_pico_service_route",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"plugin_version"}},{{"field_type":"string","is_nullable":false,"name":"service_name"}},{{"field_type":"boolean","is_nullable":false,"name":"poison"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_service_route},0,"_pico_service_routing_key","tree",[{{"unique":true}}],[["instance_id","string",null,false,null],["plugin_name","string",null,false,null],["plugin_version","string",null,false,null],["service_name","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}},{{"field_type":"string","is_nullable":false,"name":"hash"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0])
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
-|  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
+|  0  | 2  |Replace(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
 |  0  | 2  |BatchDml(
-Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"]),
-Replace({_pico_property}, ["target_vshard_config_version",1])
+Replace(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"]),
+Replace(_pico_property, ["target_vshard_config_version",1])
 )|
-|  0  | 2  |Update({_pico_replicaset}, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
+|  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
 |  0  | 2  |BatchDml(
-Replace({_pico_property}, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]]),
-Replace({_pico_property}, ["current_vshard_config_version",1])
+Replace(_pico_property, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]]),
+Replace(_pico_property, ["current_vshard_config_version",1])
 )|
-|  0  | 2  |Replace({_pico_property}, ["vshard_bootstrapped",true])|
-|  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
+|  0  | 2  |Replace(_pico_property, ["vshard_bootstrapped",true])|
+|  0  | 2  |Replace(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
 +-----+----+--------+
 """.format(  # noqa: E501
         p=instance.port,

@@ -261,23 +261,33 @@ impl std::fmt::Display for Op {
         struct DisplayDml<'a>(&'a Dml);
         impl std::fmt::Display for DisplayDml<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                let table = DisplayClusterwideTable(self.0.table_id());
                 match self.0 {
-                    Dml::Insert { table, tuple, .. } => {
+                    Dml::Insert { tuple, .. } => {
                         write!(f, "Insert({table}, {})", DisplayAsJson(tuple))
                     }
-                    Dml::Replace { table, tuple, .. } => {
+                    Dml::Replace { tuple, .. } => {
                         write!(f, "Replace({table}, {})", DisplayAsJson(tuple))
                     }
-                    Dml::Update {
-                        table, key, ops, ..
-                    } => {
+                    Dml::Update { key, ops, .. } => {
                         let key = DisplayAsJson(key);
                         let ops = DisplayAsJson(&**ops);
                         write!(f, "Update({table}, {key}, {ops})")
                     }
-                    Dml::Delete { table, key, .. } => {
+                    Dml::Delete { key, .. } => {
                         write!(f, "Delete({table}, {})", DisplayAsJson(key))
                     }
+                }
+            }
+        }
+
+        struct DisplayClusterwideTable(SpaceId);
+        impl std::fmt::Display for DisplayClusterwideTable {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                if let Ok(table) = crate::storage::ClusterwideTable::try_from(self.0) {
+                    f.write_str(table.name())
+                } else {
+                    self.0.fmt(f)
                 }
             }
         }
