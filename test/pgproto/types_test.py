@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 import pg8000.native as pg8000  # type: ignore
 import pytest
+import datetime
 
 
 def test_decimal(postgres: Postgres):
@@ -371,3 +372,51 @@ def test_map(postgres: Postgres):
             """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
             (Jsonb(distribution[0]),),
         )
+
+
+def test_datetime(postgres: Postgres):
+    user = "postgres"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    # create a postgres user using a postgres compatible password
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
+    # allow user to create tables
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
+
+    # connect to the server and enable autocommit as we
+    # don't support interactive transactions
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    conn.execute(
+        """
+        CREATE TABLE T (
+            ID DATETIME NOT NULL,
+            PRIMARY KEY (ID)
+        )
+        USING MEMTX DISTRIBUTED BY (ID);
+        """
+    )
+
+    d1 = datetime.datetime(2042, 7, 1, tzinfo=datetime.timezone.utc)
+    d2 = datetime.datetime(2044, 7, 1, tzinfo=datetime.timezone.utc)
+
+    # test text decoding
+    conn.execute(""" INSERT INTO T VALUES(%t); """, (d1,))
+
+    # test binary decoding
+    conn.execute(""" INSERT INTO T VALUES(%b); """, (d2,))
+
+    # test text encoding
+    cur = conn.execute(""" SELECT * FROM T; """, binary=False)
+    assert sorted(cur.fetchall()) == [(d1,), (d2,)]
+
+    # test binary encoding
+    cur = conn.execute(""" SELECT * FROM T; """, binary=True)
+    assert sorted(cur.fetchall()) == [(d1,), (d2,)]

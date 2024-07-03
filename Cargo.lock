@@ -2655,6 +2655,7 @@ dependencies = [
  "tarantool 5.0.0",
  "tempfile",
  "thiserror",
+ "time",
  "uuid 0.8.2",
  "va_list",
 ]
@@ -2796,6 +2797,7 @@ dependencies = [
  "postgres-protocol",
  "serde",
  "serde_json",
+ "time",
  "uuid 0.8.2",
 ]
 

@@ -82,8 +82,9 @@ fn do_handle_client(
         .send_parameter("server_version", "15.0")?
         .send_parameter("server_encoding", "UTF8")?
         .send_parameter("client_encoding", "UTF8")?
-        .send_parameter("date_style", "ISO YMD")?
-        .send_parameter("integer_datetimes", "on")?;
+        .send_parameter("DateStyle", "ISO, MDY")?
+        .send_parameter("integer_datetimes", "on")?
+        .send_parameter("TimeZone", "UTC")?;
 
     client.process_messages_loop()?;
 

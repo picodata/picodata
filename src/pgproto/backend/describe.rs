@@ -225,6 +225,7 @@ fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
         SbroadType::Double => Ok(Type::FLOAT8),
         SbroadType::Decimal => Ok(Type::NUMERIC),
         SbroadType::Uuid => Ok(Type::UUID),
+        SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
         SbroadType::Any => Ok(Type::ANY),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{}\'",

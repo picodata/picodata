@@ -1,5 +1,5 @@
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use pgwire::{api::results::DataRowEncoder, error::PgWireResult, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::{LuaValue, Value as SbroadValue};
@@ -9,6 +9,10 @@ use std::{
     error::Error,
     fmt::Debug,
     str::{self, FromStr},
+};
+use time::{
+    format_description::well_known::{Iso8601, Rfc2822, Rfc3339},
+    macros::format_description,
 };
 
 /// This type is used to send Format over the wire.
@@ -163,12 +167,121 @@ impl ToSql for Json {
     postgres_types::to_sql_checked!();
 }
 
+/// Datetime wrapper for smooth encoding & decoding.
+#[derive(Debug, Copy, Clone, serde::Deserialize)]
+#[repr(transparent)]
+pub struct Timestamptz(tarantool::datetime::Datetime);
+
+impl FromStr for Timestamptz {
+    type Err = SqlError;
+
+    #[inline(always)]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // PostgreSQL can parse arbitrary datetime formats, as demonstrated in the following functions:
+        // * [timestamptz_in](https://github.com/postgres/postgres/blob/0b1fe1413ea84a381489ed1d1f718cb710229ab3/src/backend/utils/adt/timestamp.c#L416)
+        // * [ParseDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d6199b1d01f4b1eb6ed955dc4bd17e/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1598)
+        // * [DecodeDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d6199b1d01f4b1eb6ed955dc4bd17e/src/interfaces/ecpg/pgtypeslib/dt_common.c#L1780)
+        //
+        // Since supporting all these formats is impractical, we will focus on parsing some
+        // known formats that enable interaction with PostgreSQL drivers.
+
+        fn try_from_well_known_formats(s: &str) -> Option<time::OffsetDateTime> {
+            if let Ok(datetime) = time::OffsetDateTime::parse(s, &Iso8601::PARSING) {
+                return Some(datetime);
+            }
+            if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc2822) {
+                return Some(datetime);
+            }
+            if let Ok(datetime) = time::OffsetDateTime::parse(s, &Rfc3339) {
+                return Some(datetime);
+            }
+
+            None
+        }
+
+        fn try_from_custom_formats(s: &str) -> Option<time::OffsetDateTime> {
+            // Formats used for encoding timestamptz values.
+            let formats = [
+                format_description!("[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]"),
+                format_description!(
+                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]"
+                ),
+                format_description!(
+                    "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour]:[offset_minute]"
+                ),
+                format_description!(
+                    "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond][offset_hour]:[offset_minute]"
+            )];
+
+            for fmt in formats {
+                if let Ok(datetime) = time::OffsetDateTime::parse(s, &fmt) {
+                    return Some(datetime);
+                }
+            }
+
+            None
+        }
+
+        if let Some(datetime) = try_from_well_known_formats(s) {
+            return Ok(Self(datetime.into()));
+        }
+
+        if let Some(datetime) = try_from_custom_formats(s) {
+            return Ok(Self(datetime.into()));
+        }
+
+        Err(DecodingError::new(format!("failed to parse datetime value: {s}")).into())
+    }
+}
+
+impl<'a> FromSql<'a> for Timestamptz {
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> SqlResult<Self> {
+        let datetime = time::OffsetDateTime::from_sql(ty, raw)?;
+        Ok(Self(datetime.into()))
+    }
+
+    postgres_types::accepts!(TIMESTAMPTZ);
+}
+
+impl ToSqlText for Timestamptz {
+    fn to_sql_text(&self, _ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
+        let datetime = self.0.into_inner();
+        // Date formats based on [EncodeDateTime](https://github.com/postgres/postgres/blob/ba8f00eef6d6199b1d01f4b1eb6ed955dc4bd17e/src/interfaces/ecpg/pgtypeslib/dt_common.c#L767-L798) from PostgreSQL.
+        let fmt = match (datetime.microsecond(), datetime.offset().minutes_past_hour()) {
+            (0, 0) => {
+                format_description!("[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]")
+            }
+            (_, 0) => format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:6][offset_hour sign:mandatory]"
+            ),
+            (0, _) => format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second][offset_hour sign:mandatory]:[offset_minute]"
+            ),
+            _ => format_description!(
+                "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond digits:6][offset_hour sign:mandatory]:[offset_minute]"
+            ),
+        };
+        out.put_slice(self.0.into_inner().format(&fmt)?.as_bytes());
+        Ok(IsNull::No)
+    }
+}
+
+impl ToSql for Timestamptz {
+    fn to_sql(&self, ty: &Type, out: &mut BytesMut) -> SqlResult<IsNull> {
+        self.0.into_inner().to_sql(ty, out)
+    }
+
+    postgres_types::accepts!(TIMESTAMPTZ);
+    postgres_types::to_sql_checked!();
+}
+
 #[derive(Debug, Clone)]
 pub enum PgValue {
     Float(f64),
     Integer(i64),
     Boolean(bool),
     Text(String),
+    Timestamptz(Timestamptz),
     Json(Json),
     Uuid(Uuid),
     Numeric(Decimal),
@@ -212,7 +325,10 @@ impl TryFrom<rmpv::Value> for PgValue {
                 let uuid = deserialize_rmpv_ext(&value)?;
                 Ok(PgValue::Uuid(uuid))
             }
-
+            rmpv::Value::Ext(4, _) => {
+                let datetime = deserialize_rmpv_ext(&value)?;
+                Ok(PgValue::Timestamptz(datetime))
+            }
             value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
         }
     }
@@ -229,6 +345,7 @@ impl TryFrom<PgValue> for SbroadValue {
             PgValue::Text(v) => Ok(SbroadValue::from(v)),
             PgValue::Numeric(v) => Ok(SbroadValue::from(v.0)),
             PgValue::Uuid(v) => Ok(SbroadValue::from(v.0)),
+            PgValue::Timestamptz(datetime) => Ok(SbroadValue::Datetime(datetime.0)),
             PgValue::Null => Ok(SbroadValue::Null),
             PgValue::Json(v) => {
                 // Anyhow, currently Sbroad cannot work with these types.
@@ -270,6 +387,7 @@ impl PgValue {
             PgValue::Json(v) => do_encode(encoder, v, Type::JSON, format),
             PgValue::Uuid(v) => do_encode(encoder, v, Type::UUID, format),
             PgValue::Numeric(v) => do_encode(encoder, v, Type::NUMERIC, format),
+            PgValue::Timestamptz(v) => do_encode(encoder, v, Type::TIMESTAMPTZ, format),
             PgValue::Null => {
                 // XXX: one could call this a clever hack...
                 do_encode(encoder, &None::<i64>, Type::INT8, format)
@@ -294,6 +412,7 @@ impl PgValue {
             Type::NUMERIC => PgValue::Numeric(do_parse(&s)?),
             Type::UUID => PgValue::Uuid(do_parse(&s)?),
             Type::JSON | Type::JSONB => PgValue::Json(do_parse(&s)?),
+            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_parse(&s)?),
             _ => return Err(PgError::FeatureNotSupported(format!("type {ty}"))),
         })
     }
@@ -314,6 +433,7 @@ impl PgValue {
             Type::NUMERIC => PgValue::Numeric(do_decode(ty, bytes)?),
             Type::UUID => PgValue::Uuid(do_decode(ty, bytes)?),
             Type::JSON | Type::JSONB => PgValue::Json(do_decode(ty, bytes)?),
+            Type::TIMESTAMPTZ => PgValue::Timestamptz(do_decode(ty, bytes)?),
             _ => return Err(PgError::FeatureNotSupported(format!("type {ty}"))),
         })
     }
