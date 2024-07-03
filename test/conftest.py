@@ -56,6 +56,11 @@ MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
 
 
+# Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
+class ErrorCode:
+    Loading = 116
+
+
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
@@ -1098,9 +1103,9 @@ class Instance:
                 myself["current_grade"]["incarnation"],
             )
 
-        now = time.monotonic()
-        deadline = now + timeout
-        next_retry = now
+        start = time.monotonic()
+        deadline = start + timeout
+        next_retry = start
         last_grade = None
         while True:
             now = time.monotonic()
@@ -1130,8 +1135,19 @@ class Instance:
             except ProcessDead as e:
                 raise e from e
             except Exception as e:
-                if time.monotonic() > deadline:
-                    raise e from e
+                match e.args:
+                    case (ErrorCode.Loading, _):
+                        # This error is returned when instance is in the middle
+                        # of bootstrap (box.cfg{} is running). This sometimes
+                        # takes quite a long time in our test runs, so we put
+                        # this crutch in for that special case. The logic is:
+                        # if tarantool is taking too long to bootstrap it's
+                        # probably not our fault.
+                        if time.monotonic() > start + timeout * 6:
+                            raise e from e
+                    case _:
+                        if time.monotonic() > deadline:
+                            raise e from e
 
         eprint(f"{self} is online")
 
