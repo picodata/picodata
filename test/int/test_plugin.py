@@ -114,9 +114,7 @@ class PluginReflection:
             for service in self.services:
                 svcs = i.eval(
                     "return box.space._pico_service:select({...})",
-                    self.name,
-                    service,
-                    self.version,
+                    [self.name, service, self.version],
                 )
                 if self.installed:
                     assert len(svcs) == 1
@@ -224,15 +222,14 @@ class PluginReflection:
 
     def assert_route_poisoned(self, poison_instance_id, service, poisoned=True):
         for i in self.instances:
-            route = i.eval(
-                "return box.space._pico_service_route:get({...})",
+            route_poisoned = i.eval(
+                "return box.space._pico_service_route:get({...}).poison",
                 poison_instance_id,
                 self.name,
                 self.version,
                 service,
             )
-            assert route is not None
-            assert route[4] == poisoned
+            assert route_poisoned == poisoned
 
     @staticmethod
     def assert_data_eq(instance, key, expected):
@@ -350,6 +347,13 @@ def test_plugin_install(cluster: Cluster):
     i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
     expected_state.assert_synced()
 
+    # check that installation of another plugin version is ok
+    expected_state_v2 = PluginReflection(
+        _PLUGIN, "0.2.0", _PLUGIN_SERVICES, [i1, i2]
+    ).install(True)
+    i1.call("pico.install_plugin", _PLUGIN, "0.2.0")
+    expected_state_v2.assert_synced()
+
 
 def test_plugin_enable(cluster: Cluster):
     """
@@ -379,7 +383,12 @@ def test_plugin_enable(cluster: Cluster):
 
     # check that enabling of non-installed plugin return error
     with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.enable_plugin", _PLUGIN_SMALL)
+        i1.call("pico.enable_plugin", _PLUGIN_SMALL, "0.1.0")
+
+    # check that enabling of plugin with another version return error
+    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+        i1.call("pico.install_plugin", _PLUGIN, "0.2.0")
+        i1.call("pico.enable_plugin", _PLUGIN, "0.2.0")
 
 
 def test_plugin_disable(cluster: Cluster):
@@ -398,7 +407,11 @@ def test_plugin_disable(cluster: Cluster):
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
 
-    i1.call("pico.disable_plugin", _PLUGIN)
+    # check that disabling of a non-enabled version do nothing
+    with pytest.raises(
+        ReturnError, match="Plugin `testplug:0.2.0` not found at instance"
+    ):
+        i1.call("pico.disable_plugin", _PLUGIN, "0.2.0")
 
     i1.call("pico.disable_plugin", _PLUGIN, "0.1.0")
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
@@ -457,14 +470,27 @@ def test_plugin_remove(cluster: Cluster):
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
 
-    i1.call("pico.remove_plugin", _PLUGIN)
+    # install one more plugin version
+    i1.call("pico.install_plugin", _PLUGIN, "0.2.0")
+    plugin_ref_v2 = PluginReflection(
+        _PLUGIN, "0.2.0", _PLUGIN_SERVICES, [i1, i2]
+    ).install(True)
+
+    i1.call("pico.remove_plugin", _PLUGIN, "0.1.0")
     plugin_ref = plugin_ref.install(False)
     plugin_ref.assert_synced()
     plugin_ref_v2.assert_synced()
 
     # check removing non-installed plugin
-    i1.call("pico.remove_plugin", _PLUGIN)
+    i1.call("pico.remove_plugin", _PLUGIN, "0.1.0")
     plugin_ref.assert_synced()
+    plugin_ref_v2.assert_synced()
+
+    # remove last version
+    i1.call("pico.remove_plugin", _PLUGIN, "0.2.0")
+    plugin_ref = plugin_ref_v2.install(False)
+    plugin_ref.assert_synced()
+    plugin_ref_v2.assert_synced()
 
 
 def test_two_plugin_install_and_enable(cluster: Cluster):

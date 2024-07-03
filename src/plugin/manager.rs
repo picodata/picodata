@@ -12,7 +12,7 @@ use crate::traft::network::ConnectionPool;
 use crate::traft::network::WorkerOptions;
 use crate::traft::node;
 use crate::traft::node::Node;
-use crate::{tlog, traft};
+use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picoplugin::util::DisplayErrorLocation;
@@ -424,10 +424,18 @@ impl PluginManager {
         let mut routes_to_replace = vec![];
 
         for (plugin_name, plugin_state) in self.plugins.lock().iter() {
-            let plugin_def = node.storage.plugin.get(plugin_name)?;
-            if plugin_def.map(|def| def.enabled) != Some(true) {
-                continue;
-            }
+            let plugin_defs = node.storage.plugin.get_all_versions(plugin_name)?;
+            let mut enabled_plugins: Vec<_> =
+                plugin_defs.into_iter().filter(|p| p.enabled).collect();
+            let plugin_def = match enabled_plugins.len() {
+                0 => continue,
+                1 => enabled_plugins.pop().expect("infallible"),
+                _ => {
+                    warn_or_panic!("only one plugin should be enabled at a single moment");
+                    enabled_plugins.pop().expect("infallible")
+                }
+            };
+            let plugin_identity = plugin_def.into_identity();
 
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
@@ -507,9 +515,11 @@ impl PluginManager {
         let mut loaded_services = Self::try_load_inner(&plugin_def, &service_defs, false)?;
         debug_assert!(loaded_services.len() == 1);
         let Some(mut new_service) = loaded_services.pop() else {
-            return Err(PluginError::ServiceNotFound(service.to_string(), plugin_ident.clone()));
+            return Err(PluginError::ServiceNotFound(
+                service.to_string(),
+                plugin_ident.clone(),
+            ));
         };
-
 
         // call `on_start` callback
         let mut ctx = context_from_node(node);
@@ -547,6 +557,10 @@ impl PluginManager {
         let Some(state) = plugins.get_mut(&plugin_ident.name) else {
             return;
         };
+        if state.version != plugin_ident.version {
+            return;
+        }
+
         let Some(svc_idx) = state
             .services
             .iter()

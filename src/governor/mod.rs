@@ -127,7 +127,7 @@ impl Loop {
             .map(|(ident, services, timeout)| {
                 let installed_plugins = storage
                     .plugin
-                    .get(&plugin_name)
+                    .get_all_versions(&ident.name)
                     .expect("storage should not fail");
                 (ident, installed_plugins, services, timeout)
             });

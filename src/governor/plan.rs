@@ -364,7 +364,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // plugin
     if let Some((maybe_existing_plugin, manifest)) = install_plugin {
-        // if plugin already exists and already enabled - do nothing
+        // if plugin with a same version already exists and already enabled - do nothing
         let should_install = maybe_existing_plugin
             .as_ref()
             .map(|p| !p.enabled)
@@ -413,32 +413,46 @@ pub(super) fn action_plan<'i>(
         }
         .into());
     }
-    if let Some((plugin_name, installed_plugin, services, on_start_timeout)) = enable_plugin {
+    if let Some((ident, installed_plugins, services, on_start_timeout)) = enable_plugin {
         let rpc = rpc::enable_plugin::Request {
             term,
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
         let rollback_op = Op::PluginDisable {
-            name: plugin_name.to_string(),
+            ident: ident.clone(),
         };
 
         let mut targets = vec![];
         let mut success_dml = vec![];
 
-        match installed_plugin {
-            Some(plugin) if plugin.enabled => {
+        let already_enabled_plugin = installed_plugins.iter().find(|p| p.enabled);
+        let same_version_plugin = installed_plugins
+            .iter()
+            .find(|p| p.version == ident.version);
+
+        match (already_enabled_plugin, same_version_plugin) {
+            (Some(already_enabled_plugin), Some(same_version_plugin))
+                if already_enabled_plugin.version == same_version_plugin.version =>
+            {
                 // plugin already exists - do nothing
             }
-            Some(plugin) if plugin.migration_list.len() as i32 - 1 != plugin.migration_progress => {
+            (Some(_already_enabled_plugin), _) => {
+                // already enabled plugin with a different version
+                tlog!(Error, "Trying to enable plugin but different version of the same plugin already enabled");
+            }
+            (_, Some(same_version_plugin))
+                if same_version_plugin.migration_list.len() as i32 - 1
+                    != same_version_plugin.migration_progress =>
+            {
                 // migration is partially applied - do nothing
                 tlog!(Error, "Trying to enable a non-fully installed plugin (migration is partially applied)");
             }
-            None => {
-                // plugin isn't installed - do nothing
+            (_, None) => {
+                // plugin isn't installed
                 tlog!(Error, "Trying to enable a non-installed plugin");
             }
-            Some(plugin) => {
+            (_, Some(plugin)) => {
                 targets = Vec::with_capacity(instances.len());
                 for i in instances {
                     if i.may_respond() {
@@ -451,7 +465,7 @@ pub(super) fn action_plan<'i>(
 
                 success_dml = vec![Dml::update(
                     ClusterwideTable::Plugin,
-                    &[&plugin.name],
+                    &[&plugin.name, &plugin.version],
                     enable_ops,
                     ADMIN_ID,
                 )?];
@@ -466,11 +480,7 @@ pub(super) fn action_plan<'i>(
                     for svc in active_services {
                         success_dml.push(Dml::replace(
                             ClusterwideTable::ServiceRouteTable,
-                            &ServiceRouteItem::new_healthy(
-                                i.instance_id.clone(),
-                                &svc.plugin_name,
-                                &svc.name,
-                            ),
+                            &ServiceRouteItem::new_healthy(i.instance_id.clone(), ident, &svc.name),
                             ADMIN_ID,
                         )?);
                     }
@@ -529,6 +539,7 @@ pub(super) fn action_plan<'i>(
 
         // note: no need to enable/disable service and update routing table if plugin disabled
         if plugin_def.enabled {
+            let plugin_ident = plugin_def.into_identity();
             for i in instances {
                 if !i.may_respond() {
                     continue;
@@ -545,7 +556,7 @@ pub(super) fn action_plan<'i>(
                         ClusterwideTable::ServiceRouteTable,
                         &ServiceRouteItem::new_healthy(
                             i.instance_id.clone(),
-                            &plugin_def.name,
+                            &plugin_ident,
                             &service_def.name,
                         ),
                         ADMIN_ID,
@@ -556,7 +567,8 @@ pub(super) fn action_plan<'i>(
                     disable_targets.push(&i.instance_id);
                     let key = ServiceRouteKey {
                         instance_id: &i.instance_id,
-                        plugin_name: &plugin_def.name,
+                        plugin_name: &plugin_ident.name,
+                        plugin_version: &plugin_ident.version,
                         service_name: &service_def.name,
                     };
                     on_success_dml.push(Dml::delete(
