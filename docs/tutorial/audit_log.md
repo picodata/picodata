@@ -128,7 +128,7 @@ for line in sys.stdin:
 audit-sink.py`) и затем запустите инстанс:
 
 ```shell
-picodata run --admin-sock ./i1.sock  --audit='|/tmp/audit-sink.py'
+picodata run --admin-sock ./i1.sock --audit='|/tmp/audit-sink.py'
 ```
 В результате, сообщения из журнала аудита будут сохраняться в `syslog` и
 дублироваться в виде уведомлений на рабочем столе.

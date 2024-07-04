@@ -94,7 +94,7 @@ Picodata поддерживает два типа соединения: `INNER J
 
 ```sql
 SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 LEFT JOIN orders
 ON items.name = orders.item
 ```
@@ -122,7 +122,7 @@ ON items.name = orders.item
 
 ```sql
 SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 INNER JOIN orders
 ON items.name = orders.item
 ```
@@ -210,7 +210,7 @@ ON items.name = orders.item
 
 ```sql
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 INNER JOIN orders
 ON items.id = orders.id
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
@@ -237,7 +237,7 @@ vtable_max_rows = 5000
 
 ```sql
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 INNER JOIN orders
 ON items.id = orders.id
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
@@ -266,7 +266,7 @@ vtable_max_rows = 5000
 
 ```sql
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 INNER JOIN orders
 ON items.name = orders.item
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
@@ -287,7 +287,7 @@ vtable_max_rows = 5000
 
 ```sql
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 INNER JOIN orders
 ON items.id > 2
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
@@ -306,7 +306,7 @@ vtable_max_rows = 5000
 
 ```sql
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
-FROM  items
+FROM items
 INNER JOIN orders
 ON TRUE
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
