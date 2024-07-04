@@ -184,7 +184,7 @@ pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
 
     tlog!(
         Info,
-        "registered RPC endpoint `{}.{}-v{}{}`",
+        "registered RPC endpoint `{}.{}:v{}{}`",
         handler.plugin(),
         handler.service(),
         handler.version(),

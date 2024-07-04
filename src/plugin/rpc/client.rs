@@ -62,7 +62,7 @@ pub(crate) fn send_rpc_request(
     // Safe because buffer contains a msgpack array
     let args = unsafe { TupleBuffer::from_vec_unchecked(buffer) };
 
-    tlog!(Debug, "sending plugin rpc request";
+    tlog!(Debug, "sending plugin RPC request";
         "instance_id" => %instance_id,
         "request_id" => %request_id,
         "path" => path,
