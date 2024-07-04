@@ -1097,7 +1097,7 @@ mod tests {
             }
         );
 
-        // array context, optional field is missing (error)
+        // array context, optional field is missing (err)
         let test_named_forbidden_helper_arr = Value::Array(vec![
             Value::Array(vec![Value::from(42), Value::from(52)]),
             Value::Nil,
@@ -1106,7 +1106,7 @@ mod tests {
         let mut encoded = Vec::new();
         rmpv::encode::write_value(&mut encoded, &test_named_forbidden_helper_arr).unwrap();
         let err = TestNamedForbidden::decode(&mut encoded.as_slice(), ARR_CTX).unwrap_err();
-        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestNamedForbidden: decoding optional fields in named structs with `AS_ARRAY` context is not allowed without `allow_array_optionals` attribute");
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::decode_optionals::TestNamedForbidden: not enough fields, expected 4, got 3 (note: optional fields must be explicitly null unless `allow_array_optionals` attribute is passed)");
 
         #[derive(Debug, Decode, PartialEq)]
         #[encode(tarantool = "crate", allow_array_optionals)]

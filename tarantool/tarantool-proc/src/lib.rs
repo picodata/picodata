@@ -355,13 +355,16 @@ mod msgpack {
     ) -> TokenStream {
         let mut var_names = Vec::with_capacity(fields.named.len());
         let mut met_option = false;
+        let fields_amount = fields.named.len();
+        let mut fields_passed = fields_amount;
         let code: TokenStream = fields
             .named
             .iter()
             .map(|f| {
                 if f.ty.is_option() {
                     met_option = true;
-                    decode_named_optional_field(f, tarantool_crate, &mut var_names, allow_array_optionals)
+                    fields_passed -= 1;
+                    decode_named_optional_field(f, tarantool_crate, &mut var_names, allow_array_optionals, fields_amount, fields_passed)
                 } else {
                     if met_option && allow_array_optionals {
                         return syn::Error::new(
@@ -370,6 +373,7 @@ mod msgpack {
                         )
                         .to_compile_error();
                     }
+                    fields_passed -= 1;
                     decode_named_required_field(f, tarantool_crate, &mut var_names)
                 }
             })
@@ -394,6 +398,8 @@ mod msgpack {
         tarantool_crate: &Path,
         names: &mut Vec<Ident>,
         allow_array_optionals: bool,
+        fields_amount: usize,
+        fields_passed: usize,
     ) -> TokenStream {
         let field_type = &field.ty;
         let field_attr = unwrap_or_compile_error!(FieldAttr::from_field(field));
@@ -441,11 +447,16 @@ mod msgpack {
                     match #tarantool_crate::msgpack::Decode::decode(r, context) {
                         Ok(val) => #var_name = Some(val),
                         Err(err) => {
-                            let nulled = err.part == Some("got Null".to_owned());
-                            let markered = err.source.get(err.source.len() - 33..).unwrap_or("")== "failed to read MessagePack marker";
+                            let markered = err.source.get(err.source.len() - 33..).unwrap_or("") == "failed to read MessagePack marker";
+                            let nulled = if err.part.is_some() {
+                                err.part.as_ref().expect("Can't fail after a conditional check") == "got Null"
+                            } else {
+                                false
+                            };
 
                             if !nulled && !#allow_array_optionals && !as_map {
-                                Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("decoding optional fields in named structs with `AS_ARRAY` context is not allowed without `allow_array_optionals` attribute"))?;
+                                let message = format!("not enough fields, expected {}, got {} (note: optional fields must be explicitly null unless `allow_array_optionals` attribute is passed)", #fields_amount, #fields_passed);
+                                Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(message))?;
                             } else if !nulled && !markered && #allow_array_optionals {
                                 Err(err)?;
                             }
@@ -577,8 +588,12 @@ mod msgpack {
                 match #tarantool_crate::msgpack::Decode::decode(r, context) {
                     Ok(val) => #var_name = Some(val),
                     Err(err) => {
-                        let nulled = err.part == Some("got Null".to_owned());
                         let markered = err.source.get(err.source.len() - 33..).unwrap_or("")== "failed to read MessagePack marker";
+                        let nulled = if err.part.is_some() {
+                            err.part.as_ref().expect("Can't fail after a conditional check") == "got Null"
+                        } else {
+                            false
+                        };
 
                         if !nulled && !markered {
                             Err(#tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("{}", stringify!(#field_index))))?;
