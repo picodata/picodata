@@ -1613,7 +1613,8 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
 
     # Make sure buckets are balanced before routing via bucket_id to eliminate
     # flakiness due to bucket rebalancing
-    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
 
     # Check calling RPC by bucket_id via the plugin SDK
     context = make_context()
