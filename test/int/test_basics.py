@@ -46,9 +46,8 @@ def test_call_normalization(instance: Instance):
         instance.call("package.loaded.fiber.sleep", 1, timeout=0.1)
     assert e5.value.errno == errno.ECONNRESET
 
-    with pytest.raises(OSError) as e6:
+    with pytest.raises(ProcessDead):
         instance.call("os.exit", 0)
-    assert e6.value.errno == errno.ECONNRESET
 
     instance.terminate()
     with pytest.raises(ProcessDead):

@@ -650,8 +650,12 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 5,
     ):
-        with self.connect(timeout, user=user, password=password) as conn:
-            return conn.call(fn, args)
+        try:
+            with self.connect(timeout, user=user, password=password) as conn:
+                return conn.call(fn, args)
+        except Exception as e:
+            self.check_process_alive()
+            raise e from e
 
     def eval(
         self,
@@ -661,8 +665,12 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 5,
     ):
-        with self.connect(timeout, user=user, password=password) as conn:
-            return conn.eval(expr, *args)
+        try:
+            with self.connect(timeout, user=user, password=password) as conn:
+                return conn.eval(expr, *args)
+        except Exception as e:
+            self.check_process_alive()
+            raise e from e
 
     def kill(self):
         """Kill the instance brutally with SIGKILL"""
@@ -1125,7 +1133,13 @@ class Instance:
             raise ProcessDead("process was not started")
 
         try:
-            exit_code = self.process.wait(timeout=0)  # type: ignore
+            # Note: The process may have crashed due to the RPC, but there may
+            # be a race between when the python connector receives the
+            # connection reset error and when the OS will finish cleaning up
+            # the process (especially considerring we have a supervisor
+            # process). So we introduce a tiny timeout here (which may still not
+            # be enough in every case).
+            exit_code = self.process.wait(timeout=0.1)  # type: ignore
         except subprocess.TimeoutExpired:
             # it's fine, the process is still running
             pass
