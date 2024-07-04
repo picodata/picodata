@@ -367,6 +367,9 @@ impl PluginManager {
         let mut service = service.lock();
         context_set_service_info(&mut ctx, &service);
 
+        #[rustfmt::skip]
+        tlog!(Debug, "calling {}.{}:{}.on_config_change", service.plugin_name, service.name, service.version);
+
         let change_config_result = service.inner.on_config_change(
             &ctx,
             RSlice::from(new_cfg_raw),
@@ -437,6 +440,10 @@ impl PluginManager {
                 let service_name = service.name.clone();
                 let plugin_name = service.plugin_name.clone();
                 context_set_service_info(&mut ctx, &service);
+
+                #[rustfmt::skip]
+                tlog!(Debug, "calling {}.{}:{}.on_leader_change", service.plugin_name, service.name, service.version);
+
                 let result = service.inner.on_leader_change(&ctx);
                 // Release the lock
                 drop(service);
@@ -509,6 +516,10 @@ impl PluginManager {
         let cfg_raw =
             rmp_serde::encode::to_vec_named(&service_defs[0].configuration).expect("out of memory");
         context_set_service_info(&mut ctx, &new_service);
+
+        #[rustfmt::skip]
+        tlog!(Debug, "calling {}.{}:{}.on_start", new_service.plugin_name, new_service.name, new_service.version);
+
         if let RErr(_) = new_service
             .inner
             .on_start(&ctx, RSlice::from(cfg_raw.as_slice()))
@@ -576,6 +587,9 @@ impl PluginManager {
             let cfg_raw =
                 rmp_serde::encode::to_vec_named(&def.configuration).expect("out of memory");
 
+            #[rustfmt::skip]
+            tlog!(Debug, "calling {}.{}:{}.on_start", service.plugin_name, service.name, service.version);
+
             context_set_service_info(&mut ctx, &service);
             if let RErr(_) = service
                 .inner
@@ -633,6 +647,9 @@ impl PluginManager {
         for service in services.iter() {
             let service = service.lock();
             if service.name == service_name {
+                #[rustfmt::skip]
+                tlog!(Debug, "calling {}.{}:{}.on_cfg_validate", service.plugin_name, service.name, service.version);
+
                 return if let RErr(_) = service.inner.on_cfg_validate(RSlice::from(new_cfg_raw)) {
                     let error = BoxError::last();
                     Err(PluginError::Callback(
@@ -722,6 +739,10 @@ fn stop_service(service: &mut Service, context: &PicoContext) {
     // SAFETY: It's always safe to clone the context on picodata's side.
     let mut context = unsafe { context.clone() };
     context_set_service_info(&mut context, service);
+
+    #[rustfmt::skip]
+    tlog!(Debug, "calling {}.{}:{}.on_stop", service.plugin_name, service.name, service.version);
+
     if service.inner.on_stop(&context).is_err() {
         let error = BoxError::last();
         tlog!(
