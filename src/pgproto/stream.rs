@@ -17,11 +17,13 @@ fn read_into_buf(reader: &mut impl io::Read, buf: &mut impl BufMut) -> io::Resul
     let slice = buf.chunk_mut();
 
     // SAFETY: coio's Read impl won't read uninitialized bytes.
-    let cnt = unsafe {
-        let uninit = slice.as_uninit_slice_mut();
-        reader.read(std::mem::transmute(uninit))
-    }?;
+    let uninit = unsafe { slice.as_uninit_slice_mut() };
+    // SAFETY: safe, because MaybeUninit has repr(transparent)
+    let buffer =
+        unsafe { std::mem::transmute::<&mut [std::mem::MaybeUninit<u8>], &mut [u8]>(uninit) };
+    let cnt = reader.read(buffer)?;
 
+    // SAFETY: safe, because reader has just inserted this data
     unsafe { buf.advance_mut(cnt) }
     Ok(cnt)
 }
