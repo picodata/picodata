@@ -1,5 +1,6 @@
 use crate::info::InstanceInfo;
 use crate::plugin::rpc;
+use crate::plugin::LibraryWrapper;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
 use crate::plugin::{
     remove_routes, replace_routes, topology, Manifest, PluginAsyncEvent, PluginCallbackError,
@@ -13,7 +14,6 @@ use crate::traft::node;
 use crate::traft::node::Node;
 use crate::{tlog, traft};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
-use libloading::{Library, Symbol};
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picoplugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
@@ -96,13 +96,6 @@ impl PluginManager {
     ) -> Result<Vec<Service>> {
         let mut loaded_services = Vec::with_capacity(service_defs.len());
 
-        unsafe fn get_sym<'a, T>(
-            l: &'a Library,
-            symbol: &str,
-        ) -> std::result::Result<Symbol<'a, T>, libloading::Error> {
-            l.get(symbol.as_bytes())
-        }
-
         let mut service_defs_to_load = service_defs.to_vec();
 
         let plugin_dir = PLUGIN_DIR.with(|dir| dir.lock().clone());
@@ -120,19 +113,16 @@ impl PluginManager {
             }
 
             // trying to load a dynamic library
-            let Ok(lib) = (unsafe { Library::new(path) }) else {
+            let Ok(lib) = (unsafe { LibraryWrapper::new(path) }) else {
                 continue;
             };
             let lib = Rc::new(lib);
 
             // fill registry with factories
             let mut registry = ServiceRegistry::default();
-            let make_registrars = unsafe {
-                get_sym::<fn() -> RSlice<'static, extern "C" fn(registry: &mut ServiceRegistry)>>(
-                    &lib,
-                    "registrars",
-                )?
-            };
+            type FnRegistrars =
+                fn() -> RSlice<'static, extern "C" fn(registry: &mut ServiceRegistry)>;
+            let make_registrars = unsafe { lib.get::<FnRegistrars>("registrars")? };
             let service_registrars = make_registrars();
             service_registrars.iter().for_each(|registrar| {
                 registrar(&mut registry);

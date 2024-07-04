@@ -5,7 +5,6 @@ pub mod rpc;
 pub mod topology;
 
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
-use libloading::Library;
 use once_cell::unsync;
 use picoplugin::plugin::interface::ServiceBox;
 use serde::de::Error;
@@ -95,14 +94,87 @@ pub enum PluginCallbackError {
     InvalidConfiguration(BoxError),
 }
 
-type Result<T> = std::result::Result<T, PluginError>;
+type Result<T, E = PluginError> = std::result::Result<T, E>;
 
 pub struct Service {
     inner: ServiceBox,
     pub name: String,
     pub version: String,
     pub plugin_name: String,
-    _lib: Rc<Library>,
+    _lib: Rc<LibraryWrapper>,
+}
+
+pub struct LibraryWrapper {
+    pub inner: libloading::Library,
+    pub filename: std::path::PathBuf,
+}
+
+impl LibraryWrapper {
+    /// Find and load a dynamic library.
+    ///
+    /// The `filename` argument may be either:
+    ///
+    /// * A library filename;
+    /// * The absolute path to the library;
+    /// * A relative (to the current working directory) path to the library.
+    ///
+    /// # Safety
+    ///
+    /// When a library is loaded, initialisation routines contained within it are executed.
+    /// For the purposes of safety, the execution of these routines is conceptually the same calling an
+    /// unknown foreign function and may impose arbitrary requirements on the caller for the call
+    /// to be sound.
+    ///
+    /// Additionally, the callers of this function must also ensure that execution of the
+    /// termination routines contained within the library is safe as well. These routines may be
+    /// executed when the library is unloaded.
+    ///
+    /// For more infomation see [`libloading::Library::new`].
+    #[inline]
+    pub unsafe fn new(filename: std::path::PathBuf) -> Result<Self, libloading::Error> {
+        let inner = libloading::Library::new(&filename)?;
+        tlog!(Debug, "opened library '{}'", filename.display());
+        Ok(Self { inner, filename })
+    }
+
+    /// Get a pointer to a function or static variable by symbol name.
+    ///
+    /// The `symbol` may not contain any null bytes, with the exception of the last byte. Providing a
+    /// null-terminated `symbol` may help to avoid an allocation.
+    ///
+    /// The symbol is interpreted as-is; no mangling is done. This means that symbols like `x::y` are
+    /// most likely invalid.
+    ///
+    /// # Safety
+    ///
+    /// Users of this API must specify the correct type of the function or variable loaded.
+    ///
+    /// # Platform-specific behaviour
+    ///
+    /// The implementation of thread-local variables is extremely platform specific and uses of such
+    /// variables that work on e.g. Linux may have unintended behaviour on other targets.
+    ///
+    /// On POSIX implementations where the `dlerror` function is not confirmed to be MT-safe (such
+    /// as FreeBSD), this function will unconditionally return an error when the underlying `dlsym`
+    /// call returns a null pointer. There are rare situations where `dlsym` returns a genuine null
+    /// pointer without it being an error. If loading a null pointer is something you care about,
+    /// consider using the [`os::unix::Library::get_singlethreaded`] call.
+    ///
+    /// [`os::unix::Library::get_singlethreaded`]: libloading::os::unix::Library::get_singlethreaded
+    #[inline(always)]
+    pub unsafe fn get<'a, T>(
+        &'a self,
+        symbol: &str,
+    ) -> Result<libloading::Symbol<'a, T>, libloading::Error> {
+        self.inner.get(symbol.as_bytes())
+    }
+}
+
+impl Drop for LibraryWrapper {
+    #[inline(always)]
+    fn drop(&mut self) {
+        tlog!(Debug, "closing library '{}'", self.filename.display());
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
