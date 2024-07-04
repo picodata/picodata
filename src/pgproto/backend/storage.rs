@@ -1,5 +1,5 @@
-use super::describe::QueryType;
 use super::describe::{Describe, PortalDescribe, StatementDescribe};
+use super::describe::{MetadataColumn, QueryType};
 use super::result::{ExecuteResult, Rows};
 use crate::pgproto::error::{PgError, PgResult};
 use crate::pgproto::value::{FieldFormat, PgValue};
@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::{Cell, RefCell};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
+use std::iter::zip;
 use std::ops::Bound::{Excluded, Included};
 use std::os::raw::c_int;
 use std::rc::{Rc, Weak};
@@ -394,28 +395,34 @@ enum PortalState {
     Finished(Option<ExecuteResult>),
 }
 
-fn mp_row_into_pg_row(mp: Vec<Value>) -> PgResult<Vec<PgValue>> {
-    mp.into_iter().map(PgValue::try_from).collect()
+fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<Vec<PgValue>> {
+    zip(mp, metadata)
+        .map(|(v, col)| PgValue::try_from_rmpv(v, &col.ty))
+        .collect()
 }
 
-fn mp_rows_into_pg_rows(mp: Vec<Vec<Value>>) -> PgResult<Vec<Vec<PgValue>>> {
-    mp.into_iter().map(mp_row_into_pg_row).collect()
+fn mp_rows_into_pg_rows(
+    mp: Vec<Vec<Value>>,
+    metadata: &[MetadataColumn],
+) -> PgResult<Vec<Vec<PgValue>>> {
+    mp.into_iter()
+        .map(|row| mp_row_into_pg_row(row, metadata))
+        .collect()
 }
 
 /// Get rows from dql-like(dql or explain) query execution result.
-fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<PgValue>>> {
+fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<Value>>> {
     #[derive(Deserialize, Default, Debug)]
     struct DqlResult {
         rows: Vec<Vec<Value>>,
     }
     if let Ok(Some(res)) = tuple.field::<DqlResult>(0) {
-        return mp_rows_into_pg_rows(res.rows);
+        return Ok(res.rows);
     }
 
     // Try to parse explain result.
     if let Ok(Some(res)) = tuple.field::<Vec<Value>>(0) {
-        let rows = res.into_iter().map(|row| vec![row]).collect();
-        return mp_rows_into_pg_rows(rows);
+        return Ok(res.into_iter().map(|row| vec![row]).collect());
     }
 
     Err(PgError::InternalError(
@@ -509,8 +516,9 @@ impl Portal {
                 PortalState::Finished(Some(ExecuteResult::AclOrDdl { tag }))
             }
             QueryType::Dql | QueryType::Explain => {
-                let rows = get_rows_from_tuple(&tuple)?.into_iter();
-                PortalState::Running(rows)
+                let mp_rows = get_rows_from_tuple(&tuple)?;
+                let pg_rows = mp_rows_into_pg_rows(mp_rows, self.describe.metadata())?;
+                PortalState::Running(pg_rows.into_iter())
             }
         };
         Ok(())

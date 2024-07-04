@@ -288,52 +288,6 @@ pub enum PgValue {
     Null,
 }
 
-impl TryFrom<rmpv::Value> for PgValue {
-    type Error = PgError;
-
-    fn try_from(value: rmpv::Value) -> Result<Self, Self::Error> {
-        match value {
-            rmpv::Value::Nil => Ok(PgValue::Null),
-            rmpv::Value::F32(v) => Ok(PgValue::Float(v as _)),
-            rmpv::Value::F64(v) => Ok(PgValue::Float(v)),
-            rmpv::Value::Boolean(v) => Ok(PgValue::Boolean(v)),
-            rmpv::Value::Integer(v) => Ok(PgValue::Integer({
-                if let Some(v) = v.as_i64() {
-                    v
-                } else if let Some(v) = v.as_u64() {
-                    // NOTE: u64::MAX can't be converted into i64
-                    i64::try_from(v).map_err(EncodingError::new)?
-                } else {
-                    Err(EncodingError::new(format!("cannot encode integer: {v}")))?
-                }
-            })),
-            rmpv::Value::Map(_) | rmpv::Value::Array(_) => {
-                // Any map-like structure will be encoded as json.
-                Ok(PgValue::Json(Json(value)))
-            }
-            rmpv::Value::String(v) => {
-                let Some(s) = v.as_str() else {
-                    Err(EncodingError::new(format!("cannot encode string: {v:?}")))?
-                };
-                Ok(PgValue::Text(s.to_owned()))
-            }
-            rmpv::Value::Ext(1, _) => {
-                let decimal = deserialize_rmpv_ext(&value)?;
-                Ok(PgValue::Numeric(decimal))
-            }
-            rmpv::Value::Ext(2, _) => {
-                let uuid = deserialize_rmpv_ext(&value)?;
-                Ok(PgValue::Uuid(uuid))
-            }
-            rmpv::Value::Ext(4, _) => {
-                let datetime = deserialize_rmpv_ext(&value)?;
-                Ok(PgValue::Timestamptz(datetime))
-            }
-            value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
-        }
-    }
-}
-
 impl TryFrom<PgValue> for SbroadValue {
     type Error = PgError;
 
@@ -369,6 +323,60 @@ impl TryFrom<PgValue> for LuaValue {
 /// [`crate::pgproto::backend::describe::Describe`].
 /// Further reading: function pg_type_from_sbroad.
 impl PgValue {
+    pub fn try_from_rmpv(value: rmpv::Value, ty: &Type) -> PgResult<Self> {
+        match &value {
+            rmpv::Value::Nil => Ok(PgValue::Null),
+            rmpv::Value::Boolean(v) => Ok(PgValue::Boolean(*v)),
+            rmpv::Value::F32(v) => Ok(PgValue::Float(*v as _)),
+            rmpv::Value::F64(v) => Ok(PgValue::Float(*v)),
+            rmpv::Value::Integer(v) => match ty {
+                &Type::FLOAT8 => {
+                    // Convert NUMBER value represented as integer to float.
+                    let v = v.as_f64().ok_or(EncodingError::new(format!(
+                        "couldn't encode {v:?} as float"
+                    )))?;
+                    Ok(PgValue::Float(v))
+                }
+                _ => Ok(PgValue::Integer({
+                    if let Some(v) = v.as_i64() {
+                        v
+                    } else if let Some(v) = v.as_u64() {
+                        // NOTE: u64::MAX can't be converted into i64
+                        i64::try_from(v).map_err(EncodingError::new)?
+                    } else {
+                        Err(EncodingError::new(format!(
+                            "couldn't encode integer: {v:?}"
+                        )))?
+                    }
+                })),
+            },
+            rmpv::Value::Map(_) | rmpv::Value::Array(_) => {
+                // Any map-like structure will be encoded as json.
+                Ok(PgValue::Json(Json(value)))
+            }
+            rmpv::Value::String(v) => {
+                let Some(s) = v.as_str() else {
+                    Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
+                };
+                Ok(PgValue::Text(s.to_owned()))
+            }
+            rmpv::Value::Ext(1, _data) => {
+                let decimal = deserialize_rmpv_ext(&value)?;
+                Ok(PgValue::Numeric(decimal))
+            }
+            rmpv::Value::Ext(2, _data) => {
+                let uuid = deserialize_rmpv_ext(&value)?;
+                Ok(PgValue::Uuid(uuid))
+            }
+            rmpv::Value::Ext(4, _) => {
+                let datetime = deserialize_rmpv_ext(&value)?;
+                Ok(PgValue::Timestamptz(datetime))
+            }
+
+            value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
+        }
+    }
+
     pub fn encode(&self, format: FieldFormat, encoder: &mut DataRowEncoder) -> PgWireResult<()> {
         pub fn do_encode<T: ToSql + ToSqlText>(
             encoder: &mut DataRowEncoder,

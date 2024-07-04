@@ -196,8 +196,8 @@ impl TryFrom<&Node> for CommandTag {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct MetadataColumn {
-    name: String,
-    ty: Type,
+    pub name: String,
+    pub ty: Type,
 }
 
 impl Serialize for MetadataColumn {
@@ -227,6 +227,11 @@ fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
         SbroadType::Uuid => Ok(Type::UUID),
         SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
         SbroadType::Any => Ok(Type::ANY),
+        // According to tarantool [documentation](https://www.tarantool.io/en/doc/latest/reference/reference_sql/sql_user_guide/#sql-data-type-conversion):
+        // NUMBER values have the same range as DOUBLE values. But NUMBER values may also be integers.
+        //
+        // So it's reasonable to represent them as FLOAT8 values from PostgreSQL.
+        SbroadType::Number => Ok(Type::FLOAT8),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{}\'",
             sbroad
@@ -418,6 +423,10 @@ impl PortalDescribe {
             seq.serialize_element(&(format as RawFormat))?;
         }
         seq.end()
+    }
+
+    pub fn metadata(&self) -> &[MetadataColumn] {
+        &self.describe.metadata
     }
 }
 
