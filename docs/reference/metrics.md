@@ -186,7 +186,7 @@ tnt_fiber_memalloc 15102656
 # TYPE lj_gc_strnum gauge
 lj_gc_strnum 14449
 
--- Общий объём спейсов, в байтах
+-- Общий объем спейсов, в байтах
 # HELP tnt_space_total_bsize Space total bsize
 # TYPE tnt_space_total_bsize gauge
 tnt_space_total_bsize{name="ORDERS",engine="memtx"} 98383

@@ -37,11 +37,11 @@ RPC API используется в следующих сценариях:
    это поле. При отсутсвии значения, всегда должен быть указан `MP_NIL`
 
  - в случае успешного выполнения RPC фунцкии (`IPROTO_OK`) возвращаемое msgpack
-   значение всегда дополнительно обёрнуто в `MP_ARRAY`
+   значение всегда дополнительно обернуто в `MP_ARRAY`
 
  - в случае ошибки выполения RPC функции (`Result::Err` в терминах Rust) в ответе
-   будет iproto сообщение с типом `IPROTO_TYPE_ERROR` содержащее в себе 
-   [описание](https://www.tarantool.io/en/doc/latest/dev_guide/internals/iproto/format/#error-responses)   
+   будет iproto сообщение с типом `IPROTO_TYPE_ERROR` содержащее в себе
+   [описание](https://www.tarantool.io/en/doc/latest/dev_guide/internals/iproto/format/#error-responses)
    ошибки
 
 ### Привилегии {: #proc_privileges }
@@ -96,7 +96,7 @@ fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
 - `id`: (optional MP_STR) id SQL запроса,
   используется для идентификции запроса в таблицах статистики
 - `traceable`: (optional MP_BOOL) включение отслеживания статистики запроса.
-  запрос попадёт в таблицы статистики с вероятностью 1% при `false` и 100% при `true`
+  запрос попадет в таблицы статистики с вероятностью 1% при `false` и 100% при `true`
 
 Возвращаемое значение:
 
