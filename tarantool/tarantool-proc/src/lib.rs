@@ -795,6 +795,24 @@ fn attrs_span<'a>(attrs: impl IntoIterator<Item = &'a Attribute>) -> SpanRange {
     )
 }
 
+/// Collects all lifetimes from `syn::Generic` into `syn::Punctuated` iterator
+/// in a format like: `'a + 'b + 'c` and so on.
+#[inline]
+fn collect_lifetimes(generics: &syn::Generics) -> Punctuated<syn::Lifetime, Token![+]> {
+    let mut lifetimes = Punctuated::new();
+    let mut unique_lifetimes = std::collections::HashSet::new();
+
+    for param in &generics.params {
+        if let syn::GenericParam::Lifetime(lifetime_def) = param {
+            if unique_lifetimes.insert(lifetime_def.lifetime.clone()) {
+                lifetimes.push(lifetime_def.lifetime.clone());
+            }
+        }
+    }
+
+    lifetimes
+}
+
 /// Macro to automatically derive `tarantool::msgpack::Encode`
 /// Deriving this trait will make this struct encodable into msgpack format.
 /// It is meant as a replacement for serde + rmp_serde
@@ -857,8 +875,20 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
     let tarantool_crate = Ident::new(tarantool_crate, Span::call_site()).into();
 
     // Add a bound to every type parameter.
-    let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let generics = msgpack::add_trait_bounds(input.generics.clone(), &tarantool_crate);
+    let mut impl_generics = input.generics;
+    impl_generics.params.insert(
+        0,
+        syn::GenericParam::Lifetime(syn::LifetimeDef {
+            attrs: vec![],
+            lifetime: syn::Lifetime::new("'de", Span::call_site()),
+            colon_token: Some(syn::token::Colon::default()),
+            bounds: collect_lifetimes(&generics),
+        }),
+    );
+    // let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let (impl_generics, _, where_clause) = impl_generics.split_for_impl();
+    let (_, ty_generics, _) = generics.split_for_impl();
     let decode_fields = msgpack::decode_fields(
         &input.data,
         &tarantool_crate,
@@ -869,8 +899,8 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
     );
     let expanded = quote! {
         // The generated impl.
-        impl #impl_generics #tarantool_crate::msgpack::Decode<'_> for #name #ty_generics #where_clause {
-            fn decode(r: &mut &[u8], context: &#tarantool_crate::msgpack::Context)
+        impl #impl_generics #tarantool_crate::msgpack::Decode<'de> for #name #ty_generics #where_clause {
+            fn decode(r: &mut &'de [u8], context: &#tarantool_crate::msgpack::Context)
                 -> std::result::Result<Self, #tarantool_crate::msgpack::DecodeError>
             {
                 use #tarantool_crate::msgpack::StructStyle;

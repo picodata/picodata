@@ -424,6 +424,16 @@ impl<'de> Decode<'de> for String {
     }
 }
 
+impl<'de> Decode<'de> for &'de str {
+    #[inline]
+    fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
+        let (res, bound) =
+            rmp::decode::read_str_from_slice(*r).map_err(DecodeError::new::<Self>)?;
+        *r = bound;
+        Ok(res)
+    }
+}
+
 impl<'de, K, V> Decode<'de> for BTreeMap<K, V>
 where
     K: Decode<'de> + Ord,
@@ -1981,6 +1991,8 @@ mod tests {
         let bytes = encode(&original);
         let decoded: String = decode(&bytes).unwrap();
         assert_eq!(original, decoded);
+        let decoded: &str = decode(&bytes).unwrap();
+        assert_eq!(original, decoded);
 
         let bytes = encode(&Cow::Borrowed(original));
         assert_eq!(original, decode::<String>(&bytes).unwrap());
@@ -1990,6 +2002,83 @@ mod tests {
 
         let bytes = encode(&Cow::<str>::Owned(original.to_owned()));
         assert_eq!(original, decode::<String>(&bytes).unwrap());
+    }
+
+    #[test]
+    fn decode_borrowed_str_slice() {
+        // single lifetime parameter
+        #[derive(Debug, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct TestSingle<'a> {
+            a: &'a str,
+            b: Option<&'a str>,
+            c: Vec<&'a str>,
+        }
+        // multiple lifetime parameters with complexity of where clause
+        #[derive(Debug, Decode, PartialEq)]
+        #[encode(tarantool = "crate")]
+        struct TestMultiple<'a, 'b>
+        where
+            'a: 'b,
+        {
+            a: &'a str,
+            b: Option<&'b str>,
+            c: Vec<&'a str>,
+        }
+
+        // arr context - single (ok), multiple (ok)
+        let original = Value::Array(vec![
+            Value::from("one"),
+            Value::from("and"),
+            Value::Array(vec![Value::from("only")]),
+        ]);
+        let mut bytes = Vec::new();
+        rmpv::encode::write_value(&mut bytes, &original).unwrap();
+        let decoded_single = TestSingle::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_single,
+            TestSingle {
+                a: "one",
+                b: Some("and"),
+                c: vec!["only"]
+            }
+        );
+        let decoded_multiple = TestMultiple::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(
+            decoded_multiple,
+            TestMultiple {
+                a: "one",
+                b: Some("and"),
+                c: vec!["only"]
+            }
+        );
+
+        // map context - single (ok), multiple (ok)
+        let original = Value::Map(vec![
+            (Value::from("a"), Value::from("one")),
+            (Value::from("b"), Value::from("and")),
+            (Value::from("c"), Value::Array(vec![Value::from("only")])),
+        ]);
+        let mut bytes = Vec::new();
+        rmpv::encode::write_value(&mut bytes, &original).unwrap();
+        let decoded_single = TestSingle::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(
+            decoded_single,
+            TestSingle {
+                a: "one",
+                b: Some("and"),
+                c: vec!["only"]
+            }
+        );
+        let decoded_multiple = TestMultiple::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(
+            decoded_multiple,
+            TestMultiple {
+                a: "one",
+                b: Some("and"),
+                c: vec!["only"]
+            }
+        );
     }
 
     #[test]

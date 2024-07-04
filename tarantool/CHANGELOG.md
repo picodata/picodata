@@ -47,6 +47,8 @@
 - added `Decimal::into_raw` functions
 - added `Tuple::as_ptr` functions
 - Custom Encode/Decode allows skipping `Option` fields
+- added support for zero-copy string decoding
+  via `tarantool::msgpack::encode::Decode` trait as `&str`.
 
 ### Changed
 
