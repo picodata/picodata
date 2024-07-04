@@ -10,8 +10,8 @@ def cluster3(cluster: Cluster):
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
     info = instance.call(".proc_instance_info", expelled_instance.instance_id)
-    grades = (info["current_grade"]["variant"], info["target_grade"]["variant"])
-    assert grades == ("Expelled", "Expelled")
+    states = (info["current_state"]["variant"], info["target_state"]["variant"])
+    assert states == ("Expelled", "Expelled")
 
 
 def assert_voters(voters: list[Instance], instance: Instance):

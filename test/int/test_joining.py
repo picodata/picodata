@@ -141,8 +141,8 @@ def test_replication(cluster: Cluster):
             "raft_id": instance.raft_id,
             "replicaset_id": "r1",
             "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
-            "current_grade": ["Online", 1],
-            "target_grade": ["Online", 1],
+            "current_state": ["Online", 1],
+            "target_state": ["Online", 1],
             "failure_domain": dict(),
             "tier": "default",
         }

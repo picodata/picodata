@@ -14,9 +14,9 @@ def test_sharding_reinitializes_on_restart(cluster: Cluster):
     assert i1.call("vshard.router.info") is not None
 
     info = i1.call(".proc_instance_info")
-    incarnation = info["current_grade"]["incarnation"]
+    incarnation = info["current_state"]["incarnation"]
 
-    # Instance silently dies without it's grade being updated
+    # Instance silently dies without it's state being updated
     i1.kill()
 
     # Instance restarts, it's incarnation is updated and governor reconfigures

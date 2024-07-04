@@ -533,10 +533,10 @@ class Instance:
             return None
         return f"{self.host}:{self.port}"
 
-    def current_grade(self, instance_id=None):
+    def current_state(self, instance_id=None):
         if instance_id is None:
             instance_id = self.instance_id
-        return self.call(".proc_instance_info", instance_id)["current_grade"]
+        return self.call(".proc_instance_info", instance_id)["current_state"]
 
     def instance_uuid(self):
         return self.eval("return box.info.uuid")
@@ -1109,7 +1109,7 @@ class Instance:
         if self.process is None:
             raise ProcessDead("process was not started")
 
-        def fetch_current_grade() -> Tuple[str, int]:
+        def fetch_current_state() -> Tuple[str, int]:
             self.check_process_alive()
 
             myself = self.call(".proc_instance_info")
@@ -1121,16 +1121,16 @@ class Instance:
             assert isinstance(myself["instance_id"], str)
             self.instance_id = myself["instance_id"]
 
-            assert isinstance(myself["current_grade"], dict)
+            assert isinstance(myself["current_state"], dict)
             return (
-                myself["current_grade"]["variant"],
-                myself["current_grade"]["incarnation"],
+                myself["current_state"]["variant"],
+                myself["current_state"]["incarnation"],
             )
 
         start = time.monotonic()
         deadline = start + timeout
         next_retry = start
-        last_grade = None
+        last_state = None
         while True:
             now = time.monotonic()
             assert now < deadline, "timeout"
@@ -1141,14 +1141,14 @@ class Instance:
             next_retry = time.monotonic() + 1 / rps
 
             try:
-                # Fetch grade
-                grade = fetch_current_grade()
-                if grade != last_grade:
-                    last_grade = grade
+                # Fetch state
+                state = fetch_current_state()
+                if state != last_state:
+                    last_state = state
                     deadline = time.monotonic() + timeout
 
-                # Check grade
-                variant, incarnation = grade
+                # Check state
+                variant, incarnation = state
                 assert variant == "Online"
                 if expected_incarnation is not None:
                     assert incarnation == expected_incarnation

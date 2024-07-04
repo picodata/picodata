@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use crate::cas;
 use crate::failure_domain::FailureDomain;
-use crate::has_grades;
-use crate::instance::Grade;
-use crate::instance::GradeVariant::*;
+use crate::has_states;
+use crate::instance::State;
+use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
@@ -181,7 +181,7 @@ pub fn build_instance(
 ) -> std::result::Result<Instance, String> {
     if let Some(id) = instance_id {
         if let Ok(existing_instance) = storage.instances.get(id) {
-            let is_expelled = has_grades!(existing_instance, Expelled -> *);
+            let is_expelled = has_states!(existing_instance, Expelled -> *);
             if is_expelled {
                 // The instance was expelled explicitly, it's ok to replace it
             } else {
@@ -189,7 +189,7 @@ pub fn build_instance(
                 // joining an instance with the same name as an existing but
                 // offline instance. But we no longer allow this, because it
                 // could lead to race conditions, because when an instance is
-                // joined it has both grades Offline, which means it may be
+                // joined it has both states Offline, which means it may be
                 // replaced by another one of the name before it sends a request
                 // for self activation.
                 return Err(format!("`{}` is already joined", id));
@@ -228,8 +228,8 @@ pub fn build_instance(
         Some(raft_id),
         Some(instance_id),
         Some(replicaset_id),
-        Grade::new(Offline, 0),
-        Grade::new(Offline, 0),
+        State::new(Offline, 0),
+        State::new(Offline, 0),
         failure_domain.clone(),
         &tier.name,
     );

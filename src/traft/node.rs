@@ -8,7 +8,7 @@
 use crate::access_control::user_by_id;
 use crate::config::PicodataConfig;
 use crate::governor;
-use crate::has_grades;
+use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
@@ -851,35 +851,35 @@ impl NodeImpl {
                     );
                 }
 
-                if old.as_ref().map(|x| x.current_grade) != Some(new.current_grade) {
+                if old.as_ref().map(|x| x.current_state) != Some(new.current_state) {
                     let instance_id = &new.instance_id;
-                    let grade = &new.current_grade;
+                    let state = &new.current_state;
                     crate::audit!(
-                        message: "current grade of instance `{instance_id}` changed to {grade}",
-                        title: "change_current_grade",
+                        message: "current state of instance `{instance_id}` changed to {state}",
+                        title: "change_current_state",
                         severity: Medium,
                         instance_id: %instance_id,
                         raft_id: %new.raft_id,
-                        new_grade: %grade,
+                        new_state: %state,
                         initiator: &initiator_def.name,
                     );
                 }
 
-                if old.as_ref().map(|x| x.target_grade) != Some(new.target_grade) {
+                if old.as_ref().map(|x| x.target_state) != Some(new.target_state) {
                     let instance_id = &new.instance_id;
-                    let grade = &new.target_grade;
+                    let state = &new.target_state;
                     crate::audit!(
-                        message: "target grade of instance `{instance_id}` changed to {grade}",
-                        title: "change_target_grade",
+                        message: "target state of instance `{instance_id}` changed to {state}",
+                        title: "change_target_state",
                         severity: Low,
                         instance_id: %instance_id,
                         raft_id: %new.raft_id,
-                        new_grade: %grade,
+                        new_state: %state,
                         initiator: &initiator_def.name,
                     );
                 }
 
-                if has_grades!(new, Expelled -> *) {
+                if has_states!(new, Expelled -> *) {
                     let instance_id = &new.instance_id;
                     crate::audit!(
                         message: "instance `{instance_id}` was expelled from the cluster",

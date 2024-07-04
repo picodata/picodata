@@ -37,14 +37,14 @@ def test_webui(instance: Instance):
             {
                 "replicasets": [
                     {
-                        "grade": "Online",
+                        "state": "Online",
                         "version": instance_version,
                         "instances": [
                             {
                                 "failureDomain": {},
                                 "isLeader": True,
-                                "currentGrade": "Online",
-                                "targetGrade": "Online",
+                                "currentState": "Online",
+                                "targetState": "Online",
                                 "name": "i1",
                                 "version": instance_version,
                                 "httpAddress": http_listen,
@@ -75,10 +75,10 @@ def test_webui(instance: Instance):
         assert json.load(response) == {
             "capacityUsage": 50,
             "replicasetsCount": 1,
-            "instancesCurrentGradeOffline": 0,
+            "instancesCurrentStateOffline": 0,
             "currentInstaceVersion": instance_version,
             "memory": {"usable": 67108864, "used": 33554432},
-            "instancesCurrentGradeOnline": 1,
+            "instancesCurrentStateOnline": 1,
         }
 
 

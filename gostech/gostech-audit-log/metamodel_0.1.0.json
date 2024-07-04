@@ -117,9 +117,9 @@
       "success": true
     },
     {
-      "description": "change current grade",
+      "description": "change current state",
       "mode": "reliability",
-      "name": "change_current_grade",
+      "name": "change_current_state",
       "params": [
         {
           "description": "message",
@@ -130,8 +130,8 @@
           "name": "raft_id"
         },
         {
-          "description": "new_grade",
-          "name": "new_grade"
+          "description": "new_state",
+          "name": "new_state"
         },
         {
           "description": "severity",
@@ -173,9 +173,9 @@
       "success": true
     },
     {
-      "description": "change target grade",
+      "description": "change target state",
       "mode": "reliability",
-      "name": "change_target_grade",
+      "name": "change_target_state",
       "params": [
         {
           "description": "message",
@@ -186,8 +186,8 @@
           "name": "raft_id"
         },
         {
-          "description": "new_grade",
-          "name": "new_grade"
+          "description": "new_state",
+          "name": "new_state"
         },
         {
           "description": "severity",

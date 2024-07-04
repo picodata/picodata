@@ -4,11 +4,11 @@ use ::raft::prelude::ConfChangeType::*;
 use std::collections::HashMap;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
+use crate::instance::StateVariant::*;
 use crate::tier::Tier;
 use crate::traft::{Distance, RaftId};
-use crate::{has_grades, tlog};
+use crate::{has_states, tlog};
 
 struct RaftConf<'a> {
     all: BTreeMap<RaftId, &'a Instance>,
@@ -85,7 +85,7 @@ pub(crate) fn raft_conf_change(
     };
     let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
-    let not_expelled = |instance: &&Instance| has_grades!(instance, * -> not Expelled);
+    let not_expelled = |instance: &&Instance| has_states!(instance, * -> not Expelled);
     // Only an instance from tier with `can_vote = true` can be considered as voter.
     let tier_can_vote = |instance: &&Instance| {
         tiers
@@ -109,8 +109,8 @@ pub(crate) fn raft_conf_change(
     // A list of instances that can be safely promoted to voters.
     let mut promotable: BTreeSet<RaftId> = instances
         .iter()
-        // Only an instance with current grade online can be promoted
-        .filter(|instance| has_grades!(instance, Online -> Online))
+        // Only an instance with current state online can be promoted
+        .filter(|instance| has_states!(instance, Online -> Online))
         .filter(tier_can_vote)
         .map(|instance| instance.raft_id)
         // Exclude those who is already a voter.
@@ -145,7 +145,7 @@ pub(crate) fn raft_conf_change(
                 continue;
             }
         };
-        match instance.target_grade.variant {
+        match instance.target_state.variant {
             Online => {
                 // Do nothing
             }
@@ -166,7 +166,7 @@ pub(crate) fn raft_conf_change(
                 let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
-            _ => unreachable!("target grade can only be Online, Offline or Expelled"),
+            _ => unreachable!("target state can only be Online, Offline or Expelled"),
         }
     }
 
@@ -185,7 +185,7 @@ pub(crate) fn raft_conf_change(
             changes.push(ccs);
             continue;
         };
-        match instance.target_grade.variant {
+        match instance.target_state.variant {
             Online | Offline => {
                 // Do nothing
             }
@@ -194,7 +194,7 @@ pub(crate) fn raft_conf_change(
                 let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
-            _ => unreachable!("target grade can only be Online, Offline or Expelled"),
+            _ => unreachable!("target state can only be Online, Offline or Expelled"),
         }
     }
 
@@ -259,7 +259,7 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use crate::failure_domain::FailureDomain;
-    use crate::instance::Grade;
+    use crate::instance::State;
     use crate::traft::RaftId;
 
     macro_rules! fd {
@@ -272,18 +272,18 @@ mod tests {
     macro_rules! p {
         (
             $raft_id:literal,
-            $current_grade:ident -> $target_grade:ident
+            $current_state:ident -> $target_state:ident
             $(, $failure_domain:expr)?
         ) => {
             Instance {
                 raft_id: $raft_id,
-                current_grade: Grade {
-                    variant: $current_grade,
+                current_state: State {
+                    variant: $current_state,
                     // raft_conf_change doesn't care about incarnations
                     incarnation: 0,
                 },
-                target_grade: Grade {
-                    variant: $target_grade,
+                target_state: State {
+                    variant: $target_state,
                     // raft_conf_change doesn't care about incarnations
                     incarnation: 0,
                 },
@@ -295,11 +295,11 @@ mod tests {
 
         (
             $raft_id:literal,
-            $grade:ident
+            $state:ident
             $(, $failure_domain:expr)?
 
         ) => {
-            p!($raft_id, $grade -> $grade $(, $failure_domain)?)
+            p!($raft_id, $state -> $state $(, $failure_domain)?)
         };
     }
 
@@ -307,10 +307,10 @@ mod tests {
         (
             $raft_id:literal,
             $tier:ident,
-            $grade:ident
+            $state:ident
 
         ) => {{
-            let mut instance = p!($raft_id, $grade -> $grade);
+            let mut instance = p!($raft_id, $state -> $state);
             instance.tier = $tier.to_string();
             instance
         }}
@@ -424,13 +424,13 @@ mod tests {
 
         assert_eq!(
             cc(&[p1(), p!(2, Replicated -> Online)], &[1], &[2]),
-            // nothing to do until p2 attains current_grade online
+            // nothing to do until p2 attains current_state online
             None
         );
 
         assert_eq!(
             cc(&[p1(), p!(2, Online)], &[1], &[2]),
-            // promote p2 as soon as it attains current_grade online
+            // promote p2 as soon as it attains current_state online
             cc![AddNode(2)]
         );
 

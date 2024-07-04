@@ -85,7 +85,7 @@ impl InstanceReachabilityManager {
     }
 
     /// Is called by sentinel to get information about which instances should be
-    /// automatically assigned a different grade.
+    /// automatically assigned a different state.
     pub fn get_unreachables(&self) -> HashSet<RaftId> {
         let mut res = HashSet::with_capacity(self.infos.len() / 3);
         for (raft_id, info) in &self.infos {

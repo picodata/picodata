@@ -432,7 +432,7 @@ Insert({_pico_index}, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}
 Insert({_pico_index}, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert({_pico_table}, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}}],0,true,"memtx",1,""]),
 Insert({_pico_index}, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
-Insert({_pico_table}, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"instance_uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_grade"}},{{"field_type":"array","is_nullable":false,"name":"target_grade"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
+Insert({_pico_table}, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"instance_uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
 Insert({_pico_index}, [{_pico_instance},0,"_pico_instance_id","tree",[{{"unique":true}}],[["instance_id","string",null,false,null]],true,0]),
 Insert({_pico_index}, [{_pico_instance},1,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
 Insert({_pico_index}, [{_pico_instance},2,"_pico_instance_replicaset_id","tree",[{{"unique":false}}],[["replicaset_id","string",null,false,null]],true,0]),
@@ -508,7 +508,7 @@ def test_governor_notices_restarts(instance: Instance):
     # vshard is configured after first start
     check_vshard_configured(instance)
 
-    assert instance.current_grade() == dict(variant="Online", incarnation=1)
+    assert instance.current_state() == dict(variant="Online", incarnation=1)
 
     instance.restart()
     instance.wait_online()
@@ -516,7 +516,7 @@ def test_governor_notices_restarts(instance: Instance):
     # vshard is configured again after restart
     check_vshard_configured(instance)
 
-    assert instance.current_grade() == dict(variant="Online", incarnation=2)
+    assert instance.current_state() == dict(variant="Online", incarnation=2)
 
 
 def test_proc_version_info(instance: Instance):
@@ -549,8 +549,8 @@ cluster:
         replicaset_id="r1",
         replicaset_uuid=i1.replicaset_uuid(),
         cluster_id=i1.cluster_id,
-        current_grade=dict(variant="Online", incarnation=1),
-        target_grade=dict(variant="Online", incarnation=1),
+        current_state=dict(variant="Online", incarnation=1),
+        target_state=dict(variant="Online", incarnation=1),
         tier="storage",
     )
 
@@ -566,8 +566,8 @@ cluster:
         replicaset_id="r2",
         replicaset_uuid=i2.replicaset_uuid(),
         cluster_id=i1.cluster_id,
-        current_grade=dict(variant="Online", incarnation=1),
-        target_grade=dict(variant="Online", incarnation=1),
+        current_state=dict(variant="Online", incarnation=1),
+        target_state=dict(variant="Online", incarnation=1),
         tier="router",
     )
 

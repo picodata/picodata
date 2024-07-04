@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use crate::instance::GradeVariant::*;
 use crate::instance::InstanceId;
+use crate::instance::StateVariant::*;
 use crate::rpc;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::traft::Result;
@@ -11,7 +11,7 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 crate::define_rpc_request! {
     /// Submits a request to expel the specified instance. If successful
-    /// the instance's target grade - expelled - will be replicated
+    /// the instance's target state - expelled - will be replicated
     /// on all of the cluster instances through Raft.
     ///
     /// Can be called on any instance that has already joined the cluster.
@@ -35,7 +35,7 @@ crate::define_rpc_request! {
         }
 
         let req = rpc::update_instance::Request::new(req.instance_id, req.cluster_id)
-            .with_target_grade(Expelled);
+            .with_target_state(Expelled);
         handle_update_instance_request_and_wait(req, TIMEOUT)?;
 
         Ok(Response {})

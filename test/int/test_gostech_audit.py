@@ -48,14 +48,14 @@ def test_gostech_startup(
     assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
-    event = audit.take_until_name(name="change_current_grade")
+    event = audit.take_until_name(name="change_current_state")
     assert event is not None
     assert event["tags"] == ["medium"]
     assert event["createdAt"] is not None
     assert event["module"] == "picodata"
     assert event["userLogin"] == "admin"
 
-    event = audit.take_until_name(name="change_target_grade")
+    event = audit.take_until_name(name="change_target_state")
     assert event is not None
     assert event["tags"] == ["low"]
     assert event["createdAt"] is not None

@@ -1227,7 +1227,7 @@ impl From<ClusterwideTable> for SpaceId {
         MaxLoginAttempts = "max_login_attempts",
 
         /// Number of seconds to wait before automatically changing an
-        /// unresponsive instance's grade to Offline.
+        /// unresponsive instance's state to Offline.
         AutoOfflineTimeout = "auto_offline_timeout",
 
         /// Maximum number of seconds to wait before sending another heartbeat
@@ -4389,7 +4389,7 @@ mod tests {
     #[rustfmt::skip]
     #[::tarantool::test]
     fn test_storage_instances() {
-        use crate::instance::GradeVariant::*;
+        use crate::instance::StateVariant::*;
         use crate::instance::InstanceId;
         use crate::failure_domain::FailureDomain;
 

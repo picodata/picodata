@@ -1,5 +1,5 @@
-use crate::has_grades;
-use crate::instance::GradeVariant::*;
+use crate::has_states;
+use crate::instance::StateVariant::*;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
 use crate::storage::Clusterwide;
@@ -45,7 +45,7 @@ impl Loop {
 
         ////////////////////////////////////////////////////////////////////////
         // Awoken during graceful shutdown.
-        // Should change own target grade to Offline and finish.
+        // Should change own target state to Offline and finish.
         if status.get() == SentinelStatus::ShuttingDown {
             let raft_id = node.raft_id();
             let Ok(instance) = storage.instances.get(&raft_id) else {
@@ -57,9 +57,9 @@ impl Loop {
             };
 
             let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
-                .with_target_grade(Offline);
+                .with_target_state(Offline);
 
-            tlog!(Info, "setting own target grade Offline");
+            tlog!(Info, "setting own target state Offline");
             let timeout = Self::SENTINEL_SHORT_RETRY;
             loop {
                 let now = fiber::clock();
@@ -75,7 +75,7 @@ impl Loop {
                     Ok(_) => return ControlFlow::Break(()),
                     Err(e) => {
                         tlog!(Warning,
-                            "failed setting own target grade Offline: {e}, retrying ...";
+                            "failed setting own target state Offline: {e}, retrying ...";
                         );
                         fiber::sleep(timeout.saturating_sub(now.elapsed()));
                         continue;
@@ -86,7 +86,7 @@ impl Loop {
 
         ////////////////////////////////////////////////////////////////////////
         // When running on leader, find any unreachable instances which need to
-        // have their grade automatically changed.
+        // have their state automatically changed.
         if raft_status.get().raft_state.is_leader() {
             let instances = storage
                 .instances
@@ -95,7 +95,7 @@ impl Loop {
             let unreachables = instance_reachability.borrow().get_unreachables();
             let mut instance_to_downgrade = None;
             for instance in &instances {
-                if has_grades!(instance, * -> Online) && unreachables.contains(&instance.raft_id) {
+                if has_states!(instance, * -> Online) && unreachables.contains(&instance.raft_id) {
                     instance_to_downgrade = Some(instance);
                 }
             }
@@ -104,20 +104,20 @@ impl Loop {
                 return ControlFlow::Continue(());
             };
 
-            tlog!(Info, "setting target grade Offline"; "instance_id" => %instance.instance_id);
+            tlog!(Info, "setting target state Offline"; "instance_id" => %instance.instance_id);
             let req = rpc::update_instance::Request::new(instance.instance_id.clone(), cluster_id)
-                // We only try setting the grade once and if a CaS conflict
+                // We only try setting the state once and if a CaS conflict
                 // happens we should reassess the situation, because somebody
-                // else could have changed this particular instance's target grade.
+                // else could have changed this particular instance's target state.
                 .with_dont_retry(true)
-                .with_target_grade(Offline);
+                .with_target_state(Offline);
             let res = rpc::update_instance::handle_update_instance_request_and_wait(
                 req,
                 Self::UPDATE_INSTANCE_TIMEOUT,
             );
             if let Err(e) = res {
                 tlog!(Warning,
-                    "failed setting target grade Offline: {e}";
+                    "failed setting target state Offline: {e}";
                     "instance_id" => %instance.instance_id,
                 );
             }
@@ -138,14 +138,14 @@ impl Loop {
             return ControlFlow::Continue(());
         };
 
-        if has_grades!(instance, * -> Offline) {
-            tlog!(Info, "setting own target grade Online");
+        if has_states!(instance, * -> Offline) {
+            tlog!(Info, "setting own target state Online");
             let req = rpc::update_instance::Request::new(instance.instance_id.clone(), cluster_id)
-                // We only try setting the grade once and if a CaS conflict
+                // We only try setting the state once and if a CaS conflict
                 // happens we should reassess the situation, because somebody
-                // else could have changed this particular instance's target grade.
+                // else could have changed this particular instance's target state.
                 .with_dont_retry(true)
-                .with_target_grade(Online);
+                .with_target_state(Online);
             let res = async {
                 let Some(leader_id) = raft_status.get().leader_id else {
                     return Err(Error::LeaderUnknown);
@@ -156,7 +156,7 @@ impl Loop {
             }
             .await;
             if let Err(e) = res {
-                tlog!(Warning, "failed setting own target grade Online: {e}");
+                tlog!(Warning, "failed setting own target state Online: {e}");
             }
 
             _ = status.changed().timeout(Self::SENTINEL_SHORT_RETRY).await;

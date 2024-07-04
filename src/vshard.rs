@@ -1,5 +1,5 @@
-use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
+use crate::instance::StateVariant::*;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
@@ -67,7 +67,7 @@ impl VshardConfig {
         let mut found_ready_replicaset = false;
         let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
         for peer in instances {
-            if !peer.may_respond() || peer.current_grade.variant < Replicated {
+            if !peer.may_respond() || peer.current_state.variant < Replicated {
                 continue;
             }
             let Some(address) = peer_addresses.get(&peer.raft_id) else {

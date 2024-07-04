@@ -68,7 +68,7 @@ crate::define_rpc_request! {
         pub timeout: Duration,
         /// If this is `false`, check if the runtime vshard router object is
         /// already created and don't reconfigure. This is only used when an
-        /// instance silently restarts without acquiring the Offline grade.
+        /// instance silently restarts without acquiring the Offline state.
         pub do_reconfigure: bool,
     }
 

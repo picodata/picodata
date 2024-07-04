@@ -43,17 +43,17 @@ def test_restart_follower(cluster2: Cluster):
     # Then it's able to start and remain a follower
 
     i1, i2 = cluster2.instances
-    assert i1.current_grade() == dict(variant="Online", incarnation=1)
-    assert i2.current_grade() == dict(variant="Online", incarnation=1)
+    assert i1.current_state() == dict(variant="Online", incarnation=1)
+    assert i2.current_state() == dict(variant="Online", incarnation=1)
     i2.restart()
     i2.wait_online()
-    assert i2.current_grade() == dict(variant="Online", incarnation=2)
+    assert i2.current_state() == dict(variant="Online", incarnation=2)
     i1.assert_raft_status("Leader")
     i2.assert_raft_status("Follower")
 
     i2.restart()
     i2.wait_online()
-    assert i2.current_grade() == dict(variant="Online", incarnation=3)
+    assert i2.current_state() == dict(variant="Online", incarnation=3)
 
 
 def test_restart_leader(cluster2: Cluster):
@@ -63,14 +63,14 @@ def test_restart_leader(cluster2: Cluster):
     # No assuptions about leadership are made though.
 
     i1, _ = cluster2.instances
-    assert i1.current_grade() == dict(variant="Online", incarnation=1)
+    assert i1.current_state() == dict(variant="Online", incarnation=1)
     i1.restart()
     i1.wait_online()
-    assert i1.current_grade() == dict(variant="Online", incarnation=2)
+    assert i1.current_state() == dict(variant="Online", incarnation=2)
 
     i1.restart()
     i1.wait_online()
-    assert i1.current_grade() == dict(variant="Online", incarnation=3)
+    assert i1.current_state() == dict(variant="Online", incarnation=3)
 
 
 def test_restart_both(cluster2: Cluster):
@@ -79,8 +79,8 @@ def test_restart_both(cluster2: Cluster):
     # Then both can become ready and handle proposals.
 
     i1, i2 = cluster2.instances
-    assert i1.current_grade() == dict(variant="Online", incarnation=1)
-    assert i2.current_grade() == dict(variant="Online", incarnation=1)
+    assert i1.current_state() == dict(variant="Online", incarnation=1)
+    assert i2.current_state() == dict(variant="Online", incarnation=1)
     i1.terminate()
     i2.terminate()
 
@@ -100,9 +100,9 @@ def test_restart_both(cluster2: Cluster):
     i2.promote_or_fail()
 
     i1.wait_online()
-    assert i1.current_grade() == dict(variant="Online", incarnation=2)
+    assert i1.current_state() == dict(variant="Online", incarnation=2)
     i2.wait_online()
-    assert i1.current_grade() == dict(variant="Online", incarnation=2)
+    assert i1.current_state() == dict(variant="Online", incarnation=2)
 
     index = cluster2.cas("insert", "_pico_property", ("check", True))
     i1.raft_wait_index(index)

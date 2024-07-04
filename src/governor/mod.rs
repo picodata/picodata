@@ -302,15 +302,15 @@ impl Loop {
             }
 
             Plan::Downgrade(Downgrade { req }) => {
-                set_status(governor_status, "update instance grade to offline");
+                set_status(governor_status, "update instance state to offline");
                 tlog!(Info, "downgrading instance {}", req.instance_id);
 
                 let instance_id = req.instance_id.clone();
-                let current_grade = req.current_grade.expect("must be set");
+                let current_state = req.current_state.expect("must be set");
                 governor_step! {
-                    "handling instance grade change" [
+                    "handling instance state change" [
                         "instance_id" => %instance_id,
-                        "current_grade" => %current_grade,
+                        "current_state" => %current_state,
                     ]
                     async {
                         handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
@@ -361,11 +361,11 @@ impl Loop {
                 }
 
                 let instance_id = req.instance_id.clone();
-                let current_grade = req.current_grade.expect("must be set");
+                let current_state = req.current_state.expect("must be set");
                 governor_step! {
-                    "handling instance grade change" [
+                    "handling instance state change" [
                         "instance_id" => %instance_id,
-                        "current_grade" => %current_grade,
+                        "current_state" => %current_state,
                     ]
                     async {
                         handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
@@ -405,11 +405,11 @@ impl Loop {
                 }
 
                 let instance_id = req.instance_id.clone();
-                let current_grade = req.current_grade.expect("must be set");
+                let current_state = req.current_state.expect("must be set");
                 governor_step! {
-                    "handling instance grade change" [
+                    "handling instance state change" [
                         "instance_id" => %instance_id,
-                        "current_grade" => %current_grade,
+                        "current_state" => %current_state,
                     ]
                     async {
                         handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
@@ -449,7 +449,7 @@ impl Loop {
                 plugin_rpc,
                 req,
             }) => {
-                set_status(governor_status, "update instance grade to online");
+                set_status(governor_status, "update instance state to online");
                 if let Some(rpc) = rpc {
                     governor_step! {
                         "updating sharding config" [
@@ -475,11 +475,11 @@ impl Loop {
                     }
                 }
 
-                let current_grade = req.current_grade.expect("must be set");
+                let current_state = req.current_state.expect("must be set");
                 governor_step! {
-                    "handling instance grade change" [
+                    "handling instance state change" [
                         "instance_id" => %target,
-                        "current_grade" => %current_grade,
+                        "current_state" => %current_state,
                     ]
                     async {
                         handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?

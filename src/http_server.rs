@@ -5,7 +5,7 @@ use ::tarantool::net_box::{Conn, ConnOptions, Options};
 use ::tarantool::tuple::Tuple;
 
 use crate::info::VersionInfo;
-use crate::instance::{GradeVariant, Instance, InstanceId};
+use crate::instance::{Instance, InstanceId, StateVariant};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
@@ -63,8 +63,8 @@ struct MemoryInfo {
 // --[[
 //     export interface InstanceType {
 //     name: string;
-//     targetGrade: string;
-//     currentGrade: string;
+//     targetState: string;
+//     currentState: string;
 //     failureDomain: Record<string, string>;
 //     version: string;
 //     isLeader: boolean;
@@ -80,8 +80,8 @@ struct InstanceInfo {
     version: String,
     failure_domain: HashMap<Uppercase, Uppercase>,
     is_leader: bool,
-    current_grade: GradeVariant,
-    target_grade: GradeVariant,
+    current_state: StateVariant,
+    target_state: StateVariant,
     name: InstanceId,
     binary_address: String,
 }
@@ -94,7 +94,7 @@ struct InstanceInfo {
 //     instanceCount: number;
 //     instances: InstanceType[];
 //     version: string;
-//     grade: string;
+//     state: string;
 //     capacity: number;
 // }
 // ]]
@@ -103,7 +103,7 @@ struct InstanceInfo {
 #[serde(rename_all = "camelCase")]
 struct ReplicasetInfo {
     version: String,
-    grade: GradeVariant,
+    state: StateVariant,
     instance_count: usize,
     uuid: String,
     instances: Vec<InstanceInfo>,
@@ -152,8 +152,8 @@ pub(crate) struct TierInfo {
 // --      usable: string;
 // --     };
 // --     replicasetsCount: number;
-// --     instancesCurrentGradeOnline: number;
-// --     instancesCurrentGradeOffline: number;
+// --     instancesCurrentStateOnline: number;
+// --     instancesCurrentStateOffline: number;
 // --     currentInstaceVersion: string;
 // -- }
 // -- --------------------------------------------------
@@ -165,9 +165,9 @@ pub(crate) struct ClusterInfo {
     #[serde(rename = "currentInstaceVersion")] // for compatibility with lua version
     current_instance_version: String,
     replicasets_count: usize,
-    instances_current_grade_offline: usize,
+    instances_current_state_offline: usize,
     memory: MemoryInfo,
-    instances_current_grade_online: usize,
+    instances_current_state_online: usize,
 }
 
 fn get_replicasets(
@@ -323,8 +323,8 @@ fn get_replicasets_info(
             version,
             failure_domain: instance.failure_domain.data,
             is_leader,
-            current_grade: instance.current_grade.variant,
-            target_grade: instance.target_grade.variant,
+            current_state: instance.current_state.variant,
+            target_state: instance.target_state.variant,
             name: instance.instance_id.clone(),
             binary_address: address,
         };
@@ -333,7 +333,7 @@ fn get_replicasets_info(
             .entry(replicaset_id)
             .or_insert_with_key(|replicaset_id| ReplicasetInfo {
                 version: instance_info.version.clone(),
-                grade: instance_info.current_grade,
+                state: instance_info.current_state,
                 instance_count: 0,
                 uuid: replicaset_uuid,
                 capacity_usage: 0_f64,
@@ -376,7 +376,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
         mem_info.usable += replicaset.memory.usable;
         mem_info.used += replicaset.memory.used;
         replicaset.instances.iter().for_each(|i| {
-            instances_online += if i.current_grade == GradeVariant::Online {
+            instances_online += if i.current_state == StateVariant::Online {
                 1
             } else {
                 0
@@ -392,9 +392,9 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
         },
         current_instance_version: version,
         replicasets_count,
-        instances_current_grade_offline: (instances - instances_online),
+        instances_current_state_offline: (instances - instances_online),
         memory: mem_info,
-        instances_current_grade_online: instances_online,
+        instances_current_state_online: instances_online,
     };
 
     Ok(res)

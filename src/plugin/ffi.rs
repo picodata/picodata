@@ -1,6 +1,6 @@
 use crate::cas::{compare_and_swap, Bound, Range, Request};
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
-use crate::instance::GradeVariant;
+use crate::instance::StateVariant;
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
@@ -33,13 +33,13 @@ extern "C" fn pico_ffi_rpc_version() -> RTuple!(*const u8, usize) {
     Tuple2(version.as_ptr(), version.len())
 }
 
-impl From<GradeVariant> for types::GradeVariant {
-    fn from(variant: GradeVariant) -> Self {
+impl From<StateVariant> for types::StateVariant {
+    fn from(variant: StateVariant) -> Self {
         match variant {
-            GradeVariant::Offline => types::GradeVariant::Offline,
-            GradeVariant::Replicated => types::GradeVariant::Replicated,
-            GradeVariant::Online => types::GradeVariant::Online,
-            GradeVariant::Expelled => types::GradeVariant::Expelled,
+            StateVariant::Offline => types::StateVariant::Offline,
+            StateVariant::Replicated => types::StateVariant::Replicated,
+            StateVariant::Online => types::StateVariant::Online,
+            StateVariant::Expelled => types::StateVariant::Expelled,
         }
     }
 }
@@ -60,13 +60,13 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
         info.replicaset_id.0,
         info.replicaset_uuid,
         info.cluster_id,
-        types::Grade::new(
-            info.current_grade.variant.into(),
-            info.current_grade.incarnation,
+        types::State::new(
+            info.current_state.variant.into(),
+            info.current_state.incarnation,
         ),
-        types::Grade::new(
-            info.target_grade.variant.into(),
-            info.target_grade.incarnation,
+        types::State::new(
+            info.target_state.variant.into(),
+            info.target_state.incarnation,
         ),
         info.tier,
     ))

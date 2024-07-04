@@ -61,26 +61,26 @@ def test_startup(instance: Instance):
     assert event["raft_id"] == "1"
     assert event["initiator"] == "admin"
 
-    event = take_until_title(iter(events), "change_target_grade")
+    event = take_until_title(iter(events), "change_target_state")
     assert event is not None
-    assert event["new_grade"] == "Offline(0)"
+    assert event["new_state"] == "Offline(0)"
     assert event["instance_id"] == "i1"
     assert event["raft_id"] == "1"
     assert (
         event["message"]
-        == f"target grade of instance `{event['instance_id']}` changed to {event['new_grade']}"
+        == f"target state of instance `{event['instance_id']}` changed to {event['new_state']}"
     )
     assert event["severity"] == "low"
     assert event["initiator"] == "admin"
 
-    event = take_until_title(iter(events), "change_current_grade")
+    event = take_until_title(iter(events), "change_current_state")
     assert event is not None
-    assert event["new_grade"] == "Offline(0)"
+    assert event["new_state"] == "Offline(0)"
     assert event["instance_id"] == "i1"
     assert event["raft_id"] == "1"
     assert (
         event["message"]
-        == f"current grade of instance `{event['instance_id']}` changed to {event['new_grade']}"
+        == f"current state of instance `{event['instance_id']}` changed to {event['new_state']}"
     )
     assert event["severity"] == "medium"
     assert event["initiator"] == "admin"
@@ -350,8 +350,8 @@ def test_index(instance: Instance):
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
     info = instance.call(".proc_instance_info", expelled_instance.instance_id)
-    grades = (info["current_grade"]["variant"], info["target_grade"]["variant"])
-    assert grades == ("Expelled", "Expelled")
+    states = (info["current_state"]["variant"], info["target_state"]["variant"])
+    assert states == ("Expelled", "Expelled")
 
 
 def test_join_expel_instance(cluster: Cluster):

@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use crate::cas;
 use crate::failure_domain::FailureDomain;
-use crate::instance::Grade;
-use crate::instance::GradeVariant;
-use crate::instance::GradeVariant::*;
+use crate::instance::State;
+use crate::instance::StateVariant;
+use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::schema::ADMIN_ID;
 use crate::storage::{Clusterwide, ClusterwideTable};
@@ -30,8 +30,8 @@ crate::define_rpc_request! {
     /// 4. Compare and swap request to commit updated instance failed
     /// with an error that cannot be retried.
     fn proc_update_instance(req: Request) -> Result<Response> {
-        if req.current_grade.is_some() {
-           return Err(Error::Other("Changing current grade through Proc API is not allowed.".into()));
+        if req.current_state.is_some() {
+           return Err(Error::Other("Changing current state through Proc API is not allowed.".into()));
         }
         handle_update_instance_request_and_wait(req, TIMEOUT)?;
         Ok(Response {})
@@ -43,9 +43,9 @@ crate::define_rpc_request! {
         pub instance_id: InstanceId,
         pub cluster_id: String,
         /// Only allowed to be set by leader
-        pub current_grade: Option<Grade>,
+        pub current_state: Option<State>,
         /// Can be set by instance
-        pub target_grade: Option<GradeVariant>,
+        pub target_state: Option<StateVariant>,
         pub failure_domain: Option<FailureDomain>,
         /// If `true` then the resulting CaS request is not retried upon failure.
         pub dont_retry: bool,
@@ -70,17 +70,17 @@ impl Request {
         self
     }
     #[inline]
-    pub fn with_current_grade(mut self, value: Grade) -> Self {
-        self.current_grade = Some(value);
+    pub fn with_current_state(mut self, value: State) -> Self {
+        self.current_state = Some(value);
         self
     }
     #[inline]
-    pub fn with_target_grade(mut self, value: GradeVariant) -> Self {
+    pub fn with_target_state(mut self, value: StateVariant) -> Self {
         debug_assert!(
             matches!(value, Online | Offline | Expelled),
-            "target grade can only be Online, Offline or Expelled"
+            "target state can only be Online, Offline or Expelled"
         );
-        self.target_grade = Some(value);
+        self.target_state = Some(value);
         self
     }
     #[inline]
@@ -118,7 +118,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         update_instance(&mut new_instance, &req, storage).map_err(raft::Error::ConfChangeError)?;
         if old_instance == new_instance {
             // No point in proposing an operation which doesn't change anything.
-            // Note: if the request tried setting target grade Online while it
+            // Note: if the request tried setting target state Online while it
             // was already Online the incarnation will be increased and so
             // old_instance will be different from new_instance and this is the
             // intended behaviour.
@@ -178,15 +178,15 @@ pub fn update_instance(
     req: &Request,
     storage: &Clusterwide,
 ) -> std::result::Result<(), String> {
-    if instance.current_grade.variant == Expelled
+    if instance.current_state.variant == Expelled
         && !matches!(
             req,
             Request {
-                target_grade: None,
-                current_grade: Some(current_grade),
+                target_state: None,
+                current_state: Some(current_state),
                 failure_domain: None,
                 ..
-            } if current_grade.variant == Expelled
+            } if current_state.variant == Expelled
         )
     {
         return Err(format!(
@@ -204,21 +204,21 @@ pub fn update_instance(
         instance.failure_domain = fd.clone();
     }
 
-    if let Some(value) = req.current_grade {
-        instance.current_grade = value;
+    if let Some(value) = req.current_state {
+        instance.current_state = value;
     }
 
-    if let Some(variant) = req.target_grade {
+    if let Some(variant) = req.target_state {
         let incarnation = match variant {
-            Online => instance.target_grade.incarnation + 1,
-            Offline | Expelled => instance.current_grade.incarnation,
+            Online => instance.target_state.incarnation + 1,
+            Offline | Expelled => instance.current_state.incarnation,
             other => {
                 return Err(format!(
-                    "target grade can only be Online, Offline or Expelled, not {other}"
+                    "target state can only be Online, Offline or Expelled, not {other}"
                 ));
             }
         };
-        instance.target_grade = Grade {
+        instance.target_state = State {
             variant,
             incarnation,
         };
@@ -234,8 +234,8 @@ mod test {
 
     #[test]
     #[should_panic]
-    fn update_instance_req_with_target_grade_Replicated() {
-        Request::new("".into(), "".into()).with_target_grade(Replicated);
+    fn update_instance_req_with_target_state_Replicated() {
+        Request::new("".into(), "".into()).with_target_state(Replicated);
         #[cfg(not(debug_assertions))]
         panic!("this is a synthetic panic, because the test is expected to panic, but the actual code only panics in debug mode");
     }

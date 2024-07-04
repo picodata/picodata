@@ -1,6 +1,6 @@
 use crate::config::PicodataConfig;
-use crate::instance::Grade;
 use crate::instance::InstanceId;
+use crate::instance::State;
 use crate::replicaset::ReplicasetId;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -67,8 +67,8 @@ pub struct InstanceInfo {
     pub replicaset_id: ReplicasetId,
     pub replicaset_uuid: String,
     pub cluster_id: String,
-    pub current_grade: Grade,
-    pub target_grade: Grade,
+    pub current_state: State,
+    pub target_state: State,
     pub tier: String,
 }
 
@@ -105,8 +105,8 @@ impl InstanceInfo {
             replicaset_id: instance.replicaset_id,
             replicaset_uuid: instance.replicaset_uuid,
             cluster_id,
-            current_grade: instance.current_grade,
-            target_grade: instance.target_grade,
+            current_state: instance.current_state,
+            target_state: instance.target_state,
             tier: instance.tier,
         })
     }

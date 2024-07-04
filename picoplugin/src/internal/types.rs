@@ -198,7 +198,7 @@ impl Predicate {
     /// Activity state of an instance.
     #[derive(Default, StableAbi)]
     #[repr(C)]
-    pub enum GradeVariant {
+    pub enum StateVariant {
         /// Instance has gracefully shut down or has not been started yet.
         #[default]
         Offline = "Offline",
@@ -213,25 +213,25 @@ impl Predicate {
 
 #[derive(StableAbi, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
-pub struct Grade {
-    variant: GradeVariant,
+pub struct State {
+    variant: StateVariant,
     incarnation: u64,
 }
 
-impl Grade {
-    pub fn new(variant: GradeVariant, incarnation: u64) -> Self {
+impl State {
+    pub fn new(variant: StateVariant, incarnation: u64) -> Self {
         Self {
             variant,
             incarnation,
         }
     }
 
-    /// Grade name. Maybe one of:
+    /// State name. May be one of:
     /// - Offline
     /// - Replicated
     /// - Online
     /// - Expelled
-    pub fn name(&self) -> GradeVariant {
+    pub fn name(&self) -> StateVariant {
         self.variant
     }
 
@@ -251,8 +251,8 @@ pub struct InstanceInfo {
     replicaset_id: RString,
     replicaset_uuid: RString,
     cluster_id: RString,
-    current_grade: Grade,
-    target_grade: Grade,
+    current_state: State,
+    target_state: State,
     tier: RString,
 }
 
@@ -266,8 +266,8 @@ impl InstanceInfo {
         replicaset_id: String,
         replicaset_uuid: String,
         cluster_id: String,
-        current_grade: Grade,
-        target_grade: Grade,
+        current_state: State,
+        target_state: State,
         tier: String,
     ) -> Self {
         Self {
@@ -278,8 +278,8 @@ impl InstanceInfo {
             replicaset_id: RString::from(replicaset_id),
             replicaset_uuid: RString::from(replicaset_uuid),
             cluster_id: RString::from(cluster_id),
-            current_grade,
-            target_grade,
+            current_state,
+            target_state,
             tier: RString::from(tier),
         }
     }
@@ -319,14 +319,14 @@ impl InstanceInfo {
         self.cluster_id.as_str()
     }
 
-    /// Current grade (state) of a current instance.
-    pub fn current_grade(&self) -> &Grade {
-        &self.current_grade
+    /// Current state of a current instance.
+    pub fn current_state(&self) -> &State {
+        &self.current_state
     }
 
-    /// Target grade (state) of a current instance.
-    pub fn target_grade(&self) -> &Grade {
-        &self.target_grade
+    /// Target state of a current instance.
+    pub fn target_state(&self) -> &State {
+        &self.target_state
     }
 
     /// Name of a tier the instance belongs to.

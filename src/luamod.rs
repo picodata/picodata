@@ -202,10 +202,10 @@ pub(crate) fn setup() {
             - instance_uuid (string)
             - replicaset_id (string)
             - replicaset_uuid (string)
-            - current_grade (table),
+            - current_state (table),
                 `{variant = string, incarnation = number}`, where variant is one of
                 'Offline' | 'Online' | 'Expelled'
-            - target_grade (table),
+            - target_state (table),
                 `{variant = string, incarnation = number}`, where variant is one of
                 'Offline' | 'Replicated' | 'ShardingInitialized' | 'Online' | 'Expelled'
             - tier (string)
@@ -221,10 +221,10 @@ pub(crate) fn setup() {
               tier: storage
               replicaset_id: r1
               replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
-              current_grade:
+              current_state:
                 variant: Online
                 incarnation: 26
-              target_grade:
+              target_state:
                 variant: Online
                 incarnation: 26
             ...
@@ -240,8 +240,8 @@ pub(crate) fn setup() {
                 ("instance_uuid", info.instance_uuid),
                 ("replicaset_id", info.replicaset_id),
                 ("replicaset_uuid", info.replicaset_uuid),
-                ("current_grade", info.current_grade),
-                ("target_grade", info.target_grade),
+                ("current_state", info.current_state),
+                ("target_state", info.target_state),
                 ("tier", info.tier),
             )))
         }),

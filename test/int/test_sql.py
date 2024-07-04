@@ -405,8 +405,8 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "raft_id", "type": "unsigned"},
         {"name": "replicaset_id", "type": "string"},
         {"name": "replicaset_uuid", "type": "string"},
-        {"name": "current_grade", "type": "array"},
-        {"name": "target_grade", "type": "array"},
+        {"name": "current_state", "type": "array"},
+        {"name": "target_state", "type": "array"},
         {"name": "failure_domain", "type": "map"},
         {"name": "tier", "type": "string"},
     ]

@@ -58,8 +58,8 @@ def test_couple_leader_first(cluster2: Cluster):
 
     i2.assert_raft_status("Leader")
     i1_info = i2.call(".proc_instance_info", i1.instance_id)
-    assert i1_info["target_grade"]["variant"] == "Offline"
-    assert i1_info["current_grade"]["variant"] == "Offline"
+    assert i1_info["target_state"]["variant"] == "Offline"
+    assert i1_info["current_state"]["variant"] == "Offline"
 
     c2 = log_crawler(i2, ON_SHUTDOWN_TIMEOUT)
     i2.terminate(kill_after_seconds=1)
@@ -78,8 +78,8 @@ def test_couple_follower_first(cluster2: Cluster):
     assert not c2.matched
 
     i2_info = i1.call(".proc_instance_info", i2.instance_id)
-    assert i2_info["target_grade"]["variant"] == "Offline"
-    assert i2_info["current_grade"]["variant"] == "Offline"
+    assert i2_info["target_state"]["variant"] == "Offline"
+    assert i2_info["current_state"]["variant"] == "Offline"
 
     c1 = log_crawler(i1, ON_SHUTDOWN_TIMEOUT)
     i1.terminate(kill_after_seconds=1)

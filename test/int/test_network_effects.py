@@ -146,11 +146,11 @@ def test_leader_disruption(cluster3: Cluster):
     retrying(lambda: i3.assert_raft_status("Follower", i1.raft_id))
 
 
-def get_instance_grades(peer: Instance, instance_id) -> tuple[str, str]:
+def get_instance_states(peer: Instance, instance_id) -> tuple[str, str]:
     instance_info = peer.call(".proc_instance_info", instance_id)
     return (
-        instance_info["current_grade"]["variant"],
-        instance_info["target_grade"]["variant"],
+        instance_info["current_state"]["variant"],
+        instance_info["target_state"]["variant"],
     )
 
 
@@ -159,18 +159,18 @@ def test_instance_automatic_offline_detection(cluster: Cluster):
     index = cluster.cas("replace", "_pico_property", ["auto_offline_timeout", 0.5])
     cluster.raft_wait_index(index, 3)
 
-    assert get_instance_grades(i1, i3.instance_id) == ("Online", "Online")
+    assert get_instance_states(i1, i3.instance_id) == ("Online", "Online")
 
     i3.kill()
 
     # Give the sentinel some time to detect the problem and act accordingly.
     time.sleep(2)
 
-    assert get_instance_grades(i1, i3.instance_id) == ("Offline", "Offline")
+    assert get_instance_states(i1, i3.instance_id) == ("Offline", "Offline")
 
     i3.start()
 
     def assert_online(peer, instance_id):
-        assert get_instance_grades(peer, instance_id) == ("Online", "Online")
+        assert get_instance_states(peer, instance_id) == ("Online", "Online")
 
     Retriable(timeout=6, rps=5).call(lambda: assert_online(i1, i3.instance_id))

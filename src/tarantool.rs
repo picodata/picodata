@@ -137,7 +137,7 @@ impl Cfg {
             election_mode: ElectionMode::Off,
 
             // If this is a restart, replication will be configured by governor
-            // before our grade changes to Online.
+            // before our state changes to Online.
             ..Default::default()
         };
 

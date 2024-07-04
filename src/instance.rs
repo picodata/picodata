@@ -1,16 +1,16 @@
 use super::failure_domain::FailureDomain;
 use super::replicaset::ReplicasetId;
-use crate::has_grades;
+use crate::has_states;
 use crate::traft::{instance_uuid, replicaset_uuid, RaftId};
 use crate::util::Transition;
 use ::serde::{Deserialize, Serialize};
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
-use grade::GradeVariant::*;
+use state::StateVariant::*;
 
-pub mod grade;
-pub use grade::Grade;
-pub use grade::GradeVariant;
+pub mod state;
+pub use state::State;
+pub use state::StateVariant;
 
 crate::define_string_newtype! {
     /// Unique id of a cluster instance.
@@ -37,9 +37,9 @@ pub struct Instance {
     pub replicaset_uuid: String,
 
     /// The cluster's mind about actual state of this instance's activity.
-    pub current_grade: Grade,
+    pub current_state: State,
     /// The desired state of this instance
-    pub target_grade: Grade,
+    pub target_state: State,
 
     /// Instance failure domains. Instances with overlapping failure domains
     /// must not be in the same replicaset.
@@ -79,8 +79,8 @@ impl Instance {
             Field::from(("raft_id", FieldType::Unsigned)),
             Field::from(("replicaset_id", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
-            Field::from(("current_grade", FieldType::Array)),
-            Field::from(("target_grade", FieldType::Array)),
+            Field::from(("current_state", FieldType::Array)),
+            Field::from(("target_state", FieldType::Array)),
             Field::from(("failure_domain", FieldType::Map)),
             Field::from(("tier", FieldType::String)),
         ]
@@ -91,14 +91,14 @@ impl Instance {
         raft_id: Option<RaftId>,
         instance_id: Option<impl Into<InstanceId>>,
         replicaset_id: Option<impl Into<ReplicasetId>>,
-        current_grade: Grade,
-        target_grade: Grade,
+        current_state: State,
+        target_state: State,
         failure_domain: FailureDomain,
         tier: &str,
     ) -> Self {
         debug_assert!(
-            matches!(target_grade.variant, Online | Offline | Expelled),
-            "target grade can only be Online, Offline or Expelled"
+            matches!(target_state.variant, Online | Offline | Expelled),
+            "target state can only be Online, Offline or Expelled"
         );
         let instance_id = instance_id.map(Into::into).unwrap_or_else(|| "i1".into());
         let replicaset_id = replicaset_id
@@ -111,8 +111,8 @@ impl Instance {
             instance_id,
             raft_id,
             replicaset_id,
-            current_grade,
-            target_grade,
+            current_state,
+            target_state,
             failure_domain,
             instance_uuid,
             replicaset_uuid,
@@ -120,17 +120,17 @@ impl Instance {
         }
     }
 
-    /// Instance has a grade that implies it may cooperate.
-    /// Currently this means that target_grade is neither Offline nor Expelled.
+    /// Instance has a state that implies it may cooperate.
+    /// Currently this means that target_state is neither Offline nor Expelled.
     #[inline]
     #[allow(clippy::nonminimal_bool)]
     pub fn may_respond(&self) -> bool {
-        has_grades!(self, * -> not Offline) && has_grades!(self, * -> not Expelled)
+        has_states!(self, * -> not Offline) && has_states!(self, * -> not Expelled)
     }
 
     #[inline]
     pub fn is_reincarnated(&self) -> bool {
-        self.current_grade.incarnation < self.target_grade.incarnation
+        self.current_state.incarnation < self.target_state.incarnation
     }
 }
 
@@ -142,7 +142,7 @@ impl std::fmt::Display for Instance {
             self.instance_id,
             self.raft_id,
             self.replicaset_id,
-            Transition { from: self.current_grade, to: self.target_grade },
+            Transition { from: self.current_state, to: self.target_state },
             &self.failure_domain,
             self.tier,
         )
@@ -155,8 +155,8 @@ mod tests {
 
     use crate::tier::DEFAULT_TIER;
     use crate::failure_domain::FailureDomain;
-    use crate::instance::grade::Grade;
-    use crate::instance::grade::GradeVariant::*;
+    use crate::instance::state::State;
+    use crate::instance::state::StateVariant::*;
     use crate::replicaset::ReplicasetId;
     use crate::rpc::join::build_instance;
     use crate::storage::Clusterwide;
@@ -207,28 +207,28 @@ mod tests {
         let instance = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
 
         let instance = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(2), Some("i2"), Some("r2"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(2), Some("i2"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
 
         let instance = build_instance(None, Some(&ReplicasetId::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(3), Some("i3"), Some("R3"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(3), Some("i3"), Some("R3"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
 
         let instance = build_instance(Some(&InstanceId::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(4), Some("I4"), Some("r3"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(4), Some("I4"), Some("r3"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
     }
@@ -237,15 +237,15 @@ mod tests {
     fn test_override() {
         let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(2), Some("i2"), Some("r2-original"), Grade::new(Expelled, 0), Grade::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(2), Some("i2"), Some("r2-original"), State::new(Expelled, 0), State::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
         ],
         2);
 
         // join::Request with a given instance_id online.
         // - It must be an impostor, return an error.
         // - Even if it's a fair rebootstrap, it will be marked as
-        //   unreachable soon (when we implement failover) an the error
+        //   unreachable soon (when we implement failover) the error
         //   will be gone.
         assert_eq!(
             build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER)
@@ -265,7 +265,7 @@ mod tests {
         //   Disruption isn't destructive if auto-expel allows (TODO).
         assert_eq!(
             build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap(),
-            (Instance::new(Some(3), Some("i2"), Some("r1"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER)),
+            (Instance::new(Some(3), Some("i2"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER)),
             // Attention: generated replicaset_id differs from the
             // original one, as well as raft_id.
             // That's a desired behavior.
@@ -274,7 +274,7 @@ mod tests {
 
         // TODO
         //
-        // join::Request with a given instance_id bootstrtapping.
+        // join::Request with a given instance_id bootstrapping.
         // - Presumably it's a retry after tarantool bootstrap failure.
         //   1. Perform auto-expel (it's always ok until bootstrap
         //      finishes).
@@ -289,14 +289,14 @@ mod tests {
     fn test_instance_id_collision() {
         let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(2), Some("i3"), Some("r3"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(2), Some("i3"), Some("r3"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
             // Attention: i3 has raft_id=2
         ], 2);
 
         assert_eq!(
             build_instance(None, Some(&ReplicasetId::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap(),
-            Instance::new(Some(3), Some("i3-2"), Some("r2"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(3), Some("i3-2"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
     }
 
@@ -304,15 +304,15 @@ mod tests {
     fn test_replication_factor() {
         let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![
-            Instance::new(Some(9), Some("i9"), Some("r9"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(10), Some("i10"), Some("r9"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(9), Some("i9"), Some("r9"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(10), Some("i10"), Some("r9"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
         ],
         2);
 
         let instance = build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(11), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(11), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11]));
@@ -320,7 +320,7 @@ mod tests {
         let instance = build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(12), Some("i2"), Some("r1"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(12), Some("i2"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11, 12]));
@@ -328,7 +328,7 @@ mod tests {
         let instance = build_instance(Some(&InstanceId::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(13), Some("i3"), Some("r2"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(13), Some("i3"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13]));
@@ -336,99 +336,99 @@ mod tests {
         let instance = build_instance(Some(&InstanceId::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(14), Some("i4"), Some("r2"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(14), Some("i4"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
         storage.instances.put(&instance).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13, 14]));
     }
 
     #[::tarantool::test]
-    fn test_update_grade() {
+    fn test_update_state() {
         let storage = Clusterwide::for_tests();
-        let mut instance = Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Online, 1), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER);
+        let mut instance = Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER);
         setup_storage(&storage, vec![instance.clone()], 1);
 
-        // Current grade incarnation is allowed to go down,
+        // Current state incarnation is allowed to go down,
         // governor has the authority over it
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_current_grade(Grade::new(Offline, 0));
+            .with_current_state(State::new(Offline, 0));
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
         );
 
         // idempotency
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_current_grade(Grade::new(Offline, 0));
+            .with_current_state(State::new(Offline, 0));
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
         );
 
-        // Offline takes incarnation from current grade
+        // Offline takes incarnation from current state
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_target_grade(Offline);
+            .with_target_state(Offline);
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
         );
 
         // Online increases incarnation
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_target_grade(Online);
+            .with_target_state(Online);
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
         );
 
         // No idempotency, incarnation goes up
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_target_grade(Online);
+            .with_target_state(Online);
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Online, 2), FailureDomain::default(), DEFAULT_TIER)
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 2), FailureDomain::default(), DEFAULT_TIER)
         );
 
-        // Target grade can only be Online, Offline or Expelled
+        // Target state can only be Online, Offline or Expelled
         let mut req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into());
-        // .with_target_grade will just panic
-        req.target_grade = Some(Replicated);
+        // .with_target_state will just panic
+        req.target_state = Some(Replicated);
         let e = update_instance(&mut instance, &req, &storage).unwrap_err();
-        assert_eq!(e, "target grade can only be Online, Offline or Expelled, not Replicated");
+        assert_eq!(e, "target state can only be Online, Offline or Expelled, not Replicated");
 
-        // Grade::Expelled takes incarnation from current grade
+        // State::Expelled takes incarnation from current state
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_target_grade(Expelled);
+            .with_target_state(Expelled);
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Offline, 0), Grade::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
         );
 
-        // Instance get's expelled
+        // Instance gets expelled
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_current_grade(Grade::new(Expelled, 69));
+            .with_current_state(State::new(Expelled, 69));
         update_instance(&mut instance, &req, &storage).unwrap();
         storage.instances.put(&instance).unwrap();
         assert_eq!(
             instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), Grade::new(Expelled, 69), Grade::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
+            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Expelled, 69), State::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
         );
 
         // Updating expelled instances isn't allowed
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
-            .with_target_grade(Online);
+            .with_target_state(Online);
         assert_eq!(
             update_instance(&mut instance, &req, &storage).unwrap_err(),
             "cannot update expelled instance \"i1\"",

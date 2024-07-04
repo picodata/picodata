@@ -1,5 +1,5 @@
-use crate::instance::grade::Grade;
-use crate::instance::grade::GradeVariant::*;
+use crate::instance::state::State;
+use crate::instance::state::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
@@ -13,7 +13,7 @@ use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
-use crate::{has_grades, plugin};
+use crate::{has_states, plugin};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
 use std::mem;
@@ -62,13 +62,13 @@ pub(super) fn action_plan<'i>(
         .iter()
         // TODO: process them all, not just the first one
         .find(|instance| {
-            has_grades!(instance, not Offline -> Offline)
-                || has_grades!(instance, not Expelled -> Expelled)
+            has_states!(instance, not Offline -> Offline)
+                || has_states!(instance, not Expelled -> Expelled)
         });
     if let Some(Instance {
         raft_id,
         instance_id,
-        target_grade,
+        target_state,
         ..
     }) = to_downgrade
     {
@@ -93,7 +93,7 @@ pub(super) fn action_plan<'i>(
         // vclocks). Except that we can't do this reliably, as tarantool will
         // stop accepting incoming connections once the on_shutdown even happens.
         // This means that we can't reliably send rpc requests to instances with
-        // target grade Offline and basically there's nothing we can do about
+        // target state Offline and basically there's nothing we can do about
         // such instances.
         //
         // Therefore basically the user should never expect that turning off a
@@ -101,9 +101,9 @@ pub(super) fn action_plan<'i>(
         // the replication leadership to another instance.
 
         ////////////////////////////////////////////////////////////////////////
-        // update instance's current grade
+        // update instance's current state
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(*target_grade);
+            .with_current_state(*target_state);
         return Ok(Downgrade { req }.into());
     }
 
@@ -128,11 +128,11 @@ pub(super) fn action_plan<'i>(
         .iter()
         // TODO: find all such instances in a given replicaset,
         // not just the first one
-        .find(|instance| has_grades!(instance, Offline -> Online) || instance.is_reincarnated());
+        .find(|instance| has_states!(instance, Offline -> Online) || instance.is_reincarnated());
     if let Some(Instance {
         instance_id,
         replicaset_id,
-        target_grade,
+        target_state,
         ..
     }) = to_replicate
     {
@@ -158,7 +158,7 @@ pub(super) fn action_plan<'i>(
             .expect("replicaset info should be available at this point");
         let master_id = &replicaset.current_master_id;
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(Grade::new(Replicated, target_grade.incarnation));
+            .with_current_state(State::new(Replicated, target_state.incarnation));
 
         return Ok(Replication {
             targets,
@@ -253,7 +253,7 @@ pub(super) fn action_plan<'i>(
     // update current vshard config
     if current_vshard_config != target_vshard_config {
         let targets = maybe_responding(instances)
-            .filter(|instance| instance.current_grade.variant >= Replicated)
+            .filter(|instance| instance.current_state.variant >= Replicated)
             .map(|instance| &instance.instance_id)
             .collect();
         let rpc = rpc::sharding::Request {
@@ -295,10 +295,10 @@ pub(super) fn action_plan<'i>(
     // to online
     let to_online = instances
         .iter()
-        .find(|instance| has_grades!(instance, Replicated -> Online));
+        .find(|instance| has_states!(instance, Replicated -> Online));
     if let Some(Instance {
         instance_id,
-        target_grade,
+        target_state,
         ..
     }) = to_online
     {
@@ -318,7 +318,7 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_grade(Grade::new(Online, target_grade.incarnation));
+            .with_current_state(State::new(Online, target_state.incarnation));
         return Ok(ToOnline {
             target,
             rpc,
@@ -347,7 +347,7 @@ pub(super) fn action_plan<'i>(
                 targets.push(&r.current_master_id);
                 continue;
             };
-            if has_grades!(master, Expelled -> *) {
+            if has_states!(master, Expelled -> *) {
                 continue;
             }
             targets.push(&master.instance_id);

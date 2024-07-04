@@ -26,9 +26,9 @@ use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
 use crate::address::Address;
-use crate::instance::Grade;
-use crate::instance::GradeVariant::*;
 use crate::instance::Instance;
+use crate::instance::State;
+use crate::instance::StateVariant::*;
 use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
@@ -729,8 +729,8 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         None,
         config.instance.instance_id.clone(),
         config.instance.replicaset_id.clone(),
-        Grade::new(Offline, 0),
-        Grade::new(Offline, 0),
+        State::new(Offline, 0),
+        State::new(Offline, 0),
         config.instance.failure_domain(),
         my_tier_name,
     );
@@ -956,7 +956,7 @@ fn postjoin(
         tlog!(Error, "failed setting on_shutdown trigger: {e}");
     }
 
-    // We will shut down, if we don't receive a confirmation of target grade
+    // We will shut down, if we don't receive a confirmation of target state
     // change from leader before this time.
     let activation_deadline = Instant::now_fiber().saturating_add(Duration::from_secs(10));
 
@@ -1003,7 +1003,7 @@ fn postjoin(
             instance.instance_id
         );
         let req = update_instance::Request::new(instance.instance_id, cluster_id)
-            .with_target_grade(Online)
+            .with_target_state(Online)
             .with_failure_domain(config.instance.failure_domain());
         let fut = rpc::network_call(&leader_address, &req).timeout(activation_deadline - now);
         match fiber::block_on(fut) {
@@ -1034,14 +1034,14 @@ fn postjoin(
         }
     }
 
-    // Wait for target grade to change to Online, so that sentinel doesn't send
+    // Wait for target state to change to Online, so that sentinel doesn't send
     // a redundant update instance request.
     // Otherwise incarnations grow by 2 every time.
     let timeout = Duration::from_secs(10);
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
         if let Ok(instance) = storage.instances.get(&raft_id) {
-            if has_grades!(instance, * -> Online) {
+            if has_states!(instance, * -> Online) {
                 tlog!(Info, "self-activated successfully");
                 break;
             }
