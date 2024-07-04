@@ -44,7 +44,7 @@ picodata> pico.help("help")
 | [pico.expel()](#pico_expel) | [Контролируемый вывод](cli.md#expel) инстанса из кластера.
 | [pico.grant_privilege()](#pico_grant_privilege) | Назначение привилегии пользователю или роли.
 | [pico.help()](#pico_help) | Доступ к встроенной справочной системе.
-| [pico.instance_info()](#pico_instance_info) | Получение информации об инстансе (идентификаторы, уровни ([grade](../overview/glossary.md#grade)) и прочее).
+| [pico.instance_info()](#pico_instance_info) | Получение информации об инстансе (идентификаторы, уровни ([state](../overview/glossary.md#state)) и прочее).
 | [pico.raft_compact_log()](#pico_raft_compact_log) | [Компактизация](../overview/glossary.md#raft_log_compaction) raft-журнала c удалением указанного числа наиболее старых записей.
 | [pico.raft_get_index()](#pico_raft_get_index) | Получение текущего примененного индекса raft-журнала.
 | [pico.raft_log()](#pico_raft_log) | Чтение содержимого raft-журнала.
@@ -705,10 +705,10 @@ function instance_info(instance)
     - `instance_uuid` (_string_)
     - `replicaset_id `(_string_)
     - `replicaset_uuid` (_string_)
-    - `current_grade` (_table_).
+    - `current_state` (_table_).
       `variant` (_string_), варианты: `'Offline'` | `'Online'` | `'Expelled'`;
       `incarnation` (_number_)
-    - `target_grade` (_table_).
+    - `target_state` (_table_).
       `variant` (_string_), варианты: `'Offline'` | `'Replicated'` | `'ShardingInitialized'` | `'Online'` | `'Expelled'`;
       `incarnation`(_number_),
 
@@ -723,10 +723,10 @@ instance_id: i1
 instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
 replicaset_id: r1
 replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
-current_grade:
+current_state:
   variant: Online
   incarnation: 26
-target_grade:
+target_state:
   variant: Online
   incarnation: 26
 ...

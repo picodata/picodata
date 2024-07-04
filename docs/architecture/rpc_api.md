@@ -167,10 +167,10 @@ fn proc_instance_info(instance_id) -> InstanceInfo
     - `replicaset_id`: (MP_STR)
     - `replicaset_uuid`: (MP_STR)
     - `cluster_id`: (MP_STR)
-    - `current_grade`: (MP_MAP [`Grade`](../overview/glossary.md#grade)), текущее состояние инстанса
+    - `current_state`: (MP_MAP [`State`](../overview/glossary.md#state)), текущее состояние инстанса
       <br>формат: `MP_MAP { variant = MP_STR, incarnation = MP_UINT}`
       <br>возможные значения `variant`: `Offline`, `Replicated`, `Online`, `Expelled`
-    - `target_grade`: (MP_MAP [`Grade`](../overview/glossary.md#grade)), целевое состояние инстанса
+    - `target_state`: (MP_MAP [`State`](../overview/glossary.md#state)), целевое состояние инстанса
     - `tier`: (MP_STR)
 
 --------------------------------------------------------------------------------
@@ -724,7 +724,7 @@ fn proc_raft_join(cluster_id, instance_id, replicaset_id, advertise_address, fai
 ### .proc_update_instance {: #proc_update_instance }
 
 ```rust
-fn proc_update_instance(instance_id, cluster_id, current_grade, target_grade, failure_domain, dont_retry)
+fn proc_update_instance(instance_id, cluster_id, current_state, target_state, failure_domain, dont_retry)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
@@ -733,7 +733,7 @@ fn proc_update_instance(instance_id, cluster_id, current_grade, target_grade, fa
 Обновляет информацию об указанном инстансе.
 
 Этy хранимую процедуру вызывают инстансы Picodata, уже состоящие в кластере,
-чтобы обновить [свое целевое состояние](../overview/glossary.md#grade) при
+чтобы обновить [свое целевое состояние](../overview/glossary.md#state) при
 перезапуске или в рамках [штатного выключения](../architecture/topology_management.md/#graceful_shutdown).
 
 Лидер, получив такой запрос, проверяет консистентность параметров (например, что
@@ -748,8 +748,8 @@ fn proc_update_instance(instance_id, cluster_id, current_grade, target_grade, fa
 
 - `instance_id`: (MP_STR),
 - `cluster_id`: (MP_STR),
-- `current_grade`: (MP_MAP `Grade`), текущее состояние инстанса
-- `target_grade`: (MP_STR `GradeVariant`), целевое состояние инстанса
+- `current_state`: (MP_MAP `State`), текущее состояние инстанса
+- `target_state`: (MP_STR `StateVariant`), целевое состояние инстанса
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain),
 - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
 

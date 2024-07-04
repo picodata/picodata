@@ -59,7 +59,7 @@
      * (auth_ok, auth_fail)
 
 - [x] запуск и остановка СУБД с указанием причины остановки;
-     * (init_audit, local_startup, local_shutdown, change_current_grade)
+     * (init_audit, local_startup, local_shutdown, change_current_state)
 
 - [x] изменение конфигурации СУБД;
      * (join_instance, expel_instance)
@@ -138,20 +138,20 @@ new field: user == initiator
 }
 ```
 
-### change_current_grade
+### change_current_state
 
-Изменение текущего [грейда](../overview/glossary.md#grade) инстанса.
+Изменение текущего [стейта](../overview/glossary.md#state) инстанса.
 
 ```json
 {
-     "title": "change_current_grade",
-     "message": "current grade
+     "title": "change_current_state",
+     "message": "current state
           of instance `<instance_id>`
-          changed to <new_grade>",
+          changed to <new_state>",
      "severity": "medium",
      "instance_id": ...,
-     // TODO: "old_grade": ...,
-     "new_grade": ...,
+     // TODO: "old_state": ...,
+     "new_state": ...,
      "raft_id": ...,
      ...
 }
@@ -175,20 +175,20 @@ new field: user == initiator
 }
 ```
 
-### change_target_grade
+### change_target_state
 
-Изменение целевого [грейда](../overview/glossary.md#grade) инстанса.
+Изменение целевого [стейта](../overview/glossary.md#state) инстанса.
 
 ```json
 {
-     "title": "change_target_grade",
-     "message": "target grade
+     "title": "change_target_state",
+     "message": "target state
           of instance `<instance_id>`
-          changed to <new_grade>",
+          changed to <new_state>",
      "severity": "low",
      "instance_id": ...,
-     // TODO: "old_grade": ...,
-     "new_grade": ...,
+     // TODO: "old_state": ...,
+     "new_state": ...,
      "raft_id": ...,
      ...
 }
