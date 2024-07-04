@@ -2,6 +2,7 @@ import io
 import json
 import os
 import re
+import filecmp
 import shutil
 import socket
 import sys
@@ -1874,6 +1875,9 @@ def binary_path(cargo_build: None) -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
+    # This file is huge, hide it from pytest output in case there's an exception
+    # somewhere in this function.
+    del metadata
 
     profile = build_profile()
     # Note: rust names the debug profile `dev`, but puts the binaries into the
@@ -1906,6 +1910,8 @@ def binary_path(cargo_build: None) -> str:
         f"{test_dir}/testplug/testplug_sdk/libtestplug.{ext}",
     ]
     for destination in destinations:
+        if os.path.exists(destination) and filecmp.cmp(source, destination):
+            continue
         eprint(f"Copying '{source}' to '{destination}'")
         shutil.copyfile(source, destination)
 
