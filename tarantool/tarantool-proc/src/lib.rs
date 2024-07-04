@@ -869,7 +869,7 @@ pub fn derive_decode(input: TokenStream) -> TokenStream {
     );
     let expanded = quote! {
         // The generated impl.
-        impl #impl_generics #tarantool_crate::msgpack::Decode for #name #ty_generics #where_clause {
+        impl #impl_generics #tarantool_crate::msgpack::Decode<'_> for #name #ty_generics #where_clause {
             fn decode(r: &mut &[u8], context: &#tarantool_crate::msgpack::Context)
                 -> std::result::Result<Self, #tarantool_crate::msgpack::DecodeError>
             {

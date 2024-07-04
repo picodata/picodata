@@ -137,6 +137,7 @@
   but `tarantool::error::Error`, `Box<dyn Error>` & even `String` still work.
 - `tarantool::set_error!` macro now returns `()` instead of `-1_i32` as it did previously
 - `tarantool::tuple::Tuple::decode` does not support partial decoding anymore. Also any methods/functions which use rpm_serde have same effect.
+- `tarantool::msgpack::encode::Decode` now requires a lifetime parameter.
 
 ### Added (picodata)
 

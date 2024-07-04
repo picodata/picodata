@@ -304,8 +304,8 @@ macro_rules! define_str_enum {
             }
         }
 
-        impl $crate::msgpack::Decode for $enum {
-            fn decode(r: &mut &[u8], _context: &$crate::msgpack::Context) -> std::result::Result<Self, $crate::msgpack::DecodeError> {
+        impl<'de> $crate::msgpack::Decode<'de> for $enum {
+            fn decode(r: &mut &'de [u8], _context: &$crate::msgpack::Context) -> std::result::Result<Self, $crate::msgpack::DecodeError> {
                 use $crate::msgpack::rmp;
 
                 let len = rmp::decode::read_str_len(r)

@@ -38,7 +38,7 @@ pub fn encode(value: &impl Encode) -> Vec<u8> {
 ///
 /// See [`Decode`].
 #[inline(always)]
-pub fn decode<T: Decode>(mut bytes: &[u8]) -> Result<T, DecodeError> {
+pub fn decode<'de, T: Decode<'de>>(mut bytes: &'de [u8]) -> Result<T, DecodeError> {
     T::decode(&mut bytes, &Context::DEFAULT)
 }
 
@@ -162,8 +162,8 @@ pub enum StructStyle {
 /// assert_eq!(foo, Foo {a: 1, b: 3});
 /// ```
 // TODO: Use this trait instead of `tuple::Decode`, replace derive `Deserialize` with derive `Decode`
-pub trait Decode: Sized {
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError>;
+pub trait Decode<'de>: Sized {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError>;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -255,40 +255,40 @@ impl DecodeError {
 // impl Decode
 ////////////////////////////////////////////////////////////////////////////////
 
-impl Decode for () {
+impl<'de> Decode<'de> for () {
     #[inline(always)]
-    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
         rmp::decode::read_nil(r).map_err(DecodeError::from_vre::<Self>)?;
         Ok(())
     }
 }
 
-impl<T> Decode for Box<T>
+impl<'de, T> Decode<'de> for Box<T>
 where
-    T: Decode,
+    T: Decode<'de>,
 {
     #[inline(always)]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         T::decode(r, context).map(Box::new)
     }
 }
 
-impl<T> Decode for std::rc::Rc<T>
+impl<'de, T> Decode<'de> for std::rc::Rc<T>
 where
-    T: Decode,
+    T: Decode<'de>,
 {
     #[inline(always)]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         T::decode(r, context).map(std::rc::Rc::new)
     }
 }
 
-impl<T> Decode for Option<T>
+impl<'de, T> Decode<'de> for Option<T>
 where
-    T: Decode,
+    T: Decode<'de>,
 {
     #[inline(always)]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         // In case input is empty, don't return `None` but call the T::decode.
         // This will allow some users to handle empty input the way they want,
         // if they want to.
@@ -301,12 +301,12 @@ where
     }
 }
 
-impl<T> Decode for Vec<T>
+impl<'de, T> Decode<'de> for Vec<T>
 where
-    T: Decode,
+    T: Decode<'de>,
 {
     #[inline]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut res = Vec::with_capacity(n);
         for i in 0..n {
@@ -320,12 +320,12 @@ where
     }
 }
 
-impl<T> Decode for HashSet<T>
+impl<'de, T> Decode<'de> for HashSet<T>
 where
-    T: Decode + Hash + Eq,
+    T: Decode<'de> + Hash + Eq,
 {
     #[inline]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut res = HashSet::with_capacity(n);
         for i in 0..n {
@@ -337,12 +337,12 @@ where
     }
 }
 
-impl<T> Decode for BTreeSet<T>
+impl<'de, T> Decode<'de> for BTreeSet<T>
 where
-    T: Decode + Ord + Eq,
+    T: Decode<'de> + Ord + Eq,
 {
     #[inline]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut res = BTreeSet::new();
         for i in 0..n {
@@ -354,11 +354,11 @@ where
     }
 }
 
-impl<T, const N: usize> Decode for [T; N]
+impl<'de, T, const N: usize> Decode<'de> for [T; N]
 where
-    T: Decode,
+    T: Decode<'de>,
 {
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_array_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         if n != N {
             return Err(DecodeError::new::<Self>(format!(
@@ -398,14 +398,14 @@ where
     }
 }
 
-impl<'a, T> Decode for Cow<'a, T>
+impl<'a, 'de, T> Decode<'de> for Cow<'a, T>
 where
-    T: Decode + ToOwned + ?Sized,
+    T: Decode<'de> + ToOwned + ?Sized,
 {
     // Clippy doesn't notice the type difference
     #[allow(clippy::redundant_clone)]
     #[inline(always)]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         Ok(Cow::Owned(
             <T as Decode>::decode(r, context)
                 .map_err(DecodeError::new::<Self>)?
@@ -414,9 +414,9 @@ where
     }
 }
 
-impl Decode for String {
+impl<'de> Decode<'de> for String {
     #[inline]
-    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_str_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         let mut buf = vec![0; n];
         r.read_exact(&mut buf).map_err(DecodeError::new::<Self>)?;
@@ -424,13 +424,13 @@ impl Decode for String {
     }
 }
 
-impl<K, V> Decode for BTreeMap<K, V>
+impl<'de, K, V> Decode<'de> for BTreeMap<K, V>
 where
-    K: Decode + Ord,
-    V: Decode,
+    K: Decode<'de> + Ord,
+    V: Decode<'de>,
 {
     #[inline]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_map_len(r).map_err(DecodeError::new::<Self>)?;
         let mut res = BTreeMap::new();
         for i in 0..n {
@@ -444,13 +444,13 @@ where
     }
 }
 
-impl<K, V> Decode for HashMap<K, V>
+impl<'de, K, V> Decode<'de> for HashMap<K, V>
 where
-    K: Decode + Ord + Hash,
-    V: Decode,
+    K: Decode<'de> + Ord + Hash,
+    V: Decode<'de>,
 {
     #[inline]
-    fn decode(r: &mut &[u8], context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_map_len(r).map_err(DecodeError::from_vre::<Self>)?;
         let mut res = HashMap::with_capacity(n as _);
         for i in 0..n {
@@ -464,9 +464,9 @@ where
     }
 }
 
-impl Decode for char {
+impl<'de> Decode<'de> for char {
     #[inline(always)]
-    fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+    fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
         let n = rmp::decode::read_str_len(r).map_err(DecodeError::from_vre::<Self>)? as usize;
         if n == 0 {
             return Err(DecodeError::new::<char>(
@@ -497,9 +497,9 @@ impl Decode for char {
 macro_rules! impl_simple_int_decode {
     ($(($t:ty, $f:tt))+) => {
         $(
-            impl Decode for $t{
+            impl<'de> Decode<'de> for $t{
                 #[inline(always)]
-                fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+                fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::from_nvre::<Self>)?;
                     Ok(value)
@@ -512,9 +512,9 @@ macro_rules! impl_simple_int_decode {
 macro_rules! impl_simple_decode {
     ($(($t:ty, $f:tt))+) => {
         $(
-            impl Decode for $t{
+            impl<'de> Decode<'de> for $t{
                 #[inline(always)]
-                fn decode(r: &mut &[u8], _context: &Context) -> Result<Self, DecodeError> {
+                fn decode(r: &mut &'de [u8], _context: &Context) -> Result<Self, DecodeError> {
                     let value = rmp::decode::$f(r)
                         .map_err(DecodeError::from_vre::<Self>)?;
                     Ok(value)
