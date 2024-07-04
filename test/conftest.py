@@ -47,7 +47,6 @@ from pathlib import Path
 # pub const INVALID_ID: u64 = 0;
 INVALID_RAFT_ID = 0
 BASE_HOST = "127.0.0.1"
-BASE_PORT = 3300
 PORT_RANGE = 200
 METRICS_PORT = 7500
 
@@ -85,6 +84,13 @@ def pytest_addoption(parser: pytest.Parser):
         action="store_true",
         default=False,
         help="Whether to run Web UI tests",
+    )
+    parser.addoption(
+        "--base-port",
+        type=int,
+        action="store",
+        default=3300,
+        help="Base socket port which determines the range of ports used for picodata instances spawned for testing.",  # noqa: E501
     )
 
 
@@ -125,7 +131,7 @@ class PortDistributor:
 
 
 @pytest.fixture(scope="session")
-def port_distributor(xdist_worker_number: int) -> PortDistributor:
+def port_distributor(xdist_worker_number: int, pytestconfig) -> PortDistributor:
     """
     Return pair (base_port, max_port) available for current pytest subprocess.
     Ensures that all ports in this range are not in use.
@@ -135,7 +141,8 @@ def port_distributor(xdist_worker_number: int) -> PortDistributor:
     """
     assert isinstance(xdist_worker_number, int)
     assert xdist_worker_number >= 0
-    base_port = BASE_PORT + xdist_worker_number * PORT_RANGE
+    global_base_port = pytestconfig.getoption("--base-port")
+    base_port = global_base_port + xdist_worker_number * PORT_RANGE
 
     max_port = base_port + PORT_RANGE
     assert max_port <= 65535
