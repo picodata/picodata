@@ -468,10 +468,8 @@ impl Portal {
                     let rows = Rows::new(taken, self.describe.row_info());
                     if stored_rows.len() == 0 {
                         self.state = PortalState::Finished(None);
-                        let row_count = rows.row_count();
                         return Ok(ExecuteResult::FinishedDql {
                             rows,
-                            row_count,
                             tag: self.describe.command_tag(),
                         });
                     }

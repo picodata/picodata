@@ -1,8 +1,8 @@
-use crate::pgproto::backend::describe::CommandTag;
-use crate::pgproto::error::PgResult;
-use crate::pgproto::value::PgValue;
-use pgwire::api::results::{DataRowEncoder, FieldInfo};
-use pgwire::messages::data::{DataRow, RowDescription};
+use crate::pgproto::{backend::describe::CommandTag, error::PgResult, value::PgValue};
+use pgwire::{
+    api::results::{DataRowEncoder, FieldInfo},
+    messages::data::{DataRow, RowDescription},
+};
 use std::vec::IntoIter;
 
 #[derive(Debug)]
@@ -49,18 +49,22 @@ impl Rows {
 #[derive(Debug)]
 pub enum ExecuteResult {
     AclOrDdl {
+        /// Tag of the command.
         tag: CommandTag,
     },
     Dml {
+        /// Tag of the command.
         tag: CommandTag,
         row_count: usize,
     },
     SuspendedDql {
+        /// Rows we'll send to the client.
         rows: Rows,
     },
     FinishedDql {
-        rows: Rows,
+        /// Tag of the command.
         tag: CommandTag,
-        row_count: usize,
+        /// Rows we'll send to the client.
+        rows: Rows,
     },
 }
