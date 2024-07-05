@@ -208,19 +208,16 @@ impl MetadataColumn {
     }
 }
 
-pub fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
+fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
     match sbroad {
-        &SbroadType::Integer | &SbroadType::Unsigned => Ok(Type::INT8),
-        &SbroadType::String => Ok(Type::TEXT),
-        &SbroadType::Boolean => Ok(Type::BOOL),
-        &SbroadType::Double => Ok(Type::FLOAT8),
-        &SbroadType::Decimal => Ok(Type::NUMERIC),
-        &SbroadType::Uuid => Ok(Type::UUID),
-        // Currently, we cannot infer the type of array values, so we convert them into text
-        // and send the resulting array of text values, i. e. TEXT_ARRAY.
-        &SbroadType::Array => Ok(Type::TEXT_ARRAY),
-        &SbroadType::Map => Ok(Type::JSON),
-        &SbroadType::Any => Ok(Type::ANY),
+        SbroadType::Integer | SbroadType::Unsigned => Ok(Type::INT8),
+        SbroadType::Map | SbroadType::Array => Ok(Type::JSON),
+        SbroadType::String => Ok(Type::TEXT),
+        SbroadType::Boolean => Ok(Type::BOOL),
+        SbroadType::Double => Ok(Type::FLOAT8),
+        SbroadType::Decimal => Ok(Type::NUMERIC),
+        SbroadType::Uuid => Ok(Type::UUID),
+        SbroadType::Any => Ok(Type::ANY),
         _ => Err(PgError::FeatureNotSupported(format!(
             "unknown column type \'{}\'",
             sbroad

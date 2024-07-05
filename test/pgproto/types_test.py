@@ -333,7 +333,7 @@ def test_map(postgres: Postgres):
     # text json parameters should throw an error
     with pytest.raises(
         psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: type json",
+        match="feature is not supported: cannot encode json: .*",
     ):
         cur = conn.execute(
             """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %t; """,
@@ -343,7 +343,7 @@ def test_map(postgres: Postgres):
     # text jsonb parameters should throw an error
     with pytest.raises(
         psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: type jsonb",
+        match="feature is not supported: cannot encode json: .*",
     ):
         cur = conn.execute(
             """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %t; """,
@@ -353,7 +353,7 @@ def test_map(postgres: Postgres):
     # binary json parameters should throw an error
     with pytest.raises(
         psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: type json",
+        match="feature is not supported: cannot encode json: .*",
     ):
         cur = conn.execute(
             """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
@@ -363,7 +363,7 @@ def test_map(postgres: Postgres):
     # binary jsonb parameters should throw an error
     with pytest.raises(
         psycopg.errors.FeatureNotSupported,
-        match="feature is not supported: type jsonb",
+        match="feature is not supported: cannot encode json: .*",
     ):
         cur = conn.execute(
             """ SELECT \"distribution\" FROM \"_pico_table\" WHERE \"distribution\" = %b; """,
