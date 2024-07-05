@@ -1,30 +1,37 @@
-use self::describe::{PortalDescribe, StatementDescribe};
-use self::result::ExecuteResult;
-use self::storage::{with_portals_mut, Portal, Statement, PG_PORTALS, PG_STATEMENTS};
-use super::client::ClientId;
-use super::error::{PgError, PgResult};
-use crate::pgproto::value::{Format, PgValue, RawFormat};
-use crate::schema::ADMIN_ID;
-use crate::sql::otm::TracerKind;
-use crate::sql::router::RouterRuntime;
-use crate::sql::with_tracer;
+use self::{
+    describe::{PortalDescribe, StatementDescribe},
+    result::ExecuteResult,
+    storage::{with_portals_mut, Portal, Statement, PG_PORTALS, PG_STATEMENTS},
+};
+use super::{
+    client::ClientId,
+    error::{PgError, PgResult},
+};
 use crate::traft::error::Error;
+use crate::{
+    pgproto::value::{FieldFormat, PgValue, RawFormat},
+    schema::ADMIN_ID,
+    sql::{otm::TracerKind, router::RouterRuntime, with_tracer},
+};
 use bytes::Bytes;
-use opentelemetry::sdk::trace::Tracer;
-use opentelemetry::Context;
+use opentelemetry::{sdk::trace::Tracer, Context};
 use postgres_types::Oid;
-use sbroad::executor::engine::helpers::normalize_name_for_space_api;
-use sbroad::executor::engine::{QueryCache, Router, TableVersionMap};
-use sbroad::executor::lru::Cache;
-use sbroad::frontend::Ast;
-use sbroad::ir::value::Value;
-use sbroad::ir::Plan as IrPlan;
-use sbroad::otm::{query_id, query_span, OTM_CHAR_LIMIT};
-use sbroad::utils::MutexLike;
+use sbroad::{
+    executor::{
+        engine::{helpers::normalize_name_for_space_api, QueryCache, Router, TableVersionMap},
+        lru::Cache,
+    },
+    frontend::Ast,
+    ir::{value::Value, Plan as IrPlan},
+    otm::{query_id, query_span, OTM_CHAR_LIMIT},
+    utils::MutexLike,
+};
 use smol_str::ToSmolStr;
-use std::iter::zip;
-use std::rc::Rc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::{
+    iter::zip,
+    rc::Rc,
+    sync::atomic::{AtomicU32, Ordering},
+};
 use tarantool::session::with_su;
 
 mod pgproc;
@@ -36,7 +43,7 @@ pub mod result;
 fn decode_parameter_values(
     params: Vec<Option<Bytes>>,
     param_oids: &[Oid],
-    formats: &[Format],
+    formats: &[FieldFormat],
 ) -> PgResult<Vec<Value>> {
     if params.len() != param_oids.len() {
         return Err(PgError::ProtocolViolation(format!(
@@ -58,16 +65,16 @@ fn decode_parameter_values(
 /// Map any encoding format to per-column or per-parameter format just like pg does it in
 /// [exec_bind_message](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/postgres.c#L1840-L1845)
 /// or [PortalSetResultFormat](https://github.com/postgres/postgres/blob/5c7038d70bb9c4d28a80b0a2051f73fafab5af3f/src/backend/tcop/pquery.c#L623).
-fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<Format>> {
+fn prepare_encoding_format(formats: &[RawFormat], n: usize) -> PgResult<Vec<FieldFormat>> {
     if formats.len() == n {
         // format specified for each column
-        formats.iter().map(|i| Format::try_from(*i)).collect()
+        Ok(formats.iter().copied().map(FieldFormat::from).collect())
     } else if formats.len() == 1 {
         // single format specified, use it for each column
-        Ok(vec![Format::try_from(formats[0])?; n])
+        Ok(vec![FieldFormat::from(formats[0]); n])
     } else if formats.is_empty() {
         // no format specified, use the default for each column
-        Ok(vec![Format::Text; n])
+        Ok(vec![FieldFormat::Text; n])
     } else {
         Err(PgError::ProtocolViolation(format!(
             "got {} format codes for {} items",
@@ -88,7 +95,7 @@ pub fn bind(
     stmt_name: String,
     portal_name: String,
     params: Vec<Value>,
-    result_format: Vec<Format>,
+    result_format: Vec<FieldFormat>,
     traceable: bool,
 ) -> PgResult<()> {
     let key = (client_id, stmt_name.into());
@@ -276,7 +283,7 @@ impl Backend {
         let simple_query = || {
             close_unnamed();
             self.parse(None, sql, vec![])?;
-            self.bind(None, None, vec![], &[], &[Format::Text as RawFormat])?;
+            self.bind(None, None, vec![], &[], &[FieldFormat::Text as RawFormat])?;
             self.execute(None, -1)
         };
 

@@ -1,14 +1,9 @@
 use crate::pgproto::error::{DecodingError, EncodingError, PgError, PgResult};
 use bytes::{Bytes, BytesMut};
-use pgwire::{
-    api::results::{DataRowEncoder, FieldFormat},
-    error::PgWireResult,
-    types::ToSqlText,
-};
+use pgwire::{api::results::DataRowEncoder, error::PgWireResult, types::ToSqlText};
 use postgres_types::{FromSql, IsNull, Oid, ToSql, Type};
 use sbroad::ir::value::{LuaValue, Value as SbroadValue};
 use serde::de::DeserializeOwned;
-use serde_repr::{Deserialize_repr, Serialize_repr};
 use smol_str::{StrExt, ToSmolStr};
 use std::{
     error::Error,
@@ -18,33 +13,7 @@ use std::{
 
 /// This type is used to send Format over the wire.
 pub type RawFormat = i16;
-
-#[derive(Debug, Clone, Copy, Default, Serialize_repr, Deserialize_repr)]
-#[repr(i16)]
-pub enum Format {
-    #[default]
-    Text = 0,
-    Binary = 1,
-}
-
-impl From<&Format> for FieldFormat {
-    fn from(value: &Format) -> Self {
-        Self::from(*value as i16)
-    }
-}
-
-impl TryFrom<RawFormat> for Format {
-    type Error = PgError;
-    fn try_from(value: RawFormat) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Format::Text),
-            1 => Ok(Format::Binary),
-            _ => Err(PgError::FeatureNotSupported(format!(
-                "encoding type {value}"
-            ))),
-        }
-    }
-}
+pub type FieldFormat = pgwire::api::results::FieldFormat;
 
 fn bool_from_str(s: &str) -> PgResult<bool> {
     let s = s.to_lowercase_smolstr();
@@ -349,7 +318,7 @@ impl PgValue {
         })
     }
 
-    pub fn decode(bytes: Option<&Bytes>, oid: Oid, format: Format) -> PgResult<Self> {
+    pub fn decode(bytes: Option<&Bytes>, oid: Oid, format: FieldFormat) -> PgResult<Self> {
         let ty = Type::from_oid(oid)
             .ok_or_else(|| PgError::FeatureNotSupported(format!("unknown oid: {oid}")))?;
 
@@ -358,8 +327,8 @@ impl PgValue {
         };
 
         match format {
-            Format::Binary => Self::decode_binary(bytes, ty),
-            Format::Text => Self::decode_text(bytes, ty),
+            FieldFormat::Binary => Self::decode_binary(bytes, ty),
+            FieldFormat::Text => Self::decode_text(bytes, ty),
         }
     }
 }

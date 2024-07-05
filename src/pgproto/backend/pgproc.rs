@@ -7,7 +7,7 @@ use crate::pgproto::{
     backend,
     client::ClientId,
     error::{EncodingError, PgResult},
-    value::Format,
+    value::FieldFormat,
 };
 use ::tarantool::proc;
 use postgres_types::Oid;
@@ -20,7 +20,7 @@ struct BindArgs {
     stmt_name: String,
     portal_name: String,
     params: Vec<Value>,
-    encoding_format: Vec<Format>,
+    encoding_format: Vec<FieldFormat>,
     traceable: bool,
 }
 
@@ -46,12 +46,9 @@ impl<'de> Deserialize<'de> for BindArgs {
             .unwrap_or_default()
             .into_iter()
             .map(Value::from)
-            .collect::<Vec<Value>>();
-
-        let format: Vec<_> = encoding_format
-            .into_iter()
-            .map(|raw| Format::try_from(raw).unwrap_or_default())
             .collect();
+
+        let format = encoding_format.into_iter().map(FieldFormat::from).collect();
 
         Ok(Self {
             id,

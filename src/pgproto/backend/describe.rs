@@ -1,23 +1,31 @@
-use crate::pgproto::error::{PgError, PgResult};
-use crate::pgproto::value::Format;
-use pgwire::api::results::FieldInfo;
-use pgwire::messages::data::{FieldDescription, RowDescription};
+use crate::pgproto::{
+    error::{PgError, PgResult},
+    value::{FieldFormat, RawFormat},
+};
+use pgwire::{
+    api::results::FieldInfo,
+    messages::data::{FieldDescription, RowDescription},
+};
 use postgres_types::{Oid, Type};
-use sbroad::errors::{Entity, SbroadError};
-use sbroad::ir::acl::{Acl, GrantRevokeType};
-use sbroad::ir::block::Block;
-use sbroad::ir::ddl::Ddl;
-use sbroad::ir::expression::Expression;
-use sbroad::ir::operator::Relational;
-use sbroad::ir::relation::Type as SbroadType;
-use sbroad::ir::{Node, Plan};
+use sbroad::{
+    errors::{Entity, SbroadError},
+    ir::{
+        acl::{Acl, GrantRevokeType},
+        block::Block,
+        ddl::Ddl,
+        expression::Expression,
+        operator::Relational,
+        relation::Type as SbroadType,
+        Node, Plan,
+    },
+};
 use serde::Serialize;
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::collections::HashMap;
-use std::iter::zip;
-use std::os::raw::c_int;
-use tarantool::proc::{Return, ReturnMsgpack};
-use tarantool::tuple::FunctionCtx;
+use std::{collections::HashMap, iter::zip, os::raw::c_int};
+use tarantool::{
+    proc::{Return, ReturnMsgpack},
+    tuple::FunctionCtx,
+};
 
 #[derive(Debug, Clone, Default, Deserialize_repr, Serialize_repr)]
 #[repr(u8)]
@@ -255,7 +263,7 @@ fn explain_output_format() -> Vec<MetadataColumn> {
     vec![MetadataColumn::new("QUERY PLAN".into(), Type::TEXT)]
 }
 
-fn field_description(name: String, ty: Type, format: Format) -> FieldDescription {
+fn field_description(name: String, ty: Type, format: FieldFormat) -> FieldDescription {
     // ** From postgres sources **
     // resorigtbl/resorigcol identify the source of the column, if it is a
     // simple reference to a column of a base table (or view).  If it is not
@@ -279,7 +287,7 @@ fn field_description(name: String, ty: Type, format: Format) -> FieldDescription
         id,
         len,
         typemod,
-        format as i16,
+        format as RawFormat,
     )
 }
 
@@ -345,7 +353,9 @@ impl Describe {
                 let row_description = self
                     .metadata
                     .iter()
-                    .map(|col| field_description(col.name.clone(), col.ty.clone(), Format::Text))
+                    .map(|col| {
+                        field_description(col.name.clone(), col.ty.clone(), FieldFormat::Text)
+                    })
                     .collect();
                 Some(RowDescription::new(row_description))
             }
@@ -385,15 +395,28 @@ impl StatementDescribe {
 pub struct PortalDescribe {
     #[serde(flatten)]
     pub describe: Describe,
-    pub output_format: Vec<Format>,
+    #[serde(serialize_with = "PortalDescribe::serialize_output_format")]
+    pub output_format: Vec<FieldFormat>,
 }
 
 impl PortalDescribe {
-    pub fn new(describe: Describe, output_format: Vec<Format>) -> Self {
+    pub fn new(describe: Describe, output_format: Vec<FieldFormat>) -> Self {
         Self {
             describe,
             output_format,
         }
+    }
+
+    fn serialize_output_format<S: serde::Serializer>(
+        output_format: &[FieldFormat],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(output_format.len()))?;
+        for format in output_format.iter().copied() {
+            seq.serialize_element(&(format as RawFormat))?;
+        }
+        seq.end()
     }
 }
 
@@ -419,7 +442,7 @@ impl PortalDescribe {
         let output_format = &self.output_format;
         zip(metadata, output_format)
             .map(|(col, format)| {
-                FieldInfo::new(col.name.clone(), None, None, col.ty.clone(), format.into())
+                FieldInfo::new(col.name.clone(), None, None, col.ty.clone(), *format)
             })
             .collect()
     }

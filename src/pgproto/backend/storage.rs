@@ -2,7 +2,7 @@ use super::describe::QueryType;
 use super::describe::{Describe, PortalDescribe, StatementDescribe};
 use super::result::{ExecuteResult, Rows};
 use crate::pgproto::error::{PgError, PgResult};
-use crate::pgproto::value::{Format, PgValue};
+use crate::pgproto::value::{FieldFormat, PgValue};
 use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::traft::node;
 use ::tarantool::tuple::Tuple;
@@ -437,7 +437,11 @@ fn get_row_count_from_tuple(tuple: &Tuple) -> PgResult<usize> {
 }
 
 impl Portal {
-    pub fn new(plan: Plan, statement: Statement, output_format: Vec<Format>) -> PgResult<Self> {
+    pub fn new(
+        plan: Plan,
+        statement: Statement,
+        output_format: Vec<FieldFormat>,
+    ) -> PgResult<Self> {
         let stmt_describe = statement.describe();
         let describe = PortalDescribe::new(stmt_describe.describe.clone(), output_format);
         Ok(Self {
