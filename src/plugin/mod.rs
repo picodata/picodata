@@ -48,8 +48,8 @@ pub fn set_plugin_dir(path: &Path) {
 
 #[derive(thiserror::Error, Debug)]
 pub enum PluginError {
-    #[error("Plugin already exist")]
-    AlreadyExist,
+    #[error("Plugin `{0}` already exists")]
+    AlreadyExist(PluginIdentifier),
     #[error("Error while install the plugin")]
     InstallationAborted,
     #[error("Error while enable the plugin")]
@@ -543,7 +543,7 @@ pub fn install_plugin(
     let plugin_already_exist = node.storage.plugin.contains(&ident)?;
     match (if_not_exists, plugin_already_exist) {
         (true, true) => return Ok(()),
-        (false, true) => return Err(PluginError::AlreadyExist.into()),
+        (false, true) => return Err(PluginError::AlreadyExist(ident).into()),
         (_, _) => {}
     }
 

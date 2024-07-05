@@ -1,7 +1,10 @@
 use crate::system;
 use abi_stable::std_types::{RString, RVec};
 use abi_stable::StableAbi;
+use tarantool::datetime::Datetime;
+use tarantool::decimal::Decimal;
 use tarantool::ffi::datetime::datetime;
+use tarantool::uuid::Uuid;
 
 /// *For internal usage, don't use it in your code*.
 #[derive(StableAbi)]
@@ -152,5 +155,118 @@ impl SqlValue {
     /// Create SQL value of a [`system::tarantool::uuid::Uuid`] type.
     pub fn uuid(uuid: system::tarantool::uuid::Uuid) -> Self {
         SqlValue(SqlValueInner::Uuid(*uuid.as_bytes()))
+    }
+}
+
+impl From<bool> for SqlValue {
+    fn from(b: bool) -> Self {
+        SqlValue::boolean(b)
+    }
+}
+
+impl From<Decimal> for SqlValue {
+    fn from(dec: Decimal) -> Self {
+        SqlValue::decimal(dec)
+    }
+}
+
+macro_rules! impl_float {
+    ($t:ty) => {
+        impl From<$t> for SqlValue {
+            fn from(f: $t) -> Self {
+                SqlValue::double(f as f64)
+            }
+        }
+    };
+}
+
+impl_float!(f32);
+impl_float!(f64);
+
+impl From<Datetime> for SqlValue {
+    fn from(dt: Datetime) -> Self {
+        SqlValue::datetime(dt)
+    }
+}
+
+macro_rules! impl_int {
+    ($t:ty) => {
+        impl From<$t> for SqlValue {
+            fn from(i: $t) -> Self {
+                SqlValue::integer(i as i64)
+            }
+        }
+    };
+}
+
+impl_int!(i8);
+impl_int!(i16);
+impl_int!(i32);
+impl_int!(i64);
+impl_int!(isize);
+impl_int!(i128);
+
+impl<T: Into<SqlValue>> From<Option<T>> for SqlValue {
+    fn from(opt: Option<T>) -> Self {
+        match opt {
+            None => SqlValue::null(),
+            Some(t) => t.into(),
+        }
+    }
+}
+
+impl From<String> for SqlValue {
+    fn from(s: String) -> Self {
+        SqlValue::string(s)
+    }
+}
+
+impl From<&str> for SqlValue {
+    fn from(s: &str) -> Self {
+        SqlValue::string(s)
+    }
+}
+
+macro_rules! impl_uint {
+    ($t:ty) => {
+        impl From<$t> for SqlValue {
+            fn from(u: $t) -> Self {
+                SqlValue::unsigned(u as u64)
+            }
+        }
+    };
+}
+
+impl_uint!(u8);
+impl_uint!(u16);
+impl_uint!(u32);
+impl_uint!(u64);
+impl_uint!(usize);
+impl_uint!(u128);
+
+impl<T: Into<SqlValue>> From<Vec<T>> for SqlValue {
+    fn from(vec: Vec<T>) -> Self {
+        let array: Vec<_> = vec.into_iter().map(|el| el.into()).collect();
+        SqlValue::array(array)
+    }
+}
+
+impl<T: Into<SqlValue> + Clone> From<&[T]> for SqlValue {
+    fn from(slice: &[T]) -> Self {
+        let array: Vec<_> = slice.iter().map(|el| el.clone().into()).collect();
+        SqlValue::array(array)
+    }
+}
+
+impl<T: Into<SqlValue>, const N: usize> From<[T; N]> for SqlValue {
+    fn from(slice: [T; N]) -> Self {
+        let array: Vec<_> = slice.into_iter().map(|el| el.into()).collect();
+        SqlValue::array(array)
+    }
+}
+
+impl From<Uuid> for SqlValue {
+    fn from(uuid: Uuid) -> Self {
+        SqlValue::uuid(uuid)
     }
 }

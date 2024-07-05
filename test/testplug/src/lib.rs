@@ -3,7 +3,7 @@ use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::log::rs_log;
 use picoplugin::plugin::interface::{CallbackResult, DDL};
 use picoplugin::plugin::prelude::*;
-use picoplugin::sql::types::SqlValue;
+use picoplugin::system::tarantool::datetime::Datetime;
 use picoplugin::system::tarantool::decimal::Decimal;
 use picoplugin::system::tarantool::error::BoxError;
 use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
@@ -363,16 +363,37 @@ impl Service for Service3 {
             }
             "sql" => {
                 // DO SQL
-                picoplugin::sql::query(
+                let insert_count = picoplugin::sql::query(
                     "INSERT INTO book (id, name, cost, last_buy) VALUES (?, ?, ?, ?)",
-                    vec![
-                        SqlValue::unsigned(1),
-                        SqlValue::string("Ruslan and Ludmila"),
-                        SqlValue::decimal(Decimal::from_str("1.1").unwrap()),
-                        SqlValue::datetime(datetime!(2023-11-11 2:03:19.35421 -3).into()),
-                    ],
                 )
+                .bind(1)
+                .bind("Ruslan and Ludmila")
+                .bind(Decimal::from_str("1.1").unwrap())
+                .bind(Datetime::from(datetime!(2023-11-11 2:03:19.35421 -3)))
+                .execute()
                 .unwrap();
+                assert_eq!(insert_count, 1);
+
+                #[derive(Deserialize, Debug, PartialEq)]
+                struct Book {
+                    id: u64,
+                    name: String,
+                    cost: Decimal,
+                    last_buy: Datetime,
+                }
+                let books = picoplugin::sql::query("SELECT * from book")
+                    .fetch::<Book>()
+                    .unwrap();
+
+                assert_eq!(
+                    books,
+                    vec![Book {
+                        id: 1,
+                        name: "Ruslan and Ludmila".to_string(),
+                        cost: Decimal::from_str("1.1").unwrap(),
+                        last_buy: Datetime::from(datetime!(2023-11-11 2:03:19.35421 -3)),
+                    }]
+                );
             }
             "log" => {
                 static TARANTOOL_LOGGER: tarantool::log::TarantoolLogger =

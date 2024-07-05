@@ -2605,6 +2605,7 @@ dependencies = [
  "reqwest",
  "rmp",
  "rmp-serde",
+ "rmpv",
  "serde",
  "serde_json",
  "tarantool 5.0.0",

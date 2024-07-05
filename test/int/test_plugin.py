@@ -343,7 +343,7 @@ def test_plugin_install(cluster: Cluster):
     expected_state.assert_synced()
 
     # check install already disabled plugin without if_not_exist opt
-    with pytest.raises(ReturnError, match="Plugin already exist"):
+    with pytest.raises(ReturnError, match="Plugin `.*` already exists"):
         i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
 
     # check install already disabled plugin with if_not_exist opt
