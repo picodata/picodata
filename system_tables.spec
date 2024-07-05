@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.5.0-39-g17419fe3`.
+Описание соответствует версии Picodata `24.5.0-63-gd93aafe1`.
 
 ### _pico_table
 
@@ -116,6 +116,7 @@
 Индексы:
 
 * `_pico_replicaset_id` (unique), parts: `[replicaset_id]`
+* `_pico_replicaset_uuid` (unique), parts: `[replicaset_uuid]`
 
 ### _pico_tier
 
