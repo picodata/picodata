@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.4.0-121-g3c5abd25`.
+Описание соответствует версии Picodata `24.5.0-39-g17419fe3`.
 
 ### _pico_table
 
@@ -89,8 +89,8 @@
 * `raft_id`: (_unsigned_)
 * `replicaset_id`: (_string_)
 * `replicaset_uuid`: (_string_)
-* `current_grade`: (_array_)
-* `target_grade`: (_array_)
+* `current_state`: (_array_)
+* `target_state`: (_array_)
 * `failure_domain`: (_map_)
 * `tier`: (_string_)
 
