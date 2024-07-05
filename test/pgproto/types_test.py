@@ -291,13 +291,15 @@ def test_arrays(postgres: Postgres):
 
     # text repr case
     cur = conn.execute(
-        """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"name\" = 'admin'; """, binary=False
+        """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"name\" = 'admin'; """,
+        binary=False,
     )
     assert cur.fetchall() == [(["chap-sha1", ""],)]
 
     # bin repr case
     cur = conn.execute(
-        """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"name\" = 'admin'; """, binary=True
+        """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"name\" = 'admin'; """,
+        binary=True,
     )
     assert cur.fetchall() == [(["chap-sha1", ""],)]
 
