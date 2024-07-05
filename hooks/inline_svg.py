@@ -40,6 +40,7 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
         if "/ebnf/" not in href:
             continue
 
+        assert page.file.abs_src_path is not None
         dir_path = os.path.dirname(page.file.abs_src_path)
         svg_path = os.path.normpath(os.path.join(dir_path, href))
 

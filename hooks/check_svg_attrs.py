@@ -30,6 +30,7 @@ def on_files(files: Files, config: MkDocsConfig):
         hrefs: list[str] = re.findall(r"(?<=\()(.*?\.svg)", " ".join(images))
 
         for href in hrefs:
+            assert file.abs_src_path is not None
             dir_path = os.path.dirname(file.abs_src_path)
             svg_path = os.path.normpath(os.path.join(dir_path, href))
             if not os.path.exists(svg_path):
