@@ -4432,7 +4432,7 @@ cluster:
     )
 
     # It's ok to use global tables with sharded in single tier.
-    dql = i1.sql(
+    dql = i1.retriable_sql(
         """
             select a from "sharded_table_in_router"
             union all
