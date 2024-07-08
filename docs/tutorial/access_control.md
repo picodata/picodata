@@ -387,6 +387,7 @@ GRANT CREATE TABLE TO <grantee>
 GRANT ALTER ON TABLE <table name> TO <grantee>
 GRANT DROP ON TABLE <table name> TO <grantee>
 GRANT READ ON TABLE <table name> TO <grantee>
+GRANT WRITE ON TABLE <table name> TO <grantee>
 ```
 
 Отозвать привилегию можно SQL-командой
@@ -418,7 +419,6 @@ SQL-команду [GRANT](../reference/sql/grant.md):
 <!-- Keep in sync with #db_user -->
 ```sql
 GRANT CREATE PROCEDURE TO <grantee>
-GRANT ALTER ON PROCEDURE <procedure name> TO <grantee>
 GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
 GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
 ```
@@ -457,11 +457,8 @@ GRANT CREATE PROCEDURE TO <grantee>
 
 GRANT ALTER TABLE TO <grantee> -- alter any table
 GRANT ALTER USER TO <grantee> -- alter any user
-GRANT ALTER PROCEDURE TO <grantee> -- alter any procedure
 GRANT ALTER ON TABLE <table name> TO <grantee>
 GRANT ALTER ON USER <user name> to <grantee>
-GRANT ALTER ON PROCEDURE <procedure name> TO <grantee>
-
 GRANT DROP TABLE TO <grantee> -- drop any table
 GRANT DROP USER TO <grantee> -- drop any user
 GRANT DROP ROLE TO <grantee> -- drop any role
@@ -471,7 +468,8 @@ GRANT DROP ON USER <user name> TO <grantee>
 GRANT DROP ON ROLE <role name> TO <grantee>
 GRANT DROP ON PROCEDURE <procedure name> TO <grantee>
 
-GRANT EXECUTE ON PROCEDURE <proc name> TO <grantee>
+GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
+GRANT EXECUTE PROCEDURE TO <grantee> -- execute any procedure
 
 GRANT <role name> TO <grantee>
 ```
