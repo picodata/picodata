@@ -8,7 +8,7 @@
 Picodata поставляется для поддерживаемых операционных систем и
 предназначена для архитектуры x86_64 (в случае с macOS также
 поддерживается Apple Silicon). Для Linux мы поддерживаем собственные
-репозитории с готовыми пакетами для RHEL/CentOS 7-8 И Rocky Linux 8, РЕД
+репозитории с готовыми пакетами для Fedora 39, RHEL 8, Rocky Linux 8, РЕД
 ОС 7.3 "Муром", Astra Linux 1.7 SE, Debian 11, Ubuntu 20.04, 22.04, Alt
 Linux p10 и ROSA Chrome 2021.1. Внутри пакетов находится статически
 слинкованная версия исполняемого файла `picodata`. Более подробная
@@ -40,9 +40,9 @@ source "$HOME/.cargo/env"
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-#### CentOS 8, Fedora 38-40 {: #centos_fedora }
+#### RHEL 8/9 и деривативы, Fedora 38-40 {: #rhel_fedora }
 
-Только для CentOS 8:
+Только для ОС, основанных на RHEL 8/9:
 
 ```bash
 sudo dnf config-manager --set-enabled powertools
