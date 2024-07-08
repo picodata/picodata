@@ -775,7 +775,14 @@ class Instance:
     ) -> dict:
         """Retry SQL query with constant rate until success or fatal is raised"""
 
+        attempt = 0
+
         def do_sql():
+            nonlocal attempt
+            attempt += 1
+            if attempt > 1:
+                print(f"retrying SQL query `{sql}` ({attempt=})", file=sys.stderr)
+
             if is_sudo:
                 return self.sudo_sql(
                     sql, *params, user=user, password=password, timeout=timeout
