@@ -183,9 +183,9 @@ Picodata позволяет наделить пользователя БД сл�
 Для этого используйте следующие SQL-команды:
 
 ```sql
-GRANT WRITE TO TABLE <table name> TO <grantee>;
-GRANT READ TO TABLE <table name> TO <grantee>;
-GRANT EXECUTE PROCEDURE <procedure name> TO <grantee>;
+GRANT WRITE ON TABLE <table name> TO <grantee>;
+GRANT READ ON TABLE <table name> TO <grantee>;
+GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>;
 ```
 
 ### Роли {: #roles }
