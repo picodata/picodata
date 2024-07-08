@@ -496,7 +496,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 0
 
     # check update global from sharded table
-    data = i2.sql(
+    data = i2.retriable_sql(
         """
         update global_t
         set a = y from t
