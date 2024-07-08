@@ -214,6 +214,19 @@ class MalformedAPI(Exception):
     pass
 
 
+def is_caused_by_timeout(e: BaseException) -> bool:
+    """
+    Check if there's a `TimeoutError` somewhere in the cause-chain of this exception.
+    """
+    if isinstance(e, TimeoutError):
+        return True
+
+    if not e.__context__:
+        return False
+
+    return is_caused_by_timeout(e.__context__)
+
+
 def normalize_net_box_result(func):
     """
     Convert lua-style responses to be more python-like.
@@ -224,6 +237,9 @@ def normalize_net_box_result(func):
         try:
             result = func(*args, **kwargs)
         except DatabaseError as exc:
+            if is_caused_by_timeout(exc):
+                raise TimeoutError from exc
+
             if getattr(exc, "errno", None):
                 # Error handling in Tarantool connector is awful.
                 # It wraps NetworkError in DatabaseError.

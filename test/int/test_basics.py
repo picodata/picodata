@@ -1,4 +1,3 @@
-import errno
 import os
 import pytest
 import signal
@@ -40,11 +39,8 @@ def test_call_normalization(instance: Instance):
         instance.call("void")
     assert e4.value.args[:2] == ("ER_NO_SUCH_PROC", "Procedure 'void' is not defined")
 
-    # Python connector for tarantool misinterprets timeout errors.
-    # It should be TimeoutError instead of ECONNRESET
-    with pytest.raises(OSError) as e5:
+    with pytest.raises(TimeoutError):
         instance.call("package.loaded.fiber.sleep", 1, timeout=0.1)
-    assert e5.value.errno == errno.ECONNRESET
 
     with pytest.raises(ProcessDead):
         instance.call("os.exit", 0)
