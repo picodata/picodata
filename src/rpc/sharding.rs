@@ -98,7 +98,17 @@ pub mod bootstrap {
 
             let lua = tarantool::lua_state();
             let (ok, err): (Option<tlua::True>, Option<tlua::ToString>) =
-                lua.eval("return vshard.router.bootstrap()")?;
+                lua.eval("
+                local lerror = require('vshard.error')
+                local ok, err = vshard.router.bootstrap()
+                if not ok and type(err) == 'table' then
+                    if err.code == lerror.code.NON_EMPTY then
+                        return true
+                    end
+                end
+
+                return ok, err
+                ")?;
 
             match (ok, err) {
                 (Some(tlua::True), None) => {}
