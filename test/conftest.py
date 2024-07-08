@@ -749,7 +749,7 @@ class Instance:
         self,
         sql: str,
         *params,
-        rps: int | float = 5,
+        rps: int | float = 2,
         retry_timeout: int | float = 25,
         user: str | None = None,
         is_sudo: bool = False,
@@ -766,7 +766,7 @@ class Instance:
                 )
             return self.sql(sql, *params, user=user, password=password, timeout=timeout)
 
-        return Retriable(rps, retry_timeout).call(do_sql)
+        return Retriable(timeout=retry_timeout, rps=rps).call(do_sql)
 
     def create_user(
         self,
