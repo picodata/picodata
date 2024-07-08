@@ -74,6 +74,10 @@ def test_discovery(cluster3: Cluster):
     # change leader
     i2.promote_or_fail()
 
+    # Wait until i1 knows that i2 is elected to reduce test flakiness
+    # (proc_discover may return an error during raft leader elections).
+    Retriable(timeout=5, rps=4).call(i1.assert_raft_status, "Follower", i2.raft_id)
+
     def req_discover(instance: Instance):
         request = dict(tmp_id="unused", peers=["test:3301"])
         request_to = instance.listen
