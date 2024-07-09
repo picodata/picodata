@@ -18,7 +18,7 @@ def test_decimal(postgres: Postgres):
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
     # allow user to create tables
-    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     # connect to the server and enable autocommit as we
     # don't support interactive transactions
@@ -98,7 +98,7 @@ def test_uuid(postgres: Postgres):
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
     # allow user to create tables
-    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     # connect to the server and enable autocommit as we
     # don't support interactive transactions
@@ -142,7 +142,7 @@ def test_text_and_varchar(postgres: Postgres):
     postgres.instance.sql(
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
-    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     conn = pg8000.Connection(
         user, password=password, host=postgres.host, port=postgres.port
@@ -182,7 +182,7 @@ def test_unsigned(postgres: Postgres):
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
     # allow user to create tables
-    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     # connect to the server and enable autocommit as we
     # don't support interactive transactions
@@ -248,7 +248,7 @@ def test_arrays(postgres: Postgres):
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
 
-    postgres.instance.sudo_sql(f'GRANT READ ON TABLE "_pico_user" TO "{user}"')
+    postgres.instance.sql(f'GRANT READ ON TABLE "_pico_user" TO "{user}"', sudo=True)
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"
@@ -314,7 +314,7 @@ def test_map(postgres: Postgres):
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
 
-    postgres.instance.sudo_sql(f'GRANT READ ON TABLE "_pico_table" TO "{user}"')
+    postgres.instance.sql(f'GRANT READ ON TABLE "_pico_table" TO "{user}"', sudo=True)
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"

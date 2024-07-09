@@ -416,8 +416,9 @@ cluster:
 
     instance = cluster.add_instance()
 
-    dql = instance.sudo_sql(
-        'select "replication_factor" from "_pico_tier" where "name" = \'default\''
+    dql = instance.sql(
+        'select "replication_factor" from "_pico_tier" where "name" = \'default\'',
+        sudo=True,
     )
     assert dql["rows"][0][0] == 1
 
@@ -436,7 +437,8 @@ cluster:
 
     instance = cluster.add_instance()
 
-    dql = instance.sudo_sql(
-        'select "replication_factor" from "_pico_tier" where "name" = \'default\''
+    dql = instance.sql(
+        'select "replication_factor" from "_pico_tier" where "name" = \'default\'',
+        sudo=True,
     )
     assert dql["rows"][0][0] == 3

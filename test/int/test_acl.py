@@ -81,7 +81,7 @@ def test_max_login_attempts(cluster: Cluster):
     # Unlock user - alter user login is interpreted as grant session
     # which resets the login attempts counter.
     # Works from any peer
-    acl = i2.sudo_sql('alter user "foo" with login')
+    acl = i2.sql('alter user "foo" with login', sudo=True)
     assert acl["row_count"] == 1
 
     # Now user can connect again
@@ -1072,10 +1072,10 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
 
     password = "Validpa55word"
 
-    acl = i1.sudo_sql(f"create user \"alice\" with password '{password}'")
+    acl = i1.sql(f"create user \"alice\" with password '{password}'", sudo=True)
     assert acl["row_count"] == 1
 
-    acl = i1.sudo_sql('grant create table to "alice"')
+    acl = i1.sql('grant create table to "alice"', sudo=True)
     assert acl["row_count"] == 1
 
     with i1.connect(timeout=2, user="alice", password=password) as conn:
@@ -1091,7 +1091,7 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
         assert dml["row_count"] == 1
 
         # admin revokes login privilege
-        acl = i1.sudo_sql('alter user "alice" with nologin')
+        acl = i1.sql('alter user "alice" with nologin', sudo=True)
         assert acl["row_count"] == 1
 
         # alice on the same connection should receive error that access is denied

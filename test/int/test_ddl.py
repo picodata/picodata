@@ -982,11 +982,12 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4.terminate()
     i5.terminate()
 
-    table_id = i1.sudo_sql(
+    table_id = i1.sql(
         """
         SELECT "id" FROM "_pico_table" WHERE "name"=?
         """,
         table_name,
+        sudo=True,
     )["rows"][0][0]
 
     # Ddl fails because all masters must be present.

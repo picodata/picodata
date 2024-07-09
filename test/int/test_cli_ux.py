@@ -8,7 +8,7 @@ def test_connect_ux(cluster: Cluster):
     i1.start()
     i1.wait_online()
     i1.create_user(with_name="andy", with_password="Testpa55")
-    i1.sudo_sql('GRANT CREATE TABLE TO "andy"')
+    i1.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     cli = pexpect.spawn(
         command=i1.binary_path,
@@ -202,7 +202,7 @@ def test_sql_explain_ok(cluster: Cluster):
 
     cli.expect_exact("picodata> ")
 
-    i1.sudo_sql(
+    i1.sql(
         """
         CREATE TABLE "assets"
              ("id" INTEGER NOT NULL,
@@ -211,10 +211,11 @@ def test_sql_explain_ok(cluster: Cluster):
               PRIMARY KEY("id")
             )
         DISTRIBUTED BY("id")
-        OPTION (TIMEOUT = 3.0)"""
+        OPTION (TIMEOUT = 3.0)""",
+        sudo=True,
     )
 
-    i1.sudo_sql(
+    i1.sql(
         """
         CREATE TABLE "characters"
            ("id" INTEGER NOT NULL,
@@ -223,7 +224,8 @@ def test_sql_explain_ok(cluster: Cluster):
             PRIMARY KEY ("id")
             )
         USING MEMTX DISTRIBUTED BY ("id")
-        OPTION (TIMEOUT = 3.0)"""
+        OPTION (TIMEOUT = 3.0)""",
+        sudo=True,
     )
 
     cli.sendline("""EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561)""")

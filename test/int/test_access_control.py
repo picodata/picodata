@@ -45,7 +45,7 @@ def test_access_global_table(cluster: Cluster):
         i1.sql(create_table_friends_of_peppa, **as_alice)
 
     # Alice can create a global table
-    i1.sudo_sql("""grant create table to "alice" """)
+    i1.sql("""grant create table to "alice" """, sudo=True)
     assert i1.sql(create_table_friends_of_peppa, **as_alice) == {"row_count": 1}
 
     # Alice can write it
@@ -107,7 +107,7 @@ def test_access_sharded_table(cluster: Cluster):
         i1.sql(create_table_wonderland, **as_alice)
 
     # Alice can create a global table
-    assert i1.sudo_sql("""grant create table to "alice";""") == {"row_count": 1}
+    assert i1.sql("""grant create table to "alice";""", sudo=True) == {"row_count": 1}
     assert i1.sql(create_table_wonderland, **as_alice) == {"row_count": 1}
 
     # Alice can write it

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @pytest.fixture
 def i1(cluster: Cluster) -> Instance:
     [i1] = cluster.deploy(instance_count=1)
-    acl = i1.sudo_sql("create user \"testuser\" with password 'Testpa55'")
+    acl = i1.sql("create user \"testuser\" with password 'Testpa55'", sudo=True)
     assert acl["row_count"] == 1
     return i1
 
@@ -72,9 +72,9 @@ def test_connect_guest(i1: Instance):
 
 
 def test_connect_user_with_role(i1: Instance):
-    acl = i1.sudo_sql('create role "testrole"')
+    acl = i1.sql('create role "testrole"', sudo=True)
     assert acl["row_count"] == 1
-    acl = i1.sudo_sql('grant "testrole" to "testuser"')
+    acl = i1.sql('grant "testrole" to "testuser"', sudo=True)
     assert acl["row_count"] == 1
 
     cli = pexpect.spawn(

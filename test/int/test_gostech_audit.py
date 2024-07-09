@@ -141,10 +141,11 @@ def test_gostech_user(
         create user "ymir" with password 'T0psecret' using chap-sha1
         """
     )
-    instance.sudo_sql(
+    instance.sql(
         """
         alter user "ymir" password 'Topsecre1'
         """,
+        sudo=True,
     )
     instance.sql(
         """
@@ -188,7 +189,7 @@ def test_gostech_role(
         """,
     ]
     for query in setup:
-        instance.sudo_sql(query)
+        instance.sql(query, sudo=True)
 
     with instance.connect(timeout=1, user="bubba", password="T0psecret") as c:
         c.sql(
@@ -273,15 +274,17 @@ def test_gostech_auth(
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
-    instance.sudo_sql(
+    instance.sql(
         """
         create user "ymir" with password 'T0psecret' using chap-sha1
-        """
+        """,
+        sudo=True,
     )
-    instance.sudo_sql(
+    instance.sql(
         """
         alter user "ymir" login
-        """
+        """,
+        sudo=True,
     )
 
     with instance.connect(4, user="ymir", password="T0psecret"):
@@ -342,16 +345,16 @@ def test_gostech_grant_revoke(
 
     instance.create_user(with_name=user, with_password=password)
 
-    instance.sudo_sql(f'GRANT CREATE ROLE TO "{user}"')
-    instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
-    instance.sudo_sql(f'REVOKE CREATE TABLE FROM "{user}"')
-    instance.sudo_sql(f'GRANT READ ON TABLE "_pico_tier" TO "{user}"')
-    instance.sudo_sql(f'REVOKE READ ON TABLE "_pico_tier" FROM "{user}"')
+    instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
+    instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
+    instance.sql(f'REVOKE CREATE TABLE FROM "{user}"', sudo=True)
+    instance.sql(f'GRANT READ ON TABLE "_pico_tier" TO "{user}"', sudo=True)
+    instance.sql(f'REVOKE READ ON TABLE "_pico_tier" FROM "{user}"', sudo=True)
     instance.sql('CREATE ROLE "R"', user=user, password=password)
-    instance.sudo_sql('GRANT CREATE TABLE TO "R"')
-    instance.sudo_sql('REVOKE CREATE TABLE FROM "R"')
-    instance.sudo_sql('GRANT READ ON TABLE "_pico_user" TO "R"')
-    instance.sudo_sql('REVOKE READ ON TABLE "_pico_user" FROM "R"')
+    instance.sql('GRANT CREATE TABLE TO "R"', sudo=True)
+    instance.sql('REVOKE CREATE TABLE FROM "R"', sudo=True)
+    instance.sql('GRANT READ ON TABLE "_pico_user" TO "R"', sudo=True)
+    instance.sql('REVOKE READ ON TABLE "_pico_user" FROM "R"', sudo=True)
     instance.sql('GRANT "R" TO "ymir"', user=user, password=password)
     instance.sql(f'REVOKE "R" FROM "{user}"', user=user, password=password)
     instance.sql('CREATE ROLE "R2"', user=user, password=password)
@@ -398,7 +401,7 @@ def test_gostech_rename_user(
     password = "T0psecret"
 
     instance.create_user(with_name=user, with_password=password)
-    instance.sudo_sql('ALTER USER "ymir" RENAME TO "TOM"')
+    instance.sql('ALTER USER "ymir" RENAME TO "TOM"', sudo=True)
 
     event = audit.take_until_name("rename_user")
     assert event["tags"] == ["high"]

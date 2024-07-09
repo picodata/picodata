@@ -13,7 +13,7 @@ def test_psql_session_from_the_guide(postgres: Postgres):
         f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
     )
     # allow user to create tables
-    postgres.instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+    postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     # connect to the server and enable autocommit as we
     # don't support interactive transactions

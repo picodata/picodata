@@ -194,10 +194,11 @@ def test_user(instance: Instance):
     )
     # TODO user cant change password without access to _pico_property
     # https://git.picodata.io/picodata/picodata/picodata/-/issues/449
-    instance.sudo_sql(
+    instance.sql(
         """
         alter user "ymir" password 'Topsecre1'
         """,
+        sudo=True,
     )
     instance.sql(
         """
@@ -247,7 +248,7 @@ def test_role(instance: Instance):
         """,
     ]
     for query in setup:
-        instance.sudo_sql(query)
+        instance.sql(query, sudo=True)
 
     with instance.connect(timeout=1, user="bubba", password="T0psecret") as c:
         c.sql(
@@ -435,15 +436,17 @@ def test_join_connect_instance(cluster: Cluster):
 def test_auth(instance: Instance):
     instance.start()
 
-    instance.sudo_sql(
+    instance.sql(
         """
         create user "ymir" with password 'T0psecret' using chap-sha1
-        """
+        """,
+        sudo=True,
     )
-    instance.sudo_sql(
+    instance.sql(
         """
         alter user "ymir" login
-        """
+        """,
+        sudo=True,
     )
 
     audit = AuditFile(instance.audit_flag_value)
@@ -529,7 +532,7 @@ def test_grant_revoke(instance: Instance):
 
     instance.create_user(with_name=user, with_password=password)
 
-    instance.sudo_sql(f'GRANT CREATE ROLE TO "{user}"')
+    instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
 
     audit = AuditFile(instance.audit_flag_value)
     for _ in audit.events():
@@ -538,7 +541,7 @@ def test_grant_revoke(instance: Instance):
     events = audit.events()
 
     # wildcard privilege to user
-    instance.sudo_sql(f'GRANT CREATE TABLE TO "{user}"')
+    instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     grant_privilege = take_until_title(events, "grant_privilege")
 
@@ -555,7 +558,7 @@ def test_grant_revoke(instance: Instance):
     assert grant_privilege["grantee_type"] == "user"
     assert grant_privilege["initiator"] == "admin"
 
-    instance.sudo_sql(f'REVOKE CREATE TABLE FROM "{user}"')
+    instance.sql(f'REVOKE CREATE TABLE FROM "{user}"', sudo=True)
 
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
@@ -573,7 +576,7 @@ def test_grant_revoke(instance: Instance):
     assert revoke_privilege["initiator"] == "admin"
 
     # specific privilege to user
-    instance.sudo_sql(f'GRANT READ ON TABLE "_pico_tier" TO "{user}"')
+    instance.sql(f'GRANT READ ON TABLE "_pico_tier" TO "{user}"', sudo=True)
 
     grant_privilege = take_until_title(events, "grant_privilege")
 
@@ -590,7 +593,7 @@ def test_grant_revoke(instance: Instance):
     assert grant_privilege["initiator"] == "admin"
     assert grant_privilege["object"] == "_pico_tier"
 
-    instance.sudo_sql(f'REVOKE READ ON TABLE "_pico_tier" FROM "{user}"')
+    instance.sql(f'REVOKE READ ON TABLE "_pico_tier" FROM "{user}"', sudo=True)
 
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
@@ -610,7 +613,7 @@ def test_grant_revoke(instance: Instance):
     instance.sql('CREATE ROLE "R"', user=user, password=password)
 
     # wildcard privilege to role
-    instance.sudo_sql('GRANT CREATE TABLE TO "R"')
+    instance.sql('GRANT CREATE TABLE TO "R"', sudo=True)
 
     grant_privilege = take_until_title(events, "grant_privilege")
 
@@ -627,7 +630,7 @@ def test_grant_revoke(instance: Instance):
     assert grant_privilege["grantee_type"] == "role"
     assert grant_privilege["initiator"] == "admin"
 
-    instance.sudo_sql('REVOKE CREATE TABLE FROM "R"')
+    instance.sql('REVOKE CREATE TABLE FROM "R"', sudo=True)
 
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
@@ -645,7 +648,7 @@ def test_grant_revoke(instance: Instance):
     assert revoke_privilege["initiator"] == "admin"
 
     # specific privilege to role
-    instance.sudo_sql('GRANT READ ON TABLE "_pico_user" TO "R"')
+    instance.sql('GRANT READ ON TABLE "_pico_user" TO "R"', sudo=True)
 
     grant_privilege = take_until_title(events, "grant_privilege")
 
@@ -662,7 +665,7 @@ def test_grant_revoke(instance: Instance):
     assert grant_privilege["initiator"] == "admin"
     assert grant_privilege["object"] == "_pico_user"
 
-    instance.sudo_sql('REVOKE READ ON TABLE "_pico_user" FROM "R"')
+    instance.sql('REVOKE READ ON TABLE "_pico_user" FROM "R"', sudo=True)
 
     revoke_privilege = take_until_title(events, "revoke_privilege")
 
@@ -748,7 +751,7 @@ def test_rotation(instance: Instance):
 
     instance.create_user(with_name=user, with_password=password)
 
-    instance.sudo_sql(f'GRANT CREATE ROLE TO "{user}"')
+    instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
 
     assert instance.process is not None
     instance.process.send_signal(sig=signal.SIGHUP)
@@ -764,7 +767,7 @@ def test_rename_user(instance: Instance):
 
     instance.create_user(with_name=user, with_password=password)
 
-    instance.sudo_sql('ALTER USER "ymir" RENAME TO "TOM"')
+    instance.sql('ALTER USER "ymir" RENAME TO "TOM"', sudo=True)
 
     instance.terminate()
 

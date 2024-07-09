@@ -503,33 +503,31 @@ class Connection(tarantool.Connection):  # type: ignore
     def eval(self, expr, *args, on_push=None, on_push_ctx=None):
         return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
 
-    def sql(self, sql: str, *params, options=None) -> dict:
+    def sql(self, sql: str, *params, options=None, sudo=False) -> dict:
         """Run SQL query and return result"""
-        options = options or {}
-        return self.call(
-            ".proc_sql_dispatch",
-            sql,
-            params,
-            options.get("query_id"),
-            options.get("traceable"),
-        )[0]
+        if sudo:
+            old_euid = self.eval(
+                """
+                local before = box.session.euid()
+                box.session.su('admin')
+                return before
+                """
+            )
 
-    def sudo_sql(
-        self,
-        sql: str,
-        *params,
-    ) -> dict:
-        """Run SQL query as admin and return result"""
-        old_euid = self.eval(
-            """
-            local before = box.session.euid()
-            box.session.su('admin')
-            return before
-            """
-        )
-        ret = self.sql(sql, *params)
-        self.eval("box.session.su(...)", old_euid)
-        return ret
+        options = options or {}
+        try:
+            result = self.call(
+                ".proc_sql_dispatch",
+                sql,
+                params,
+                options.get("query_id"),
+                options.get("traceable"),
+            )[0]
+        finally:
+            if sudo:
+                self.eval("box.session.su(...)", old_euid)
+
+        return result
 
 
 @dataclass
@@ -741,25 +739,14 @@ class Instance:
         sql: str,
         *params,
         options: Optional[Dict[str, Any]] = None,
+        sudo=False,
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 3,
     ) -> dict:
         """Run SQL query and return result"""
         with self.connect(timeout=timeout, user=user, password=password) as conn:
-            return conn.sql(sql, *params, options=options)
-
-    def sudo_sql(
-        self,
-        sql: str,
-        *params,
-        user: str | None = None,
-        password: str | None = None,
-        timeout: int | float = 3,
-    ) -> dict:
-        """Run SQL query as admin and return result"""
-        with self.connect(timeout, user=user, password=password) as conn:
-            return conn.sudo_sql(sql, *params)
+            return conn.sql(sql, sudo=sudo, *params, options=options)
 
     def retriable_sql(
         self,
@@ -767,8 +754,8 @@ class Instance:
         *params,
         rps: int | float = 2,
         retry_timeout: int | float = 25,
+        sudo: bool = False,
         user: str | None = None,
-        is_sudo: bool = False,
         password: str | None = None,
         timeout: int | float = 5,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
@@ -783,11 +770,9 @@ class Instance:
             if attempt > 1:
                 print(f"retrying SQL query `{sql}` ({attempt=})", file=sys.stderr)
 
-            if is_sudo:
-                return self.sudo_sql(
-                    sql, *params, user=user, password=password, timeout=timeout
-                )
-            return self.sql(sql, *params, user=user, password=password, timeout=timeout)
+            return self.sql(
+                sql, *params, sudo=sudo, user=user, password=password, timeout=timeout
+            )
 
         return Retriable(timeout=retry_timeout, rps=rps).call(do_sql)
 
