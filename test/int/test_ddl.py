@@ -1011,18 +1011,12 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     assert i3.call("box.space.trinkets:get", 9) == [9]
 
     # But the space is marked not operable.
-    assert not i1.eval(
-        "return box.space._pico_table.index._pico_table_name:get(...).operable",
-        table_name,
-    )
-    assert not i2.eval(
-        "return box.space._pico_table.index._pico_table_name:get(...).operable",
-        table_name,
-    )
-    assert not i3.eval(
-        "return box.space._pico_table.index._pico_table_name:get(...).operable",
-        table_name,
-    )
+    rows = i1.sql('select "operable" from "_pico_table" where "name" = ?', table_name)
+    assert rows == [[False]]
+    rows = i2.sql('select "operable" from "_pico_table" where "name" = ?', table_name)
+    assert rows == [[False]]
+    rows = i3.sql('select "operable" from "_pico_table" where "name" = ?', table_name)
+    assert rows == [[False]]
 
     # TODO: test manual ddl abort
 
