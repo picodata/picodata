@@ -988,7 +988,7 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
         """,
         table_name,
         sudo=True,
-    )["rows"][0][0]
+    )[0][0]
 
     # Ddl fails because all masters must be present.
     with pytest.raises(ReturnError, match="timeout"):

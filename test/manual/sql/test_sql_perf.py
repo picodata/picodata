@@ -28,8 +28,8 @@ def test_projection(cluster: Cluster):
     for n in range(row_number):
         i1.sql("""insert into t values(?);""", n)
 
-    assert i1.sql("""select count(a) from t;""")["rows"] == [[row_number]]
-    assert i2.sql("""select count(a) from t;""")["rows"] == [[row_number]]
+    assert i1.sql("""select count(a) from t;""") == [[row_number]]
+    assert i2.sql("""select count(a) from t;""") == [[row_number]]
 
     # Init k6 script and run it.
     path = os.path.dirname(os.path.abspath(__file__))

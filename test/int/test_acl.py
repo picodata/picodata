@@ -838,14 +838,12 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
     # Check that we can drop a table with privileges granted on it.
     index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
 
-    dave_id = i1.sql(""" select "id" from "_pico_user" where "name" = 'Dave' """)[
-        "rows"
-    ][0][0]
+    dave_id = i1.sql(""" select "id" from "_pico_user" where "name" = 'Dave' """)[0][0]
 
     def dave_privileges_count():
         return i1.sql(
             f""" select count(*) from "_pico_privilege" where "grantee_id" = {dave_id} """,
-        )["rows"][0][0]
+        )[0][0]
 
     dave_privileges_count_at_start = dave_privileges_count()
 

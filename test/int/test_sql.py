@@ -147,7 +147,7 @@ def test_cache_works_for_dml_query(cluster: Cluster):
     """,
         options={"traceable": True, "query_id": id2},
     )
-    assert data["rows"] == [[11], [12]]
+    assert data == [[11], [12]]
     assert_cache_hit(id2)
 
 
@@ -162,7 +162,7 @@ def test_tracing(cluster: Cluster):
             'select * from "_pico_table"',
             options={"traceable": True, "query_id": query_id},
         )
-        assert len(data["rows"]) > 0
+        assert len(data) > 0
 
     # check we can get the most expensive query using local sql
     data = i1.eval(
@@ -215,16 +215,16 @@ def test_select(cluster: Cluster):
     i1.sql("""insert into t values(2);""")
     i1.sql("""insert into t values(?);""", 2000)
     data = i1.sql("""select * from t where a = ?""", 2)
-    assert data["rows"] == [[2]]
+    assert data == [[2]]
     data = i1.sql("""select * from t""")
-    assert data["rows"] == [[1], [2], [2000]]
+    assert data == [[1], [2], [2000]]
     data = i1.sql(
         """select * from t as t1
            join (select a as a2 from t) as t2
            on t1.a = t2.a2 where t1.a = ?""",
         2,
     )
-    assert data["rows"] == [[2, 2]]
+    assert data == [[2, 2]]
 
 
 # test is checking create virtual table with type uuid and cast uuid to text#
@@ -284,10 +284,10 @@ def test_uuid(
         """select * from t1 where id in (select t1_id from t2 where id = (?))""",
         uuid.UUID(t2_id1),
     )
-    assert data["rows"] == [[uuid.UUID(t1_id1)]]
+    assert data == [[uuid.UUID(t1_id1)]]
 
     # checking cast uuid as text
-    data = i1.sql("""select cast(id as Text) from t1""", t1_id1)
+    data = i1.sql("""select cast(id as Text) from t1""", t1_id1, strip_metadata=False)
     assert data == {
         "metadata": [{"name": "COL_1", "type": "string"}],
         "rows": [[t1_id2], [t1_id1]],
@@ -312,7 +312,7 @@ def test_pg_params(cluster: Cluster):
     assert data["row_count"] == 2
 
     data = i1.sql("""select * from t""")
-    assert data["rows"] == [[1, 1], [2, 1]]
+    assert data == [[1, 1], [2, 1]]
 
     data = i1.sql(
         """
@@ -322,7 +322,7 @@ def test_pg_params(cluster: Cluster):
     """,
         1,
     )
-    assert data["rows"] == [[2]]
+    assert data == [[2]]
 
     data = i1.sql(
         """
@@ -333,7 +333,7 @@ def test_pg_params(cluster: Cluster):
         2,
         3,
     )
-    assert data["rows"] == [[3, 2, 1, 2, 3]]
+    assert data == [[3, 2, 1, 2, 3]]
 
     with pytest.raises(TarantoolError, match="invalid parameters usage"):
         i1.sql(
@@ -368,14 +368,14 @@ def test_read_from_global_tables(cluster: Cluster):
         select * from "global_t"
         """,
     )
-    assert data["rows"] == [[1]]
+    assert data == [[1]]
 
     data = i1.sql(
         """
         select * from "_pico_table" where "name" = 'global_t'
         """,
     )
-    assert len(data["rows"]) == 1
+    assert len(data) == 1
 
 
 def test_read_from_system_tables(cluster: Cluster):
@@ -386,6 +386,7 @@ def test_read_from_system_tables(cluster: Cluster):
         """
         select * from "_pico_property"
         """,
+        strip_metadata=False,
     )
     assert data["metadata"] == [
         {"name": "key", "type": "string"},
@@ -397,6 +398,7 @@ def test_read_from_system_tables(cluster: Cluster):
         """
         select * from "_pico_instance"
         """,
+        strip_metadata=False,
     )
     assert data["metadata"] == [
         {"name": "instance_id", "type": "string"},
@@ -456,19 +458,19 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 0
 
     data = i2.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 1], [4, 2]]
+    assert data == [[1, 1], [2, 2], [3, 1], [4, 2]]
     i1.raft_read_index()
     data = i1.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 1], [4, 2]]
+    assert data == [[1, 1], [2, 2], [3, 1], [4, 2]]
 
     # check update
     data = i2.sql("update global_t set a = 1")
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 1], [3, 1], [4, 1]]
+    assert data == [[1, 1], [2, 1], [3, 1], [4, 1]]
     i1.raft_read_index()
     data = i1.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 1], [3, 1], [4, 1]]
+    assert data == [[1, 1], [2, 1], [3, 1], [4, 1]]
 
     # check update global from global table
     data = i2.sql(
@@ -480,10 +482,10 @@ def test_dml_on_global_tbls(cluster: Cluster):
     )
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
-    assert data["rows"] == [[1, 2], [2, 2], [3, 2], [4, 2]]
+    assert data == [[1, 2], [2, 2], [3, 2], [4, 2]]
     i1.raft_read_index()
     data = i1.sql("select * from global_t")
-    assert data["rows"] == [[1, 2], [2, 2], [3, 2], [4, 2]]
+    assert data == [[1, 2], [2, 2], [3, 2], [4, 2]]
 
     # empty update
     data = i2.sql(
@@ -505,10 +507,10 @@ def test_dml_on_global_tbls(cluster: Cluster):
     )
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
+    assert data == [[1, 1], [2, 2], [3, 3], [4, 4]]
     i1.raft_read_index()
     data = i1.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4]]
+    assert data == [[1, 1], [2, 2], [3, 3], [4, 4]]
 
     # check delete
     data = i2.sql("delete from global_t")
@@ -519,10 +521,10 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 1
 
     data = i1.sql("select * from global_t")
-    assert data["rows"] == [[5, 1]]
+    assert data == [[5, 1]]
     i2.raft_read_index()
     data = i2.sql("select * from global_t")
-    assert data["rows"] == [[5, 1]]
+    assert data == [[5, 1]]
 
     # test explain
     lines = i1.sql("explain insert into global_t select * from t")
@@ -542,41 +544,41 @@ vtable_max_rows = 5000"""
     assert data["row_count"] == 0
 
     data = i2.sql("select * from global_t")
-    assert data["rows"] == []
+    assert data == []
     i1.raft_read_index()
     data = i1.sql("select * from global_t")
-    assert data["rows"] == []
+    assert data == []
 
     # insert from sharded table
     data = i2.sql("insert into global_t select x, y from t")
     assert data["row_count"] == 5
 
     data = i2.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
+    assert data == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
     i1.raft_read_index()
     data = i1.sql("select * from global_t")
-    assert data["rows"] == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
+    assert data == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
 
     # insert into sharded table from global table
     data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
     assert data["row_count"] == 1
     i1.raft_read_index()
     data = i1.retriable_sql("select * from t")
-    assert sorted(data["rows"]) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
+    assert sorted(data) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
 
     # update sharded table from global table
     data = i2.sql("update t set y = a * a from global_t where id = x")
     assert data["row_count"] == 5
     i1.raft_read_index()
     data = i1.retriable_sql("select * from t")
-    assert sorted(data["rows"]) == [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
+    assert sorted(data) == [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
 
     # delete sharded table using global table in predicate
     data = i2.sql("delete from t where x in (select id from global_t)")
     assert data["row_count"] == 5
     i1.raft_read_index()
     data = i1.retriable_sql("select * from t", retry_timeout=60, timeout=8)
-    assert sorted(data["rows"]) == [[6, 6]]
+    assert sorted(data) == [[6, 6]]
 
     # test user with write permession can do global dml
     user = "USER"
@@ -628,7 +630,7 @@ def test_datetime(cluster: Cluster):
     assert data["row_count"] == 3
 
     data = i1.sql("""select d from t""")
-    assert data["rows"] == [
+    assert data == [
         [tt_datetime(year=2010, month=10, day=10)],
         [tt_datetime(year=2020, month=2, day=20)],
         [tt_datetime(year=2010, month=10, day=10)],
@@ -641,25 +643,25 @@ def test_datetime(cluster: Cluster):
 
     # check we can group on datetime column
     data = i1.sql("""select d from t group by d""")
-    assert data["rows"] == [
+    assert data == [
         [tt_datetime(year=2010, month=10, day=10)],
         [tt_datetime(year=2020, month=2, day=20)],
     ]
 
     # check we can compare on datetime column
     data = i1.sql("""select d from t where d < to_date('2015/01/01', '%Y/%m/%d')""")
-    assert data["rows"] == [
+    assert data == [
         [tt_datetime(year=2010, month=10, day=10)],
         [tt_datetime(year=2010, month=10, day=10)],
     ]
 
     data = i1.sql("""select d from t where d = to_date('2020/02/20', '%Y/%m/%d')""")
-    assert data["rows"] == [
+    assert data == [
         [tt_datetime(year=2020, month=2, day=20)],
     ]
 
     data = i1.sql("""select d from t where d > to_date('2010/12/10', '%Y/%m/%d')""")
-    assert data["rows"] == [
+    assert data == [
         [tt_datetime(year=2020, month=2, day=20)],
     ]
 
@@ -667,14 +669,14 @@ def test_datetime(cluster: Cluster):
     # TODO: tarantool does not allow to skip arguments in sql of a stored procedure,
     # but passing '' looks awful, maybe there is a better approach?
     data = i1.sql("""select to_date('1970-01-01T10:10:10 -3', '') from t where a = 1""")
-    assert data["rows"] == [[tt_datetime(year=1970, month=1, day=1, tzoffset=-180)]]
+    assert data == [[tt_datetime(year=1970, month=1, day=1, tzoffset=-180)]]
 
     # check we can use arbitrary expressions returning string inside to_date
     data = i1.sql(
         """select to_date(cast('1970-01-01T10:10:10 -3' as string), '' || '')
                   from t where a = 1"""
     )
-    assert data["rows"] == [[tt_datetime(year=1970, month=1, day=1, tzoffset=-180)]]
+    assert data == [[tt_datetime(year=1970, month=1, day=1, tzoffset=-180)]]
 
     # check we can create table sharded by datetime column
     ddl = i1.sql(
@@ -719,7 +721,7 @@ def test_datetime(cluster: Cluster):
         )
     # test to_char builtin function
     data = i1.sql("""select to_char(d, '%Y-%m-%d') from t""")
-    assert sorted(data["rows"], key=lambda e: e[0]) == [
+    assert sorted(data, key=lambda e: e[0]) == [
         ["2010-10-10"],
         ["2010-10-10"],
         ["2020-02-20"],
@@ -730,19 +732,19 @@ def test_datetime(cluster: Cluster):
         """select to_char(to_date(COLUMN_1, ''), '%Y-%m-%d')
                   from (values (('1970-01-01T10:10:10 -3')))"""
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [["1970-01-01"]]
+    assert sorted(data, key=lambda e: e[0]) == [["1970-01-01"]]
 
     data = i1.sql(
         """select to_char(to_date(COLUMN_1, ''), '%Y-%Y-%Y')
                   from (values (('1970-01-01T10:10:10 -3')))"""
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [["1970-1970-1970"]]
+    assert sorted(data, key=lambda e: e[0]) == [["1970-1970-1970"]]
 
     data = i1.sql(
         """select to_char(to_date(COLUMN_1, ''), '%Y-%m-%d %z')
                   from (values (('1970-01-01T10:10:10 -3')))"""
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [["1970-01-01 -0300"]]
+    assert sorted(data, key=lambda e: e[0]) == [["1970-01-01 -0300"]]
 
 
 def test_subqueries_on_global_tbls(cluster: Cluster):
@@ -788,7 +790,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         where b in (select c from s where c in (2, 10))
         """
     )
-    assert data["rows"] == [[2]]
+    assert data == [[2]]
 
     data = i1.retriable_sql(
         """
@@ -796,7 +798,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         where b in (select sum(c) from s)
         """
     )
-    assert len(data["rows"]) == 0
+    assert len(data) == 0
 
     data = i1.retriable_sql(
         """
@@ -804,7 +806,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         where b in (select c * 5 from s)
         """,
     )
-    assert data["rows"] == [[5]]
+    assert data == [[5]]
 
     # first subquery selects [1], [2], [3]
     # second subquery must add additional [4] tuple
@@ -815,7 +817,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert data["rows"] == [[1], [2], [3], [4]]
+    assert data == [[1], [2], [3], [4]]
 
     data = i1.retriable_sql(
         """
@@ -824,7 +826,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert len(data["rows"]) == 0
+    assert len(data) == 0
 
     data = i1.retriable_sql(
         """
@@ -834,7 +836,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert data["rows"] == []
+    assert data == []
 
     # Full join because of 'OR'
     data = i1.retriable_sql(
@@ -845,7 +847,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert data["rows"] == [[1]]
+    assert data == [[1]]
 
     data = i1.retriable_sql(
         """
@@ -855,7 +857,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert data["rows"] == [[1], [3]]
+    assert data == [[1], [3]]
 
     data = i1.retriable_sql(
         """
@@ -866,7 +868,7 @@ def test_subqueries_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert data["rows"] == [[1], [3]]
+    assert data == [[1], [3]]
 
 
 def test_aggregates_on_global_tbl(cluster: Cluster):
@@ -896,7 +898,7 @@ def test_aggregates_on_global_tbl(cluster: Cluster):
         select count(*), min(b), max(b), min(b) + max(b) from g
         """
     )
-    assert data["rows"] == [[5, 1, 2, 3]]
+    assert data == [[5, 1, 2, 3]]
 
     data = i1.sql(
         """
@@ -904,7 +906,7 @@ def test_aggregates_on_global_tbl(cluster: Cluster):
         group by b*b
         """
     )
-    assert data["rows"] == [[1, 11], [4, 9]]
+    assert data == [[1, 11], [4, 9]]
 
     data = i1.sql(
         """
@@ -913,7 +915,7 @@ def test_aggregates_on_global_tbl(cluster: Cluster):
         having count(a) > 2
         """
     )
-    assert data["rows"] == [[1, 11]]
+    assert data == [[1, 11]]
 
 
 def test_join_with_global_tbls(cluster: Cluster):
@@ -958,7 +960,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == expected_rows
+    assert sorted(data, key=lambda e: e[0]) == expected_rows
 
     data = i1.retriable_sql(
         """
@@ -967,7 +969,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == expected_rows
+    assert sorted(data, key=lambda e: e[0]) == expected_rows
 
     data = i1.retriable_sql(
         """
@@ -978,7 +980,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[1], [4]]
+    assert sorted(data, key=lambda e: e[0]) == [[1], [4]]
 
     data = i1.retriable_sql(
         """
@@ -990,7 +992,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [
+    assert sorted(data, key=lambda e: e[0]) == [
         [1, 6],
         [2, None],
         [3, None],
@@ -1005,7 +1007,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1], [4, None]]
+    assert sorted(data, key=lambda e: e[0]) == [[1, 1], [1, 1], [4, None]]
 
     data = i1.retriable_sql(
         """
@@ -1016,7 +1018,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1]]
+    assert sorted(data, key=lambda e: e[0]) == [[1, 1], [1, 1]]
 
     data = i1.retriable_sql(
         """
@@ -1026,7 +1028,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[5, 3]]
+    assert sorted(data, key=lambda e: e[0]) == [[5, 3]]
 
     data = i1.retriable_sql(
         """
@@ -1035,7 +1037,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[4, 4], [4, 4], [6, None]]
+    assert sorted(data, key=lambda e: e[0]) == [[4, 4], [4, 4], [6, None]]
 
     data = i1.retriable_sql(
         """
@@ -1046,7 +1048,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [
+    assert sorted(data, key=lambda e: e[0]) == [
         [1, None],
         [1, None],
         [3, None],
@@ -1061,7 +1063,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[1, 1], [1, 1], [3, None]]
+    assert sorted(data, key=lambda e: e[0]) == [[1, 1], [1, 1], [3, None]]
 
     data = i1.retriable_sql(
         """
@@ -1076,7 +1078,7 @@ def test_join_with_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda e: e[0]) == [[3, 3, 3]]
+    assert sorted(data, key=lambda e: e[0]) == [[3, 3, 3]]
 
 
 def test_union_all_on_global_tbls(cluster: Cluster):
@@ -1122,7 +1124,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1132,7 +1134,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1142,7 +1144,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [
+    assert sorted(data, key=lambda x: x[0]) == [
         [1],
         [1],
         [2],
@@ -1161,7 +1163,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1171,7 +1173,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     expected = [[1], [2], [3], [6]]
 
@@ -1183,7 +1185,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1193,7 +1195,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     # some arbitrary queries
 
@@ -1210,7 +1212,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2], [2]]
+    assert sorted(data, key=lambda x: x[0]) == [[1], [2], [2]]
 
     data = i1.retriable_sql(
         """
@@ -1222,7 +1224,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[2], [3]]
+    assert sorted(data, key=lambda x: x[0]) == [[2], [3]]
 
     data = i1.retriable_sql(
         """
@@ -1236,7 +1238,7 @@ def test_union_all_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[2, 2], [2, 9]]
+    assert sorted(data, key=lambda x: x[0]) == [[2, 2], [2, 9]]
 
 
 def test_union_on_global_tbls(cluster: Cluster):
@@ -1279,7 +1281,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1289,7 +1291,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1299,7 +1301,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [
+    assert sorted(data, key=lambda x: x[0]) == [
         [1],
         [2],
         [3],
@@ -1315,7 +1317,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1325,7 +1327,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     expected = [[1], [2], [3]]
 
@@ -1337,7 +1339,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1347,7 +1349,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == expected
+    assert sorted(data, key=lambda x: x[0]) == expected
 
     data = i1.retriable_sql(
         """
@@ -1365,7 +1367,7 @@ def test_union_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+    assert sorted(data, key=lambda x: x[0]) == [[1], [2]]
 
 
 def test_trim(instance: Instance):
@@ -1381,28 +1383,28 @@ def test_trim(instance: Instance):
 
     # basic trim test
     data = instance.sql(""" select trim(s) from t """)
-    assert data["rows"][0] == ["aabb"]
+    assert data[0] == ["aabb"]
 
     # trim inside trim
     data = instance.sql(""" select trim(trim(s)) from t """)
-    assert data["rows"][0] == ["aabb"]
+    assert data[0] == ["aabb"]
 
     # trim with removal chars
     data = instance.sql(""" select trim('a' from trim(s)) from t """)
-    assert data["rows"][0] == ["bb"]
+    assert data[0] == ["bb"]
 
     data = instance.sql(""" select trim(trim(s) from trim(s)) from t """)
-    assert data["rows"][0] == [""]
+    assert data[0] == [""]
 
     # trim with modifiers
     data = instance.sql(""" select trim(leading 'a' from trim(s)) from t """)
-    assert data["rows"][0] == ["bb"]
+    assert data[0] == ["bb"]
 
     data = instance.sql(""" select trim(trailing 'b' from trim(s)) from t """)
-    assert data["rows"][0] == ["aa"]
+    assert data[0] == ["aa"]
 
     data = instance.sql(""" select trim(both 'ab' from trim(s)) from t """)
-    assert data["rows"][0] == [""]
+    assert data[0] == [""]
 
 
 def test_except_on_global_tbls(cluster: Cluster):
@@ -1450,7 +1452,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert data["rows"] == [[5]]
+    assert data == [[5]]
 
     data = i1.retriable_sql(
         """
@@ -1460,7 +1462,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+    assert sorted(data, key=lambda x: x) == [[1], [2]]
 
     data = i1.retriable_sql(
         """
@@ -1470,7 +1472,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[1]]
+    assert sorted(data, key=lambda x: x[0]) == [[1]]
 
     data = i1.retriable_sql(
         """
@@ -1482,7 +1484,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[1], [2]]
+    assert sorted(data, key=lambda x: x[0]) == [[1], [2]]
 
     data = i1.retriable_sql(
         """
@@ -1494,7 +1496,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[5]]
+    assert sorted(data, key=lambda x: x[0]) == [[5]]
 
     data = i1.retriable_sql(
         """
@@ -1504,7 +1506,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[6], [7]]
+    assert sorted(data, key=lambda x: x[0]) == [[6], [7]]
 
     data = i1.retriable_sql(
         """
@@ -1514,7 +1516,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[6]]
+    assert sorted(data, key=lambda x: x[0]) == [[6]]
 
     data = i1.retriable_sql(
         """
@@ -1528,7 +1530,7 @@ def test_except_on_global_tbls(cluster: Cluster):
         """,
         timeout=2,
     )
-    assert sorted(data["rows"], key=lambda x: x[0]) == [[7]]
+    assert sorted(data, key=lambda x: x[0]) == [[7]]
 
 
 def test_hash(cluster: Cluster):
@@ -1554,7 +1556,7 @@ def test_hash(cluster: Cluster):
     data = i1.sql("""insert into t values(?);""", 1)
     assert data["row_count"] == 1
     data = i1.sql(""" select "bucket_id" from t where a = ?""", 1)
-    assert data["rows"] == [[lua_hash % bucket_count + 1]]
+    assert data == [[lua_hash % bucket_count + 1]]
 
 
 def test_select_lowercase_name(cluster: Cluster):
@@ -1573,7 +1575,7 @@ def test_select_lowercase_name(cluster: Cluster):
     data = i1.sql("""insert into "lowercase_name" values(420);""")
     assert data["row_count"] == 1
     data = i1.sql("""select * from "lowercase_name" """)
-    assert data["rows"] == [[420]]
+    assert data == [[420]]
 
 
 def test_select_string_field(cluster: Cluster):
@@ -1590,7 +1592,7 @@ def test_select_string_field(cluster: Cluster):
     data = i1.sql("""insert into STUFF values(1337, 'foo');""")
     assert data["row_count"] == 1
     data = i1.sql("""select * from STUFF """)
-    assert data["rows"] == [[1337, "foo"]]
+    assert data == [[1337, "foo"]]
 
 
 def test_create_drop_table(cluster: Cluster):
@@ -1926,7 +1928,7 @@ def test_insert_on_conflict(cluster: Cluster):
         """select * from "t"
     """
     )
-    assert data["rows"] == [[1, 1]]
+    assert data == [[1, 1]]
 
     dml = i1.sql(
         """
@@ -1939,7 +1941,7 @@ def test_insert_on_conflict(cluster: Cluster):
         """select * from "t"
     """
     )
-    assert data["rows"] == [[1, 2]]
+    assert data == [[1, 2]]
 
 
 def test_sql_limits(cluster: Cluster):
@@ -1977,7 +1979,7 @@ def test_sql_limits(cluster: Cluster):
         select * from "t" where "a" = 1 option(sql_vdbe_max_steps=50)
     """
     )
-    assert dql["rows"] == [[1, 1]]
+    assert dql == [[1, 1]]
 
     with pytest.raises(
         TarantoolError,
@@ -2399,9 +2401,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     # Remember number of default privileges.
-    default_privileges_number = len(
-        i1.sql(""" select * from "_pico_privilege" """)["rows"]
-    )
+    default_privileges_number = len(i1.sql(""" select * from "_pico_privilege" """))
 
     # =========================ERRORs======================
     # Attempt to grant unsupported privileges.
@@ -2455,14 +2455,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" grant create user to {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: User creation is available.
     # * Revoke CREATE from user.
     acl = i1.sql(f""" revoke create user from {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number
     # * TODO: Check that user with granted privileges can ALTER and DROP created user
     #         as it's the owner.
@@ -2472,14 +2472,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" grant alter user to {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Check ALTER is available.
     # * Revoke global ALTER.
     acl = i1.sql(f""" revoke alter user from {username} """, sudo=True)
     assert acl["row_count"] == 1
 
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number
 
     # * TODO: Check another user can't initially interact with previously created new user.
@@ -2493,14 +2493,14 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" grant create role to {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Role creation is available.
     # * Revoke CREATE from user.
     acl = i1.sql(f""" revoke create role from {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number
     # * TODO: Check that user with granted privileges can DROP created role as it's the owner.
     # * TODO: Revoke automatically granted privileges.
@@ -2509,7 +2509,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" grant drop role to {username} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privileges table is updated.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number + 1
     # * TODO: Check DROP is available.
     # * Revoke global DROP.
@@ -2660,7 +2660,7 @@ def test_sql_acl_privileges(cluster: Cluster):
 
     # ================ROLE passing================
     # * Check there are no privileges granted to anything initially.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number
     # * Read from table is prohibited for user initially.
     with pytest.raises(
@@ -2688,7 +2688,7 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f""" revoke read on table {table_name} from {rolename} """, sudo=True)
     assert acl["row_count"] == 1
     # * Check privilege revoked from role and user.
-    privs_rows = i1.sql(""" select * from "_pico_privilege" """)["rows"]
+    privs_rows = i1.sql(""" select * from "_pico_privilege" """)
     assert len(privs_rows) == default_privileges_number + 1  # default + role for user
     # * Check read is prohibited again.
     with pytest.raises(
@@ -2782,7 +2782,7 @@ def test_sql_privileges(cluster: Cluster):
     dql = i1.sql(
         f""" select * from "{table_name}" """, user=username, password=alice_pwd
     )
-    assert dql["rows"] == []
+    assert dql == []
 
     # Revoke read privilege
     i1.sql(f""" revoke read on table "{table_name}" from "{username}" """, sudo=True)
@@ -2897,14 +2897,14 @@ def test_sql_privileges_vtables(cluster: Cluster):
 
     # Check no-motion (without need to read vtables) query work.
     dql = i1.sql(f""" select * from "{table_name}" """, user=username, password=pwd)
-    assert dql["rows"] == []
+    assert dql == []
 
     # Check with-motion (with need to read vtables) query work.
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/620
     dql = i1.sql(
         f""" select count(*) from "{table_name}" """, user=username, password=pwd
     )
-    assert dql["rows"] == [[0]]
+    assert dql == [[0]]
 
     # Check DML query work.
     dml = i1.sql(
@@ -2962,7 +2962,7 @@ def test_create_drop_procedure(cluster: Cluster):
         select "id" from "_pico_routine" where "name" = 'PROC1'
         """,
     )
-    assert data["rows"] == [[next_func_id]]
+    assert data == [[next_func_id]]
 
     # Check that recreation of the same procedure is idempotent.
     data = i2.sql(
@@ -3018,18 +3018,18 @@ def test_create_drop_procedure(cluster: Cluster):
             """
         )
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
-    assert data["rows"] == []
+    assert data == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
-    assert data["rows"] == []
+    assert data == []
 
     # Check that PROC1 is actually dropped
     i1.sql(""" drop procedure proc1 """)
     cluster.raft_wait_index(i1.raft_get_index())
 
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
-    assert data["rows"] == []
+    assert data == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
-    assert data["rows"] == []
+    assert data == []
 
     # Check that dropping of the same procedure is idempotent.
     i1.sql(""" drop procedure proc1 """)
@@ -3052,8 +3052,8 @@ def test_create_drop_procedure(cluster: Cluster):
         select "id" from "_pico_routine" where "name" = 'PROC1'
         """,
     )
-    assert data["rows"] != []
-    routine_id = data["rows"][0][0]
+    assert data != []
+    routine_id = data[0][0]
 
     # Check that dropping raises an error in case of parameters mismatch.
     with pytest.raises(
@@ -3071,18 +3071,18 @@ def test_create_drop_procedure(cluster: Cluster):
 
     # Routine mustn't be dropped at the moment.
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
-    assert data["rows"] != []
+    assert data != []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
-    assert data["rows"] != []
+    assert data != []
 
     # Check drop with matching parameters.
     i2.sql(""" drop procedure proc1(integer) """)
     cluster.raft_wait_index(i2.raft_get_index())
 
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
-    assert data["rows"] == []
+    assert data == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
-    assert data["rows"] == []
+    assert data == []
 
     # Check that recreated routine has the same id with the recently dropped one.
     i2.sql(
@@ -3099,8 +3099,8 @@ def test_create_drop_procedure(cluster: Cluster):
         select "id" from "_pico_routine" where "name" = 'PROC1'
         """,
     )
-    assert data["rows"] != []
-    assert routine_id == data["rows"][0][0]
+    assert data != []
+    assert routine_id == data[0][0]
 
 
 def test_sql_user_password_checks(cluster: Cluster):
@@ -3307,7 +3307,7 @@ def test_rename_procedure(cluster: Cluster):
         where "name" = 'BAR' or "name" = 'FOO'
         """
     )
-    assert data["rows"] == [["BAR"]]
+    assert data == [["BAR"]]
 
     # procedure foo doesn't exist
     data = i1.sql(
@@ -3333,7 +3333,7 @@ def test_rename_procedure(cluster: Cluster):
         where "name" = 'BAR' or "name" = 'FOO'
         """
     )
-    assert data["rows"] == [["FOO"]]
+    assert data == [["FOO"]]
 
     data = i2.sql(
         """
@@ -3398,9 +3398,9 @@ def test_rename_procedure(cluster: Cluster):
         )
 
     data = i1.sql(""" select * from "_pico_routine" where "name" = 'foobar' """)
-    assert data["rows"] == []
+    assert data == []
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'foobar' """)
-    assert data["rows"] == []
+    assert data == []
 
 
 def test_procedure_privileges(cluster: Cluster):
@@ -3762,7 +3762,7 @@ Alter access to user 'boba' is denied for user 'biba'\
             sudo=True,
         )
 
-        return [row[0] for row in data["rows"]]
+        return [row[0] for row in data]
 
     # Check that rename works fine
     assert "skibidi" in names_from_pico_user_table()
@@ -3812,7 +3812,7 @@ def test_index(cluster: Cluster):
     ddl = i1.sql(""" create index i0 on t (a) option (timeout = 3) """)
     assert ddl["row_count"] == 1
     data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
-    assert data["rows"] != []
+    assert data != []
 
     # Successful tree index creation with default options
     ddl = i1.sql(""" create index i1 on t (a, b) """)
@@ -3903,7 +3903,7 @@ def test_index(cluster: Cluster):
 
     # Check that the index is actually dropped.
     data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
-    assert data["rows"] == []
+    assert data == []
 
     # Drop non-existing index.
     ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
@@ -3953,15 +3953,15 @@ def test_order_by(cluster: Cluster):
         [8, None, -1],
     ]
     data = i1.sql(""" select * from "null_t" order by "na" """)
-    assert data["rows"] == expected_ordering_by_1
+    assert data == expected_ordering_by_1
     data = i1.sql(""" select * from "null_t" order by 1 """)
-    assert data["rows"] == expected_ordering_by_1
+    assert data == expected_ordering_by_1
     data = i1.sql(""" select * from "null_t" order by 1 asc """)
-    assert data["rows"] == expected_ordering_by_1
+    assert data == expected_ordering_by_1
     data = i1.sql(""" select * from "null_t" order by "na" asc """)
-    assert data["rows"] == expected_ordering_by_1
+    assert data == expected_ordering_by_1
     data = i1.sql(""" select * from "null_t" order by 1, 2 """)
-    assert data["rows"] == expected_ordering_by_1
+    assert data == expected_ordering_by_1
 
     expected_ordering_by_2 = [
         [2, None, 3],
@@ -3974,14 +3974,14 @@ def test_order_by(cluster: Cluster):
         [4, 3, 1],
     ]
     data = i1.sql(""" select * from "null_t" order by "nb" """)
-    assert data["rows"] == expected_ordering_by_2
+    assert data == expected_ordering_by_2
     data = i1.sql(""" select * from "null_t" order by "nb" asc """)
-    assert data["rows"] == expected_ordering_by_2
+    assert data == expected_ordering_by_2
     data = i1.sql(""" select * from "null_t" order by 2 """)
-    assert data["rows"] == expected_ordering_by_2
+    assert data == expected_ordering_by_2
 
     data = i1.sql(""" select * from "null_t" order by 1 desc """)
-    assert data["rows"] == [
+    assert data == [
         [8, None, -1],
         [7, 1, 1],
         [6, -1, 3],
@@ -4003,12 +4003,12 @@ def test_order_by(cluster: Cluster):
         [8, None, -1],
     ]
     data = i1.sql(""" select * from "null_t" order by "nb" desc """)
-    assert data["rows"] == expected_ordering_by_2_desc
+    assert data == expected_ordering_by_2_desc
     data = i1.sql(""" select * from "null_t" order by "nb" * 2 + 42 * "nb" desc """)
-    assert data["rows"] == expected_ordering_by_2_desc
+    assert data == expected_ordering_by_2_desc
 
     data = i1.sql(""" select * from "null_t" order by "nb" desc, "na" desc """)
-    assert data["rows"] == [
+    assert data == [
         [4, 3, 1],
         [3, 2, 3],
         [1, 2, 1],
@@ -4020,7 +4020,7 @@ def test_order_by(cluster: Cluster):
     ]
 
     data = i1.sql(""" select * from "null_t" order by 2 asc, 1 desc, 2 desc, 1 asc """)
-    assert data["rows"] == [
+    assert data == [
         [8, None, -1],
         [2, None, 3],
         [6, -1, 3],
@@ -4083,7 +4083,7 @@ def test_cte(cluster: Cluster):
         select * from cte
         """
     )
-    assert data["rows"] == [[3], [4], [5]]
+    assert data == [[3], [4], [5]]
 
     # nested CTE
     data = i1.sql(
@@ -4093,7 +4093,7 @@ def test_cte(cluster: Cluster):
         select * from cte2
         """
     )
-    assert data["rows"] == [[3], [4], [5]]
+    assert data == [[3], [4], [5]]
 
     # reuse CTE
     data = i1.sql(
@@ -4104,7 +4104,7 @@ def test_cte(cluster: Cluster):
         select b + b from cte
         """
     )
-    assert data["rows"] == [[2], [4]]
+    assert data == [[2], [4]]
 
     # global CTE
     data = i1.sql(
@@ -4113,7 +4113,7 @@ def test_cte(cluster: Cluster):
         select * from cte
         """
     )
-    assert data["rows"] == [[1], [2], [3]]
+    assert data == [[1], [2], [3]]
 
     # CTE with parameters
     data = i1.sql(
@@ -4123,7 +4123,7 @@ def test_cte(cluster: Cluster):
         """,
         3,
     )
-    assert data["rows"] == [[4], [5]]
+    assert data == [[4], [5]]
 
     # join sharded table with CTE
     data = i1.sql(
@@ -4132,7 +4132,7 @@ def test_cte(cluster: Cluster):
         select t.a, cte.b from t join cte on t.a = cte.b
         """
     )
-    assert data["rows"] == [[3, 3], [4, 4], [5, 5]]
+    assert data == [[3, 3], [4, 4], [5, 5]]
 
     # join global table with CTE
     data = i1.sql(
@@ -4141,7 +4141,7 @@ def test_cte(cluster: Cluster):
         select g.a, cte.b from g join cte on g.a = cte.b
         """
     )
-    assert data["rows"] == [[1, 1], [2, 2], [3, 3]]
+    assert data == [[1, 1], [2, 2], [3, 3]]
 
     # CTE in aggregate
     data = i1.sql(
@@ -4150,7 +4150,7 @@ def test_cte(cluster: Cluster):
         select count(b) from cte
         """
     )
-    assert data["rows"] == [[3]]
+    assert data == [[3]]
 
     # CTE in subquery
     data = i1.sql(
@@ -4159,7 +4159,7 @@ def test_cte(cluster: Cluster):
         select * from t where a in (select b from cte)
         """
     )
-    assert data["rows"] == [[2, 2], [5, 5]]
+    assert data == [[2, 2], [5, 5]]
 
     # values in CTE
     data = i1.sql(
@@ -4168,7 +4168,7 @@ def test_cte(cluster: Cluster):
         select * from cte order by 1
         """
     )
-    assert data["rows"] == [[1], [2], [3]]
+    assert data == [[1], [2], [3]]
 
     # union all in CTE
     data = i1.sql(
@@ -4178,7 +4178,7 @@ def test_cte(cluster: Cluster):
         select * from cte2 order by 1
         """
     )
-    assert data["rows"] == [[1], [1], [2], [3]]
+    assert data == [[1], [1], [2], [3]]
 
     # join in CTE
     data = i1.sql(
@@ -4191,7 +4191,7 @@ def test_cte(cluster: Cluster):
         select * from cte
         """
     )
-    assert data["rows"] == [[1]]
+    assert data == [[1]]
 
     # order by in CTE
     data = i1.sql(
@@ -4200,7 +4200,7 @@ def test_cte(cluster: Cluster):
         select * from cte
         """
     )
-    assert data["rows"] == [[5], [4], [3], [2], [1]]
+    assert data == [[5], [4], [3], [2], [1]]
 
     # randomly distributed CTE used multiple times
     data = i1.sql(
@@ -4210,7 +4210,7 @@ def test_cte(cluster: Cluster):
         join cte on true
         """
     )
-    assert data["rows"] == [[4], [4]]
+    assert data == [[4], [4]]
 
     # CTE with segment distribution used multiple times
     data = i1.sql(
@@ -4220,7 +4220,7 @@ def test_cte(cluster: Cluster):
         join cte on true
         """
     )
-    assert data["rows"] == [[1]]
+    assert data == [[1]]
 
     # CTE with global distribution used multiple times
     data = i1.sql(
@@ -4230,7 +4230,7 @@ def test_cte(cluster: Cluster):
         join cte on true
         """
     )
-    assert data["rows"] == [[1]]
+    assert data == [[1]]
 
     # CTE with values used multiple times
     data = i1.sql(
@@ -4240,7 +4240,7 @@ def test_cte(cluster: Cluster):
         join cte on true
         """
     )
-    assert data["rows"] == [[1]]
+    assert data == [[1]]
 
 
 def test_unique_index_name_for_sharded_table(cluster: Cluster):
@@ -4284,7 +4284,7 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
         data = i1.sql(
             f""" select * from "_pico_index" where "name" = '{table_name}_bucket_id' """
         )
-        assert data["rows"] != []
+        assert data != []
 
 
 def test_tier_part(cluster: Cluster):
@@ -4313,7 +4313,7 @@ cluster:
             sudo=True,
         )
 
-        distribution_field = data["rows"][0][0]
+        distribution_field = data[0][0]
         distribution_parameters = list(distribution_field.values())
         assert len(distribution_parameters) == 1
         tier = distribution_parameters[0][2]
@@ -4449,7 +4449,7 @@ cluster:
             """
     )
 
-    assert len(dql["rows"]) > 0
+    assert len(dql) > 0
 
     # Query with tables from different tier is aborted.
     with pytest.raises(

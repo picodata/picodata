@@ -503,7 +503,7 @@ class Connection(tarantool.Connection):  # type: ignore
     def eval(self, expr, *args, on_push=None, on_push_ctx=None):
         return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
 
-    def sql(self, sql: str, *params, options=None, sudo=False) -> dict:
+    def sql(self, sql: str, *params, options=None, sudo=False) -> dict[str, list]:
         """Run SQL query and return result"""
         if sudo:
             old_euid = self.eval(
@@ -739,14 +739,26 @@ class Instance:
         sql: str,
         *params,
         options: Optional[Dict[str, Any]] = None,
+        strip_metadata=True,
         sudo=False,
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 3,
-    ) -> dict:
-        """Run SQL query and return result"""
+    ):
+        """
+        Run SQL query and return result.
+        Parameters:
+        * `sudo`: Whether the query is executed with 'admin' privileges or not.
+        * `strip_metadata`: If `true`, the "metadata" field of the response is
+            removed and only the list of rows is returned (the "rows" field).
+            If the response instead contains just the "row_count" field, this
+            parameter is ignored.
+        """
         with self.connect(timeout=timeout, user=user, password=password) as conn:
-            return conn.sql(sql, sudo=sudo, *params, options=options)
+            result = conn.sql(sql, sudo=sudo, *params, options=options)
+        if strip_metadata and "rows" in result:
+            return result["rows"]
+        return result
 
     def retriable_sql(
         self,

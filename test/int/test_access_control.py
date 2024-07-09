@@ -55,7 +55,7 @@ def test_access_global_table(cluster: Cluster):
     i1.raft_wait_index(ret, _3_SEC)
 
     # Alice can read it
-    assert i1.sql("""select * from "friends_of_peppa" """, **as_alice)["rows"] == [
+    assert i1.sql("""select * from "friends_of_peppa" """, **as_alice) == [
         ["Rebecca", "Rabbit"],
         ["Suzy", "Sheep"],
         ["Zoe", "Zebra"],
@@ -76,7 +76,7 @@ def test_access_global_table(cluster: Cluster):
     # Now bob can read it
     assert i1.sql(
         """select * from "friends_of_peppa" where "name" = 'Zoe';""", **as_bob
-    )["rows"] == [["Zoe", "Zebra"]]
+    ) == [["Zoe", "Zebra"]]
 
     # But Bob still can't write it
     with pytest.raises(
@@ -116,7 +116,7 @@ def test_access_sharded_table(cluster: Cluster):
     i1.sql("""insert into "wonderland" values ('goblin', null)""", **as_alice)
 
     # Alice can read it
-    assert i1.sql("""select * from "wonderland";""", **as_alice)["rows"] == [
+    assert i1.sql("""select * from "wonderland";""", **as_alice) == [
         ["dragon", 13],
         ["goblin", None],
         ["unicorn", 4],
@@ -137,7 +137,7 @@ def test_access_sharded_table(cluster: Cluster):
     # Now bob can read it
     assert i1.sql(
         """select * from "wonderland" where "creature" = 'unicorn';""", **as_bob
-    )["rows"] == [["unicorn", 4]]
+    ) == [["unicorn", 4]]
 
     # But Bob still can't write it
     with pytest.raises(

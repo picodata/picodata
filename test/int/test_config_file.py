@@ -420,7 +420,7 @@ cluster:
         'select "replication_factor" from "_pico_tier" where "name" = \'default\'',
         sudo=True,
     )
-    assert dql["rows"][0][0] == 1
+    assert dql[0][0] == 1
 
 
 def test_default_tier_with_default_replication_factor(cluster: Cluster):
@@ -441,4 +441,4 @@ cluster:
         'select "replication_factor" from "_pico_tier" where "name" = \'default\'',
         sudo=True,
     )
-    assert dql["rows"][0][0] == 3
+    assert dql[0][0] == 3

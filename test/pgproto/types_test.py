@@ -322,7 +322,7 @@ def test_map(postgres: Postgres):
     conn.autocommit = True
 
     data = postgres.instance.sql(""" SELECT "distribution" FROM "_pico_table" """)
-    distribution = [tuple(row) for row in data["rows"]]
+    distribution = [tuple(row) for row in data]
 
     # test text encoding
     cur = conn.execute(""" SELECT "distribution" FROM "_pico_table" """, binary=False)
