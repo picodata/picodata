@@ -1,7 +1,7 @@
 use picoplugin::background::CancellationToken;
 use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::log::rs_log;
-use picoplugin::plugin::interface::{CallbackResult, DDL};
+use picoplugin::plugin::interface::CallbackResult;
 use picoplugin::plugin::prelude::*;
 use picoplugin::system::tarantool::datetime::Datetime;
 use picoplugin::system::tarantool::decimal::Decimal;
@@ -198,10 +198,6 @@ impl Service for Service1 {
         update_plugin_cfg("testservice_1", &new_cfg);
 
         Ok(())
-    }
-
-    fn schema(&self) -> Vec<DDL> {
-        vec![]
     }
 
     fn on_start(&mut self, ctx: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {

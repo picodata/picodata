@@ -110,21 +110,6 @@ impl PicoContext {
     }
 }
 
-/// TODO
-#[repr(C)]
-#[derive(StableAbi)]
-pub struct DDL {
-    ddl_query: RString,
-}
-
-impl DDL {
-    pub fn new(ddl_query: &str) -> DDL {
-        DDL {
-            ddl_query: ddl_query.into(),
-        }
-    }
-}
-
 // --------------------------- user interface ------------------------------------------------------
 
 /// Error type, return it from your callbacks.
@@ -225,12 +210,6 @@ pub trait Service {
         Ok(())
     }
 
-    /// Define data schema.
-    /// TODO.
-    fn schema(&self) -> Vec<DDL> {
-        vec![]
-    }
-
     /// `on_healthcheck` is a callback
     /// that should be called to determine if the service is functioning properly
     /// On an error instance will be poisoned
@@ -247,7 +226,6 @@ pub trait Service {
 /// Define interface like [`Service`] trait but using safe types from [`abi_stable`] crate.
 #[sabi_trait]
 pub trait ServiceStable {
-    fn schema(&self) -> RVec<DDL>;
     fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_health_check(&self, context: &PicoContext) -> RResult<(), ()>;
     fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()>;
@@ -296,10 +274,6 @@ macro_rules! rtry {
 }
 
 impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
-    fn schema(&self) -> RVec<DDL> {
-        self.service.schema().into()
-    }
-
     fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()> {
         let configuration: C = rtry!(rmp_serde::from_slice(configuration.as_slice()));
         let res = self.service.on_cfg_validate(configuration);

@@ -1,6 +1,6 @@
 use crate::cbus::ENDPOINT_NAME;
 use crate::plugin::{do_plugin_cas, PluginIdentifier, PLUGIN_DIR};
-use crate::schema::{PluginMigrationRecord, ADMIN_ID};
+use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};

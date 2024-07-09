@@ -313,7 +313,11 @@ def install_and_enable_plugin(
     if_not_exist=False,
 ):
     instance.call(
-        "pico.install_plugin", plugin, version, {"migrate": migrate, "if_not_exist": if_not_exist}, timeout=timeout
+        "pico.install_plugin",
+        plugin,
+        version,
+        {"migrate": migrate, "if_not_exist": if_not_exist},
+        timeout=timeout,
     )
     for s in services:
         if default_config is not None:

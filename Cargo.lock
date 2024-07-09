@@ -2544,7 +2544,6 @@ dependencies = [
  "opentelemetry",
  "pgwire",
  "pico_proc_macro",
- "picodata-sdk",
  "picoplugin",
  "postgres-types",
  "pretty_assertions 0.6.1",
@@ -2584,13 +2583,6 @@ dependencies = [
  "byteorder",
  "rmp",
  "serde",
-]
-
-[[package]]
-name = "picodata-sdk"
-version = "0.1.0"
-dependencies = [
- "libloading 0.8.3",
 ]
 
 [[package]]
@@ -2662,21 +2654,6 @@ name = "pkg-config"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d231b230927b5e4ad203db57bbcbee2802f6bce620b1e4a9024a07d94e2907ec"
-
-[[package]]
-name = "plugin-example"
-version = "0.1.0"
-dependencies = [
- "picodata-sdk",
-]
-
-[[package]]
-name = "plugin-example2"
-version = "0.1.0"
-dependencies = [
- "picodata-sdk",
- "serde_json",
-]
 
 [[package]]
 name = "portable-atomic"

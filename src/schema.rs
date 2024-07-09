@@ -1,14 +1,10 @@
 use ahash::AHashSet;
-use md5::Digest;
 use sbroad::ir::ddl::{Language, ParamDef};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
-use std::fs::File;
-use std::io;
-use std::mem::size_of;
 use std::str::FromStr;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use tarantool::decimal::Decimal;
 use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, RtreeIndexDistanceType};
 

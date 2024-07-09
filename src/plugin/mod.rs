@@ -4,8 +4,7 @@ pub mod migration;
 pub mod rpc;
 pub mod topology;
 
-use crate::schema::{PluginDef, PluginMigrationRecord, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
-use libloading::Library;
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use once_cell::unsync;
 use picoplugin::background::ServiceId;
 use picoplugin::plugin::interface::ServiceBox;
