@@ -1810,11 +1810,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     )
 
     # Check requesting RPC to unknown replicaset
-    with pytest.raises(
-        TarantoolError,
-        # FIXME: do a better error message
-        match='replicaset with id "NO_SUCH_REPLICASET" not found',
-    ):
+    with pytest.raises(TarantoolError) as e:
         context = make_context()
         input = dict(
             path="/ping",
@@ -1822,6 +1818,10 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
             input=msgpack.dumps([]),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert e.value.args[:2] == (
+        ErrorCode.NoSuchReplicaset,
+        'replicaset with replicaset_id "NO_SUCH_REPLICASET" not found',
+    )
 
     # Check requesting RPC to unknown bucket id
     with pytest.raises(

@@ -36,6 +36,7 @@ tarantool::define_enum_with_introspection! {
         WrongPluginVersion = 10015,
 
         NoSuchInstance = 10016,
+        NoSuchReplicaset = 10017,
 
         // TODO: put in particular compare-and-swap related ones, but also other ones
 

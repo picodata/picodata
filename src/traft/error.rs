@@ -54,7 +54,7 @@ pub enum Error {
     Tarantool(#[from] ::tarantool::error::Error),
     #[error("instance with {} not found", DisplayIdOfInstance(.0))]
     NoSuchInstance(Result<RaftId, InstanceId>),
-    #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "uuid" } else { "id" })]
+    #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "replicaset_uuid" } else { "replicaset_id" })]
     NoSuchReplicaset { id: String, id_is_uuid: bool },
     #[error("address of peer with id {0} not found")]
     AddressUnknownForRaftId(RaftId),
@@ -206,6 +206,9 @@ impl IntoBoxError for Error {
             Self::Other(e) => BoxError::new(ErrorCode::Other, e.to_string()),
             Self::NoSuchInstance { .. } => {
                 BoxError::new(ErrorCode::NoSuchInstance, self.to_string())
+            }
+            Self::NoSuchReplicaset { .. } => {
+                BoxError::new(ErrorCode::NoSuchReplicaset, self.to_string())
             }
             // TODO: give other error types specific codes
             other => BoxError::new(ErrorCode::Other, other.to_string()),
