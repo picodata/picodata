@@ -10,8 +10,6 @@ use rustyline::error::ReadlineError;
 use rustyline::Context;
 use rustyline_derive::{Completer, Helper, Highlighter, Hinter, Validator};
 
-use crate::tarantool_main;
-
 use super::args;
 use super::connect::ResultSet;
 use super::console::{Command, Console, ReplError, SpecialCommand};
@@ -78,15 +76,13 @@ pub enum UnixClientError {
     DeserializeMessageError(String),
 }
 
-pub type Result<T> = std::result::Result<T, UnixClientError>;
-
 impl UnixClient {
     const SERVER_DELIM: &'static str = "$EOF$\n";
     const CLIENT_DELIM: &'static [u8] = b"\n...\n";
     const WAIT_TIMEOUT: u64 = 10;
     const INITIAL_BUFFER_SIZE: usize = 1024;
 
-    fn from_stream(socket: UnixStream) -> Result<Self> {
+    fn from_stream(socket: UnixStream) -> Result<Self, UnixClientError> {
         socket.set_read_timeout(Some(Duration::from_secs(Self::WAIT_TIMEOUT)))?;
         Ok(UnixClient {
             socket,
@@ -98,7 +94,7 @@ impl UnixClient {
     /// Creates struct object using `path` for raw unix socket.
     ///
     /// Setup delimiter, default language and ignore tarantool prompt.
-    fn new(path: &str) -> Result<Self> {
+    fn new(path: &str) -> Result<Self, UnixClientError> {
         let socket = UnixStream::connect(path)?;
         let mut client = Self::from_stream(socket)?;
 
@@ -124,11 +120,11 @@ impl UnixClient {
     }
 
     /// Writes message appended with delimiter to tarantool console
-    fn write(&mut self, line: &str) -> Result<()> {
+    fn write(&mut self, line: &str) -> Result<(), UnixClientError> {
         self.write_raw(&(line.to_owned() + Self::SERVER_DELIM))
     }
 
-    fn write_raw(&mut self, line: &str) -> Result<()> {
+    fn write_raw(&mut self, line: &str) -> Result<(), UnixClientError> {
         self.socket
             .write_all(line.as_bytes())
             .map_err(UnixClientError::Io)
@@ -141,7 +137,7 @@ impl UnixClient {
     /// Returns error in the following cases:
     /// 1. Read timeout
     /// 2. Deserialization failure
-    fn read(&mut self) -> Result<String> {
+    fn read(&mut self) -> Result<String, UnixClientError> {
         let mut pos = 0;
         loop {
             let read = match self.socket.read(&mut self.buffer[pos..]) {
@@ -177,7 +173,12 @@ impl UnixClient {
         return Ok(deserialized);
     }
 
-    fn complete_input(&mut self, line: &str, left: usize, right: usize) -> Result<Vec<String>> {
+    fn complete_input(
+        &mut self,
+        line: &str,
+        left: usize,
+        right: usize,
+    ) -> Result<Vec<String>, UnixClientError> {
         // Completions are available only for Lua
         if self.current_language != ConsoleLanguage::Lua {
             return Ok(Vec::new());
@@ -214,7 +215,7 @@ impl UnixClient {
     }
 }
 
-fn admin_repl(args: args::Admin) -> core::result::Result<(), ReplError> {
+fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
     let client = UnixClient::new(&args.socket_path).map_err(|err| {
         ReplError::Other(format!(
             "connection via unix socket by path '{}' is not established, reason: {}",
@@ -295,24 +296,15 @@ fn admin_repl(args: args::Admin) -> core::result::Result<(), ReplError> {
         };
     }
 
-    Ok(())
+    std::process::exit(0)
 }
 
 pub fn main(args: args::Admin) -> ! {
-    let rc = tarantool_main!(
-        args.tt_args().unwrap(),
-        callback_data: args,
-        callback_data_type: args::Admin,
-        callback_body: {
-            if let Err(e) = admin_repl(args) {
-                crate::tlog!(Critical, "{e}");
-                std::process::exit(1);
-            }
-            std::process::exit(0)
-        }
-    );
-
-    std::process::exit(rc);
+    let tt_args = args.tt_args().unwrap();
+    super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
+        admin_repl(args)?;
+        std::process::exit(0)
+    })
 }
 
 #[cfg(test)]

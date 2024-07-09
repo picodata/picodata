@@ -8,7 +8,7 @@ use tarantool::fiber;
 
 use crate::cli::args;
 use crate::config::PicodataConfig;
-use crate::{ipc, tarantool_main, tlog, Entrypoint, IpcMessage};
+use crate::{ipc, tlog, Entrypoint, IpcMessage};
 
 pub fn main(args: args::Run) -> ! {
     let tt_args = args.tt_args().unwrap();
@@ -98,41 +98,33 @@ pub fn main(args: args::Run) -> ! {
                 drop(from_child);
                 drop(to_child);
 
-                let rc = tarantool_main!(
-                    tt_args,
-                    // Note that we don't really need to pass the `config` here,
-                    // because it's stored in the global variable which we can access from anywhere.
-                    // But we still pass it explicitly just to make sure it's initialized at this early point.
-                    callback_data: (entrypoint, config, to_parent, from_parent),
-                    callback_data_type: (Entrypoint, &PicodataConfig, ipc::Sender<IpcMessage>, ipc::Fd),
-                    callback_body: {
-                        // We don't want a child to live without a supervisor.
-                        //
-                        // Usually, supervisor waits for child forever and retransmits
-                        // termination signals. But if the parent is killed with a SIGKILL
-                        // there's no way to pass anything.
-                        //
-                        // This fiber serves as a fuse - it tries to read from a pipe
-                        // (that supervisor never writes to), and if the writing end is
-                        // closed, it means the supervisor has terminated.
-                        let fuse = fiber::Builder::new()
-                            .name("supervisor_fuse")
-                            .func(move || {
-                                use ::tarantool::ffi::tarantool::CoIOFlags;
-                                use ::tarantool::coio::coio_wait;
-                                coio_wait(*from_parent, CoIOFlags::READ, f64::INFINITY).ok();
-                                tlog!(Warning, "Supervisor terminated, exiting");
-                                std::process::exit(0);
-                        });
-                        std::mem::forget(fuse.start());
+                super::tarantool::main_cb(&tt_args, || {
+                    // We don't want a child to live without a supervisor.
+                    //
+                    // Usually, supervisor waits for child forever and retransmits
+                    // termination signals. But if the parent is killed with a SIGKILL
+                    // there's no way to pass anything.
+                    //
+                    // This fiber serves as a fuse - it tries to read from a pipe
+                    // (that supervisor never writes to), and if the writing end is
+                    // closed, it means the supervisor has terminated.
+                    fiber::Builder::new()
+                        .name("supervisor_fuse")
+                        .func(move || {
+                            use ::tarantool::coio::coio_wait;
+                            use ::tarantool::ffi::tarantool::CoIOFlags;
+                            coio_wait(*from_parent, CoIOFlags::READ, f64::INFINITY).ok();
+                            tlog!(Warning, "Supervisor terminated, exiting");
+                            std::process::exit(0);
+                        })
+                        .start_non_joinable()?;
 
-                        if let Err(e) = entrypoint.exec(config, to_parent) {
-                            tlog!(Critical, "{e}");
-                            std::process::exit(1);
-                        }
-                    }
-                );
-                std::process::exit(rc);
+                    // Note that we don't really need to pass the `config` here,
+                    // because it's stored in the global variable which we can
+                    // access from anywhere. But we still pass it explicitly just
+                    // to make sure it's initialized at this early point.
+                    entrypoint.exec(config, to_parent)
+                })
             }
             ForkResult::Parent { child } => {
                 unsafe { CHILD_PID = Some(child.into()) };

@@ -5,7 +5,6 @@ use tarantool::network::{AsClient, Client, Config};
 
 use crate::address::Address;
 use crate::config::DEFAULT_USERNAME;
-use crate::tarantool_main;
 use crate::traft::error::Error;
 use crate::util::prompt_password;
 
@@ -278,17 +277,9 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 }
 
 pub fn main(args: args::Connect) -> ! {
-    let rc = tarantool_main!(
-        args.tt_args().unwrap(),
-        callback_data: (args,),
-        callback_data_type: (args::Connect,),
-        callback_body: {
-            if let Err(e) = sql_repl(args) {
-                crate::tlog!(Critical, "{e}");
-                std::process::exit(1);
-            };
-            std::process::exit(0)
-        }
-    );
-    std::process::exit(rc);
+    let tt_args = args.tt_args().unwrap();
+    super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
+        sql_repl(args)?;
+        std::process::exit(0)
+    })
 }

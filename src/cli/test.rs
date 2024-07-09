@@ -1,6 +1,5 @@
 use crate::cli::args;
 use crate::ipc;
-use crate::tarantool_main;
 use ::tarantool::test::TestCase;
 use nix::unistd::{self, fork, ForkResult};
 
@@ -56,13 +55,11 @@ pub fn main(args: args::Test) -> ! {
                 }
                 drop(tx);
 
-                let rc = tarantool_main!(
-                    args.tt_args().unwrap(),
-                    callback_data: t,
-                    callback_data_type: &TestCase,
-                    callback_body: test_one(t)
-                );
-                std::process::exit(rc);
+                let tt_args = args.tt_args().unwrap();
+                super::tarantool::main_cb(&tt_args, || {
+                    test_one(t);
+                    Ok::<_, std::convert::Infallible>(())
+                });
             }
             ForkResult::Parent { child } => {
                 drop(tx);
