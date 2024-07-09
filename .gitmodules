@@ -11,9 +11,6 @@
 [submodule "http"]
 	path = http
 	url = ../http.git
-[submodule "picodata-webui"]
-	path = picodata-webui
-	url = ../picodata-webui.git
 [submodule "sbroad"]
 	path = sbroad
 	url = ../sbroad.git
