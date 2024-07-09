@@ -58,6 +58,7 @@ PICO_SERVICE_ID = 32
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
 class ErrorCode:
     Loading = 116
+    NoSuchInstance = 10016
 
 
 def eprint(*args, **kwargs):

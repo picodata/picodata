@@ -333,9 +333,13 @@ fn check_route_to_instance(
         plugin_version: &ident.version,
         service_name: service,
     })?;
+    #[rustfmt::skip]
     let Some(tuple) = res else {
-        #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_id}")).into());
+        if node.storage.instances.get_raw(instance_id).is_ok() {
+            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_id}")).into());
+        } else {
+            return Err(BoxError::new(ErrorCode::NoSuchInstance, format!("instance with instance_id \"{instance_id}\" not found")).into());
+        }
     };
     let res = tuple
         .field(ServiceRouteItem::FIELD_POISON)

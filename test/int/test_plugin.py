@@ -13,6 +13,9 @@ from conftest import (
     log_crawler,
 )
 from decimal import Decimal
+from conftest import (
+    ErrorCode,
+)
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -1793,11 +1796,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
 
     # Check requesting RPC to unknown instance
-    with pytest.raises(
-        TarantoolError,
-        # FIXME: do a better error message
-        match=f"service '{plugin_name}:0.1.0.{service_name}' is not running on NO_SUCH_INSTANCE",
-    ):
+    with pytest.raises(TarantoolError) as e:
         context = make_context()
         input = dict(
             path="/ping",
@@ -1805,6 +1804,10 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
             input=msgpack.dumps([]),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert e.value.args[:2] == (
+        ErrorCode.NoSuchInstance,
+        'instance with instance_id "NO_SUCH_INSTANCE" not found',
+    )
 
     # Check requesting RPC to unknown replicaset
     with pytest.raises(

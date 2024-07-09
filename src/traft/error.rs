@@ -204,6 +204,9 @@ impl IntoBoxError for Error {
             Self::Tarantool(e) => e.into_box_error(),
             Self::NotALeader => BoxError::new(ErrorCode::NotALeader, "not a leader"),
             Self::Other(e) => BoxError::new(ErrorCode::Other, e.to_string()),
+            Self::NoSuchInstance { .. } => {
+                BoxError::new(ErrorCode::NoSuchInstance, self.to_string())
+            }
             // TODO: give other error types specific codes
             other => BoxError::new(ErrorCode::Other, other.to_string()),
         }

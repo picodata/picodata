@@ -35,6 +35,8 @@ tarantool::define_enum_with_introspection! {
         ServiceNotAvailable = 10014,
         WrongPluginVersion = 10015,
 
+        NoSuchInstance = 10016,
+
         // TODO: put in particular compare-and-swap related ones, but also other ones
 
         /// Not an actual error code, just designates the start of the range.
