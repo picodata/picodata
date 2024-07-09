@@ -7,6 +7,8 @@ use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
 
+const WEBUI_DIR: &str = "webui";
+
 // See also: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 fn main() {
     do_compile_time_checks();
@@ -22,10 +24,10 @@ fn main() {
     // │   ├── CMakeLists.txt // used for dynamic build
     // │   └── static-build
     // │       └── CMakeLists.txt // configures above CMakeLists.txt for static build
-    // ├── picodata-webui
+    // ├── webui
     // └── <target-dir>/<build-type>/build  // <- build_root
     //     ├── picodata-<smth>/out          // <- std::env::var("OUT_DIR")
-    //     ├── picodata-webui
+    //     ├── webui
     //     ├── tarantool-http
     //     └── tarantool-sys/{static,dynamic}
     //         ├── ncurses-prefix
@@ -38,8 +40,7 @@ fn main() {
 
     // Running `cargo build` and `cargo clippy` produces 2 different
     // `out_dir` paths. To avoid unnecessary rebuilds we use a different
-    // build root for foreign deps (tarantool-sys, tarantool-http,
-    // picodata-webui)
+    // build root for foreign deps (tarantool-sys, tarantool-http, webui)
     let build_root = Path::new(&out_dir).ancestors().nth(2).unwrap();
     dbg!(&build_root); // "<target-dir>/<build-type>/build"
 
@@ -236,16 +237,17 @@ fn generate_export_stubs(out_dir: &str) {
 fn rerun_if_webui_changed() {
     use std::fs;
 
-    let source_dir = std::env::current_dir().unwrap().join("picodata-webui");
+    let source_dir = std::env::current_dir().unwrap().join(WEBUI_DIR);
     // Do not rerun for generated files changes
     let ignored_files = ["node_modules", ".husky"];
     for entry in fs::read_dir(source_dir)
-        .expect("failed to scan picodata-webui dir")
+        .expect("failed to scan webui dir")
         .flatten()
     {
         if !ignored_files.contains(&entry.file_name().to_str().unwrap()) {
             println!(
-                "cargo:rerun-if-changed=picodata-webui/{}",
+                "cargo:rerun-if-changed={}/{}",
+                WEBUI_DIR,
                 entry.file_name().to_string_lossy()
             );
         }
@@ -260,8 +262,8 @@ fn build_webui(build_root: &Path) {
     }
 
     println!("building webui_bundle ...");
-    let source_dir = std::env::current_dir().unwrap().join("picodata-webui");
-    let out_dir = build_root.join("picodata-webui");
+    let source_dir = std::env::current_dir().unwrap().join(WEBUI_DIR);
+    let out_dir = build_root.join(WEBUI_DIR);
     let out_dir_str = out_dir.display().to_string();
 
     let webui_bundle = out_dir.join("bundle.json");

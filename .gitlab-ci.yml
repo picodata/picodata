@@ -77,10 +77,10 @@ variables:
 
 .base_node: &base_node
   paths:
-    - picodata-webui/node_modules/
+    - webui/node_modules/
   key:
     files:
-      - picodata-webui/yarn.lock
+      - webui/yarn.lock
 
 .py_cache: &py_cache
   paths:
@@ -459,7 +459,7 @@ deploy-docker:
     project: picodata/devops/picodata-in-docker
     branch: main
     strategy: depend
-    
+
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
 upload-picodata-to-binary:
