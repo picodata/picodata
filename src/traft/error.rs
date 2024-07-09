@@ -52,7 +52,7 @@ pub enum Error {
     Lua(#[from] LuaError),
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
-    #[error("instance with id {} not found", DisplayIdOfInstance(.0))]
+    #[error("instance with {} not found", DisplayIdOfInstance(.0))]
     NoSuchInstance(Result<RaftId, InstanceId>),
     #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "uuid" } else { "id" })]
     NoSuchReplicaset { id: String, id_is_uuid: bool },
@@ -96,8 +96,8 @@ impl std::fmt::Display for DisplayIdOfInstance<'_> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self.0 {
-            Ok(raft_id) => write!(f, "{raft_id}"),
-            Err(instance_id) => write!(f, "\"{instance_id}\""),
+            Ok(raft_id) => write!(f, "raft_id {raft_id}"),
+            Err(instance_id) => write!(f, "instance_id \"{instance_id}\""),
         }
     }
 }

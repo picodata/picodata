@@ -4618,7 +4618,7 @@ mod tests {
             assert_eq!(storage.instances.get(&3).unwrap().instance_id, "i3");
             assert_eq!(storage.instances.get(&4).unwrap().instance_id, "i4");
             assert_eq!(storage.instances.get(&5).unwrap().instance_id, "i5");
-            assert_err!(storage.instances.get(&6), "instance with id 6 not found");
+            assert_err!(storage.instances.get(&6), "instance with raft_id 6 not found");
         }
 
         {
@@ -4630,7 +4630,7 @@ mod tests {
             assert_eq!(storage.instances.get(&InstanceId::from("i5")).unwrap().raft_id, 5);
             assert_err!(
                 storage.instances.get(&InstanceId::from("i6")),
-                "instance with id \"i6\" not found"
+                "instance with instance_id \"i6\" not found"
             );
         }
 

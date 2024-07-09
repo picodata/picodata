@@ -289,7 +289,7 @@ def test_pico_instance_info(instance: Instance):
 
     with pytest.raises(ReturnError) as e:
         instance_info("i2")
-    assert e.value.args[:2] == ('instance with id "i2" not found',)
+    assert e.value.args[:2] == ('instance with instance_id "i2" not found',)
 
     assert instance_info() == myself
 
@@ -576,7 +576,7 @@ cluster:
 
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_instance_info", "i3")
-    assert 'instance with id "i3" not found' in str(e)
+    assert 'instance with instance_id "i3" not found' in str(e)
 
 
 def test_proc_raft_info(instance: Instance):
