@@ -5,6 +5,7 @@ from conftest import (
     Cluster,
     Instance,
     Retriable,
+    log_crawler,
 )
 
 
@@ -192,3 +193,25 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         # Now the chosen instances are replicaset masters
         assert replicaset_masters[r1_uuid] == i2.instance_id
         assert replicaset_masters[r2_uuid] == i4.instance_id
+
+
+def test_vshard_bootstrap_timeout(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False, init_replication_factor=1)
+
+    injection_log = "Injection: SHARDING_BOOTSTRAP_SPURIOUS_FAILURE"
+    lc1 = log_crawler(i1, injection_log)
+
+    i1.env["PICODATA_ERROR_INJECTION_SHARDING_BOOTSTRAP_SPURIOUS_FAILURE"] = "1"
+    i1.start()
+
+    i1.wait_online()
+
+    lc1.wait_matched()
+
+    vshard_bootstrapped = i1.sql(
+        """
+        select "value" from "_pico_property" where "key" = 'vshard_bootstrapped'
+        """
+    )[0][0]
+
+    assert vshard_bootstrapped is True

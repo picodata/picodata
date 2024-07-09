@@ -1,5 +1,5 @@
 use crate::tlog;
-use std::{collections::HashSet, ptr};
+use std::{collections::HashSet, env, ptr};
 
 static mut INJECTED_ERRORS: Option<HashSet<String>> = None;
 
@@ -25,6 +25,19 @@ pub fn is_enabled(error: &str) -> bool {
     match unsafe { ptr::addr_of!(INJECTED_ERRORS).as_ref() }.unwrap() {
         Some(injected_errors) => injected_errors.contains(error),
         None => false,
+    }
+}
+
+// Scan environment variables for `PICODATA_ERROR_INJECTION_<NAME>`-like
+// patterns. Arm corresponding injection for each one.
+pub fn set_from_env() {
+    for (key, _) in env::vars() {
+        let inject_name = match key.strip_prefix("PICODATA_ERROR_INJECTION_") {
+            Some(name) => name,
+            None => continue,
+        };
+
+        enable(inject_name, true)
     }
 }
 

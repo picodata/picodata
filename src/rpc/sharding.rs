@@ -79,6 +79,8 @@ crate::define_rpc_request! {
 }
 
 pub mod bootstrap {
+    use crate::error_injection;
+
     use super::*;
 
     crate::define_rpc_request! {
@@ -118,6 +120,13 @@ pub mod bootstrap {
                     )));
                 }
                 res => unreachable!("{res:?}"),
+            }
+
+            // We return error after successful bootstrap to check error handling loginc in lua above
+            if error_injection::is_enabled("SHARDING_BOOTSTRAP_SPURIOUS_FAILURE") {
+                // disable inject, so it is triggered only once and retry succeeds
+                error_injection::enable("SHARDING_BOOTSTRAP_SPURIOUS_FAILURE", false);
+                return Err(Error::other("Injection: SHARDING_BOOTSTRAP_SPURIOUS_FAILURE"));
             }
 
             Ok(Response {})

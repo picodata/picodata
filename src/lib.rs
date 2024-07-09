@@ -590,6 +590,9 @@ fn init_common(
     // See doc comments in tlog.rs for explanation.
     tlog::set_core_logger_is_initialized(true);
 
+    #[cfg(feature = "error_injection")]
+    error_injection::set_from_env();
+
     if let Err(e) = tarantool::set_cfg(cfg) {
         // Tarantool error is taken separately as in `set_cfg`
         // the needed tarantool error turns into lua error.

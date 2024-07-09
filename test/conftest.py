@@ -848,17 +848,21 @@ class Instance:
     def on_output_line(self, cb: Callable[[bytes], None]):
         self._on_output_callbacks.append(cb)
 
-    def start(self, peers=[], cwd=None):
+    def start(
+        self,
+        peers: Optional[List["Instance"]] = None,
+        cwd=None,
+    ):
         if self.process:
             # Be idempotent
             return
 
         eprint(f"{self} starting...")
 
-        if peers != []:
-            self.peers = map(lambda i: i.listen, peers)
+        if peers is not None:
+            self.peers = list(map(lambda i: i.listen, peers))
 
-        env = self.env
+        env = {**self.env}
         if not os.environ.get("PICODATA_LOG_LEVEL") and "PICODATA_LOG_LEVEL" not in env:
             env.update(PICODATA_LOG_LEVEL="verbose")
 
@@ -900,7 +904,7 @@ class Instance:
         if out == subprocess.DEVNULL:
             return
 
-        for src, out in [
+        for src, out in [  # type: ignore
             (self.process.stdout, sys.stdout),
             (self.process.stderr, sys.stderr),
         ]:
