@@ -1,6 +1,5 @@
 import pytest
-import time
-from conftest import PICO_SERVICE_ID, Cluster, ReturnError
+from conftest import PICO_SERVICE_ID, Cluster, ReturnError, Retriable, Instance
 
 
 def test_ddl_abort(cluster: Cluster):
@@ -1031,8 +1030,14 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     i4.start()
     i4.wait_online()
 
-    # TODO: how do we sync raft log at this point?
-    time.sleep(2)
+    def check_no_pending_schema_change(i: Instance):
+        rows = i.sql(
+            """select count(*) from "_pico_property" where "key" = 'pending_schema_change'"""
+        )
+        assert rows == [[0]]
+
+    # Wait until the schema change is finalized
+    Retriable(timeout=5, rps=2).call(check_no_pending_schema_change, i1)
 
     # Now space is dropped.
     assert i1.call("box.space._space.index.name:get", table_name) is None
