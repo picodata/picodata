@@ -2107,6 +2107,21 @@ impl CreateTableParams {
             .by_id(self.owner)?
             .ok_or_else(|| Error::Other(format!("user with id {} not found", self.owner).into()))?
             .name;
+
+        // TODO: This is needed because we do a dry-run of space creation to verify it's parameters,
+        // which may fail if the operation is initiated on a read-only replica. For this reason we
+        // temporarily switch off the read-only mode. This however will stop working once we add support
+        // for synchronous transactions, because read-onlyness will be controlled by the internal raft machinery.
+        // At that point we will need to rewrite this code and implement the explicit verification of the parameters.
+        let lua = ::tarantool::lua_state();
+        let was_read_only: bool = lua.eval(
+            "local is_ro = box.cfg.read_only
+            if is_ro then
+                box.cfg { read_only = false }
+            end
+            return is_ro",
+        )?;
+
         let err = transaction(|| -> Result<(), Option<tarantool::error::Error>> {
             // TODO: allow create_space to accept user by id
             ::tarantool::schema::space::create_space(
@@ -2132,6 +2147,11 @@ impl CreateTableParams {
             Err(None)
         })
         .unwrap_err();
+
+        if was_read_only {
+            lua.exec("box.cfg { read_only = true }")?;
+        }
+
         match err {
             // Space was successfully created and rolled back
             TransactionError::RolledBack(None) => Ok(()),
