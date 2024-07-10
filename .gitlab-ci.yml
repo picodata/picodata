@@ -24,7 +24,7 @@ variables:
   BASE_IMAGE: ${REGISTRY}/picodata-build-base
   BASE_IMAGE_LATEST: latest
   MAIN_BRANCH: &main-branch master
-  CARGO_HOME: /data/shared-storage/picodata/.cargo
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   FF_USE_FASTZIP: "true"
   CACHE_COMPRESSION_LEVEL: "fastest"
@@ -140,6 +140,13 @@ build-base-image:
     matrix:
       - BUILD_PROFILE: [release, dev]
 
+.pipenv-install:
+    &pipenv-install |
+      # Pipenv install
+      ci-log-section start "pipenv-install" Installing pip dependencies ...
+      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+      ci-log-section end "pipenv-install"
+
 test-linux:
   extends:
     - .test
@@ -159,7 +166,6 @@ test-linux:
     pull_policy: if-not-present
   variables:
     GIT_DEPTH: 1
-    CARGO_HOME: $CI_PROJECT_DIR/.cargo
   cache:
     - <<: *py_cache
     - <<: *base_cache
@@ -189,11 +195,7 @@ test-linux:
 
     - cargo -V
 
-    - &pipenv-install |
-      # Pipenv install
-      ci-log-section start "pipenv-install" Installing pip dependencies ...
-      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-      ci-log-section end "pipenv-install"
+    - *pipenv-install
 
     # There are no Rust tests for `webui` feature, it's checked in pytest
     - cargo build --timings --locked --profile=$BUILD_PROFILE
@@ -211,8 +213,6 @@ test-linux:
       --junitxml=junit_pytest.xml
       --with-webui
 
-    - make lint
-
   artifacts:
     when: always
     paths:
@@ -220,6 +220,38 @@ test-linux:
       - ./target/cargo-timings/cargo-timing.html
     reports:
       junit: junit_pytest.xml
+
+lint:
+  stage: test
+  interruptible: true
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
+  variables:
+    GIT_DEPTH: 1
+    GIT_SUBMODULE_STRATEGY: recursive
+  cache:
+    - <<: *py_cache
+      policy: pull
+    - <<: *base_cache
+      policy: pull
+    - <<: *base_node
+      policy: pull
+  script:
+    - *fetch-tags
+    - *pipenv-install
+    - make lint
+    - cd webui && yarn lint
 
 .test-patch-rules: &test-patch-rules
   rules:
@@ -255,7 +287,6 @@ test-patch-picodata:
   variables:
     GIT_DEPTH: 1
     GIT_SUBMODULE_STRATEGY: recursive
-    CARGO_HOME: $CI_PROJECT_DIR/.cargo
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
     pull_policy: always
@@ -297,6 +328,7 @@ test-mac-m1:
   tags:
     - mac-dev-m1
   script:
+    # Gitlab doesnt know about $HOME. If specified in variables it becomes empty
     - export CARGO_HOME=$HOME/.cargo
     - cargo -V
     - cargo build --locked
