@@ -324,20 +324,16 @@ impl TryFrom<PgValue> for LuaValue {
 /// Further reading: function pg_type_from_sbroad.
 impl PgValue {
     pub fn try_from_rmpv(value: rmpv::Value, ty: &Type) -> PgResult<Self> {
-        match &value {
-            rmpv::Value::Nil => Ok(PgValue::Null),
-            rmpv::Value::Boolean(v) => Ok(PgValue::Boolean(*v)),
-            rmpv::Value::F32(v) => Ok(PgValue::Float(*v as _)),
-            rmpv::Value::F64(v) => Ok(PgValue::Float(*v)),
-            rmpv::Value::Integer(v) => match ty {
-                &Type::FLOAT8 => {
-                    // Convert NUMBER value represented as integer to float.
-                    let v = v.as_f64().ok_or(EncodingError::new(format!(
-                        "couldn't encode {v:?} as float"
-                    )))?;
-                    Ok(PgValue::Float(v))
-                }
-                _ => Ok(PgValue::Integer({
+        use rmpv::Value;
+        match (&value, ty.clone()) {
+            (Value::Nil, _) => Ok(PgValue::Null),
+            (Value::Boolean(v), Type::BOOL) => Ok(PgValue::Boolean(*v)),
+            (Value::F32(v), Type::FLOAT8) => Ok(PgValue::Float(*v as _)),
+            (Value::F64(v), Type::FLOAT8) => Ok(PgValue::Float(*v)),
+            (Value::Integer(v), Type::INT8) => {
+                // Note: PgValue::Integer is sent as INT8, so only INT8 is allowed here. Otherwise,
+                // we can send 8 bytes integer while the client is expecting 2 or 4 bytes.
+                Ok(PgValue::Integer({
                     if let Some(v) = v.as_i64() {
                         v
                     } else if let Some(v) = v.as_u64() {
@@ -348,32 +344,55 @@ impl PgValue {
                             "couldn't encode integer: {v:?}"
                         )))?
                     }
-                })),
-            },
-            rmpv::Value::Map(_) | rmpv::Value::Array(_) => {
+                }))
+            }
+            (Value::Integer(v), Type::FLOAT8) => {
+                // Convert NUMBER value represented as integer to float.
+                let v = v.as_f64().ok_or(EncodingError::new(format!(
+                    "couldn't encode NUMBER value {v:?} as FLOAT8"
+                )))?;
+                Ok(PgValue::Float(v))
+            }
+            (Value::Map(_) | Value::Array(_), Type::JSON | Type::JSONB) => {
                 // Any map-like structure will be encoded as json.
                 Ok(PgValue::Json(Json(value)))
             }
-            rmpv::Value::String(v) => {
+            (Value::String(v), Type::TEXT | Type::VARCHAR) => {
                 let Some(s) = v.as_str() else {
                     Err(EncodingError::new(format!("couldn't encode string: {v:?}")))?
                 };
                 Ok(PgValue::Text(s.to_owned()))
             }
-            rmpv::Value::Ext(1, _data) => {
+            (Value::Ext(1, _data), Type::NUMERIC) => {
                 let decimal = deserialize_rmpv_ext(&value)?;
                 Ok(PgValue::Numeric(decimal))
             }
-            rmpv::Value::Ext(2, _data) => {
+            (Value::Integer(v), Type::NUMERIC) => {
+                // Decimal values can be represented as integers in msgpack.
+                let v = v.as_i64().ok_or(EncodingError::new(format!(
+                    "couldn't encode DECIMAL value {v:?} as NUMERIC"
+                )))?;
+                Ok(PgValue::Numeric(Decimal(v.into())))
+            }
+            (Value::F32(_) | Value::F64(_), Type::NUMERIC) => {
+                // Decimal values can be represented as floats in msgpack.
+                let v = value.as_f64().expect("arm matches float values");
+                let decimal =
+                    tarantool::decimal::Decimal::try_from(v).map_err(EncodingError::new)?;
+                Ok(PgValue::Numeric(Decimal(decimal)))
+            }
+            (Value::Ext(2, _data), Type::UUID) => {
                 let uuid = deserialize_rmpv_ext(&value)?;
                 Ok(PgValue::Uuid(uuid))
             }
-            rmpv::Value::Ext(4, _) => {
+            (Value::Ext(4, _), Type::TIMESTAMPTZ) => {
                 let datetime = deserialize_rmpv_ext(&value)?;
                 Ok(PgValue::Timestamptz(datetime))
             }
 
-            value => Err(PgError::FeatureNotSupported(format!("value: {value:?}"))),
+            (value, ty) => Err(PgError::FeatureNotSupported(format!(
+                "{value:?} cannot be represented as a value of type {ty:?}"
+            ))),
         }
     }
 

@@ -180,6 +180,7 @@ def test_aggregates(postgres: Postgres):
         """
     )
 
+    # integer decimal
     cur.execute(
         """
         SELECT SUM("id") FROM "tall";
@@ -189,7 +190,13 @@ def test_aggregates(postgres: Postgres):
 
     cur.execute(
         """
+        INSERT INTO "tall" ("id") VALUES (2)
+        """
+    )
+    # floating decimal
+    cur.execute(
+        """
         SELECT AVG("id") FROM "tall";
     """
     )
-    assert cur.fetchall() == ([Decimal(1)],)
+    assert cur.fetchall() == ([Decimal(1.5)],)

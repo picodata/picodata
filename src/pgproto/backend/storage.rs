@@ -395,21 +395,6 @@ enum PortalState {
     Finished(Option<ExecuteResult>),
 }
 
-fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<Vec<PgValue>> {
-    zip(mp, metadata)
-        .map(|(v, col)| PgValue::try_from_rmpv(v, &col.ty))
-        .collect()
-}
-
-fn mp_rows_into_pg_rows(
-    mp: Vec<Vec<Value>>,
-    metadata: &[MetadataColumn],
-) -> PgResult<Vec<Vec<PgValue>>> {
-    mp.into_iter()
-        .map(|row| mp_row_into_pg_row(row, metadata))
-        .collect()
-}
-
 /// Get rows from dql-like(dql or explain) query execution result.
 fn get_rows_from_tuple(tuple: &Tuple) -> PgResult<Vec<Vec<Value>>> {
     #[derive(Deserialize, Default, Debug)]
@@ -441,6 +426,12 @@ fn get_row_count_from_tuple(tuple: &Tuple) -> PgResult<usize> {
     ))?;
 
     Ok(res.row_count)
+}
+
+fn mp_row_into_pg_row(mp: Vec<Value>, metadata: &[MetadataColumn]) -> PgResult<Vec<PgValue>> {
+    zip(mp, metadata)
+        .map(|(v, col)| PgValue::try_from_rmpv(v, &col.ty))
+        .collect()
 }
 
 impl Portal {
@@ -517,7 +508,11 @@ impl Portal {
             }
             QueryType::Dql | QueryType::Explain => {
                 let mp_rows = get_rows_from_tuple(&tuple)?;
-                let pg_rows = mp_rows_into_pg_rows(mp_rows, self.describe.metadata())?;
+                let metadata = self.describe.metadata();
+                let pg_rows = mp_rows
+                    .into_iter()
+                    .map(|row| mp_row_into_pg_row(row, metadata))
+                    .collect::<PgResult<Vec<Vec<_>>>>()?;
                 PortalState::Running(pg_rows.into_iter())
             }
         };

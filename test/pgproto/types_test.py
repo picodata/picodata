@@ -90,7 +90,7 @@ def test_decimal(postgres: Postgres):
 
 def test_number(postgres: Postgres):
     user = "postgres"
-    password = "P@ssw0rd"
+    password = "Passw0rd"
     host = postgres.host
     port = postgres.port
 
@@ -104,7 +104,7 @@ def test_number(postgres: Postgres):
     # connect to the server and enable autocommit as we
     # don't support interactive transactions
     conn = psycopg.connect(
-        f"user = {user} password={password} host={host} port={port} sslmode=disable"
+        f"postgres://{user}:{password}@{host}:{port}?sslmode=disable"
     )
     conn.autocommit = True
 
