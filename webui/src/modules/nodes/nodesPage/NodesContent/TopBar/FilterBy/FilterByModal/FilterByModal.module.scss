@@ -1,0 +1,46 @@
+@import 'styles/vars';
+
+.field {
+  margin-bottom: 24px;
+}
+
+.label {
+  color: $colorTextBlack;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  display: flex;
+  align-items: center;
+  column-gap: 4px;
+}
+
+.footer {
+  margin-top: 56px;
+  display: flex;
+}
+
+.apply {
+  flex-grow: 1;
+}
+
+.clear {
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.addFilter {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8ebf1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.scroll {
+  overflow: auto;
+  max-height: 492px;
+  margin-top: 4px;
+}

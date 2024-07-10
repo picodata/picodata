@@ -1,0 +1,145 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+$card-vertical-padding: 8px;
+$card-horizontal-padding: 16px;
+$column-gap: 24px;
+$column-item-vertical-padding: 4px;
+$column-item-horizontal-padding: 8px;
+
+.cardWrapper {
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  background-color: $colorBgBeige;
+  cursor: pointer;
+}
+
+.content {
+  display: flex;
+  justify-content: space-between;
+  column-gap: $column-gap;
+  padding: $card-vertical-padding $card-horizontal-padding;
+}
+
+.infoColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hiddenColumn {
+  overflow: hidden;
+}
+
+.nameColumn {
+  flex: 1 171px;
+  align-items: flex-start;
+}
+
+.inctancesColumn {
+  flex: 1 326px;
+}
+
+.gradeColumn {
+  flex: 1 135px;
+}
+
+.capacityColumn {
+  flex: 1 288px;
+  align-items: flex-start;
+  padding: calc($column-item-vertical-padding * 2) 30px;
+}
+
+.chevronColumn {
+  flex: 1 64px;
+  justify-content: center;
+}
+
+.label {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.infoValue {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.hiddenValue {
+  width: 100%;
+
+  @include ellipsis;
+}
+
+.gradeValue {
+  padding: 0;
+}
+
+.chevronIcon {
+  color: $colorTextBlack;
+
+  @include animate(transform);
+}
+
+.chevronIconOpen {
+  transform: rotate(-180deg);
+}
+
+.instancesWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.primary {
+  background-color: $colorBgBeige;
+
+  @include animate(background-color);
+
+  &:hover {
+    background-color: darken($colorBgBeige, 3);
+  }
+
+  .content {
+    padding: 8px 16px;
+    column-gap: 24px;
+  }
+
+  .instancesWrapper {
+    padding: 0 calc($card-horizontal-padding - 8px);
+    padding-bottom: 8px;
+    row-gap: 8px;
+  }
+}
+
+.secondary {
+  background-color: $colorBgWhite;
+
+  .content {
+    column-gap: 16px;
+    padding: 8px 8px;
+    box-shadow: 0px -1px 0px 0px #e4e4ef inset;
+  }
+
+  .instancesCardWrapper {
+    border-radius: 0;
+    box-shadow: 0px -1px 0px 0px #e4e4ef inset;
+
+    &:last-child {
+      box-shadow: none;
+    }
+  }
+
+  .instancesWrapper {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

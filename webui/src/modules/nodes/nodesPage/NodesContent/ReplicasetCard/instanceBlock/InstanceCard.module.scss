@@ -1,0 +1,151 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+$column-item-vertical-padding: 4px;
+$column-item-horizontal-padding: 8px;
+
+$leader-height: 16px;
+
+.cardWrapper {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 16px;
+  border-radius: 4px;
+  box-shadow: $elevation1;
+  position: relative;
+}
+
+.content {
+  display: flex;
+  justify-content: space-between;
+  column-gap: 10px;
+}
+
+.infoColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hiddenColumn {
+  overflow: hidden;
+}
+
+.nameColumn {
+  align-items: flex-start;
+  justify-content: center;
+  flex: 1 143px;
+}
+
+.failureDomainColumn {
+  flex: 1 198px;
+  overflow: hidden;
+}
+
+.targetGradeColumn {
+  flex: 1 118px;
+}
+
+.currentGradeColumn {
+  flex: 1 118px;
+}
+
+.binaryAddressColumn {
+  flex: 1 135px;
+  overflow: hidden;
+}
+
+.httpAddressColumn {
+  flex: 1 135px;
+  overflow: hidden;
+}
+
+.versionColumn {
+  flex: 1 157px;
+}
+
+.label {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.value {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+  text-align: center;
+}
+
+.hiddenValue {
+  width: 100%;
+
+  @include ellipsis;
+}
+
+.startValue {
+  text-align: start;
+}
+
+.domainValue {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+.targetGradeValue {
+  padding: 0;
+}
+
+.currentGradeValue {
+  padding: 0;
+}
+
+.primary {
+  background-color: $colorLightGrey;
+
+  @include animate(background-color);
+
+  &:hover {
+    background-color: darken($colorLightGrey, 3);
+  }
+
+  .content {
+    padding: 8px 16px 8px calc(16px + $leader-height);
+    column-gap: 10px;
+  }
+}
+
+.secondary {
+  background-color: $colorBgWhite;
+
+  .content {
+    padding: 8px 16px 8px calc(16px + $leader-height);
+    column-gap: 10px;
+  }
+}
+
+.leaderBlock {
+  position: absolute;
+  bottom: 0;
+  left: $leader-height;
+  height: $leader-height;
+  width: 64px;
+  background-color: $colorNotificationSuccess;
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: 400;
+  color: $colorTextGrey;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: bottom left;
+  transform: rotate(-90deg);
+}

@@ -1,0 +1,14 @@
+@import './colors';
+@import './zIndex';
+
+$transition-normal: 0.2s ease-out;
+$dropdownOffset: 2px;
+
+$elevation1:
+  0px 2px 4px 0px rgba(63, 65, 68, 0.12),
+  0px 0px 2px 0px rgba(63, 65, 68, 0.12);
+$elevationBg:
+  0px 6px 8px 0px rgba(131, 131, 131, 0.12),
+  0px 0px 4px 0px rgba(131, 131, 131, 0.4);
+
+$sideMenuWidth: 112px;

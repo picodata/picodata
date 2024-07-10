@@ -1,0 +1,123 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+$card-vertical-padding: 8px;
+$card-horizontal-padding: 16px;
+$column-gap: 16px;
+$column-item-vertical-padding: 4px;
+$column-item-horizontal-padding: 8px;
+
+$default-column-flex: 1;
+$name-column-flex: 1.07;
+$can-voter-column-flex: 0.44;
+$chevron-column-flex: 0.2;
+
+.cardWrapper {
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  background-color: $colorBgGrey;
+  box-shadow: $elevation1;
+
+  cursor: pointer;
+
+  @include animate(background-color);
+
+  &:hover {
+    background-color: darken($colorBgGrey, 3);
+  }
+}
+
+.content {
+  display: flex;
+  justify-content: space-between;
+  column-gap: $column-gap;
+  padding: $card-vertical-padding $card-horizontal-padding;
+}
+
+.infoColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.hiddenColumn {
+  overflow: hidden;
+}
+
+.nameColumn {
+  flex: 1 179px;
+  align-items: flex-start;
+}
+
+.pluginColumn {
+  flex: 1 167px;
+}
+
+.replicasetsColumn {
+  flex: 1 166px;
+}
+
+.instancesColumn {
+  flex: 1 166px;
+}
+
+.rfColumn {
+  flex: 1 166px;
+}
+
+.canVoterColumn {
+  flex: 1 77px;
+}
+
+.chevronColumn {
+  flex: 1 64px;
+  justify-content: center;
+  padding: $column-item-vertical-padding calc($column-item-horizontal-padding * 2);
+}
+
+.label {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.infoValue {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  color: $colorTextBlack;
+  padding: $column-item-vertical-padding $column-item-horizontal-padding;
+}
+
+.hiddenValue {
+  width: 100%;
+
+  @include ellipsis;
+}
+
+.pluginValue {
+  text-align: center;
+}
+
+.chevronIcon {
+  color: $colorTextBlack;
+
+  @include animate(transform);
+}
+
+.chevronIconOpen {
+  transform: rotate(-180deg);
+}
+
+.replicasetsWrapper {
+  padding: 0 calc($card-horizontal-padding - 8px);
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  row-gap: 8px;
+}

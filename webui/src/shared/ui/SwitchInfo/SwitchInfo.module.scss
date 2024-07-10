@@ -1,0 +1,27 @@
+.container {
+  width: 40px;
+  height: 16px;
+  background: #fdfdfd;
+  border-radius: 10px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+
+.circle {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.enabled {
+  .circle {
+    background-color: #c0ecd4;
+    margin-left: auto;
+  }
+}
+
+.disabled {
+  .circle {
+    background-color: #848484;
+  }
+}

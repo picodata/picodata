@@ -1,0 +1,33 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+
+  max-height: 350px;
+  overflow: auto;
+
+  margin-top: $dropdownOffset;
+
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+
+  box-sizing: border-box;
+
+  border-radius: 4px;
+  background: $colorBgWhite;
+  box-shadow: $elevation1;
+
+  z-index: $zIndexDropdown;
+}
+
+.upDirection {
+  bottom: 100%;
+  top: auto;
+  margin-top: 0;
+  margin-bottom: $dropdownOffset;
+}

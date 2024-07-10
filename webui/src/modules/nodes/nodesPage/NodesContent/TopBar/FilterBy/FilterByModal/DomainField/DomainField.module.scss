@@ -1,0 +1,31 @@
+.keyValueField {
+  margin-top: 12px;
+  display: flex;
+}
+
+.keyValueFieldCenter {
+  align-items: center;
+}
+
+.valueSelect {
+  width: 100%;
+}
+
+.container {
+  &:nth-child(2) {
+    margin-top: 24px;
+  }
+}
+
+.deleteContainer {
+  display: flex;
+  align-items: center;
+}
+
+.delete {
+  display: inline-flex;
+  color: #dd4a4a;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: auto;
+}

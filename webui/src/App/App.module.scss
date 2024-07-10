@@ -1,0 +1,24 @@
+@import 'styles/vars';
+
+.container {
+  height: 100vh;
+  width: 100vw;
+  min-width: 1440px;
+  display: flex;
+  flex-direction: column;
+  background-color: $colorBgLight;
+}
+
+.layoutMain {
+  display: flex;
+  flex-grow: 1;
+  overflow: hidden;
+  position: relative;
+  padding: 0 140px;
+}
+
+.bodyWrapper {
+  display: flex;
+  flex-grow: 1;
+  overflow: hidden;
+}

@@ -1,0 +1,100 @@
+.wrapper {
+  display: flex;
+  position: absolute;
+  justify-content: center;
+  align-items: center;
+  top: 0px;
+  right: 0px;
+  bottom: 0px;
+  left: 0px;
+  background-color: rgba(107, 114, 128, 0.5);
+  z-index: 9;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.body {
+  background-color: #fff;
+  width: 956px;
+  height: 480px;
+  border-radius: 8px;
+  padding: 40px 56px;
+}
+
+.button {
+  border-radius: 0.375rem;
+  border-style: none;
+  background: rgb(220, 38, 38);
+  padding: 10px;
+  color: #fff;
+  line-height: 1.25rem;
+  cursor: pointer;
+}
+
+.titleWrapper {
+  display: flex;
+  justify-content: space-between;
+  margin: 16px 0;
+}
+
+.titleText {
+  font-size: 24px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.starIcon {
+  margin-right: 4px;
+}
+
+.close {
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tabGroup {
+  display: flex;
+  border-bottom: 1px solid;
+  padding: 8px 16px;
+}
+
+.boxInfoWrapper {
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.boxInfoRaw {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+}
+
+.boxInfo {
+  overflow: auto;
+  max-height: 380px;
+}
+
+.titleLabel {
+  margin: 0;
+  color: #9d99ac;
+  font-family: Montserrat, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.titleText {
+  margin: 0;
+  font-weight: 400;
+  font-size: 16px;
+}
+
+.grayRaw {
+  background-color: #f9f9f8;
+}

@@ -1,0 +1,91 @@
+@import 'styles/vars';
+@import 'styles/mixins';
+
+.container {
+  width: 64px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: linear-gradient(
+    176.39deg,
+    rgba(231, 222, 222, 0.3) 0%,
+    rgba(243, 238, 233, 0.3) 36.98%,
+    rgba(225, 215, 213, 0.24) 69.79%,
+    rgba(231, 225, 223, 0.3) 100%
+  );
+  backdrop-filter: blur(10px); // возможны тормоза в хроме из блюров, работать с ними аккуратнее
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  padding: 40px 16px;
+  z-index: $zIndexSideMenu;
+
+  transition: width 0.3s ease-out;
+}
+
+.menuIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: $colorTextGrey;
+  cursor: pointer;
+
+  @include animate(color);
+}
+
+.openMenuIcon {
+  color: $colorTextBlack;
+}
+
+.navLinksList {
+  margin-top: 80px;
+  opacity: 0;
+
+  @include animate(opacity);
+}
+
+.navLink {
+  display: flex;
+  align-items: center;
+  column-gap: 16px;
+  color: $colorTextBlack;
+  margin-bottom: 16px;
+
+  @include animate(color);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    color: $colorTextOrange;
+  }
+}
+
+.activeNavLink {
+  color: $colorTextOrange;
+}
+
+.navLinkText {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 30px;
+}
+
+.openContainer {
+  width: 192px;
+  background: linear-gradient(
+    176.39deg,
+    rgba(231, 222, 222, 0.28) 0%,
+    rgba(230, 206, 192, 0.32) 36.98%,
+    rgba(217, 208, 206, 0.16) 69.79%,
+    rgba(231, 225, 223, 0.28) 100%
+  );
+  .navLinksList {
+    opacity: 1;
+  }
+}
+
+.icon {
+  flex-shrink: 0;
+}

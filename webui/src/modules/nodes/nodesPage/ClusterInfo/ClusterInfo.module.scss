@@ -1,0 +1,78 @@
+@import 'styles/vars';
+
+.container {
+  padding: 4px 24px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.capacityInfoColumn {
+  align-items: flex-start;
+  flex-basis: 23%;
+  padding: 0 24px;
+}
+
+.capacityWrapper {
+  display: flex;
+}
+
+.columnName {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 30px;
+  color: $colorTextBlack;
+}
+
+.columnContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.columnValue {
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 24px;
+  color: $colorTextBlack;
+}
+
+.columnLabel {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16px;
+  margin-top: 6px;
+  color: $colorTextBlack;
+  text-align: center;
+}
+
+.right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-grow: 1;
+  column-gap: 40px;
+}
+
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 24px 12px;
+}
+
+.instancesBlock {
+  display: flex;
+  align-items: center;
+  column-gap: 24px;
+}

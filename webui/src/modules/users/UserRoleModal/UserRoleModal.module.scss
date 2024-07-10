@@ -1,0 +1,145 @@
+@import 'styles/vars';
+
+.titleWrapper {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.titleText {
+  font-size: 16px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.body {
+  width: 510px;
+  padding: 40px;
+  height: auto;
+}
+
+.close {
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.block {
+  margin-top: 24px;
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+.label {
+  color: $colorTextGrey;
+  font-size: 14px;
+  line-height: 16px;
+  margin-bottom: 8px;
+}
+
+.value {
+  color: $colorTextBlack;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.divider {
+  background-color: $colorSecondarySelected;
+  width: 1px;
+  height: 16px;
+  margin: 0 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.disabledValue {
+  color: $colorTextDisabled;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.disabledContainer {
+  background-color: $colorFieldDisabled;
+  width: 100%;
+  height: 48px;
+  padding: 16px 20px 16px 20px;
+  border-radius: 4px;
+  color: $colorTextDisabled;
+  line-height: 16px;
+  font-size: 14px;
+}
+
+.buttonsRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px 6px 16px;
+  border-radius: 4px;
+  border: 1px solid $colorBgGrey;
+  font-size: 12px;
+  line-height: 16px;
+  background: linear-gradient(0deg, #e8e8e9, #e8e8e9) linear-gradient(0deg, #fdfdfd, #fdfdfd);
+
+  margin-right: 16px;
+  cursor: pointer;
+  margin-bottom: 4px;
+
+  &:last-child {
+    margin-right: 0;
+  }
+}
+
+.activeButton {
+  border: 1px solid $colorTextOrange;
+  background: linear-gradient(0deg, #fdfdfd, #fdfdfd), linear-gradient(0deg, #f7941d, #f7941d);
+}
+
+.multiSelect {
+  width: 100%;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid $colorFieldStrokeNormal;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-bottom: 8px;
+  overflow-y: auto;
+  max-height: 100px;
+}
+
+.multiItem {
+  font-size: 14px;
+  line-height: 16px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  color: $colorTextBlack;
+}
+
+.divider {
+  background-color: $colorSecondarySelected;
+  width: 1px;
+  height: 16px;
+  margin: 0 8px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 40px;
+}
