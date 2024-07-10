@@ -830,9 +830,9 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">F051-06</span></td>
-            <td>CURRENT_DATE</td>
-            <td class="td3 center"></td>
+            <td class="center"><span class="full">F051-06</span></td>
+            <td>Функция CURRENT_DATE</td>
+            <td class="td3 center">[CURRENT_DATE](sql/current_date.md)</td>
             <td></td>
         </tr>
         <tr>
