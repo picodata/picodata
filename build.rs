@@ -7,8 +7,6 @@ use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
 
-const WEBUI_DIR: &str = "webui";
-
 // See also: https://doc.rust-lang.org/cargo/reference/build-scripts.html
 fn main() {
     do_compile_time_checks();
@@ -68,12 +66,7 @@ fn main() {
     build_tarantool(jobserver, build_root, use_static_build);
     build_http(jobserver, build_root, use_static_build);
     #[cfg(feature = "webui")]
-    build_webui(build_root);
-
-    println!("cargo:rerun-if-changed=tarantool-sys");
-    println!("cargo:rerun-if-changed=http/http");
-    #[cfg(feature = "webui")]
-    rerun_if_webui_changed();
+    build_webui(build_root, Path::new("webui"));
 }
 
 fn do_compile_time_checks() {
@@ -234,10 +227,10 @@ fn generate_export_stubs(out_dir: &str) {
 }
 
 #[cfg(feature = "webui")]
-fn rerun_if_webui_changed() {
+fn rerun_if_webui_changed(webui_dir: &Path) {
     use std::fs;
 
-    let source_dir = std::env::current_dir().unwrap().join(WEBUI_DIR);
+    let source_dir = std::env::current_dir().unwrap().join(webui_dir);
     // Do not rerun for generated files changes
     let ignored_files = ["node_modules", ".husky"];
     for entry in fs::read_dir(source_dir)
@@ -247,7 +240,7 @@ fn rerun_if_webui_changed() {
         if !ignored_files.contains(&entry.file_name().to_str().unwrap()) {
             println!(
                 "cargo:rerun-if-changed={}/{}",
-                WEBUI_DIR,
+                webui_dir.display(),
                 entry.file_name().to_string_lossy()
             );
         }
@@ -255,15 +248,19 @@ fn rerun_if_webui_changed() {
 }
 
 #[cfg(feature = "webui")]
-fn build_webui(build_root: &Path) {
+fn build_webui(build_root: &Path, webui_dir: &Path) {
+    // make sure to do it first so cargo is notified even if we return early
+    rerun_if_webui_changed(webui_dir);
+    println!("cargo:rerun-if-env-changed=WEBUI_BUNDLE");
+
     if std::env::var("WEBUI_BUNDLE").is_ok() {
         println!("building webui_bundle skipped");
         return;
     }
 
     println!("building webui_bundle ...");
-    let source_dir = std::env::current_dir().unwrap().join(WEBUI_DIR);
-    let out_dir = build_root.join(WEBUI_DIR);
+    let source_dir = std::env::current_dir().unwrap().join(webui_dir);
+    let out_dir = build_root.join(webui_dir);
     let out_dir_str = out_dir.display().to_string();
 
     let webui_bundle = out_dir.join("bundle.json");
@@ -290,6 +287,8 @@ const TARANTOOL_SYS_STATIC: &str = "tarantool-sys/static";
 const TARANTOOL_SYS_DYNAMIC: &str = "tarantool-sys/dynamic";
 
 fn build_http(jsc: Option<&jobserver::Client>, build_root: &Path, use_static_build: bool) {
+    println!("cargo:rerun-if-changed=http/http");
+
     let build_dir = build_root.join("tarantool-http");
     let build_dir_str = build_dir.display().to_string();
 
@@ -324,6 +323,8 @@ fn build_http(jsc: Option<&jobserver::Client>, build_root: &Path, use_static_bui
 }
 
 fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_static_build: bool) {
+    println!("cargo:rerun-if-changed=tarantool-sys");
+
     let tarantool_sys = if use_static_build {
         build_root.join(TARANTOOL_SYS_STATIC)
     } else {
