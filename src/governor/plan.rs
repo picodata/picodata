@@ -5,7 +5,9 @@ use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
+use crate::schema::{
+    PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID,
+};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::tier::Tier;
 use crate::tlog;
@@ -478,12 +480,27 @@ pub(super) fn action_plan<'i>(
                     ADMIN_ID,
                 )?];
 
+                let ident = plugin_def.into_identity();
                 for service_def in manifest.service_defs() {
                     ops.push(Dml::replace(
                         ClusterwideTable::Service,
                         &service_def,
                         ADMIN_ID,
-                    )?)
+                    )?);
+
+                    let config = manifest
+                        .get_default_config(&service_def.name)
+                        .expect("configuration should exist");
+                    let config_records =
+                        PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
+
+                    for config_rec in config_records {
+                        ops.push(Dml::replace(
+                            ClusterwideTable::PluginConfig,
+                            &config_rec,
+                            ADMIN_ID,
+                        )?);
+                    }
                 }
 
                 Ok((targets, rpc, Op::BatchDml { ops }))

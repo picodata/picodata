@@ -556,8 +556,11 @@ impl PluginManager {
 
         // call `on_start` callback
         let mut ctx = context_from_node(node);
-        let cfg_raw =
-            rmp_serde::encode::to_vec_named(&service_defs[0].configuration).expect("out of memory");
+        let cfg = node
+            .storage
+            .plugin_config
+            .get_by_entity(plugin_ident, &service_defs[0].name)?;
+        let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
         context_set_service_info(&mut ctx, &new_service);
 
         #[rustfmt::skip]
@@ -641,8 +644,11 @@ impl PluginManager {
                 .find(|def| def.plugin_name == service.plugin_name && def.name == service.name)
                 .expect("definition must exists");
 
-            let cfg_raw =
-                rmp_serde::encode::to_vec_named(&def.configuration).expect("out of memory");
+            let cfg = node
+                .storage
+                .plugin_config
+                .get_by_entity(plugin_ident, &def.name)?;
+            let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
 
             #[rustfmt::skip]
             tlog!(Debug, "calling {}.{}:{}.on_start", service.plugin_name, service.name, service.version);

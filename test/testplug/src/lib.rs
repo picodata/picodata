@@ -160,7 +160,7 @@ fn save_last_seen_context(service: &str, ctx: &PicoContext) {
     .unwrap();
 }
 
-#[derive(Serialize, Deserialize, Debug, tlua::Push)]
+#[derive(Serialize, Deserialize, Debug, tlua::Push, PartialEq)]
 struct Service1Cfg {
     foo: bool,
     bar: i32,
@@ -188,8 +188,13 @@ impl Service for Service1 {
         &mut self,
         ctx: &PicoContext,
         new_cfg: Self::CFG,
-        _old_cfg: Self::CFG,
+        old_cfg: Self::CFG,
     ) -> CallbackResult<()> {
+        if !ErrInjection::get_err_inj::<bool>("assert_config_changed", "testservice_1")
+            .unwrap_or_default()
+        {
+            assert_ne!(new_cfg, old_cfg);
+        }
         if let Some(err_text) = ErrInjection::err_at_on_cfg_change("testservice_1") {
             return Err(err_text.into());
         }

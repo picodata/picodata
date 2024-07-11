@@ -451,12 +451,14 @@ Insert(_pico_index, [{_pico_routine},0,"_pico_routine_id","tree",[{{"unique":tru
 Insert(_pico_index, [{_pico_routine},1,"_pico_routine_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_plugin},"_pico_plugin",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"boolean","is_nullable":false,"name":"enabled"}},{{"field_type":"array","is_nullable":false,"name":"services"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"string","is_nullable":false,"name":"description"}},{{"field_type":"array","is_nullable":false,"name":"migration_list"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_plugin},0,"_pico_plugin_name","tree",[{{"unique":true}}],[["name","string",null,false,null],["version","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_service},"_pico_service",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"array","is_nullable":false,"name":"tiers"}},{{"field_type":"any","is_nullable":false,"name":"configuration"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_service},"_pico_service",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"array","is_nullable":false,"name":"tiers"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_service},0,"_pico_service_name","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["name","string",null,false,null],["version","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_service_route},"_pico_service_route",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"plugin_version"}},{{"field_type":"string","is_nullable":false,"name":"service_name"}},{{"field_type":"boolean","is_nullable":false,"name":"poison"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_service_route},0,"_pico_service_routing_key","tree",[{{"unique":true}}],[["instance_id","string",null,false,null],["plugin_name","string",null,false,null],["plugin_version","string",null,false,null],["service_name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}},{{"field_type":"string","is_nullable":false,"name":"hash"}}],0,true,"memtx",1,""]),
-Insert(_pico_index, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0])
+Insert(_pico_index, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_plugin_config},"_pico_plugin_config",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"string","is_nullable":false,"name":"entity"}},{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":true,"name":"value"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{"unique":true}}],[["plugin","string",null,false,null],["version","string",null,false,null],["entity","string",null,false,null],["key","string",null,false,null]],true,0])
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
@@ -490,6 +492,7 @@ Replace(_pico_property, ["current_vshard_config_version",1])
         _pico_service=space_id("_pico_service"),
         _pico_service_route=space_id("_pico_service_route"),
         _pico_plugin_migration=space_id("_pico_plugin_migration"),
+        _pico_plugin_config=space_id("_pico_plugin_config"),
     )
     try:
         assert preprocess(raft_log) == preprocess(expected)

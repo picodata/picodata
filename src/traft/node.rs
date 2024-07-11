@@ -1255,17 +1255,27 @@ impl NodeImpl {
                     .get(&ident, &service_name)
                     .expect("storage should not fail");
 
-                if let Some(mut svc) = maybe_service {
-                    svc.configuration = config;
+                if let Some(svc) = maybe_service {
+                    let old_config = self
+                        .storage
+                        .plugin_config
+                        .get_by_entity(&ident, &service_name)
+                        .expect("storage should not fail");
+
+                    self.storage
+                        .plugin_config
+                        .replace(&ident, &service_name, config.clone())
+                        .expect("storage should not fail");
+
                     self.storage
                         .service
                         .put(&svc)
                         .expect("storage should not fail");
 
                     let new_raw_cfg =
-                        rmp_serde::encode::to_vec_named(&svc.configuration).expect("out of memory");
+                        rmp_serde::encode::to_vec_named(&config).expect("out of memory");
                     let old_cfg_raw =
-                        rmp_serde::encode::to_vec_named(&svc.configuration).expect("out of memory");
+                        rmp_serde::encode::to_vec_named(&old_config).expect("out of memory");
 
                     if let Err(e) = self.plugin_manager.handle_event_async(
                         PluginAsyncEvent::ServiceConfigurationUpdated {
@@ -1329,6 +1339,10 @@ impl NodeImpl {
                         self.storage
                             .service
                             .delete(&svc.plugin_name, &svc.name, &svc.version)
+                            .expect("storage should not fail");
+                        self.storage
+                            .plugin_config
+                            .remove_by_entity(&ident, &svc.name)
                             .expect("storage should not fail");
                     }
                     self.storage

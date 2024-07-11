@@ -508,7 +508,7 @@ impl PluginDef {
 // ServiceDef
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Plugin service defenition in _pico_service system table.
+/// Plugin service definition in _pico_service system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceDef {
     /// Plugin name.
@@ -520,8 +520,6 @@ pub struct ServiceDef {
     /// List of tiers where service must be running.
     // FIXME: for future improvements
     pub tiers: Vec<String>,
-    /// Current service configuration.
-    pub configuration: rmpv::Value,
     /// Plugin description
     pub description: String,
 }
@@ -538,7 +536,6 @@ impl ServiceDef {
             Field::from(("name", FieldType::String)).is_nullable(false),
             Field::from(("version", FieldType::String)).is_nullable(false),
             Field::from(("tiers", FieldType::Array)).is_nullable(false),
-            Field::from(("configuration", FieldType::Any)).is_nullable(false),
             Field::from(("description", FieldType::String)).is_nullable(false),
         ]
     }
@@ -550,7 +547,6 @@ impl ServiceDef {
             name: "service".into(),
             version: "0.0.1".into(),
             tiers: vec!["t1".to_string(), "t2".to_string()],
-            configuration: rmpv::Value::Boolean(false),
             description: "description".to_string(),
         }
     }
@@ -695,6 +691,92 @@ impl PluginMigrationRecord {
             plugin_name: "plugin".to_string(),
             migration_file: "migration_1.db".to_string(),
             hash: format!("{:x}", md5::compute("test")),
+        }
+    }
+}
+
+/// Single record in _pico_plugin_config system table.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PluginConfigRecord {
+    /// Plugin name.
+    pub plugin: String,
+    /// Plugin version.
+    pub version: String,
+    /// Plugin service or extension name.
+    pub entity: String,
+    /// Configuration key.
+    pub key: String,
+    /// Configration value.
+    pub value: rmpv::Value,
+}
+
+impl Encode for PluginConfigRecord {}
+
+impl PluginConfigRecord {
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("plugin", FieldType::String)).is_nullable(false),
+            Field::from(("version", FieldType::String)).is_nullable(false),
+            Field::from(("entity", FieldType::String)).is_nullable(false),
+            Field::from(("key", FieldType::String)).is_nullable(false),
+            Field::from(("value", FieldType::Any)).is_nullable(true),
+        ]
+    }
+
+    /// Create records from the whole configuration.
+    pub fn from_config(
+        ident: &PluginIdentifier,
+        entity: &str,
+        config: rmpv::Value,
+    ) -> tarantool::Result<Vec<Self>> {
+        let mut result = vec![];
+
+        let map = match config {
+            rmpv::Value::Nil => return Ok(result),
+            rmpv::Value::Map(map) => map,
+            _ => {
+                let err = format!(
+                    "Plugin configuration should be represented as messagepack map. Got: {config:?}"
+                );
+                return Err(tarantool::error::Error::DecodeRmpValue(
+                    serde::de::Error::custom(err),
+                ));
+            }
+        };
+
+        for (k, v) in map {
+            let key = k
+                .as_str()
+                .ok_or(<rmp_serde::decode::Error as serde::de::Error>::custom(
+                    "Only string keys allowed in plugin configuration",
+                ))?;
+            result.push(Self {
+                plugin: ident.name.to_string(),
+                version: ident.version.to_string(),
+                entity: entity.to_string(),
+                key: key.to_string(),
+                value: v,
+            });
+        }
+
+        Ok(result)
+    }
+
+    #[inline]
+    pub fn pk(&self) -> [&str; 4] {
+        [&self.plugin, &self.version, &self.entity, &self.key]
+    }
+
+    #[cfg(test)]
+    pub fn for_tests() -> Self {
+        Self {
+            plugin: "plugin".to_string(),
+            version: "0.1.0".to_string(),
+            entity: "service_1".to_string(),
+            key: "key_1".to_string(),
+            value: rmpv::Value::Boolean(true),
         }
     }
 }
@@ -2814,5 +2896,14 @@ mod test {
         let tuple_data = p.to_tuple_buffer().unwrap();
         let format = PluginMigrationRecord::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PluginMigrationRecord::format");
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn plugin_config_matches_format() {
+        let s = PluginConfigRecord::for_tests();
+        let tuple_data = s.to_tuple_buffer().unwrap();
+        let format = PluginConfigRecord::format();
+        crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "PluginConfigRecord::format");
     }
 }

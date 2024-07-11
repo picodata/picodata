@@ -208,10 +208,14 @@ class PluginReflection:
             assert ctx == expected_ctx
 
     def get_config(self, service, instance):
-        return instance.eval(
-            f"return box.space._pico_service:get({{'{self.name}', '{service}', "
-            f"'0.1.0'}})[5]"
+        config = dict()
+        records = instance.eval(
+            "return box.space._pico_plugin_config:select({...})",
+            [self.name, self.version, service],
         )
+        for record in records:
+            config[record[3]] = record[4]
+        return config
 
     @staticmethod
     def get_seen_config(service, instance):
@@ -321,11 +325,12 @@ def install_and_enable_plugin(
     )
     for s in services:
         if default_config is not None:
-            instance.eval(
-                f"box.space._pico_service:update"
-                f"({{'{plugin}', '{s}', '0.1.0'}}, {{ {{'=', 'configuration', ... }} }})",
-                default_config,
-            )
+            for key in default_config:
+                instance.eval(
+                    f"box.space._pico_plugin_config:replace"
+                    f"({{'{plugin}', '0.1.0', '{s}', '{key}', ...}})",
+                    default_config[key],
+                )
         instance.call("pico.service_append_tier", plugin, version, s, _DEFAULT_TIER)
     instance.call("pico.enable_plugin", plugin, version, timeout=timeout)
 
@@ -1048,6 +1053,9 @@ def test_plugin_double_config_update(cluster: Cluster):
     install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
+
+    plugin_ref.inject_error("testservice_1", "assert_config_changed", True, i1)
+    plugin_ref.inject_error("testservice_1", "assert_config_changed", True, i2)
 
     i1.eval(
         'pico.update_plugin_config("testplug", "0.1.0", "testservice_1", {foo = '

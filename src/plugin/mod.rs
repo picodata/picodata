@@ -268,11 +268,21 @@ impl Manifest {
                 plugin_name: self.name.to_string(),
                 name: srv.name.to_string(),
                 tiers: vec![],
-                configuration: srv.default_configuration.clone(),
                 version: self.version.to_string(),
                 description: srv.description.to_string(),
             })
             .collect()
+    }
+
+    /// Return default configuration for a service.
+    pub fn get_default_config(&self, svc: &str) -> Option<&rmpv::Value> {
+        let config = self.services.iter().find_map(|service| {
+            if service.name == svc {
+                return Some(&service.default_configuration);
+            }
+            None
+        });
+        config
     }
 }
 

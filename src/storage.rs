@@ -25,8 +25,8 @@ use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::replicaset::Replicaset;
 use crate::schema::{
-    Distribution, PluginMigrationRecord, PrivilegeType, SchemaObjectType, ServiceDef,
-    ServiceRouteItem, ServiceRouteKey,
+    Distribution, PluginConfigRecord, PluginMigrationRecord, PrivilegeType, SchemaObjectType,
+    ServiceDef, ServiceRouteItem, ServiceRouteKey,
 };
 use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
@@ -47,6 +47,7 @@ use crate::warn_or_panic;
 use crate::{plugin, tlog};
 
 use crate::plugin::{PluginIdentifier, TopologyUpdateOp};
+use rmpv::Utf8String;
 use std::borrow::Cow;
 use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map::Entry;
@@ -443,6 +444,18 @@ define_clusterwide_tables! {
                 space: Space,
                 #[primary]
                 primary_key: Index => "_pico_plugin_migration_primary_key",
+            }
+        }
+        PluginConfig = 530, "_pico_plugin_config" => {
+            Clusterwide::plugin_config;
+
+            /// Structure for storing plugin configuration.
+            /// Configuration is represented by a set of key-value pairs
+            /// belonging to either service or extension.
+            pub struct PluginConfig {
+                space: Space,
+                #[primary]
+                primary: Index => "_pico_plugin_config_pk",
             }
         }
     }
@@ -3899,6 +3912,129 @@ impl PluginMigration {
             .select(IteratorType::Eq, &(plugin_name,))?
             .map(|t| t.decode())
             .collect()
+    }
+}
+
+impl PluginConfig {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let primary = space
+            .index_builder("_pico_plugin_config_pk")
+            .unique(true)
+            .part("plugin")
+            .part("version")
+            .part("entity")
+            .part("key")
+            .if_not_exists(true)
+            .create()?;
+
+        Ok(Self { space, primary })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        PluginConfigRecord::format()
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            id: 0,
+            name: "_pico_plugin_config_pk".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![
+                Part::from(("plugin", IndexFieldType::String)).is_nullable(false),
+                Part::from(("version", IndexFieldType::String)).is_nullable(false),
+                Part::from(("entity", IndexFieldType::String)).is_nullable(false),
+                Part::from(("key", IndexFieldType::String)).is_nullable(false),
+            ],
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+            operable: true,
+        }]
+    }
+
+    /// Replace the whole service configuration to the new one.
+    #[inline]
+    pub fn replace(
+        &self,
+        ident: &PluginIdentifier,
+        entity: &str,
+        config: rmpv::Value,
+    ) -> tarantool::Result<()> {
+        debug_assert!(tarantool::transaction::is_in_transaction());
+        let new_config_records = PluginConfigRecord::from_config(ident, entity, config)?;
+
+        // delete an old config first
+        let old_cfg_records = self
+            .space
+            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+        for tuple in old_cfg_records {
+            let record: PluginConfigRecord = tuple.decode()?;
+            self.space.delete(&record.pk())?;
+        }
+
+        // now save a new config
+        for config_rec in new_config_records {
+            self.space.put(&config_rec)?;
+        }
+
+        Ok(())
+    }
+
+    /// Return configuration for service or extension.
+    #[inline]
+    pub fn get_by_entity(
+        &self,
+        ident: &PluginIdentifier,
+        entity: &str,
+    ) -> tarantool::Result<rmpv::Value> {
+        let cfg_records = self
+            .space
+            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+
+        let mut result = vec![];
+        for tuple in cfg_records {
+            let cfg_record: PluginConfigRecord = tuple.decode()?;
+            result.push((
+                rmpv::Value::String(Utf8String::from(cfg_record.key)),
+                cfg_record.value,
+            ));
+        }
+
+        if result.is_empty() {
+            return Ok(rmpv::Value::Nil);
+        }
+
+        Ok(rmpv::Value::Map(result))
+    }
+
+    /// Remove configuration.
+    #[inline]
+    pub fn remove_by_entity(
+        &self,
+        ident: &PluginIdentifier,
+        entity: &str,
+    ) -> tarantool::Result<()> {
+        debug_assert!(tarantool::transaction::is_in_transaction());
+        let cfg_records = self
+            .space
+            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+
+        for tuple in cfg_records {
+            let record: PluginConfigRecord = tuple.decode()?;
+            self.space.delete(&record.pk())?;
+        }
+
+        Ok(())
     }
 }
 
