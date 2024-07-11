@@ -468,3 +468,35 @@ def test_datetime(postgres: Postgres):
     # test binary encoding
     cur = conn.execute(""" SELECT * FROM T; """, binary=True)
     assert sorted(cur.fetchall()) == [(d1,), (d2,)]
+
+
+# Verify that we can read from all system tables without errors.
+def test_select_from_system_tables(postgres: Postgres):
+    user = "postgres"
+    password = "Passw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    # create a postgres user using a postgres compatible password
+    postgres.instance.sql(
+        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
+    )
+    # grant read on tables
+    postgres.instance.sql(f'GRANT READ TABLE TO "{user}"', sudo=True)
+
+    # connect to the server and enable autocommit as we
+    # don't support interactive transactions
+    conn = psycopg.connect(
+        f"postgres://{user}:{password}@{host}:{port}?sslmode=disable"
+    )
+    conn.autocommit = True
+
+    # at the beginning there should be only '_pico' tables
+    cursor = conn.execute(""" SELECT "name" from "_pico_table" """)
+    tables = [row[0] for row in cursor.fetchall()]
+
+    # read from all tables
+    for table in tables:
+        sql = f""" SELECT * from "{table}" """
+        cur = conn.execute(bytes(sql, "utf-8"))
+        cur.fetchall()

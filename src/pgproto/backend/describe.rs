@@ -219,14 +219,13 @@ impl MetadataColumn {
 fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
     match sbroad {
         SbroadType::Integer | SbroadType::Unsigned => Ok(Type::INT8),
-        SbroadType::Map | SbroadType::Array => Ok(Type::JSON),
+        SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(Type::JSON),
         SbroadType::String => Ok(Type::TEXT),
         SbroadType::Boolean => Ok(Type::BOOL),
         SbroadType::Double => Ok(Type::FLOAT8),
         SbroadType::Decimal => Ok(Type::NUMERIC),
         SbroadType::Uuid => Ok(Type::UUID),
         SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
-        SbroadType::Any => Ok(Type::ANY),
         // According to tarantool [documentation](https://www.tarantool.io/en/doc/latest/reference/reference_sql/sql_user_guide/#sql-data-type-conversion):
         // NUMBER values have the same range as DOUBLE values. But NUMBER values may also be integers.
         //

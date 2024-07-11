@@ -389,6 +389,7 @@ impl PgValue {
                 let datetime = deserialize_rmpv_ext(&value)?;
                 Ok(PgValue::Timestamptz(datetime))
             }
+            (_any, Type::JSON | Type::JSONB) => Ok(PgValue::Json(Json(value))),
 
             (value, ty) => Err(PgError::FeatureNotSupported(format!(
                 "{value:?} cannot be represented as a value of type {ty:?}"
