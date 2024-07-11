@@ -391,8 +391,8 @@ Insert({_pico_property}, ["password_enforce_digits",true]),
 Insert({_pico_property}, ["password_enforce_specialchars",false]),
 Insert({_pico_property}, ["auto_offline_timeout",5.0]),
 Insert({_pico_property}, ["max_heartbeat_period",5.0]),
-Insert({_pico_property}, ["max_pg_statements",50]),
-Insert({_pico_property}, ["max_pg_portals",50]),
+Insert({_pico_property}, ["max_pg_statements",1024]),
+Insert({_pico_property}, ["max_pg_portals",1024]),
 Insert({_pico_property}, ["snapshot_chunk_max_size",16777216]),
 Insert({_pico_property}, ["snapshot_read_view_close_timeout",86400.0]))|
 |  0  | 1  |BatchDml(

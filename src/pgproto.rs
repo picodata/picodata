@@ -13,8 +13,8 @@ mod stream;
 mod tls;
 mod value;
 
-pub const DEFAULT_MAX_PG_STATEMENTS: usize = 50;
-pub const DEFAULT_MAX_PG_PORTALS: usize = 50;
+pub const DEFAULT_MAX_PG_STATEMENTS: usize = 1024;
+pub const DEFAULT_MAX_PG_PORTALS: usize = 1024;
 
 /// Main postgres server configuration.
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
