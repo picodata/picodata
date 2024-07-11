@@ -550,7 +550,7 @@ vtable_max_rows = 5000"""
     assert data == []
 
     # insert from sharded table
-    data = i2.sql("insert into global_t select x, y from t")
+    data = i2.retriable_sql("insert into global_t select x, y from t")
     assert data["row_count"] == 5
 
     data = i2.sql("select * from global_t")
