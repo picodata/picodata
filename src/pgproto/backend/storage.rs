@@ -1,9 +1,9 @@
 use super::describe::{Describe, PortalDescribe, StatementDescribe};
 use super::describe::{MetadataColumn, QueryType};
 use super::result::{ExecuteResult, Rows};
-use crate::pgproto::error::{PgError, PgResult};
+use crate::pgproto::error::{PgError, PgErrorCode, PgResult};
 use crate::pgproto::value::{FieldFormat, PgValue};
-use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
+use crate::storage::PropertyName;
 use crate::traft::node;
 use ::tarantool::tuple::Tuple;
 use rmpv::Value;
@@ -27,29 +27,79 @@ use crate::sql::router::RouterRuntime;
 
 pub type ClientId = u32;
 
+// Object that stores information specific to the portal or statement storage.
+struct StorageContext {
+    capacity_property: PropertyName,
+    get_capacity: fn() -> PgResult<usize>,
+    dublicate_key_error_code: PgErrorCode,
+}
+
+impl StorageContext {
+    fn portals() -> StorageContext {
+        fn get_capacity() -> PgResult<usize> {
+            Ok(node::global()?.storage.properties.max_pg_portals()?)
+        }
+
+        Self {
+            capacity_property: PropertyName::MaxPgPortals,
+            get_capacity,
+            dublicate_key_error_code: PgErrorCode::DuplicateCursor,
+        }
+    }
+
+    fn statements() -> StorageContext {
+        fn get_capacity() -> PgResult<usize> {
+            Ok(node::global()?.storage.properties.max_pg_statements()?)
+        }
+
+        Self {
+            capacity_property: PropertyName::MaxPgStatements,
+            get_capacity,
+            dublicate_key_error_code: PgErrorCode::DuplicatePreparedStatement,
+        }
+    }
+
+    fn get_capacity(&self) -> PgResult<usize> {
+        (self.get_capacity)()
+    }
+}
+
 /// Storage for Statements and Portals.
 /// Essentially a map with custom logic for updates and unnamed elements.
-struct PgStorage<S> {
+pub struct PgStorage<S> {
     map: BTreeMap<(ClientId, Rc<str>), S>,
-    capacity: usize,
     // We reuse this empty name in range scans in order to avoid Rc allocations.
     // Note: see names_by_client_id.
     empty_name: Rc<str>,
+
+    // Context specific to the portal or statement storage.
+    context: StorageContext,
 }
 
 impl<S> PgStorage<S> {
-    pub fn with_capacity(capacity: usize) -> Self {
+    fn with_context(context: StorageContext) -> Self {
         Self {
             map: BTreeMap::new(),
-            capacity,
             empty_name: Rc::from(String::new()),
+            context,
         }
     }
 
     pub fn put(&mut self, key: (ClientId, Rc<str>), value: S) -> PgResult<()> {
-        if self.len() >= self.capacity() {
+        let capacity = self.context.get_capacity()?;
+        if self.len() >= capacity {
             // TODO: it should be configuration_limit_exceeded error
-            return Err(PgError::Other("Statement storage is full".into()));
+            return Err(PgError::Other(
+                format!(
+                    "{} storage is full. Current size limit: {}. \
+                    Please, increase storage limit using: \
+                    UPDATE \"_pico_property\" SET \"value\" = <new-limit> WHERE \"key\" = '{}';",
+                    self.value_kind(),
+                    capacity,
+                    self.context.capacity_property
+                )
+                .into(),
+            ));
         }
 
         if key.1.is_empty() {
@@ -58,12 +108,13 @@ impl<S> PgStorage<S> {
             return Ok(());
         }
 
+        let value_name = self.value_kind();
         match self.map.entry(key) {
             Entry::Occupied(entry) => {
                 let (id, name) = entry.key();
-                // TODO: it should be duplicate_cursor or duplicate_prepared_statement error
-                Err(PgError::Other(
-                    format!("Duplicated name \'{name}\' for client {id}").into(),
+                Err(PgError::WithExplicitCode(
+                    self.context.dublicate_key_error_code,
+                    format!("{} \'{name}\' for client {id} already exists", value_name),
                 ))
             }
             Entry::Vacant(entry) => {
@@ -96,51 +147,24 @@ impl<S> PgStorage<S> {
         self.map.len()
     }
 
-    pub fn capacity(&self) -> usize {
-        self.capacity
+    fn value_kind(&self) -> &'static str {
+        match self.context.capacity_property {
+            PropertyName::MaxPgStatements => "Statement",
+            PropertyName::MaxPgPortals => "Portal",
+            prop => panic!("unexpected property for pg storage: {prop}"),
+        }
     }
 }
 
-pub struct StatementStorage(PgStorage<StatementHolder>);
+type StatementStorage = PgStorage<StatementHolder>;
 
 impl StatementStorage {
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(PgStorage::with_capacity(capacity))
-    }
-
-    pub fn new() -> Self {
-        let storage = match node::global() {
-            Ok(node) => &node.storage,
-            Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
-        };
-        match storage.properties.max_pg_statements() {
-            Ok(size) => Self::with_capacity(size),
-            Err(_) => Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
-        }
-    }
-
-    pub fn put(&mut self, key: (ClientId, Rc<str>), statement: Statement) -> PgResult<()> {
-        self.0.put(key, StatementHolder::new(statement))
+    fn new() -> Self {
+        PgStorage::with_context(StorageContext::statements())
     }
 
     pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<Statement> {
-        self.0.map.get(key).map(|h| h.statement.clone())
-    }
-
-    pub fn remove(&mut self, key: &(ClientId, Rc<str>)) {
-        self.0.remove(key);
-    }
-
-    pub fn remove_by_client_id(&mut self, id: ClientId) {
-        self.0.remove_by_client_id(id);
-    }
-
-    pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
-        self.0.names_by_client_id(id)
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
+        self.map.get(key).map(|h| h.statement.clone())
     }
 }
 
@@ -150,49 +174,16 @@ impl Default for StatementStorage {
     }
 }
 
-pub struct PortalStorage(PgStorage<Portal>);
+type PortalStorage = PgStorage<Portal>;
 
 impl PortalStorage {
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(PgStorage::with_capacity(capacity))
-    }
-
     pub fn new() -> Self {
-        let storage = match node::global() {
-            Ok(node) => &node.storage,
-            Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_PORTALS),
-        };
-        match storage.properties.max_pg_portals() {
-            Ok(size) => Self::with_capacity(size),
-            Err(_) => Self::with_capacity(DEFAULT_MAX_PG_PORTALS),
-        }
-    }
-
-    pub fn put(&mut self, key: (ClientId, Rc<str>), portal: Portal) -> PgResult<()> {
-        self.0.put(key, portal)?;
-        Ok(())
-    }
-
-    pub fn remove(&mut self, key: &(ClientId, Rc<str>)) -> Option<Portal> {
-        self.0.remove(key)
-    }
-
-    pub fn remove_by_client_id(&mut self, id: ClientId) {
-        self.0.remove_by_client_id(id);
+        PgStorage::with_context(StorageContext::portals())
     }
 
     pub fn remove_portals_by_statement(&mut self, statement: &Statement) {
-        self.0
-            .map
+        self.map
             .retain(|_, p| !Statement::ptr_eq(p.statement(), statement));
-    }
-
-    pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
-        self.0.names_by_client_id(id)
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
     }
 }
 
@@ -338,6 +329,12 @@ impl StatementHolder {
     pub fn new(statement: Statement) -> StatementHolder {
         let portals = PG_PORTALS.with(Rc::downgrade);
         Self { statement, portals }
+    }
+}
+
+impl From<Statement> for StatementHolder {
+    fn from(value: Statement) -> Self {
+        Self::new(value)
     }
 }
 

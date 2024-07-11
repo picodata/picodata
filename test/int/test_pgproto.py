@@ -212,11 +212,16 @@ def test_updates_with_named(pg_client: PgClient):
         option (timeout = 3)
     """
     pg_client.parse(name, sql)
-    with pytest.raises(ReturnError, match=f"Duplicated name '{name}'"):
+    with pytest.raises(
+        ReturnError,
+        match=f"Statement '{name}' for client {pg_client.id} already exists",
+    ):
         pg_client.parse(name, sql)
 
     pg_client.bind(name, name, [], [])
-    with pytest.raises(ReturnError, match=f"Duplicated name '{name}'"):
+    with pytest.raises(
+        ReturnError, match=f"Portal '{name}' for client {pg_client.id} already exists"
+    ):
         pg_client.bind(name, name, [], [])
 
 

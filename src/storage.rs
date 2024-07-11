@@ -22,7 +22,6 @@ use tarantool::util::NumOrStr;
 use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
-use crate::pgproto::{DEFAULT_MAX_PG_PORTALS, DEFAULT_MAX_PG_STATEMENTS};
 use crate::replicaset::Replicaset;
 use crate::schema::{
     Distribution, PrivilegeType, SchemaObjectType, ServiceDef, ServiceRouteItem, ServiceRouteKey,
@@ -55,6 +54,7 @@ use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use self::acl::{on_master_drop_role, on_master_drop_user};
@@ -1384,6 +1384,16 @@ pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
 pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
 pub const DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT: f64 = (24 * 3600) as _;
 pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 4;
+pub const DEFAULT_MAX_PG_STATEMENTS: usize = 1024;
+pub const DEFAULT_MAX_PG_PORTALS: usize = 1024;
+
+/// Cached value of "pg_max_statements" option from "_pico_property".
+/// 0 means that the value must be read from the table.
+static MAX_PG_STATEMENTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Cached value of "pg_max_portals" option from "_pico_property".
+/// 0 means that the value must be read from the table.
+static MAX_PG_PORTALS: AtomicUsize = AtomicUsize::new(0);
 
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
@@ -1466,6 +1476,24 @@ impl Properties {
                     return Err(Error::other(format!(
                         "too many fields: got {field_count}, expected 2"
                     )));
+                }
+
+                match key {
+                    PropertyName::MaxPgPortals => {
+                        let value = new
+                            .field::<usize>(1)?
+                            .expect("just verified with verify_new_tuple");
+                        // Cache the value.
+                        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+                    }
+                    PropertyName::MaxPgStatements => {
+                        let value = new
+                            .field::<usize>(1)?
+                            .expect("just verified with verify_new_tuple");
+                        // Cache the value.
+                        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+                    }
+                    _ => (),
                 }
             }
             (None, None) => unreachable!(),
@@ -1616,17 +1644,33 @@ impl Properties {
 
     #[inline]
     pub fn max_pg_statements(&self) -> tarantool::Result<usize> {
+        let cached = MAX_PG_STATEMENTS.load(Ordering::Relaxed);
+        if cached != 0 {
+            return Ok(cached);
+        }
+
         let res = self
             .get(PropertyName::MaxPgStatements)?
             .unwrap_or(DEFAULT_MAX_PG_STATEMENTS);
+
+        // Cache the value.
+        MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
         Ok(res)
     }
 
     #[inline]
     pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
+        let cached = MAX_PG_PORTALS.load(Ordering::Relaxed);
+        if cached != 0 {
+            return Ok(cached);
+        }
+
         let res = self
             .get(PropertyName::MaxPgPortals)?
             .unwrap_or(DEFAULT_MAX_PG_PORTALS);
+
+        // Cache the value.
+        MAX_PG_PORTALS.store(res, Ordering::Relaxed);
         Ok(res)
     }
 

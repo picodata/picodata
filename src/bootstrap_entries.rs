@@ -5,7 +5,6 @@ use ::tarantool::msgpack;
 
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
-use crate::pgproto;
 use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::ADMIN_ID;
@@ -189,7 +188,7 @@ pub(super) fn prepare(
     ops.push(
         op::Dml::insert(
             ClusterwideTable::Property,
-            &(PropertyName::MaxPgStatements, pgproto::DEFAULT_MAX_PG_STATEMENTS),
+            &(PropertyName::MaxPgStatements, storage::DEFAULT_MAX_PG_STATEMENTS),
             ADMIN_ID,
         )
     .expect("serialization cannot fail"));
@@ -198,7 +197,7 @@ pub(super) fn prepare(
     ops.push(
         op::Dml::insert(
             ClusterwideTable::Property,
-            &(PropertyName::MaxPgPortals, pgproto::DEFAULT_MAX_PG_PORTALS),
+            &(PropertyName::MaxPgPortals, storage::DEFAULT_MAX_PG_PORTALS),
             ADMIN_ID,
         )
     .expect("serialization cannot fail"));

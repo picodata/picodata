@@ -35,10 +35,10 @@ use std::{
 use tarantool::session::with_su;
 
 mod pgproc;
-mod storage;
 
 pub mod describe;
 pub mod result;
+pub mod storage;
 
 fn decode_parameter_values(
     params: Vec<Option<Bytes>>,
@@ -184,7 +184,7 @@ pub fn parse(
                 let statement =
                     Statement::new(id.to_string(), sql.clone(), plan.clone(), param_oids)?;
                 PG_STATEMENTS
-                    .with(|cache| cache.borrow_mut().put((cid, name.into()), statement))?;
+                    .with(|cache| cache.borrow_mut().put((cid, name.into()), statement.into()))?;
                 return Ok(());
             }
             let metadata = &*runtime.metadata().lock();
@@ -208,8 +208,11 @@ pub fn parse(
                 cache.put(query.into(), plan.clone())?;
             }
             let statement = Statement::new(id.to_string(), sql, plan, param_oids)?;
-            PG_STATEMENTS
-                .with(|storage| storage.borrow_mut().put((cid, name.into()), statement))?;
+            PG_STATEMENTS.with(|storage| {
+                storage
+                    .borrow_mut()
+                    .put((cid, name.into()), statement.into())
+            })?;
             Ok(())
         },
     )

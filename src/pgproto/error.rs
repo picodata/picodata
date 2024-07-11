@@ -1,6 +1,32 @@
 use std::io;
 use thiserror::Error;
 
+/// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
+#[derive(Debug, Clone, Copy)]
+pub enum PgErrorCode {
+    DuplicateCursor,
+    DuplicatePreparedStatement,
+    FeatureNotSupported,
+    InternalError,
+    InvalidPassword,
+    IoError,
+    ProtocolViolation,
+}
+
+impl PgErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PgErrorCode::DuplicateCursor => "42P03",
+            PgErrorCode::DuplicatePreparedStatement => "42P05",
+            PgErrorCode::FeatureNotSupported => "0A000",
+            PgErrorCode::InternalError => "XX000",
+            PgErrorCode::InvalidPassword => "28P01",
+            PgErrorCode::IoError => "58030",
+            PgErrorCode::ProtocolViolation => "08P01",
+        }
+    }
+}
+
 // Use case: server could not encode a value into client's format.
 // To the client it's as meaningful & informative as any other "internal error".
 #[derive(Error, Debug)]
@@ -30,7 +56,6 @@ impl DecodingError {
 pub type PgResult<T> = Result<T, PgError>;
 
 /// Pgproto's main error type.
-/// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
 #[derive(Error, Debug)]
 pub enum PgError {
     #[error("internal error: {0}")]
@@ -44,6 +69,9 @@ pub enum PgError {
 
     #[error("authentication failed for user '{0}'")]
     InvalidPassword(String),
+
+    #[error("{1}")]
+    WithExplicitCode(PgErrorCode, String),
 
     // Server could not encode a value into client's format.
     // We don't care about any details as long as it's logged.
@@ -95,16 +123,17 @@ impl tarantool::error::IntoBoxError for PgError {
 
 impl PgError {
     /// Convert the error into a corresponding postgres error code.
-    fn code(&self) -> &str {
+    fn code(&self) -> PgErrorCode {
         use PgError::*;
         match self {
-            InternalError(_) => "XX000",
-            ProtocolViolation(_) => "08P01",
-            FeatureNotSupported(_) => "0A000",
-            InvalidPassword(_) => "28P01",
-            IoError(_) => "58030",
+            InternalError(_) => PgErrorCode::InternalError,
+            ProtocolViolation(_) => PgErrorCode::ProtocolViolation,
+            FeatureNotSupported(_) => PgErrorCode::FeatureNotSupported,
+            InvalidPassword(_) => PgErrorCode::InvalidPassword,
+            IoError(_) => PgErrorCode::InvalidPassword,
+            WithExplicitCode(code, _) => *code,
             // TODO: make the code depending on the error kind
-            _otherwise => "XX000",
+            _otherwise => PgErrorCode::InternalError,
         }
     }
 
@@ -112,7 +141,7 @@ impl PgError {
     pub fn info(&self) -> pgwire::error::ErrorInfo {
         pgwire::error::ErrorInfo::new(
             "ERROR".to_string(),
-            self.code().to_string(),
+            self.code().as_str().to_string(),
             self.to_string(),
         )
     }
