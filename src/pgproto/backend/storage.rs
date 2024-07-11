@@ -112,7 +112,7 @@ impl StatementStorage {
             Ok(node) => &node.storage,
             Err(_) => return Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
         };
-        match storage.properties.max_pg_portals() {
+        match storage.properties.max_pg_statements() {
             Ok(size) => Self::with_capacity(size),
             Err(_) => Self::with_capacity(DEFAULT_MAX_PG_STATEMENTS),
         }
