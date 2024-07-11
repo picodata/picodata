@@ -10,8 +10,8 @@ export const instances = {
     },
     instances: {
       label: "Instances",
-      onlineGrade: "current grade online",
-      offlineGrade: "current grade offline",
+      onlineState: "current state online",
+      offlineState: "current state offline",
     },
     version: {
       label: "Version",
@@ -80,8 +80,8 @@ export const instances = {
       instances: {
         label: "Instances",
       },
-      grade: {
-        label: "Grade",
+      state: {
+        label: "State",
       },
     },
     instanceCard: {
@@ -94,11 +94,11 @@ export const instances = {
       failureDomain: {
         label: "Failure domain",
       },
-      targetGrade: {
-        label: "Target grade",
+      targetState: {
+        label: "Target state",
       },
-      currentGrade: {
-        label: "Current grade",
+      currentState: {
+        label: "Current state",
       },
       binaryAddress: {
         label: "Binary address",

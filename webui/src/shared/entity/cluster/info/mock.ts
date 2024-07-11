@@ -5,7 +5,7 @@ export const mock = {
     usable: 80,
   },
   replicasetsCount: 4,
-  instancesCurrentGradeOnline: 3,
-  instancesCurrentGradeOffline: 2,
+  instancesCurrentStateOnline: 3,
+  instancesCurrentStateOffline: 2,
   currentInstaceVersion: "123",
 };

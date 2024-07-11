@@ -61,18 +61,18 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
           <div className={styles.instancesBlock}>
             <div className={styles.columnContent}>
               <div className={styles.columnValue}>
-                {clusterInfoData.instancesCurrentGradeOnline}
+                {clusterInfoData.instancesCurrentStateOnline}
               </div>
               <div className={styles.columnLabel}>
-                {clusterTranslations.instances.onlineGrade}
+                {clusterTranslations.instances.onlineState}
               </div>
             </div>
             <div className={styles.columnContent}>
               <div className={styles.columnValue}>
-                {clusterInfoData.instancesCurrentGradeOffline}
+                {clusterInfoData.instancesCurrentStateOffline}
               </div>
               <div className={styles.columnLabel}>
-                {clusterTranslations.instances.offlineGrade}
+                {clusterTranslations.instances.offlineState}
               </div>
             </div>
           </div>

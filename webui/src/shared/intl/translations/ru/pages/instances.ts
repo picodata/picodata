@@ -12,8 +12,8 @@ export const instances: TPages["instances"] = {
     },
     instances: {
       label: "Инстансы",
-      onlineGrade: "онлайн",
-      offlineGrade: "оффлайн",
+      onlineState: "онлайн",
+      offlineState: "оффлайн",
     },
     version: {
       label: "Версия",
@@ -82,8 +82,8 @@ export const instances: TPages["instances"] = {
       instances: {
         label: "Инстансы",
       },
-      grade: {
-        label: "Грейд",
+      state: {
+        label: "Состояние лидера",
       },
     },
     instanceCard: {
@@ -96,11 +96,11 @@ export const instances: TPages["instances"] = {
       failureDomain: {
         label: "Домен отказа",
       },
-      targetGrade: {
-        label: "Целевой грейд",
+      targetState: {
+        label: "Целевое состояние",
       },
-      currentGrade: {
-        label: "Текущий грейд",
+      currentState: {
+        label: "Текущие состояние",
       },
       binaryAddress: {
         label: "RPC адрес",

@@ -42,11 +42,11 @@ $leader-height: 16px;
   overflow: hidden;
 }
 
-.targetGradeColumn {
+.targetStateColumn {
   flex: 1 118px;
 }
 
-.currentGradeColumn {
+.currentStateColumn {
   flex: 1 118px;
 }
 
@@ -99,11 +99,11 @@ $leader-height: 16px;
   justify-content: center;
 }
 
-.targetGradeValue {
+.targetStateValue {
   padding: 0;
 }
 
-.currentGradeValue {
+.currentStateValue {
   padding: 0;
 }
 

@@ -41,7 +41,7 @@ $column-item-horizontal-padding: 8px;
   flex: 1 326px;
 }
 
-.gradeColumn {
+.stateColumn {
   flex: 1 135px;
 }
 
@@ -80,7 +80,7 @@ $column-item-horizontal-padding: 8px;
   @include ellipsis;
 }
 
-.gradeValue {
+.stateValue {
   padding: 0;
 }
 

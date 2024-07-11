@@ -19,7 +19,7 @@ export type TReplicaset = {
   instanceCount: number;
   instances: InstanceType[];
   version: string;
-  grade: "Online" | "Offline";
+  state: "Online" | "Offline";
   capacityUsage: number;
   memory: {
     usable: number;
@@ -68,12 +68,12 @@ export const ReplicasetCard: FC<ReplicasetCardProps> = React.memo(
             </div>
             <div className={styles.infoValue}>{replicaset.instanceCount}</div>
           </div>
-          <div className={cn(styles.infoColumn, styles.gradeColumn)}>
+          <div className={cn(styles.infoColumn, styles.stateColumn)}>
             <div className={styles.label}>
-              {replicasetTranslations.grade.label}
+              {replicasetTranslations.state.label}
             </div>
-            <div className={cn(styles.infoValue, styles.gradeValue)}>
-              <NetworkState state={replicaset.grade} />
+            <div className={cn(styles.infoValue, styles.stateValue)}>
+              <NetworkState state={replicaset.state} />
             </div>
           </div>
           <div className={cn(styles.infoColumn, styles.capacityColumn)}>

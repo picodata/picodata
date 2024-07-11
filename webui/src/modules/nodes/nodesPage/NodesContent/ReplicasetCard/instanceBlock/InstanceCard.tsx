@@ -76,20 +76,20 @@ export const InstanceCard: FC<InstanceCardProps> = React.memo(
                 <FailureDomainLabel failureDomain={instance.failureDomain} />
               </div>
             </div>
-            <div className={cn(styles.infoColumn, styles.targetGradeColumn)}>
+            <div className={cn(styles.infoColumn, styles.targetStateColumn)}>
               <div className={styles.label}>
-                {instanceTranslations.targetGrade.label}
+                {instanceTranslations.targetState.label}
               </div>
-              <div className={cn(styles.value, styles.targetGradeValue)}>
-                <NetworkState state={instance.targetGrade} />
+              <div className={cn(styles.value, styles.targetStateValue)}>
+                <NetworkState state={instance.targetState} />
               </div>
             </div>
-            <div className={cn(styles.infoColumn, styles.currentGradeColumn)}>
+            <div className={cn(styles.infoColumn, styles.currentStateColumn)}>
               <div className={styles.label}>
-                {instanceTranslations.currentGrade.label}
+                {instanceTranslations.currentState.label}
               </div>
-              <div className={cn(styles.value, styles.currentGradeValue)}>
-                <NetworkState state={instance.currentGrade} />
+              <div className={cn(styles.value, styles.currentStateValue)}>
+                <NetworkState state={instance.currentState} />
               </div>
             </div>
             <div className={cn(styles.infoColumn, styles.binaryAddressColumn)}>

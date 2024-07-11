@@ -5,8 +5,8 @@ export type ServerClusterInfoType = {
     usable: number;
   };
   replicasetsCount: number;
-  instancesCurrentGradeOnline: number;
-  instancesCurrentGradeOffline: number;
+  instancesCurrentStateOnline: number;
+  instancesCurrentStateOffline: number;
   currentInstaceVersion: string;
 };
 

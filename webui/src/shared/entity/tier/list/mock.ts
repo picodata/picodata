@@ -5,7 +5,7 @@ export const mock: ServerTiersListType = [
     replicasets: [
       {
         version: "??.??",
-        grade: "Online",
+        state: "Online",
         instanceCount: 2,
         capacityUsage: 100,
         instances: [
@@ -16,8 +16,8 @@ export const mock: ServerTiersListType = [
               DC: "1",
             },
             isLeader: true,
-            currentGrade: "Online",
-            targetGrade: "Online",
+            currentState: "Online",
+            targetState: "Online",
             name: "i2",
             binaryAddress: "127.0.0.1:3402",
           },
@@ -28,8 +28,8 @@ export const mock: ServerTiersListType = [
               DC: "2",
             },
             isLeader: false,
-            currentGrade: "Online",
-            targetGrade: "Online",
+            currentState: "Online",
+            targetState: "Online",
             name: "i4",
             binaryAddress: "127.0.0.1:3403",
           },
@@ -42,7 +42,7 @@ export const mock: ServerTiersListType = [
       },
       {
         version: "??.??",
-        grade: "Online",
+        state: "Online",
         instanceCount: 2,
         capacityUsage: 100,
         instances: [
@@ -54,8 +54,8 @@ export const mock: ServerTiersListType = [
               DC: "1",
             },
             isLeader: false,
-            currentGrade: "Online",
-            targetGrade: "Online",
+            currentState: "Online",
+            targetState: "Online",
             name: "i1",
             binaryAddress: "127.0.0.1:3401",
           },
@@ -66,8 +66,8 @@ export const mock: ServerTiersListType = [
               DC: "2",
             },
             isLeader: true,
-            currentGrade: "Online",
-            targetGrade: "Online",
+            currentState: "Online",
+            targetState: "Online",
             name: "i5",
             binaryAddress: "127.0.0.1:3404",
           },
@@ -90,7 +90,7 @@ export const mock: ServerTiersListType = [
     replicasets: [
       {
         version: "??.??",
-        grade: "Online",
+        state: "Online",
         instanceCount: 1,
         capacityUsage: 100,
         instances: [
@@ -101,8 +101,8 @@ export const mock: ServerTiersListType = [
               DC: "2",
             },
             isLeader: true,
-            currentGrade: "Online",
-            targetGrade: "Online",
+            currentState: "Online",
+            targetState: "Online",
             name: "i6",
             binaryAddress: "127.0.0.1:3406",
           },
@@ -115,7 +115,7 @@ export const mock: ServerTiersListType = [
       },
       {
         version: "??.??",
-        grade: "Online",
+        state: "Online",
         instanceCount: 1,
         capacityUsage: 100,
         instances: [
@@ -126,8 +126,8 @@ export const mock: ServerTiersListType = [
               DC: "1",
             },
             isLeader: true,
-            currentGrade: "Online",
-            targetGrade: "Online",
+            currentState: "Online",
+            targetState: "Online",
             name: "i3",
             binaryAddress: "127.0.0.1:3405",
           },
