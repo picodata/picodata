@@ -791,5 +791,31 @@ fn proc_expel_redirect(cluster_id, instance_id)
 - `instance_id`: (MP_STR),
 
 
-<!-- ------------------------------------------------------------------------------—-
-### to be continued {: #TBC } -->
+--------------------------------------------------------------------------------
+### .proc_get_config {: #.proc_get_config }
+
+```rust
+fn proc_get_config() -> Result
+```
+
+Возвращает совокупную конфигурацию инстанса, в которой для каждого параметра
+указано значение `value` и его источник `source`.
+
+Возможные типы данных:
+
+* `value`: (MP_MAP | MP_INT | MP_STR | MP_BOOL | MP_ARRAY | MP_FLOAT)
+* `source`: (MP_STR)
+
+Возможные источники значений параметров — поле `source`:
+
+* `"default"` — по умолчанию
+* `"config_file"` — [файл конфигурации]
+* `"commandline_or_environment"` — параметры команды [picodata
+  run](../reference/cli.md#run) или переменные окружения
+
+Возвращаемое значение:
+
+* `config` (MP_MAP) — словарь, повторяющий формат [файла конфигурации]
+
+[файл конфигурации]: ../reference/config.md#config_file_description
+[файла конфигурации]: ../reference/config.md#config_file_description
