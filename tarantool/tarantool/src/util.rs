@@ -52,6 +52,20 @@ macro_rules! expr_count {
     ($head:expr $(, $tail:expr)*) => { 1 + $crate::expr_count!($($tail),*) }
 }
 
+/// Return an array reference to the first `N` items in the slice.
+/// If the slice is not at least N in length, this will return None.
+/// Equivalent to similar slice (as primitive) method (`slice::first_chunk`).
+#[inline]
+pub const fn slice_first_chunk<const N: usize, T>(slice: &[T]) -> Option<&[T; N]> {
+    if slice.len() < N {
+        None
+    } else {
+        // SAFETY: We explicitly check for the correct number
+        // of elements, and do not let the reference outlive the slice.
+        Some(unsafe { &*(slice.as_ptr().cast::<[T; N]>()) })
+    }
+}
+
 #[inline]
 pub fn rmp_to_vec<T>(val: &T) -> Result<Vec<u8>, Error>
 where
@@ -273,6 +287,14 @@ pub fn into_cstring_lossy(s: String) -> CString {
 mod test {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    #[cfg(miri)]
+    fn check_slice_first_chunk() {
+        let data = &[1u8, 2, 3, 4];
+        assert_eq!(slice_first_chunk::<2, _>(data), Some(&[1, 2]));
+        assert_eq!(slice_first_chunk::<5, _>(data), None);
+    }
 
     #[test]
     #[allow(clippy::needless_range_loop)]

@@ -94,6 +94,8 @@
   with doc-comments on the function parameters.
 - `msgpack::skip_value` now returns error in case there wasn't enough data to
   skip a msgpack value.
+- `network::protocol::codec::encode_auth` now supports already implemented
+  authentication via MD5.
 
 ### Deprecated
 

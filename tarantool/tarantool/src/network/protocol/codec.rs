@@ -1,8 +1,6 @@
 use std::io::{self, Cursor, Read, Seek, Write};
 use std::os::raw::c_char;
 
-use sha1::{Digest, Sha1};
-
 use crate::auth::AuthMethod;
 use crate::error::Error;
 use crate::error::TarantoolError;
@@ -98,6 +96,8 @@ pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
     // step_3 = sha1(first_20_bytes_of_salt, step_2);
     // scramble = xor(step_1, step_3);
 
+    use sha1::{Digest as Sha1Digest, Sha1};
+
     let mut hasher = Sha1::new();
     hasher.update(password.as_bytes());
     let mut step_1_and_scramble = hasher.finalize();
@@ -136,6 +136,33 @@ pub fn ldap_auth_data(password: &str) -> Vec<u8> {
     return res;
 }
 
+#[cfg(feature = "picodata")]
+#[inline]
+pub fn md5_auth_data(user: &str, password: &str, salt: [u8; 4]) -> Vec<u8> {
+    // recv_from_db(salt)
+    // recv_from_user(name, password)
+    //   shadow_pass = md5(name + password), do not add "md5" prefix
+    //   client_pass = md5(shadow_pass + salt), only first 4 bytes of salt are used
+    //   result = encode_as_msgpack_str(client_pass)
+    // send_to_db(result)
+
+    use md5::{Digest as Md5Digest, Md5};
+
+    let mut res = Vec::new();
+    let mut md5 = Md5::new();
+
+    md5.update(password);
+    md5.update(user);
+    let shadow_pass = format!("{:x}", md5.finalize_reset());
+
+    md5.update(shadow_pass);
+    md5.update(salt);
+    let client_pass = format!("md5{:x}", md5.finalize());
+
+    rmp::encode::write_str(&mut res, &client_pass).expect("Can't fail for a Vec");
+    return res;
+}
+
 pub fn encode_auth(
     stream: &mut impl Write,
     user: &str,
@@ -153,10 +180,13 @@ pub fn encode_auth(
             auth_data = ldap_auth_data(password);
         }
         #[cfg(feature = "picodata")]
-        _ => {
-            return Err(
-                ProtocolError::Unimplemented(format!("auth method '{auth_method}'")).into(),
-            );
+        AuthMethod::Md5 => {
+            // We only use first four bytes of a salt. To understand why,
+            // check `MD5_SALT_LEN` from `tarantool-sys/src/lib/core/md5.h:enum`,
+            // that is used in `tarantool-sys/src/lib/core/crypt.c:md5_encrypt`.
+            let salt_part =
+                crate::util::slice_first_chunk::<4, _>(salt).expect("Can't fail for valid salt");
+            auth_data = md5_auth_data(user, password, *salt_part);
         }
     }
 

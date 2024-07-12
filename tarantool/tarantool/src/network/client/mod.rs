@@ -721,6 +721,105 @@ mod tests {
 
     #[cfg(feature = "picodata")]
     #[crate::test(tarantool = "crate")]
+    async fn md5_auth_method() {
+        use crate::auth::AuthMethod;
+        use std::time::Duration;
+
+        let username = "Johnny";
+        let password = "B. Goode";
+
+        // NOTE: because we test our fork of `tarantool` here (see `picodata` feature flag on a test), we can
+        // pass `auth_type` parameter right into `box.schema.user.create`. This won't work in default `tarantool`.
+        crate::lua_state()
+            .exec_with(
+                "local username, password = ...
+                box.cfg { }
+                box.schema.user.create(username, { if_not_exists = true, auth_type = 'md5', password = password })
+                box.schema.user.grant(username, 'super', nil, nil, { if_not_exists = true })",
+                (username, password),
+            )
+            .unwrap();
+
+        // Successful connection
+        {
+            let client = Client::connect_with_config(
+                "localhost",
+                listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), password.into())),
+                    auth_method: AuthMethod::Md5,
+                    ..Default::default()
+                },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            client
+                .eval("print('\\x1b[32mit works!\\x1b[0m')", &())
+                .await
+                .unwrap();
+        }
+
+        // Wrong password
+        {
+            let client = Client::connect_with_config(
+                "localhost",
+                listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), "wrong password".into())),
+                    auth_method: AuthMethod::Md5,
+                    ..Default::default()
+                },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            let err = client.eval("return", &()).await.unwrap_err().to_string();
+            #[rustfmt::skip]
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
+        }
+
+        // Wrong auth method
+        {
+            let client = Client::connect_with_config(
+                "localhost",
+                listen_port(),
+                protocol::Config {
+                    creds: Some((username.into(), password.into())),
+                    auth_method: AuthMethod::ChapSha1,
+                    ..Default::default()
+                },
+            )
+            .timeout(Duration::from_secs(3))
+            .await
+            .unwrap();
+
+            // network::Client will not try actually connecting until we send the
+            // first request
+            let err = client.eval("return", &()).await.unwrap_err().to_string();
+            #[rustfmt::skip]
+            assert_eq!(err, "server responded with error: PasswordMismatch: User not found or supplied credentials are invalid");
+        }
+
+        crate::lua_state()
+            // This is the default
+            .exec_with(
+                "local username = ...
+                box.cfg { auth_type = 'chap-sha1' }
+                box.schema.user.drop(username)",
+                username,
+            )
+            .unwrap();
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
     async fn ldap_auth_method() {
         use crate::auth::AuthMethod;
         use std::time::Duration;
