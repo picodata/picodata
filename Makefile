@@ -77,11 +77,11 @@ k6:
 # the behavior of build.rs `build_webui()`, but uses a different out_dir
 # `picodata-webui/dist` instead of `target/debug/build/picodata-webui`
 build-webui-bundle:
-	yarn --cwd picodata-webui install \
+	yarn --cwd webui install \
 		--prefer-offline \
 		--frozen-lockfile \
 		--no-progress \
 		--non-interactive
-	yarn --cwd picodata-webui vite build \
+	yarn --cwd webui vite build \
 		--outDir dist \
 		--emptyOutDir
