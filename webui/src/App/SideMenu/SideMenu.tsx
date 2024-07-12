@@ -9,7 +9,6 @@ import { InstancesIcon } from "shared/icons/navLinks/InstancesIcon";
 import { URL_CONFIG } from "shared/router/config";
 import { useLsState } from "shared/localStorage/hooks/useLsState";
 import { useTranslation } from "shared/intl";
-import { UsersIcon } from "shared/icons/navLinks/UsersIcon";
 
 import styles from "./SideMenu.module.scss";
 
@@ -34,11 +33,6 @@ export const SideMenu = () => {
       to: URL_CONFIG.NODES.absolutePath,
       label: sideMenuTranslations.navLinks.instances.label,
       icon: <InstancesIcon className={styles.icon} />,
-    },
-    {
-      to: URL_CONFIG.USERS.absolutePath,
-      label: sideMenuTranslations.navLinks.users.label,
-      icon: <UsersIcon className={styles.icon} />,
     },
   ];
 
