@@ -376,50 +376,6 @@ impl Loop {
                 }
             }
 
-            Plan::ShardingInit(ShardingInit { targets, rpc, req }) => {
-                set_status(governor_status, "configure sharding");
-                governor_step! {
-                    "configuring sharding"
-                    async {
-                        let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
-                            fs.push(async move {
-                                match resp.await {
-                                    Ok(_) => {
-                                        tlog!(Info, "configured sharding with instance";
-                                            "instance_id" => %instance_id,
-                                        );
-                                        Ok(())
-                                    }
-                                    Err(e) => {
-                                        tlog!(Warning, "failed calling rpc::sharding: {e}";
-                                            "instance_id" => %instance_id
-                                        );
-                                        Err(e)
-                                    }
-                                }
-                            });
-                        }
-                        // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
-                    }
-                }
-
-                let instance_id = req.instance_id.clone();
-                let current_state = req.current_state.expect("must be set");
-                governor_step! {
-                    "handling instance state change" [
-                        "instance_id" => %instance_id,
-                        "current_state" => %current_state,
-                    ]
-                    async {
-                        handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
-                    }
-                }
-            }
-
             Plan::ShardingBoot(ShardingBoot { target, rpc, op }) => {
                 set_status(governor_status, "bootstrap bucket distribution");
                 governor_step! {

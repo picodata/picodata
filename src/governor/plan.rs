@@ -696,12 +696,6 @@ pub mod stage {
             pub req: rpc::update_instance::Request,
         }
 
-        pub struct ShardingInit<'i> {
-            pub targets: Vec<&'i InstanceId>,
-            pub rpc: rpc::sharding::Request,
-            pub req: rpc::update_instance::Request,
-        }
-
         pub struct ShardingBoot<'i> {
             pub target: &'i InstanceId,
             pub rpc: rpc::sharding::bootstrap::Request,
