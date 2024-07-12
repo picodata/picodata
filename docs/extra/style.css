@@ -227,6 +227,21 @@ article ul ul ul {
     list-style-type: "\2212" !important;
 }
 
+/* Set custom bullets for level 4 <ul> lists — open centre asterisk */
+article ul ul ul ul {
+    list-style-type: "\2732" !important;
+}
+
+/* Set custom bullets for level 5 <ul> lists — black four pointed star */
+article ul ul ul ul ul {
+    list-style-type: "\2726" !important;
+}
+
+/* Set custom bullets for level 6 <ul> lists — white four pointed star */
+article ul ul ul ul ul ul {
+    list-style-type: "\2727" !important;
+}
+
 /* Set padding for level 3 <ul> list items*/
 article ul ul ul li {
     padding-left: 0.5rem;
