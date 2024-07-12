@@ -9,7 +9,19 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
 use crate::op::Op;
+use crate::proc_name;
 use crate::rpc;
+use crate::rpc::ddl_apply::proc_apply_schema_change;
+use crate::rpc::disable_service::proc_disable_service;
+use crate::rpc::enable_all_plugins::proc_enable_all_plugins;
+use crate::rpc::enable_plugin::proc_enable_plugin;
+use crate::rpc::enable_service::proc_enable_service;
+use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
+use crate::rpc::replication::proc_replication;
+use crate::rpc::replication::proc_replication_demote;
+use crate::rpc::replication::proc_replication_promote;
+use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
+use crate::rpc::sharding::proc_sharding;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
@@ -272,7 +284,7 @@ impl Loop {
                             "replicaset_id" => %replicaset_id,
                         ]
                         async {
-                            let resp = pool.call(old_master_id, &rpc, Self::RPC_TIMEOUT)?
+                            let resp = pool.call(old_master_id, proc_name!(proc_replication_demote), &rpc, Self::RPC_TIMEOUT)?
                                 .timeout(Self::RPC_TIMEOUT)
                                 .await?;
                             sync_and_promote.vclock = Some(resp.vclock);
@@ -287,7 +299,7 @@ impl Loop {
                         "vclock" => ?sync_and_promote.vclock,
                     ]
                     async {
-                        pool.call(new_master_id, &sync_and_promote, Self::SYNC_TIMEOUT)?
+                        pool.call(new_master_id, proc_name!(proc_replication_promote), &sync_and_promote, Self::SYNC_TIMEOUT)?
                             .timeout(Self::SYNC_TIMEOUT)
                             .await?
                     }
@@ -339,7 +351,7 @@ impl Loop {
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::replication"; "instance_id" => %instance_id);
                             rpc.is_master = instance_id == master_id;
-                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
+                            let resp = pool.call(instance_id, proc_name!(proc_replication), &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(resp) => {
@@ -384,7 +396,7 @@ impl Loop {
                     ]
                     async {
                         pool
-                            .call(target, &rpc, Self::SYNC_TIMEOUT)?
+                            .call(target, proc_name!(proc_sharding_bootstrap), &rpc, Self::SYNC_TIMEOUT)?
                             .timeout(Self::SYNC_TIMEOUT)
                             .await?;
                         node.propose_and_wait(op, Duration::from_secs(3))?
@@ -415,7 +427,7 @@ impl Loop {
                             "instance_id" => %target,
                         ]
                         async {
-                            pool.call(target, &rpc, Self::RPC_TIMEOUT)?
+                            pool.call(target, proc_name!(proc_sharding), &rpc, Self::RPC_TIMEOUT)?
                                 .timeout(Duration::from_secs(3))
                                 .await?
                         }
@@ -427,7 +439,7 @@ impl Loop {
                         "instance_id" => %target,
                     ]
                     async {
-                        pool.call(target, &plugin_rpc, Self::RPC_TIMEOUT)?
+                        pool.call(target, proc_name!(proc_enable_all_plugins), &plugin_rpc, Self::RPC_TIMEOUT)?
                             // TODO looks like we need a big timeout here
                             .timeout(Duration::from_secs(10))
                             .await?
@@ -455,7 +467,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_id in targets {
                             tlog!(Info, "calling proc_apply_schema_change"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
+                            let resp = pool.call(instance_id, proc_name!(proc_apply_schema_change), &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::ddl_apply::Response::Ok) => {
@@ -517,7 +529,7 @@ impl Loop {
                             let mut fs = vec![];
                             for instance_id in targets {
                                 tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_id" => %instance_id);
-                                let resp = pool.call(instance_id, &rpc, Duration::from_secs(5))?;
+                                let resp = pool.call(instance_id, proc_name!(proc_load_plugin_dry_run), &rpc, Duration::from_secs(5))?;
                                 fs.push(async move {
                                     match resp.await {
                                         Ok(_) => {
@@ -571,7 +583,7 @@ impl Loop {
                         let mut fs = vec![];
                         for &instance_id in &targets {
                             tlog!(Info, "calling enable_plugin"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc, on_start_timeout)?;
+                            let resp = pool.call(instance_id, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::enable_plugin::Response::Ok) => {
@@ -651,7 +663,7 @@ impl Loop {
                         let mut fs = vec![];
                         for &instance_id in &enable_targets {
                             tlog!(Info, "calling proc_enable_service"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &enable_rpc, Duration::from_secs(5))?;
+                            let resp = pool.call(instance_id, proc_name!(proc_enable_service), &enable_rpc, Duration::from_secs(5))?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
@@ -674,7 +686,7 @@ impl Loop {
                             // where it was enabled previously
                             let mut fs = vec![];
                             for instance_id in enable_targets {
-                                let resp = pool.call(instance_id, &disable_rpc, Duration::from_secs(5))?;
+                                let resp = pool.call(instance_id, proc_name!(proc_disable_service), &disable_rpc, Duration::from_secs(5))?;
                                 fs.push(resp);
                             }
                             _ = try_join_all(fs).timeout(Duration::from_secs(5)).await;
@@ -684,7 +696,7 @@ impl Loop {
                         let mut fs = vec![];
                         for instance_id in disable_targets {
                             tlog!(Info, "calling proc_disable_service"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &disable_rpc, Duration::from_secs(5))?;
+                            let resp = pool.call(instance_id, proc_name!(proc_disable_service), &disable_rpc, Duration::from_secs(5))?;
                             fs.push(resp);
                         }
                         try_join_all(fs).timeout(Duration::from_secs(5)).await?;
@@ -720,11 +732,11 @@ impl Loop {
                     async {
                         let mut fs = vec![];
                         for instance_id in targets {
-                            tlog!(Info, "calling rpc::sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, &rpc, Self::RPC_TIMEOUT)?;
+                            tlog!(Info, "calling proc_sharding"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, proc_name!(proc_sharding), &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 resp.await.map_err(|e| {
-                                    tlog!(Warning, "failed calling rpc::sharding: {e}";
+                                    tlog!(Warning, "failed calling proc_sharding: {e}";
                                         "instance_id" => %instance_id
                                     );
                                     e

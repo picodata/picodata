@@ -1,7 +1,9 @@
 use crate::has_states;
 use crate::instance::StateVariant::*;
+use crate::proc_name;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
+use crate::rpc::update_instance::proc_update_instance;
 use crate::storage::Clusterwide;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -67,7 +69,8 @@ impl Loop {
                     let Some(leader_id) = raft_status.get().leader_id else {
                         return Err(Error::LeaderUnknown);
                     };
-                    pool.call(&leader_id, &req, timeout)?.await?;
+                    pool.call(&leader_id, proc_name!(proc_update_instance), &req, timeout)?
+                        .await?;
                     Ok(())
                 }
                 .await;
@@ -150,8 +153,13 @@ impl Loop {
                 let Some(leader_id) = raft_status.get().leader_id else {
                     return Err(Error::LeaderUnknown);
                 };
-                pool.call(&leader_id, &req, Self::UPDATE_INSTANCE_TIMEOUT)?
-                    .await?;
+                pool.call(
+                    &leader_id,
+                    proc_name!(proc_update_instance),
+                    &req,
+                    Self::UPDATE_INSTANCE_TIMEOUT,
+                )?
+                .await?;
                 Ok(())
             }
             .await;

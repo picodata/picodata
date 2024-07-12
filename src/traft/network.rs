@@ -517,6 +517,11 @@ impl ConnectionPool {
     /// Send a request to instance with `id` (see `IdOfInstance`) returning a
     /// future.
     ///
+    /// The value of `proc_name` must be the same as `R::PROC_NAME`. We require
+    /// this argument to be passed explicitly just so that it's easier to
+    /// understand the code and see from what places which stored procedures are
+    /// being called.
+    ///
     /// If `timeout` is None, the `WorkerOptions::call_timeout` is used.
     ///
     /// If the request failed, it's a responsibility of the caller
@@ -525,12 +530,14 @@ impl ConnectionPool {
     pub fn call<R>(
         &self,
         id: &impl IdOfInstance,
+        proc_name: &'static str,
         req: &R,
         timeout: impl Into<Option<Duration>>,
     ) -> Result<impl Future<Output = Result<R::Response>>>
     where
         R: rpc::RequestArgs,
     {
+        debug_assert_eq!(R::PROC_NAME, proc_name);
         self.call_raw(id, R::PROC_NAME, req, timeout.into())
     }
 
@@ -549,7 +556,7 @@ impl ConnectionPool {
         id: &impl IdOfInstance,
         proc: &'static str,
         args: &Args,
-        timeout: Option<Duration>,
+        timeout: impl Into<Option<Duration>>,
     ) -> Result<impl Future<Output = Result<Response>>>
     where
         Response: tarantool::tuple::DecodeOwned + 'static,
@@ -557,7 +564,7 @@ impl ConnectionPool {
     {
         let (tx, mut rx) = oneshot::channel();
         id.get_or_create_in(self)?
-            .rpc_raw(proc, args, timeout, move |res| {
+            .rpc_raw(proc, args, timeout.into(), move |res| {
                 if tx.send(res).is_err() {
                     tlog!(
                         Debug,

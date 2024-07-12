@@ -206,6 +206,7 @@ mod tests {
 
         pool.call(
             &instance.raft_id,
+            crate::proc_name!(proc_wait_vclock),
             &WaitVclockRpc {
                 target: Vclock::current(),
                 timeout: 1.0,

@@ -16,6 +16,7 @@ use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
+use crate::rpc::snapshot::proc_raft_snapshot_next_chunk;
 use crate::schema::RoutineDef;
 use crate::schema::RoutineKind;
 use crate::schema::SchemaObjectType;
@@ -1859,9 +1860,12 @@ impl NodeImpl {
                 "position" => %position,
             );
 
-            let fut = self
-                .pool
-                .call(&leader_id, &req, SNAPSHOT_CHUNK_REQUEST_TIMEOUT);
+            let fut = self.pool.call(
+                &leader_id,
+                proc_name!(proc_raft_snapshot_next_chunk),
+                &req,
+                SNAPSHOT_CHUNK_REQUEST_TIMEOUT,
+            );
             let fut = unwrap_ok_or!(fut,
                 Err(e) => {
                     tlog!(Warning, "failed requesting next snapshot chunk: {e}");
