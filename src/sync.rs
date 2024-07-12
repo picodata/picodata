@@ -33,12 +33,7 @@ pub async fn call_get_vclock(
     instance_id: &impl IdOfInstance,
 ) -> traft::Result<Vclock> {
     let vclock: Vclock = pool
-        .call_raw(
-            instance_id,
-            crate::stringify_cfunc!(proc_get_vclock),
-            &(),
-            None,
-        )?
+        .call_raw(instance_id, crate::proc_name!(proc_get_vclock), &(), None)?
         .await?;
     Ok(vclock)
 }
@@ -56,7 +51,7 @@ pub struct WaitVclockRpc {
 impl Encode for WaitVclockRpc {}
 
 impl rpc::RequestArgs for WaitVclockRpc {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_vclock);
+    const PROC_NAME: &'static str = crate::proc_name!(proc_wait_vclock);
     type Response = Vclock;
 }
 
@@ -122,12 +117,7 @@ pub async fn call_get_index(
     instance_id: &impl IdOfInstance,
 ) -> traft::Result<RaftIndex> {
     let (index,): (RaftIndex,) = pool
-        .call_raw(
-            instance_id,
-            crate::stringify_cfunc!(proc_get_index),
-            &(),
-            None,
-        )?
+        .call_raw(instance_id, crate::proc_name!(proc_get_index), &(), None)?
         .await?;
     Ok(index)
 }
@@ -144,7 +134,7 @@ pub struct ReadIndexRpc {
 impl Encode for ReadIndexRpc {}
 
 impl rpc::RequestArgs for ReadIndexRpc {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_read_index);
+    const PROC_NAME: &'static str = crate::proc_name!(proc_read_index);
     type Response = (RaftIndex,);
 }
 
@@ -171,7 +161,7 @@ pub struct WaitIndexRpc {
 impl Encode for WaitIndexRpc {}
 
 impl rpc::RequestArgs for WaitIndexRpc {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_wait_index);
+    const PROC_NAME: &'static str = crate::proc_name!(proc_wait_index);
     type Response = (RaftIndex,);
 }
 

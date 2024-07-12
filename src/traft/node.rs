@@ -12,6 +12,7 @@ use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
+use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
 use crate::rpc;
@@ -28,7 +29,6 @@ use crate::storage::SnapshotData;
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
-use crate::stringify_cfunc;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -187,7 +187,7 @@ impl Node {
         }
 
         let opts = WorkerOptions {
-            raft_msg_handler: stringify_cfunc!(proc_raft_interact),
+            raft_msg_handler: proc_name!(proc_raft_interact),
             call_timeout: MainLoop::TICK.saturating_mul(4),
             ..Default::default()
         };

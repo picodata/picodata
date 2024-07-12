@@ -179,7 +179,7 @@ macro_rules! define_rpc_request {
         $(( $($res_unnamed_fields)* );)?
 
         impl $crate::rpc::RequestArgs for $request {
-            const PROC_NAME: &'static str = $crate::stringify_cfunc!($proc);
+            const PROC_NAME: &'static str = $crate::proc_name!($proc);
             type Response = $response;
         }
     }

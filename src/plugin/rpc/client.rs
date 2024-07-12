@@ -68,7 +68,7 @@ pub(crate) fn send_rpc_request(
     );
     let future = pool.call_raw(
         &instance_id,
-        crate::stringify_cfunc!(rpc::server::proc_rpc_dispatch),
+        crate::proc_name!(rpc::server::proc_rpc_dispatch),
         &args,
         Some(timeout),
     )?;

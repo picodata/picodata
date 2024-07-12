@@ -29,7 +29,7 @@ macro_rules! stringify_last_token {
 ///
 /// The argument can be a full path to the function.
 #[macro_export]
-macro_rules! stringify_cfunc {
+macro_rules! proc_name {
     ( $($func_name:tt)+ ) => {{
         use ::tarantool::tuple::FunctionArgs;
         use ::tarantool::tuple::FunctionCtx;

@@ -49,7 +49,7 @@ pub struct WorkerOptions {
 impl Default for WorkerOptions {
     fn default() -> Self {
         Self {
-            raft_msg_handler: crate::stringify_cfunc!(crate::traft::node::proc_raft_interact),
+            raft_msg_handler: crate::proc_name!(crate::traft::node::proc_raft_interact),
             call_timeout: DEFAULT_CALL_TIMEOUT,
             max_concurrent_futs: DEFAULT_CUNCURRENT_FUTURES,
         }

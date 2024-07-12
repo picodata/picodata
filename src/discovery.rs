@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::error::Error as StdError;
 use std::time::{Duration, Instant};
 
-use crate::stringify_cfunc;
+use crate::proc_name;
 use crate::traft;
 use crate::util::Either::{self, Left, Right};
 
@@ -186,7 +186,7 @@ pub async fn wait_global_async() -> Role {
         for address in curr_peers {
             let res = crate::rpc::network_call_raw(
                 &address,
-                stringify_cfunc!(proc_discover),
+                proc_name!(proc_discover),
                 &(&request, &address),
             )
             .timeout(Duration::from_secs(2))

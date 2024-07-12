@@ -140,7 +140,7 @@ enum InstanceInfoRequest {
 impl ::tarantool::tuple::Encode for InstanceInfoRequest {}
 
 impl crate::rpc::RequestArgs for InstanceInfoRequest {
-    const PROC_NAME: &'static str = crate::stringify_cfunc!(proc_instance_info);
+    const PROC_NAME: &'static str = crate::proc_name!(proc_instance_info);
     type Response = InstanceInfo;
 }
 
