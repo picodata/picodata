@@ -86,11 +86,21 @@ where
 
 /// Create a one-time iproto connection and send a remote procedure call `request`
 /// to the instance specified by `address`.
+///
+/// The value of `proc_name` must be the same as `R::PROC_NAME`. We require
+/// this argument to be passed explicitly just so that it's easier to
+/// understand the code and see from what places which stored procedures are
+/// being called.
 #[inline(always)]
-pub async fn network_call<R>(address: &str, request: &R) -> ::tarantool::Result<R::Response>
+pub async fn network_call<R>(
+    address: &str,
+    proc_name: &'static str,
+    request: &R,
+) -> ::tarantool::Result<R::Response>
 where
     R: RequestArgs,
 {
+    debug_assert_eq!(proc_name, R::PROC_NAME);
     network_call_raw(address, R::PROC_NAME, request).await
 }
 
@@ -129,14 +139,14 @@ where
 
 /// Create a one-time iproto connection and send a remote procedure call `request`
 /// to the current raft leader.
-pub async fn network_call_to_leader<R>(request: &R) -> Result<R::Response>
+pub async fn network_call_to_leader<R>(proc_name: &'static str, request: &R) -> Result<R::Response>
 where
     R: RequestArgs,
 {
     let node = node::global()?;
     let leader_id = node.status().leader_id.ok_or(Error::LeaderUnknown)?;
     let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
-    let resp = network_call(&leader_address, request).await?;
+    let resp = network_call(&leader_address, proc_name, request).await?;
     Ok(resp)
 }
 

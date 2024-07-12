@@ -18,7 +18,6 @@ use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::{fiber, session};
-use rpc::{join, update_instance};
 use sql::otm::SqlStatTables;
 use std::time::Duration;
 use storage::Clusterwide;
@@ -802,7 +801,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), Error> {
     tlog!(Info, "joining cluster, peer address: {instance_address}");
 
-    let req = join::Request {
+    let req = rpc::join::Request {
         cluster_id: config.cluster_id().into(),
         instance_id: config.instance.instance_id().map(From::from),
         replicaset_id: config.instance.replicaset_id().map(From::from),
@@ -821,7 +820,11 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         let now = Instant::now_fiber();
         // TODO: exponential delay
         let timeout = Duration::from_secs(1);
-        match fiber::block_on(rpc::network_call(&instance_address, &req)) {
+        match fiber::block_on(rpc::network_call(
+            &instance_address,
+            proc_name!(rpc::join::proc_raft_join),
+            &req,
+        )) {
             Ok(resp) => {
                 break resp;
             }
@@ -1010,12 +1013,17 @@ fn postjoin(
             "initiating self-activation of {}",
             instance.instance_id
         );
-        let req = update_instance::Request::new(instance.instance_id, cluster_id)
+        let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
             .with_target_state(Online)
             .with_failure_domain(config.instance.failure_domain());
-        let fut = rpc::network_call(&leader_address, &req).timeout(activation_deadline - now);
+        let fut = rpc::network_call(
+            &leader_address,
+            proc_name!(rpc::update_instance::proc_update_instance),
+            &req,
+        )
+        .timeout(activation_deadline - now);
         match fiber::block_on(fut) {
-            Ok(update_instance::Response {}) => {
+            Ok(rpc::update_instance::Response {}) => {
                 break;
             }
             Err(timeout::Error::Failed(TntError::Tcp(e))) => {

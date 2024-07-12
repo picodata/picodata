@@ -754,10 +754,13 @@ pub(crate) fn setup() {
         tlua::function1(|instance_id: InstanceId| -> traft::Result<bool> {
             let raft_storage = &traft::node::global()?.raft_storage;
             let cluster_id = raft_storage.cluster_id()?;
-            fiber::block_on(rpc::network_call_to_leader(&rpc::expel::Request {
-                instance_id,
-                cluster_id,
-            }))?;
+            fiber::block_on(rpc::network_call_to_leader(
+                crate::proc_name!(rpc::expel::proc_expel),
+                &rpc::expel::Request {
+                    instance_id,
+                    cluster_id,
+                },
+            ))?;
             Ok(true)
         }),
     );

@@ -62,7 +62,7 @@ pub mod redirect {
     crate::define_rpc_request! {
         fn proc_expel_redirect(req: Request) -> Result<Response> {
             let Request(req_to_leader) = req;
-            fiber::block_on(network_call_to_leader(&req_to_leader))?;
+            fiber::block_on(network_call_to_leader(crate::proc_name!(super::proc_expel), &req_to_leader))?;
             Ok(Response {})
         }
 

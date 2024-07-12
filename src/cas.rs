@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::access_control;
+use crate::proc_name;
 use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
@@ -82,7 +83,7 @@ pub async fn compare_and_swap_async(request: &Request) -> traft::Result<(RaftInd
             // for example on shutdown
             proc_cas_local(request)
         } else {
-            rpc::network_call(&leader_address, request)
+            rpc::network_call(&leader_address, proc_name!(proc_cas), request)
                 .await
                 .map_err(TraftError::from)
         };
