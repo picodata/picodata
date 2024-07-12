@@ -403,27 +403,7 @@ def test_picodata_default_config(cluster: Cluster):
     i.wait_online()
 
 
-def test_default_tier_without_default_replication_factor(cluster: Cluster):
-    # default tier wasn't created only in case of explicit configuration file
-    cluster.set_config_file(
-        yaml="""
-cluster:
-    cluster_id: test
-    tier:
-        not_default:
-"""
-    )
-
-    instance = cluster.add_instance()
-
-    dql = instance.sql(
-        'select "replication_factor" from "_pico_tier" where "name" = \'default\'',
-        sudo=True,
-    )
-    assert dql[0][0] == 1
-
-
-def test_default_tier_with_default_replication_factor(cluster: Cluster):
+def test_default_tier_is_not_created_with_configuration_file(cluster: Cluster):
     # default tier wasn't created only in case of explicit configuration file
     cluster.set_config_file(
         yaml="""
@@ -435,10 +415,10 @@ cluster:
 """
     )
 
-    instance = cluster.add_instance()
+    instance = cluster.add_instance(tier="not_default")
 
     dql = instance.sql(
         'select "replication_factor" from "_pico_tier" where "name" = \'default\'',
         sudo=True,
     )
-    assert dql[0][0] == 3
+    assert dql == []
