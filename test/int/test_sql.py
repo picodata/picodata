@@ -4327,7 +4327,7 @@ cluster:
             """
             create table "table_in_unexistent_tier" (a int not null, b int, primary key (a))
             distributed by (b)
-            on tier("unexistent_tier")
+            in tier "unexistent_tier"
             option (timeout = 3)
             """
         )
@@ -4342,29 +4342,29 @@ cluster:
             """
             create table "table_in_empty_tier" (a int not null, b int, primary key (a))
             distributed by (b)
-            on tier("empty_tier")
+            in tier "empty_tier"
             option (timeout = 3)
             """
         )
 
-    # [on tier] part with `DISTRIBUTED BY GLOBALLY` should fail.
+    # [in tier] part with `DISTRIBUTED BY GLOBALLY` should fail.
     with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(
             """
             create table "global_table_in_tier" (a int not null, b int, primary key (a))
             distributed globally
-            on tier("storage")
+            in tier "storage"
             option (timeout = 3)
             """
         )
 
-    # Empty [on tier] part should fail.
+    # Empty [in tier] part should fail.
     with pytest.raises(TarantoolError, match="expected Identifier"):
         i1.sql(
             """
             create table "global_table_in_tier" (a int not null, b int, primary key (a))
             distributed by (a)
-            on tier()
+            in tier
             option (timeout = 3)
             """
         )
@@ -4376,18 +4376,18 @@ cluster:
             create table "sharded_table_in_empty_tier_name"
             (a int not null, b int, primary key (a))
             distributed by (a)
-            on tier("")
+            in tier ""
             option (timeout = 3)
             """
         )
 
-    # Tier name without parentheses should fail.
+    # Tier name with parentheses should fail.
     with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(
             """
             create table "sharded_table_in_tier_default" (a int not null, b int, primary key (a))
             distributed by (a)
-            on tier "default"
+            in tier("default")
             option (timeout = 3)
             """
         )
@@ -4397,7 +4397,7 @@ cluster:
         """
             create table "sharded_table_in_tier_STORAGE" (a int not null, b int, primary key (a))
             distributed by(a)
-            on tier(storage)
+            in tier storage
             option (timeout = 3)
             """
     )
@@ -4409,7 +4409,7 @@ cluster:
         == "STORAGE"
     )
 
-    # Create sharded table without [on tier] part. In that case tier value in distribution field
+    # Create sharded table without [in tier] part. In that case tier value in distribution field
     # in `_pico_table` should equals "default".
     ddl = i1.sql(
         """
@@ -4430,7 +4430,7 @@ cluster:
         """
         create table "sharded_table_in_router" (a int not null, b int, primary key (a))
         distributed by (b)
-        on tier("router")
+        in tier "router"
         option (timeout = 3)
         """
     )
