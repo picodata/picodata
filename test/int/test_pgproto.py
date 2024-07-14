@@ -413,7 +413,7 @@ def test_interactive_portals(pg_client: PgClient):
     assert [1, "kek"] in data["rows"] or [2, "lol"] in data["rows"]
     assert data["is_finished"] is True
 
-    with pytest.raises(ReturnError, match="Can't execute portal in state Finished"):
+    with pytest.raises(ReturnError, match="Can't execute portal in state Done"):
         data = pg_client.execute("", 1)
 
     sql = """ explain select * from "t" """
