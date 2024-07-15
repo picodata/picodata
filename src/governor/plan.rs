@@ -619,13 +619,19 @@ macro_rules! define_plan {
     (
         $(
             pub struct $stage:ident $(<$lt:tt>)? {
-                $(pub $field:ident: $field_ty:ty,)+
+                $(
+                    $(#[$field_meta:meta])*
+                    pub $field:ident: $field_ty:ty,
+                )+
             }
         )+
     ) => {
         $(
             pub struct $stage $(<$lt>)? {
-                $(pub $field: $field_ty,)+
+                $(
+                    $(#[$field_meta])*
+                    pub $field: $field_ty,
+                )+
             }
 
             impl<'i> From<$stage $(<$lt>)?> for Plan<'i> {
@@ -663,58 +669,91 @@ pub mod stage {
         }
 
         pub struct UpdateCurrentVshardConfig<'i> {
+            /// Instances to send the `rpc` request to.
             pub targets: Vec<&'i InstanceId>,
+            /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
+            /// Global DML operation which updates `current_vshard_config` in table `_pico_property`.
             pub dml: Dml,
         }
 
         pub struct TransferLeadership<'i> {
+            /// This instance should be nominated as next raft leader.
             pub to: &'i Instance,
         }
 
         pub struct UpdateTargetReplicasetMaster {
+            /// Global DML operation which updates `target_master_id` in table `_pico_replicaset`.
             pub op: Dml,
         }
 
         pub struct UpdateCurrentReplicasetMaster<'i> {
+            /// This replicaset is changing it's master.
             pub replicaset_id: &'i ReplicasetId,
+            /// This instance will be demoted.
             pub old_master_id: &'i InstanceId,
+            /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
+            /// It is optional because we don't try demoting the old master if it's already offline.
             pub demote: Option<rpc::replication::DemoteRequest>,
+            /// This instance will be promoted.
             pub new_master_id: &'i InstanceId,
+            /// Request to call [`rpc::replication::proc_replication`] on new master.
             pub sync_and_promote: rpc::replication::SyncAndPromoteRequest,
+            /// Global DML operation which updates `current_master_id` in table `_pico_replicaset`.
             pub op: Dml,
         }
 
         pub struct Downgrade {
+            /// Update instance request which translates into a global DML operation
+            /// which updates `current_state` to `Offline` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
         }
 
         pub struct Replication<'i> {
+            /// These instances belong to one replicaset and will be sent a
+            /// request to call [`rpc::replication::proc_replication`].
             pub targets: Vec<&'i InstanceId>,
+            /// This instance will also become the replicaset master.
             pub master_id: &'i InstanceId,
+            /// This is an explicit list of peer addresses (one for each target).
             pub replicaset_peers: Vec<String>,
+            /// Update instance request which translates into a global DML operation
+            /// which updates `current_state` to `Replicated` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
         }
 
         pub struct ShardingBoot<'i> {
+            /// This instance will be initializing the bucket distribution.
             pub target: &'i InstanceId,
+            /// Request to call [`rpc::sharding::bootstrap::proc_sharding_bootstrap`] on `target`.
             pub rpc: rpc::sharding::bootstrap::Request,
+            /// Global DML operation which updates value for `vshard_bootstrapped` to `true` in table `_pico_property`.
             pub op: Dml,
         }
 
         pub struct ProposeReplicasetStateChanges {
+            /// Global DML operation which updates `weight` to `1` & `state` to `ready`
+            /// in table `_pico_replicaset` for given replicaset.
             pub op: Dml,
         }
 
         pub struct ToOnline<'i> {
             pub target: &'i InstanceId,
+            /// Request to call [`rpc::sharding::proc_sharding`] on `target`.
+            /// It is optional, because we don't do this RPC if `vshard_bootstrapped` is `false`.
             pub rpc: Option<rpc::sharding::Request>,
+            /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
+            /// It is not optional, although it probably should be.
             pub plugin_rpc: rpc::enable_all_plugins::Request,
+            /// Update instance request which translates into a global DML operation
+            /// which updates `current_state` to `Online` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
         }
 
         pub struct ApplySchemaChange<'i> {
+            /// These are masters of all the replicasets in the cluster.
             pub targets: Vec<&'i InstanceId>,
+            /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: rpc::ddl_apply::Request,
         }
 
