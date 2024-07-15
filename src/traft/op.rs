@@ -426,6 +426,15 @@ pub enum Dml {
 }
 
 impl Dml {
+    pub fn table_id(&self) -> SpaceId {
+        match *self {
+            Dml::Insert { table, .. } => table,
+            Dml::Replace { table, .. } => table,
+            Dml::Update { table, .. } => table,
+            Dml::Delete { table, .. } => table,
+        }
+    }
+
     pub fn initiator(&self) -> UserId {
         match self {
             Dml::Insert { initiator, .. } => *initiator,
