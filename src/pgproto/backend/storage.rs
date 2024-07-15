@@ -462,13 +462,15 @@ impl Portal {
                     }
                 }
                 PortalState::Running(ref mut stored_rows) => {
-                    let taken = stored_rows.take(max_rows).collect();
+                    let taken: Vec<_> = stored_rows.take(max_rows).collect();
+                    let row_count = taken.len();
                     let rows = Rows::new(taken, self.describe.row_info());
                     if stored_rows.len() == 0 {
                         self.state = PortalState::Finished(None);
                         return Ok(ExecuteResult::FinishedDql {
                             rows,
                             tag: self.describe.command_tag(),
+                            row_count,
                         });
                     }
                     return Ok(ExecuteResult::SuspendedDql { rows });

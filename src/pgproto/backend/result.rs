@@ -37,10 +37,6 @@ impl Rows {
         RowDescription::new(self.desc.iter().map(Into::into).collect())
     }
 
-    pub fn row_count(&self) -> usize {
-        self.rows.len()
-    }
-
     pub fn values(&self) -> Vec<Vec<PgValue>> {
         self.rows.clone().collect()
     }
@@ -66,5 +62,9 @@ pub enum ExecuteResult {
         tag: CommandTag,
         /// Rows we'll send to the client.
         rows: Rows,
+        /// Cached number of rows in result.
+        /// Note: Rows is an iterator that contains only remaining rows. So it's
+        /// necessary to cache the number of rows before retrieving them.
+        row_count: usize,
     },
 }

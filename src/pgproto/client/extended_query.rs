@@ -50,13 +50,16 @@ pub fn process_execute_message(
                 &tag, row_count,
             ))?;
         }
-        ExecuteResult::FinishedDql { tag, mut rows } => {
+        ExecuteResult::FinishedDql {
+            tag,
+            mut rows,
+            row_count,
+        } => {
             while let Some(row) = rows.encode_next()? {
                 stream.write_message_noflush(messages::data_row(row))?;
             }
             stream.write_message_noflush(messages::command_complete_with_row_count(
-                &tag,
-                rows.row_count(),
+                &tag, row_count,
             ))?;
         }
         ExecuteResult::SuspendedDql { mut rows } => {
