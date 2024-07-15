@@ -384,6 +384,8 @@ Insert({_pico_replicaset}, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1
 |  0  | 1  |BatchDml(
 Insert({_pico_property}, ["global_schema_version",0]),
 Insert({_pico_property}, ["next_schema_version",1]),
+Insert({_pico_property}, ["current_vshard_config_version",0]),
+Insert({_pico_property}, ["target_vshard_config_version",0]),
 Insert({_pico_property}, ["password_min_length",8]),
 Insert({_pico_property}, ["password_enforce_uppercase",true]),
 Insert({_pico_property}, ["password_enforce_lowercase",true]),
@@ -457,10 +459,15 @@ Insert({_pico_index}, [{_pico_service_route},0,"_pico_service_routing_key","tree
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
-|  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"])|
+|  0  | 2  |BatchDml(
+Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"]),
+Replace({_pico_property}, ["target_vshard_config_version",1])
+)|
 |  0  | 2  |Update({_pico_replicaset}, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
-|  0  | 2  |Replace({_pico_property}, ["target_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
-|  0  | 2  |Replace({_pico_property}, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]])|
+|  0  | 2  |BatchDml(
+Replace({_pico_property}, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]]),
+Replace({_pico_property}, ["current_vshard_config_version",1])
+)|
 |  0  | 2  |Replace({_pico_property}, ["vshard_bootstrapped",true])|
 |  0  | 2  |Replace({_pico_instance}, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
 +-----+----+--------+

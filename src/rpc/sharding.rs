@@ -3,6 +3,7 @@ use ::tarantool::tlua;
 use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
+use crate::vshard::VshardConfig;
 
 use std::time::Duration;
 
@@ -24,7 +25,7 @@ crate::define_rpc_request! {
 
         let lua = ::tarantool::lua_state();
 
-        let mut cfg = node.storage.properties.target_vshard_config()?;
+        let mut cfg = VshardConfig::from_storage(&node.storage)?;
         cfg.listen = Some(lua.eval("return box.info.listen")?);
         cfg.set_password_in_uris();
 

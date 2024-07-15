@@ -22,7 +22,7 @@ use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::proc_replication_promote;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
-use crate::rpc::update_instance::handle_update_instance_request_and_wait;
+use crate::rpc::update_instance::handle_update_instance_request_in_governor_and_also_wait_too;
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tlog;
@@ -85,13 +85,13 @@ impl Loop {
             .iter()
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
-        let current_vshard_config = storage
+        let current_vshard_config_version = storage
             .properties
-            .current_vshard_config()
+            .current_vshard_config_version()
             .expect("storage error");
-        let target_vshard_config = storage
+        let target_vshard_config_version = storage
             .properties
-            .target_vshard_config()
+            .target_vshard_config_version()
             .expect("storage error");
 
         let tiers: Vec<_> = storage
@@ -182,8 +182,8 @@ impl Loop {
             &replicasets,
             &tiers,
             node.raft_id,
-            &current_vshard_config,
-            &target_vshard_config,
+            current_vshard_config_version,
+            target_vshard_config_version,
             vshard_bootstrapped,
             has_pending_schema_change,
             install_plugin.as_ref(),
@@ -270,6 +270,7 @@ impl Loop {
                 mut sync_and_promote,
                 replicaset_id,
                 op,
+                vshard_config_version_bump,
             }) => {
                 set_status(governor_status, "transfer replication leader");
                 tlog!(
@@ -311,12 +312,19 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
+                        let op = match vshard_config_version_bump {
+                            Some(vshard_config_version_bump) => Op::BatchDml { ops: vec![op, vshard_config_version_bump] },
+                            None => Op::Dml(op),
+                        };
                         node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
             }
 
-            Plan::Downgrade(Downgrade { req }) => {
+            Plan::Downgrade(Downgrade {
+                req,
+                vshard_config_version_bump,
+            }) => {
                 set_status(governor_status, "update instance state to offline");
                 tlog!(Info, "downgrading instance {}", req.instance_id);
 
@@ -328,7 +336,11 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
-                        handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
+                        handle_update_instance_request_in_governor_and_also_wait_too(
+                            req,
+                            vshard_config_version_bump.as_ref(),
+                            Loop::UPDATE_INSTANCE_TIMEOUT,
+                        )?
                     }
                 }
             }
@@ -338,6 +350,7 @@ impl Loop {
                 master_id,
                 replicaset_peers,
                 req,
+                vshard_config_version_bump,
             }) => {
                 set_status(governor_status, "configure replication");
                 governor_step! {
@@ -383,7 +396,11 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
-                        handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
+                        handle_update_instance_request_in_governor_and_also_wait_too(
+                            req,
+                            vshard_config_version_bump.as_ref(),
+                            Loop::UPDATE_INSTANCE_TIMEOUT,
+                        )?
                     }
                 }
             }
@@ -404,11 +421,18 @@ impl Loop {
                 }
             }
 
-            Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges { op }) => {
+            Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges {
+                op,
+                vshard_config_version_bump,
+            }) => {
                 set_status(governor_status, "update replicaset state");
                 governor_step! {
                     "proposing replicaset state change"
                     async {
+                        let op = match vshard_config_version_bump {
+                            Some(vshard_config_version_bump) => Op::BatchDml { ops: vec![op, vshard_config_version_bump] },
+                            None => Op::Dml(op),
+                        };
                         node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
@@ -453,7 +477,7 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
-                        handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
+                        handle_update_instance_request_in_governor_and_also_wait_too(req, None, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }
@@ -715,17 +739,12 @@ impl Loop {
                 }
             }
 
-            Plan::UpdateTargetVshardConfig(UpdateTargetVshardConfig { dml }) => {
-                set_status(governor_status, "update target sharding configuration");
-                governor_step! {
-                    "updating target vshard config"
-                    async {
-                        node.propose_and_wait(dml, Duration::from_secs(3))?;
-                    }
-                }
-            }
-
-            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig { targets, rpc, dml }) => {
+            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig {
+                targets,
+                rpc,
+                dml,
+                vshard_config_version_actualize,
+            }) => {
                 set_status(governor_status, "update current sharding configuration");
                 governor_step! {
                     "applying vshard config changes"
@@ -751,7 +770,8 @@ impl Loop {
                 governor_step! {
                     "updating current vshard config"
                     async {
-                        node.propose_and_wait(dml, Duration::from_secs(3))?;
+                        let batch = Op::BatchDml { ops: vec![dml, vshard_config_version_actualize] };
+                        node.propose_and_wait(batch, Duration::from_secs(3))?;
                     }
                 }
             }

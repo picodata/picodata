@@ -1,5 +1,6 @@
 import funcy  # type: ignore
 import time
+import pytest
 
 from conftest import (
     Cluster,
@@ -65,25 +66,48 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
 
     # Set one of the replicaset's weight to 0, to trigger rebalancing from it.
-    index = cluster.cas(
-        "update",
-        "_pico_replicaset",
-        key=["r1"],
-        ops=[("=", "weight", 0.0), ("=", "weight_origin", "user")],
+    i1.sql(
+        """
+            UPDATE "_pico_replicaset"
+            SET "weight" = 0, "weight_origin" = 'user'
+            WHERE "replicaset_id" = 'r1'
+        """
     )
-    cluster.raft_wait_index(index)
+
+    # Note: currently we must bump the target vshard config version explicitly
+    # to trigger the actual reconfiguration. This should be done automatically
+    # in the user-facing API which will be implemented as part of this issue:
+    # https://git.picodata.io/picodata/picodata/picodata/-/issues/787
+    rows = i1.sql(
+        """ SELECT "value" FROM "_pico_property" WHERE "key" = 'current_vshard_config_version' """
+    )  # noqa: E501
+    v = rows[0][0]
+    i1.sql(
+        """ UPDATE "_pico_property" SET "value" = ? WHERE "key" = 'target_vshard_config_version' """,  # noqa: E501
+        v + 1,
+    )
 
     # This instnace now has no buckets
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 0)
 
     # Set another replicaset's weight to 0.5, to showcase weights are respected.
-    index = cluster.cas(
-        "update",
-        "_pico_replicaset",
-        key=["r2"],
-        ops=[("=", "weight", 0.5), ("=", "weight_origin", "user")],
+    i1.sql(
+        """
+            UPDATE "_pico_replicaset"
+            SET "weight" = 0.5, "weight_origin" = 'user'
+            WHERE "replicaset_id" = 'r2'
+        """
     )
-    cluster.raft_wait_index(index)
+
+    # FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/787
+    rows = i1.sql(
+        """ SELECT "value" FROM "_pico_property" WHERE "key" = 'current_vshard_config_version' """
+    )  # noqa: E501
+    v = rows[0][0]
+    i1.sql(
+        """ UPDATE "_pico_property" SET "value" = ? WHERE "key" = 'target_vshard_config_version' """,  # noqa: E501
+        v + 1,
+    )
 
     # Now i3 has twice as many buckets, because r3.weight == r2.weight * 2
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1000)
@@ -242,8 +266,12 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
     # Restart the previously offline instance.
     i3.start()
 
-    # XXX: it's a problem that instance becomes online while the error is happening
-    i3.wait_online()
+    # Instance cannot become online until vshard is reconfigured
+    with pytest.raises(AssertionError):
+        i3.wait_online(timeout=2)
+
+    # Disable the synthetic failure so that instance can come online
+    i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", False)
 
     # Wait until buckets are balanced
     for i in cluster.instances:

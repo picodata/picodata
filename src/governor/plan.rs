@@ -34,8 +34,8 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
     tiers: &HashMap<&str, &Tier>,
     my_raft_id: RaftId,
-    current_vshard_config: &VshardConfig,
-    target_vshard_config: &VshardConfig,
+    current_vshard_config_version: u64,
+    target_vshard_config_version: u64,
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
     install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
@@ -104,7 +104,23 @@ pub(super) fn action_plan<'i>(
         // update instance's current state
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_state(*target_state);
-        return Ok(Downgrade { req }.into());
+
+        let mut vshard_config_version_bump = None;
+        #[rustfmt::skip]
+        if target_vshard_config_version == current_vshard_config_version {
+            // Only bump the version if it's not already bumped.
+            vshard_config_version_bump = Some(Dml::replace(
+                    ClusterwideTable::Property,
+                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                    ADMIN_ID,
+            )?);
+        };
+
+        return Ok(Downgrade {
+            req,
+            vshard_config_version_bump,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -160,11 +176,23 @@ pub(super) fn action_plan<'i>(
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_state(State::new(Replicated, target_state.incarnation));
 
+        let mut vshard_config_version_bump = None;
+        #[rustfmt::skip]
+        if target_vshard_config_version == current_vshard_config_version {
+            // Only bump the version if it's not already bumped.
+            vshard_config_version_bump = Some(Dml::replace(
+                    ClusterwideTable::Property,
+                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                    ADMIN_ID,
+            )?);
+        };
+
         return Ok(Replication {
             targets,
             master_id,
             replicaset_peers,
             req,
+            vshard_config_version_bump,
         }
         .into());
     }
@@ -205,6 +233,17 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
 
+        let mut vshard_config_version_bump = None;
+        #[rustfmt::skip]
+        if target_vshard_config_version == current_vshard_config_version {
+            // Only bump the version if it's not already bumped.
+            vshard_config_version_bump = Some(Dml::replace(
+                    ClusterwideTable::Property,
+                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                    ADMIN_ID,
+            )?);
+        };
+
         let replicaset_id = &r.replicaset_id;
         return Ok(UpdateCurrentReplicasetMaster {
             old_master_id,
@@ -213,6 +252,7 @@ pub(super) fn action_plan<'i>(
             sync_and_promote,
             replicaset_id,
             op,
+            vshard_config_version_bump,
         }
         .into());
     }
@@ -232,26 +272,45 @@ pub(super) fn action_plan<'i>(
             uops,
             ADMIN_ID,
         )?;
-        return Ok(ProposeReplicasetStateChanges { op }.into());
-    }
 
-    ////////////////////////////////////////////////////////////////////////////
-    // update target vshard config
-    let vshard_config =
-        VshardConfig::new(instances, peer_addresses, replicasets, vshard_bootstrapped);
-    if &vshard_config != target_vshard_config {
-        let dml = Dml::replace(
-            ClusterwideTable::Property,
-            // FIXME: encode as map
-            &(&PropertyName::TargetVshardConfig, vshard_config),
-            ADMIN_ID,
-        )?;
-        return Ok(UpdateTargetVshardConfig { dml }.into());
+        let mut vshard_config_version_bump = None;
+        #[rustfmt::skip]
+        if target_vshard_config_version == current_vshard_config_version {
+            // Only bump the version if it's not already bumped.
+            vshard_config_version_bump = Some(Dml::replace(
+                    ClusterwideTable::Property,
+                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                    ADMIN_ID,
+            )?);
+        };
+
+        return Ok(ProposeReplicasetStateChanges {
+            op,
+            vshard_config_version_bump,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
     // update current vshard config
-    if current_vshard_config != target_vshard_config {
+    let mut first_ready_replicaset = None;
+    if !vshard_bootstrapped {
+        first_ready_replicaset = get_first_ready_replicaset(instances, replicasets);
+    }
+
+    // Note: the following is a hack stemming from the fact that we have to work around vshard's weird quirks.
+    // Everything having to deal with bootstrapping vshard should be removed completely once we migrate to our custom sharding solution.
+    //
+    // Vshard will fail if we configure it with all replicaset weights set to 0.
+    // But we don't set a replicaset's weight until it's filled up to the replication factor.
+    // So we wait until at least one replicaset is filled (i.e. `first_ready_replicaset.is_some()`).
+    //
+    // Also if vshard has already been bootstrapped, the user can mess this up by setting all replicasets' weights to 0,
+    // which will break vshard configuration, but this will be the user's fault probably, not sure we can do something about it
+    let ok_to_configure_vshard = vshard_bootstrapped || first_ready_replicaset.is_some();
+
+    if ok_to_configure_vshard && current_vshard_config_version != target_vshard_config_version {
+        let vshard_config = VshardConfig::new(instances, peer_addresses, replicasets);
         let targets = maybe_responding(instances)
             .filter(|instance| instance.current_state.variant >= Replicated)
             .map(|instance| &instance.instance_id)
@@ -262,21 +321,41 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
             do_reconfigure: true,
         };
+
+        // Note: currently the "current_vshard_config" is only stored in "_pico_property" for debugging purposes,
+        // nobody actually uses it directly to configure vshard, instead the actual config is generated
+        // based on the contents of "_pico_instance", "_pico_replicaset" & "_pico_peer_address" tables.
         let dml = Dml::replace(
             ClusterwideTable::Property,
             // FIXME: encode as map
-            &(&PropertyName::CurrentVshardConfig, target_vshard_config),
+            &(&PropertyName::CurrentVshardConfig, vshard_config),
             ADMIN_ID,
         )?;
-        return Ok(UpdateCurrentVshardConfig { targets, rpc, dml }.into());
+
+        #[rustfmt::skip]
+        let vshard_config_version_actualize = Dml::replace(
+            ClusterwideTable::Property,
+            &(&PropertyName::CurrentVshardConfigVersion, target_vshard_config_version),
+            ADMIN_ID,
+        )?;
+
+        return Ok(UpdateCurrentVshardConfig {
+            targets,
+            rpc,
+            dml,
+            vshard_config_version_actualize,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
     // bootstrap sharding
-    let to_bootstrap = (!vshard_bootstrapped)
-        .then(|| get_first_ready_replicaset(instances, replicasets))
-        .flatten();
-    if let Some(r) = to_bootstrap {
+    if let Some(r) = first_ready_replicaset {
+        debug_assert!(
+            !vshard_bootstrapped,
+            "bucket distribution only needs to be bootstrapped once"
+        );
+
         let target = &r.current_master_id;
         let rpc = rpc::sharding::bootstrap::Request {
             term,
@@ -362,7 +441,7 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // plugin
+    // install plugin
     if let Some((maybe_existing_plugin, manifest)) = install_plugin {
         // if plugin with a same version already exists and already enabled - do nothing
         let should_install = maybe_existing_plugin
@@ -413,6 +492,9 @@ pub(super) fn action_plan<'i>(
         }
         .into());
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // enable plugin
     if let Some((ident, installed_plugins, services, on_start_timeout)) = enable_plugin {
         let rpc = rpc::enable_plugin::Request {
             term,
@@ -502,6 +584,9 @@ pub(super) fn action_plan<'i>(
         }
         .into());
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // disable plugin
     if let Some(routes) = disable_plugin {
         let routing_keys_to_del = routes.iter().map(|route| route.key()).collect::<Vec<_>>();
         let mut ops: Vec<_> = routing_keys_to_del
@@ -520,6 +605,9 @@ pub(super) fn action_plan<'i>(
         let op = Op::BatchDml { ops };
         return Ok(DisablePlugin { op }.into());
     }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // update plugin topology
     if let Some((plugin_def, mut service_def, op)) = update_plugin_topology {
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
@@ -612,6 +700,8 @@ pub(super) fn action_plan<'i>(
         .into());
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    // no action needed
     Ok(Plan::None)
 }
 
@@ -664,10 +754,6 @@ pub mod stage {
             pub conf_change: raft::prelude::ConfChangeV2,
         }
 
-        pub struct UpdateTargetVshardConfig {
-            pub dml: Dml,
-        }
-
         pub struct UpdateCurrentVshardConfig<'i> {
             /// Instances to send the `rpc` request to.
             pub targets: Vec<&'i InstanceId>,
@@ -675,6 +761,8 @@ pub mod stage {
             pub rpc: rpc::sharding::Request,
             /// Global DML operation which updates `current_vshard_config` in table `_pico_property`.
             pub dml: Dml,
+            /// Global DML operation which updates `current_vshard_config_version` in table `_pico_property`.
+            pub vshard_config_version_actualize: Dml,
         }
 
         pub struct TransferLeadership<'i> {
@@ -701,12 +789,16 @@ pub mod stage {
             pub sync_and_promote: rpc::replication::SyncAndPromoteRequest,
             /// Global DML operation which updates `current_master_id` in table `_pico_replicaset`.
             pub op: Dml,
+            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
+            pub vshard_config_version_bump: Option<Dml>,
         }
 
         pub struct Downgrade {
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Offline` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
+            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
+            pub vshard_config_version_bump: Option<Dml>,
         }
 
         pub struct Replication<'i> {
@@ -720,6 +812,8 @@ pub mod stage {
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Replicated` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
+            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
+            pub vshard_config_version_bump: Option<Dml>,
         }
 
         pub struct ShardingBoot<'i> {
@@ -735,6 +829,8 @@ pub mod stage {
             /// Global DML operation which updates `weight` to `1` & `state` to `ready`
             /// in table `_pico_replicaset` for given replicaset.
             pub op: Dml,
+            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
+            pub vshard_config_version_bump: Option<Dml>,
         }
 
         pub struct ToOnline<'i> {

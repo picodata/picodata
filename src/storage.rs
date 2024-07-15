@@ -1206,6 +1206,17 @@ impl From<ClusterwideTable> for SpaceId {
         /// This guards us from some painfull corner cases.
         NextSchemaVersion = "next_schema_version",
 
+        /// Version number of the vshard configuration which was most recently
+        /// applied to the whole cluster. If this is not equal to the value of
+        /// target_vshard_config_version, then the actual runtime vshard
+        /// configuration may be different on different instances.
+        CurrentVshardConfigVersion = "current_vshard_config_version",
+
+        /// Version number of the vshard configuration which should be applied
+        /// to the whole cluster. If this is equal to the value of
+        /// current_vshard_config_version, then the configuration is up to date.
+        TargetVshardConfigVersion = "target_vshard_config_version",
+
         PasswordMinLength = "password_min_length",
 
         /// Password should contain at least one uppercase letter
@@ -1264,14 +1275,6 @@ impl From<ClusterwideTable> for SpaceId {
         /// Vshard configuration which has most recently been applied on all the
         /// instances of the cluster.
         CurrentVshardConfig = "current_vshard_config",
-
-        /// Vshard configuration which should be applied on all instances of the
-        /// cluster. If this is equal to current_vshard_config, then the
-        /// configuration is up to date.
-        // TODO: don't store the complete target vshard config, instead store
-        // the current global vshard config version and a current applied vshard
-        // config version of each instance.
-        TargetVshardConfig = "target_vshard_config",
     }
 }
 
@@ -1283,7 +1286,11 @@ impl PropertyName {
     fn must_not_delete(&self) -> bool {
         matches!(
             self,
-            Self::VshardBootstrapped | Self::GlobalSchemaVersion | Self::NextSchemaVersion
+            Self::VshardBootstrapped
+                | Self::GlobalSchemaVersion
+                | Self::NextSchemaVersion
+                | Self::CurrentVshardConfigVersion
+                | Self::TargetVshardConfigVersion
         )
     }
 
@@ -1318,6 +1325,8 @@ impl PropertyName {
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
             | Self::GlobalSchemaVersion
+            | Self::CurrentVshardConfigVersion
+            | Self::TargetVshardConfigVersion
             | Self::PasswordMinLength
             | Self::MaxLoginAttempts
             | Self::MaxPgPortals
@@ -1333,7 +1342,7 @@ impl PropertyName {
                 // NOTE: serde implicitly converts integers to floats for us here.
                 _ = new.field::<f64>(1).map_err(map_err)?;
             }
-            Self::CurrentVshardConfig | Self::TargetVshardConfig => {
+            Self::CurrentVshardConfig => {
                 // Check it decodes into VshardConfig.
                 _ = new.field::<VshardConfig>(1).map_err(map_err)?;
             }
@@ -1489,17 +1498,24 @@ impl Properties {
     }
 
     #[inline]
-    pub fn target_vshard_config(&self) -> tarantool::Result<VshardConfig> {
-        Ok(self
-            .get(PropertyName::TargetVshardConfig)?
-            .unwrap_or_default())
-    }
-
-    #[inline]
     pub fn current_vshard_config(&self) -> tarantool::Result<VshardConfig> {
         Ok(self
             .get(PropertyName::CurrentVshardConfig)?
             .unwrap_or_default())
+    }
+
+    #[inline]
+    pub fn target_vshard_config_version(&self) -> tarantool::Result<u64> {
+        Ok(self
+            .get(PropertyName::TargetVshardConfigVersion)?
+            .expect("should always be persisted"))
+    }
+
+    #[inline]
+    pub fn current_vshard_config_version(&self) -> tarantool::Result<u64> {
+        Ok(self
+            .get(PropertyName::CurrentVshardConfigVersion)?
+            .expect("should always be persisted"))
     }
 
     #[inline]

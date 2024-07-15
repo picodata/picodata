@@ -6,6 +6,8 @@ use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
 use crate::replicaset::Weight;
 use crate::schema::PICO_SERVICE_USER_NAME;
+use crate::storage::Clusterwide;
+use crate::storage::ToEntryIter as _;
 use crate::traft::error::Error;
 use crate::traft::RaftId;
 use std::collections::HashMap;
@@ -84,13 +86,28 @@ tarantool::define_str_enum! {
 }
 
 impl VshardConfig {
+    pub fn from_storage(storage: &Clusterwide) -> Result<Self, Error> {
+        let instances = storage.instances.all_instances()?;
+        let peer_addresses: HashMap<_, _> = storage
+            .peer_addresses
+            .iter()?
+            .map(|pa| (pa.raft_id, pa.address))
+            .collect();
+        let replicasets: Vec<_> = storage.replicasets.iter()?.collect();
+        let replicasets: HashMap<_, _> = replicasets
+            .iter()
+            .map(|rs| (&rs.replicaset_id, rs))
+            .collect();
+
+        let result = Self::new(&instances, &peer_addresses, &replicasets);
+        Ok(result)
+    }
+
     pub fn new(
         instances: &[Instance],
         peer_addresses: &HashMap<RaftId, String>,
         replicasets: &HashMap<&ReplicasetId, &Replicaset>,
-        vshard_bootstrapped: bool,
     ) -> Self {
-        let mut found_ready_replicaset = false;
         let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
         for peer in instances {
             if !peer.may_respond() || peer.current_state.variant < Replicated {
@@ -108,10 +125,6 @@ impl VshardConfig {
                 );
                 continue;
             };
-            use crate::replicaset::ReplicasetState::Ready;
-            if r.weight > 0.0 && r.state == Ready {
-                found_ready_replicaset = true;
-            }
 
             let replicaset = sharding
                 .entry(peer.replicaset_uuid.clone())
@@ -128,19 +141,6 @@ impl VshardConfig {
                     name: peer.instance_id.to_string(),
                 },
             );
-        }
-        if !vshard_bootstrapped && !found_ready_replicaset {
-            // Vshard will fail if we configure it with all replicaset weights set to 0.
-            // But we don't set a replicaset's weight until it's filled up to the replication factor.
-            // (NOTE: we don't actually check the replication factor here,
-            //  this is handled elsewhere and here we just check weigth.state).
-            // So we wait until at least one replicaset is filled (i.e. `found_ready_replicaset == true`).
-            //
-            // Also if vshard has already been bootstrapped, the user can mess
-            // this up by setting all replicasets' weights to 0, which will
-            // break vshard configuration, but this will be the user's fault
-            // probably, not sure we can do something about it
-            return Self::default();
         }
 
         Self {

@@ -392,7 +392,7 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "key", "type": "string"},
         {"name": "value", "type": "any"},
     ]
-    assert len(data["rows"]) == 16
+    assert len(data["rows"]) == 17
 
     data = i1.sql(
         """
