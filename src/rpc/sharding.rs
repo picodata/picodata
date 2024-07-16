@@ -55,6 +55,8 @@ crate::define_rpc_request! {
 
         lua.exec("pico._vshard_is_configured = true")?;
 
+        crate::error_injection!("PROC_SHARDING_SPURIOUS_FAILURE" => return Err(Error::other("injected error")));
+
         Ok(Response {})
     }
 

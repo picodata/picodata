@@ -215,3 +215,44 @@ def test_vshard_bootstrap_timeout(cluster: Cluster):
     )[0][0]
 
     assert vshard_bootstrapped is True
+
+
+def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Cluster):
+    # Need 3 instances for quorum
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
+
+    # Wait until buckets are balanced
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+
+    lc = log_crawler(i1, "ERROR INJECTION 'PROC_SHARDING_SPURIOUS_FAILURE'")
+
+    # Enable error injection so that .proc_sharding fails after configuring the vshard
+    i1.call("pico._inject_error", "PROC_SHARDING_SPURIOUS_FAILURE", True)
+
+    # Terminate one of the instances to trigger vshard reconfiguration
+    i3.terminate()
+
+    # Wait until governor started trying to reconfigure vshard and triggers the injected error
+    lc.wait_matched()
+
+    # At this point the governor is trying to configure vshard but is failing
+    # because of the injected error and is infinitely retrying.
+
+    # Restart the previously offline instance.
+    i3.start()
+
+    # XXX: it's a problem that instance becomes online while the error is happening
+    i3.wait_online()
+
+    # Wait until buckets are balanced
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+
+    def check_available_buckets(i: Instance, count: int):
+        info = i.call("vshard.router.info")
+        assert info["bucket"]["available_rw"] == count
+
+    # All buckets are eventually available to the whole cluster
+    for i in cluster.instances:
+        Retriable(timeout=10, rps=4).call(check_available_buckets, i, 3000)

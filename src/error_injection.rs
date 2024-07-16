@@ -78,4 +78,15 @@ macro_rules! error_injection {
             $crate::tlog!(Info, "################################################################");
         };
     }};
+    ($error:expr => return $result:expr) => {{
+        let error = $error;
+        let result = $result;
+        if $crate::error_injection::is_enabled(error) {
+            $crate::tlog!(Info, "################################################################");
+            $crate::tlog!(Info, "ERROR INJECTION '{error}': RETURNING {result:?}");
+            $crate::tlog!(Info, "################################################################");
+
+            return result;
+        }
+    }}
 }
