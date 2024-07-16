@@ -630,6 +630,7 @@ pub struct Lexer<'a> {
     last_token: Option<TokenInfo<'a>>,
     last_token_was_peeked: bool,
     quote_escaping_style: QuoteEscapingStyle,
+    pub token_counter: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -649,6 +650,7 @@ impl<'a> Lexer<'a> {
             last_token: None,
             last_token_was_peeked: false,
             quote_escaping_style: QuoteEscapingStyle::Backslash,
+            token_counter: 0,
         }
     }
 
@@ -747,6 +749,7 @@ impl<'a> Lexer<'a> {
 
     #[inline(always)]
     fn update_last_token(&mut self, start: usize, end: usize, utf8_count: usize) -> &TokenInfo<'a> {
+        self.token_counter += 1;
         self.last_token.insert(TokenInfo {
             text: &self.input[start..end],
             start,

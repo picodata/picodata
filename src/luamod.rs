@@ -771,23 +771,23 @@ pub(crate) fn setup() {
         tlua::function1(
             |opts: Option<RaftLogOpts>| -> traft::Result<Option<Vec<String>>> {
                 let mut justify_contents = Default::default();
-                let mut max_width = None;
+                let mut opts_max_width = None;
                 if let Some(opts) = opts {
                     justify_contents = opts.justify_contents.unwrap_or_default();
-                    max_width = opts.max_width;
+                    opts_max_width = opts.max_width;
                 }
-                let remote_ctx =
+
+                let remote_ctx: bool =
                     crate::tarantool::eval("return box.session.peer() ~= nil").unwrap();
-                let max_width = crate::unwrap_some_or!(
-                    max_width,
-                    if remote_ctx {
-                        80
-                    } else {
-                        // Need to subtract 4, because this is how many symbols
-                        // are prepended by the console when output format is yaml.
-                        crate::util::screen_size().1 as usize - 5
-                    }
-                );
+                let terminal_width = crate::util::screen_size().1 as usize;
+                let mut max_width = 80;
+                if let Some(width) = opts_max_width {
+                    max_width = width;
+                } else if !remote_ctx && terminal_width >= 5 {
+                    // Need to subtract 5, because this is how many symbols
+                    // are prepended by the console when output format is yaml.
+                    max_width = terminal_width - 5;
+                }
 
                 let header = ["index", "term", "contents"];
                 let [index, term, contents] = header;
@@ -875,6 +875,11 @@ pub(crate) fn setup() {
                             let mut utf8_len = 0;
                             let mut first = true;
                             while let Some(&token) = lexer.peek_token() {
+                                if lexer.token_counter % 1000 == 0 {
+                                    // Yield to other fibers so that the event loop is not blocked in case of huge raft log.
+                                    fiber::reschedule();
+                                }
+
                                 let mut added_chars = token.utf8_count;
                                 if first {
                                     first = false;
