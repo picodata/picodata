@@ -650,7 +650,7 @@ class Instance:
             )
         except Exception as e:
             self.check_process_alive()
-            # if process is dead, the above call will raise an expection
+            # if process is dead, the above call will raise an exception
             # otherwise we raise the original exception
             raise e from e
 
@@ -894,7 +894,7 @@ class Instance:
             #
             # For `os.killpg()` to work properly (killing this
             # particular instance and not others) we want each instance
-            # to form it's own process group. The easiest way to
+            # to form its own process group. The easiest way to
             # accomplish it is to start a new session. With this flag
             # pytest implicitly calls `setsid()`.
             start_new_session=True,
@@ -1125,9 +1125,9 @@ class Instance:
     ) -> int:
         """
         Proposes a space creation ddl prepare operation. Returns the index of
-        the corresponding finilazing ddl commit or ddl abort entry.
+        the corresponding finalizing ddl commit or ddl abort entry.
 
-        If `wait_index` is `True` will wait for the finilazing entry
+        If `wait_index` is `True` will wait for the finalizing entry
         to be applied for `timeout` seconds.
         """
         op = dict(
@@ -1163,7 +1163,7 @@ class Instance:
             # Note: The process may have crashed due to the RPC, but there may
             # be a race between when the python connector receives the
             # connection reset error and when the OS will finish cleaning up
-            # the process (especially considerring we have a supervisor
+            # the process (especially considering we have a supervisor
             # process). So we introduce a tiny timeout here (which may still not
             # be enough in every case).
             exit_code = self.process.wait(timeout=0.1)  # type: ignore

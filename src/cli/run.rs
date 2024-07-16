@@ -24,6 +24,7 @@ pub fn main(args: args::Run) -> ! {
     // Set the log level as soon as possible to not miss any messages during
     // initialization.
     tlog::set_log_level(config.instance.log_level());
+    config.log_config_params();
 
     if let Some(filename) = &config.instance.service_password_file {
         if let Err(e) = crate::pico_service::read_pico_service_password_from_file(filename) {

@@ -589,7 +589,7 @@ Using configuration file '{args_path}'.");
         for path in &leaf_field_paths::<PicodataConfig>() {
             let value = donor
                 .get_field_as_rmpv(path)
-                .expect("this should be tested thouroughly");
+                .expect("this should be tested thoroughly");
 
             if !value_is_specified(path, &value) {
                 continue;
@@ -658,6 +658,18 @@ Using configuration file '{args_path}'.");
         // accept a `&self` parameter, but for now it's not necessary.
         1048576
     }
+
+    pub fn log_config_params(&self) {
+        for path in &leaf_field_paths::<PicodataConfig>() {
+            let value = self
+                .get_field_as_rmpv(path)
+                .expect("this should be tested thoroughly");
+
+            if value_is_specified(path, &value) {
+                tlog!(Info, "'{}': {}", path, value);
+            }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -685,7 +697,7 @@ fn mark_non_none_field_sources(
     for path in leaf_field_paths::<PicodataConfig>() {
         let value = config
             .get_field_as_rmpv(&path)
-            .expect("this should be tested thouroughly");
+            .expect("this should be tested thoroughly");
 
         if !value_is_specified(&path, &value) {
             continue;

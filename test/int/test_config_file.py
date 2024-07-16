@@ -422,3 +422,57 @@ cluster:
         sudo=True,
     )
     assert dql == []
+
+
+def test_output_config_parameters(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+    cluster:
+        tier:
+            default:
+    instance:
+        cluster_id: test
+        instance_id: from-config
+        replicaset_id: with-love
+        memtx:
+            memory: 42069
+    """
+    )
+
+    output_params = """'cluster.cluster_id':
+        'cluster.tier':
+        'cluster.default_replication_factor':
+        'instance.data_dir':
+        'instance.config_file':
+        'instance.cluster_id':
+        'instance.instance_id': "i1"
+        'instance.replicaset_id': "with-love"
+        'instance.tier': "default"
+        'instance.failure_domain': {}
+        'instance.peer':
+        'instance.listen':
+        'instance.advertise_address':
+        'instance.admin_socket':
+        'instance.plugin_dir':
+        'instance.audit':
+        'instance.shredding': false
+        'instance.log.level': "verbose"
+        'instance.log.format': "plain"
+        'instance.memtx.memory': 42069"""
+
+    params_list = [line.strip().encode("ASCII") for line in output_params.splitlines()]
+    found_params = set()
+
+    def check_output(line: bytes):
+        nonlocal params_list
+        nonlocal found_params
+
+        for param in params_list:
+            if line.find(param) != -1:
+                found_params.add(param)
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.on_output_line(check_output)
+    i1.start()
+    i1.wait_online()
+    assert len(found_params) == len(params_list)
