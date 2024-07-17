@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.5.0-63-gd93aafe1`.
+Описание соответствует версии Picodata `24.5.0-173-gf8832601`.
 
 ### _pico_table
 
@@ -176,7 +176,7 @@
 
 Индексы:
 
-* `_pico_plugin_name` (unique), parts: `[name]`
+* `_pico_plugin_name` (unique), parts: `[name, version]`
 
 ### _pico_service
 
@@ -199,9 +199,10 @@
 
 * `instance_id`: (_string_)
 * `plugin_name`: (_string_)
+* `plugin_version`: (_string_)
 * `service_name`: (_string_)
 * `poison`: (_boolean_)
 
 Индексы:
 
-* `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, service_name]`
+* `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, plugin_version, service_name]`

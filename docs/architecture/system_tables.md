@@ -4,7 +4,7 @@
 Picodata, используемые для служебных нужд. Перечисленные системные
 таблицы являются глобальными.
 
-Описание соответствует версии Picodata `24.5.0-63-gd93aafe1`.
+Описание соответствует версии Picodata `24.5.0-173-gf8832601`.
 
 ## Описание схемы данных {: #schema }
 
@@ -251,7 +251,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 Индексы:
 
-* `_pico_plugin_name` (unique), parts: `[name]`
+* `_pico_plugin_name` (unique), parts: `[name, version]`
 
 ### _pico_service
 
@@ -278,9 +278,10 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `instance_id`: (_string_)
 * `plugin_name`: (_string_)
+* `plugin_version`: (_string_)
 * `service_name`: (_string_)
 * `poison`: (_boolean_)
 
 Индексы:
 
-* `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, service_name]`
+* `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, plugin_version, service_name]`
