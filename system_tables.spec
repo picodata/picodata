@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.5.0-173-gf8832601`.
+Описание соответствует версии Picodata `24.5.0-184-g7f1935b1`.
 
 ### _pico_table
 
@@ -109,7 +109,7 @@
 * `current_master_id`: (_string_)
 * `target_master_id`: (_string_)
 * `tier`: (_string_)
-* `weight`: (_number_)
+* `weight`: (_double_)
 * `weight_origin`: (_string_)
 * `state`: (_string_)
 
