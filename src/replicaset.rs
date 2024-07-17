@@ -82,7 +82,7 @@ impl Replicaset {
             Field::from(("current_master_id", FieldType::String)),
             Field::from(("target_master_id", FieldType::String)),
             Field::from(("tier", FieldType::String)),
-            Field::from(("weight", FieldType::Number)),
+            Field::from(("weight", FieldType::Double)),
             Field::from(("weight_origin", FieldType::String)),
             Field::from(("state", FieldType::String)),
         ]
