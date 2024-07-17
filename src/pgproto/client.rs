@@ -102,13 +102,13 @@ impl<S: io::Read + io::Write> PgClient<S> {
 
         match message {
             FeMessage::Query(query) => {
-                tlog!(Info, "executing simple query: {}", query.query);
+                tlog!(Debug, "executing simple query: {}", query.query);
                 process_query_message(&mut self.stream, &self.backend, query)?;
                 self.loop_state = MessageLoopState::ReadyForQuery;
             }
             FeMessage::Parse(parse) => {
                 tlog!(
-                    Info,
+                    Debug,
                     "parsing query \'{}\': {}",
                     parse.name.as_deref().unwrap_or_default(),
                     parse.query,
@@ -118,7 +118,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             }
             FeMessage::Bind(bind) => {
                 tlog!(
-                    Info,
+                    Debug,
                     "binding statement \'{}\' to portal \'{}\'",
                     bind.statement_name.as_deref().unwrap_or_default(),
                     bind.portal_name.as_deref().unwrap_or_default()
@@ -128,7 +128,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             }
             FeMessage::Execute(execute) => {
                 tlog!(
-                    Info,
+                    Debug,
                     "executing portal \'{}\'",
                     execute.name.as_deref().unwrap_or_default()
                 );
@@ -137,7 +137,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             }
             FeMessage::Describe(describe) => {
                 tlog!(
-                    Info,
+                    Debug,
                     "describing {} \'{}\'",
                     describe.target_type,
                     describe.name.as_deref().unwrap_or_default()
@@ -151,7 +151,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
             }
             FeMessage::Close(close) => {
                 tlog!(
-                    Info,
+                    Debug,
                     "closing {} \'{}\'",
                     close.target_type,
                     close.name.as_deref().unwrap_or_default()
@@ -160,12 +160,12 @@ impl<S: io::Read + io::Write> PgClient<S> {
                 extended_query::process_close_message(&mut self.stream, &self.backend, close)?;
             }
             FeMessage::Flush(_) => {
-                tlog!(Info, "flushing");
+                tlog!(Debug, "flushing");
                 self.loop_state = MessageLoopState::RunningExtendedQuery;
                 self.stream.flush()?;
             }
             FeMessage::Sync(_) => {
-                tlog!(Info, "syncing");
+                tlog!(Debug, "syncing");
                 self.loop_state = MessageLoopState::ReadyForQuery;
                 extended_query::process_sync_mesage(&self.backend);
             }
@@ -179,7 +179,7 @@ impl<S: io::Read + io::Write> PgClient<S> {
     }
 
     fn process_error(&mut self, error: PgError) -> PgResult<()> {
-        tlog!(Info, "processing error: {error:?}");
+        tlog!(Debug, "processing error: {error:?}");
         self.stream
             .write_message(messages::error_response(error.info()))?;
         error.check_fatality()?;
