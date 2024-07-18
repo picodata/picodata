@@ -261,8 +261,10 @@ impl Tuple {
     where
         T: DecodeOwned,
     {
-        let raw_data = self.to_vec();
-        Decode::decode(&raw_data)
+        #[cfg(feature = "picodata")]
+        return Decode::decode(self.data());
+        #[cfg(not(feature = "picodata"))]
+        return Decode::decode(&self.to_vec());
     }
 
     /// Get tuple contents as a vector of raw bytes.
@@ -401,6 +403,17 @@ impl Clone for Tuple {
     }
 }
 
+impl<'de> serde_bytes::Deserialize<'de> for Tuple {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let data: &[u8] = serde_bytes::Deserialize::deserialize(deserializer)?;
+        Self::try_from_slice(data).map_err(serde::de::Error::custom)
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// ToTupleBuffer
 ////////////////////////////////////////////////////////////////////////////////
@@ -437,9 +450,19 @@ impl ToTupleBuffer for Tuple {
         Ok(TupleBuffer::from(self))
     }
 
+    #[cfg(feature = "picodata")]
+    #[inline(always)]
+    fn tuple_data(&self) -> Option<&[u8]> {
+        Some(self.data())
+    }
+
     #[inline]
     fn write_tuple_data(&self, w: &mut impl Write) -> Result<()> {
-        w.write_all(&self.to_vec()).map_err(Into::into)
+        #[cfg(feature = "picodata")]
+        w.write_all(self.data())?;
+        #[cfg(not(feature = "picodata"))]
+        w.write_all(&self.to_vec())?;
+        Ok(())
     }
 }
 
@@ -1524,12 +1547,16 @@ impl std::borrow::Borrow<RawBytes> for RawByteBuf {
 
 #[cfg(feature = "picodata")]
 mod picodata {
-    use crate::tuple::{Tuple, TupleFormat};
+    use super::*;
     use crate::Result;
     use std::ffi::CStr;
     use std::io::{Cursor, Write};
     use std::marker::PhantomData;
     use std::os::raw::c_char;
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Tuple picodata extensions
+    ////////////////////////////////////////////////////////////////////////////
 
     impl Tuple {
         /// Returns messagepack encoded tuple with named fields (messagepack map).
@@ -1570,7 +1597,51 @@ mod picodata {
 
             Ok(named_buffer)
         }
+
+        /// Returns a slice of data contained in the tuple.
+        #[inline]
+        pub fn data(&self) -> &[u8] {
+            // Safety: safe because we only construct `Tuple` from valid pointers to `box_tuple_t`.
+            let tuple = unsafe { self.ptr.as_ref() };
+            // Safety: this is how tuple data is stored in picodata's tarantool-2.11.2-137-ga0f7c15f75
+            unsafe {
+                let data_offset = tuple.data_offset();
+                let data = (tuple as *const ffi::BoxTuple)
+                    .cast::<u8>()
+                    .offset(data_offset as _);
+                std::slice::from_raw_parts(data, tuple.bsize())
+            }
+        }
     }
+
+    impl PartialEq for Tuple {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool {
+            if self.ptr == other.ptr {
+                return true;
+            }
+
+            if self.bsize() != other.bsize() {
+                return false;
+            }
+
+            self.data() == other.data()
+        }
+    }
+
+    impl serde_bytes::Serialize for Tuple {
+        #[inline(always)]
+        fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serde_bytes::Serialize::serialize(self.data(), serializer)
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // TupleFormat picodata extensions
+    ////////////////////////////////////////////////////////////////////////////
 
     impl TupleFormat {
         /// Return tuple field names count.
@@ -1590,6 +1661,7 @@ mod picodata {
         }
     }
 
+    // FIXME: this is just a slice of pointers, the implementation could be much simpler
     pub(crate) struct NameIterator<'a> {
         ptr: *const *const c_char,
         len: usize,
@@ -1625,6 +1697,7 @@ mod test {
     use super::*;
     use crate::space;
     use crate::space::Space;
+    use pretty_assertions::assert_eq;
 
     #[crate::test(tarantool = "crate")]
     fn tuple_buffer_from_lua() {
@@ -1761,5 +1834,103 @@ mod test {
         // This tuple can't be inserted into the space.
         let e = space.insert(&tuple).unwrap_err();
         assert_eq!(e.to_string(), "box error: FieldType: Tuple field 2 (not-key) type does not match one required by operation: expected array, got string");
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn tuple_data() {
+        // Check getting tuple data from a "runtime" tuple.
+        let tuple = Tuple::new(&(69, "nice", [3, 2, 1])).unwrap();
+        // \x93 -- array of length 3
+        // \x45 -- number 0x45 == 69
+        // \xa4nice -- string of length 4 "nice"
+        // \x93\x03\x02\x01 -- array [3, 2, 1], do you see the pattern yet?
+        assert_eq!(tuple.data(), b"\x93\x45\xa4nice\x93\x03\x02\x01");
+
+        // Check getting tuple data from a memtx tuple stored in a space.
+        let space = Space::builder(&crate::temp_space_name!())
+            .field(("id", space::FieldType::Unsigned))
+            .field(("name", space::FieldType::String))
+            .create()
+            .unwrap();
+
+        space.index_builder("pk").create().unwrap();
+
+        let tuple = space.insert(&(13, "37")).unwrap();
+        assert_eq!(tuple.data(), b"\x92\x0d\xa237");
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn compare_tuples() {
+        // \x92 -- array of length 2
+        // \xa3foo, \xa3bar -- strings of length 3 "foo" & "bar" respectively
+        let data = b"\x92\xa3foo\xa3bar";
+        let tuple_1 = Tuple::try_from_slice(data).unwrap();
+
+        // Tuples with the same underlying pointer are equal.
+        let tuple_1_clone = tuple_1.clone();
+        assert_eq!(tuple_1_clone.as_ptr(), tuple_1.as_ptr());
+        assert_eq!(tuple_1_clone, tuple_1);
+
+        // Tuple with same data but different underlying pointer (the slowest case).
+        let tuple_1_equivalent = Tuple::try_from_slice(data).unwrap();
+        assert_ne!(tuple_1_equivalent.as_ptr(), tuple_1.as_ptr());
+        assert_eq!(tuple_1_equivalent, tuple_1);
+
+        // Tuple with different data (optimized case for different length).
+        // \x93 -- array of length 3
+        // \x10, \x20, \x30 -- numbers 0x10, 0x20, 0x30 respectively
+        let other_data = b"\x93\x10\x20\x30";
+        let tuple_2 = Tuple::try_from_slice(other_data).unwrap();
+        assert_ne!(data.len(), other_data.len());
+        assert_ne!(tuple_1, tuple_2);
+
+        // Tuple with different data (slow case for same length).
+        // \x92 -- array of length 2
+        // \xa3foo, \xa3baz -- strings of length 3 "foo" & "baz" respectively
+        let other_data_same_len = b"\x92\xa3foo\xa3baz";
+        assert_eq!(data.len(), other_data_same_len.len());
+        let tuple_3 = Tuple::try_from_slice(other_data_same_len).unwrap();
+        assert_ne!(tuple_2, tuple_3);
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn serialize_deserialize() {
+        #[derive(Debug, serde::Serialize, serde::Deserialize)]
+        struct Wrapper {
+            #[serde(with = "serde_bytes")]
+            tuple: Tuple,
+        }
+
+        // Serialize tuple to msgpack
+        let data = rmp_serde::to_vec_named(&Wrapper {
+            tuple: Tuple::new(&(0x77, "hello", 0x77)).unwrap(),
+        })
+        .unwrap();
+        // \x81 -- mapping with 1 entry
+        // \xa5tuple -- key "tuple"
+        // \xc4\x09 -- header for string of binary data with length 9
+        // \x93\x77\xa5hello\x77 -- this is the binary data payload
+        assert_eq!(&data, b"\x81\xa5tuple\xc4\x09\x93\x77\xa5hello\x77");
+
+        // Deserialize tuple from msgpack.
+        // Task for the reader, decode this msgpack in your mind.
+        let data = b"\x81\xa5tuple\xc4\x0c\x94\xa7numbers\x03\x01\x04";
+        let w: Wrapper = rmp_serde::from_slice(data).unwrap();
+        let s: &str = w.tuple.field(0).unwrap().unwrap();
+        assert_eq!(s, "numbers");
+        let n: i32 = w.tuple.field(1).unwrap().unwrap();
+        assert_eq!(n, 3);
+        let n: i32 = w.tuple.field(2).unwrap().unwrap();
+        assert_eq!(n, 1);
+        let n: i32 = w.tuple.field(3).unwrap().unwrap();
+        assert_eq!(n, 4);
+
+        // Fail to deserialize tuple from msgpack.
+        let data = b"\x81\xa5tuple\xc4\x01\x45";
+        let e = rmp_serde::from_slice::<Wrapper>(data).unwrap_err();
+        assert_eq!(e.to_string(), "failed to encode tuple: invalid msgpack value (epxected array, found Integer(PosInt(69)))");
     }
 }

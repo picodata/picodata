@@ -49,6 +49,7 @@
 - Custom Encode/Decode allows skipping `Option` fields
 - added support for zero-copy string decoding
   via `tarantool::msgpack::encode::Decode` trait as `&str`.
+- `serde_bytes::Deserialize` implementation for `Tuple`.
 
 ### Changed
 
@@ -150,8 +151,12 @@
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.
 - Expose `box_generate_func_id` to generate function identifiers for reserved
   and default ranges in `_func` space.
+- `Tuple::data` method for getting access to tuple data as a slice of bytes.
+- `PartialEq`, `serde_bytes::Serialize` implementations for `Tuple`.
 
 ### Changed (picodata)
+- `Tuple::decode` & `ToTupleBuffer` implementation for `Tuple` is now a bit more
+  efficient because one redundant tuple data copy is removed.
 
 ### Fixed (picodata)
 
