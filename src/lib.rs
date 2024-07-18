@@ -342,7 +342,7 @@ fn redirect_interactive_sql() {
     .expect("overriding sql executor shouldn't fail")
 }
 
-/// Sets a check that will performed when a user is logging in
+/// Sets a check that will be performed when a user is logging in
 /// Checks for user exceeding maximum number of login attempts and if user was blocked.
 ///
 /// Also see [`storage::PropertyName::MaxLoginAttempts`].
@@ -691,10 +691,9 @@ fn start_discover(
         return Ok(());
     }
 
-    // Start listenning only after we've checked if this is a restart.
-    // Postjoin phase has it's own idea of when to start listenning.
-    tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())
-        .expect("setting listen port shouldn't fail");
+    // Start listening only after we've checked if this is a restart.
+    // Postjoin phase has its own idea of when to start listening.
+    tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())?;
 
     let role = discovery::wait_global();
     match role {

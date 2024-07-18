@@ -119,6 +119,11 @@ pub fn main(args: args::Run) -> ! {
                         })
                         .start_non_joinable()?;
 
+                    std::panic::set_hook(Box::new(|info| {
+                        println!("Panic occurred, exiting: {}", info);
+                        std::process::exit(1);
+                    }));
+
                     // Note that we don't really need to pass the `config` here,
                     // because it's stored in the global variable which we can
                     // access from anywhere. But we still pass it explicitly just
