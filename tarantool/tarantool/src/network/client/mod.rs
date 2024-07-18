@@ -676,7 +676,7 @@ mod tests {
             s.len() + 17
         }
 
-        let path = crate::proc::module_path(&big_data as *const _ as _).unwrap();
+        let path = crate::proc::module_path(big_data as _).unwrap();
         let module = path.file_stem().unwrap();
         let module = module.to_str().unwrap();
         let proc = format!("{module}.proc_big_data");
@@ -962,7 +962,7 @@ mod tests {
         }
         let error_line = line!() - 2; // where `BoxError` is constructed
 
-        let path = crate::proc::module_path(&custom_error_code_from_proc as *const _ as _).unwrap();
+        let path = crate::proc::module_path(custom_error_code_from_proc as _).unwrap();
         let module = path.file_stem().unwrap().to_str().unwrap();
         let proc = format!("{module}.proc_custom_error_code");
 
