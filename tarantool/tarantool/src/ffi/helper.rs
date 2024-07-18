@@ -126,13 +126,13 @@ macro_rules! define_dlsym_reloc {
     (
         $(
             $(#[$meta:meta])*
-            pub fn $sym:ident ( $( $args:ident: $types:ty ),* $(,)? ) $( -> $ret:ty )?;
+            pub $(($where:tt))? fn $sym:ident ( $( $args:ident: $types:ty ),* $(,)? ) $( -> $ret:ty )?;
         )+
     ) => {
         $(
             $(#[$meta])*
             #[inline(always)]
-            pub unsafe fn $sym($($args: $types),*) $(-> $ret)? {
+            pub $(($where))? unsafe fn $sym($($args: $types),*) $(-> $ret)? {
                 return RELOC_FN($($args),*);
 
                 type SymType = unsafe fn($($args: $types),*) $(-> $ret)?;

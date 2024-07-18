@@ -7,12 +7,15 @@ use std::os::raw::{c_char, c_int, c_void};
 
 pub const IPROTO_DATA: u8 = 0x30;
 
-// sql
-extern "C" {
-    fn cord_slab_cache() -> *const SlabCache;
+// Note that all of the functions defined here are either `pub` or `pub(crate)`
+// even if they're only used in this file. This is because the `define_dlsym_reloc`
+// macro doesn't support private function declarations because rust's macro syntax is trash.
+crate::define_dlsym_reloc! {
+    pub(crate) fn cord_slab_cache() -> *const SlabCache;
 
-    fn obuf_create(obuf: *mut Obuf, slab_cache: *const SlabCache, start_cap: size_t);
-    fn obuf_destroy(obuf: *mut Obuf);
+    pub(crate) fn obuf_create(obuf: *mut Obuf, slab_cache: *const SlabCache, start_cap: size_t);
+    pub(crate) fn obuf_destroy(obuf: *mut Obuf);
+
     /// Free memory allocated by this buffer
     pub fn ibuf_reinit(ibuf: *mut Ibuf);
 
@@ -35,7 +38,7 @@ extern "C" {
 }
 
 #[repr(C)]
-struct SlabCache {
+pub(crate) struct SlabCache {
     _unused: [u8; 0],
 }
 
