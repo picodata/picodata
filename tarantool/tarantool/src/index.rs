@@ -908,6 +908,7 @@ impl Index {
     /// the space format.
     ///
     /// You should probably use [`KeyDef::extract_key`] instead.
+    #[deprecated = "use KeyDef::extract_key instead"]
     #[inline(always)]
     pub unsafe fn extract_key(&self, tuple: Tuple) -> Tuple {
         unsafe {

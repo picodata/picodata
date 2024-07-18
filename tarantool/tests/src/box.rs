@@ -288,6 +288,7 @@ pub fn count() {
     );
 }
 
+#[allow(deprecated)]
 pub fn extract_key() {
     let space = Space::find("test_s2").unwrap();
     let idx = space.index("idx_2").unwrap();

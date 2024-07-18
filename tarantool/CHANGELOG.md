@@ -106,6 +106,8 @@
 - `tarantool::set_and_get_error!` macro is deprecated in favor of `BoxError::new`.
 - `tarantool::time::Instant::now` is deprecated, now you need to choose between
   `now_fiber` (likely) and `now_accurate`.
+- `index::Index::extract_key` is now deprecated because it has a weird interface
+  and semantics. You should use `tuple::KeyDef::extract_key` instead.
 
 ### Breaking changes
 
