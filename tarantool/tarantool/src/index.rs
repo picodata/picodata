@@ -913,7 +913,7 @@ impl Index {
         unsafe {
             let mut result_size = MaybeUninit::uninit();
             let result_ptr = ffi::box_tuple_extract_key(
-                tuple.into_ptr(),
+                tuple.as_ptr(),
                 self.space_id,
                 self.index_id,
                 result_size.as_mut_ptr(),
