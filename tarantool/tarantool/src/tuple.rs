@@ -1551,8 +1551,6 @@ mod picodata {
     use crate::Result;
     use std::ffi::CStr;
     use std::io::{Cursor, Write};
-    use std::marker::PhantomData;
-    use std::os::raw::c_char;
 
     ////////////////////////////////////////////////////////////////////////////
     // Tuple picodata extensions
@@ -1651,43 +1649,16 @@ mod picodata {
 
         /// Return tuple field names.
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            let ptr = unsafe { (*(*self.inner).dict).names };
-            NameIterator {
-                ptr,
-                len: self.name_count() as usize,
-                pos: 0,
-                _p: PhantomData,
-            }
-        }
-    }
-
-    // FIXME: this is just a slice of pointers, the implementation could be much simpler
-    pub(crate) struct NameIterator<'a> {
-        ptr: *const *const c_char,
-        len: usize,
-        pos: usize,
-        _p: PhantomData<&'a ()>,
-    }
-
-    impl<'a> Iterator for NameIterator<'a> {
-        type Item = &'a str;
-
-        #[track_caller]
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.pos >= self.len {
-                return None;
-            }
-
-            unsafe {
-                let str_ptr = self.ptr.add(self.pos);
-                self.pos += 1;
-
-                Some(
-                    CStr::from_ptr(*str_ptr)
-                        .to_str()
-                        .expect("invalid utf-8 string"),
-                )
-            }
+            // Safety: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
+            let slice = unsafe {
+                std::slice::from_raw_parts((*(*self.inner).dict).names, self.name_count() as _)
+            };
+            slice.iter().copied().map(|ptr| {
+                // Safety: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
+                let cstr = unsafe { CStr::from_ptr(ptr) };
+                let s = cstr.to_str().expect("tuple fields should be in utf-8");
+                s
+            })
         }
     }
 }
