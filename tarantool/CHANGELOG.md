@@ -154,6 +154,10 @@
   and default ranges in `_func` space.
 - `Tuple::data` method for getting access to tuple data as a slice of bytes.
 - `PartialEq`, `serde_bytes::Serialize` implementations for `Tuple`.
+- `tuple::TupleBuilder` helper struct for creating `Tuple` instances with a
+  special **experimental** rust allocated implementation.
+- `TupleFormat::with_rust_allocator` constructor for the special
+  **experimental** rust allocated implementation of tuple virtual table.
 
 ### Changed (picodata)
 - `Tuple::decode` & `ToTupleBuffer` implementation for `Tuple` is now a bit more

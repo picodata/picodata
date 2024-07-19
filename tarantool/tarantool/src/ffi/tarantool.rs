@@ -875,11 +875,11 @@ pub struct BoxTuple {
 #[cfg(feature = "picodata")]
 #[repr(C, packed)]
 pub struct BoxTuple {
-    refs: u8,
-    _flags: u8,
-    format_id: u16,
-    data_offset: u16,
-    bsize: u32,
+    pub(crate) refs: u8,
+    pub(crate) flags: u8,
+    pub(crate) format_id: u16,
+    pub(crate) data_offset: u16,
+    pub(crate) bsize: u32,
 }
 
 #[cfg(not(feature = "picodata"))]
@@ -912,11 +912,21 @@ impl BoxTuple {
 }
 
 #[cfg(feature = "picodata")]
+pub(crate) type FnTupleDelete =
+    unsafe extern "C" fn(format: *mut BoxTupleFormat, tuple: *mut BoxTuple);
+
+#[cfg(feature = "picodata")]
+pub(crate) type FnTupleNew = unsafe extern "C" fn(
+    format: *mut BoxTupleFormat,
+    data: *const u8,
+    end: *const u8,
+) -> *mut BoxTuple;
+
+#[cfg(feature = "picodata")]
 #[repr(C)]
 pub(crate) struct FormatVTable {
-    _tuple_delete: unsafe extern "C" fn(tuple_format: *const c_void, tuple: *const c_void),
-    _tuple_new:
-        unsafe extern "C" fn(tuple_format: *const c_void, data: *const c_void, end: *const c_void),
+    pub(crate) tuple_delete: FnTupleDelete,
+    pub(crate) tuple_new: FnTupleNew,
 }
 
 #[cfg(feature = "picodata")]
@@ -931,9 +941,9 @@ pub(crate) struct TupleDictionary {
 #[cfg(feature = "picodata")]
 #[repr(C)]
 pub struct BoxTupleFormat {
-    _vtab: FormatVTable,
+    pub(crate) vtab: FormatVTable,
     _engine: *const c_void,
-    _id: u16,
+    pub(crate) id: u16,
     _hash: u32,
     _epoch: u64,
     _refs: c_int,
@@ -977,6 +987,29 @@ extern "C" {
     pub fn box_tuple_to_buf(tuple: *const BoxTuple, buf: *mut c_char, size: usize) -> isize;
     pub fn box_tuple_format_default() -> *mut BoxTupleFormat;
     pub fn box_tuple_format(tuple: *const BoxTuple) -> *mut BoxTupleFormat;
+
+    /// Increment tuple format ref count.
+    ///
+    /// - `tuple_format` the tuple format to ref
+    pub fn box_tuple_format_ref(format: *mut BoxTupleFormat);
+
+    /// Decrement tuple format ref count.
+    ///
+    /// - `tuple_format` the tuple format to unref
+    pub fn box_tuple_format_unref(format: *mut BoxTupleFormat);
+
+    /// Return new in-memory tuple format based on passed key definitions.
+    ///
+    /// The returned format has one reference.
+    ///
+    /// - `keys` array of keys defined for the format
+    /// - `key_count` count of keys
+    ///
+    /// Returns
+    /// - new tuple format if success
+    /// - `NULL` for error
+    pub fn box_tuple_format_new(keys: *mut *mut BoxKeyDef, key_count: u16) -> *mut BoxTupleFormat;
+
     pub fn box_tuple_field(tuple: *const BoxTuple, fieldno: u32) -> *const c_char;
     pub fn box_tuple_compare(
         tuple_a: *mut BoxTuple,

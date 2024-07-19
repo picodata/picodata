@@ -690,6 +690,8 @@ impl<'de> serde_bytes::Deserialize<'de> for TupleBuffer {
 /// Each Tuple has associated format (class). Default format is used to
 /// create tuples which are not attach to any particular space.
 pub struct TupleFormat {
+    // FIXME: If this was a NonNull then rust can use it's layout optimizations,
+    // for example Option<TupleFormat> will have the same size as TupleFormat.
     inner: *mut ffi::BoxTupleFormat,
 }
 
@@ -705,6 +707,17 @@ impl Default for TupleFormat {
     fn default() -> Self {
         TupleFormat {
             inner: unsafe { ffi::box_tuple_format_default() },
+        }
+    }
+}
+
+impl Drop for TupleFormat {
+    fn drop(&mut self) {
+        // Don't unref default format as it's not dynamically allocated
+        unsafe {
+            if self.inner != ffi::box_tuple_format_default() {
+                ffi::box_tuple_format_unref(self.inner)
+            }
         }
     }
 }
@@ -1649,6 +1662,25 @@ mod picodata {
     ////////////////////////////////////////////////////////////////////////////
 
     impl TupleFormat {
+        /// Returns a tuple format with a custom **experimental** virtual table implementation
+        /// for creating tuples with the rust allocator.
+        #[inline]
+        pub fn with_rust_allocator() -> &'static Self {
+            static mut SINGLETON: Option<TupleFormat> = None;
+
+            // Safety: only makes sense to call this from tx thread
+            if unsafe { SINGLETON.is_none() } {
+                // Safety: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
+                unsafe {
+                    let inner = ffi::box_tuple_format_new(std::ptr::null_mut(), 0);
+                    (*inner).vtab.tuple_new = vtab_impl::tuple_new_rust_allocator;
+                    (*inner).vtab.tuple_delete = vtab_impl::tuple_delete_rust_allocator;
+                    SINGLETON = Some(Self { inner });
+                }
+            }
+            unsafe { SINGLETON.as_ref().expect("just made sure it's there") }
+        }
+
         /// Return tuple field names count.
         pub fn name_count(&self) -> u32 {
             unsafe { (*(*self.inner).dict).name_count }
@@ -1667,6 +1699,216 @@ mod picodata {
                 s
             })
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// TupleBuilder (picodata only)
+////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(feature = "picodata")]
+pub struct TupleBuilder {
+    // Note: currently this is always `true` but we may want to support the
+    // other case in the future.
+    // The code is already written anyway, but not yet tested.
+    is_rust_allocated: bool,
+    buffer: Vec<u8>,
+}
+
+#[cfg(feature = "picodata")]
+impl TupleBuilder {
+    const TUPLE_HEADER_PADDING: &'static [u8] = &[0; std::mem::size_of::<ffi::BoxTuple>()];
+
+    /// Returns a `TupleBuilder` which will construct tuples with a special
+    /// **experimental** implementation based on the rust memory allocator.
+    ///
+    /// **USE AT YOUR OWN RISK.**
+    #[inline(always)]
+    pub fn rust_allocated() -> Self {
+        Self {
+            is_rust_allocated: true,
+            buffer: Vec::new(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    /// Reserve at least `capacity` more bytes.
+    ///
+    /// Note that this will also make sure there's enough data for the unrelying tuple header.
+    #[inline]
+    pub fn reserve(&mut self, mut capacity: usize) {
+        if self.is_rust_allocated && self.buffer.capacity() == 0 {
+            capacity += std::mem::size_of::<ffi::BoxTuple>();
+        }
+        self.buffer.reserve(capacity);
+    }
+
+    #[inline]
+    pub fn append(&mut self, data: &[u8]) {
+        if self.is_rust_allocated && self.buffer.is_empty() {
+            self.buffer
+                .reserve(Self::TUPLE_HEADER_PADDING.len() + data.len());
+            self.buffer.extend_from_slice(Self::TUPLE_HEADER_PADDING);
+        }
+        self.buffer.extend_from_slice(data);
+    }
+
+    #[inline]
+    pub fn into_tuple(self) -> Result<Tuple> {
+        if self.is_rust_allocated {
+            self.into_tuple_rust_allocated()
+        } else {
+            Tuple::try_from_slice(&self.buffer)
+        }
+    }
+
+    fn into_tuple_rust_allocated(self) -> Result<Tuple> {
+        use crate::error::BoxError;
+        use crate::error::TarantoolErrorCode;
+
+        if self.buffer.is_empty() {
+            #[rustfmt::skip]
+            return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "cannot construct an empty tuple").into());
+        }
+
+        if self.buffer.len() < Self::TUPLE_HEADER_PADDING.len() {
+            #[rustfmt::skip]
+            return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "buffer is corrupted").into());
+        }
+
+        let mut tuple_chunk = self.buffer;
+        let data_offset = Self::TUPLE_HEADER_PADDING.len();
+        let data_len = tuple_chunk.len() - data_offset;
+        validate_msgpack(&tuple_chunk[data_offset..])?;
+
+        let format = TupleFormat::with_rust_allocator();
+
+        let tuple = tuple_chunk.as_mut_ptr().cast::<ffi::BoxTuple>();
+        unsafe {
+            std::ptr::write(
+                tuple,
+                // Analogous to `tuple_create(tuple, 0, tuple_format_id(format), data_offset, data_len, make_compact = false)`
+                ffi::BoxTuple {
+                    refs: 0,
+                    flags: 0,
+                    format_id: (*format.inner).id,
+                    data_offset: data_offset as _,
+                    bsize: data_len as _,
+                },
+            );
+        }
+        // The new tuple references the format
+        unsafe {
+            ffi::box_tuple_format_ref(format.inner);
+        }
+
+        // Forget the Vec, it will be deallocated in `tuple_delete_rust_allocator`
+        _ = Box::into_raw(tuple_chunk.into_boxed_slice());
+
+        // Safety: tuple points into `self.buffer` which we already checked is not empty
+        let tuple = unsafe { NonNull::new_unchecked(tuple) };
+        let tuple = Tuple::from_ptr(tuple);
+        return Ok(tuple);
+    }
+}
+
+#[cfg(feature = "picodata")]
+impl std::io::Write for TupleBuilder {
+    #[inline(always)]
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        self.append(data);
+        Ok(data.len())
+    }
+
+    #[inline(always)]
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+// Note: this code is valid for picodata's tarantool-2.11.2-137-ga0f7c15f75.
+// TODO: we should export some things from tarantool which would make this code
+// more safe, for example a constructor for box_tuple_format which accepts the
+// new & delete callbacks for the virtual table.
+#[cfg(feature = "picodata")]
+mod vtab_impl {
+    use super::*;
+
+    /// Adapted from `runtime_tuple_new` in src/box/tuple.c
+    pub unsafe extern "C" fn tuple_new_rust_allocator(
+        format: *mut ffi::BoxTupleFormat,
+        data: *const u8,
+        end: *const u8,
+    ) -> *mut ffi::BoxTuple {
+        #[rustfmt::skip]
+        debug_assert_eq!((*format).vtab.tuple_delete, tuple_delete_rust_allocator as ffi::FnTupleDelete);
+
+        const TUPLE_HEADER_SIZE: usize = std::mem::size_of::<ffi::BoxTuple>();
+        let data_offset = TUPLE_HEADER_SIZE;
+        // Skipping field map calculations, as we don't support them yet
+
+        let data_len = end.offset_from(data);
+        debug_assert!(data_len >= 0);
+        let data_len = data_len as usize;
+        debug_assert!(data_len <= u32::MAX as usize);
+
+        // Allocate memory for the tuple header and data
+        let total_size = data_offset + data_len;
+        let mut tuple_chunk: Vec<u8> = Vec::with_capacity(total_size);
+
+        let tuple = tuple_chunk.as_mut_ptr().cast::<ffi::BoxTuple>();
+        std::ptr::write(
+            tuple,
+            // Analogous to `tuple_create(tuple, 0, tuple_format_id(format), data_offset, data_len, make_compact = false)`
+            ffi::BoxTuple {
+                refs: 0,
+                flags: 0,
+                format_id: (*format).id,
+                data_offset: data_offset as _,
+                bsize: data_len as _,
+            },
+        );
+        ffi::box_tuple_format_ref(format);
+
+        let data_slice = std::slice::from_raw_parts(data, data_len);
+        tuple_chunk.set_len(total_size);
+        let tuple_data = &mut tuple_chunk[data_offset..];
+        debug_assert_eq!(data_slice.len(), tuple_data.len());
+        tuple_data.copy_from_slice(data_slice);
+
+        // Forget the Vec, it will be deallocated in `tuple_delete_rust_allocator`
+        let tuple_chunk: Box<[u8]> = tuple_chunk.into_boxed_slice();
+        _ = Box::into_raw(tuple_chunk);
+
+        return tuple;
+    }
+
+    /// Adapted from `runtime_tuple_delete` in src/box/tuple.c
+    pub unsafe extern "C" fn tuple_delete_rust_allocator(
+        format: *mut ffi::BoxTupleFormat,
+        tuple: *mut ffi::BoxTuple,
+    ) {
+        #[rustfmt::skip]
+        debug_assert_eq!((*format).vtab.tuple_delete, tuple_delete_rust_allocator as ffi::FnTupleDelete);
+
+        debug_assert!(tuple != 0 as _);
+        debug_assert_eq!((*tuple).refs, 0);
+        const FLAG_TUPLE_HAS_UPLOADED_REFS: u8 = 1 << 0;
+        debug_assert_eq!(((*tuple).flags & FLAG_TUPLE_HAS_UPLOADED_REFS), 0);
+
+        ffi::box_tuple_format_unref(format);
+
+        let total_size = (*tuple).data_offset() as usize + (*tuple).bsize();
+
+        let tuple_chunk_start = tuple.cast::<u8>();
+        let tuple_chunk_slice = std::slice::from_raw_parts_mut(tuple_chunk_start, total_size);
+        // Drop the memory allocated in `tuple_new_rust_allocator`
+        let tuple_chunk: Box<[u8]> = Box::from_raw(tuple_chunk_slice);
+        drop(tuple_chunk);
     }
 }
 
@@ -1910,5 +2152,73 @@ mod test {
         let data = b"\x81\xa5tuple\xc4\x01\x45";
         let e = rmp_serde::from_slice::<Wrapper>(data).unwrap_err();
         assert_eq!(e.to_string(), "failed to encode tuple: invalid msgpack value (expected array, found Integer(PosInt(69)))");
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn rust_allocated_tuples() {
+        let mut builder = TupleBuilder::rust_allocated();
+        // Array of length 1
+        builder.append(b"\x91");
+        // Binary string with 1-bytes length = 0x10 (16)
+        builder.append(b"\xc4\x10");
+        builder.append(b"0123456789abcdef");
+        let tuple = builder.into_tuple().unwrap();
+
+        // Make sure all of the tuple APIs work with this tuple.
+        assert_eq!(tuple.len(), 1);
+        assert_eq!(tuple.bsize(), 19);
+        assert_eq!(tuple.data(), b"\x91\xc4\x100123456789abcdef");
+        assert_eq!(tuple.to_vec(), b"\x91\xc4\x100123456789abcdef");
+
+        let (value,): (serde_bytes::ByteBuf,) = tuple.decode().unwrap();
+        assert_eq!(value, b"0123456789abcdef");
+
+        let value: &serde_bytes::Bytes = tuple.field(0).unwrap().unwrap();
+        assert_eq!(value, b"0123456789abcdef");
+
+        let mut iter = tuple.iter().unwrap();
+        let value: &serde_bytes::Bytes = iter.next().unwrap().unwrap();
+        assert_eq!(value, b"0123456789abcdef");
+        assert_eq!(iter.next::<()>().unwrap(), None);
+
+        #[rustfmt::skip]
+        assert_eq!(tuple.format().as_ptr(), TupleFormat::with_rust_allocator().as_ptr());
+
+        // Check error case
+        let mut builder = TupleBuilder::rust_allocated();
+        // String of length 1
+        builder.append(b"\xa1!");
+        let e = builder.into_tuple().unwrap_err();
+        assert_eq!(e.to_string(), "failed to encode tuple: invalid msgpack value (expected array, found String(Utf8String { s: Ok(\"!\") }))");
+
+        // Check that reserve also works
+        let mut builder = TupleBuilder::rust_allocated();
+        builder.reserve(4);
+        builder.append(b"\x93");
+        builder.append(b"\x01");
+        builder.append(b"\x02");
+        builder.append(b"\x03");
+        let tuple = builder.into_tuple().unwrap();
+        let value: (i32, i32, i32) = tuple.decode().unwrap();
+        assert_eq!(value, (1, 2, 3));
+
+        // Check that insufficient reserve also works
+        let mut builder = TupleBuilder::rust_allocated();
+        builder.reserve(0);
+        builder.append(b"\x91");
+        builder.append(b"\xa5");
+        builder.append(b"hell");
+        builder.append(b"o");
+        let tuple = builder.into_tuple().unwrap();
+        let (value,): (String,) = tuple.decode().unwrap();
+        assert_eq!(value, "hello");
+
+        // Check Write for TupleBuilder
+        let mut builder = TupleBuilder::rust_allocated();
+        rmp_serde::encode::write(&mut builder, &(1, "two", 3.14)).unwrap();
+        let tuple = builder.into_tuple().unwrap();
+        let value: (i32, String, f32) = tuple.decode().unwrap();
+        assert_eq!(value, (1, "two".to_owned(), 3.14));
     }
 }
