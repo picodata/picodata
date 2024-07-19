@@ -9,9 +9,9 @@
 # edit_uri — https://www.mkdocs.org/user-guide/configuration/#edit_uri
 site_name: Портал документации Picodata
 site_description: Picodata documentation site
-site_url: https://docs.picodata.io/picodata/
 repo_url: https://git.picodata.io/picodata/picodata/docs
 edit_uri: -/blob/main/docs/
+# site_url: see hooks/set_site_url.py
 
 # Исключения из навигации
 # https://www.mkdocs.org/user-guide/configuration/#not_in_nav
@@ -256,6 +256,7 @@ validation:
 # Хуки
 # https://www.mkdocs.org/user-guide/configuration/#hooks
 hooks:
+  - ./hooks/set_site_url.py
   - ./hooks/add_meta.py
   - ./hooks/exclude_sitemap.py
   - ./hooks/check_headers.py

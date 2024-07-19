@@ -70,9 +70,17 @@ pack-doc:
       else
         PICODATA_DOC_VER="$(echo $CI_COMMIT_REF_NAME | sed -E "$SED_SLUG")"
       fi
+    - |
+      if [ "$CI_COMMIT_BRANCH" == "$MAIN_BRANCH" ]; then
+        SITE_URL="https://docs.picodata.io/picodata/$PICODATA_DOC_VER"
+      else
+        SITE_URL="https://docs.binary.picodata.io/picodata/$PICODATA_DOC_VER"
+      fi
   script:
+    # Automatic Loading of .env — https://pipenv.pypa.io/en/stable/shell.html
     - echo "Pack picodata doc..."
     - echo "PICODATA_DOC_VER=$PICODATA_DOC_VER" | tee .env
+    - echo "SITE_URL=$SITE_URL" | tee -a .env
     - DATE=$(date +%Y%m%d%H%M%S)
     - FNAME="picodata-doc-${DATE}-${PICODATA_DOC_VER}-${CI_COMMIT_SHA}.tgz"
     - echo "FNAME=$FNAME" | tee -a .env
