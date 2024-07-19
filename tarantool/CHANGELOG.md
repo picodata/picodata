@@ -50,6 +50,7 @@
 - added support for zero-copy string decoding
   via `tarantool::msgpack::encode::Decode` trait as `&str`.
 - `serde_bytes::Deserialize` implementation for `Tuple`.
+- `TupleFormat::as_ptr` method.
 
 ### Changed
 

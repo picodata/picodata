@@ -693,6 +693,13 @@ pub struct TupleFormat {
     inner: *mut ffi::BoxTupleFormat,
 }
 
+impl TupleFormat {
+    #[inline(always)]
+    pub fn as_ptr(&self) -> *mut ffi::BoxTupleFormat {
+        self.inner
+    }
+}
+
 impl Default for TupleFormat {
     #[inline(always)]
     fn default() -> Self {
