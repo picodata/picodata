@@ -143,7 +143,7 @@ fn harness_iter(mut f: impl FnMut()) -> Vec<u128> {
 
     let mut samples = Vec::with_capacity(N_ITERS);
     for _ in 0..N_ITERS {
-        let start = Instant::now();
+        let start = Instant::now_accurate();
         std::hint::black_box(f());
         samples.push(start.elapsed().as_nanos());
     }
@@ -162,7 +162,7 @@ fn harness_iter_async<F: Future>(mut f: impl FnMut() -> F) -> Vec<u128> {
     let mut samples = Vec::with_capacity(N_ITERS);
     fiber::block_on(async {
         for _ in 0..N_ITERS {
-            let start = Instant::now();
+            let start = Instant::now_accurate();
             std::hint::black_box(f().await);
             samples.push(start.elapsed().as_nanos());
         }
