@@ -258,7 +258,6 @@ validation:
 hooks:
   - ./hooks/set_site_url.py
   - ./hooks/add_meta.py
-  - ./hooks/exclude_sitemap.py
   - ./hooks/check_headers.py
   - ./hooks/check_padding.py
   - ./hooks/check_svg_attrs.py
