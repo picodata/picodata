@@ -946,7 +946,7 @@ pub struct BoxTupleFormat {
     pub(crate) id: u16,
     _hash: u32,
     _epoch: u64,
-    _refs: c_int,
+    pub(crate) refs: c_int,
     _is_temporary: bool,
     _is_reusable: bool,
     _is_compressed: bool,

@@ -98,6 +98,7 @@
   skip a msgpack value.
 - `network::protocol::codec::encode_auth` now supports already implemented
   authentication via MD5.
+- Bug in `Tuple::format` which could result in undefined behaviour (aka use after free).
 
 ### Deprecated
 

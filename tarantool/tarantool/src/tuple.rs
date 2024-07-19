@@ -120,9 +120,17 @@ impl Tuple {
     /// Return the associated format.
     #[inline(always)]
     pub fn format(&self) -> TupleFormat {
-        TupleFormat {
-            inner: unsafe { ffi::box_tuple_format(self.ptr.as_ptr()) },
+        // Safety: safe because `self.ptr` is valid
+        let inner = unsafe { ffi::box_tuple_format(self.ptr.as_ptr()) };
+
+        // Safety: safe because `inner` is valid
+        unsafe {
+            if inner != ffi::box_tuple_format_default() {
+                ffi::box_tuple_format_ref(inner)
+            }
         }
+
+        TupleFormat { inner }
     }
 
     /// Allocate and initialize a new `Tuple` iterator. The `Tuple` iterator
@@ -2220,5 +2228,41 @@ mod test {
         let tuple = builder.into_tuple().unwrap();
         let value: (i32, String, f32) = tuple.decode().unwrap();
         assert_eq!(value, (1, "two".to_owned(), 3.14));
+    }
+
+    #[cfg(feature = "picodata")]
+    #[crate::test(tarantool = "crate")]
+    fn tuple_format_no_use_after_free() {
+        let mut builder = TupleBuilder::rust_allocated();
+        // Empty array
+        builder.append(b"\x90");
+        let tuple = builder.into_tuple().unwrap();
+
+        let original_ref_count = unsafe { (*TupleFormat::with_rust_allocator().as_ptr()).refs };
+        assert!(original_ref_count > 0);
+
+        let f1 = tuple.format();
+
+        // XXX: not sure if this is undefined behaviour or not, but we're
+        // getting `.refs` from the same static immutable reference everytime, but the value changes.
+        // Let's just hope rust thinks this is a different reference after each function call
+        // (even though the pointer is definitely the same).
+        let ref_count = unsafe { (*TupleFormat::with_rust_allocator().as_ptr()).refs };
+        assert_eq!(ref_count, original_ref_count + 1);
+
+        let f2 = tuple.format();
+
+        let ref_count = unsafe { (*TupleFormat::with_rust_allocator().as_ptr()).refs };
+        assert_eq!(ref_count, original_ref_count + 2);
+
+        drop(f1);
+
+        let ref_count = unsafe { (*TupleFormat::with_rust_allocator().as_ptr()).refs };
+        assert_eq!(ref_count, original_ref_count + 1);
+
+        drop(f2);
+
+        let ref_count = unsafe { (*TupleFormat::with_rust_allocator().as_ptr()).refs };
+        assert_eq!(ref_count, original_ref_count);
     }
 }
