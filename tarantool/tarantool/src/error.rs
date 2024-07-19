@@ -953,7 +953,7 @@ pub enum EncodeError {
     #[error("{0}")]
     Rmp(#[from] rmp_serde::encode::Error),
 
-    #[error("invalid msgpack value (epxected array, found {:?})", crate::util::DebugAsMPValue(.0))]
+    #[error("invalid msgpack value (expected array, found {:?})", crate::util::DebugAsMPValue(.0))]
     InvalidMP(Vec<u8>),
 }
 

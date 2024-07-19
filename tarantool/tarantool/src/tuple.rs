@@ -1909,6 +1909,6 @@ mod test {
         // Fail to deserialize tuple from msgpack.
         let data = b"\x81\xa5tuple\xc4\x01\x45";
         let e = rmp_serde::from_slice::<Wrapper>(data).unwrap_err();
-        assert_eq!(e.to_string(), "failed to encode tuple: invalid msgpack value (epxected array, found Integer(PosInt(69)))");
+        assert_eq!(e.to_string(), "failed to encode tuple: invalid msgpack value (expected array, found Integer(PosInt(69)))");
     }
 }
