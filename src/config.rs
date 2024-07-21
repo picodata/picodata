@@ -171,14 +171,14 @@ Using configuration file '{args_path}'.");
 
         // This isn't set by set_defaults_explicitly, because we expect the
         // tiers to be specified explicitly when the config file is provided.
-        config.cluster.tier.insert(
+        config.cluster.tier = Some(HashMap::from([(
             DEFAULT_TIER.into(),
             TierConfig {
-                can_vote: true,
                 replication_factor: Some(1),
+                can_vote: true,
                 ..Default::default()
             },
-        );
+        )]));
 
         // Same story as with `cluster.tier`, the cluster_id must be provided
         // in the config file.
@@ -392,10 +392,12 @@ Using configuration file '{args_path}'.");
         // it to define the list of initial tiers. However if config file wasn't
         // specified, there's no way to define tiers, so we just ignore that
         // case and create a dummy "default" tier.
-        if self.cluster.tier.is_empty() {
-            return Err(Error::invalid_configuration(
-                "empty `cluster.tier` section which is required to define the initial tiers",
-            ));
+        if let Some(tiers) = &self.cluster.tier {
+            if tiers.is_empty() {
+                return Err(Error::invalid_configuration(
+                    "empty `cluster.tier` section which is required to define the initial tiers",
+                ));
+            }
         }
 
         match (&self.cluster.cluster_id, &self.instance.cluster_id) {
@@ -479,11 +481,15 @@ Using configuration file '{args_path}'.");
     /// Checks specific to reloading a config file on an initialized istance are
     /// done in [`Self::validate_reload`].
     fn validate_common(&self) -> Result<(), Error> {
-        for (name, info) in &self.cluster.tier {
+        let Some(tiers) = &self.cluster.tier else {
+            return Ok(());
+        };
+
+        for (name, info) in tiers {
             if let Some(explicit_name) = &info.name {
                 return Err(Error::InvalidConfiguration(format!(
-                    "tier '{name}' has an explicit name field '{explicit_name}', which is not allowed. Tier name is always derived from the outer dictionary's key"
-                )));
+                "tier '{name}' has an explicit name field '{explicit_name}', which is not allowed. Tier name is always derived from the outer dictionary's key"
+            )));
             }
         }
 
@@ -780,8 +786,16 @@ fn report_unknown_fields<'a>(
 pub struct ClusterConfig {
     pub cluster_id: Option<String>,
 
-    #[serde(deserialize_with = "deserialize_map_forbid_duplicate_keys")]
-    pub tier: HashMap<String, TierConfig>,
+    // Option is needed to distinguish between the following cases:
+    // when the config was specified and tier section was not
+    // AND
+    // when configuration file was not specified and tiers map is empty
+    #[serde(
+        deserialize_with = "deserialize_map_forbid_duplicate_keys",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub tier: Option<HashMap<String, TierConfig>>,
 
     /// Replication factor which is used for tiers which didn't specify one
     /// explicitly. For default value see [`Self::default_replication_factor()`].
@@ -794,8 +808,9 @@ pub struct ClusterConfig {
 }
 
 impl ClusterConfig {
+    // this method used only from bootstraping to persist tiers information
     pub fn tiers(&self) -> HashMap<String, Tier> {
-        if self.tier.is_empty() {
+        let Some(tiers) = &self.tier else {
             return HashMap::from([(
                 DEFAULT_TIER.to_string(),
                 Tier {
@@ -804,10 +819,10 @@ impl ClusterConfig {
                     can_vote: true,
                 },
             )]);
-        }
+        };
 
-        let mut tier_defs = HashMap::with_capacity(self.tier.len());
-        for (name, info) in &self.tier {
+        let mut tier_defs = HashMap::with_capacity(tiers.len());
+        for (name, info) in tiers {
             let replication_factor = info
                 .replication_factor
                 .unwrap_or_else(|| self.default_replication_factor());
@@ -1166,7 +1181,7 @@ tarantool::define_str_enum! {
 
 pub fn deserialize_map_forbid_duplicate_keys<'de, D, K, V>(
     des: D,
-) -> Result<HashMap<K, V>, D::Error>
+) -> Result<Option<HashMap<K, V>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     K: serde::Deserialize<'de> + std::hash::Hash + Eq + std::fmt::Display,
@@ -1181,7 +1196,7 @@ where
         K: serde::Deserialize<'de> + std::hash::Hash + Eq + std::fmt::Display,
         V: serde::Deserialize<'de>,
     {
-        type Value = HashMap<K, V>;
+        type Value = Option<HashMap<K, V>>;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("a map with unique keys")
@@ -1206,7 +1221,7 @@ where
                 }
             }
 
-            Ok(res)
+            Ok(Some(res))
         }
     }
 
@@ -1332,16 +1347,15 @@ instance:
     }
 
     #[test]
-    fn missing_tiers_is_error() {
+    fn missing_tiers_is_not_error() {
         let yaml = r###"
 cluster:
     cluster_id: test
 "###;
-        let err = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "invalid configuration: cluster: missing field `tier` at line 2 column 5"
-        );
+        let cfg = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+
+        cfg.validate_from_file()
+            .expect("absence `tier` section is ok");
 
         let yaml = r###"
 cluster:
@@ -1363,6 +1377,20 @@ cluster:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         config.validate_from_file().unwrap();
+
+        let yaml = r###"
+cluster:
+    default_replication_factor: 3
+    cluster_id: test
+"###;
+        let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
+        config.validate_from_file().expect("");
+
+        let tiers = config.cluster.tiers();
+        let default_tier = tiers
+            .get("default")
+            .expect("default replication factor should applied to default tier configuration");
+        assert_eq!(default_tier.replication_factor, 3);
     }
 
     #[test]
