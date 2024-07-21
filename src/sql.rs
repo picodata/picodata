@@ -707,6 +707,14 @@ fn ensure_parameters_match(routine: &RoutineDef, params: &[ParamDef]) -> traft::
     ))
 }
 
+fn check_name_emptyness(name: &str) -> traft::Result<()> {
+    if name.is_empty() {
+        return Err(Error::Other("expected non empty name".into()));
+    }
+
+    Ok(())
+}
+
 fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: IrNode,
@@ -901,7 +909,7 @@ fn reenterable_schema_change_request(
             Params::DropUser(name)
         }
         IrNode::Acl(Acl::CreateRole { name, .. }) => {
-            // Nothing to check
+            check_name_emptyness(&name)?;
             Params::CreateRole(name.to_string())
         }
         IrNode::Acl(Acl::DropRole { name, .. }) => {
@@ -914,6 +922,7 @@ fn reenterable_schema_change_request(
             auth_method,
             ..
         }) => {
+            check_name_emptyness(&name)?;
             let method = AuthMethod::from_str(&auth_method)
                 .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
             validate_password(&password, &method, node)?;
@@ -939,7 +948,10 @@ fn reenterable_schema_change_request(
                 }
                 AlterOption::Login => AlterOptionParam::Login,
                 AlterOption::NoLogin => AlterOptionParam::NoLogin,
-                AlterOption::Rename { new_name } => AlterOptionParam::Rename(new_name.to_string()),
+                AlterOption::Rename { new_name } => {
+                    check_name_emptyness(&new_name)?;
+                    AlterOptionParam::Rename(new_name.to_string())
+                }
             };
             Params::AlterUser(name.to_string(), alter_option_param)
         }

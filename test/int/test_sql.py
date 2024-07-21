@@ -4563,3 +4563,29 @@ def test_metadata(instance: Instance):
     # It used to return "T1.id" column name in metadata,
     # though it should return "id" (because of an alias).
     assert data["metadata"] == [{"name": "id", "type": "integer"}]
+
+
+def test_create_role_and_user_with_empty_name(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    with pytest.raises(
+        TarantoolError,
+        match="expected non empty name",
+    ):
+        i1.sql('CREATE ROLE ""')
+
+    with pytest.raises(
+        TarantoolError,
+        match="expected non empty name",
+    ):
+        i1.sql("""CREATE USER "" WITH PASSWORD 'P@ssw0rd' USING chap-sha1""")
+
+    i1.sql("""CREATE USER "andy" WITH PASSWORD 'P@ssw0rd' USING chap-sha1""")
+
+    # rename existing user to empty name
+    with pytest.raises(
+        TarantoolError,
+        match="expected non empty name",
+    ):
+        i1.sql("""ALTER USER "andy" RENAME TO "" """)
