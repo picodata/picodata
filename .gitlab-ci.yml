@@ -1,6 +1,13 @@
 default:
   tags:
     - docker
+  retry:
+    max: 1
+    when:
+      - scheduler_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
 
 stages:
   - build-base-image
