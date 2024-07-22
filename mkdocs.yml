@@ -164,8 +164,7 @@ extra:
             Благодарим за отзыв! <a href="https://t.me/picodataru"
             target="_blank" rel="noopener">Напишите</a>, что бы вы хотели
             улучшить на этой странице или в целом на сайте документации.
-  version:
-    provider: mike
+  # version: see hooks/set_versioning.py
 
 # Кастомизация CSS
 # https://www.mkdocs.org/user-guide/configuration/#extra_css
@@ -261,6 +260,7 @@ validation:
 # https://www.mkdocs.org/user-guide/configuration/#hooks
 hooks:
   - ./hooks/set_site_url.py
+  - ./hooks/set_versioning.py
   - ./hooks/add_meta.py
   - ./hooks/check_headers.py
   - ./hooks/check_padding.py
