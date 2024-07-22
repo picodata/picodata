@@ -15,6 +15,7 @@ stages:
   - pack
   - docker
   - stress-test
+  - front-deploy
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
@@ -502,14 +503,7 @@ deploy-docker:
 
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo
-upload-picodata-to-binary:
-  stage: stress-test
-  rules:
-    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-      when: always
-    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
-      when: manual
-      allow_failure: true
+.upload-picodata-to-binary:
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
   variables:
@@ -528,6 +522,16 @@ upload-picodata-to-binary:
     - mv target/release/picodata target/release/picodata-$VER
     - curl -v --upload-file target/release/picodata-$VER $RAW_NT_REGISTRY
 
+upload-picodata-to-binary-stress-test:
+  stage: stress-test
+  extends: .upload-picodata-to-binary
+  rules:
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      when: always
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      when: manual
+      allow_failure: true
+
 downstream-stress-test:
   interruptible: true
   # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
@@ -545,4 +549,23 @@ downstream-stress-test:
   variables:
     VER: $CI_COMMIT_SHORT_SHA
   needs:
-    - job: upload-picodata-to-binary
+    - job: upload-picodata-to-binary-stress-test
+
+upload-picodata-to-binary-front-deploy:
+  stage: front-deploy
+  extends: .upload-picodata-to-binary
+  when: manual
+
+downstream-front-deploy:
+  interruptible: true
+  # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
+  stage: front-deploy
+  allow_failure: true
+  trigger:
+    project: picodata/devops/pico-servers/front
+    branch: main
+    strategy: depend
+  variables:
+    VER: $CI_COMMIT_SHORT_SHA
+  needs:
+    - job: upload-picodata-to-binary-front-deploy
