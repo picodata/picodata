@@ -271,6 +271,7 @@ lint:
         BASE_IMAGE_TAG: ${BASE_IMAGE_TAG}
     - <<: *if-build-base-changes-on-dev-branch
       when: manual
+      allow_failure: true
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
     # build base didnt change but we still want the job to run
