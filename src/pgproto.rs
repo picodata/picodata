@@ -1,5 +1,5 @@
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
-use crate::{address::Address, introspection::Introspection, tlog, traft::error::Error};
+use crate::{address::IprotoAddress, introspection::Introspection, tlog, traft::error::Error};
 use std::path::{Path, PathBuf};
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
@@ -17,7 +17,7 @@ mod value;
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub listen: Option<Address>,
+    pub listen: Option<IprotoAddress>,
 
     #[introspection(config_default = false)]
     pub ssl: Option<bool>,
@@ -29,7 +29,7 @@ impl Config {
         self.listen.is_some()
     }
 
-    pub fn listen(&self) -> Address {
+    pub fn listen(&self) -> IprotoAddress {
         self.listen
             .clone()
             .expect("must be checked before the call")

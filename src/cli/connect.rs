@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display};
 use tarantool::auth::AuthMethod;
 use tarantool::network::{AsClient, Client, Config};
 
-use crate::address::Address;
+use crate::address::IprotoAddress;
 use crate::config::DEFAULT_USERNAME;
 use crate::traft::error::Error;
 use crate::util::prompt_password;
@@ -143,7 +143,7 @@ impl Display for ResultSet {
 ///
 /// On success returns the connection object and the chosen username.
 pub fn determine_credentials_and_connect(
-    address: &Address,
+    address: &IprotoAddress,
     user: Option<&str>,
     password_file: Option<&str>,
     auth_method: AuthMethod,

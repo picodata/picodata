@@ -1,4 +1,4 @@
-use crate::address::Address;
+use crate::address::{HttpAddress, IprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::failure_domain::FailureDomain;
@@ -25,9 +25,7 @@ use std::path::PathBuf;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
 
-pub const DEFAULT_USERNAME: &str = "guest";
-pub const DEFAULT_LISTEN_HOST: &str = "localhost";
-pub const DEFAULT_IPROTO_PORT: &str = "3301";
+pub use crate::address::{DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_USERNAME};
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -874,27 +872,19 @@ pub struct InstanceConfig {
     pub failure_domain: Option<FailureDomain>,
 
     #[introspection(
-        config_default = vec![Address {
-            user: None,
-            host: DEFAULT_LISTEN_HOST.into(),
-            port: DEFAULT_IPROTO_PORT.into(),
-        }]
+        config_default = vec![IprotoAddress::default()]
     )]
-    pub peer: Option<Vec<Address>>,
+    pub peer: Option<Vec<IprotoAddress>>,
 
     #[introspection(
-        config_default = Address {
-            user: None,
-            host: DEFAULT_LISTEN_HOST.into(),
-            port: DEFAULT_IPROTO_PORT.into(),
-        }
+        config_default = IprotoAddress::default()
     )]
-    pub listen: Option<Address>,
+    pub listen: Option<IprotoAddress>,
 
     #[introspection(config_default = self.listen())]
-    pub advertise_address: Option<Address>,
+    pub advertise_address: Option<IprotoAddress>,
 
-    pub http_listen: Option<Address>,
+    pub http_listen: Option<HttpAddress>,
 
     #[introspection(config_default = self.data_dir.as_ref().map(|dir| dir.join("admin.sock")))]
     pub admin_socket: Option<PathBuf>,
@@ -980,21 +970,21 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn peers(&self) -> Vec<Address> {
+    pub fn peers(&self) -> Vec<IprotoAddress> {
         self.peer
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
-    pub fn advertise_address(&self) -> Address {
+    pub fn advertise_address(&self) -> IprotoAddress {
         self.advertise_address
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
     }
 
     #[inline]
-    pub fn listen(&self) -> Address {
+    pub fn listen(&self) -> IprotoAddress {
         self.listen
             .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
@@ -1431,8 +1421,7 @@ instance:
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
         let listen = config.instance.http_listen.unwrap();
         assert_eq!(listen.host, "localhost");
-        assert_eq!(listen.port, "3301"); // FIXME: This is wrong! The default
-                                         // http port should be something different
+        assert_eq!(listen.port, "8080");
     }
 
     #[track_caller]
@@ -1492,11 +1481,7 @@ instance:
 
             assert_eq!(
                 config.instance.peers(),
-                vec![Address {
-                    user: None,
-                    host: "localhost".into(),
-                    port: "3301".into(),
-                }]
+                vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.instance_id(), None);
             assert_eq!(config.instance.listen().to_host_port(), "localhost:3301");
@@ -1555,13 +1540,7 @@ instance:
 
             assert_eq!(
                 config.instance.peers(),
-                vec![
-                    Address {
-                        user: None,
-                        host: "localhost".into(),
-                        port: "3301".into(),
-                    }
-                ]
+                vec![IprotoAddress::default()]
             );
 
             // only config
@@ -1576,12 +1555,12 @@ instance:
             assert_eq!(
                 config.instance.peers(),
                 vec![
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "bobbert".into(),
                         port: "420".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "tomathan".into(),
                         port: "69".into(),
@@ -1596,12 +1575,12 @@ instance:
             assert_eq!(
                 config.instance.peers(),
                 vec![
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "oops there's a space over here -> <-".into(),
                         port: "13".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "             maybe we should at least strip these".into(),
                         port: "37".into(),
@@ -1618,27 +1597,27 @@ instance:
             assert_eq!(
                 config.instance.peers(),
                 vec![
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "one".into(),
                         port: "1".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "two".into(),
                         port: "2".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "    <- same problem here".into(),
                         port: "3301".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "localhost".into(),
                         port: "3".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "4".into(),
                         port: "3301".into(),
@@ -1654,17 +1633,17 @@ instance:
             assert_eq!(
                 config.instance.peers(),
                 vec![
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "host".into(),
                         port: "123".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "ghost ".into(),
                         port: "321".into(),
                     },
-                    Address {
+                    IprotoAddress {
                         user: None,
                         host: "гост".into(),
                         port: "666".into(),
@@ -1836,7 +1815,10 @@ instance:
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
-        assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert_eq!(
+            pg.listen(),
+            IprotoAddress::from_str("localhost:5432").unwrap()
+        );
         assert!(!pg.ssl());
 
         // test config with -c option
@@ -1844,14 +1826,20 @@ instance:
             setup_for_tests(None, &["run", "-c", "instance.pg.listen=localhost:5432"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
-        assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert_eq!(
+            pg.listen(),
+            IprotoAddress::from_str("localhost:5432").unwrap()
+        );
         assert!(!pg.ssl());
 
         // test config from run args
         let config = setup_for_tests(None, &["run", "--pg-listen", "localhost:5432"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
-        assert_eq!(pg.listen(), Address::from_str("localhost:5432").unwrap());
+        assert_eq!(
+            pg.listen(),
+            IprotoAddress::from_str("localhost:5432").unwrap()
+        );
         assert!(!pg.ssl());
 
         // test config from env
@@ -1859,7 +1847,10 @@ instance:
         let config = setup_for_tests(None, &["run"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
-        assert_eq!(pg.listen(), Address::from_str("localhost:1234").unwrap());
+        assert_eq!(
+            pg.listen(),
+            IprotoAddress::from_str("localhost:1234").unwrap()
+        );
         assert!(!pg.ssl());
     }
 }

@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::access_control::UserMetadataKind;
 use crate::cas::{self, compare_and_swap, Request};
+use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
 use crate::plugin::PluginIdentifier;
@@ -1088,12 +1089,12 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
     {
         let user_def = UserDef {
             id: GUEST_ID,
-            name: "guest".into(),
+            name: DEFAULT_USERNAME.into(),
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             auth: Some(AuthDef::new(
                 AuthMethod::ChapSha1,
-                AuthData::new(&AuthMethod::ChapSha1, "guest", "").into_string(),
+                AuthData::new(&AuthMethod::ChapSha1, DEFAULT_USERNAME, "").into_string(),
             )),
             owner: initiator,
             ty: UserMetadataKind::User,

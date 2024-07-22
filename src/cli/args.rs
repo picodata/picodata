@@ -1,4 +1,4 @@
-use crate::address::Address;
+use crate::address::{HttpAddress, IprotoAddress};
 use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceId;
 use crate::util::Uppercase;
@@ -83,7 +83,7 @@ pub struct Run {
     )]
     /// Address the other instances should use to connect to this instance.
     /// Defaults to `--listen` value.
-    pub advertise_address: Option<Address>,
+    pub advertise_address: Option<IprotoAddress>,
 
     #[clap(
         short = 'l',
@@ -94,11 +94,11 @@ pub struct Run {
     /// Instance network address.
     ///
     /// By default "localhost:3301" is used.
-    pub listen: Option<Address>,
+    pub listen: Option<IprotoAddress>,
 
     /// Pgproto server address.
     #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_PG_LISTEN")]
-    pub pg_listen: Option<Address>,
+    pub pg_listen: Option<IprotoAddress>,
 
     #[clap(
         long = "peer",
@@ -112,7 +112,7 @@ pub struct Run {
     /// and joining an instance to an existing cluster.
     ///
     /// By default "localhost:3301" is used.
-    pub peers: Vec<Address>,
+    pub peers: Vec<IprotoAddress>,
 
     #[clap(
         long = "failure-domain",
@@ -161,7 +161,7 @@ pub struct Run {
 
     #[clap(long, value_name = "[HOST][:PORT]", env = "PICODATA_HTTP_LISTEN")]
     /// HTTP server address.
-    pub http_listen: Option<Address>,
+    pub http_listen: Option<HttpAddress>,
 
     #[clap(short = 'i', long = "interactive", env = "PICODATA_INTERACTIVE_MODE")]
     /// Enable interactive console. Deprecated in 24.1.
@@ -355,7 +355,7 @@ pub struct Expel {
         default_value = "localhost:3301"
     )]
     /// Address of any picodata instance of the given cluster.
-    pub peer_address: Address,
+    pub peer_address: IprotoAddress,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
     /// Path to a plain-text file with the `admin` password.
@@ -454,7 +454,7 @@ pub struct Connect {
     #[clap(value_name = "ADDRESS")]
     /// Picodata instance address to connect. Format:
     /// `[user@][host][:port]`.
-    pub address: Address,
+    pub address: IprotoAddress,
 
     #[clap(long, env = "PICODATA_PASSWORD_FILE")]
     /// Path to a plain-text file with a password.

@@ -24,7 +24,7 @@ use storage::Clusterwide;
 use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
-use crate::address::Address;
+use crate::address::HttpAddress;
 use crate::instance::Instance;
 use crate::instance::State;
 use crate::instance::StateVariant::*;
@@ -200,7 +200,7 @@ fn preload_http() {
     preload!("http.mime_types", "http/mime_types.lua");
 }
 
-fn start_http_server(Address { host, port, .. }: &Address) {
+fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
     tlog!(Info, "starting http server at {host}:{port}");
     let lua = ::tarantool::lua_state();
     lua.exec_with(
