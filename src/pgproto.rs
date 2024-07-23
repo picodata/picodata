@@ -41,6 +41,9 @@ impl Config {
 }
 
 fn server_start(context: Context) {
+    // Help DBA diagnose storages by initializing them asap.
+    backend::storage::force_init_portals_and_statements();
+
     while let Ok(raw) = context.server.accept() {
         let stream = PgStream::new(raw);
         if let Err(e) = handle_client(stream, context.tls_acceptor.clone()) {

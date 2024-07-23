@@ -1,26 +1,35 @@
-use super::describe::{Describe, PortalDescribe, StatementDescribe};
-use super::describe::{MetadataColumn, QueryType};
-use super::result::{ExecuteResult, Rows};
-use crate::pgproto::error::{PgError, PgErrorCode, PgResult};
-use crate::pgproto::value::{FieldFormat, PgValue};
-use crate::storage::PropertyName;
-use crate::traft::node;
-use ::tarantool::tuple::Tuple;
+use super::{
+    describe::{Describe, MetadataColumn, PortalDescribe, QueryType, StatementDescribe},
+    result::{ExecuteResult, Rows},
+};
+use crate::{
+    pgproto::{
+        error::{PgError, PgErrorCode, PgResult},
+        value::{FieldFormat, PgValue},
+    },
+    storage::PropertyName,
+    tlog,
+    traft::node,
+};
 use rmpv::Value;
-use sbroad::executor::ir::ExecutionPlan;
-use sbroad::executor::Query;
-use sbroad::ir::Plan;
+use sbroad::{
+    executor::{ir::ExecutionPlan, Query},
+    ir::Plan,
+};
 use serde::{Deserialize, Serialize};
-use std::cell::{Cell, RefCell};
-use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap};
-use std::iter::zip;
-use std::ops::Bound::{Excluded, Included};
-use std::os::raw::c_int;
-use std::rc::{Rc, Weak};
-use std::vec::IntoIter;
-use tarantool::proc::{Return, ReturnMsgpack};
-use tarantool::tuple::FunctionCtx;
+use std::{
+    cell::{Cell, RefCell},
+    collections::{btree_map::Entry, BTreeMap, HashMap},
+    iter::zip,
+    ops::Bound,
+    os::raw::c_int,
+    rc::{Rc, Weak},
+    vec::IntoIter,
+};
+use tarantool::{
+    proc::{Return, ReturnMsgpack},
+    tuple::{FunctionCtx, Tuple},
+};
 
 use crate::sql::dispatch;
 use crate::sql::router::RouterRuntime;
@@ -134,8 +143,8 @@ impl<S> PgStorage<S> {
 
     pub fn names_by_client_id(&self, id: ClientId) -> Vec<Rc<str>> {
         let range = (
-            Included((id, Rc::clone(&self.empty_name))),
-            Excluded((id + 1, Rc::clone(&self.empty_name))),
+            Bound::Included((id, Rc::clone(&self.empty_name))),
+            Bound::Excluded((id + 1, Rc::clone(&self.empty_name))),
         );
         self.map
             .range(range)
@@ -160,7 +169,10 @@ type StatementStorage = PgStorage<StatementHolder>;
 
 impl StatementStorage {
     fn new() -> Self {
-        PgStorage::with_context(StorageContext::statements())
+        let context = StorageContext::statements();
+        let capacity = context.get_capacity().expect("storage capacity");
+        tlog!(Info, "creating statement storage with capacity {capacity}");
+        PgStorage::with_context(context)
     }
 
     pub fn get(&self, key: &(ClientId, Rc<str>)) -> Option<Statement> {
@@ -168,17 +180,14 @@ impl StatementStorage {
     }
 }
 
-impl Default for StatementStorage {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 type PortalStorage = PgStorage<Portal>;
 
 impl PortalStorage {
     pub fn new() -> Self {
-        PgStorage::with_context(StorageContext::portals())
+        let context = StorageContext::portals();
+        let capacity = context.get_capacity().expect("storage capacity");
+        tlog!(Info, "creating portal storage with capacity {capacity}");
+        PgStorage::with_context(context)
     }
 
     pub fn remove_portals_by_statement(&mut self, statement: &Statement) {
@@ -187,15 +196,16 @@ impl PortalStorage {
     }
 }
 
-impl Default for PortalStorage {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
+// TODO: those shoudn't be global variables; move them to some context (backend?).
 thread_local! {
     pub static PG_STATEMENTS: Rc<RefCell<StatementStorage>> = Rc::new(RefCell::new(StatementStorage::new()));
     pub static PG_PORTALS: Rc<RefCell<PortalStorage>> = Rc::new(RefCell::new(PortalStorage::new()));
+}
+
+/// Eagerly initialize storages for prepared statements and portals.
+pub fn force_init_portals_and_statements() {
+    PG_STATEMENTS.with(|_| {});
+    PG_PORTALS.with(|_| {});
 }
 
 pub fn with_portals_mut<T, F>(key: (ClientId, Rc<str>), f: F) -> PgResult<T>
