@@ -1107,6 +1107,8 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
     # Wake up the catching up instance.
     i3.start()
     i3.wait_online()
+    # Wait for the raft index at which "drop_me" is dropped.
+    i3.raft_wait_index(i1.raft_get_index())
 
     # The space was dropped.
     assert i3.call("box.space._space.index.name:get", "drop_me") is None
