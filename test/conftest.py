@@ -587,7 +587,7 @@ class Instance:
         """
         if self.audit:
             if isinstance(self.audit, bool):
-                return os.path.join(self.data_dir, "audit.log")
+                return "/dev/stderr"
             if isinstance(self.audit, str):
                 return self.audit
         return None

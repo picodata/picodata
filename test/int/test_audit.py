@@ -1,6 +1,7 @@
 import signal
 import pytest
 import json
+import os
 
 from typing import Generator
 
@@ -14,6 +15,14 @@ from conftest import (
     Cluster,
     Retriable,
 )
+
+
+@pytest.fixture
+def instance_with_audit_file(unstarted_instance: Instance):
+    unstarted_instance.audit = os.path.join(unstarted_instance.data_dir, "audit.log")
+    unstarted_instance.start()
+    unstarted_instance.wait_online()
+    yield unstarted_instance
 
 
 class AuditFile:
@@ -32,7 +41,8 @@ def take_until_title(events, title: str) -> dict | None:
     return None
 
 
-def test_startup(instance: Instance):
+def test_startup(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
     instance.terminate()
 
@@ -97,7 +107,8 @@ def test_startup(instance: Instance):
     assert event["raft_id"] == "1"
 
 
-def test_integrity_violation(instance: Instance):
+def test_integrity_violation(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     # Instance was up for some time
     instance.start()
     instance.terminate()
@@ -122,7 +133,8 @@ def test_integrity_violation(instance: Instance):
     )
 
 
-def test_recover_database(instance: Instance):
+def test_recover_database(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
     instance.wait_online()
 
@@ -153,7 +165,8 @@ def test_recover_database(instance: Instance):
     assert event["raft_id"] == "1"
 
 
-def test_create_drop_table(instance: Instance):
+def test_create_drop_table(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
     instance.sql(
         """
@@ -185,7 +198,8 @@ def test_create_drop_table(instance: Instance):
     assert drop_table["initiator"] == "pico_service"
 
 
-def test_user(instance: Instance):
+def test_user(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
     instance.sql(
         """
@@ -236,7 +250,8 @@ def test_user(instance: Instance):
     assert drop_user["initiator"] == "pico_service"
 
 
-def test_role(instance: Instance):
+def test_role(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
 
     setup = [
@@ -319,7 +334,8 @@ def test_role(instance: Instance):
     assert drop_role["initiator"] == "bubba"
 
 
-def test_index(instance: Instance):
+def test_index(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
     instance.sql(
         """
@@ -355,15 +371,17 @@ def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
 
 
 def test_join_expel_instance(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
+    cluster.deploy(instance_count=0)
+    audit = os.path.join(cluster.data_dir, "i1", "audit.log")
+    i1 = cluster.add_instance(audit=audit)
 
     audit_i1 = AuditFile(i1.audit_flag_value)
     for _ in audit_i1.events():
         pass
     events = audit_i1.events()
 
-    i2 = cluster.add_instance(instance_id="i2")
+    audit = os.path.join(cluster.data_dir, "i2", "audit.log")
+    i2 = cluster.add_instance(instance_id="i2", audit=audit)
 
     join_instance = take_until_title(events, "join_instance")
     assert join_instance is not None
@@ -400,10 +418,12 @@ def test_join_expel_instance(cluster: Cluster):
 
 
 def test_join_connect_instance(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
+    cluster.deploy(instance_count=0)
+    audit = os.path.join(cluster.data_dir, "i1", "audit.log")
+    i1 = cluster.add_instance(audit=audit)
 
-    i2 = cluster.add_instance(instance_id="i2")
+    audit = os.path.join(cluster.data_dir, "i2", "audit.log")
+    i2 = cluster.add_instance(instance_id="i2", audit=audit)
     i2.terminate()
 
     events = AuditFile(i2.audit_flag_value).events()
@@ -433,7 +453,8 @@ def test_join_connect_instance(cluster: Cluster):
     assert connect_db["initiator"] == "admin"
 
 
-def test_auth(instance: Instance):
+def test_auth(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
 
     instance.sql(
@@ -494,7 +515,8 @@ def test_auth(instance: Instance):
     assert auth_fail["initiator"] == "ymir"
 
 
-def test_access_denied(instance: Instance):
+def test_access_denied(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
 
     instance.create_user(with_name="ymir", with_password="T0psecret")
@@ -524,7 +546,8 @@ def test_access_denied(instance: Instance):
     assert access_denied["initiator"] == "ymir"
 
 
-def test_grant_revoke(instance: Instance):
+def test_grant_revoke(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
 
     user = "ymir"
@@ -739,7 +762,8 @@ def check_rotate(audit: AuditFile):
     assert rotate["severity"] == "low"
 
 
-def test_rotation(instance: Instance):
+def test_rotation(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
 
     user = "ymir"
@@ -759,7 +783,8 @@ def test_rotation(instance: Instance):
     Retriable(timeout=5, rps=1).call(check_rotate, audit)
 
 
-def test_rename_user(instance: Instance):
+def test_rename_user(instance_with_audit_file: Instance):
+    instance = instance_with_audit_file
     instance.start()
 
     user = "ymir"
