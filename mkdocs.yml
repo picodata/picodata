@@ -229,6 +229,9 @@ plugins:
   ## > .guess_lang: true
   ## Pygments пытается определить используемый во фрагменте кода язык, если он не указан
   ## https://facelessuser.github.io/pymdown-extensions/extensions/highlight/#options
+  ## > pymdownx.keys
+  ## Добавляет синтаксис для рендеринга клавиш клавиатуры и их сочетаний
+  ## https://facelessuser.github.io/pymdown-extensions/extensions/keys/
   ## > md_in_html
   ## Позволяет использовать Markdown внутри тегов HTML
   ## https://python-markdown.github.io/extensions/md_in_html/
@@ -245,6 +248,7 @@ markdown_extensions:
       use_pygments: true
       pygments_lang_class: true
       guess_lang: true
+  - pymdownx.keys
   - md_in_html
 
 # Валидация ссылок
