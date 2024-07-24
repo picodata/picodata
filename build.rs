@@ -373,6 +373,7 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
                 .args([
                     "-DENABLE_BUNDLED_LDAP=OFF",
                     "-DENABLE_BUNDLED_LIBCURL=OFF",
+                    "-DENABLE_BUNDLED_LIBUNWIND=OFF",
                     "-DENABLE_BUNDLED_LIBYAML=OFF",
                     "-DENABLE_BUNDLED_OPENSSL=OFF",
                     "-DENABLE_BUNDLED_ZSTD=OFF",
@@ -505,9 +506,14 @@ fn build_tarantool(jsc: Option<&jobserver::Client>, build_root: &Path, use_stati
         // duplicate symbols which is not allowed (by default) when linking with
         // via -l... option
         let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
-        let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
-        rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
-        rustc::link_arg(format!("{lib_dir}/libunwind.a"));
+        if use_static_build {
+            let lib_dir = format!("{tarantool_build}/third_party/libunwind/src/.libs");
+            rustc::link_arg(format!("{lib_dir}/libunwind-{arch}.a"));
+            rustc::link_arg(format!("{lib_dir}/libunwind.a"));
+        } else {
+            rustc::link_lib_dynamic(format!("unwind-{arch}"));
+            rustc::link_lib_dynamic("unwind");
+        }
     }
 
     rustc::link_arg("-lc");
