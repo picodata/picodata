@@ -8,23 +8,23 @@ RUN set -e; \
         build-essential \
         git unzip wget curl tzdata \
         libtool autoconf cmake make \
+        pkg-config \
+        libcurl4-openssl-dev \
+        libicu-dev \
+        libldap2-dev \
+        libreadline-dev \
+        libsasl2-dev \
+        libssl-dev \
+        libunwind-dev \
+        libyaml-dev \
+        libzstd-dev \
+        ncurses-dev \
         python3 \
-        python3-yaml \
-        python3-six \
         python3-gevent \
         python3-pip \
-        libzstd-dev \
-        libyaml-dev \
-        libcurl4-openssl-dev \
-        libssl-dev \
-        ncurses-dev \
-        libreadline-dev \
-        libicu-dev \
-        libsasl2-dev \
-        pkg-config \
-        libldap2-dev \
-        libssl-dev && \
-        apt-get clean all
+        python3-six \
+        python3-yaml \
+        && apt-get clean all
 
 RUN set -e; \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
