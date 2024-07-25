@@ -3,7 +3,7 @@ import { TPages } from "./types";
 export const instances: TPages["instances"] = {
   cluster: {
     capacityProgress: {
-      label: "Нагрузка на память",
+      label: "Потребление памяти",
       valueLabel: "Использовано",
     },
     replicasets: {
