@@ -543,6 +543,7 @@ downstream-stress-test:
 upload-picodata-to-binary-front-deploy:
   stage: front-deploy
   extends: .upload-picodata-to-binary
+  needs: []
   when: manual
 
 downstream-front-deploy:
