@@ -4676,3 +4676,340 @@ def test_create_role_and_user_with_empty_name(cluster: Cluster):
         match="expected non empty name",
     ):
         i1.sql("""ALTER USER "andy" RENAME TO "" """)
+
+
+def test_limit(cluster: Cluster):
+    cluster.deploy(instance_count=3)
+    [i1, i2, i3] = cluster.instances
+    # Make sure buckets are balanced before routing via bucket_id to eliminate
+    # flakiness due to bucket rebalancing
+    for i in cluster.instances:
+        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+
+    ###########################
+    # Tests with sharded tables
+    ###########################
+
+    i1.sql(
+        """
+        CREATE TABLE "t" ("id" INTEGER, "n" INTEGER, PRIMARY KEY("id"))
+        DISTRIBUTED BY ("id")
+        """
+    )
+
+    i1.sql(
+        """
+        INSERT INTO "t"
+            VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7)
+        """
+    )
+    data = i1.retriable_sql(""" SELECT * FROM "t" """)
+    assert len(data) == 7
+
+    # Test that LIMIT affects the number of rows returned.
+    data = i1.retriable_sql(""" SELECT * FROM "t" LIMIT 0 """)
+    assert len(data) == 0
+
+    data = i2.retriable_sql(""" SELECT * FROM "t" LIMIT 1 """)
+    assert len(data) == 1
+
+    data = i3.retriable_sql(""" SELECT * FROM "t" LIMIT 2 """)
+    assert len(data) == 2
+
+    # Limit exceeding the number of rows returned has no effect.
+    data = i1.retriable_sql(""" SELECT * FROM "t" LIMIT 100 """)
+    assert len(data) == 7
+
+    # Limit all has no effect.
+    data = i2.retriable_sql(""" SELECT * FROM "t" LIMIT ALL """)
+    assert len(data) == 7
+
+    # Limit null is the same as limit all.
+    data = i3.retriable_sql(""" SELECT * FROM "t" LIMIT NULL """)
+    assert len(data) == 7
+
+    # LIMIT + UNION ALL.
+    data = i1.retriable_sql(
+        """
+        SELECT * FROM "t"
+        UNION ALL
+        SELECT * FROM "t"
+        LIMIT 1
+        """
+    )
+    assert len(data) == 1
+
+    # LIMIT + ORDER BY.
+    data = i2.retriable_sql(
+        """
+        SELECT "id" FROM "t"
+        ORDER BY "id"
+        LIMIT 5
+        """
+    )
+    # Verify the order.
+    assert data == [[1], [2], [3], [4], [5]]
+
+    # LIMIT + COUNT.
+    data = i3.retriable_sql(
+        """
+        SELECT count(*) FROM "t"
+        LIMIT 2
+        """
+    )
+    assert len(data) == 1
+
+    # LIMIT + COUNT + GROUP BY.
+    data = i2.retriable_sql(
+        """
+        SELECT "id", count(*) FROM "t"
+        GROUP BY "id"
+        LIMIT 5
+        """
+    )
+    assert len(data) == 5
+
+    # LIMIT + COUNT + GROUP BY + HAVING.
+    data = i2.retriable_sql(
+        """
+        SELECT "id", count(*) FROM "t"
+        GROUP BY "id"
+        HAVING "id" > 2
+        LIMIT 3
+        """
+    )
+    assert len(data) == 3
+
+    # Create a table for join.
+    i1.sql(
+        """
+        CREATE TABLE "w" ("id" INTEGER, "n" INTEGER, PRIMARY KEY("id"))
+        DISTRIBUTED BY ("id")
+        """
+    )
+    i1.sql(""" INSERT INTO "w" VALUES (-1, 1), (-2, 2), (-3, 3), (-4, 4) """)
+
+    # LIMIT + JOIN.
+    data = i2.retriable_sql(
+        """
+        SELECT "w"."n" FROM "t" JOIN "w" ON "t"."n" = "w"."n"
+        LIMIT 3
+        """
+    )
+    assert len(data) == 3
+
+    # LIMIT in a subqeury.
+    data = i2.retriable_sql(
+        """
+        SELECT * FROM (SELECT * FROM "t" LIMIT 1)
+        """
+    )
+    assert len(data) == 1
+
+    # LIMIT + LIMIT in a subquery
+    data = i2.retriable_sql(
+        """
+        SELECT * FROM (SELECT * FROM "t" LIMIT 2) LIMIT 1
+        """
+    )
+    assert len(data) == 1
+
+    # Create a huge distributed table.
+    i1.retriable_sql(
+        """
+        CREATE TABLE "huge" ("id" INTEGER, PRIMARY KEY("id"))
+        DISTRIBUTED BY ("id")
+        """
+    )
+    # Fill in the table with values.
+    for n in range(0, 5100, 4):
+        i1.sql(
+            """
+            INSERT INTO "huge" VALUES
+                ($1),
+                (CAST($1 AS INT) + 1),
+                (CAST($1 AS INT) + 2),
+                (CAST($1 AS INT) + 3)
+            """,
+            n,
+        )
+
+    # Read without LIMIT should fail.
+    with pytest.raises(TarantoolError, match="Exceeded maximum number of rows"):
+        i1.retriable_sql(""" SELECT * FROM "huge" """)
+
+    # Test read with LIMIT.
+    data = i1.retriable_sql(""" SELECT * FROM "huge" LIMIT 1000 """)
+    assert len(data) == 1000
+
+    data = i1.retriable_sql(""" SELECT * FROM (SELECT * FROM "huge" LIMIT 1000) """)
+    assert len(data) == 1000
+
+    data = i1.retriable_sql(
+        """ SELECT * FROM "huge" UNION ALL SELECT * FROM "huge" LIMIT 1000 """
+    )
+    assert len(data) == 1000
+
+    ##########################
+    # Tests with global tables
+    ##########################
+
+    i2.sql(
+        """
+        CREATE TABLE "g" ("id" INTEGER, "n" INTEGER, PRIMARY KEY("id"))
+        DISTRIBUTED GLOBALLY
+        """
+    )
+
+    i1.sql(
+        """
+        INSERT INTO "g"
+            VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7)
+        """
+    )
+    data = i1.retriable_sql(""" SELECT * FROM "g" """)
+    assert len(data) == 7
+
+    data = i3.retriable_sql(""" SELECT * FROM "g" LIMIT 2 """)
+    assert len(data) == 2
+
+    # LIMIT + ORDER BY.
+    data = i2.retriable_sql(
+        """
+        SELECT "id" FROM "g"
+        ORDER BY "id"
+        LIMIT 5
+        """
+    )
+    # Verify the order.
+    assert data == [[1], [2], [3], [4], [5]]
+
+    # LIMIT + COUNT.
+    data = i3.retriable_sql(
+        """
+        SELECT count(*) FROM "t"
+        LIMIT 2
+        """
+    )
+    assert len(data) == 1
+
+    # LIMIT + COUNT + GROUP BY + HAVING.
+    data = i2.retriable_sql(
+        """
+        SELECT "id", count(*) FROM "g"
+        GROUP BY "id"
+        HAVING "id" > 2
+        LIMIT 3
+        """
+    )
+    assert len(data) == 3
+
+    ######################################
+    # Tests with global and sharded tables
+    ######################################
+
+    # LIMIT + UNION ALL
+    data = i1.retriable_sql(
+        """
+        SELECT * FROM "t"
+        UNION ALL
+        SELECT * FROM "g"
+        LIMIT 10
+        """
+    )
+    assert len(data) == 10
+
+    # # LIMIT + JOIN.
+    data = i3.retriable_sql(
+        """
+        SELECT "t"."n" FROM "t" JOIN "g" ON "t"."n" = "g"."n"
+        LIMIT 4
+        """
+    )
+    assert len(data) == 4
+
+    # LIMIT + NOT IN.
+    data = i3.retriable_sql(
+        """
+        SELECT "n" FROM "t" WHERE "n" NOT IN (SELECT "n" FROM "g" ORDER BY "n" LIMIT 3)
+        LIMIT 3
+        """
+    )
+    assert len(data) == 3
+
+    ##################
+    # Tests with CTEs
+    ##################
+
+    # Initialize sharded table
+    ddl = i1.sql(
+        """
+        create table t (a int not null, b int, primary key (a))
+        distributed by (b)
+        option (timeout = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+    data = i1.sql(
+        """
+        insert into t values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)
+        """
+    )
+    assert data["row_count"] == 5
+
+    # LIMIT + basic CTE
+    data = i1.retriable_sql(
+        """
+        with cte (b) as (select a from t where a > 1 limit 3)
+        select * from cte
+        """
+    )
+    assert len(data) == 3
+
+    # LIMIT + basic CTE
+    data = i1.retriable_sql(
+        """
+        with cte (b) as (select a from t where a > 1)
+        select * from cte limit 3
+        """
+    )
+    assert len(data) == 3
+
+    # LIMIT + nested CTE
+    data = i1.retriable_sql(
+        """
+        with cte1 (b) as (select a from t where a > 2 limit 2),
+             cte2 as (select b from cte1)
+        select * from cte2
+        """
+    )
+    assert len(data) == 2
+
+    # LIMIT + reuse CTE
+    data = i1.retriable_sql(
+        """
+        with cte (b) as (select a from t where a > 2 limit 2)
+        select b from cte
+        union all
+        select b + b from cte
+        """
+    )
+    assert len(data) == 4
+
+    # LIMIT + global CTE
+    data = i1.sql(
+        """
+        with cte as (select "n" from "g" where "n" < 5 order by "n" limit 3)
+        select * from cte
+        """
+    )
+    assert data == [[1], [2], [3]]
+
+    # LIMIT + global CTE
+    data = i2.sql(
+        """
+        with cte as (select "n" from "g" where "n" < 5 order by "n" limit 3)
+        select * from cte
+        """
+    )
+    assert data == [[1], [2], [3]]

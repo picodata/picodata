@@ -182,7 +182,8 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::Union { .. }
                 | Relational::UnionAll { .. }
                 | Relational::Values { .. }
-                | Relational::ValuesRow { .. } => Ok(CommandTag::Select),
+                | Relational::ValuesRow { .. }
+                | Relational::Limit { .. } => Ok(CommandTag::Select),
             },
             Node::Expression(_) | Node::Parameter(_) => Err(SbroadError::Invalid(
                 Entity::Node,
