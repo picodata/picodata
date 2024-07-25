@@ -89,6 +89,102 @@ box.space._pico_property:get("current_schema_version")
 Каждое изменение схемы данных в кластере приводит к
 увеличению этого номера.
 
+## Получение журнала raft-лидера {: #getting_raft_leader_logs }
+
+Для доступа к диагностическому журналу raft-лидера выполните следующие шаги.
+
+Вычислите raft-лидера в кластере. Для этого [подключитесь](connecting.md) к
+  административной консоли любого инстанса:
+
+  ```shell
+  picodata admin ./admin.sock
+  ```
+Переключите язык ввода на Lua и узнайте идентификатор текущего
+raft-лидера:
+
+  ```
+  \lua
+  pico.raft_status()
+  ```
+
+Пример вывода:
+
+```
+---
+- main_loop_status: idle
+  leader_id: 1
+  id: 1
+  term: 2
+  raft_state: Leader
+...
+```
+
+C помощью полученного `leader_id` выясните адрес сервера (peer_address),
+  на котором запущен инстанс, являющийся raft-лидером:
+
+  ```
+  \sql
+  SELECT * FROM "_pico_peer_address" WHERE "raft_id" = 1
+  ```
+
+Пример вывода:
+
+```
++---------+--------------------+
+| raft_id |      address       |
++==============++==============+
+| 1       | "192.168.0.1:3301" |
++---------+--------------------+
+(1 rows)
+```
+
+
+Подключитесь к этому серверу по ssh и прочитайте данные диагностического
+журнала через `journalctl`. Отфильтруйте сообщения по юниту, отвечающему
+за инстанса Picodata. Для кластера с именем `test` и тиром `default`
+(заданными, к примеру, в инвентарном файле Ansible) команды будут
+такими:
+
+  ```
+  ssh 192.168.0.1
+  journalctl -u test@default-1000.service
+  ```
+
+Пример вывода:
+
+```
+ systemd[1]: Starting Picodata cluster test@default-1000...
+ systemd[1]: Started Picodata cluster test@default-1000.
+ picodata[4731]: 'cluster.cluster_id': "test"
+ picodata[4731]: 'cluster.tier': {"default": {"replication_factor": 3, "can_vote": true}}
+ picodata[4731]: 'cluster.default_replication_factor': 1
+ picodata[4731]: 'instance.data_dir': "/var/lib/picodata/test/default-1000"
+ picodata[4731]: 'instance.config_file': "/etc/picodata/test/default.conf"
+ picodata[4731]: 'instance.instance_id': "default-1000"
+ picodata[4731]: 'instance.tier': "default"
+ picodata[4731]: 'instance.failure_domain': {"HOST": "SERVER-1-1", "DC": "[DC1]"}
+ picodata[4731]: 'instance.peer': ["big1-demo-1.picodata.int:13301"]
+ picodata[4731]: 'instance.listen': "0.0.0.0:13301"
+ picodata[4731]: 'instance.advertise_address': "big1-demo-1.picodata.int:13301"
+ picodata[4731]: 'instance.http_listen': "0.0.0.0:18001"
+ picodata[4731]: 'instance.admin_socket': "/var/run/picodata/test/default-1000.sock"
+ picodata[4731]: 'instance.plugin_dir': "/var/lib/picodata/test/plugins"
+ picodata[4731]: 'instance.shredding': false
+ picodata[4731]: 'instance.log.level': "info"
+ picodata[4731]: 'instance.log.format': "plain"
+ picodata[4731]: 'instance.memtx.memory': 73400320
+ picodata[4731]: 'instance.memtx.checkpoint_count': 3
+ picodata[4731]: 'instance.memtx.checkpoint_interval': 7200
+ picodata[4731]: 'instance.vinyl.memory': 134217728
+ picodata[4731]: 'instance.vinyl.cache': 134217728
+ picodata[4731]: 'instance.iproto.max_concurrent_messages': 1024
+ picodata[4731]: 'instance.pg.listen': "0.0.0.0:15001"
+ picodata[4731]: 'instance.pg.ssl': false
+ picodata[4731]: [supervisor:4731] running StartDiscover
+ picodata[4733]: entering discovery phase
+ ...
+```
+
 ## Метрики инстанса {: #instance_metrics }
 
 Функциональность сбора метрик позволяет получать параметры работы СУБД
