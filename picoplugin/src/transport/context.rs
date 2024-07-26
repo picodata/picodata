@@ -646,7 +646,7 @@ mod tests {
         data.extend(b"\xa3foo\xa4");
         let e = FfiSafeContext::decode_msgpack_impl("path", &data).unwrap_err();
         #[rustfmt::skip]
-        assert_eq!(e.to_string(), "InvalidMsgpack: io error: failed to fill whole buffer");
+        assert_eq!(e.to_string(), "InvalidMsgpack: msgpack read error: failed to read MessagePack data");
 
         let mut data = Vec::new();
         data.extend(b"\x85");

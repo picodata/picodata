@@ -2213,13 +2213,12 @@ where
 
 impl<T> Iterator for EntryIter<T, MP_CUSTOM>
 where
-    T: ::tarantool::msgpack::Decode,
+    for<'de> T: ::tarantool::msgpack::Decode<'de>,
 {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        let tuple = self.iter.next()?;
-        let entry =
-            ::tarantool::msgpack::decode(&tuple.to_vec()).expect("entry should decode correctly");
+        let tuple = self.iter.next()?.to_vec();
+        let entry = ::tarantool::msgpack::decode(&tuple).expect("entry should decode correctly");
         Some(entry)
     }
 }
