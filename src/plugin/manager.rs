@@ -15,6 +15,7 @@ use crate::traft::node::Node;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use picoplugin::background::{Error, InternalGlobalWorkerManager, ServiceId};
+use picoplugin::metrics::InternalGlobalMetricsCollection;
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picoplugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
@@ -310,8 +311,9 @@ impl PluginManager {
         };
 
         if let Some(plugin_state) = plugin {
-            // stop all background jobs first
+            // stop all background jobs and remove metrics first
             stop_background_jobs(std::iter::once(&plugin_state.services));
+            remove_metrics(std::iter::once(&plugin_state.services));
 
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
@@ -331,8 +333,9 @@ impl PluginManager {
         let plugins = self.plugins.lock();
         let services_to_stop = plugins.values().map(|state| &state.services);
 
-        // stop all background jobs first
+        // stop all background jobs and remove metrics first
         stop_background_jobs(services_to_stop.clone());
+        remove_metrics(services_to_stop.clone());
 
         for services in services_to_stop {
             for service in services.iter() {
@@ -587,8 +590,9 @@ impl PluginManager {
         let service_to_del = state.services.swap_remove(svc_idx);
         drop(plugins);
 
-        // stop all background jobs first
+        // stop all background jobs and remove metrics first
         stop_background_jobs(std::iter::once(&vec![service_to_del.clone()]));
+        remove_metrics(std::iter::once(&vec![service_to_del.clone()]));
 
         // call `on_stop` callback and drop service
         let mut service = service_to_del.lock();
@@ -651,8 +655,9 @@ impl PluginManager {
         };
 
         if let Some(plugin_state) = maybe_plugin_state {
-            // stop all background jobs first
+            // stop all background jobs and remove metrics first
             stop_background_jobs(std::iter::once(&plugin_state.services));
+            remove_metrics(std::iter::once(&plugin_state.services));
 
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();
@@ -888,5 +893,17 @@ fn stop_background_jobs<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
     }
     for fiber in fibers {
         fiber.join();
+    }
+}
+
+fn remove_metrics<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
+    for services in plugins {
+        for service in services.iter() {
+            let lock = service.lock();
+            let svc_id = ServiceId::new(&lock.plugin_name, &lock.name, &lock.version);
+            drop(lock);
+
+            InternalGlobalMetricsCollection::instance().remove(&svc_id)
+        }
     }
 }

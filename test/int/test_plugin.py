@@ -13,6 +13,7 @@ from conftest import (
     log_crawler,
 )
 from decimal import Decimal
+import requests  # type: ignore
 from conftest import (
     ErrorCode,
 )
@@ -2108,6 +2109,23 @@ def test_sdk_log(cluster: Cluster):
         default_config={"test_type": "log"},
     )
     assert crawler.matched
+
+
+@pytest.mark.webui
+def test_sdk_metrics(instance: Instance):
+    http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+    install_and_enable_plugin(
+        instance,
+        _PLUGIN_W_SDK,
+        _PLUGIN_W_SDK_SERVICES,
+        migrate=True,
+        default_config={"test_type": "metrics"},
+    )
+
+    response = requests.get(f"http://{http_listen}/metrics")
+    assert response.ok
+    assert "test_metric_1 1" in response.text
+    assert "test_metric_2 2" in response.text
 
 
 def test_sdk_background(cluster: Cluster):

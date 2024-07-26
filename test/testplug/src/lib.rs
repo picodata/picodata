@@ -18,6 +18,7 @@ use picoplugin::{internal, log, system};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::fmt::Display;
+use std::process::exit;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync;
@@ -393,6 +394,15 @@ impl Service for Service3 {
                 wm.register_job(my_job).unwrap();
             }
             "no_test" => {}
+            "metrics" => {
+                let collection = ctx.metrics_collection();
+                collection.append(|| {
+                    String::from(
+                        r#"test_metric_1 1
+test_metric_2 2"#,
+                    )
+                });
+            }
             _ => {
                 panic!("invalid test type")
             }

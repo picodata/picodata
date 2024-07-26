@@ -227,8 +227,20 @@ fn start_http_server(Address { host, port, .. }: &Address) {
         }),
     )
     .expect("failed to add route api/v1/cluster to http server");
-    lua.exec(
-        "pico.httpd:route({method = 'GET', path = 'metrics' }, require('metrics.plugins.prometheus').collect_http)",
+
+    lua.exec_with(
+        r#"
+        local user_metrics = ... 
+        pico.httpd:route({method = 'GET', path = 'metrics' }, function() 
+        local resp = require('metrics.plugins.prometheus').collect_http() 
+        resp.body = resp.body .. user_metrics() 
+        return resp
+        end)"#,
+        tlua::Function::new(|| -> _ {
+            let collection = picoplugin::metrics::InternalGlobalMetricsCollection::instance();
+            let metrics = collection.all_metrics();
+            metrics
+        }),
     )
     .expect("failed to add route metrics to http server");
 }
