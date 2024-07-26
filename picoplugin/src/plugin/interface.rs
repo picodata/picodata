@@ -451,4 +451,16 @@ impl ServiceRegistry {
             Some(_) => Err(()),
         }
     }
+
+    /// Return a registered list of (service name, plugin version) pairs.
+    pub fn dump(&self) -> Vec<(String, String)> {
+        self.services
+            .keys()
+            .map(|key| {
+                let service = key.0.to_string();
+                let version = key.1.to_string();
+                (service, version)
+            })
+            .collect()
+    }
 }

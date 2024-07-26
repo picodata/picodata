@@ -63,8 +63,8 @@ pub enum PluginError {
     ReadPluginDir(#[from] io::Error),
     #[error("Invalid shared object file: {0}")]
     InvalidSharedObject(#[from] libloading::Error),
-    #[error("Plugin partial load (some of services not found)")]
-    PartialLoad,
+    #[error("Plugin partial load (some of services not found: {0:?})")]
+    PartialLoad(Vec<String>),
     #[error("Callback: {0}")]
     Callback(#[from] PluginCallbackError),
     #[error("Attempt to call a disabled plugin")]

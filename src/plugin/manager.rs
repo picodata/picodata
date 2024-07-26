@@ -118,8 +118,12 @@ impl PluginManager {
             }
 
             // trying to load a dynamic library
-            let Ok(lib) = (unsafe { LibraryWrapper::new(path) }) else {
-                continue;
+            let lib = match unsafe { LibraryWrapper::new(path.clone()) } {
+                Ok(lib) => lib,
+                Err(e) => {
+                    tlog!(Warning, "error while open plugin candidate: {e}");
+                    continue;
+                }
             };
             let lib = Rc::new(lib);
 
@@ -132,6 +136,12 @@ impl PluginManager {
             service_registrars.iter().for_each(|registrar| {
                 registrar(&mut registry);
             });
+
+            tlog!(
+                Info,
+                "Plugin registry content from file {path:?}: {:?}",
+                registry.dump()
+            );
 
             // validate all services to possible factory collisions
             service_defs.iter().try_for_each(|svc| {
@@ -174,7 +184,12 @@ impl PluginManager {
         }
 
         if !service_defs_to_load.is_empty() {
-            return Err(PluginError::PartialLoad);
+            return Err(PluginError::PartialLoad(
+                service_defs_to_load
+                    .into_iter()
+                    .map(|def| def.name)
+                    .collect(),
+            ));
         }
 
         if dry_run {
