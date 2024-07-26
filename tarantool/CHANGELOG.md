@@ -121,6 +121,8 @@
 - `msgpack::skip_value` now returns error in case there wasn't enough data to
   skip a msgpack value.
 - Bug in `Tuple::format` which could result in undefined behaviour (aka use after free).
+- `tlua::Push` and `tlua::PushInto` can now be used on non-empty structs and enums
+  with default values for constant generics.
 
 ### Deprecated
 

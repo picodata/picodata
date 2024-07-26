@@ -34,6 +34,18 @@ fn proc_macro_derive_push_impl(
     let info = Info::new(&input);
     let ctx = Context::with_generics(&input.generics).set_is_push_into(is_push_into);
     let (lifetimes, types, consts) = split_generics(&input.generics);
+    // We skip default values for constant generics parameters
+    // because they are not supported in impl blocks. You may want to check
+    // https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/219
+    let consts: Vec<syn::ConstParam> = consts
+        .into_iter()
+        .cloned()
+        .map(|mut param| {
+            param.eq_token = None;
+            param.default = None;
+            param
+        })
+        .collect();
     let (_, generics, where_clause) = input.generics.split_for_impl();
     let type_bounds = where_clause.map(|w| &w.predicates);
     let as_lua_bounds = info.push_bounds(&ctx);
