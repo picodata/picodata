@@ -4,6 +4,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::{mutex::MutexGuard, Mutex};
 use ::tarantool::proc;
 use ::tarantool::uuid::Uuid;
+use either::{Either, Left, Right};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::error::Error as StdError;
@@ -11,7 +12,6 @@ use std::time::{Duration, Instant};
 
 use crate::proc_name;
 use crate::traft;
-use crate::util::Either::{self, Left, Right};
 
 type Address = String;
 

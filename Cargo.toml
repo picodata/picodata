@@ -55,6 +55,7 @@ linkme = "0.3.14"
 pico_proc_macro = { path = "./pico_proc_macro" }
 picodata-sdk = { path = "./sdk/picodata-sdk" }
 picoplugin = { path = "./picoplugin", features = ["internal_test"] }
+either = "1.13.0"
 
 [dependencies.protobuf]
 version = "2.27"
