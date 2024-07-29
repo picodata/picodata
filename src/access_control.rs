@@ -31,6 +31,7 @@ use std::{
     fmt::Display,
 };
 
+use tarantool::auth::AuthMethod;
 use tarantool::{
     access_control::{
         box_access_check_ddl, box_access_check_space, PrivType,
@@ -43,6 +44,7 @@ use tarantool::{
 };
 
 use crate::storage::ClusterwideTable;
+use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::{
     schema::{
@@ -55,6 +57,8 @@ use crate::{
         op::{self, Op},
     },
 };
+
+const SPECIAL_CHARACTERS: [char; 6] = ['&', '|', '?', '!', '$', '@'];
 
 tarantool::define_str_enum! {
     pub enum UserMetadataKind {
@@ -124,6 +128,72 @@ pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
             return Err(tarantool::error::TarantoolError::last().into());
         }
     }
+}
+
+pub fn validate_password(
+    password: &str,
+    auth_method: &AuthMethod,
+    storage: &Clusterwide,
+) -> traft::Result<()> {
+    if let AuthMethod::Ldap = auth_method {
+        // LDAP doesn't need password for authentication
+        return Ok(());
+    }
+
+    // This check is called from user facing API.
+    // A user is not expected to have access to _pico_property
+    let password_min_length =
+        session::with_su(ADMIN_ID, || storage.properties.password_min_length())??;
+    if password.len() < password_min_length {
+        return Err(Error::Other(
+            format!(
+                "password is too short: expected at least {}, got {}",
+                password_min_length,
+                password.len()
+            )
+            .into(),
+        ));
+    }
+
+    let password_enforce_uppercase =
+        session::with_su(ADMIN_ID, || storage.properties.password_enforce_uppercase())??;
+    if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
+        return Err(Error::Other(
+            "invalid password: password should contains at least one uppercase letter".into(),
+        ));
+    }
+
+    let password_enforce_lowercase =
+        session::with_su(ADMIN_ID, || storage.properties.password_enforce_lowercase())??;
+    if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
+        return Err(Error::Other(
+            "invalid password: password should contains at least one lowercase letter".into(),
+        ));
+    }
+
+    let password_enforce_digits =
+        session::with_su(ADMIN_ID, || storage.properties.password_enforce_digits())??;
+    if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
+        return Err(Error::Other(
+            "invalid password: password should contains at least one digit".into(),
+        ));
+    }
+
+    let password_enforce_specialchars = session::with_su(ADMIN_ID, || {
+        storage.properties.password_enforce_specialchars()
+    })??;
+    if password_enforce_specialchars && !password.chars().any(|ch| SPECIAL_CHARACTERS.contains(&ch))
+    {
+        return Err(Error::Other(
+            format!(
+                "invalid password: password should contains at least one special character - {:?}",
+                SPECIAL_CHARACTERS
+            )
+            .into(),
+        ));
+    }
+
+    Ok(())
 }
 
 /// There are no cases when box_access_check_ddl is called several times

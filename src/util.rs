@@ -777,6 +777,7 @@ pub(crate) fn effective_user_id() -> UserId {
 
 #[cfg(test)]
 use tarantool::space::Field;
+
 #[cfg(test)]
 #[track_caller]
 pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &str) {

@@ -3,24 +3,30 @@ use protobuf::Message;
 
 use ::tarantool::msgpack;
 
+use crate::access_control::validate_password;
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::ADMIN_ID;
 use crate::storage;
-use crate::storage::ClusterwideTable;
 use crate::storage::PropertyName;
+use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::tier::Tier;
+use crate::tlog;
 use crate::traft;
+use crate::traft::error::Error;
 use crate::traft::op;
 use std::collections::HashMap;
+use std::env;
+use tarantool::auth::{AuthData, AuthDef, AuthMethod};
 
 pub(super) fn prepare(
     config: &PicodataConfig,
     instance: &Instance,
     tiers: &HashMap<String, Tier>,
-) -> Vec<raft::Entry> {
+    storage: &Clusterwide,
+) -> Result<Vec<raft::Entry>, Error> {
     let mut init_entries = Vec::new();
     let mut ops = vec![];
 
@@ -236,7 +242,7 @@ pub(super) fn prepare(
     // Populate "_pico_user" and "_pico_priv" to match tarantool ones
     //
     // Note: op::Dml is used instead of op::Acl because with Acl
-    // replicas will attempt to apply these records to coresponding
+    // replicas will attempt to apply these records to corresponding
     // tarantool spaces which is not needed
     let mut ops = vec![];
     for (user_def, privilege_defs) in &schema::system_user_definitions() {
@@ -282,7 +288,45 @@ pub(super) fn prepare(
     );
 
     //
-    // Populate "_pico_table" & "_pico_index" with defintions of builtins
+    // Set up password for admin from environment variable
+    //
+    if let Some(var_password) = env::var_os("PICODATA_ADMIN_PASSWORD") {
+        let password = var_password.into_string().map_err(|e| {
+            Error::other(format!(
+                "Failed to convert OsString: {}",
+                e.into_string().unwrap()
+            ))
+        })?;
+
+        let method = AuthMethod::ChapSha1;
+        let name = "admin";
+        validate_password(&password, &method, storage)?;
+        let data = AuthData::new(&method, name, &password);
+        let auth = AuthDef::new(method, data.into_string());
+
+        let op_elem = op::Op::Acl(op::Acl::ChangeAuth {
+            user_id: ADMIN_ID,
+            auth,
+            initiator: ADMIN_ID,
+            schema_version: 1,
+        });
+
+        let context = traft::EntryContext::Op(op_elem);
+        init_entries.push(
+            traft::Entry {
+                entry_type: raft::EntryType::EntryNormal,
+                index: (init_entries.len() + 1) as _,
+                term: traft::INIT_RAFT_TERM,
+                data: vec![],
+                context,
+            }
+            .into(),
+        );
+        tlog!(Info, "Password for user=admin has been set successfully");
+    }
+
+    //
+    // Populate "_pico_table" & "_pico_index" with definitions of builtins
     //
     let mut ops = vec![];
     for (table_def, index_defs) in schema::system_table_definitions() {
@@ -333,5 +377,5 @@ pub(super) fn prepare(
         e.into()
     });
 
-    init_entries
+    Ok(init_entries)
 }

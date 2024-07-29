@@ -773,7 +773,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         ..Default::default()
     };
 
-    let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers);
+    let bootstrap_entries = bootstrap_entries::prepare(config, &instance, &tiers, &storage)?;
 
     let hs = raft::HardState {
         term: traft::INIT_RAFT_TERM,

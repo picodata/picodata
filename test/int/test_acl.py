@@ -1109,3 +1109,46 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
 
 # TODO: test acl get denied when there's an unfinished ddl
 # TODO: check various retryable cas outcomes when doing schema change requests
+
+
+def test_admin_set_password(cluster: Cluster):
+    import os
+
+    os.environ["PICODATA_ADMIN_PASSWORD"] = "#AdminX12345"
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env.update(os.environ)
+    i1.start()
+    i1.wait_online()
+
+    password = os.getenv("PICODATA_ADMIN_PASSWORD")
+    with i1.connect(timeout=5, user="admin", password=password) as conn:
+        query = conn.sql(
+            'select * from "_pico_user"',
+        )
+
+        users = query["rows"]
+        user_id = 1
+        expected_user = "admin"
+        expected_hash = ["chap-sha1", "oRcPNLNmy72trKXUATrE3RFCYtw="]
+        for user in users:
+            if user[0] == user_id:
+                assert expected_user in user
+                assert expected_hash in user
+
+    i2 = cluster.add_instance(wait_online=False)
+    i2.env.update(os.environ)
+    i2.start()
+    i2.wait_online()
+
+    is_connected = False
+    try:
+        with i2.connect(timeout=5, user="admin", password="") as conn:
+            conn.sql(
+                'select * from "_pico_user"',
+            )
+        is_connected = True
+    except Exception as err:
+        print(f"Expected error occurred: {err}")
+
+    assert not is_connected

@@ -1360,7 +1360,7 @@ impl NodeImpl {
             }
 
             Op::Acl(acl) => {
-                let v_local = local_schema_version().expect("storage shoudl not fail");
+                let v_local = local_schema_version().expect("storage should not fail");
                 let v_pending = acl.schema_version();
                 if v_local < v_pending {
                     if self.is_readonly() {

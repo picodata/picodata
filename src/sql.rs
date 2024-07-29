@@ -1,6 +1,6 @@
 //! Clusterwide SQL query execution.
 
-use crate::access_control::UserMetadataKind;
+use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
 use crate::schema::{
     wait_for_ddl_commit, CreateIndexParams, CreateProcParams, CreateTableParams, DistributionParam,
@@ -67,7 +67,6 @@ use otm::TracerKind;
 use self::router::DEFAULT_QUERY_TIMEOUT;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
-const SPECTIAL_CHARACTERS: [char; 6] = ['&', '|', '?', '!', '$', '@'];
 
 enum Privileges {
     Read,
@@ -575,75 +574,6 @@ impl TraftNode {
     }
 }
 
-fn validate_password(
-    password: &str,
-    auth_method: &AuthMethod,
-    node: &TraftNode,
-) -> traft::Result<()> {
-    if let AuthMethod::Ldap = auth_method {
-        // LDAP doesn't need password for authentication
-        return Ok(());
-    }
-
-    let storage = &node.storage;
-
-    // This check is called from user facing API.
-    // A user is not expected to have access to _pico_property
-    let password_min_length =
-        session::with_su(ADMIN_ID, || storage.properties.password_min_length())??;
-    if password.len() < password_min_length {
-        return Err(Error::Other(
-            format!(
-                "password is too short: expected at least {}, got {}",
-                password_min_length,
-                password.len()
-            )
-            .into(),
-        ));
-    }
-
-    let password_enforce_uppercase =
-        session::with_su(ADMIN_ID, || storage.properties.password_enforce_uppercase())??;
-    if password_enforce_uppercase && !password.chars().any(|ch| ch.is_uppercase()) {
-        return Err(Error::Other(
-            "invalid password: password should contains at least one uppercase letter".into(),
-        ));
-    }
-
-    let password_enforce_lowercase =
-        session::with_su(ADMIN_ID, || storage.properties.password_enforce_lowercase())??;
-    if password_enforce_lowercase && !password.chars().any(|ch| ch.is_lowercase()) {
-        return Err(Error::Other(
-            "invalid password: password should contains at least one lowercase letter".into(),
-        ));
-    }
-
-    let password_enforce_digits =
-        session::with_su(ADMIN_ID, || storage.properties.password_enforce_digits())??;
-    if password_enforce_digits && !password.chars().any(|ch| ch.is_ascii_digit()) {
-        return Err(Error::Other(
-            "invalid password: password should contains at least one digit".into(),
-        ));
-    }
-
-    let password_enforce_specialchars = session::with_su(ADMIN_ID, || {
-        storage.properties.password_enforce_specialchars()
-    })??;
-    if password_enforce_specialchars
-        && !password.chars().any(|ch| SPECTIAL_CHARACTERS.contains(&ch))
-    {
-        return Err(Error::Other(
-            format!(
-                "invalid password: password should contains at least one special character - {:?}",
-                SPECTIAL_CHARACTERS
-            )
-            .into(),
-        ));
-    }
-
-    Ok(())
-}
-
 /// Get grantee (user or role) UserId by its name.
 fn get_grantee_id(storage: &Clusterwide, grantee_name: &String) -> traft::Result<UserId> {
     if let Some(grantee_user_def) = storage.users.by_name(grantee_name)? {
@@ -925,7 +855,7 @@ fn reenterable_schema_change_request(
             check_name_emptyness(&name)?;
             let method = AuthMethod::from_str(&auth_method)
                 .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
-            validate_password(&password, &method, node)?;
+            validate_password(&password, &method, storage)?;
             let data = AuthData::new(&method, &name, &password);
             let auth = AuthDef::new(method, data.into_string());
             Params::CreateUser(name.to_string(), auth)
@@ -941,7 +871,7 @@ fn reenterable_schema_change_request(
                     let method = AuthMethod::from_str(&auth_method).map_err(|_| {
                         Error::Other(format!("Unknown auth method: {auth_method}").into())
                     })?;
-                    validate_password(&password, &method, node)?;
+                    validate_password(&password, &method, storage)?;
                     let data = AuthData::new(&method, &name, &password);
                     let auth = AuthDef::new(method, data.into_string());
                     AlterOptionParam::ChangePassword(auth)
