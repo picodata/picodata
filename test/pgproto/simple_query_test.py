@@ -27,7 +27,7 @@ def test_simple_query_flow_errors(postgres: Postgres):
     with pytest.raises(pg.DatabaseError, match="space BOOK not found"):
         cur.execute(
             """
-            INSERT INTO book VALUES (1, 2);
+            INSERT INTO "BOOK" VALUES (1, 2);
         """
         )
 

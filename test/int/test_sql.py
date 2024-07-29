@@ -531,10 +531,10 @@ def test_dml_on_global_tbls(cluster: Cluster):
 
     # test explain
     lines = i1.sql("explain insert into global_t select * from t")
-    expected_explain = """insert "GLOBAL_T" on conflict: fail
+    expected_explain = """insert "global_t" on conflict: fail
     motion [policy: full]
-        projection ("T"."X"::integer -> "X", "T"."Y"::integer -> "Y")
-            scan "T"
+        projection ("t"."x"::integer -> "x", "t"."y"::integer -> "y")
+            scan "t"
 execution options:
 sql_vdbe_max_steps = 45000
 vtable_max_rows = 5000"""
@@ -596,14 +596,14 @@ vtable_max_rows = 5000"""
     assert sorted(data) == [[6, 6]]
 
     # test user with write permession can do global dml
-    user = "USER"
+    user = "user"
     password = "PaSSW0RD"
     acl = i1.sql(f"create user {user} with password '{password}'")
     assert acl["row_count"] == 1
     # check we can't write yet
     with pytest.raises(
         TarantoolError,
-        match=rf"Write access to space 'GLOBAL_T' is denied for user '{user}'",
+        match=rf"Write access to space 'global_t' is denied for user '{user}'",
     ):
         i1.sql(
             "insert into global_t values (300, 300)",
@@ -635,7 +635,7 @@ def test_datetime(cluster: Cluster):
 
     data = i1.sql(
         """
-        insert into t select cast(COLUMN_5 as int), to_date(COLUMN_6, '%Y %d %m') from (values
+        insert into t select cast("COLUMN_5" as int), to_date("COLUMN_6", '%Y %d %m') from (values
             (1, '2010 10 10'),
             (2, '2020 20 02'),
             (3, '2010 10 10')
@@ -707,7 +707,7 @@ def test_datetime(cluster: Cluster):
     # check we can insert min/max date
     data = i1.sql(
         """
-        insert into t2 select cast(COLUMN_3 as int), to_date(COLUMN_4, '') from (values
+        insert into t2 select cast("COLUMN_3" as int), to_date("COLUMN_4", '') from (values
             (1, '-9999-12-31T23:59:59Z'),
             (2, '9999-12-31T23:59:59Z')
         )
@@ -720,7 +720,7 @@ def test_datetime(cluster: Cluster):
     with pytest.raises(TarantoolError, match="failed to decode tuple"):
         i1.sql(
             """
-            insert into t2 select cast(COLUMN_1 as int), to_date(COLUMN_2, '') from (values
+            insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
                 (1, '-10000-01-01T00:00:00Z')
             )
             """
@@ -729,7 +729,7 @@ def test_datetime(cluster: Cluster):
     with pytest.raises(TarantoolError, match="failed to decode tuple"):
         i1.sql(
             """
-            insert into t2 select cast(COLUMN_1 as int), to_date(COLUMN_2, '') from (values
+            insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
                 (2, '10000-01-01T00:00:00Z')
             )
             """
@@ -744,19 +744,19 @@ def test_datetime(cluster: Cluster):
 
     # check to_char with timezone specified
     data = i1.sql(
-        """select to_char(to_date(COLUMN_1, ''), '%Y-%m-%d')
+        """select to_char(to_date("COLUMN_1", ''), '%Y-%m-%d')
                   from (values (('1970-01-01T10:10:10 -3')))"""
     )
     assert sorted(data, key=lambda e: e[0]) == [["1970-01-01"]]
 
     data = i1.sql(
-        """select to_char(to_date(COLUMN_1, ''), '%Y-%Y-%Y')
+        """select to_char(to_date("COLUMN_1", ''), '%Y-%Y-%Y')
                   from (values (('1970-01-01T10:10:10 -3')))"""
     )
     assert sorted(data, key=lambda e: e[0]) == [["1970-1970-1970"]]
 
     data = i1.sql(
-        """select to_char(to_date(COLUMN_1, ''), '%Y-%m-%d %z')
+        """select to_char(to_date("COLUMN_1", ''), '%Y-%m-%d %z')
                   from (values (('1970-01-01T10:10:10 -3')))"""
     )
     assert sorted(data, key=lambda e: e[0]) == [["1970-01-01 -0300"]]
@@ -1270,9 +1270,12 @@ def test_union_on_global_tbls(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    for i, j in [(1, 1), (2, 2), (3, 2)]:
-        index = i1.cas("insert", "G", [i, j])
-        i1.raft_wait_index(index, 3)
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 2), (3, 2)
+        """
+    )
+    assert dml["row_count"] == 3
 
     ddl = i1.sql(
         """
@@ -1633,9 +1636,9 @@ def test_select_string_field(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    data = i1.sql("""insert into STUFF values(1337, 'foo');""")
+    data = i1.sql("""insert into "STUFF" values(1337, 'foo');""")
     assert data["row_count"] == 1
-    data = i1.sql("""select * from STUFF """)
+    data = i1.sql("""select * from "STUFF" """)
     assert data == [[1337, "foo"]]
 
 
@@ -1748,7 +1751,7 @@ def test_create_drop_table(cluster: Cluster):
     with pytest.raises(
         TarantoolError,
         match=(
-            "Tuple field 1 \\(A\\) type does not match one required"
+            "Tuple field 1 \\(a\\) type does not match one required"
             " by operation: expected integer, got nil"
         ),
     ):
@@ -2099,8 +2102,10 @@ def test_sql_acl_users_roles(cluster: Cluster):
     username = "User"
     password = "Passw0rd"
     upper_username = "USER"
+    lower_username = "user"
     rolename = "Role"
     upper_rolename = "ROLE"
+    lower_rolename = "role"
     acl = i1.sql(
         f"""
         create user "{username}" with password '{password}'
@@ -2135,21 +2140,21 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
     acl = i1.sql(
         f"""
-        create user "{upper_username}" password '' using ldap
+        create user {username} password '' using ldap
     """
     )
     assert acl["row_count"] == 1
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
-    # * Username without parentheses should be upcasted.
+    # * Username without parentheses should be downcasted.
     acl = i1.sql(
         f"""
-        create user {username} with password '{password}'
+        create user {upper_username} with password '{password}'
         option (timeout = 3)
     """
     )
     assert acl["row_count"] == 1
-    acl = i1.sql(f'drop user "{upper_username}"')
+    acl = i1.sql(f'drop user "{lower_username}"')
     assert acl["row_count"] == 1
 
     # Check user creation with LDAP works well with non-empty password specification
@@ -2161,7 +2166,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     )
     assert acl["row_count"] == 1
 
-    acl = i1.sql(f"drop user {username}")
+    acl = i1.sql(f'drop user "{upper_username}"')
     assert acl["row_count"] == 1
 
     # We can safely retry creating the same user.
@@ -2236,19 +2241,19 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", lower_username)
     users_auth_was = user_def[3]
     # * Password and method aren't changed -> update nothing.
     acl = i1.sql(f"alter user {username} with password '{password}' using md5")
     assert acl["row_count"] == 0
-    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", lower_username)
     users_auth_became = user_def[3]
     assert users_auth_was == users_auth_became
 
     # * Password is changed -> update hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using md5")
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", lower_username)
     users_auth_became = user_def[3]
     assert users_auth_was[0] == users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
@@ -2258,14 +2263,14 @@ def test_sql_acl_users_roles(cluster: Cluster):
         f"alter user {username} with password '{another_password}' using chap-sha1"
     )
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", lower_username)
     users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_was[1] != users_auth_became[1]
     # * LDAP should ignore password -> update method and hash.
     acl = i1.sql(f"alter user {username} with password '{another_password}' using ldap")
     assert acl["row_count"] == 1
-    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", upper_username)
+    user_def = i1.call("box.space._pico_user.index._pico_user_name:get", lower_username)
     users_auth_became = user_def[3]
     assert users_auth_was[0] != users_auth_became[0]
     assert users_auth_became[1] == ""
@@ -2317,15 +2322,15 @@ def test_sql_acl_users_roles(cluster: Cluster):
     # All the rolenames below should match the same role.
     acl = i1.sql(f'create role "{upper_rolename}"')
     assert acl["row_count"] == 1
-    acl = i1.sql(f"drop role {upper_rolename}")
-    assert acl["row_count"] == 1
-    acl = i1.sql(f'create role "{upper_rolename}"')
-    assert acl["row_count"] == 1
-    acl = i1.sql(f"drop role {rolename}")
-    assert acl["row_count"] == 1
-    acl = i1.sql(f'create role "{upper_rolename}"')
-    assert acl["row_count"] == 1
     acl = i1.sql(f'drop role "{upper_rolename}"')
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"create role {upper_rolename}")
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"drop role {lower_rolename}")
+    assert acl["row_count"] == 1
+    acl = i1.sql(f"create role {rolename}")
+    assert acl["row_count"] == 1
+    acl = i1.sql(f'drop role "{lower_rolename}"')
     assert acl["row_count"] == 1
 
 
@@ -2334,7 +2339,7 @@ def test_sql_alter_login(cluster: Cluster):
     i1, i2 = cluster.instances
 
     # Create the owner of `USER`
-    owner_username = "OWNER_USER"
+    owner_username = "owner_user"
     owner_password = "PA5sWORD"
 
     acl = i1.sql(
@@ -2345,7 +2350,7 @@ def test_sql_alter_login(cluster: Cluster):
     acl = i1.sql(f"grant create user to {owner_username}", sudo=True)
     assert acl["row_count"] == 1
 
-    username = "USER"
+    username = "user"
     password = "PA5sWORD"
     # Create user.
     acl = i1.sql(
@@ -2389,7 +2394,7 @@ def test_sql_alter_login(cluster: Cluster):
 
     # Login privilege cannot be granted or removed by any user
     # other than admin or user account owner
-    other_username = "OTHER_USER"
+    other_username = "other_user"
     other_password = "PA5sWORD"
     acl = i1.sql(
         f"create user {other_username} with password '{other_password}'", sudo=True
@@ -2426,11 +2431,11 @@ def test_sql_acl_privileges(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
-    username = "USER"
+    username = "user"
     another_username = "ANOTHER_USER"
     password = "PaSSW0RD"
-    rolename = "ROLE"
-    another_rolename = "ANOTHER_ROLE"
+    rolename = "role"
+    another_rolename = "another_role"
 
     # Create users.
     acl = i1.sql(f"create user {username} with password '{password}'")
@@ -2443,8 +2448,8 @@ def test_sql_acl_privileges(cluster: Cluster):
     acl = i1.sql(f"create role {another_rolename}")
     assert acl["row_count"] == 1
     # Create tables.
-    table_name = "T1"
-    another_table_name = "T2"
+    table_name = "t1"
+    another_table_name = "t2"
     ddl = i1.sql(
         f"""
         create table {table_name} ("a" int not null, primary key ("a"))
@@ -2487,15 +2492,15 @@ def test_sql_acl_privileges(cluster: Cluster):
 
     # Attempt to grant unexisted role.
     with pytest.raises(TarantoolError, match="There is no role with name SUPER"):
-        i1.sql(f""" grant SUPER to {username} """)
+        i1.sql(f""" grant "SUPER" to {username} """)
     # Attempt to grant TO unexisted role.
     with pytest.raises(
         TarantoolError, match="Nor user, neither role with name SUPER exists"
     ):
-        i1.sql(f""" grant {rolename} to SUPER """)
+        i1.sql(f""" grant {rolename} to "SUPER" """)
     # Attempt to revoke unexisted role.
     with pytest.raises(TarantoolError, match="There is no role with name SUPER"):
-        i1.sql(f""" revoke SUPER from {username} """)
+        i1.sql(f""" revoke "SUPER" from {username} """)
     # Attempt to revoke privilege that hasn't been granted yet do noting.
     acl = i1.sql(f""" revoke read on table {table_name} from {username} """)
     assert acl["row_count"] == 0
@@ -2796,8 +2801,8 @@ def test_distributed_sql_via_set_language(cluster: Cluster):
         select_from_second_instance
         == """---
 - metadata:
-  - {'name': 'A', 'type': 'integer'}
-  - {'name': 'B', 'type': 'integer'}
+  - {'name': 'a', 'type': 'integer'}
+  - {'name': 'b', 'type': 'integer'}
   rows:
   - [22, 8]
 ...
@@ -3020,7 +3025,7 @@ def test_create_drop_procedure(cluster: Cluster):
 
     data = i1.sql(
         """
-        select "id" from "_pico_routine" where "name" = 'PROC1'
+        select "id" from "_pico_routine" where "name" = 'proc1'
         """,
     )
     assert data == [[next_func_id]]
@@ -3038,7 +3043,7 @@ def test_create_drop_procedure(cluster: Cluster):
     # Check that we can't create a procedure with the same name but different
     # signature.
     with pytest.raises(
-        TarantoolError, match="routine PROC1 already exists with different parameters"
+        TarantoolError, match="routine proc1 already exists with different parameters"
     ):
         i2.sql(
             """
@@ -3049,7 +3054,7 @@ def test_create_drop_procedure(cluster: Cluster):
             """
         )
     with pytest.raises(
-        TarantoolError, match="routine PROC1 already exists with a different body"
+        TarantoolError, match="routine proc1 already exists with a different body"
     ):
         i2.sql(
             """
@@ -3078,18 +3083,18 @@ def test_create_drop_procedure(cluster: Cluster):
             as $$insert into t values(1, 2)$$
             """
         )
-    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'proc2' """)
     assert data == []
-    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC2' """)
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'proc2' """)
     assert data == []
 
-    # Check that PROC1 is actually dropped
+    # Check that proc1 is actually dropped
     i1.sql(""" drop procedure proc1 """)
     cluster.raft_wait_index(i1.raft_get_index())
 
-    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data == []
-    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data == []
 
     # Check that dropping of the same procedure is idempotent.
@@ -3110,7 +3115,7 @@ def test_create_drop_procedure(cluster: Cluster):
 
     data = i1.sql(
         """
-        select "id" from "_pico_routine" where "name" = 'PROC1'
+        select "id" from "_pico_routine" where "name" = 'proc1'
         """,
     )
     assert data != []
@@ -3119,30 +3124,30 @@ def test_create_drop_procedure(cluster: Cluster):
     # Check that dropping raises an error in case of parameters mismatch.
     with pytest.raises(
         TarantoolError,
-        match=r"routine exists but with a different signature: PROC1\(integer\)",
+        match=r"routine exists but with a different signature: proc1\(integer\)",
     ):
         data = i2.sql(""" drop procedure proc1(decimal) """)
 
     # Check that dropping raises an error in case of parameters mismatch.
     with pytest.raises(
         TarantoolError,
-        match=r"routine exists but with a different signature: PROC1\(integer\)",
+        match=r"routine exists but with a different signature: proc1\(integer\)",
     ):
         data = i2.sql(""" drop procedure proc1(integer, integer) """)
 
     # Routine mustn't be dropped at the moment.
-    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data != []
-    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data != []
 
     # Check drop with matching parameters.
     i2.sql(""" drop procedure proc1(integer) """)
     cluster.raft_wait_index(i2.raft_get_index())
 
-    data = i1.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    data = i1.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data == []
-    data = i2.sql(""" select * from "_pico_routine" where "name" = 'PROC1' """)
+    data = i2.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data == []
 
     # Check that recreated routine has the same id with the recently dropped one.
@@ -3157,7 +3162,7 @@ def test_create_drop_procedure(cluster: Cluster):
 
     data = i1.sql(
         """
-        select "id" from "_pico_routine" where "name" = 'PROC1'
+        select "id" from "_pico_routine" where "name" = 'proc1'
         """,
     )
     assert data != []
@@ -3383,7 +3388,7 @@ def test_rename_procedure(cluster: Cluster):
     data = i1.sql(
         """
         alter procedure foo
-        rename to bar
+        rename to BAR
         option ( timeout = 4 )
         """
     )
@@ -3392,10 +3397,10 @@ def test_rename_procedure(cluster: Cluster):
     data = i2.sql(
         """
         select "name" from "_pico_routine"
-        where "name" = 'BAR' or "name" = 'FOO'
+        where "name" = 'bar' or "name" = 'foo'
         """
     )
-    assert data == [["BAR"]]
+    assert data == [["bar"]]
 
     # procedure foo doesn't exist
     data = i1.sql(
@@ -3409,7 +3414,7 @@ def test_rename_procedure(cluster: Cluster):
     # rename back, use syntax with parameters
     data = i1.sql(
         """
-        alter procedure "BAR"(int)
+        alter procedure "bar"(int)
         rename to "FOO"
         """
     )
@@ -3418,7 +3423,7 @@ def test_rename_procedure(cluster: Cluster):
     data = i2.sql(
         """
         select "name" from "_pico_routine"
-        where "name" = 'BAR' or "name" = 'FOO'
+        where "name" = 'bar' or "name" = 'FOO'
         """
     )
     assert data == [["FOO"]]
@@ -3436,12 +3441,12 @@ def test_rename_procedure(cluster: Cluster):
         data = i1.sql(
             """
             alter procedure bar()
-            rename to foo
+            rename to "FOO"
             """
         )
 
     with pytest.raises(
-        TarantoolError, match="routine exists but with a different signature: BAR()"
+        TarantoolError, match="routine exists but with a different signature: bar()"
     ):
         data = i1.sql(
             """
@@ -3461,7 +3466,7 @@ def test_rename_procedure(cluster: Cluster):
     assert acl["row_count"] == 1
     with pytest.raises(
         TarantoolError,
-        match="Alter access to function 'BAR' is denied for user 'alice'",
+        match="Alter access to function 'bar' is denied for user 'alice'",
     ):
         i1.sql(
             """alter procedure bar rename to buzz""", user=username, password=alice_pwd
@@ -3479,7 +3484,7 @@ def test_rename_procedure(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="Alter access to function 'SUDO' is denied for user 'alice'",
+        match="Alter access to function 'sudo' is denied for user 'alice'",
     ):
         i1.sql(
             """alter procedure sudo rename to dudo""", user=username, password=alice_pwd
@@ -3489,10 +3494,10 @@ def test_rename_procedure(cluster: Cluster):
     data = i2.sql(
         """
         select "name" from "_pico_routine"
-        where "name" = 'SUDO' or "name" = 'DUDO'
+        where "name" = 'sudo' or "name" = 'dudo'
         """
     )
-    assert data == [["DUDO"]]
+    assert data == [["dudo"]]
 
     i2.eval(
         """
@@ -3508,7 +3513,7 @@ def test_rename_procedure(cluster: Cluster):
     with pytest.raises(TarantoolError, match="ddl operation was aborted"):
         i1.sql(
             """
-            alter procEdurE foo rENaME tO "foobar"
+            alter procEdurE "FOO" rENaME tO "foobar"
             """
         )
 
@@ -3681,26 +3686,26 @@ def test_procedure_privileges(cluster: Cluster):
     # ----------------- Default privliges -----------------
 
     # Check that a user can't create a procedure without permition.
-    check_create_access_denied("FOOBAZSPAM", alice, alice_pwd)
+    check_create_access_denied("foobazspam", alice, alice_pwd)
 
     # Check that a non-owner user without drop privilege can't drop proc
-    create_procedure("FOO", 0)
-    check_drop_access_denied("FOO", bob, bob_pwd)
+    create_procedure("foo", 0)
+    check_drop_access_denied("foo", bob, bob_pwd)
 
     # Check that a non-owner user can't rename proc
-    check_rename_access_denied("FOO", "BAR", bob, bob_pwd)
+    check_rename_access_denied("foo", "bar", bob, bob_pwd)
 
     # Check that a user without permession can't call proc
-    check_execute_access_denied("FOO", bob, bob_pwd)
+    check_execute_access_denied("foo", bob, bob_pwd)
 
     # Check that owner can call proc
-    call_procedure("FOO")
+    call_procedure("foo")
 
     # Check that owner can rename proc
-    rename_procedure("FOO", "BAR")
+    rename_procedure("foo", "bar")
 
     # Check that owner can drop proc
-    drop_procedure("BAR")
+    drop_procedure("bar")
 
     # ----------------- Default privliges -----------------
 
@@ -3710,41 +3715,41 @@ def test_procedure_privileges(cluster: Cluster):
 
     # Check admin can grant create procedure to user
     grant_procedure("create", alice)
-    create_procedure("FOO", 0, alice, alice_pwd)
-    drop_procedure("FOO", alice, alice_pwd)
-    create_procedure("FOO", 0)
-    check_drop_access_denied("FOO", alice, alice_pwd)
-    check_rename_access_denied("FOO", "BAR", alice, alice_pwd)
-    drop_procedure("FOO")
+    create_procedure("foo", 0, alice, alice_pwd)
+    drop_procedure("foo", alice, alice_pwd)
+    create_procedure("foo", 0)
+    check_drop_access_denied("foo", alice, alice_pwd)
+    check_rename_access_denied("foo", "bar", alice, alice_pwd)
+    drop_procedure("foo")
 
     # Check admin can revoke create procedure from user
     revoke_procedure("create", alice)
-    check_create_access_denied("FOO", alice, alice_pwd)
+    check_create_access_denied("foo", alice, alice_pwd)
 
     # check grant execute to all procedures
     grant_procedure("create", bob)
-    create_procedure("FOO", 0, bob, bob_pwd)
+    create_procedure("foo", 0, bob, bob_pwd)
     grant_procedure("execute", alice)
-    call_procedure("FOO", as_user=alice, as_pwd=alice_pwd)
+    call_procedure("foo", as_user=alice, as_pwd=alice_pwd)
 
     # check revoke execute from all procedures
     revoke_procedure("execute", alice)
-    check_execute_access_denied("FOO", alice, alice_pwd)
+    check_execute_access_denied("foo", alice, alice_pwd)
     revoke_procedure("create", bob)
 
     # check grant drop for all procedures
-    drop_procedure("FOO")
-    create_procedure("FOO", 0)
-    check_drop_access_denied("FOO", bob, bob_pwd)
+    drop_procedure("foo")
+    create_procedure("foo", 0)
+    check_drop_access_denied("foo", bob, bob_pwd)
     grant_procedure("drop", bob)
-    drop_procedure("FOO", bob, bob_pwd)
+    drop_procedure("foo", bob, bob_pwd)
 
     # check revoke drop for all procedures
-    create_procedure("FOO", 0)
+    create_procedure("foo", 0)
     revoke_procedure("drop", bob)
-    check_drop_access_denied("FOO", bob, bob_pwd)
+    check_drop_access_denied("foo", bob, bob_pwd)
 
-    drop_procedure("FOO")
+    drop_procedure("foo")
 
     # Check that user can't grant create procedure (only admin can)
     with pytest.raises(
@@ -3764,48 +3769,48 @@ def test_procedure_privileges(cluster: Cluster):
 
     # check grant execute specific procedure
     grant_procedure("create", alice)
-    create_procedure("FOO", 0, alice, alice_pwd)
-    check_execute_access_denied("FOO", bob, bob_pwd)
-    grant_procedure("execute", bob, "FOO", as_user=alice, as_pwd=alice_pwd)
-    call_procedure("FOO", as_user=bob, as_pwd=bob_pwd)
+    create_procedure("foo", 0, alice, alice_pwd)
+    check_execute_access_denied("foo", bob, bob_pwd)
+    grant_procedure("execute", bob, "foo", as_user=alice, as_pwd=alice_pwd)
+    call_procedure("foo", as_user=bob, as_pwd=bob_pwd)
 
     # check admin can revoke execute from user
-    revoke_procedure("execute", bob, "FOO", alice, alice_pwd)
-    check_execute_access_denied("FOO", bob, bob_pwd)
+    revoke_procedure("execute", bob, "foo", alice, alice_pwd)
+    check_execute_access_denied("foo", bob, bob_pwd)
 
     # check owner of procedure can grant drop to other user
-    check_drop_access_denied("FOO", bob, bob_pwd)
-    grant_procedure("drop", bob, "FOO", as_user=alice, as_pwd=alice_pwd)
-    check_rename_access_denied("FOO", "BAR", bob, bob_pwd)
-    drop_procedure("FOO", bob, bob_pwd)
+    check_drop_access_denied("foo", bob, bob_pwd)
+    grant_procedure("drop", bob, "foo", as_user=alice, as_pwd=alice_pwd)
+    check_rename_access_denied("foo", "bar", bob, bob_pwd)
+    drop_procedure("foo", bob, bob_pwd)
 
     # check owner of procedure can revoke drop to other user
-    create_procedure("FOO", 0, alice, alice_pwd)
-    check_drop_access_denied("FOO", bob, bob_pwd)
-    grant_procedure("drop", bob, "FOO", as_user=alice, as_pwd=alice_pwd)
-    revoke_procedure("drop", bob, "FOO", alice, alice_pwd)
-    check_drop_access_denied("FOO", bob, bob_pwd)
+    create_procedure("foo", 0, alice, alice_pwd)
+    check_drop_access_denied("foo", bob, bob_pwd)
+    grant_procedure("drop", bob, "foo", as_user=alice, as_pwd=alice_pwd)
+    revoke_procedure("drop", bob, "foo", alice, alice_pwd)
+    check_drop_access_denied("foo", bob, bob_pwd)
 
     # check we can't grant create specific procedure
     with pytest.raises(
         TarantoolError,
         match="sbroad: invalid privilege",
     ):
-        grant_procedure("create", bob, "FOO")
+        grant_procedure("create", bob, "foo")
 
     # check we can't grant to non-existing user
     with pytest.raises(
         TarantoolError,
         match="Nor user, neither role with name pasha exists",
     ):
-        grant_procedure("drop", "pasha", "FOO")
+        grant_procedure("drop", "pasha", "foo")
 
     # check we can't revoke from non-existing user
     with pytest.raises(
         TarantoolError,
         match="Nor user, neither role with name pasha exists",
     ):
-        revoke_procedure("execute", "pasha", "FOO")
+        revoke_procedure("execute", "pasha", "foo")
 
 
 def test_rename_user(cluster: Cluster):
@@ -3926,7 +3931,7 @@ def test_index(cluster: Cluster):
     # Check that created index appears in _pico_index table.
     ddl = i1.sql(""" create index i0 on t (a) option (timeout = 3) """)
     assert ddl["row_count"] == 1
-    data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
+    data = i1.sql(""" select * from "_pico_index" where "name" = 'i0' """)
     assert data != []
 
     # Successful tree index creation with default options
@@ -4017,7 +4022,7 @@ def test_index(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     # Check that the index is actually dropped.
-    data = i1.sql(""" select * from "_pico_index" where "name" = 'I0' """)
+    data = i1.sql(""" select * from "_pico_index" where "name" = 'i0' """)
     assert data == []
 
     # Drop non-existing index.
@@ -4026,7 +4031,7 @@ def test_index(cluster: Cluster):
 
     ddl = i1.sql(""" create index i19 on t (b)""")
     assert ddl["row_count"] == 1
-    with pytest.raises(TarantoolError, match="index I19 already exists"):
+    with pytest.raises(TarantoolError, match="index i19 already exists"):
         i1.sql(""" create index i19 on v (b)""")
 
 
@@ -4187,9 +4192,13 @@ def test_cte(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
-    for i in range(1, 5):
-        index = i1.cas("insert", "G", [i, i])
-        i1.raft_wait_index(index, 3)
+
+    dml = i1.sql(
+        """
+        insert into g values (1, 1), (2, 2), (3, 3), (4, 4)
+        """
+    )
+    assert dml["row_count"] == 4
 
     # basic CTE
     data = i1.sql(
@@ -4361,7 +4370,7 @@ def test_cte(cluster: Cluster):
 def test_unique_index_name_for_sharded_table(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
-    table_names = ["T", "T2"]
+    table_names = ["t", "t2"]
 
     # Initialize two sharded table
     for table_name in table_names:
@@ -4512,7 +4521,7 @@ cluster:
         """
             create table "sharded_table_in_tier_STORAGE" (a int not null, b int, primary key (a))
             distributed by(a)
-            in tier storage
+            in tier "STORAGE"
             option (timeout = 3)
             """
     )
@@ -4604,7 +4613,7 @@ def test_metadata(instance: Instance):
     assert ddl["row_count"] == 1
 
     data = instance.sql(""" select * from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "A", "type": "integer"}]
+    assert data["metadata"] == [{"name": "a", "type": "integer"}]
 
     # Previously, we returned metadata from tarantool, not from the plan.
     # Sometimes it led to disinformation, for example (pay attention to the types):
@@ -4972,7 +4981,7 @@ def test_limit(cluster: Cluster):
     # Initialize sharded table
     ddl = i1.sql(
         """
-        create table t (a int not null, b int, primary key (a))
+        create table t1 (a int not null, b int, primary key (a))
         distributed by (b)
         option (timeout = 3)
         """
@@ -4980,7 +4989,7 @@ def test_limit(cluster: Cluster):
     assert ddl["row_count"] == 1
     data = i1.sql(
         """
-        insert into t values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)
+        insert into t1 values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)
         """
     )
     assert data["row_count"] == 5
@@ -4988,7 +4997,7 @@ def test_limit(cluster: Cluster):
     # LIMIT + basic CTE
     data = i1.retriable_sql(
         """
-        with cte (b) as (select a from t where a > 1 limit 3)
+        with cte (b) as (select a from t1 where a > 1 limit 3)
         select * from cte
         """
     )
@@ -4997,7 +5006,7 @@ def test_limit(cluster: Cluster):
     # LIMIT + basic CTE
     data = i1.retriable_sql(
         """
-        with cte (b) as (select a from t where a > 1)
+        with cte (b) as (select a from t1 where a > 1)
         select * from cte limit 3
         """
     )
@@ -5006,7 +5015,7 @@ def test_limit(cluster: Cluster):
     # LIMIT + nested CTE
     data = i1.retriable_sql(
         """
-        with cte1 (b) as (select a from t where a > 2 limit 2),
+        with cte1 (b) as (select a from t1 where a > 2 limit 2),
              cte2 as (select b from cte1)
         select * from cte2
         """
@@ -5016,7 +5025,7 @@ def test_limit(cluster: Cluster):
     # LIMIT + reuse CTE
     data = i1.retriable_sql(
         """
-        with cte (b) as (select a from t where a > 2 limit 2)
+        with cte (b) as (select a from t1 where a > 2 limit 2)
         select b from cte
         union all
         select b + b from cte

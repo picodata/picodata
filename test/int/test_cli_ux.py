@@ -66,7 +66,7 @@ def test_connect_ux(cluster: Cluster):
 
     cli.sendline("SELECT * FROM ids")
     cli.expect_exact("+----+")
-    cli.expect_exact("| ID |")
+    cli.expect_exact("| id |")
     cli.expect_exact("+====+")
     cli.expect_exact("| 1  |")
     cli.expect_exact("+----+")
@@ -74,8 +74,8 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     cli.sendline("EXPLAIN SELECT * FROM ids")
-    cli.expect_exact('projection ("IDS"."ID"::integer -> "ID")')
-    cli.expect_exact('scan "IDS"')
+    cli.expect_exact('projection ("ids"."id"::integer -> "id")')
+    cli.expect_exact('scan "ids"')
     cli.expect_exact("execution options:")
     cli.expect_exact("sql_vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
@@ -250,10 +250,10 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010""")
 
     cli.expect_exact('update "characters')
-    cli.expect_exact('"year" = COL_0')
+    cli.expect_exact('"year" = "COL_0"')
     cli.expect_exact("motion [policy: local]")
     cli.expect_exact(
-        'projection (2010::unsigned -> COL_0, "characters"."id"::integer -> COL_1)'
+        'projection (2010::unsigned -> "COL_0", "characters"."id"::integer -> "COL_1")'
     )
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
@@ -265,12 +265,12 @@ def test_sql_explain_ok(cluster: Cluster):
     )
 
     cli.expect_exact('update "characters"')
-    cli.expect_exact('"name" = COL_0')
-    cli.expect_exact('"year" = COL_1')
+    cli.expect_exact('"name" = "COL_0"')
+    cli.expect_exact('"year" = "COL_1"')
     cli.expect_exact("motion [policy: local]")
     cli.expect_exact(
-        "projection ('Etch'::string -> COL_0, 2010::unsigned -> COL_1, "
-        '"characters"."id"::integer -> COL_2)'
+        'projection (\'Etch\'::string -> "COL_0", 2010::unsigned -> "COL_1", '
+        '"characters"."id"::integer -> "COL_2")'
     )
     cli.expect_exact('selection ROW("characters"."id"::integer) = ROW(2::unsigned)')
     cli.expect_exact('scan "characters"')
@@ -387,7 +387,7 @@ def test_input_with_custom_delimiter(cluster: Cluster):
     cli.expect_exact("1")
     cli.expect_exact("1")
     cli.expect_exact("+----+")
-    cli.expect_exact("| ID |")
+    cli.expect_exact("| id |")
     cli.expect_exact("+====+")
     cli.expect_exact("| 1  |")
     cli.expect_exact("+----+")
@@ -451,7 +451,7 @@ Delimiter changed to ';'
 1
 1
 +----+
-| ID |
+| id |
 +====+
 | 1  |
 +----+

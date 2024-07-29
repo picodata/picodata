@@ -25,6 +25,8 @@ with the `YY.MINOR.MICRO` scheme.
   when executing a DML query on global tables
 - SQL now supports inferring sharding key from primary key, when
   the former is not specified in `create table` clause
+- SQL normalizes unquoted identifiers to lowercase instead of
+  uppercase
 
 ### Configuration
 

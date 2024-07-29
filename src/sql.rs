@@ -24,7 +24,7 @@ use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
     build_delete_args, build_insert_args, build_update_args, decode_msgpack,
     init_delete_tuple_builder, init_insert_tuple_builder, init_local_update_tuple_builder,
-    normalize_name_for_space_api, replace_metadata_in_dql_result, try_get_metadata_from_plan,
+    replace_metadata_in_dql_result, try_get_metadata_from_plan,
 };
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
@@ -126,8 +126,7 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
                 // This should never happen as we have filtered out all other plan nodes.
                 _ => unreachable!("internal bug on the table privilege check"),
             };
-            let space_name = normalize_name_for_space_api(relation);
-            let space = space_by_name(&space_name)?;
+            let space = space_by_name(relation)?;
             space_privs.push((space.id(), privileges))
         }
         Ok(())
@@ -1413,7 +1412,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
         let ir = query.get_exec_plan().get_ir_plan();
         let top = ir.get_top()?;
         let table = ir.dml_node_table(top)?;
-        let table_name = normalize_name_for_space_api(&table.name);
+        let table_name = &table.name;
         let table_id = Space::find(table_name.as_str())
             .ok_or(Error::other(format!(
                 "failed to find table with name: {table_name}"

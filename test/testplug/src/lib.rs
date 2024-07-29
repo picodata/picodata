@@ -336,7 +336,7 @@ impl Service for Service3 {
                 let timeout = Duration::from_secs(10);
 
                 // do CAS
-                let space = system::tarantool::space::Space::find("AUTHOR")
+                let space = system::tarantool::space::Space::find("author")
                     .unwrap()
                     .id();
                 let (idx, term) = internal::cas::compare_and_swap(

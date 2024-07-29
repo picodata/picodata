@@ -250,14 +250,7 @@ fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
         let column = ir.get_expression_node(*col_id)?;
         let column_type = column.calculate_type(ir)?;
         let column_name = if let Expression::Alias { name, .. } = column {
-            // remove surrounding quotes from the name
-            let name = name
-                .strip_prefix('"')
-                .and_then(|name| name.strip_suffix('"'))
-                .ok_or(PgError::Other(
-                    format!("name {name:?} isn't wrapped with quotes").into(),
-                ))?;
-            name.to_owned()
+            name.to_string()
         } else {
             return Err(SbroadError::Invalid(
                 Entity::Expression,

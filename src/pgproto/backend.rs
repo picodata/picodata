@@ -21,7 +21,7 @@ use sbroad::errors::SbroadError;
 use sbroad::ir::value::Value as SbroadValue;
 use sbroad::{
     executor::{
-        engine::{helpers::normalize_name_for_space_api, QueryCache, Router, TableVersionMap},
+        engine::{QueryCache, Router, TableVersionMap},
         lru::Cache,
     },
     frontend::Ast,
@@ -199,9 +199,8 @@ pub fn parse(
                     let mut table_version_map =
                         TableVersionMap::with_capacity(plan.relations.tables.len());
                     for table in plan.relations.tables.keys() {
-                        let normalized = normalize_name_for_space_api(table);
-                        let version = runtime.get_table_version(normalized.as_str())?;
-                        table_version_map.insert(normalized, version);
+                        let version = runtime.get_table_version(table.as_str())?;
+                        table_version_map.insert(table.clone(), version);
                     }
                     plan.version_map = table_version_map;
                 }

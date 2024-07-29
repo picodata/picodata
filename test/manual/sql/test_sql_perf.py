@@ -14,15 +14,12 @@ def test_projection(cluster: Cluster):
     i1, i2 = cluster.instances
 
     # Create a sharded space and populate it with data.
-    cluster.create_table(
-        dict(
-            id=895,
-            name="T",
-            format=[dict(name="A", type="integer", is_nullable=False)],
-            primary_key=["A"],
-            distribution=dict(sharding_key=["A"], sharding_fn="murmur3"),
-        )
+    ddl = i1.sql(
+        """
+        create table t (a int primary key);
+    """
     )
+    assert ddl["row_count"] == 1
 
     row_number = 100
     for n in range(row_number):

@@ -8,9 +8,7 @@ use sbroad::executor::engine::helpers::storage::meta::StorageMetadata;
 use sbroad::executor::engine::helpers::storage::runtime::{read_unprepared, unprepare};
 use sbroad::executor::engine::helpers::storage::PreparedStmt;
 use sbroad::executor::engine::helpers::vshard::get_random_bucket;
-use sbroad::executor::engine::helpers::{
-    self, exec_if_in_cache, normalize_name_for_space_api, prepare_and_read,
-};
+use sbroad::executor::engine::helpers::{self, exec_if_in_cache, prepare_and_read};
 use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
@@ -79,19 +77,18 @@ impl StorageCache for PicoStorageCache {
         })?;
         let storage_tables = &node.storage.tables;
         for table_name in schema_info.router_version_map.keys() {
-            let space_name = normalize_name_for_space_api(table_name);
             let current_version = if let Some(space_def) =
-                storage_tables.by_name(space_name.as_str()).map_err(|e| {
+                storage_tables.by_name(table_name.as_str()).map_err(|e| {
                     SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
                 })? {
                 space_def.schema_version
             } else {
                 return Err(SbroadError::NotFound(
                     Entity::SpaceMetadata,
-                    format_smolstr!("for space: {}", space_name),
+                    format_smolstr!("for space: {}", table_name),
                 ));
             };
-            version_map.insert(space_name, current_version);
+            version_map.insert(table_name.clone(), current_version);
         }
 
         self.0.put(plan_id, (stmt, version_map))
@@ -107,8 +104,7 @@ impl StorageCache for PicoStorageCache {
         })?;
         let storage_tables = &node.storage.tables;
         for (table_name, cached_version) in version_map {
-            let space_name = normalize_name_for_space_api(table_name);
-            let Some(space_def) = storage_tables.by_name(space_name.as_str()).map_err(|e| {
+            let Some(space_def) = storage_tables.by_name(table_name.as_str()).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
             })?
             else {
@@ -269,10 +265,9 @@ impl StorageRuntime {
     ) -> Result<Box<dyn Any>, SbroadError> {
         // Check router schema version hasn't changed.
         for (table, version) in &required.schema_info.router_version_map {
-            let normalized = normalize_name_for_space_api(table);
             // TODO: if storage version is smaller than router's version
             // wait until state catches up.
-            if *version != get_table_version(normalized.as_str())? {
+            if *version != get_table_version(table.as_str())? {
                 return Err(SbroadError::OutdatedStorageSchema);
             }
         }

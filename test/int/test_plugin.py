@@ -778,11 +778,11 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
 
 
 _DATA_V_0_1_0 = {
-    "AUTHOR": [
+    "author": [
         [1, "Alexander Pushkin"],
         [2, "Alexander Blok"],
     ],
-    "BOOK": [
+    "book": [
         [1, "Ruslan and Ludmila"],
         [2, "The Tale of Tsar Saltan"],
         [3, "The Twelve"],
@@ -791,22 +791,22 @@ _DATA_V_0_1_0 = {
 }
 
 _DATA_V_0_2_0 = {
-    "AUTHOR": [
+    "author": [
         [1, "Alexander Pushkin"],
         [2, "Alexander Blok"],
     ],
-    "BOOK": [
+    "book": [
         [1, "Ruslan and Ludmila"],
         [2, "The Tale of Tsar Saltan"],
         [3, "The Twelve"],
         [4, "The Lady Unknown"],
     ],
-    "STORE": [
+    "store": [
         [1, "OZON"],
         [2, "Yandex"],
         [3, "Wildberries"],
     ],
-    "MANAGER": [
+    "manager": [
         [1, "Manager 1", 1],
         [2, "Manager 2", 1],
         [3, "Manager 3", 2],
@@ -814,15 +814,15 @@ _DATA_V_0_2_0 = {
 }
 
 _NO_DATA_V_0_1_0: dict[str, None] = {
-    "AUTHOR": None,
-    "BOOK": None,
+    "author": None,
+    "book": None,
 }
 
 _NO_DATA_V_0_2_0: dict[str, None] = {
-    "AUTHOR": None,
-    "BOOK": None,
-    "STORE": None,
-    "MANAGER": None,
+    "author": None,
+    "book": None,
+    "store": None,
+    "manager": None,
 }
 
 
@@ -2317,7 +2317,7 @@ def test_sdk_internal(cluster: Cluster):
     )
     PluginReflection.assert_int_data_le(i1, "raft_index", i1.call(".proc_get_index"))
 
-    cas_result_sdk = i1.eval("return box.space.AUTHOR:select()")
+    cas_result_sdk = i1.eval("return box.space.author:select()")
     assert cas_result_sdk == [[101, "Alexander Blok"]]
 
 
@@ -2332,7 +2332,7 @@ def test_sdk_sql(cluster: Cluster):
         default_config={"test_type": "sql"},
     )
 
-    sql_result = i1.eval("return box.space.BOOK:select()")
+    sql_result = i1.eval("return box.space.book:select()")
     # remove bucket id and convert datetime to string
     for r in sql_result:
         r.pop(1)

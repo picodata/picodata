@@ -30,11 +30,9 @@ use crate::sql::DEFAULT_BUCKET_COUNT;
 use crate::schema::{Distribution, ShardingFn};
 use crate::storage::{Clusterwide, ClusterwideTable};
 
+use sbroad::executor::engine::helpers::normalize_name_from_sql;
 use sbroad::executor::engine::helpers::storage::meta::{
     DEFAULT_JAEGER_AGENT_HOST, DEFAULT_JAEGER_AGENT_PORT,
-};
-use sbroad::executor::engine::helpers::{
-    normalize_name_for_space_api, normalize_name_from_schema, normalize_name_from_sql,
 };
 use sbroad::executor::engine::Metadata;
 use sbroad::ir::function::Function;
@@ -148,14 +146,13 @@ impl Cache<SmolStr, Plan> for PicoRouterCache {
             if tbl.is_system() {
                 continue;
             }
-            let space_name = normalize_name_for_space_api(tbl_name);
-            let cached_version = *ir.version_map.get(space_name.as_str()).ok_or_else(|| {
+            let cached_version = *ir.version_map.get(tbl_name.as_str()).ok_or_else(|| {
                 SbroadError::NotFound(
                     Entity::Table,
-                    format_smolstr!("in version map with name: {}", space_name),
+                    format_smolstr!("in version map with name: {}", tbl_name),
                 )
             })?;
-            let Some(space_def) = storage_tables.by_name(space_name.as_str()).map_err(|e| {
+            let Some(space_def) = storage_tables.by_name(tbl_name.as_str()).map_err(|e| {
                 SbroadError::FailedTo(Action::Get, None, format_smolstr!("space_def: {}", e))
             })?
             else {
@@ -430,7 +427,7 @@ impl Metadata for RouterMetadata {
     #[allow(dead_code)]
     #[allow(clippy::too_many_lines)]
     fn table(&self, table_name: &str) -> Result<Table, SbroadError> {
-        let name = normalize_name_for_space_api(table_name);
+        let name = table_name.to_smolstr();
         let storage = Clusterwide::try_get(false).expect("storage should be initialized");
 
         // // Get the space columns and engine of the space from global metatable.
@@ -451,7 +448,7 @@ impl Metadata for RouterMetadata {
                 ColumnRole::User
             };
             let column = Column {
-                name: normalize_name_from_schema(col_name),
+                name: col_name.to_smolstr(),
                 r#type: col_type,
                 role,
                 is_nullable,
@@ -459,7 +456,6 @@ impl Metadata for RouterMetadata {
             columns.push(column);
         }
 
-        let normalized_name = normalize_name_from_sql(table_name);
         let pk_cols = space_pk_columns(&name, &columns)?;
         let pk_cols_str: &[&str] = &pk_cols.iter().map(SmolStr::as_str).collect::<Vec<_>>();
 
@@ -471,11 +467,11 @@ impl Metadata for RouterMetadata {
             .any(|sys_name| *sys_name == name.as_str());
 
         if is_system_table {
-            return Table::new_system(&normalized_name, columns, pk_cols_str);
+            return Table::new_system(&name, columns, pk_cols_str);
         }
 
         match table.distribution {
-            Distribution::Global => Table::new_global(&normalized_name, columns, pk_cols_str),
+            Distribution::Global => Table::new_global(&name, columns, pk_cols_str),
             Distribution::ShardedImplicitly {
                 sharding_key,
                 sharding_fn,
@@ -491,7 +487,7 @@ impl Metadata for RouterMetadata {
                 let tier = Some(tier_name.to_smolstr());
                 let sharding_key_cols = sharding_key
                     .iter()
-                    .map(|field| normalize_name_from_schema(field))
+                    .map(|field| field.to_smolstr())
                     .collect::<Vec<_>>();
 
                 let sharding_key_cols = sharding_key_cols
@@ -500,7 +496,7 @@ impl Metadata for RouterMetadata {
                     .collect::<Vec<_>>();
 
                 Table::new_sharded_in_tier(
-                    &normalized_name,
+                    &name,
                     columns,
                     &sharding_key_cols,
                     pk_cols_str,

@@ -526,7 +526,7 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
     assert ddl["row_count"] == 1
     assert dave_privileges_count_at_start == dave_privileges_count()
 
-    i1.grant_privilege("Dave", "read", "table", "T")
+    i1.grant_privilege("Dave", "read", "table", "t")
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
@@ -569,7 +569,7 @@ def test_create_table_smoke(cluster: Cluster):
     cluster.raft_wait_index(index)
     with pytest.raises(
         Exception,
-        match="Create access to space 'T' is denied for user 'Dave'",
+        match="Create access to space 't' is denied for user 'Dave'",
     ):
         i1.sql(
             """
@@ -595,7 +595,7 @@ def test_create_table_smoke(cluster: Cluster):
 
         ret = conn.sql("select * from t")
 
-        assert ret == {"metadata": [{"name": "A", "type": "integer"}], "rows": [[1]]}
+        assert ret == {"metadata": [{"name": "a", "type": "integer"}], "rows": [[1]]}
 
         ddl = conn.sql("drop table t")
         assert ddl["row_count"] == 1
@@ -672,7 +672,7 @@ def test_circular_grants_for_role(cluster: Cluster):
     def throws_on_grant(grantee, granted):
         with pytest.raises(
             TarantoolError,
-            match=f"Granting role {granted.upper()} to role {grantee.upper()} would create a loop",
+            match=f"Granting role {granted.lower()} to role {grantee.lower()} would create a loop",
         ):
             i1.sql(f"GRANT {granted} to {grantee}")
 

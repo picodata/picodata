@@ -41,7 +41,7 @@ def test_extended_query(postgres: Postgres):
 
     # statement is prepared, but not executed yet
     with pytest.raises(DatabaseError, match='table with name "TALL" not found'):
-        conn.run(""" select * from tall """)
+        conn.run(""" select * from "TALL" """)
 
     ps.run()
 
