@@ -53,8 +53,9 @@ pub struct Console<H: Helper> {
     editor: Editor<H, FileHistory>,
     history_file_path: PathBuf,
     delimiter: Option<String>,
-    // Queue for handling lines with several delimiters.
-    buffer: VecDeque<String>,
+    // Queue of separated by delimiter statements
+    separated_statements: VecDeque<String>,
+    uncompleted_statement: String,
 }
 
 impl<T: Helper> Console<T> {
@@ -175,14 +176,6 @@ impl<T: Helper> Console<T> {
         }
     }
 
-    fn process_input(&mut self, input: &str) -> Result<ControlFlow<Command>> {
-        if input.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
-            return self.handle_special_command(input);
-        }
-
-        Ok(ControlFlow::Break(Command::Expression(input.into())))
-    }
-
     fn update_history(&mut self, command: Command) -> Result<Option<Command>> {
         // do not save special commands
         if let Command::Expression(expression) = &command {
@@ -199,10 +192,16 @@ impl<T: Helper> Console<T> {
 
     pub fn read(&mut self) -> Result<Option<Command>> {
         loop {
-            // firstly try to consume buffer filled for example from one line with several delimiters,
-            // then read from stdin
-            while let Some(input) = self.buffer.pop_front() {
-                match self.process_input(&input)? {
+            while let Some(separated_input) = self.separated_statements.pop_front() {
+                let processed = {
+                    if separated_input.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
+                        self.handle_special_command(&separated_input)?
+                    } else {
+                        ControlFlow::Break(Command::Expression(separated_input))
+                    }
+                };
+
+                match processed {
                     ControlFlow::Continue(_) => continue,
                     ControlFlow::Break(command) => return self.update_history(command),
                 }
@@ -211,29 +210,23 @@ impl<T: Helper> Console<T> {
             let readline = self.editor.readline(Self::PROMPT);
 
             match readline {
-                Ok(input) => {
-                    let statement = {
-                        if let Some(ref delimiter) = self.delimiter {
-                            let splitted = input.split(delimiter).collect::<Vec<_>>();
-                            for command in &splitted[1..] {
-                                self.buffer.push_back(command.to_string())
-                            }
+                Ok(line) => {
+                    self.uncompleted_statement += &line;
 
-                            // We are sure that splitting any string results in a non empty vector
-                            splitted[0].to_string()
-                        } else {
-                            input.to_string()
+                    if let Some(ref delimiter) = self.delimiter {
+                        while let Some((separated_part, tail)) =
+                            self.uncompleted_statement.split_once(delimiter)
+                        {
+                            self.separated_statements.push_back(separated_part.into());
+                            self.uncompleted_statement = tail.into();
                         }
-                    };
-
-                    match self.process_input(&statement)? {
-                        ControlFlow::Continue(_) => continue,
-                        ControlFlow::Break(command) => return self.update_history(command),
+                    } else {
+                        self.separated_statements
+                            .push_back(std::mem::take(&mut self.uncompleted_statement));
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
                     self.write("CTRL+C");
-                    continue;
                 }
                 Err(ReadlineError::Eof) => {
                     self.write("Bye");
@@ -290,7 +283,8 @@ impl Console<LuaHelper> {
             editor,
             history_file_path,
             delimiter: None,
-            buffer: VecDeque::new(),
+            separated_statements: VecDeque::new(),
+            uncompleted_statement: String::new(),
         })
     }
 }
@@ -303,7 +297,8 @@ impl Console<()> {
             editor,
             history_file_path,
             delimiter: None,
-            buffer: VecDeque::new(),
+            separated_statements: VecDeque::new(),
+            uncompleted_statement: String::new(),
         })
     }
 }

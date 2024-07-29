@@ -1,5 +1,6 @@
 import pexpect  # type: ignore
 import sys
+import subprocess
 from conftest import Cluster
 
 
@@ -403,4 +404,43 @@ def test_input_with_custom_delimiter(cluster: Cluster):
         "SELECT * FROM ids;"
     )
 
-    cli.sendline("0\n" "picodata> ")
+    cli.expect_exact("0")
+    cli.expect_exact("picodata>")
+
+
+def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
+    instance = cluster.add_instance()
+    data = subprocess.check_output(
+        [cluster.binary_path, "admin", f"{instance.data_dir}/admin.sock"],
+        input=b"""\
+\\set delimiter ;
+
+CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
+        USING MEMTX
+        DISTRIBUTED BY (id);
+
+INSERT INTO ids
+        VALUES(1);
+
+SELECT * FROM ids;
+
+""",
+    )
+
+    assert (
+        data
+        == f"""\
+Connected to admin console by socket path "{instance.data_dir}/admin.sock"
+type '\\help' for interactive help
+Delimiter changed to ';'
+1
+1
++----+
+| ID |
++====+
+| 1  |
++----+
+(1 rows)
+Bye
+""".encode()
+    )
