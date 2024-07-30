@@ -4,23 +4,22 @@
 
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::storage::meta::StorageMetadata;
-use sbroad::executor::engine::helpers::storage::runtime::{read_unprepared, unprepare};
-use sbroad::executor::engine::helpers::storage::PreparedStmt;
+use sbroad::executor::engine::helpers::storage::{unprepare, StorageMetadata};
 use sbroad::executor::engine::helpers::vshard::get_random_bucket;
-use sbroad::executor::engine::helpers::{self, exec_if_in_cache, prepare_and_read};
+use sbroad::executor::engine::helpers::{self, read_or_prepare, EncodedQueryInfo, QueryInfo};
 use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
 use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
-use sbroad::executor::protocol::{Binary, RequiredData, SchemaInfo};
+use sbroad::executor::protocol::{Binary, OptionalData, RequiredData, SchemaInfo};
 use sbroad::ir::value::Value;
-use sbroad::utils::MutexLike;
 use tarantool::fiber::Mutex;
+use tarantool::sql::Statement;
 
 use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
 use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
 use sbroad::ir::tree::Snapshot;
+use sbroad::ir::NodeId;
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::collections::HashMap;
 use std::{any::Any, cell::RefCell, rc::Rc};
@@ -29,7 +28,7 @@ use super::{router::calculate_bucket_id, DEFAULT_BUCKET_COUNT};
 
 thread_local!(
     static STATEMENT_CACHE: Rc<Mutex<PicoStorageCache>> = Rc::new(
-        Mutex::new(PicoStorageCache::new(DEFAULT_CAPACITY, Some(Box::new(unprepare))).unwrap())
+        Mutex::new(PicoStorageCache::new(DEFAULT_CAPACITY, Some(Box::new(evict))).unwrap())
     )
 );
 
@@ -40,17 +39,24 @@ pub struct StorageRuntime {
     cache: Rc<Mutex<PicoStorageCache>>,
 }
 
-pub struct PicoStorageCache(LRUCache<SmolStr, (PreparedStmt, VersionMap)>);
+type StorageCacheValue = (Statement, VersionMap, Vec<NodeId>);
+
+fn evict(plan_id: &SmolStr, val: &mut StorageCacheValue) -> Result<(), SbroadError> {
+    let (stmt, _, table_ids) = std::mem::take(val);
+    unprepare(plan_id, &mut (stmt, table_ids))
+}
+
+pub struct PicoStorageCache(LRUCache<SmolStr, StorageCacheValue>);
 
 impl PicoStorageCache {
     pub fn new(
         capacity: usize,
-        evict_fn: Option<EvictFn<PreparedStmt>>,
+        evict_fn: Option<EvictFn<SmolStr, StorageCacheValue>>,
     ) -> Result<Self, SbroadError> {
-        let new_fn: Option<EvictFn<(PreparedStmt, VersionMap)>> = if let Some(evict_fn) = evict_fn {
-            let new_fn = move |val: &mut (PreparedStmt, VersionMap)| -> Result<(), SbroadError> {
-                evict_fn(&mut val.0)
-            };
+        let new_fn: Option<EvictFn<SmolStr, StorageCacheValue>> = if let Some(evict_fn) = evict_fn {
+            let new_fn = move |key: &SmolStr,
+                               val: &mut StorageCacheValue|
+                  -> Result<(), SbroadError> { evict_fn(key, val) };
             Some(Box::new(new_fn))
         } else {
             None
@@ -67,8 +73,9 @@ impl StorageCache for PicoStorageCache {
     fn put(
         &mut self,
         plan_id: SmolStr,
-        stmt: PreparedStmt,
+        stmt: Statement,
         schema_info: &SchemaInfo,
+        table_ids: Vec<NodeId>,
     ) -> Result<(), SbroadError> {
         let mut version_map: HashMap<SmolStr, u64> =
             HashMap::with_capacity(schema_info.router_version_map.len());
@@ -91,11 +98,12 @@ impl StorageCache for PicoStorageCache {
             version_map.insert(table_name.clone(), current_version);
         }
 
-        self.0.put(plan_id, (stmt, version_map))
+        self.0.put(plan_id, (stmt, version_map, table_ids))?;
+        Ok(())
     }
 
-    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<&PreparedStmt>, SbroadError> {
-        let Some((ir, version_map)) = self.0.get(plan_id)? else {
+    fn get(&mut self, plan_id: &SmolStr) -> Result<Option<(&Statement, &[NodeId])>, SbroadError> {
+        let Some((ir, version_map, table_ids)) = self.0.get(plan_id)? else {
             return Ok(None);
         };
         // check Plan's tables have up to date schema
@@ -110,14 +118,13 @@ impl StorageCache for PicoStorageCache {
             else {
                 return Ok(None);
             };
-            // The outdated entry will be replaced when
-            // `put` is called (which is always called
-            // after cache miss).
+            // The outdated entry will be replaced when `put` is called (that is always
+            // called after the cache miss).
             if *cached_version != space_def.schema_version {
                 return Ok(None);
             }
         }
-        Ok(Some(ir))
+        Ok(Some((ir, table_ids)))
     }
 
     fn clear(&mut self) -> Result<(), SbroadError> {
@@ -127,9 +134,10 @@ impl StorageCache for PicoStorageCache {
 
 impl QueryCache for StorageRuntime {
     type Cache = PicoStorageCache;
+    type Mutex = Mutex<Self::Cache>;
 
-    fn cache(&self) -> &impl MutexLike<<Self as QueryCache>::Cache> {
-        &*self.cache
+    fn cache(&self) -> &Self::Mutex {
+        &self.cache
     }
 
     fn cache_capacity(&self) -> Result<usize, SbroadError> {
@@ -137,7 +145,7 @@ impl QueryCache for StorageRuntime {
     }
 
     fn clear_cache(&self) -> Result<(), SbroadError> {
-        *self.cache.lock() = Self::Cache::new(self.cache_capacity()?, Some(Box::new(unprepare)))?;
+        *self.cache.lock() = Self::Cache::new(self.cache_capacity()?, Some(Box::new(evict)))?;
         Ok(())
     }
 
@@ -192,50 +200,34 @@ impl Vshard for StorageRuntime {
         &self,
         mut sub_plan: ExecutionPlan,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        let vtable_max_rows = sub_plan.get_vtable_max_rows();
-        let opts = std::mem::take(&mut sub_plan.get_mut_ir_plan().options.execute_options);
+        let options = std::mem::take(&mut sub_plan.get_mut_ir_plan().options);
         let plan = sub_plan.get_ir_plan();
         let top_id = plan.get_top()?;
         let plan_id = plan.pattern_id(top_id)?;
         let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
         let nodes = ordered.to_syntax_data()?;
-        let params = sub_plan.to_params(&nodes, &Buckets::All)?;
-        let can_be_cached = sub_plan.vtables_empty();
+        let parameters = sub_plan.to_params(&nodes)?;
+        let tables = sub_plan.encode_vtables();
         let schema_info = SchemaInfo::new(sub_plan.get_ir_plan().version_map.clone());
-        if can_be_cached {
-            if let Some(res) =
-                exec_if_in_cache(self, &params, &plan_id, vtable_max_rows, opts.clone())?
-            {
-                return Ok(res);
-            }
+        let query_type = sub_plan.query_type()?;
+        assert_eq!(query_type, QueryType::DQL, "Only DQL is supported");
 
-            let (pattern_with_params, _tmp_spaces) = sub_plan.to_sql(
-                &nodes,
-                &Buckets::All,
-                &uuid::Uuid::new_v4().to_simple().to_string(),
-            )?;
-            prepare_and_read(
-                self,
-                &pattern_with_params,
-                &plan_id,
-                vtable_max_rows,
-                opts,
-                &schema_info,
-            )
-        } else {
-            let (pattern_with_params, _tmp_spaces) = sub_plan.to_sql(
-                &nodes,
-                &Buckets::All,
-                &uuid::Uuid::new_v4().to_simple().to_string(),
-            )?;
-            read_unprepared(
-                &pattern_with_params.pattern,
-                &pattern_with_params.params,
-                vtable_max_rows,
-                opts,
-            )
-        }
+        let mut required = RequiredData {
+            plan_id,
+            parameters,
+            query_type,
+            options,
+            schema_info,
+            tracing_meta: None,
+            tables,
+        };
+        let mut optional = OptionalData {
+            exec_plan: sub_plan,
+            ordered,
+        };
+        let mut info = QueryInfo::new(&mut optional, &mut required);
+        read_or_prepare(self, &mut info)
     }
 }
 
@@ -274,15 +266,8 @@ impl StorageRuntime {
         match required.query_type {
             QueryType::DML => helpers::execute_dml(self, required, raw_optional),
             QueryType::DQL => {
-                if required.can_be_cached {
-                    helpers::execute_cacheable_dql_with_raw_optional(self, required, raw_optional)
-                } else {
-                    helpers::execute_non_cacheable_dql_with_raw_optional(
-                        raw_optional,
-                        required.options.vtable_max_rows,
-                        std::mem::take(&mut required.options.execute_options),
-                    )
-                }
+                let mut info = EncodedQueryInfo::new(std::mem::take(raw_optional), required);
+                read_or_prepare(self, &mut info)
             }
         }
     }

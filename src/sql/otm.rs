@@ -250,9 +250,9 @@ pub struct TrackedQueries {
 
 /// Callback when query is pushed out of tracked queries cache.
 #[allow(clippy::ptr_arg)]
-fn remove_query(query_id: &mut String) -> Result<(), SbroadError> {
+fn remove_query(key: &String, _value: &mut String) -> Result<(), SbroadError> {
     let stats = &SqlStatTables::get_or_init();
-    stats.delete_query(query_id.as_str());
+    stats.delete_query(key.as_str());
     Ok(())
 }
 

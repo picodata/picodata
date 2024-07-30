@@ -1,5 +1,4 @@
 require('sbroad.core-router')
-require('sbroad.core-storage')
 local helper = require('sbroad.helper')
 local utils = require('internal.utils')
 local check_param_table = utils.check_param_table

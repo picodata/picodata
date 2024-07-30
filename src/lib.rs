@@ -138,10 +138,6 @@ fn init_sbroad() {
         "sbroad.core-router",
         "sbroad/sbroad-core/src/core-router.lua"
     );
-    preload!(
-        "sbroad.core-storage",
-        "sbroad/sbroad-core/src/core-storage.lua"
-    );
 
     for (module, func) in &[
         ("sbroad", "sql"),

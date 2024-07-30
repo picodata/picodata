@@ -31,9 +31,6 @@ use crate::schema::{Distribution, ShardingFn};
 use crate::storage::{Clusterwide, ClusterwideTable};
 
 use sbroad::executor::engine::helpers::normalize_name_from_sql;
-use sbroad::executor::engine::helpers::storage::meta::{
-    DEFAULT_JAEGER_AGENT_HOST, DEFAULT_JAEGER_AGENT_PORT,
-};
 use sbroad::executor::engine::Metadata;
 use sbroad::ir::function::Function;
 use sbroad::ir::relation::{space_pk_columns, Column, ColumnRole, Table, Type};
@@ -124,7 +121,7 @@ impl PicoRouterCache {
 }
 
 impl Cache<SmolStr, Plan> for PicoRouterCache {
-    fn new(capacity: usize, evict_fn: Option<EvictFn<Plan>>) -> Result<Self, SbroadError>
+    fn new(capacity: usize, evict_fn: Option<EvictFn<SmolStr, Plan>>) -> Result<Self, SbroadError>
     where
         Self: Sized,
     {
@@ -179,9 +176,10 @@ impl Cache<SmolStr, Plan> for PicoRouterCache {
 
 impl QueryCache for RouterRuntime {
     type Cache = PicoRouterCache;
+    type Mutex = Mutex<Self::Cache>;
 
-    fn cache(&self) -> &impl MutexLike<Self::Cache> {
-        &*self.ir_cache
+    fn cache(&self) -> &Self::Mutex {
+        &self.ir_cache
     }
 
     fn cache_capacity(&self) -> Result<usize, SbroadError> {
@@ -385,12 +383,6 @@ pub struct RouterMetadata {
     /// Bucket column name.
     pub sharding_column: String,
 
-    /// Jaeger agent host.
-    pub jaeger_agent_host: &'static str,
-
-    /// Jaeger agent port.
-    pub jaeger_agent_port: u16,
-
     /// IR functions
     pub functions: HashMap<SmolStr, Function>,
 }
@@ -415,8 +407,6 @@ impl RouterMetadata {
         RouterMetadata {
             waiting_timeout: DEFAULT_QUERY_TIMEOUT,
             cache_capacity: DEFAULT_CAPACITY,
-            jaeger_agent_host: DEFAULT_JAEGER_AGENT_HOST,
-            jaeger_agent_port: DEFAULT_JAEGER_AGENT_PORT,
             sharding_column: DEFAULT_BUCKET_COLUMN.to_string(),
             functions,
         }

@@ -1,5 +1,4 @@
 require('sbroad.core-router')
-require('sbroad.core-storage')
 local helper = require('sbroad.helper')
 
 local function verify_out_formats(formats)
