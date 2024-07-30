@@ -149,7 +149,7 @@ pub type SpaceMetadata<'a> = Metadata<'a>;
 
 /// Implementation ported from box_generate_space_id.
 /// <https://github.com/tarantool/tarantool/blob/70e423e92fc00df2ffe385f31dae9ea8e1cc1732/src/box/box.cc#L5737>
-fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
+pub fn generate_space_id(is_temporary: bool) -> Result<SpaceId, Error> {
     let sys_space = SystemSpace::Space.as_space();
     let (id_range_min, id_range_max);
     if is_temporary {

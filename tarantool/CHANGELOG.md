@@ -71,6 +71,7 @@
 - datetime `from_ffi_dt` and `as_ffi_dt` functions now public
 - `DecodeError` has now better error messages with report of deeply nested values
   and actual MessagePack type is reported at type mismatch.
+- `schema::space::generate_space_id` is now public function.
 
 ### Fixed
 
