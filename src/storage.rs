@@ -1,3 +1,4 @@
+use serde::Serialize;
 use tarantool::auth::AuthDef;
 use tarantool::decimal::Decimal;
 use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
@@ -2655,7 +2656,7 @@ pub fn ddl_meta_drop_routine(storage: &Clusterwide, routine_id: RoutineId) -> tr
 // ddl
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
+pub fn ddl_abort_on_master(storage: &Clusterwide, ddl: &Ddl, version: u64) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
     let sys_space = Space::from(SystemSpace::Space);
     let sys_index = Space::from(SystemSpace::Index);
@@ -2685,21 +2686,9 @@ pub fn ddl_abort_on_master(ddl: &Ddl, version: u64) -> traft::Result<()> {
         Ddl::RenameProcedure {
             routine_id,
             ref old_name,
-            ref new_name,
             ..
         } => {
-            let lua = ::tarantool::lua_state();
-            lua.exec_with(
-                "local new_name = ...
-                box.schema.func.drop(new_name, {if_exists = true})
-                ",
-                (new_name,),
-            )
-            .map_err(LuaError::from)?;
-
-            lua.exec_with(LUA_CREATE_PROC_SCRIPT, (routine_id, old_name, true))
-                .map_err(LuaError::from)?;
-
+            ddl_rename_function_on_master(storage, routine_id, old_name)?;
             set_local_schema_version(version)?;
         }
 
@@ -2762,49 +2751,97 @@ pub fn ddl_drop_index_on_master(space_id: SpaceId, index_id: IndexId) -> traft::
     Ok(())
 }
 
-// This script is reused between create and rename procedure,
-// when applying changes on master.
-const LUA_CREATE_PROC_SCRIPT: &str = r#"
-    local func_id, func_name, not_exists = ...
-    local def = {
-        language = 'LUA',
-        body = string.format(
-            [[function() error("function %s is used internally by picodata") end]],
-            func_name
-        ),
-        id = func_id,
-        if_not_exists = not_exists,
+// Metadata for a dummy function to be created on master in _func space.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct FunctionMetadata<'a> {
+    pub id: RoutineId,
+    pub owner: UserId,
+    pub name: &'a str,
+    pub setuid: u32,
+    pub language: &'static str,
+    pub body: String,
+    pub routine_type: &'static str,
+    pub param_list: Vec<&'static str>,
+    pub returns: &'static str,
+    pub aggregate: &'static str,
+    pub sql_data_access: &'static str,
+    pub is_deterministic: bool,
+    pub is_sandboxed: bool,
+    pub is_null_call: bool,
+    pub exports: Vec<&'static str>,
+    pub opts: HashMap<String, String>,
+    pub comment: &'static str,
+    pub created: String,
+    pub last_altered: String,
+}
+
+impl<'a> From<&'a RoutineDef> for FunctionMetadata<'a> {
+    fn from(def: &'a RoutineDef) -> Self {
+        // Note: The default values are in [box.schema.func.create](https://git.picodata.io/picodata/tarantool/-/blob/2.11.2-picodata/src/box/lua/schema.lua?ref_type=heads#L3098)
+        FunctionMetadata {
+            id: def.id,
+            owner: def.owner,
+            name: &def.name,
+            setuid: 0,
+            language: "LUA",
+            body: format!(
+                "function() error(\"function {} is used internally by picodata\") end",
+                def.name
+            ),
+            routine_type: "function",
+            param_list: Vec::new(),
+            returns: "any",
+            aggregate: "none",
+            sql_data_access: "none",
+            is_deterministic: false,
+            is_sandboxed: false,
+            is_null_call: true,
+            exports: vec!["LUA"],
+            opts: HashMap::new(),
+            comment: "",
+            created: time::OffsetDateTime::now_utc().to_string(),
+            last_altered: time::OffsetDateTime::now_utc().to_string(),
+        }
     }
-    box.schema.func.create(func_name, def)"#;
+}
+
+impl<'a> Encode for FunctionMetadata<'a> {}
 
 /// Create tarantool function which throws an error if it's called.
-/// Tarantool function is created with `if_not_exists = true`, so it's
-/// safe to call this rust function multiple times.
-pub fn ddl_create_function_on_master(func_id: u32, func_name: &str) -> traft::Result<()> {
+/// It's safe to call this rust function multiple times.
+pub fn ddl_create_function_on_master(storage: &Clusterwide, func_id: u32) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
-    let lua = ::tarantool::lua_state();
-    lua.exec_with(LUA_CREATE_PROC_SCRIPT, (func_id, func_name, true))
-        .map_err(LuaError::from)?;
+
+    let routine_def = storage
+        .routines
+        .by_id(func_id)?
+        .ok_or_else(|| Error::other(format!("routine with id {func_id} not found")))?;
+    let func_space = Space::from(SystemSpace::Func);
+
+    func_space.put(&FunctionMetadata::from(&routine_def))?;
     Ok(())
 }
 
-pub fn ddl_rename_function_on_master(id: u32, old_name: &str, new_name: &str) -> traft::Result<()> {
+pub fn ddl_rename_function_on_master(
+    storage: &Clusterwide,
+    id: u32,
+    new_name: &str,
+) -> traft::Result<()> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
 
-    // We can't do update/replace on _func space, so in order to rename
-    // our dummy lua function we need to drop it and create it with a
-    // new name.
-    let lua = ::tarantool::lua_state();
-    lua.exec_with(
-        "local func_name = ...
-        box.schema.func.drop(func_name, {if_exists = true})
-        ",
-        (old_name,),
-    )
-    .map_err(LuaError::from)?;
+    let routine_def = storage
+        .routines
+        .by_id(id)?
+        .ok_or_else(|| Error::other(format!("routine with id {id} not found")))?;
+    let func_space = Space::from(SystemSpace::Func);
+    let mut meta = FunctionMetadata::from(&routine_def);
 
-    lua.exec_with(LUA_CREATE_PROC_SCRIPT, (id, new_name, false))
-        .map_err(LuaError::from)?;
+    // function does not support alter, so we need to delete it first
+    func_space.delete(&[id])?;
+
+    // update name of the procedure
+    meta.name = new_name;
+    func_space.put(&FunctionMetadata::from(&routine_def))?;
 
     Ok(())
 }

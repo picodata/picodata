@@ -1150,7 +1150,8 @@ impl NodeImpl {
                         let v_global = storage_properties
                             .global_schema_version()
                             .expect("storage should not fail");
-                        ddl_abort_on_master(&ddl, v_global).expect("storage should not fail");
+                        ddl_abort_on_master(&self.storage, &ddl, v_global)
+                            .expect("storage should not fail");
                     }
                 }
 

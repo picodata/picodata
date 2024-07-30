@@ -3102,6 +3102,28 @@ def test_create_drop_procedure(cluster: Cluster):
     assert data != []
     assert routine_id == data[0][0]
 
+    # Check that procedures from "_pico_routine" and "_func" have the same owner.
+    # https://git.picodata.io/picodata/picodata/picodata/-/issues/607
+
+    # Create a procedure using sudo, as in the issue.
+    i2.sql(
+        """
+        create procedure FOO(int)
+        language SQL
+        as $$insert into t values(?, ?)$$
+        """,
+        sudo=True,
+    )
+    pico_owner = i1.sql(
+        """ select "owner" from "_pico_routine" where "name" = 'FOO' """
+    )
+    tnt_owner = i1.eval(
+        """
+        return box.execute([[ select "owner" from "_vfunc" where "name" = 'FOO']]).rows
+        """
+    )
+    assert pico_owner == tnt_owner
+
 
 def test_sql_user_password_checks(cluster: Cluster):
     cluster.deploy(instance_count=2)
@@ -3378,6 +3400,33 @@ def test_rename_procedure(cluster: Cluster):
         i1.sql(
             """alter procedure bar rename to buzz""", user=username, password=alice_pwd
         )
+
+    data = i2.sql(
+        """
+        create procedure sudo()
+        language SQL
+        as $$insert into t values(200, 200)$$
+        """,
+        sudo=True,
+    )
+    assert data["row_count"] == 1
+
+    with pytest.raises(
+        TarantoolError,
+        match="Alter access to function 'SUDO' is denied for user 'alice'",
+    ):
+        i1.sql(
+            """alter procedure sudo rename to dudo""", user=username, password=alice_pwd
+        )
+
+    i1.sql("""alter procedure sudo rename to dudo""", sudo=True)
+    data = i2.sql(
+        """
+        select "name" from "_pico_routine"
+        where "name" = 'SUDO' or "name" = 'DUDO'
+        """
+    )
+    assert data == [["DUDO"]]
 
     i2.eval(
         """

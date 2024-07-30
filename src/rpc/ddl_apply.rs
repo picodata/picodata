@@ -143,8 +143,8 @@ pub fn apply_schema_change(
             }
         }
 
-        Ddl::CreateProcedure { id, ref name, .. } => {
-            if let Err(e) = ddl_create_function_on_master(id, name) {
+        Ddl::CreateProcedure { id, .. } => {
+            if let Err(e) = ddl_create_function_on_master(storage, id) {
                 return Err(Error::Aborted(e.to_string()));
             }
         }
@@ -162,11 +162,10 @@ pub fn apply_schema_change(
 
         Ddl::RenameProcedure {
             routine_id,
-            ref old_name,
             ref new_name,
             ..
         } => {
-            if let Err(e) = ddl_rename_function_on_master(routine_id, old_name, new_name) {
+            if let Err(e) = ddl_rename_function_on_master(storage, routine_id, new_name) {
                 return Err(Error::Aborted(e.to_string()));
             }
         }
