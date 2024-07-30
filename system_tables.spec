@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.5.0-184-g7f1935b1`.
+Описание соответствует версии Picodata `24.5.0-210-g9a3b2be5`.
 
 ### _pico_table
 
@@ -172,7 +172,6 @@
 * `version`: (_string_)
 * `description`: (_string_)
 * `migration_list`: (_array_)
-* `migration_progress`: (_integer_)
 
 Индексы:
 
@@ -206,3 +205,15 @@
 Индексы:
 
 * `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, plugin_version, service_name]`
+
+### _pico_plugin_migration
+
+Поля:
+
+* `plugin_name`: (_string_)
+* `migration_file`: (_string_)
+* `hash`: (_string_)
+
+Индексы:
+
+* `_pico_plugin_migration_primary_key` (unique), parts: `[plugin_name, migration_file]`
