@@ -83,6 +83,54 @@ CREATE USER "alice" WITH PASSWORD 'T0psecret';
 GRANT CREATE TABLE TO "alice";
 ```
 
+### Автоматизация первичной настройки  {: #automate_setup }
+
+Первичную настройку пользователей и их прав в консоли администратора
+можно автоматизировать: сохранить набор SQL-команд в отдельный файл, и
+затем подать его на вход обработчику `picodata admin`.
+
+Для примера подготовим следующий набор команд, предварив их
+[разделителем](#backslash_commands) (для поддержки многострочного
+ввода):
+
+```shell
+cat ../setup.sql
+```
+
+```sql
+\s d ;
+ALTER USER "admin" WITH PASSWORD 'T0psecret';
+CREATE USER "alice" WITH PASSWORD 'T0psecret';
+GRANT CREATE TABLE TO "alice";
+GRANT READ TABLE TO "alice";
+GRANT WRITE TABLE TO "alice";
+```
+
+После этого можно выполнить набор команд:
+
+```shell
+picodata admin ./admin.sock < ../setup.sql
+```
+
+Вывод:
+
+```
+Connected to admin console by socket path "admin.sock"
+type '\help' for interactive help
+Delimiter changed to ';'
+Language switched to SQL
+1
+1
+1
+1
+1
+Bye
+```
+
+Команды будут выполнены последовательно. Числа в начале строк означают
+количество измененных строк после каждой команды. В конце управление
+возвращается терминалу (консоль Picodata не останется запущенной).
+
 ## SQL-консоль {: #sql_console }
 
 SQL-консоль позволяет выполнять распределенные SQL-команды в рамках
@@ -116,7 +164,7 @@ SQL-консоли. Справка содержит информацию о до
 
 В консоли Picodata доступны следующие дополнительные команды:
 
-- `\e` — открыть текстовый редактор по умолчанию (в соответствие с
+- `\e` — открыть текстовый редактор по умолчанию (в соответствии с
   переменной `EDITOR`)
 - `\set delimiter символ` — задать `символ` для разделения строк
 - `\set delimiter default` — сбросить `символ` для разделения строк
