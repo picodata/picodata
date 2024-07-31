@@ -121,8 +121,12 @@ pub fn main(args: args::Run) -> ! {
                         .start_non_joinable()?;
 
                     std::panic::set_hook(Box::new(|info| {
-                        println!("Panic occurred, exiting: {}", info);
-                        std::process::exit(1);
+                        tlog!(Info, "Panic occurred, exiting: {}", info);
+                        let backtrace = std::backtrace::Backtrace::capture();
+                        if backtrace.status() == std::backtrace::BacktraceStatus::Captured {
+                            tlog!(Info, "{}", backtrace);
+                        }
+                        std::process::abort();
                     }));
 
                     // Note that we don't really need to pass the `config` here,
