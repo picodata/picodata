@@ -1057,6 +1057,18 @@ impl PrivilegeDef {
         Ok(privilege_def)
     }
 
+    pub fn login(grantee_id: UserId, grantor_id: UserId, schema_version: u64) -> Self {
+        Self::new(
+            PrivilegeType::Login,
+            SchemaObjectType::Universe,
+            0,
+            grantee_id,
+            grantor_id,
+            schema_version,
+        )
+        .expect("cant fail, valid login privilege")
+    }
+
     #[inline(always)]
     pub fn privilege(&self) -> PrivilegeType {
         self.privilege

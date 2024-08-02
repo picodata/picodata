@@ -16,9 +16,10 @@ use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{cas, unwrap_ok_or};
+use crate::{cas, tlog, unwrap_ok_or};
 
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
+use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
     build_delete_args, build_insert_args, build_update_args, decode_msgpack,
@@ -38,7 +39,6 @@ use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::{Node as IrNode, Plan as IrPlan};
 use sbroad::otm::{query_id, query_span};
-use sbroad::{debug, warn};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
@@ -54,6 +54,7 @@ use ::tarantool::session::{with_su, UserId};
 use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
+use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
 use std::str::FromStr;
 use std::time::Duration;
 use tarantool::session;
@@ -575,7 +576,7 @@ impl TraftNode {
 }
 
 /// Get grantee (user or role) UserId by its name.
-fn get_grantee_id(storage: &Clusterwide, grantee_name: &String) -> traft::Result<UserId> {
+fn get_grantee_id(storage: &Clusterwide, grantee_name: &str) -> traft::Result<UserId> {
     if let Some(grantee_user_def) = storage.users.by_name(grantee_name)? {
         Ok(grantee_user_def.id)
     } else {
@@ -645,6 +646,598 @@ fn check_name_emptyness(name: &str) -> traft::Result<()> {
     Ok(())
 }
 
+fn alter_user_ir_node_to_op_or_result(
+    name: &SmolStr,
+    alter_option: &AlterOption,
+    current_user: UserId,
+    schema_version: u64,
+    storage: &Clusterwide,
+) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
+    let user_def = storage.users.by_name(name)?;
+    let user_def = match user_def {
+        // Unable to alter role
+        Some(user_def) if user_def.is_role() => {
+            return Err(Error::Other(
+                format!("Role {name} exists. Unable to alter role.").into(),
+            ));
+        }
+        // User doesn't exists, no op needed.
+        None => return Ok(Break(ConsumerResult { row_count: 0 })),
+        Some(user_def) => user_def,
+    };
+
+    match alter_option {
+        AlterOption::Password {
+            password,
+            auth_method,
+        } => {
+            let method = AuthMethod::from_str(auth_method)
+                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            validate_password(password, &method, storage)?;
+            let data = AuthData::new(&method, name, password);
+            let auth = AuthDef::new(method, data.into_string());
+
+            if user_def
+                .auth
+                .expect("user always should have non empty auth")
+                == auth
+            {
+                // Password is already the one given, no op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+
+            Ok(Continue(Op::Acl(OpAcl::ChangeAuth {
+                user_id: user_def.id,
+                auth: auth.clone(),
+                initiator: current_user,
+                schema_version,
+            })))
+        }
+        AlterOption::Login => {
+            let priv_def = PrivilegeDef::login(
+                get_grantee_id(storage, name.as_str())?,
+                current_user,
+                schema_version,
+            );
+
+            Ok(Continue(Op::Acl(OpAcl::GrantPrivilege { priv_def })))
+        }
+        AlterOption::NoLogin => {
+            let priv_def = PrivilegeDef::login(
+                get_grantee_id(storage, name.as_str())?,
+                current_user,
+                schema_version,
+            );
+
+            Ok(Continue(Op::Acl(OpAcl::RevokePrivilege {
+                priv_def,
+                initiator: current_user,
+            })))
+        }
+        AlterOption::Rename { new_name } => {
+            check_name_emptyness(new_name)?;
+
+            if &user_def.name == new_name {
+                // Username is already the one given, no op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+            let user = storage.users.by_name(new_name)?;
+            match user {
+                Some(_) => {
+                    return Err(Error::Other(
+                        format!(
+                            r#"User with name "{new_name}" exists. Unable to rename user "{name}"."#
+                        )
+                        .into(),
+                    ))
+                }
+                None => Ok(Continue(Op::Acl(OpAcl::RenameUser {
+                    user_id: user_def.id,
+                    name: new_name.to_string(),
+                    initiator: current_user,
+                    schema_version,
+                }))),
+            }
+        }
+    }
+}
+
+fn acl_ir_node_to_op_or_result(
+    acl: &Acl,
+    current_user: UserId,
+    schema_version: u64,
+    node: &TraftNode,
+    storage: &Clusterwide,
+) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
+    match acl {
+        Acl::DropRole { name, .. } => {
+            let Some(role_def) = storage.users.by_name(name)? else {
+                // Role doesn't exist yet, no op needed
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            };
+            if !role_def.is_role() {
+                return Err(Error::Sbroad(SbroadError::Invalid(
+                    Entity::Acl,
+                    Some(format_smolstr!("User {name} exists. Unable to drop user.")),
+                )));
+            }
+
+            Ok(Continue(Op::Acl(OpAcl::DropRole {
+                role_id: role_def.id,
+                initiator: current_user,
+                schema_version,
+            })))
+        }
+        Acl::DropUser { name, .. } => {
+            let Some(user_def) = storage.users.by_name(name)? else {
+                // User doesn't exist yet, no op needed
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            };
+            if user_def.is_role() {
+                return Err(Error::Sbroad(SbroadError::Invalid(
+                    Entity::Acl,
+                    Some(format_smolstr!("Role {name} exists. Unable to drop role.")),
+                )));
+            }
+
+            Ok(Continue(Op::Acl(OpAcl::DropUser {
+                user_id: user_def.id,
+                initiator: current_user,
+                schema_version,
+            })))
+        }
+        Acl::CreateRole { name, .. } => {
+            check_name_emptyness(name)?;
+
+            let sys_user = Space::from(SystemSpace::User)
+                .index("name")
+                .expect("_user should have an index by name")
+                .get(&(name,))?;
+            if let Some(user) = sys_user {
+                let entry_type: &str = user.get(3).unwrap();
+                if entry_type == "user" {
+                    return Err(Error::Sbroad(SbroadError::Invalid(
+                        Entity::Acl,
+                        Some(format_smolstr!(
+                            "Unable to create role {name}. User with the same name already exists"
+                        )),
+                    )));
+                } else {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                }
+            }
+            let id = node.get_next_grantee_id()?;
+            let role_def = UserDef {
+                id,
+                name: name.to_string(),
+                // This field will be updated later.
+                schema_version,
+                owner: current_user,
+                auth: None,
+                ty: UserMetadataKind::Role,
+            };
+            Ok(Continue(Op::Acl(OpAcl::CreateRole { role_def })))
+        }
+        Acl::CreateUser {
+            name,
+            password,
+            auth_method,
+            ..
+        } => {
+            check_name_emptyness(name)?;
+            let method = AuthMethod::from_str(auth_method)
+                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            validate_password(password, &method, storage)?;
+            let data = AuthData::new(&method, name, password);
+            let auth = AuthDef::new(method, data.into_string());
+
+            let user_def = storage.users.by_name(name)?;
+            match user_def {
+                Some(user_def) if user_def.is_role() => {
+                    return Err(Error::Other(format!("Role {name} already exists").into()));
+                }
+                Some(user_def) => {
+                    if user_def
+                        .auth
+                        .expect("user always should have non empty auth")
+                        != auth
+                    {
+                        return Err(Error::Other(
+                            format!("User {name} already exists with different auth method").into(),
+                        ));
+                    }
+                    // User already exists, no op needed
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                }
+                None => {
+                    let id = node.get_next_grantee_id()?;
+                    let user_def = UserDef {
+                        id,
+                        name: name.to_string(),
+                        schema_version,
+                        auth: Some(auth.clone()),
+                        owner: current_user,
+                        ty: UserMetadataKind::User,
+                    };
+                    Ok(Continue(Op::Acl(OpAcl::CreateUser { user_def })))
+                }
+            }
+        }
+        Acl::AlterUser {
+            name, alter_option, ..
+        } => alter_user_ir_node_to_op_or_result(
+            name,
+            alter_option,
+            current_user,
+            schema_version,
+            storage,
+        ),
+        Acl::GrantPrivilege {
+            grant_type,
+            grantee_name,
+            ..
+        } => {
+            let grantor_id = current_user;
+            let grantee_id = get_grantee_id(storage, grantee_name)?;
+            let (object_type, privilege, object_id) = node.object_resolve(grant_type)?;
+
+            if check_privilege_already_granted(
+                node,
+                grantee_id,
+                &object_type,
+                object_id,
+                &privilege,
+            )? {
+                // Privilege is already granted, no op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+            Ok(Continue(Op::Acl(OpAcl::GrantPrivilege {
+                priv_def: PrivilegeDef::new(
+                    privilege,
+                    object_type,
+                    object_id,
+                    grantee_id,
+                    grantor_id,
+                    schema_version,
+                )
+                .map_err(Error::other)?,
+            })))
+        }
+        Acl::RevokePrivilege {
+            revoke_type,
+            grantee_name,
+            ..
+        } => {
+            let grantor_id = current_user;
+            let grantee_id = get_grantee_id(storage, grantee_name)?;
+            let (object_type, privilege, object_id) = node.object_resolve(revoke_type)?;
+
+            if !check_privilege_already_granted(
+                node,
+                grantee_id,
+                &object_type,
+                object_id,
+                &privilege,
+            )? {
+                // Privilege is not granted yet, no op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+
+            Ok(Continue(Op::Acl(OpAcl::RevokePrivilege {
+                priv_def: PrivilegeDef::new(
+                    privilege,
+                    object_type,
+                    object_id,
+                    grantee_id,
+                    grantor_id,
+                    schema_version,
+                )
+                .map_err(Error::other)?,
+                initiator: current_user,
+            })))
+        }
+    }
+}
+
+fn ddl_ir_node_to_op_or_result(
+    ddl: &Ddl,
+    current_user: UserId,
+    schema_version: u64,
+    node: &TraftNode,
+    storage: &Clusterwide,
+) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
+    match ddl {
+        Ddl::CreateTable {
+            name,
+            format,
+            primary_key,
+            sharding_key,
+            engine_type,
+            tier,
+            ..
+        } => {
+            let format = format
+                .iter()
+                .map(|f| Field {
+                    name: f.name.to_string(),
+                    r#type: FieldType::from(&f.data_type),
+                    is_nullable: f.is_nullable,
+                })
+                .collect();
+            let distribution = if sharding_key.is_some() {
+                DistributionParam::Sharded
+            } else {
+                DistributionParam::Global
+            };
+
+            let primary_key = primary_key.iter().cloned().map(String::from).collect();
+            let sharding_key = sharding_key
+                .as_ref()
+                .map(|sh_key| sh_key.iter().cloned().map(String::from).collect());
+
+            let mut params = CreateTableParams {
+                id: None,
+                name: name.to_string(),
+                format,
+                primary_key,
+                distribution,
+                by_field: None,
+                sharding_key,
+                sharding_fn: Some(ShardingFn::Murmur3),
+                engine: Some(*engine_type),
+                timeout: None,
+                owner: current_user,
+                tier: tier.as_ref().map(SmolStr::to_string),
+            };
+            params.validate()?;
+
+            if params.space_exists()? {
+                // Space already exists, no op needed
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+
+            params.check_tier_exists(storage)?;
+
+            params.choose_id_if_not_specified()?;
+            params.test_create_space(storage)?;
+            let ddl = params.into_ddl()?;
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        Ddl::DropTable { name, .. } => {
+            let Some(space_def) = storage.tables.by_name(name)? else {
+                // Space doesn't exist yet, no op needed
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            };
+            let ddl = OpDdl::DropTable {
+                id: space_def.id,
+                initiator: current_user,
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        Ddl::CreateProc {
+            name,
+            params,
+            body,
+            language,
+            ..
+        } => {
+            let params: RoutineParams = params
+                .iter()
+                .map(|p| {
+                    let field_type = FieldType::from(&p.data_type);
+                    RoutineParamDef::default().with_type(field_type)
+                })
+                .collect();
+            let language = RoutineLanguage::from(language.clone());
+            let security = RoutineSecurity::default();
+
+            let params = CreateProcParams {
+                name: name.to_string(),
+                params,
+                language,
+                body: body.to_string(),
+                security,
+                owner: current_user,
+            };
+            params.validate(storage)?;
+
+            if params.func_exists() {
+                // Function already exists, no op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+            let id = func_next_reserved_id()?;
+            let ddl = OpDdl::CreateProcedure {
+                id,
+                name: params.name.clone(),
+                params: params.params.clone(),
+                language: params.language.clone(),
+                body: params.body.clone(),
+                security: params.security.clone(),
+                owner: params.owner,
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        Ddl::DropProc { name, params, .. } => {
+            let Some(routine) = &storage.routines.by_name(name)? else {
+                // Procedure doesn't exist yet, no op needed
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            };
+
+            // drop by name if no parameters are specified
+            if let Some(params) = params {
+                ensure_parameters_match(routine, params)?;
+            }
+
+            let ddl = OpDdl::DropProcedure {
+                id: routine.id,
+                initiator: current_user,
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        Ddl::RenameRoutine {
+            old_name,
+            new_name,
+            params,
+            ..
+        } => {
+            let params = RenameRoutineParams {
+                new_name: new_name.to_string(),
+                old_name: old_name.to_string(),
+                params: params.clone(),
+            };
+
+            if !params.func_exists() {
+                // Procedure does not exist, nothing to rename
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+
+            if params.new_name_occupied() {
+                return Err(Error::Other(
+                    format!("Name '{}' is already taken", params.new_name).into(),
+                ));
+            }
+
+            let routine_def = node
+                .storage
+                .routines
+                .by_name(&params.old_name)?
+                .expect("if routine ddl is correct, routine must exist");
+
+            if let Some(params) = params.params.as_ref() {
+                ensure_parameters_match(&routine_def, params)?;
+            }
+
+            let ddl = OpDdl::RenameProcedure {
+                routine_id: routine_def.id,
+                new_name: params.new_name.clone(),
+                old_name: params.old_name.clone(),
+                initiator_id: current_user,
+                owner_id: routine_def.owner,
+                schema_version,
+            };
+
+            Ok(Continue(Op::DdlPrepare {
+                ddl,
+                schema_version,
+            }))
+        }
+        Ddl::CreateIndex {
+            name,
+            table_name,
+            columns,
+            unique,
+            index_type,
+            bloom_fpr,
+            page_size,
+            range_size,
+            run_count_per_level,
+            run_size_ratio,
+            dimension,
+            distance,
+            hint,
+            ..
+        } => {
+            let mut opts: Vec<IndexOption> = Vec::with_capacity(9);
+            opts.push(IndexOption::Unique(*unique));
+            if let Some(bloom_fpr) = bloom_fpr {
+                opts.push(IndexOption::BloomFalsePositiveRate(*bloom_fpr));
+            }
+            if let Some(page_size) = page_size {
+                opts.push(IndexOption::PageSize(*page_size));
+            }
+            if let Some(range_size) = range_size {
+                opts.push(IndexOption::RangeSize(*range_size));
+            }
+            if let Some(run_count_per_level) = run_count_per_level {
+                opts.push(IndexOption::RunCountPerLevel(*run_count_per_level));
+            }
+            if let Some(run_size_ratio) = run_size_ratio {
+                opts.push(IndexOption::RunSizeRatio(*run_size_ratio));
+            }
+            if let Some(dimension) = dimension {
+                opts.push(IndexOption::Dimension(*dimension));
+            }
+            if let Some(distance) = distance {
+                opts.push(IndexOption::Distance(*distance));
+            }
+            if let Some(hint) = hint {
+                opts.push(IndexOption::Hint(*hint));
+            }
+            opts.shrink_to_fit();
+
+            let columns = columns.iter().cloned().map(String::from).collect();
+
+            let params = CreateIndexParams {
+                name: name.to_string(),
+                space_name: table_name.to_string(),
+                columns,
+                ty: *index_type,
+                opts,
+                initiator: current_user,
+            };
+            params.validate(storage)?;
+
+            if params.index_exists() {
+                // Index already exists, no op needed.
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            }
+            if storage.indexes.by_name(&params.name)?.is_some() {
+                return Err(traft::error::Error::other(format!(
+                    "index {} already exists",
+                    &params.name,
+                )));
+            }
+            let ddl = params.into_ddl(storage)?;
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        Ddl::DropIndex { name, .. } => {
+            let Some(index) = storage.indexes.by_name(name)? else {
+                // Index doesn't exist yet, no op needed
+                return Ok(Break(ConsumerResult { row_count: 0 }));
+            };
+            let ddl = OpDdl::DropIndex {
+                space_id: index.table_id,
+                index_id: index.id,
+                initiator: current_user,
+            };
+            Ok(Continue(Op::DdlPrepare {
+                schema_version,
+                ddl,
+            }))
+        }
+        Ddl::SetParam { param_value, .. } => {
+            tlog!(
+                Warning,
+                "Parameters setting is currently disabled. Skipping update for {}.",
+                param_value.param_name()
+            );
+            Ok(Break(ConsumerResult { row_count: 0 }))
+        }
+        Ddl::SetTransaction { .. } => {
+            tlog!(
+                Warning,
+                "Transaction setting is currently disabled. Skipping."
+            );
+            Ok(Break(ConsumerResult { row_count: 0 }))
+        }
+    }
+}
+
 fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: IrNode,
@@ -663,249 +1256,6 @@ fn reenterable_schema_change_request(
     let timeout = duration_from_secs_f64_clamped(timeout);
     let deadline = Instant::now_fiber().saturating_add(timeout);
 
-    // Check parameters
-    let params = match ir_node {
-        IrNode::Ddl(Ddl::CreateIndex {
-            name,
-            table_name,
-            columns,
-            unique,
-            index_type,
-            bloom_fpr,
-            page_size,
-            range_size,
-            run_count_per_level,
-            run_size_ratio,
-            dimension,
-            distance,
-            hint,
-            ..
-        }) => {
-            let mut opts: Vec<IndexOption> = Vec::with_capacity(9);
-            opts.push(IndexOption::Unique(unique));
-            if let Some(bloom_fpr) = bloom_fpr {
-                opts.push(IndexOption::BloomFalsePositiveRate(bloom_fpr));
-            }
-            if let Some(page_size) = page_size {
-                opts.push(IndexOption::PageSize(page_size));
-            }
-            if let Some(range_size) = range_size {
-                opts.push(IndexOption::RangeSize(range_size));
-            }
-            if let Some(run_count_per_level) = run_count_per_level {
-                opts.push(IndexOption::RunCountPerLevel(run_count_per_level));
-            }
-            if let Some(run_size_ratio) = run_size_ratio {
-                opts.push(IndexOption::RunSizeRatio(run_size_ratio));
-            }
-            if let Some(dimension) = dimension {
-                opts.push(IndexOption::Dimension(dimension));
-            }
-            if let Some(distance) = distance {
-                opts.push(IndexOption::Distance(distance));
-            }
-            if let Some(hint) = hint {
-                opts.push(IndexOption::Hint(hint));
-            }
-            opts.shrink_to_fit();
-
-            let columns = columns.iter().cloned().map(String::from).collect();
-
-            let params = CreateIndexParams {
-                name: name.to_string(),
-                space_name: table_name.to_string(),
-                columns,
-                ty: index_type,
-                opts,
-                initiator: current_user,
-            };
-            params.validate(storage)?;
-            Params::CreateIndex(params)
-        }
-        IrNode::Ddl(Ddl::CreateProc {
-            name,
-            params: args,
-            body,
-            language,
-            ..
-        }) => {
-            let args: RoutineParams = args
-                .into_iter()
-                .map(|p| {
-                    let field_type = FieldType::from(&p.data_type);
-                    RoutineParamDef::default().with_type(field_type)
-                })
-                .collect();
-            let language = RoutineLanguage::from(language);
-            let security = RoutineSecurity::default();
-
-            let params = CreateProcParams {
-                name: name.to_string(),
-                params: args,
-                language,
-                body: body.to_string(),
-                security,
-                owner: current_user,
-            };
-            params.validate(storage)?;
-            Params::CreateProcedure(params)
-        }
-
-        IrNode::Ddl(Ddl::CreateTable {
-            name,
-            format,
-            primary_key,
-            sharding_key,
-            engine_type,
-            tier,
-            ..
-        }) => {
-            let format = format
-                .into_iter()
-                .map(|f| Field {
-                    name: f.name.to_string(),
-                    r#type: FieldType::from(&f.data_type),
-                    is_nullable: f.is_nullable,
-                })
-                .collect();
-            let distribution = if sharding_key.is_some() {
-                DistributionParam::Sharded
-            } else {
-                DistributionParam::Global
-            };
-
-            let primary_key = primary_key.iter().cloned().map(String::from).collect();
-            let sharding_key =
-                sharding_key.map(|sh_key| sh_key.iter().cloned().map(String::from).collect());
-
-            let params = CreateTableParams {
-                id: None,
-                name: name.to_string(),
-                format,
-                primary_key,
-                distribution,
-                by_field: None,
-                sharding_key,
-                sharding_fn: Some(ShardingFn::Murmur3),
-                engine: Some(engine_type),
-                timeout: None,
-                owner: current_user,
-                tier: tier.map(String::from),
-            };
-            params.validate()?;
-            Params::CreateTable(params)
-        }
-        IrNode::Ddl(Ddl::DropIndex { name, .. }) => {
-            // Nothing to check
-            Params::DropIndex(name)
-        }
-        IrNode::Ddl(Ddl::DropProc { name, params, .. }) => {
-            // Nothing to check
-            Params::DropProcedure(name, params)
-        }
-        IrNode::Ddl(Ddl::DropTable { name, .. }) => {
-            // Nothing to check
-            Params::DropTable(name)
-        }
-        IrNode::Ddl(Ddl::RenameRoutine {
-            old_name,
-            new_name,
-            params,
-            ..
-        }) => {
-            let params = RenameRoutineParams {
-                new_name: new_name.to_string(),
-                old_name: old_name.to_string(),
-                params,
-            };
-            Params::RenameRoutine(params)
-        }
-        IrNode::Ddl(Ddl::SetParam { param_value, .. }) => {
-            warn!(
-                None,
-                &format!(
-                    "Parameters setting is currently disabled. Skipping update for {}.",
-                    param_value.param_name()
-                ),
-            );
-            return Ok(ConsumerResult { row_count: 0 });
-        }
-        IrNode::Ddl(Ddl::SetTransaction { .. }) => {
-            warn!(None, "Transaction setting is currently disabled. Skipping.");
-            return Ok(ConsumerResult { row_count: 0 });
-        }
-        IrNode::Acl(Acl::DropUser { name, .. }) => {
-            // Nothing to check
-            Params::DropUser(name)
-        }
-        IrNode::Acl(Acl::CreateRole { name, .. }) => {
-            check_name_emptyness(&name)?;
-            Params::CreateRole(name.to_string())
-        }
-        IrNode::Acl(Acl::DropRole { name, .. }) => {
-            // Nothing to check
-            Params::DropRole(name)
-        }
-        IrNode::Acl(Acl::CreateUser {
-            name,
-            password,
-            auth_method,
-            ..
-        }) => {
-            check_name_emptyness(&name)?;
-            let method = AuthMethod::from_str(&auth_method)
-                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
-            validate_password(&password, &method, storage)?;
-            let data = AuthData::new(&method, &name, &password);
-            let auth = AuthDef::new(method, data.into_string());
-            Params::CreateUser(name.to_string(), auth)
-        }
-        IrNode::Acl(Acl::AlterUser {
-            name, alter_option, ..
-        }) => {
-            let alter_option_param = match alter_option {
-                AlterOption::Password {
-                    password,
-                    auth_method,
-                } => {
-                    let method = AuthMethod::from_str(&auth_method).map_err(|_| {
-                        Error::Other(format!("Unknown auth method: {auth_method}").into())
-                    })?;
-                    validate_password(&password, &method, storage)?;
-                    let data = AuthData::new(&method, &name, &password);
-                    let auth = AuthDef::new(method, data.into_string());
-                    AlterOptionParam::ChangePassword(auth)
-                }
-                AlterOption::Login => AlterOptionParam::Login,
-                AlterOption::NoLogin => AlterOptionParam::NoLogin,
-                AlterOption::Rename { new_name } => {
-                    check_name_emptyness(&new_name)?;
-                    AlterOptionParam::Rename(new_name.to_string())
-                }
-            };
-            Params::AlterUser(name.to_string(), alter_option_param)
-        }
-        IrNode::Acl(Acl::GrantPrivilege {
-            grant_type,
-            grantee_name,
-            ..
-        }) => {
-            // Nothing to check
-            Params::GrantPrivilege(grant_type, grantee_name.to_string())
-        }
-        IrNode::Acl(Acl::RevokePrivilege {
-            revoke_type,
-            grantee_name,
-            ..
-        }) => {
-            // Nothing to check
-            Params::RevokePrivilege(revoke_type, grantee_name.to_string())
-        }
-        n => {
-            unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
-        }
-    };
-
     let _su = session::su(ADMIN_ID).expect("cant fail because admin should always have session");
 
     'retry: loop {
@@ -913,6 +1263,14 @@ fn reenterable_schema_change_request(
             return Err(Error::Timeout);
         }
 
+        // read_index is important as a protection from stale reads.
+        // Behavior we'd like to avoid:
+        // 1. The instance is stale
+        // 2. The user tries to create an index, but the preceeding
+        //    table creation didn't replicate to this instance yet
+        // 3. Without read_index the error message would be misleading
+        //    saying that the table doesn't exist but in fact an
+        //    instance is just lagging behind and cant serve the request
         let index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
 
         if storage.properties.pending_schema_change()?.is_some() {
@@ -922,387 +1280,19 @@ fn reenterable_schema_change_request(
 
         let schema_version = storage.properties.next_schema_version()?;
 
-        // Check for conflicts and make the op
-        let op = match &params {
-            Params::CreateIndex(params) => {
-                if params.index_exists() {
-                    // Index already exists, no op needed.
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-                if storage.indexes.by_name(&params.name)?.is_some() {
-                    return Err(traft::error::Error::other(format!(
-                        "index {} already exists",
-                        &params.name,
-                    )));
-                }
-                let ddl = params.into_ddl(storage)?;
-                Op::DdlPrepare {
-                    schema_version,
-                    ddl,
-                }
+        let op_or_result = match &ir_node {
+            IrNode::Acl(acl) => {
+                acl_ir_node_to_op_or_result(acl, current_user, schema_version, node, storage)?
             }
-            Params::DropIndex(name) => {
-                let Some(index) = storage.indexes.by_name(name)? else {
-                    // Index doesn't exist yet, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                };
-                let ddl = OpDdl::DropIndex {
-                    space_id: index.table_id,
-                    index_id: index.id,
-                    initiator: current_user,
-                };
-                Op::DdlPrepare {
-                    schema_version,
-                    ddl,
-                }
+            IrNode::Ddl(ddl) => {
+                ddl_ir_node_to_op_or_result(ddl, current_user, schema_version, node, storage)?
             }
-            Params::CreateProcedure(params) => {
-                if params.func_exists() {
-                    // Function already exists, no op needed.
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-                let id = func_next_reserved_id()?;
-                let ddl = OpDdl::CreateProcedure {
-                    id,
-                    name: params.name.clone(),
-                    params: params.params.clone(),
-                    language: params.language.clone(),
-                    body: params.body.clone(),
-                    security: params.security.clone(),
-                    owner: params.owner,
-                };
-                Op::DdlPrepare {
-                    schema_version,
-                    ddl,
-                }
-            }
-            Params::DropProcedure(name, params) => {
-                let Some(routine) = &storage.routines.by_name(name)? else {
-                    // Procedure doesn't exist yet, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                };
+            n => unreachable!("function must be called only for ddl or acl nodes, not {n:?}"),
+        };
 
-                // drop by name if no parameters are specified
-                if let Some(params) = params {
-                    ensure_parameters_match(routine, params)?;
-                }
-
-                let ddl = OpDdl::DropProcedure {
-                    id: routine.id,
-                    initiator: current_user,
-                };
-                Op::DdlPrepare {
-                    schema_version,
-                    ddl,
-                }
-            }
-            Params::RenameRoutine(params) => {
-                if !params.func_exists() {
-                    // Procedure does not exist, nothing to rename
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-
-                if params.new_name_occupied() {
-                    return Err(Error::Other(
-                        format!("Name '{}' is already taken", params.new_name).into(),
-                    ));
-                }
-
-                let routine_def = node
-                    .storage
-                    .routines
-                    .by_name(&params.old_name)?
-                    .expect("if routine ddl is correct, routine must exist");
-
-                if let Some(params) = params.params.as_ref() {
-                    ensure_parameters_match(&routine_def, params)?;
-                }
-
-                let ddl = OpDdl::RenameProcedure {
-                    routine_id: routine_def.id,
-                    new_name: params.new_name.clone(),
-                    old_name: params.old_name.clone(),
-                    initiator_id: current_user,
-                    owner_id: routine_def.owner,
-                    schema_version,
-                };
-
-                Op::DdlPrepare {
-                    ddl,
-                    schema_version,
-                }
-            }
-            Params::CreateTable(params) => {
-                if params.space_exists()? {
-                    // Space already exists, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-
-                params.check_tier_exists(storage)?;
-
-                // XXX: this is stupid, we pass raft op by value everywhere even
-                // though it's always just dropped right after serialization.
-                // This forces us to clone it quite often. The root problem is
-                // that we nest structs a lot and having references to structs
-                // in other structs (which is what we should be doing) is very
-                // painfull in rust.
-                let mut params = params.clone();
-                params.choose_id_if_not_specified()?;
-                params.test_create_space(storage)?;
-                let ddl = params.into_ddl()?;
-                Op::DdlPrepare {
-                    schema_version,
-                    ddl,
-                }
-            }
-            Params::DropTable(name) => {
-                let Some(space_def) = storage.tables.by_name(name)? else {
-                    // Space doesn't exist yet, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                };
-                let ddl = OpDdl::DropTable {
-                    id: space_def.id,
-                    initiator: current_user,
-                };
-                Op::DdlPrepare {
-                    schema_version,
-                    ddl,
-                }
-            }
-            Params::CreateUser(name, auth) => {
-                let user_def = storage.users.by_name(name)?;
-                match user_def {
-                    Some(user_def) if user_def.is_role() => {
-                        return Err(Error::Other(format!("Role {name} already exists").into()));
-                    }
-                    Some(user_def) => {
-                        if user_def
-                            .auth
-                            .expect("user always should have non empty auth")
-                            != *auth
-                        {
-                            return Err(Error::Other(
-                                format!("User {name} already exists with different auth method")
-                                    .into(),
-                            ));
-                        }
-                        // User already exists, no op needed
-                        return Ok(ConsumerResult { row_count: 0 });
-                    }
-                    None => {
-                        let id = node.get_next_grantee_id()?;
-                        let user_def = UserDef {
-                            id,
-                            name: name.clone(),
-                            schema_version,
-                            auth: Some(auth.clone()),
-                            owner: current_user,
-                            ty: UserMetadataKind::User,
-                        };
-                        Op::Acl(OpAcl::CreateUser { user_def })
-                    }
-                }
-            }
-            Params::AlterUser(name, alter_option_param) => {
-                let user_def = storage.users.by_name(name)?;
-                let user_def = match user_def {
-                    // Unable to alter role
-                    Some(user_def) if user_def.is_role() => {
-                        return Err(Error::Other(
-                            format!("Role {name} exists. Unable to alter role.").into(),
-                        ));
-                    }
-                    // User doesn't exists, no op needed.
-                    None => return Ok(ConsumerResult { row_count: 0 }),
-                    Some(user_def) => user_def,
-                };
-
-                // For ALTER Login/NoLogin.
-                let grantor_id = current_user;
-                let grantee_id = get_grantee_id(storage, name)?;
-                let object_type = SchemaObjectType::Universe;
-                let object_id = 0;
-                let privilege = PrivilegeType::Login;
-                let priv_def = PrivilegeDef::new(
-                    privilege,
-                    object_type,
-                    object_id,
-                    grantee_id,
-                    grantor_id,
-                    schema_version,
-                )
-                .map_err(Error::other)?;
-
-                match alter_option_param {
-                    AlterOptionParam::ChangePassword(auth) => {
-                        if user_def
-                            .auth
-                            .expect("user always should have non empty auth")
-                            == *auth
-                        {
-                            // Password is already the one given, no op needed.
-                            return Ok(ConsumerResult { row_count: 0 });
-                        }
-                        Op::Acl(OpAcl::ChangeAuth {
-                            user_id: user_def.id,
-                            auth: auth.clone(),
-                            initiator: current_user,
-                            schema_version,
-                        })
-                    }
-                    AlterOptionParam::Login => {
-                        // It will be checked at a later stage whether login is already granted
-                        Op::Acl(OpAcl::GrantPrivilege { priv_def })
-                    }
-                    AlterOptionParam::NoLogin => {
-                        // It will be checked at a later stage whether login was not granted
-                        Op::Acl(OpAcl::RevokePrivilege {
-                            priv_def,
-                            initiator: current_user,
-                        })
-                    }
-                    AlterOptionParam::Rename(new_name) => {
-                        if user_def.name == *new_name {
-                            // Username is already the one given, no op needed.
-                            return Ok(ConsumerResult { row_count: 0 });
-                        }
-                        let user = storage.users.by_name(new_name)?;
-                        match user {
-                            Some(_) => {
-                                return Err(Error::Other(
-                                    format!(r#"User with name "{new_name}" exists. Unable to rename user "{name}"."#).into(),
-                                ))
-                            }
-                            None => Op::Acl(OpAcl::RenameUser {
-                                user_id: user_def.id,
-                                name: new_name.into(),
-                                initiator: current_user,
-                                schema_version,
-                            }),
-                        }
-                    }
-                }
-            }
-            Params::DropUser(name) => {
-                let Some(user_def) = storage.users.by_name(name)? else {
-                    // User doesn't exist yet, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                };
-                if user_def.is_role() {
-                    return Err(Error::Sbroad(SbroadError::Invalid(
-                        Entity::Acl,
-                        Some(format_smolstr!("Role {name} exists. Unable to drop role.")),
-                    )));
-                }
-
-                Op::Acl(OpAcl::DropUser {
-                    user_id: user_def.id,
-                    initiator: current_user,
-                    schema_version,
-                })
-            }
-            Params::CreateRole(name) => {
-                let sys_user = Space::from(SystemSpace::User)
-                    .index("name")
-                    .expect("_user should have an index by name")
-                    .get(&(name,))?;
-                if let Some(user) = sys_user {
-                    let entry_type: &str = user.get(3).unwrap();
-                    if entry_type == "user" {
-                        return Err(Error::Sbroad(SbroadError::Invalid(
-                            Entity::Acl,
-                            Some(format_smolstr!("Unable to create role {name}. User with the same name already exists")),
-                        )));
-                    } else {
-                        return Ok(ConsumerResult { row_count: 0 });
-                    }
-                }
-                let id = node.get_next_grantee_id()?;
-                let role_def = UserDef {
-                    id,
-                    name: name.clone(),
-                    // This field will be updated later.
-                    schema_version,
-                    owner: current_user,
-                    auth: None,
-                    ty: UserMetadataKind::Role,
-                };
-                Op::Acl(OpAcl::CreateRole { role_def })
-            }
-            Params::DropRole(name) => {
-                let Some(role_def) = storage.users.by_name(name)? else {
-                    // Role doesn't exist yet, no op needed
-                    return Ok(ConsumerResult { row_count: 0 });
-                };
-                if !role_def.is_role() {
-                    return Err(Error::Sbroad(SbroadError::Invalid(
-                        Entity::Acl,
-                        Some(format_smolstr!("User {name} exists. Unable to drop user.")),
-                    )));
-                }
-
-                Op::Acl(OpAcl::DropRole {
-                    role_id: role_def.id,
-                    initiator: current_user,
-                    schema_version,
-                })
-            }
-            Params::GrantPrivilege(grant_type, grantee_name) => {
-                let grantor_id = current_user;
-                let grantee_id = get_grantee_id(storage, grantee_name)?;
-                let (object_type, privilege, object_id) = node.object_resolve(grant_type)?;
-
-                if check_privilege_already_granted(
-                    node,
-                    grantee_id,
-                    &object_type,
-                    object_id,
-                    &privilege,
-                )? {
-                    // Privilege is already granted, no op needed.
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-                Op::Acl(OpAcl::GrantPrivilege {
-                    priv_def: PrivilegeDef::new(
-                        privilege,
-                        object_type,
-                        object_id,
-                        grantee_id,
-                        grantor_id,
-                        schema_version,
-                    )
-                    .map_err(Error::other)?,
-                })
-            }
-            Params::RevokePrivilege(revoke_type, grantee_name) => {
-                let grantor_id = current_user;
-                let grantee_id = get_grantee_id(storage, grantee_name)?;
-                let (object_type, privilege, object_id) = node.object_resolve(revoke_type)?;
-
-                if !check_privilege_already_granted(
-                    node,
-                    grantee_id,
-                    &object_type,
-                    object_id,
-                    &privilege,
-                )? {
-                    // Privilege is not granted yet, no op needed.
-                    return Ok(ConsumerResult { row_count: 0 });
-                }
-
-                Op::Acl(OpAcl::RevokePrivilege {
-                    priv_def: PrivilegeDef::new(
-                        privilege,
-                        object_type,
-                        object_id,
-                        grantee_id,
-                        grantor_id,
-                        schema_version,
-                    )
-                    .map_err(Error::other)?,
-                    initiator: current_user,
-                })
-            }
+        let op = match op_or_result {
+            Break(consumer_result) => return Ok(consumer_result),
+            Continue(op) => op,
         };
         let is_ddl_prepare = matches!(op, Op::DdlPrepare { .. });
 
@@ -1312,8 +1302,6 @@ fn reenterable_schema_change_request(
             term,
             ranges: cas::schema_change_ranges().into(),
         };
-        // Note: as_user doesnt really serve any purpose for DDL checks
-        // It'll change when access control checks will be introduced for DDL
         let req = crate::cas::Request::new(op, predicate, current_user)?;
         let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now_fiber()));
         let (index, term) = unwrap_ok_or!(res,
@@ -1337,31 +1325,6 @@ fn reenterable_schema_change_request(
         }
 
         return Ok(ConsumerResult { row_count: 1 });
-    }
-
-    enum AlterOptionParam {
-        ChangePassword(AuthDef),
-        Login,
-        NoLogin,
-        Rename(String),
-    }
-
-    // THOUGHT: should `owner_id` be part of `CreateUser`, `CreateRole` params?
-    enum Params {
-        CreateTable(CreateTableParams),
-        DropTable(SmolStr),
-        CreateUser(String, AuthDef),
-        AlterUser(String, AlterOptionParam),
-        DropUser(SmolStr),
-        CreateRole(String),
-        DropRole(SmolStr),
-        GrantPrivilege(GrantRevokeType, String),
-        RevokePrivilege(GrantRevokeType, String),
-        RenameRoutine(RenameRoutineParams),
-        CreateProcedure(CreateProcParams),
-        DropProcedure(SmolStr, Option<Vec<ParamDef>>),
-        CreateIndex(CreateIndexParams),
-        DropIndex(SmolStr),
     }
 }
 
