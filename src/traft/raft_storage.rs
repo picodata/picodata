@@ -523,16 +523,16 @@ impl raft::Storage for RaftSpaceAccess {
     /// returns either _all_ entries or an error:
     ///
     /// - `Err(Compacted)` if `low <= compacted_index`. Notice that an
-    /// entry for `compacted_index` doesn't exist, despite its term is
-    /// known.
+    ///   entry for `compacted_index` doesn't exist, despite its term is
+    ///   known.
     ///
     /// - `Err(Unavailable)` in case at least one entry in the range is
-    /// missing (either `high > last_index` or it's really missing).
-    /// Raft-rs will panic in this case, but it's fair.
+    ///   missing (either `high > last_index` or it's really missing).
+    ///   Raft-rs will panic in this case, but it's fair.
     ///
     /// - Arguments - `context` sets entry fetching mode (sync/async)
-    /// Currently, only sync fetching is supported
-    /// `context` is ignored and by default: `GetEntriesContext::empty(false)`
+    ///   Currently, only sync fetching is supported
+    ///   `context` is ignored and by default: `GetEntriesContext::empty(false)`
     ///
     /// # See also
     ///

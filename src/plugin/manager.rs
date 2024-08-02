@@ -191,8 +191,8 @@ impl PluginManager {
     /// 2) Filter services by plugin topology.
     /// 3) Read all `.so` and `.dylib` files from `plugin_dir/plugin_name`.
     /// 4) From each file try to load services from load-list.
-    /// If service can be loaded - remove it from load-list.
-    /// If there is more than one factory for one service - throw error.
+    ///    If service can be loaded - remove it from load-list.
+    ///    If there is more than one factory for one service - throw error.
     /// 5) After scanning all files - checks that load-list is empty - plugin fully loaded now.
     /// 6) Send and handle `PluginLoad` event - `on_start` callbacks will be called.
     /// 7) Return error if any of the previous steps failed with error.

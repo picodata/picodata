@@ -58,8 +58,8 @@ pub const DEFAULT_BUCKET_COLUMN: &str = "bucket_id";
 ///
 /// # Arguments:
 /// * `space_name` - name of the space. The name must not
-/// be enclosed in quotes as in sql. If in sql user uses
-/// `"t"`, here `t` must be passed.
+///   be enclosed in quotes as in sql. If in sql user uses
+///   `"t"`, here `t` must be passed.
 ///
 /// # Errors:
 /// - errors on access to system space

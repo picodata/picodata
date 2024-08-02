@@ -406,7 +406,7 @@ fn down_single_file_with_commit(
     let node = node::global().expect("node must be already initialized");
     let dml = Dml::delete(
         ClusterwideTable::PluginMigration,
-        &[&plugin_name, queries.filename.as_str()],
+        &[plugin_name, queries.filename.as_str()],
         ADMIN_ID,
     )
     .expect("encoding should not fail");

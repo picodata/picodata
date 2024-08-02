@@ -881,9 +881,9 @@ impl PrivilegeType {
 ///    vanilla super role has some privileges that cannot be represented in picodata,
 ///    namely privileges on universe. This hole opens possibility for unwanted edge cases.
 /// 2) Only Login can be granted on Universe in picodata.
-/// Note that validation is not performed in Deserialize. We assume that for untrusted data
-/// the object is created via constructor. In other cases validation was already performed
-/// prior to serialization thus deserialization always creates a valid object.
+///    Note that validation is not performed in Deserialize. We assume that for untrusted data
+///    the object is created via constructor. In other cases validation was already performed
+///    prior to serialization thus deserialization always creates a valid object.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
     privilege: PrivilegeType,

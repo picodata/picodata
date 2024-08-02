@@ -189,7 +189,7 @@ pub fn main(args: args::Run) -> ! {
                 if let Ok(msg) = msg {
                     entrypoint = msg.next_entrypoint;
                     if msg.drop_db {
-                        rm_tarantool_files(&config.instance.data_dir());
+                        rm_tarantool_files(config.instance.data_dir());
                     }
                 } else {
                     let rc = match status {
