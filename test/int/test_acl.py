@@ -1,5 +1,5 @@
 import pytest
-from conftest import MAX_LOGIN_ATTEMPTS, Cluster, Instance, TarantoolError, ReturnError
+from conftest import MAX_LOGIN_ATTEMPTS, Cluster, Instance, TarantoolError
 from tarantool.error import NetworkError  # type: ignore
 from tarantool.connection import Connection  # type: ignore
 
@@ -87,332 +87,6 @@ def test_max_login_attempts(cluster: Cluster):
     # Now user can connect again
     c = connect(i1, user="foo", password="T0psecret")
     assert c
-
-
-def test_acl_lua_api(cluster: Cluster):
-    i1, *_ = cluster.deploy(instance_count=1)
-
-    # No user -> error.
-    with pytest.raises(ReturnError, match="user should be a string"):
-        i1.call("pico.create_user")
-
-    # No password -> error.
-    with pytest.raises(ReturnError, match="password should be a string"):
-        i1.call("pico.create_user", "Dave")
-
-    initial_password_min_length = i1.call(
-        "box.space._pico_property:get", PASSWORD_MIN_LENGTH_KEY
-    )[1]
-    expected = expected_min_password_violation_error(initial_password_min_length)
-
-    with pytest.raises(ReturnError, match=expected):
-        i1.call("pico.create_user", "Dave", "")
-
-    i1.call("pico.create_user", "Dave", VALID_PASSWORD)
-
-    # Already exists -> ok.
-    i1.call("pico.create_user", "Dave", VALID_PASSWORD)
-
-    # FIXME
-    # Already exists but with different parameters -> should fail,
-    # but doesn't currently.
-    i1.call("pico.create_user", "Dave", "different password")
-
-    # Role already exists -> error.
-    with pytest.raises(ReturnError, match="Role 'super' already exists"):
-        i1.call("pico.create_user", "super", VALID_PASSWORD)
-
-    # Test the behavior when password_min_length is missing form properties
-    # possibly because instance was upgraded from one that didnt have the value
-    # populated at bootstrap time.
-    i1.call("box.space._pico_property:delete", PASSWORD_MIN_LENGTH_KEY)
-
-    i1.call("pico.create_user", "Dave", "short")
-
-    # restore
-    i1.eval(
-        f'box.space._pico_property:insert{{"{PASSWORD_MIN_LENGTH_KEY}", '
-        f"{initial_password_min_length}}}"
-    )
-
-    # change the value using cas
-    set_min_password_len(cluster, i1, 20)
-
-    with pytest.raises(ReturnError, match=expected_min_password_violation_error(20)):
-        i1.call("pico.create_user", "Dave", VALID_PASSWORD)
-
-    set_min_password_len(cluster, i1, initial_password_min_length)
-
-    #
-    # pico.change_password
-    #
-
-    # Change password to invalid one -> ok.
-    with pytest.raises(ReturnError, match=expected):
-        i1.call("pico.change_password", "Dave", "secret")
-
-    # Change password -> ok.
-    i1.call("pico.change_password", "Dave", "no-one-will-know")
-
-    # Change password to the sameone -> ok.
-    i1.call("pico.change_password", "Dave", "no-one-will-know")
-
-    # No such user -> error.
-    with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
-        i1.call(
-            "pico.change_password",
-            "User is not found",
-            "password",
-        )
-
-    #
-    # pico.create_role
-    #
-
-    # No role -> error.
-    with pytest.raises(ReturnError, match="role should be a string"):
-        i1.call("pico.create_role")
-
-    # Ok.
-    i1.call("pico.create_role", "Parent")
-
-    # Already exists -> ok.
-    i1.call("pico.create_role", "Parent")
-
-    # User already exists -> error.
-    with pytest.raises(ReturnError, match="User 'Dave' already exists"):
-        i1.call("pico.create_role", "Dave")
-
-    #
-    # pico.grant_privilege / pico.revoke_privilege parameter verification
-    #
-
-    for f in ["grant_privilege", "revoke_privilege"]:
-        # No user -> error.
-        with pytest.raises(ReturnError, match="grantee should be a string"):
-            i1.call(f"pico.{f}")
-
-        # No privilege -> error.
-        with pytest.raises(ReturnError, match="privilege should be a string"):
-            i1.call(f"pico.{f}", "Dave")
-
-        # No such user -> error.
-        with pytest.raises(ReturnError, match="User 'User is not found' is not found"):
-            i1.call(
-                f"pico.{f}",
-                "User is not found",
-                "read",
-                "table",
-                "_pico_property",
-            )
-
-        # No such privilege -> error.
-        with pytest.raises(
-            ReturnError,
-            match=rf"unsupported privilege 'boogie', see pico.help\('{f}'\) for details",
-        ):
-            i1.call(f"pico.{f}", "Dave", "boogie", "universe", None)
-
-        # Comma separated list of privileges -> error.
-        with pytest.raises(
-            ReturnError,
-            match=rf"unsupported privilege 'read,write', see pico.help\('{f}'\) for details",
-        ):
-            i1.call(f"pico.{f}", "Dave", "read,write", "role", None)
-
-        # No object_type -> error.
-        with pytest.raises(ReturnError, match="object_type should be a string"):
-            i1.call(f"pico.{f}", "Dave", "read")
-
-        # No such object_type -> error.
-        with pytest.raises(ReturnError, match="Unknown object type 'bible'"):
-            i1.call(f"pico.{f}", "Dave", "read", "bible", None)
-
-        # Wrong combo -> error.
-        with pytest.raises(ReturnError, match="Unsupported table privilege 'grant'"):
-            i1.call(f"pico.{f}", "Dave", "grant", "table", None)
-
-        # No such role -> error.
-        with pytest.raises(ReturnError, match="Role 'Joker' is not found"):
-            i1.call(f"pico.{f}", "Dave", "execute", "role", "Joker")
-
-    #
-    # pico.grant_privilege semantics verification
-    #
-
-    # Grant privilege to user -> Ok.
-    i1.grant_privilege(
-        "Dave",
-        "read",
-        "table",
-        "_pico_property",
-    )
-
-    dave_id = i1.call("box.space._pico_user.index._pico_user_name:get", "Dave")[0]
-
-    pico_property_id = i1.eval("return box.space._pico_property.id")
-    priv = i1.call(
-        "box.space._pico_privilege:get",
-        (dave_id, "table", pico_property_id, "read"),
-    )
-
-    # grantor_id is the field at index 4 in schema::PrivilegeDef
-    # The above grant was executed from admin. 1 is admin user id.
-    assert priv[4] == 1
-
-    # Grant privilege to user without object_name -> Ok.
-    i1.grant_privilege(
-        "Dave",
-        "create",
-        "user",
-    )
-
-    priv = i1.call(
-        "box.space._pico_privilege:get",
-        (dave_id, "user", -1, "create"),
-    )
-
-    # grantor_id is the field at index 4 in schema::PrivilegeDef
-    # The above grant was executed from admin. 1 is admin user id.
-    assert priv[4] == 1
-
-    # Already granted -> ok.
-    i1.grant_privilege(
-        "Dave",
-        "read",
-        "table",
-        "_pico_property",
-    )
-
-    # Grant privilege to role -> Ok.
-    i1.grant_privilege(
-        "Parent",
-        "write",
-        "table",
-        "_pico_property",
-    )
-
-    # Already granted -> ok.
-    i1.grant_privilege(
-        "Parent",
-        "write",
-        "table",
-        "_pico_property",
-    )
-
-    # Assign role to user -> Ok.
-    i1.grant_privilege("Dave", "execute", "role", "Parent")
-
-    # Already assigned role to user -> error.
-    i1.grant_privilege("Dave", "execute", "role", "Parent")
-
-    #
-    # pico.revoke_privilege semantics verification
-    #
-
-    # Revoke privilege from user -> Ok.
-    i1.revoke_privilege(
-        "Dave",
-        "read",
-        "table",
-        "_pico_property",
-    )
-
-    # Revoke privilege from user without object_name -> Ok.
-    i1.revoke_privilege(
-        "Dave",
-        "create",
-        "user",
-    )
-
-    # Already revoked -> ok.
-    i1.revoke_privilege(
-        "Dave",
-        "read",
-        "table",
-        "_pico_property",
-    )
-
-    # Revoke privilege from role -> Ok.
-    i1.revoke_privilege(
-        "Parent",
-        "write",
-        "table",
-        "_pico_property",
-    )
-
-    # Already revoked -> ok.
-    i1.revoke_privilege(
-        "Parent",
-        "write",
-        "table",
-        "_pico_property",
-    )
-
-    # Revoke role from user -> Ok.
-    i1.revoke_privilege("Dave", "execute", "role", "Parent")
-
-    # Already revoked role to user -> ok.
-    i1.revoke_privilege(
-        "Dave",
-        "execute",
-        "role",
-        "Parent",
-    )
-
-    #
-    # pico.drop_user
-    #
-
-    # No user -> error.
-    with pytest.raises(ReturnError, match="user should be a string"):
-        i1.call("pico.drop_user")
-
-    # No such user -> ok.
-    i1.call("pico.drop_user", "User is not found")
-
-    # Ok.
-    i1.call("pico.drop_user", "Dave")
-
-    # Repeat drop -> ok.
-    i1.call("pico.drop_user", "Dave")
-
-    #
-    # pico.drop_role
-    #
-
-    # No role -> error.
-    with pytest.raises(ReturnError, match="role should be a string"):
-        i1.call("pico.drop_role")
-
-    # No such role -> ok.
-    i1.call("pico.drop_role", "Role is not found")
-
-    # Ok.
-    i1.call("pico.drop_role", "Parent")
-
-    # Repeat drop -> ok.
-    i1.call("pico.drop_role", "Parent")
-
-    #
-    # Options validation
-    #
-
-    # Options is not table -> error.
-    with pytest.raises(ReturnError, match="options should be a table"):
-        i1.call(
-            "pico.create_user", "Dave", VALID_PASSWORD, "timeout after 3 seconds please"
-        )
-
-    # Unknown option -> error.
-    with pytest.raises(ReturnError, match="unexpected option 'deadline'"):
-        i1.call("pico.create_user", "Dave", VALID_PASSWORD, dict(deadline="June 7th"))
-
-    # Unknown option -> error.
-    with pytest.raises(
-        ReturnError, match="options parameter 'timeout' should be of type number"
-    ):
-        i1.call("pico.create_user", "Dave", VALID_PASSWORD, dict(timeout="3s"))
 
 
 def test_acl_basic(cluster: Cluster):
@@ -605,7 +279,8 @@ def test_acl_roles_basic(cluster: Cluster):
     #
     # Create role.
     role = "PropertyReader"
-    index = i1.call("pico.create_role", role)
+    i1.sql(f'CREATE ROLE "{role}"')
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Grant the role read access.
@@ -716,7 +391,8 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call("pico.create_user", "Sam", VALID_PASSWORD)
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.create_role", "Captain")
+    i1.sql('CREATE ROLE "Captain"')
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     index = i1.grant_privilege(
@@ -787,7 +463,8 @@ def test_acl_from_snapshot(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.create_role", "Writer")
+    i1.sql('CREATE ROLE "Writer"')
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     index = i1.grant_privilege("Writer", "write", "table", None)
