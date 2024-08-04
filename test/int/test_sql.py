@@ -1748,6 +1748,23 @@ def test_create_drop_table(cluster: Cluster):
     assert ddl["row_count"] == 1
     cluster.raft_wait_index(i1.raft_get_index())
 
+    # check distribution can be skipped and sharding key
+    # will be inferred from primary key
+    ddl = i1.sql(
+        """
+        create table "infer_sk" ("a" string, "b" string,
+        primary key ("b", "a"))
+    """
+    )
+    assert ddl["row_count"] == 1
+    data = i1.sql(
+        """
+        select "distribution" from "_pico_table"
+        where "name" = 'infer_sk'
+    """
+    )
+    assert data == [[{"ShardedImplicitly": [["b", "a"], "murmur3", "default"]}]]
+
     with pytest.raises(TarantoolError, match="global spaces can use only memtx engine"):
         i1.sql(
             """

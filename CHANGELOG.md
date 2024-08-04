@@ -23,6 +23,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fix error "Read access to space '_raft_state' is denied"
   when executing a DML query on global tables
+- SQL now supports inferring sharding key from primary key, when
+  the former is not specified in `create table` clause
 
 ### Configuration
 
