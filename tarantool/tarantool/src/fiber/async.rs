@@ -326,8 +326,7 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     fn nested_on_drop_is_executed() {
         let executed = Rc::new(Cell::new(false));
-        let executed_clone = executed.clone();
-        let f = async { always_pending().on_drop(|| executed_clone.set(true)).await };
+        let f = async { always_pending().on_drop(|| executed.set(true)).await };
         block_on(async {
             f.timeout(Duration::from_secs(0)).await.unwrap_err();
         });

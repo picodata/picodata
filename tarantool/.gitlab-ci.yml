@@ -28,7 +28,7 @@ variables:
   KANIKO_REGISTRY_MIRROR: docker-proxy.binary.picodata.io
   CACHE_PATHS: target
   CARGO_INCREMENTAL: 0
-  RUST_VERSION: 1.67.1
+  RUST_VERSION: "1.70"  # Note: without the quotes yaml thinks this is a float and removes the trailing 0
   CARGO_HOME: /shared-storage/tarantool-module/.cargo
   BASE_IMAGE_VANILLA: docker-public.binary.picodata.io/tarantool-module-build-base-vanilla
   BASE_IMAGE_FORK: docker-public.binary.picodata.io/tarantool-module-build-base-fork

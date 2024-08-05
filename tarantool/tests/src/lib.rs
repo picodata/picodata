@@ -1,3 +1,4 @@
+#![allow(unknown_lints)]
 #![allow(clippy::approx_constant)]
 #![allow(clippy::disallowed_names)]
 #![allow(clippy::bool_assert_comparison)]

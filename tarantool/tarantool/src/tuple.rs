@@ -1922,6 +1922,7 @@ mod vtab_impl {
 
 #[cfg(feature = "internal_test")]
 mod test {
+    #![allow(clippy::redundant_clone)]
     use super::*;
     use crate::space;
     use crate::space::Space;
