@@ -97,8 +97,6 @@
   with doc-comments on the function parameters.
 - `msgpack::skip_value` now returns error in case there wasn't enough data to
   skip a msgpack value.
-- `network::protocol::codec::encode_auth` now supports already implemented
-  authentication via MD5.
 - Bug in `Tuple::format` which could result in undefined behaviour (aka use after free).
 
 ### Deprecated
@@ -152,6 +150,7 @@
 ### Added (picodata)
 
 - Support for `AuthMethod::Ldap` in `net_box` & `network::client`.
+- Support for `AuthMethod::MD5` in `net_box` & `network::client`.
 - Expose `box_generate_func_id` to generate function identifiers for reserved
   and default ranges in `_func` space.
 - `Tuple::data` method for getting access to tuple data as a slice of bytes.
