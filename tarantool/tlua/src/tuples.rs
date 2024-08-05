@@ -303,7 +303,7 @@ macro_rules! tuple_impl {
 
                 return Ok(($first, $($other),+));
 
-                fn on_error<T, L: AsLua>(lua: L, tuple_i: i32, lua_i: i32, e: WrongType) -> (L, WrongType) {
+                fn on_error<T, LU: AsLua>(lua: LU, tuple_i: i32, lua_i: i32, e: WrongType) -> (LU, WrongType) {
                     let mut e = WrongType::info("reading one of multiple values")
                         .expected(format!("{} at index {} (1-based)", std::any::type_name::<T>(), tuple_i + 1))
                         .subtype(e);
