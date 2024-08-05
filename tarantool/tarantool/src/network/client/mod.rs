@@ -676,15 +676,7 @@ mod tests {
             s.len() + 17
         }
 
-        let path = crate::proc::module_path(big_data as _).unwrap();
-        let module = path.file_stem().unwrap();
-        let module = module.to_str().unwrap();
-        let proc = format!("{module}.proc_big_data");
-
-        let lua = crate::lua_state();
-        lua.exec_with("box.schema.func.create(..., { language = 'C' })", &proc)
-            .unwrap();
-
+        let proc = crate::define_stored_proc_for_tests!(proc_big_data);
         let client = test_client().await;
 
         // Note: tarantool on macos has a bug where it will try to read more
@@ -962,14 +954,7 @@ mod tests {
         }
         let error_line = line!() - 2; // where `BoxError` is constructed
 
-        let path = crate::proc::module_path(custom_error_code_from_proc as _).unwrap();
-        let module = path.file_stem().unwrap().to_str().unwrap();
-        let proc = format!("{module}.proc_custom_error_code");
-
-        let lua = crate::lua_state();
-        lua.exec_with("box.schema.func.create(..., { language = 'C' })", &proc)
-            .unwrap();
-
+        let proc = crate::define_stored_proc_for_tests!(proc_custom_error_code);
         let client = test_client().await;
 
         let res = client

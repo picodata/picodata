@@ -367,6 +367,36 @@ pub mod util {
 
         String::from_utf8(buffer).unwrap()
     }
+
+    /// Defines the native tarantool stored procedure with name given in `proc_name`.
+    /// `proc_pointer` is only used to get the module name using [`crate::proc::module_path`].
+    pub fn define_stored_proc(
+        proc_pointer: crate::ffi::tarantool::Proc,
+        proc_name: &'static str,
+    ) -> String {
+        let path = crate::proc::module_path(proc_pointer as _).unwrap();
+        let module = path.file_stem().unwrap();
+        let module = module.to_str().unwrap();
+        let proc = format!("{module}.{proc_name}");
+
+        let lua = crate::lua_state();
+        lua.exec_with("box.schema.func.create(..., { language = 'C' })", &proc)
+            .unwrap();
+
+        proc
+    }
+
+    #[macro_export]
+    macro_rules! define_stored_proc_for_tests {
+        (@stringify_last_token $tail:tt) => { ::std::stringify!($tail) };
+        (@stringify_last_token $head:tt $($tail:tt)+) => { define_stored_proc_for_tests!(@stringify_last_token $($tail)+) };
+
+        ( $($proc:tt)+ ) => {{
+            $crate::test::util::define_stored_proc($($proc)+, $crate::define_stored_proc_for_tests!(@stringify_last_token $($proc)+))
+        }};
+    }
+
+    pub use crate::define_stored_proc_for_tests as define_stored_proc;
 }
 
 #[macro_export]
