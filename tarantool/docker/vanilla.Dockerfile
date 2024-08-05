@@ -1,10 +1,18 @@
-FROM centos:7
+FROM ubuntu:22.04
 ARG RUST_VERSION
 
-RUN set -e; \
-    curl -L https://tarantool.io/UaooCnt/release/2/installer.sh | bash; \
-    yum -y install gcc git tarantool tarantool-devel; \
-    yum clean all;
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && apt install -y curl;
+
+RUN curl -L https://tarantool.io/release/2/installer.sh | bash;
+
+RUN apt install -y \
+    gcc \
+    git \
+    tarantool \
+    tarantool-dev \
+    ;
 
 ENV PATH=/root/.cargo/bin:${PATH}
 RUN set -e; \
