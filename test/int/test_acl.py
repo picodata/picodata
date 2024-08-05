@@ -318,7 +318,8 @@ def test_acl_roles_basic(cluster: Cluster):
             )
 
     # Drop the role.
-    index = i1.call("pico.drop_role", role)
+    i1.sql(f'DROP ROLE "{role}"')
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Nothing changed here.
