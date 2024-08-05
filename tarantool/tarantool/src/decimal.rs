@@ -1107,7 +1107,7 @@ mod standalone_decimal {
     use super::DecimalToIntError;
 
     macro_rules! impl_try_into_int {
-    ($($t:ty => $f:ident)+) => {
+        ($($t:ty => $f:ident)+) => {
             $(
                 impl std::convert::TryFrom<Decimal> for $t {
                     type Error = DecimalToIntError;
@@ -1184,21 +1184,21 @@ mod standalone_decimal {
 
     #[macro_export]
     macro_rules! decimal {
-    ($($num:tt)+) => {
-        {
-            let r_str = ::std::concat![$(::std::stringify!($num)),+];
-            let dec: $crate::decimal::Decimal = ::std::convert::TryFrom::try_from(r_str)
-                .expect(
-                    ::std::concat![
-                        "failed to convert '",
-                        $(::std::stringify!($num)),+,
-                        "' to decimal",
-                    ]
-                );
-            dec
+        ($($num:tt)+) => {
+            {
+                let r_str = ::std::concat![$(::std::stringify!($num)),+];
+                let dec: $crate::decimal::Decimal = ::std::convert::TryFrom::try_from(r_str)
+                    .expect(
+                        ::std::concat![
+                            "failed to convert '",
+                            $(::std::stringify!($num)),+,
+                            "' to decimal",
+                        ]
+                    );
+                dec
+            }
         }
     }
-}
 }
 
 #[cfg(not(feature = "standalone_decimal"))]
