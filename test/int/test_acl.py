@@ -103,7 +103,8 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Create user.
-    index = i1.call("pico.create_user", user, VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -258,7 +259,8 @@ def test_acl_roles_basic(cluster: Cluster):
     user = "Steven"
 
     # Create user.
-    index = i1.call("pico.create_user", user, VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Doing anything via remote function execution requires execute access
@@ -339,7 +341,8 @@ def test_cas_permissions(cluster: Cluster):
     user = "Steven"
 
     # Create user.
-    index = i1.call("pico.create_user", user, VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     with pytest.raises(
@@ -389,7 +392,8 @@ def test_acl_from_snapshot(cluster: Cluster):
     #
     # Initial state.
     #
-    index = i1.call("pico.create_user", "Sam", VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"Sam\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     i1.sql('CREATE ROLE "Captain"')
@@ -445,7 +449,8 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call("pico.drop_user", "Sam")
     cluster.raft_wait_index(index)
 
-    index = i1.call("pico.create_user", "Blam", VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"Blam\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     index = i1.revoke_privilege(
@@ -514,7 +519,8 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
     # Check that we can drop a table with privileges granted on it.
-    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
 
     dave_id = i1.sql(""" select "id" from "_pico_user" where "name" = 'Dave' """)[0][0]
 
@@ -558,7 +564,8 @@ def test_builtin_users_and_roles(cluster: Cluster):
             "_pico_property",
         )
 
-    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     i1.raft_wait_index(index)
 
     # granting already granted privilege does not raise an error
@@ -581,7 +588,8 @@ def test_builtin_users_and_roles(cluster: Cluster):
 def test_create_table_smoke(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     with pytest.raises(
         Exception,
@@ -620,7 +628,8 @@ def test_create_table_smoke(cluster: Cluster):
 def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    index = i1.call("pico.create_user", "Dave", VALID_PASSWORD)
+    i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
+    index = i1.call(".proc_get_index")
 
     # granting default privilege does not raise an error
     new_index = i1.grant_privilege(
