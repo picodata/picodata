@@ -39,13 +39,36 @@ pub(crate) fn read_pico_service_password_from_file(
         tlog!(Warning, "*****************************************************************************");
     };
 
-    let Ok(text) = String::from_utf8(data) else {
-        return Err(Error::other("password must be encoded as utf-8"));
+    let Ok(password) = std::str::from_utf8(&data) else {
+        return Err(Error::other("service password must be encoded as utf-8"));
     };
 
-    let Some((password, _)) = text.split_once('\n') else {
+    if password.is_empty() {
         return Err(Error::other("service password cannot be empty"));
-    };
+    }
+
+    let password = match password.split_once('\n') {
+        Some((lhs, rhs)) if lhs.is_empty() && !rhs.is_empty() => Err(Error::other(
+            "service password cannot start with a newline character",
+        )),
+        Some((lhs, rhs)) if !lhs.is_empty() && !rhs.is_empty() => Err(Error::other(
+            "service password cannot be split into multiple lines",
+        )),
+        Some((lhs, _)) => Ok(lhs),
+        None => Ok(password),
+    }?;
+
+    if !password.is_ascii() {
+        return Err(Error::other(
+            "service password characters must be within ascii range",
+        ));
+    }
+
+    if !password.chars().all(|ch| ch.is_alphanumeric()) {
+        return Err(Error::other(
+            "service password characters must be alphanumeric",
+        ));
+    }
 
     unsafe {
         PICO_SERVICE_PASSWORD = Some(password.into());
