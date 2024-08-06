@@ -225,7 +225,8 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Drop user.
-    index = i1.call("pico.drop_user", user)
+    i1.sql(f'DROP USER "{user}"')
+    index = i1.call(".proc_get_index")
 
     for i in cluster.instances:
         i.raft_wait_index(index)
@@ -446,7 +447,8 @@ def test_acl_from_snapshot(cluster: Cluster):
     #
     # These changes will arive by snapshot.
     #
-    index = i1.call("pico.drop_user", "Sam")
+    i1.sql('DROP USER "Sam"')
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     i1.sql(f"CREATE USER \"Blam\" WITH PASSWORD '{VALID_PASSWORD}'")
