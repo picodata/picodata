@@ -159,7 +159,9 @@ cargo build --release
 cargo build --release --features webui
 ```
 
-Исполняемый файл `picodata` появится в директории `target/release`.
+Исполняемый файл `picodata` появится в `target/release`. Далее его
+следует скопировать в директорию, входящую в `$PATH`, например в
+`/usr/bin` или `/usr/local/bin`.
 
 ### Проверка установки {: #post_install_check }
 
