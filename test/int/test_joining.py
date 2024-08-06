@@ -354,7 +354,7 @@ def test_fail_to_join(cluster: Cluster):
     assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}
 
 
-def test_pico_service_invalid_password(cluster: Cluster):
+def test_pico_service_invalid_existing_password(cluster: Cluster):
     password_file = f"{cluster.data_dir}/service-password.txt"
     with open(password_file, "w") as f:
         print("secret", file=f)
@@ -386,6 +386,44 @@ def test_pico_service_invalid_password(cluster: Cluster):
     lc.matched = False
     i2.fail_to_start()
     assert lc.matched
+
+
+def test_pico_service_invalid_requirements_password(cluster: Cluster):
+    password_file = f"{cluster.data_dir}/service-password.txt"
+    i1 = cluster.add_instance(wait_online=False)
+
+    with open(password_file, "wb") as f:
+        f.write(b"\x80")
+    i1.service_password_file = password_file
+    lc = log_crawler(i1, "ERROR: password must be encoded as utf-8")
+    i1.fail_to_start()
+    lc.wait_matched()
+
+    with open(password_file, "w") as f:
+        pass
+    i1.service_password_file = password_file
+    lc = log_crawler(i1, "ERROR: service password cannot be empty")
+    i1.fail_to_start()
+    lc.wait_matched()
+
+    with open(password_file, "w") as f:
+        print("€", file=f)
+    i1.service_password_file = password_file
+    lc = log_crawler(
+        i1, "ERROR: service password characters must be within ascii range"
+    )
+    i1.fail_to_start()
+    lc.wait_matched()
+
+    with open(password_file, "w", encoding="utf-8") as f:
+        print("s3cr3t@M3ss4g3", file=f)
+    i1.service_password_file = password_file
+    lc = log_crawler(
+        i1,
+        "ERROR: service password characters must be alphabetical or numerical, no special symbols allowed",  # noqa: E501
+    )
+    i1.fail_to_start()
+    lc.wait_matched()
 
 
 def test_join_with_duplicate_instance_id(cluster: Cluster):
