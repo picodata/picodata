@@ -50,6 +50,7 @@ Picodata — это распределенная система промышле
 * [Raft и отказоустойчивость](architecture/raft_failover.md)
 * [Описание системных таблиц](architecture/system_tables.md)
 * [Интерфейс RPC API](architecture/rpc_api.md)
+* [Файберы, потоки и многозадачность](architecture/fibers.md)
 
 ### Плагины {: #plugins }
 

@@ -101,6 +101,7 @@ nav:
     - architecture/raft_failover.md
     - architecture/system_tables.md
     - architecture/rpc_api.md
+    - architecture/fibers.md
   - Плагины:
     - plugins/synapse.md
     - plugins/gostech_audit_log.md
