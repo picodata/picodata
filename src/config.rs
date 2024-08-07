@@ -872,17 +872,15 @@ pub struct InstanceConfig {
     pub failure_domain: Option<FailureDomain>,
 
     #[introspection(
-        config_default = vec![IprotoAddress::default()]
-    )]
-    pub peer: Option<Vec<IprotoAddress>>,
-
-    #[introspection(
         config_default = IprotoAddress::default()
     )]
     pub listen: Option<IprotoAddress>,
 
     #[introspection(config_default = self.listen())]
     pub advertise_address: Option<IprotoAddress>,
+
+    #[introspection(config_default = vec![self.advertise_address()])]
+    pub peer: Option<Vec<IprotoAddress>>,
 
     pub http_listen: Option<HttpAddress>,
 

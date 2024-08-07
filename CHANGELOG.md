@@ -25,7 +25,10 @@ with the `YY.MINOR.MICRO` scheme.
 - Fix error "Read access to space '_raft_state' is denied"
   when executing a DML query on global tables
 - Changed `weight` column type to DOUBLE  in `_pico_replicaset`.
-
+- Option `picodata run --peer` now defaults to `--advertise` value.
+  The previous was `localhost:3301`. This leads to the important behavior change.
+  Running `picodata run --listen :3302` without implicit `--peer` specified
+  now bootstraps a new cluster. The old behavior was to join `:3301` by default.
 -->
 
 --------------------------------------------------------------------------------

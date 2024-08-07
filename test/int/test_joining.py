@@ -237,6 +237,36 @@ def test_rebootstrap_follower(cluster3: Cluster):
     assert i1.terminate() == 0
 
 
+def test_separate_clusters(cluster: Cluster):
+    # See https://git.picodata.io/picodata/picodata/picodata/-/issues/680
+
+    i1 = cluster.add_instance(wait_online=False)
+    i2 = cluster.add_instance(wait_online=False)
+
+    # Clear peers explicitly so that picodata run is called
+    # without --peer option specified
+    i1.peers.clear()
+    i2.peers.clear()
+
+    i1.start()
+    i2.start()
+
+    i1.wait_online()
+    i2.wait_online()
+
+    get_ids = """
+        return {
+            cluster_id = box.space._raft_state:get('cluster_id').value,
+            raft_id = box.space._raft_state:get('raft_id').value,
+        }
+    """
+
+    # We expect both instances to have raft_id 1, that means they form
+    # separate clusters
+    assert i1.eval(get_ids) == {"cluster_id": cluster.id, "raft_id": 1}
+    assert i2.eval(get_ids) == {"cluster_id": cluster.id, "raft_id": 1}
+
+
 def test_join_without_explicit_instance_id(cluster: Cluster):
     # Scenario: bootstrap single instance without explicitly given instance id
     #   Given no instances started
