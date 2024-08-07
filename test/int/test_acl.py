@@ -209,7 +209,8 @@ def test_acl_basic(cluster: Cluster):
     # Change user's password.
     old_password = VALID_PASSWORD
     new_password = "L0ng$3kr3T"
-    index = i1.call("pico.change_password", user, new_password)
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{new_password}'")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     v += 1
 
