@@ -139,7 +139,8 @@ def test_acl_basic(cluster: Cluster):
     # to the "universe"
     cluster.grant_box_privilege(user, "execute", "universe")
 
-    index = i1.grant_privilege(user, "read", "table", "money")
+    i1.grant_privilege(user, "read", "table", "money")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -287,11 +288,13 @@ def test_acl_roles_basic(cluster: Cluster):
     cluster.raft_wait_index(index)
 
     # Grant the role read access.
-    index = i1.grant_privilege(role, "read", "table", "_pico_property")
+    i1.grant_privilege(role, "read", "table", "_pico_property")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Assign role to user.
-    index = i1.grant_privilege(user, "execute", "role", role)
+    i1.grant_privilege(user, "execute", "role", role)
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Try reading from table on behalf of the user again. Now succeed.
@@ -358,12 +361,8 @@ def test_cas_permissions(cluster: Cluster):
             password=VALID_PASSWORD,
         )
 
-    index = i1.grant_privilege(
-        user,
-        "write",
-        "table",
-        "_pico_property",
-    )
+    i1.grant_privilege(user, "write", "table", "_pico_property")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     index = cluster.cas(
@@ -401,20 +400,12 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege(
-        "Sam",
-        "read",
-        "table",
-        "_pico_property",
-    )
+    i1.grant_privilege("Sam", "read", "table", "_pico_property")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege(
-        "Captain",
-        "read",
-        "table",
-        "_pico_table",
-    )
+    i1.grant_privilege("Captain", "read", "table", "_pico_table")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     #
@@ -463,22 +454,20 @@ def test_acl_from_snapshot(cluster: Cluster):
     )
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege(
-        "Captain",
-        "read",
-        "table",
-        "_pico_instance",
-    )
+    i1.grant_privilege("Captain", "read", "table", "_pico_instance")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     i1.sql('CREATE ROLE "Writer"')
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege("Writer", "write", "table", None)
+    i1.grant_privilege("Writer", "write", "table")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
-    index = i1.grant_privilege("Blam", "execute", "role", "Writer")
+    i1.grant_privilege("Blam", "execute", "role", "Writer")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Compact log to trigger snapshot generation.
@@ -542,7 +531,8 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
     assert ddl["row_count"] == 1
     assert dave_privileges_count_at_start == dave_privileges_count()
 
-    index = i1.grant_privilege("Dave", "read", "table", "T")
+    i1.grant_privilege("Dave", "read", "table", "T")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     assert dave_privileges_count_at_start + 1 == dave_privileges_count()
@@ -557,14 +547,9 @@ def test_acl_drop_table_with_privileges(cluster: Cluster):
 def test_builtin_users_and_roles(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    # validate that builtin users and roles can be referenced in pico.{grant,revoke}_privilege
+    # validate that builtin users and roles can be referenced in the GRANT command
     for user in ["admin", "guest", "public", "super"]:
-        i1.grant_privilege(
-            user,
-            "read",
-            "table",
-            "_pico_property",
-        )
+        i1.grant_privilege(user, "read", "table", "_pico_property")
 
     i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
     index = i1.call(".proc_get_index")
@@ -572,19 +557,13 @@ def test_builtin_users_and_roles(cluster: Cluster):
 
     # granting already granted privilege does not raise an error
     index = i1.call("pico.raft_get_index")
-    new_index = i1.grant_privilege(
-        "Dave",
-        "login",
-        "universe",
-    )
+    i1.sql('ALTER USER "DAVE" WITH LOGIN')
+    new_index = i1.call(".proc_get_index")
     assert index == new_index
 
-    new_index = i1.grant_privilege(
-        "Dave",
-        "execute",
-        "role",
-        "super",
-    )
+    i1.grant_privilege("Dave", "execute", "role", "super")
+    new_index = i1.call(".proc_get_index")
+    assert index != new_index
 
 
 def test_create_table_smoke(cluster: Cluster):
@@ -634,29 +613,18 @@ def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     index = i1.call(".proc_get_index")
 
     # granting default privilege does not raise an error
-    new_index = i1.grant_privilege(
-        "Dave",
-        "execute",
-        "role",
-        "public",
-    )
+    i1.grant_privilege("Dave", "execute", "role", "public")
+    new_index = i1.call(".proc_get_index")
     assert index == new_index
 
     # granting default privilege does not raise an error
-    new_index = i1.grant_privilege(
-        "Dave",
-        "login",
-        "universe",
-    )
+    i1.sql('ALTER USER "DAVE" WITH LOGIN')
+    new_index = i1.call(".proc_get_index")
     assert index == new_index
 
     # granting default privilege does not raise an error
-    new_index = i1.grant_privilege(
-        "Dave",
-        "alter",
-        "user",
-        "Dave",
-    )
+    i1.grant_privilege("Dave", "alter", "user", "Dave")
+    new_index = i1.call(".proc_get_index")
     assert index == new_index
 
     # revoke default privilege, so raft_index should change

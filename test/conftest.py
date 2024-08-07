@@ -1354,15 +1354,15 @@ class Instance:
     def grant_privilege(
         self, user, privilege: str, object_type: str, object_name: Optional[str] = None
     ):
-        # do it as admin because some privileges can be granted only by admin
-        return self.eval(
-            """
-            box.session.su("admin")
-            user, privilege, object_type, object_name = ...
-            return pico.grant_privilege(user, privilege, object_type, object_name)
-            """,
-            [user, privilege, object_type, object_name],
-        )
+        if privilege == "execute" and object_type == "role":
+            self.sql(f'GRANT "{object_name}" TO "{user}"', sudo=True)
+        elif object_name:
+            self.sql(
+                f'GRANT {privilege} ON {object_type} "{object_name}" TO "{user}"',
+                sudo=True,
+            )
+        else:
+            self.sql(f'GRANT {privilege} {object_type} TO "{user}"', sudo=True)
 
     def revoke_privilege(
         self, user, privilege: str, object_type: str, object_name: Optional[str] = None
