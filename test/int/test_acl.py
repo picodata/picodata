@@ -550,7 +550,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
     i1.raft_wait_index(index)
 
     # granting already granted privilege does not raise an error
-    index = i1.call("pico.raft_get_index")
+    index = i1.call(".proc_get_index")
     i1.sql('ALTER USER "DAVE" WITH LOGIN')
     new_index = i1.call(".proc_get_index")
     assert index == new_index

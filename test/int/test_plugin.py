@@ -2113,9 +2113,7 @@ def test_sdk_internal(cluster: Cluster):
     PluginReflection.assert_int_data_le(
         i1, "raft_term", i1.eval("return pico.raft_term()")
     )
-    PluginReflection.assert_int_data_le(
-        i1, "raft_index", i1.eval("return pico.raft_get_index()")
-    )
+    PluginReflection.assert_int_data_le(i1, "raft_index", i1.call(".proc_get_index"))
 
     cas_result_sdk = i1.eval("return box.space.AUTHOR:select()")
     assert cas_result_sdk == [[101, "Alexander Blok"]]

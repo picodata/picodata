@@ -321,24 +321,6 @@ pub(crate) fn setup() {
 
     luamod_set(
         &l,
-        "raft_get_index",
-        indoc! {"
-        pico.raft_get_index()
-        =====================
-
-        Returns the current applied raft index.
-
-        Returns:
-
-            (number)
-            or
-            (nil, string) in case of an error, if the raft node is
-                not initialized yet
-        "},
-        tlua::function0(|| traft::node::global().map(|n| n.get_index())),
-    );
-    luamod_set(
-        &l,
         "raft_read_index",
         indoc! {"
         pico.raft_read_index(timeout)

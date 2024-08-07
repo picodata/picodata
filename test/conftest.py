@@ -1280,7 +1280,7 @@ class Instance:
 
     def raft_get_index(self) -> int:
         """Get current applied raft index"""
-        return self.call("pico.raft_get_index")
+        return self.call(".proc_get_index")
 
     def raft_read_index(self, timeout: int | float = 3) -> int:
         """
