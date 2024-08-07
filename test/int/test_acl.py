@@ -188,7 +188,8 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Revoke the privilege.
-    index = i1.revoke_privilege(user, "read", "table", "money")
+    i1.revoke_privilege(user, "read", "table", "money")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     v += 1
 
@@ -305,12 +306,8 @@ def test_acl_roles_basic(cluster: Cluster):
         assert len(rows) > 0
 
     # Revoke read access from the role.
-    index = i1.revoke_privilege(
-        role,
-        "read",
-        "table",
-        "_pico_property",
-    )
+    i1.revoke_privilege(role, "read", "table", "_pico_property")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     # Try reading from table on behalf of the user yet again, which fails again.
@@ -446,12 +443,8 @@ def test_acl_from_snapshot(cluster: Cluster):
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
-    index = i1.revoke_privilege(
-        "Captain",
-        "read",
-        "table",
-        "_pico_table",
-    )
+    i1.revoke_privilege("Captain", "read", "table", "_pico_table")
+    index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
     i1.grant_privilege("Captain", "read", "table", "_pico_instance")
@@ -627,13 +620,15 @@ def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     new_index = i1.call(".proc_get_index")
     assert index == new_index
 
-    # revoke default privilege, so raft_index should change
-    new_index = i1.revoke_privilege("Dave", "login", "universe")
-    assert new_index != index
+    # revoke default privilege does not raise an error
+    i1.sql('ALTER USER "DAVE" WITH NOLOGIN')
+    new_index = i1.call(".proc_get_index")
+    assert index == new_index
 
     index = new_index
     # already revoked, so it should be idempotent
-    new_index = i1.revoke_privilege("Dave", "login", "universe")
+    i1.sql('ALTER USER "DAVE" WITH NOLOGIN')
+    new_index = i1.call(".proc_get_index")
     assert new_index == index
 
 

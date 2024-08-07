@@ -1367,14 +1367,15 @@ class Instance:
     def revoke_privilege(
         self, user, privilege: str, object_type: str, object_name: Optional[str] = None
     ):
-        return self.eval(
-            """
-            box.session.su("admin")
-            user, privilege, object_type, object_name = ...
-            return pico.revoke_privilege(user, privilege, object_type, object_name)
-            """,
-            [user, privilege, object_type, object_name],
-        )
+        if privilege == "execute" and object_type == "role":
+            self.sql(f'REVOKE "{object_name}" FROM "{user}"', sudo=True)
+        elif object_name:
+            self.sql(
+                f'REVOKE {privilege} ON {object_type} "{object_name}" FROM "{user}"',
+                sudo=True,
+            )
+        else:
+            self.sql(f'REVOKE {privilege} {object_type} FROM "{user}"', sudo=True)
 
     def start_and_wait(self) -> None:
         self.start()
