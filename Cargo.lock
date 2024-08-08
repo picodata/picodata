@@ -2488,9 +2488,9 @@ dependencies = [
 
 [[package]]
 name = "pgwire"
-version = "0.23.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22fb7a8b4570b74080587c5f3e187553375d18e72a38c72ca7f70a065972c65d"
+checksum = "b397fac991bd03fa10618cfc16659b523d7a14e8609835dd9d06b6071fc90b00"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2501,6 +2501,7 @@ dependencies = [
  "md5",
  "postgres-types",
  "rand 0.8.5",
+ "rust_decimal",
  "thiserror",
  "tokio",
  "tokio-rustls",
