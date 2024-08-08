@@ -4,15 +4,20 @@
 use crate::cas;
 use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
+use crate::plugin;
 use crate::plugin::PluginIdentifier;
 use crate::plugin::TopologyUpdateOpKind;
+use crate::rpc;
 use crate::schema::{self, ADMIN_ID};
+use crate::sync;
+#[allow(unused_imports)]
+use crate::tlog;
+use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::duration_from_secs_f64_clamped;
 use crate::util::str_eq;
 use crate::util::INFINITY;
-use crate::{plugin, rpc, sync, tlog};
 use ::tarantool::fiber;
 use ::tarantool::msgpack::ViaMsgpack;
 use ::tarantool::session;
@@ -715,40 +720,6 @@ pub(crate) fn setup() {
             Ok(true)
         }),
     );
-
-    // log
-    ///////////////////////////////////////////////////////////////////////////
-    l.get::<tlua::LuaTable<_>, _>("pico")
-        .unwrap()
-        .set("log", &[()]);
-    #[rustfmt::skip]
-    l.exec_with(
-        "pico.log.highlight_key = ...",
-        tlua::function2(|key: String, color: Option<String>| -> Result<(), String> {
-            let color = match color.as_deref() {
-                None            => None,
-                Some("red")     => Some(tlog::Color::Red),
-                Some("green")   => Some(tlog::Color::Green),
-                Some("blue")    => Some(tlog::Color::Blue),
-                Some("cyan")    => Some(tlog::Color::Cyan),
-                Some("yellow")  => Some(tlog::Color::Yellow),
-                Some("magenta") => Some(tlog::Color::Magenta),
-                Some("white")   => Some(tlog::Color::White),
-                Some("black")   => Some(tlog::Color::Black),
-                Some(other) => {
-                    return Err(format!("unknown color: {other:?}"))
-                }
-            };
-            tlog::highlight_key(key, color);
-            Ok(())
-        }),
-    )
-        .unwrap();
-    l.exec_with(
-        "pico.log.clear_highlight = ...",
-        tlua::function0(tlog::clear_highlight),
-    )
-    .unwrap();
 
     ///////////////////////////////////////////////////////////////////////////
     #[derive(::tarantool::tlua::LuaRead, Default, Clone, Copy)]

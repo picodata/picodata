@@ -1,6 +1,5 @@
 use ::tarantool::log::{say, SayLevel};
 use once_cell::sync::Lazy;
-use std::{collections::HashMap, ptr};
 use tarantool::cbus::unbounded as cbus;
 use tarantool::fiber;
 
@@ -21,43 +20,6 @@ pub fn set_core_logger_is_initialized(is: bool) {
     unsafe { CORE_LOGGER_IS_INITIALIZED = is }
 }
 
-#[rustfmt::skip]
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum Color {
-    Red     = 1,
-    Green   = 2,
-    Blue    = 4,
-    Cyan    = 6,
-    Yellow  = 3,
-    Magenta = 5,
-    White   = 7,
-    Black   = 0,
-}
-
-pub static mut HIGHLIGHT: Option<HashMap<String, Color>> = None;
-
-#[inline]
-pub fn clear_highlight() {
-    unsafe {
-        HIGHLIGHT = None;
-    }
-}
-
-#[inline]
-pub fn highlight_key(key: impl Into<String> + AsRef<str>, color: Option<Color>) {
-    // SAFETY: safe as long as only called from tx thread
-    let map = unsafe { ptr::addr_of_mut!(HIGHLIGHT).as_mut() }
-        .unwrap()
-        .get_or_insert_with(HashMap::new);
-
-    if let Some(color) = color {
-        map.insert(key.into(), color);
-    } else {
-        map.remove(key.as_ref());
-    }
-}
-
 /// A helper for serializing slog's record to plain string.
 /// We use this for picodata's regular log (tlog).
 pub struct StrSerializer {
@@ -67,13 +29,7 @@ pub struct StrSerializer {
 impl slog::Serializer for StrSerializer {
     fn emit_arguments(&mut self, key: slog::Key, val: &std::fmt::Arguments) -> slog::Result {
         use std::fmt::Write;
-        match unsafe { HIGHLIGHT.as_ref() }.and_then(|h| h.get(key)) {
-            Some(&color) => {
-                let color = color as u8;
-                write!(self.str, ", \x1b[3{color}m{key}: {val}\x1b[0m").unwrap();
-            }
-            _ => write!(self.str, ", {key}: {val}").unwrap(),
-        }
+        write!(self.str, ", {key}: {val}")?;
         Ok(())
     }
 }
