@@ -803,7 +803,12 @@ pub fn remove_plugin(
     let deadline = Instant::now_fiber().saturating_add(timeout);
 
     let node = node::global()?;
-    let maybe_plugin = node.storage.plugin.get(ident)?;
+    let Some(plugin) = node.storage.plugin.get(ident)? else {
+        // TODO: support if_exists option
+        #[rustfmt::skip]
+        return Err(traft::error::Error::other(format!("no such plugin `{ident}`")));
+    };
+
     // we check this condition on any instance, this will allow
     // to return an error in most situations, but there are still
     // situations when instance is a follower and has not yet received up-to-date
@@ -811,10 +816,30 @@ pub fn remove_plugin(
     // the error will not be returned to client and raft op
     // must be applied on instances correctly (op should ignore removing if
     // plugin exists and enabled)
-    let plugin_exists_and_enabled = maybe_plugin.as_ref().map(|p| p.enabled) == Some(true);
-    if plugin_exists_and_enabled && !error_injection::is_enabled("PLUGIN_EXIST_AND_ENABLED") {
+    if plugin.enabled && !error_injection::is_enabled("PLUGIN_EXIST_AND_ENABLED") {
         return Err(RemoveOfEnabledPlugin.into());
     }
+
+    let migration_list = node
+        .storage
+        .plugin_migration
+        .get_files_by_plugin(&ident.name)?
+        .into_iter()
+        .map(|rec| rec.migration_file)
+        .collect::<Vec<_>>();
+
+    #[rustfmt::skip]
+    if !migration_list.is_empty() {
+        if !drop_data {
+            return Err(traft::error::Error::other("attempt to remove plugin with applied `UP` migrations"));
+        }
+
+        let ident = PluginIdentifier::new(plugin.name, plugin.version);
+        migration::apply_down_migrations(&ident, &migration_list, deadline);
+    } else if /* migration_list.is_empty() && */ drop_data {
+        tlog!(Info, "`DOWN` migrations are up to date");
+    };
+
     let op = Op::PluginRemove {
         ident: ident.clone(),
     };
@@ -829,20 +854,6 @@ pub fn remove_plugin(
         None,
         deadline,
     )?;
-
-    if drop_data {
-        if let Some(plugin) = maybe_plugin {
-            let migration_list = node
-                .storage
-                .plugin_migration
-                .get_files_by_plugin(&ident.name)?
-                .into_iter()
-                .map(|rec| rec.migration_file)
-                .collect::<Vec<_>>();
-            let ident = PluginIdentifier::new(plugin.name, plugin.version);
-            migration::apply_down_migrations(&ident, &migration_list, deadline);
-        }
-    }
 
     Ok(())
 }

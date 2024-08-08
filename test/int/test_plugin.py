@@ -510,7 +510,9 @@ def test_plugin_remove(cluster: Cluster):
     plugin_ref_v2.assert_synced()
 
     # check removing non-installed plugin
-    i1.call("pico.remove_plugin", _PLUGIN, "0.1.0")
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.remove_plugin", _PLUGIN, "0.1.0")
+    assert e.value.args[0] == f"no such plugin `{_PLUGIN}:0.1.0`"
     plugin_ref.assert_synced()
     plugin_ref_v2.assert_synced()
 
@@ -519,6 +521,17 @@ def test_plugin_remove(cluster: Cluster):
     plugin_ref = plugin_ref_v2.install(False)
     plugin_ref.assert_synced()
     plugin_ref_v2.assert_synced()
+
+    # check removing plugin with applied migrations
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    assert e.value.args[0] == "attempt to remove plugin with applied `UP` migrations"
+
+    # now it's ok to remove the plugin
+    i1.call("pico.migration_down", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    i1.call("pico.remove_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
 
 
 def test_two_plugin_install_and_enable(cluster: Cluster):
