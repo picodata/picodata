@@ -786,6 +786,9 @@ def test_migration_separate_command(cluster: Cluster):
             hash = hashlib.md5(f.read())
         assert checksum == hash.hexdigest(), filename
 
+    # This will do separate checks of applied migrations
+    i1.call("pico.enable_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0", timeout=5)
+
     # increase a version to v0.2.0
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.2.0", timeout=5)
     i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.2.0")

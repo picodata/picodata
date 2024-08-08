@@ -8,5 +8,5 @@ services:
 migration:
   - author.db
   - book.db
-  - store.db
-  - manager.db
+  - migrations/store.db
+  - migrations/manager.db
