@@ -621,6 +621,11 @@ pub fn migration_up(
         );
     }
 
+    if manifest.migration.is_empty() {
+        tlog!(Info, "plugin has no migrations");
+        return Ok(());
+    }
+
     let mut migration_delta = manifest.migration;
     for (i, migration_file) in migration_delta
         .drain(..already_applied_migrations.len())
@@ -651,6 +656,11 @@ pub fn migration_up(
         }
     }
 
+    if migration_delta.is_empty() {
+        tlog!(Info, "`UP` migrations are up to date");
+        return Ok(());
+    }
+
     migration::apply_up_migrations(ident, &migration_delta, deadline, rollback_timeout)?;
     Ok(())
 }
@@ -672,6 +682,10 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
         .into_iter()
         .map(|rec| rec.migration_file)
         .collect::<Vec<_>>();
+    if migration_list.is_empty() {
+        tlog!(Info, "`DOWN` migrations are up to date");
+    }
+
     migration::apply_down_migrations(&ident, &migration_list, deadline);
     Ok(())
 }
