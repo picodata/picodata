@@ -923,11 +923,24 @@ class Instance:
             self.peers = list(map(lambda i: i.listen, peers))
 
         env = {**self.env}
-        if not os.environ.get("PICODATA_LOG_LEVEL") and "PICODATA_LOG_LEVEL" not in env:
-            env.update(PICODATA_LOG_LEVEL="verbose")
 
-        if os.environ.get("RUST_BACKTRACE") is not None:
-            env.update(RUST_BACKTRACE=str(os.environ.get("RUST_BACKTRACE")))
+        # Set a default, but let os.environ override it
+        if "PICODATA_LOG_LEVEL" not in env:
+            env["PICODATA_LOG_LEVEL"] = "verbose"
+
+        passthrough_env = [
+            "ASAN_OPTIONS",
+            "ASAN_SYMBOLIZER_PATH",
+            "LSAN_OPTIONS",
+            "PATH",
+            "PICODATA_LOG_LEVEL",
+            "RUST_BACKTRACE",
+            "TERM",
+        ]
+        for key in passthrough_env:
+            val = os.environ.get(key)
+            if val is not None:
+                env[key] = val
 
         if os.getenv("NOLOG"):
             out = subprocess.DEVNULL
@@ -937,7 +950,7 @@ class Instance:
         self.process = subprocess.Popen(
             self.command,
             cwd=cwd or self.cwd,
-            env=env or None,
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=out,
             stderr=out,
