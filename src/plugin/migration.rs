@@ -451,7 +451,7 @@ fn down_single_file_with_commit(
     let node = node::global().expect("node must be already initialized");
     let dml = Dml::delete(
         ClusterwideTable::PluginMigration,
-        &[plugin_name, &queries.full_filepath],
+        &[plugin_name, &queries.filename_from_manifest],
         ADMIN_ID,
     )
     .expect("encoding should not fail");
@@ -558,7 +558,7 @@ pub fn apply_up_migrations(
             ClusterwideTable::PluginMigration,
             &(
                 &plugin_ident.name,
-                &migration.full_filepath,
+                &migration.filename_from_manifest,
                 &format!("{:x}", hash),
             ),
             ADMIN_ID,
