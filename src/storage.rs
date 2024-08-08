@@ -3893,14 +3893,12 @@ impl PluginMigration {
         }]
     }
 
-    #[inline]
-    pub fn put(
-        &self,
-        plugin_name: &str,
-        migration_file: &str,
-        hash: md5::Digest,
-    ) -> tarantool::Result<()> {
-        self.space.replace(&(plugin_name, migration_file, hash.0))?;
+    pub fn delete_all_by_plugin(&self, plugin_name: &str) -> tarantool::Result<()> {
+        let records = self.get_files_by_plugin(plugin_name)?;
+        for record in records {
+            self.space
+                .delete(&(record.plugin_name, record.migration_file))?;
+        }
         Ok(())
     }
 

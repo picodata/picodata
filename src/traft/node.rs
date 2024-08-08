@@ -1349,6 +1349,10 @@ impl NodeImpl {
                         .plugin
                         .delete(&ident)
                         .expect("storage should not fail");
+                    self.storage
+                        .plugin_migration
+                        .delete_all_by_plugin(&ident.name)
+                        .expect("say it with me");
                 }
             }
 
