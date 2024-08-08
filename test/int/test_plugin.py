@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional
 import pytest
 import uuid
 import msgpack  # type: ignore
+import os
+import hashlib
 from conftest import (
     Cluster,
     ReturnError,
@@ -746,6 +748,16 @@ def test_migration_separate_command(cluster: Cluster):
     i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.1.0")
     expected_state = expected_state.set_data(_DATA_V_0_1_0)
     expected_state.assert_data_synced()
+
+    # check migration file checksums are calculated correctly
+    rows = i1.sql(""" SELECT "migration_file", "hash" FROM "_pico_plugin_migration" """)
+    assert i1.plugin_dir
+    plugin_dir = os.path.join(i1.plugin_dir, _PLUGIN_WITH_MIGRATION, "0.1.0")
+    for filename, checksum in rows:
+        fullpath = os.path.join(plugin_dir, filename)
+        with open(fullpath, "rb") as f:
+            hash = hashlib.md5(f.read())
+        assert checksum == hash.hexdigest(), filename
 
     # increase a version to v0.2.0
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.2.0", timeout=5)

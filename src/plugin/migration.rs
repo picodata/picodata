@@ -7,7 +7,6 @@ use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{error_injection, sql, tlog, traft};
-use md5::Digest;
 use std::fs::File;
 use std::io;
 use std::io::{ErrorKind, Read};
@@ -98,26 +97,22 @@ pub fn calculate_migration_hash(filename: &str) -> Result<md5::Digest, Error> {
     let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
 
     fn calculate_migration_hash_from_file(filename: &str) -> Result<md5::Digest, io::Error> {
-        const BUF_SIZE: usize = 1024;
-        const HASH_SIZE: usize = 16;
+        const BUF_SIZE: usize = 4096;
 
         let mut f = File::open(filename)?;
-        let mut buffer = [0; BUF_SIZE + HASH_SIZE];
-        let mut digest = Digest([0; HASH_SIZE]);
+        let mut context = md5::Context::new();
+        let mut buffer = [0; BUF_SIZE];
 
-        let (file_part, digest_part) = buffer.split_at_mut(BUF_SIZE);
-        assert_eq!(file_part.len(), BUF_SIZE);
-        assert_eq!(digest_part.len(), HASH_SIZE);
-        let mut n = f.read(file_part)?;
+        loop {
+            let n = f.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
 
-        while n != 0 {
-            digest = md5::compute(buffer);
-
-            let (file_part, digest_part) = buffer.split_at_mut(BUF_SIZE);
-            n = f.read(file_part)?;
-            digest_part.copy_from_slice(&digest.0);
+            context.consume(&buffer[..n]);
         }
 
+        let digest = context.compute();
         Ok(digest)
     }
 
