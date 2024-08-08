@@ -624,7 +624,10 @@ class Instance:
         # fmt: on
 
     def __repr__(self):
-        return f"Instance({self.instance_id}, listen={self.listen} cluster={self.cluster_id})"
+        if self.process:
+            return f"Instance({self.instance_id}, listen={self.listen} cluster={self.cluster_id}, process.pid={self.process.pid})"  # noqa: E501
+        else:
+            return f"Instance({self.instance_id}, listen={self.listen} cluster={self.cluster_id})"
 
     def __hash__(self):
         return hash((self.cluster_id, self.instance_id))
