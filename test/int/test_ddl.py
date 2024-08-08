@@ -1491,3 +1491,40 @@ def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     # The space was replaced.
     rows = i5.eval("return box.space[...]:select()", space_name)
     assert rows == [[1, "one"], [2, "two"], [3, "three"]]
+
+
+def test_ddl_when_box_cfg_read_only(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    default_replication_factor: 2
+    cluster_id: test
+    tier:
+        default:
+"""
+    )
+
+    i1 = cluster.add_instance(tier="default")
+    i1.start()
+    i1.wait_online()
+
+    i2 = cluster.add_instance(tier="default")
+    i2.start()
+    i2.wait_online()
+
+    i2.create_user(with_name="andy", with_password="Testpa55")
+    i2.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
+
+    read_only = i2.eval("return box.cfg.read_only")
+    assert read_only
+
+    with i2.connect(timeout=5, user="andy", password="Testpa55") as conn:
+        query = conn.sql(
+            """
+            CREATE TABLE ids
+                (id INTEGER NOT NULL,
+                 PRIMARY KEY(id))
+                 USING MEMTX DISTRIBUTED BY (id);
+            """,
+        )
+        assert query["row_count"] == 1
