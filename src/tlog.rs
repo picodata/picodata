@@ -226,6 +226,7 @@ pub fn log_from_non_tx_thread(level: slog::Level, message: String) {
         return;
     };
 
+    // TODO: check log level and exit early
     let sender = sender.as_ref().expect("is set at picodata startup");
 
     let res = sender.send(ThreadSafeLogRequest {

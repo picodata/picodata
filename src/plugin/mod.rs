@@ -22,7 +22,7 @@ use tarantool::time::Instant;
 
 use crate::cas::{compare_and_swap, Range};
 use crate::info::InstanceInfo;
-use crate::plugin::migration::get_migration_path;
+use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::node::Node;
@@ -635,15 +635,16 @@ pub fn migration_up(
             );
         }
 
-        let migration_path = get_migration_path(ident, &migration_file);
-        let hash = migration::calculate_migration_hash(&migration_path.to_string_lossy())
+        let migration = MigrationInfo::new_unparsed(ident, migration_file);
+        let hash = migration::calculate_migration_hash_async(&migration)
             .map_err(PluginError::Migration)?;
         let hash_string = format!("{:x}", hash);
 
         if hash_string != already_applied_migrations[i].hash() {
+            let shortname = migration.shortname();
             return Err(
                 PluginError::Migration(migration::Error::InconsistentMigrationList(
-                    format!("unknown migration files found in manifest migrations (mismatched file meta information for {migration_file})")
+                    format!("unknown migration files found in manifest migrations (mismatched hash checksum for {shortname})")
                 ))
                 .into(),
             );

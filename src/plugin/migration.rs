@@ -10,7 +10,6 @@ use crate::{error_injection, sql, tlog, traft};
 use std::fs::File;
 use std::io;
 use std::io::{ErrorKind, Read};
-use std::path::PathBuf;
 use std::time::Duration;
 use tarantool::cbus;
 use tarantool::fiber;
@@ -85,15 +84,12 @@ impl std::fmt::Display for DisplayTruncated<'_> {
     }
 }
 
-pub fn get_migration_path(plugin_ident: &PluginIdentifier, file_name: &str) -> PathBuf {
-    let plugin_dir = PLUGIN_DIR
-        .with(|dir| dir.lock().clone())
-        .join(&plugin_ident.name)
-        .join(&plugin_ident.version);
-    plugin_dir.join(file_name)
-}
+/// Sends a task to a separate thread to calculate the checksum of the migrations file
+/// and blocks the current fiber until the result is ready.
+pub fn calculate_migration_hash_async(migration: &MigrationInfo) -> Result<md5::Digest, Error> {
+    let shortname = &migration.filename_from_manifest;
+    let fullpath = &migration.full_filepath;
 
-pub fn calculate_migration_hash(filename: &str) -> Result<md5::Digest, Error> {
     let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
 
     fn calculate_migration_hash_from_file(filename: &str) -> Result<md5::Digest, io::Error> {
@@ -116,18 +112,18 @@ pub fn calculate_migration_hash(filename: &str) -> Result<md5::Digest, Error> {
         Ok(digest)
     }
 
-    tlog!(Info, "hashing migrations file '{filename}'");
+    tlog!(Info, "hashing migrations file '{shortname}'");
     let t0 = Instant::now_accurate();
 
     std::thread::scope(|s| -> std::io::Result<_> {
         std::thread::Builder::new()
             .name("migrations_parser".into())
             .spawn_scoped(s, move || {
-                tlog!(Debug, "hashing a migrations file '{filename}'");
-                let res = calculate_migration_hash_from_file(filename)
-                    .map_err(|e| Error::File(filename.to_string(), e));
+                tlog!(Debug, "hashing a migrations file '{fullpath}'");
+                let res = calculate_migration_hash_from_file(fullpath)
+                    .map_err(|e| Error::File(fullpath.to_string(), e));
                 if let Err(e) = &res {
-                    tlog!(Debug, "failed hashing migrations file '{filename}': {e}");
+                    tlog!(Debug, "failed hashing migrations file '{fullpath}': {e}");
                 }
 
                 sender.send(res)
@@ -138,43 +134,91 @@ pub fn calculate_migration_hash(filename: &str) -> Result<md5::Digest, Error> {
 
     let res = receiver.receive().map_err(|e| {
         #[rustfmt::skip]
-        tlog!(Error, "failed receiving migrations hash from file '{filename}': {e}");
+        tlog!(Error, "failed receiving migrations hash from file '{shortname}': {e}");
         Error::ThreadDead(e.to_string())
     });
 
     let elapsed = t0.elapsed();
     #[rustfmt::skip]
-    tlog!(Info, "done hashing migrations file '{filename}', elapsed time: {elapsed:?}");
+    tlog!(Info, "done hashing migrations file '{shortname}', elapsed time: {elapsed:?}");
 
     res?
 }
 
-#[derive(Debug)]
-struct MigrationQueries {
-    filename: String,
+/// Stores info about a migration file which is being processed.
+#[derive(Debug, Default, Clone)]
+pub struct MigrationInfo {
+    /// This is the filepath specified in the plugin manifest. This value is stored
+    /// in the system tables and is used for displaying diagnostics to the user.
+    ///
+    /// This should be a postfix of [`Self::full_filepath`].
+    filename_from_manifest: String,
+
+    /// This is the full path to the file with the migration queries.
+    /// It is used for accessing the file system.
+    full_filepath: String,
+
+    is_parsed: bool,
     up: Vec<String>,
     down: Vec<String>,
 }
 
+impl MigrationInfo {
+    /// Initializes the struct, doesn't read the file yet.
+    pub fn new_unparsed(plugin_ident: &PluginIdentifier, filename: String) -> Self {
+        let plugin_dir = PLUGIN_DIR
+            .with(|dir| dir.lock().clone())
+            .join(&plugin_ident.name)
+            .join(&plugin_ident.version);
+        let fullpath = plugin_dir.join(&filename);
+
+        MigrationInfo {
+            filename_from_manifest: filename,
+            full_filepath: fullpath.to_string_lossy().into_owned(),
+            is_parsed: false,
+            up: vec![],
+            down: vec![],
+        }
+    }
+
+    /// Returns the full path to the migration file.
+    #[inline(always)]
+    pub fn path(&self) -> &std::path::Path {
+        std::path::Path::new(&self.full_filepath)
+    }
+
+    /// Returns the filename from the plugin's manifest file.
+    #[inline(always)]
+    pub fn shortname(&self) -> &str {
+        &self.filename_from_manifest
+    }
+}
+
 /// Sends a task to a separate thread to parse the migrations file and blocks
 /// the current fiber until the result is ready.
-fn read_migration_queries_from_file_async(filename: &str) -> Result<MigrationQueries, Error> {
+fn read_migration_queries_from_file_async(migration: &mut MigrationInfo) -> Result<(), Error> {
     let (sender, receiver) = cbus::oneshot::channel(ENDPOINT_NAME);
 
-    tlog!(Info, "parsing migrations file '{filename}'");
+    let shortname = &migration.filename_from_manifest;
+    let fullpath = &migration.full_filepath;
+    let mut migration_for_other_thread = migration.clone();
+
+    tlog!(Info, "parsing migrations file '{shortname}'");
     let t0 = Instant::now_accurate();
 
     std::thread::scope(|s| -> std::io::Result<_> {
         std::thread::Builder::new()
             .name("migrations_parser".into())
             .spawn_scoped(s, move || {
-                tlog!(Debug, "parsing a migrations file '{filename}'");
-                let res = read_migration_queries_from_file(filename);
+                let fullpath = &migration_for_other_thread.full_filepath;
+                tlog!(Debug, "parsing a migrations file '{fullpath}'");
+                let res = read_migration_queries_from_file(&mut migration_for_other_thread);
                 if let Err(e) = &res {
-                    tlog!(Debug, "failed parsing migrations file '{filename}': {e}");
+                    let fullpath = &migration_for_other_thread.full_filepath;
+                    tlog!(Debug, "failed parsing migrations file '{fullpath}': {e}");
                 }
 
-                sender.send(res)
+                sender.send(res.map(|()| migration_for_other_thread))
             })?;
         Ok(())
     })
@@ -183,31 +227,39 @@ fn read_migration_queries_from_file_async(filename: &str) -> Result<MigrationQue
     // FIXME: add receive_timeout/receive_deadline
     let res = receiver.receive().map_err(|e| {
         #[rustfmt::skip]
-        tlog!(Error, "failed receiving migrations parsed from file '{filename}': {e}");
+        tlog!(Error, "failed receiving migrations parsed from file '{fullpath}': {e}");
         Error::ThreadDead(e.to_string())
     });
 
     let elapsed = t0.elapsed();
     #[rustfmt::skip]
-    tlog!(Info, "done parsing migrations file '{filename}', elapsed time: {elapsed:?}");
+    tlog!(Info, "done parsing migrations file '{shortname}', elapsed time: {elapsed:?}");
 
-    res?
+    let migration_from_other_thread = res??;
+    #[rustfmt::skip]
+    debug_assert_eq!(migration.full_filepath, migration_from_other_thread.full_filepath);
+    #[rustfmt::skip]
+    debug_assert_eq!(migration.filename_from_manifest, migration_from_other_thread.filename_from_manifest);
+
+    *migration = migration_from_other_thread;
+    Ok(())
 }
 
-/// Reads and parses migrations file named `filename`..
+/// Reads and parses migrations file desribed by `migration`.
 #[inline]
-fn read_migration_queries_from_file(filename: &str) -> Result<MigrationQueries, Error> {
-    let source = std::fs::read_to_string(filename).map_err(|e| Error::File(filename.into(), e))?;
-    parse_migration_queries(&source, filename)
+fn read_migration_queries_from_file(migration: &mut MigrationInfo) -> Result<(), Error> {
+    let fullpath = &migration.full_filepath;
+    let source = std::fs::read_to_string(fullpath).map_err(|e| Error::File(fullpath.into(), e))?;
+    parse_migration_queries(&source, migration)
 }
 
-/// Parses the migration queries from `source`, returns a pair of arrays: one
-/// for "UP" queries and one for "DOWN" queries.
-///
-/// `filename` is only used for reporting errors to the user.
-fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQueries, Error> {
+/// Parses the migration queries from `source`, returns updates `migration` with
+/// "UP" and "DOWN" queries from the file.
+fn parse_migration_queries(source: &str, migration: &mut MigrationInfo) -> Result<(), Error> {
     let mut up_lines = vec![];
     let mut down_lines = vec![];
+
+    let filename = &migration.filename_from_manifest;
 
     let mut state = State::Initial;
 
@@ -281,14 +333,10 @@ fn parse_migration_queries(source: &str, filename: &str) -> Result<MigrationQuer
         ParsingDown,
     }
 
-    let filename = std::path::Path::new(filename)
-        .file_name()
-        .map_or(filename.into(), |n| n.to_string_lossy());
-    Ok(MigrationQueries {
-        filename: filename.into(),
-        up: split_sql_queries(&up_lines),
-        down: split_sql_queries(&down_lines),
-    })
+    migration.is_parsed = true;
+    migration.up = split_sql_queries(&up_lines);
+    migration.down = split_sql_queries(&down_lines);
+    Ok(())
 }
 
 fn split_sql_queries(lines: &[&str]) -> Vec<String> {
@@ -354,11 +402,12 @@ impl SqlApplier for SBroadApplier {
 }
 
 fn up_single_file(
-    queries: &MigrationQueries,
+    queries: &MigrationInfo,
     applier: &impl SqlApplier,
     deadline: Instant,
 ) -> Result<(), Error> {
-    let filename = &queries.filename;
+    debug_assert!(queries.is_parsed);
+    let filename = &queries.filename_from_manifest;
 
     for (sql, i) in queries.up.iter().zip(1..) {
         #[rustfmt::skip]
@@ -377,8 +426,9 @@ fn up_single_file(
     Ok(())
 }
 
-fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
-    let filename = &queries.filename;
+fn down_single_file(queries: &MigrationInfo, applier: &impl SqlApplier) {
+    debug_assert!(queries.is_parsed);
+    let filename = &queries.filename_from_manifest;
 
     for (sql, i) in queries.down.iter().zip(1..) {
         #[rustfmt::skip]
@@ -392,7 +442,7 @@ fn down_single_file(queries: &MigrationQueries, applier: &impl SqlApplier) {
 
 fn down_single_file_with_commit(
     plugin_name: &str,
-    queries: &MigrationQueries,
+    queries: &MigrationInfo,
     applier: &impl SqlApplier,
     deadline: Instant,
 ) {
@@ -401,7 +451,7 @@ fn down_single_file_with_commit(
     let node = node::global().expect("node must be already initialized");
     let dml = Dml::delete(
         ClusterwideTable::PluginMigration,
-        &[plugin_name, queries.filename.as_str()],
+        &[plugin_name, &queries.full_filepath],
         ADMIN_ID,
     )
     .expect("encoding should not fail");
@@ -432,12 +482,13 @@ pub fn apply_up_migrations(
     // checking the existence of migration files
     let mut migration_files = vec![];
     for file in migrations {
-        let migration_path = get_migration_path(plugin_ident, file);
+        let migration = MigrationInfo::new_unparsed(plugin_ident, file.clone());
 
         if error_injection::is_enabled("PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT") {
             return Err(Error::Extension(file.to_string()).into());
         }
-        if migration_path
+        if migration
+            .path()
             .extension()
             .and_then(|os_str| os_str.to_str())
             != Some(MIGRATION_FILE_EXT)
@@ -445,7 +496,7 @@ pub fn apply_up_migrations(
             return Err(Error::Extension(file.to_string()).into());
         }
 
-        if !migration_path.exists() {
+        if !migration.path().exists() {
             return Err(Error::File(
                 file.to_string(),
                 io::Error::new(ErrorKind::NotFound, "file not found"),
@@ -453,10 +504,10 @@ pub fn apply_up_migrations(
             .into());
         }
 
-        migration_files.push(migration_path.display().to_string());
+        migration_files.push(migration);
     }
 
-    let handle_err = |to_revert: &[MigrationQueries]| {
+    let handle_err = |to_revert: &[MigrationInfo]| {
         let deadline = fiber::clock().saturating_add(rollback_timeout);
         let it = to_revert.iter().rev();
         for queries in it {
@@ -464,39 +515,38 @@ pub fn apply_up_migrations(
         }
     };
 
-    let mut seen_queries = Vec::with_capacity(migration_files.len());
+    let migrations_count = migration_files.len();
+    let mut seen_queries = Vec::with_capacity(migrations_count);
 
     let node = node::global().expect("node must be already initialized");
-    for (num, db_file) in migration_files.iter().enumerate() {
+    for (num, mut migration) in migration_files.into_iter().enumerate() {
         #[rustfmt::skip]
-        tlog!(Info, "applying `UP` migrations, progress: {num}/{}", migration_files.len());
+        tlog!(Info, "applying `UP` migrations, progress: {num}/{migrations_count}");
 
-        let res = read_migration_queries_from_file_async(db_file);
-        let queries = crate::unwrap_ok_or!(res,
-            Err(e) => {
-                handle_err(&seen_queries);
-                return Err(e.into());
-            }
-        );
-        seen_queries.push(queries);
-        let queries = seen_queries.last().expect("just inserted");
+        let res = read_migration_queries_from_file_async(&mut migration);
+        if let Err(e) = res {
+            handle_err(&seen_queries);
+            return Err(e.into());
+        }
+        seen_queries.push(migration);
+        let migration = seen_queries.last().expect("just inserted");
 
         if num == 1 && error_injection::is_enabled("PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR") {
             handle_err(&seen_queries);
             return Err(Error::Up {
-                filename: queries.filename.clone(),
+                filename: migration.filename_from_manifest.clone(),
                 command: "<no-command>".into(),
                 error: "injected error".into(),
             }
             .into());
         }
 
-        if let Err(e) = up_single_file(queries, &SBroadApplier, deadline) {
+        if let Err(e) = up_single_file(migration, &SBroadApplier, deadline) {
             handle_err(&seen_queries);
             return Err(e.into());
         }
 
-        let hash = match calculate_migration_hash(db_file) {
+        let hash = match calculate_migration_hash_async(migration) {
             Ok(h) => h,
             Err(e) => {
                 handle_err(&seen_queries);
@@ -508,27 +558,22 @@ pub fn apply_up_migrations(
             ClusterwideTable::PluginMigration,
             &(
                 &plugin_ident.name,
-                &queries.filename,
+                &migration.full_filepath,
                 &format!("{:x}", hash),
             ),
             ADMIN_ID,
         )?;
-        tlog!(
-            Debug,
-            "updating global storage with migrations progress {num}/{}",
-            migration_files.len()
-        );
+        #[rustfmt::skip]
+        tlog!(Debug, "updating global storage with migrations progress {num}/{migrations_count}");
         if let Err(e) = do_plugin_cas(node, Op::Dml(dml), vec![], None, deadline) {
-            tlog!(
-                Debug,
-                "failed: updating global storage with migrations progress: {e}"
-            );
+            #[rustfmt::skip]
+            tlog!(Error, "failed: updating global storage with migrations progress: {e}");
             handle_err(&seen_queries);
             return Err(Error::UpdateProgress(e.to_string()).into());
         }
     }
     #[rustfmt::skip]
-    tlog!(Info, "applying `UP` migrations, progress: {0}/{0}", migration_files.len());
+    tlog!(Info, "applying `UP` migrations, progress: {0}/{0}", migrations_count);
 
     Ok(())
 }
@@ -545,26 +590,18 @@ pub fn apply_down_migrations(
     deadline: Instant,
 ) {
     let iter = migrations.iter().rev().zip(0..);
-    for (db_file, num) in iter {
+    for (filename, num) in iter {
         #[rustfmt::skip]
         tlog!(Info, "applying `DOWN` migrations, progress: {num}/{}", migrations.len());
 
-        let plugin_dir = PLUGIN_DIR
-            .with(|dir| dir.lock().clone())
-            .join(&plugin_identity.name)
-            .join(&plugin_identity.version);
-        let migration_path = plugin_dir.join(db_file);
-        let filename = migration_path.display().to_string();
+        let mut migration = MigrationInfo::new_unparsed(plugin_identity, filename.clone());
+        let res = read_migration_queries_from_file_async(&mut migration);
+        if let Err(e) = res {
+            tlog!(Error, "Rollback DOWN migration error: {e}");
+            continue;
+        }
 
-        let res = read_migration_queries_from_file_async(&filename);
-        let queries = crate::unwrap_ok_or!(res,
-            Err(e) => {
-                tlog!(Error, "Rollback DOWN migration error: {e}");
-                continue;
-            }
-        );
-
-        down_single_file_with_commit(&plugin_identity.name, &queries, &SBroadApplier, deadline);
+        down_single_file_with_commit(&plugin_identity.name, &migration, &SBroadApplier, deadline);
     }
     #[rustfmt::skip]
     tlog!(Info, "applying `DOWN` migrations, progress: {0}/{0}", migrations.len());
@@ -576,13 +613,24 @@ mod tests {
     use pretty_assertions::assert_eq;
     use std::cell::RefCell;
 
+    #[track_caller]
+    fn parse_migration_queries_for_tests(sql: &str) -> Result<MigrationInfo, Error> {
+        let mut migration = MigrationInfo {
+            full_filepath: "not used".into(),
+            filename_from_manifest: "test.db".into(),
+            ..Default::default()
+        };
+        parse_migration_queries(sql, &mut migration)?;
+        Ok(migration)
+    }
+
     #[test]
     fn test_parse_migration_queries() {
         let queries = r#"
 -- pico.UP
 sql_command1
         "#;
-        let queries = parse_migration_queries(queries, "test.db").unwrap();
+        let queries = parse_migration_queries_for_tests(queries).unwrap();
         assert_eq!(queries.up, &["sql_command1"],);
         assert!(queries.down.is_empty());
 
@@ -614,7 +662,7 @@ sql_command2;
 -- test comment
 
         "#;
-        let queries = parse_migration_queries(queries, "test.db").unwrap();
+        let queries = parse_migration_queries_for_tests(queries).unwrap();
         assert_eq!(
             queries.up,
             &[
@@ -633,7 +681,7 @@ sql_command2;
         let queries = r#"
 sql_command1
         "#;
-        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db: no pico.UP annotation found at start of file",
@@ -642,7 +690,7 @@ sql_command1
         let queries = r#"
 -- pico.up
         "#;
-        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db:2: unsupported annotation `pico.up`, expected one of `pico.UP`, `pico.DOWN`",
@@ -653,7 +701,7 @@ sql_command1
 command;
 -- pico.UP
         "#;
-        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db:4: duplicate `pico.UP` annotation found",
@@ -665,7 +713,7 @@ command_1;
 -- pico.DOWN
 command_2
         "#;
-        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db:4: duplicate `pico.DOWN` annotation found",
@@ -677,7 +725,7 @@ command;
 command_2; -- pico.DOWN
 command_3;
         "#;
-        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db:4: unexpected `pico.DOWN` annotation, it must be at the start of the line",
@@ -687,7 +735,7 @@ command_3;
 -- pico.UP
 command; -- pico.UP
         "#;
-        let e = parse_migration_queries(queries, "test.db").unwrap_err();
+        let e = parse_migration_queries_for_tests(queries).unwrap_err();
         assert_eq!(
             e.to_string(),
             "Invalid migration file format: test.db:3: unexpected `pico.UP` annotation, it must be at the start of the line",
@@ -721,7 +769,7 @@ sql_command_1;
 sql_command_2;
 sql_command_3;
 "#;
-        let queries = parse_migration_queries(source, "test.db").unwrap();
+        let queries = parse_migration_queries_for_tests(source).unwrap();
         let applier = BufApplier {
             buf: RefCell::new(vec![]),
             poison_query: None,
@@ -741,7 +789,7 @@ sql_command_1;
 sql_command_2;
 sql_command_3;
 "#;
-        let queries = parse_migration_queries(source, "test.db").unwrap();
+        let queries = parse_migration_queries_for_tests(source).unwrap();
         let applier = BufApplier {
             buf: RefCell::new(vec![]),
             poison_query: Some("sql_command_2;"),
@@ -764,7 +812,7 @@ sql_command_1
 sql_command_2;
 sql_command_3;
 "#;
-        let queries = parse_migration_queries(&source, "test.db").unwrap();
+        let queries = parse_migration_queries_for_tests(&source).unwrap();
         let applier = BufApplier {
             buf: RefCell::new(vec![]),
             poison_query: None,
@@ -784,7 +832,7 @@ sql_command_1;
 sql_command_2;
 sql_command_3;
 "#;
-        let queries = parse_migration_queries(&source, "test.db").unwrap();
+        let queries = parse_migration_queries_for_tests(&source).unwrap();
         let applier = BufApplier {
             buf: RefCell::new(vec![]),
             poison_query: Some("sql_command_2;"),
