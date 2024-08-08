@@ -1173,7 +1173,7 @@ td.td3 ul {
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>CTE</td>
-            <td class="td3 center">CTE</td>
+            <td class="td3 center">[CTE](sql/with.md)</td>
             <td></td>
         </tr>
         <tr>

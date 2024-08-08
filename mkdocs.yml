@@ -90,6 +90,7 @@ nav:
         - reference/sql/update.md
         - reference/sql/values.md
       - Синтаксис:
+        - reference/sql/with.md
         - reference/sql/join.md
       - Функции и выражения:
         - reference/sql/aggregate.md

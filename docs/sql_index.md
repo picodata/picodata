@@ -38,6 +38,7 @@
 
 ## Синтаксис {: #syntax }
 
+* [Использование CTE](reference/sql/with.md)
 * [Использование JOIN](reference/sql/join.md)
 
 ## Функции и выражения {: #functions_and_expressions }
