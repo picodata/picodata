@@ -14,6 +14,11 @@
 
 ![Update](../../images/ebnf/update.svg)
 
+### Сканирование {: #scan }
+
+??? note "Диаграмма"
+    ![Scan](../../images/ebnf/scan.svg)
+
 ### Выражение {: #expression }
 
 ??? note "Диаграмма"
