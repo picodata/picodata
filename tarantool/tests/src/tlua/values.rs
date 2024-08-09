@@ -1,4 +1,4 @@
-use std::ffi::{CString, OsStr, OsString};
+use std::ffi::{CStr, CString, OsStr, OsString};
 use std::os::raw::{c_char, c_void};
 use std::path::{Path, PathBuf};
 use tarantool::tlua::{
@@ -889,15 +889,17 @@ pub fn readwrite_strings() {
     let lua = Lua::new();
 
     #[derive(tlua::Push)]
-    struct S<'a, 'b> {
+    struct S<'a, 'b, 'c> {
         os: &'a OsStr,
         path: &'b Path,
+        c_str: &'c CStr,
     }
 
     #[derive(tlua::Push, tlua::LuaRead)]
     struct OwnedS {
         os: OsString,
         path: PathBuf,
+        c_str: CString,
     }
 
     lua.set("a", "hello");
