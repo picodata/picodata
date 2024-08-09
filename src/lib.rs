@@ -568,8 +568,16 @@ impl Entrypoint {
     ) -> Result<(), Error> {
         match self {
             Self::StartDiscover => start_discover(config, to_supervisor)?,
-            Self::StartBoot => start_boot(config)?,
-            Self::StartJoin { leader_address } => start_join(config, leader_address)?,
+            Self::StartBoot => {
+                // Cleanup the data directory with WALs from the previous StartDiscover run
+                tarantool::rm_tarantool_files(config.instance.data_dir())?;
+                start_boot(config)?;
+            }
+            Self::StartJoin { leader_address } => {
+                // Cleanup the data directory with WALs from the previous StartDiscover run
+                tarantool::rm_tarantool_files(config.instance.data_dir())?;
+                start_join(config, leader_address)?;
+            }
         }
 
         Ok(())
@@ -579,7 +587,6 @@ impl Entrypoint {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IpcMessage {
     pub next_entrypoint: Entrypoint,
-    pub drop_db: bool,
 }
 
 /// Performs tarantool initialization calling `box.cfg` for the first time.
@@ -709,28 +716,17 @@ fn start_discover(
     tarantool::set_cfg_field("listen", config.instance.listen().to_host_port())?;
 
     let role = discovery::wait_global();
-    match role {
-        discovery::Role::Leader { .. } => {
-            let next_entrypoint = Entrypoint::StartBoot {};
-            let msg = IpcMessage {
-                next_entrypoint,
-                drop_db: true,
-            };
-            to_supervisor.send(&msg);
-            std::process::exit(0);
-        }
-        discovery::Role::NonLeader { leader } => {
-            let next_entrypoint = Entrypoint::StartJoin {
-                leader_address: leader,
-            };
-            let msg = IpcMessage {
-                next_entrypoint,
-                drop_db: true,
-            };
-            to_supervisor.send(&msg);
-            std::process::exit(0);
-        }
-    }
+    let next_entrypoint = match role {
+        discovery::Role::Leader { .. } => Entrypoint::StartBoot,
+        discovery::Role::NonLeader { leader } => Entrypoint::StartJoin {
+            leader_address: leader,
+        },
+    };
+
+    let msg = IpcMessage { next_entrypoint };
+    to_supervisor.send(&msg);
+    // Must exit here, otherwise we'll enter the tarantool's event loop
+    std::process::exit(0);
 }
 
 fn start_boot(config: &PicodataConfig) -> Result<(), Error> {

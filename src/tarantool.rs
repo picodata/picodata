@@ -484,3 +484,27 @@ type iproto_handler_t = extern "C" fn(
 
 /// Type of destroy callback for a IPROTO request handler.
 type iproto_handler_destroy_t = extern "C" fn(ctx: *mut ());
+
+pub fn rm_tarantool_files(
+    data_dir: impl AsRef<std::path::Path>,
+) -> Result<(), tarantool::error::Error> {
+    let entries = std::fs::read_dir(data_dir)?;
+    for entry in entries {
+        let path = entry?.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(ext) = path.extension() else {
+            continue;
+        };
+
+        if ext != "xlog" && ext != "snap" {
+            continue;
+        }
+
+        crate::tlog!(Info, "removing file: {}", path.display());
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}

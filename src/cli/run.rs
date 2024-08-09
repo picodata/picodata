@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use nix::sys::signal;
 use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
 use nix::sys::wait::{waitpid, WaitStatus};
@@ -189,37 +187,17 @@ pub fn main(args: args::Run) -> ! {
                     }
                 }
 
-                if let Ok(msg) = msg {
-                    entrypoint = msg.next_entrypoint;
-                    if msg.drop_db {
-                        rm_tarantool_files(config.instance.data_dir());
-                    }
-                } else {
+                let Ok(msg) = msg else {
                     let rc = match status {
                         WaitStatus::Exited(_, rc) => rc,
                         WaitStatus::Signaled(_, sig, _) => sig as _,
                         s => unreachable!("unexpected exit status {:?}", s),
                     };
                     std::process::exit(rc);
-                }
+                };
+
+                entrypoint = msg.next_entrypoint;
             }
         };
     }
-}
-
-fn rm_tarantool_files(data_dir: impl AsRef<Path>) {
-    std::fs::read_dir(data_dir)
-        .expect("[supervisor] failed reading data_dir")
-        .map(|entry| entry.expect("[supervisor] failed reading directory entry"))
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file())
-        .filter(|f| {
-            f.extension()
-                .map(|ext| ext == "xlog" || ext == "snap")
-                .unwrap_or(false)
-        })
-        .for_each(|f| {
-            eprintln!("[supervisor] removing file: {}", f.to_string_lossy());
-            std::fs::remove_file(f).unwrap();
-        });
 }
