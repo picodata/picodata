@@ -697,7 +697,7 @@ where
                 // with a pointer to it is to call fiber_join.
                 Ok(Ok(JoinHandle::ffi(inner, result_cell)))
             } else {
-                let ctx = &mut *ctx_rc.get();
+                let ctx = &*ctx_rc.get();
                 // At this point the fiber could have already finished execution
                 // and may be dead, which means tarantool may have recycled it,
                 // so using a pointer to it is not safe after this point.
