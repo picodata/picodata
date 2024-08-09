@@ -30,13 +30,6 @@ fn bool_from_str(s: &str) -> PgResult<bool> {
     }
 }
 
-fn deserialize_rmpv_ext<T: DeserializeOwned>(value: &rmpv::Value) -> Result<T, EncodingError> {
-    // TODO: Find a way to avoid this redundant encoding.
-    let buf = rmp_serde::encode::to_vec(&value).map_err(EncodingError::new)?;
-    let val = rmp_serde::from_slice(&buf).map_err(EncodingError::new)?;
-    Ok(val)
-}
-
 type SqlError = Box<dyn Error + Sync + Send>;
 type SqlResult<T> = Result<T, Box<dyn Error + Sync + Send>>;
 
@@ -364,7 +357,7 @@ impl PgValue {
                 Ok(PgValue::Text(s.to_owned()))
             }
             (Value::Ext(1, _data), Type::NUMERIC) => {
-                let decimal = deserialize_rmpv_ext(&value)?;
+                let decimal = rmpv::ext::from_value(value).map_err(EncodingError::new)?;
                 Ok(PgValue::Numeric(decimal))
             }
             (Value::Integer(v), Type::NUMERIC) => {
@@ -382,11 +375,11 @@ impl PgValue {
                 Ok(PgValue::Numeric(Decimal(decimal)))
             }
             (Value::Ext(2, _data), Type::UUID) => {
-                let uuid = deserialize_rmpv_ext(&value)?;
+                let uuid = rmpv::ext::from_value(value).map_err(EncodingError::new)?;
                 Ok(PgValue::Uuid(uuid))
             }
             (Value::Ext(4, _), Type::TIMESTAMPTZ) => {
-                let datetime = deserialize_rmpv_ext(&value)?;
+                let datetime = rmpv::ext::from_value(value).map_err(EncodingError::new)?;
                 Ok(PgValue::Timestamptz(datetime))
             }
             (_any, Type::JSON | Type::JSONB) => Ok(PgValue::Json(Json(value))),
