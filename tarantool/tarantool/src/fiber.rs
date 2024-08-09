@@ -38,6 +38,7 @@ use std::marker::PhantomData;
 use std::mem::{align_of, size_of};
 use std::os::raw::c_void;
 use std::ptr::NonNull;
+use std::rc::Rc;
 use std::time::Duration;
 
 pub mod r#async;
@@ -678,15 +679,17 @@ where
             let result_cell = needs_returning::<T>().then(FiberResultCell::default);
 
             // Prepare fiber context for passing fiber arguments.
-            let mut ctx = Box::<Context>::default();
+            let mut ctx = Context::default();
             if let Some(result_cell) = &result_cell {
                 ctx.fiber_result_ptr = result_cell.get() as _;
             }
             ctx.fiber_rust_closure = Box::into_raw(Box::new(f)) as _;
-            let ctx_ptr = Box::into_raw(ctx);
+
+            // XXX: this type must be the same as one in `trampoline_for_ffi`
+            let ctx_rc: Rc<UnsafeCell<Context>> = Rc::new(UnsafeCell::new(ctx));
 
             // Cannot use fiber_set_ctx, because fiber_start will overwrite it.
-            ffi::fiber_start(inner.as_ptr(), ctx_ptr);
+            ffi::fiber_start(inner.as_ptr(), Rc::into_raw(ctx_rc.clone()));
 
             if is_joinable {
                 // At this point the fiber could have already finished execution
@@ -694,7 +697,7 @@ where
                 // with a pointer to it is to call fiber_join.
                 Ok(Ok(JoinHandle::ffi(inner, result_cell)))
             } else {
-                let ctx = &*ctx_ptr;
+                let ctx = &mut *ctx_rc.get();
                 // At this point the fiber could have already finished execution
                 // and may be dead, which means tarantool may have recycled it,
                 // so using a pointer to it is not safe after this point.
@@ -761,13 +764,16 @@ where
             let result_cell = needs_returning::<T>().then(FiberResultCell::default);
 
             // Prepare fiber context.
-            let mut ctx = Box::<Context>::default();
+            let mut ctx = Context::default();
             if let Some(result_cell) = &result_cell {
                 ctx.fiber_result_ptr = result_cell.get() as _;
             }
             ctx.fiber_rust_closure = Box::into_raw(Box::new(f)) as _;
 
-            ffi::fiber_set_ctx(inner.as_ptr(), Box::into_raw(ctx) as _);
+            // XXX: this type must be the same as one in `trampoline_for_ffi`
+            let ctx_rc: Rc<UnsafeCell<Context>> = Rc::new(UnsafeCell::new(ctx));
+
+            ffi::fiber_set_ctx(inner.as_ptr(), Rc::into_raw(ctx_rc) as _);
             ffi::fiber_wakeup(inner.as_ptr());
 
             if is_joinable {
@@ -809,7 +815,8 @@ where
         }
 
         debug_assert!(context_is_valid(ctx));
-        let mut ctx = Box::from_raw(ctx);
+        let ctx_rc: Rc<UnsafeCell<Context>> = Rc::from_raw(ctx.cast());
+        let ctx = &mut *ctx_rc.get();
         ctx.fiber_id = id();
 
         // Remove the closure pointer from the context,

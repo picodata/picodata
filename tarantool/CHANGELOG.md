@@ -9,6 +9,8 @@
 
 ### Fixed
 
+- Use after free in `fiber::Builder::start_non_joinable` when the fiber exits without yielding.
+
 ### Deprecated
 
 ### Breaking changes
