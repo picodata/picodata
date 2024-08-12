@@ -1242,6 +1242,7 @@ impl From<ClusterwideTable> for SpaceId {
         /// current_vshard_config_version, then the configuration is up to date.
         TargetVshardConfigVersion = "target_vshard_config_version",
 
+        /// Password should contain at least this many characters
         PasswordMinLength = "password_min_length",
 
         /// Password should contain at least one uppercase letter
