@@ -9,6 +9,7 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
 use crate::op::Op;
+use crate::plugin::PluginIdentifier;
 use crate::proc_name;
 use crate::rpc;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
@@ -35,9 +36,8 @@ use crate::traft::Result;
 use crate::unwrap_ok_or;
 use plan::action_plan;
 use plan::stage::*;
+use plan::EnablePluginConfig;
 
-use crate::governor::plan::EnablePluginConfig;
-use crate::plugin::PluginIdentifier;
 use futures::future::try_join_all;
 
 pub(crate) mod cc;

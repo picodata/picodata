@@ -18,7 +18,6 @@ use crate::vshard::VshardConfig;
 use crate::{has_states, plugin};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
-use std::mem;
 use std::time::Duration;
 
 use super::cc::raft_conf_change;
@@ -651,12 +650,13 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // update plugin topology
-    if let Some((plugin_def, mut service_def, op)) = update_plugin_topology {
+    if let Some((plugin_def, service_def, op)) = update_plugin_topology {
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];
 
-        let mut new_tiers = service_def.tiers.clone();
+        let mut new_service_def = service_def.clone();
+        let new_tiers = &mut new_service_def.tiers;
         if matches!(op, TopologyUpdateOp::Append { .. }) {
             if new_tiers.iter().all(|t| t != op.tier()) {
                 new_tiers.push(op.tier().to_string());
@@ -665,8 +665,7 @@ pub(super) fn action_plan<'i>(
             new_tiers.retain(|t| t != op.tier());
         }
 
-        let old_tiers = mem::replace(&mut service_def.tiers, new_tiers);
-        let new_tiers = &service_def.tiers;
+        let old_tiers = &service_def.tiers;
 
         // note: no need to enable/disable service and update routing table if plugin disabled
         if plugin_def.enabled {
@@ -713,7 +712,7 @@ pub(super) fn action_plan<'i>(
 
         on_success_dml.push(Dml::replace(
             ClusterwideTable::Service,
-            &service_def,
+            &new_service_def,
             ADMIN_ID,
         )?);
 
