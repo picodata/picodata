@@ -572,8 +572,7 @@ pub fn install_plugin(
     )?;
 
     while node.storage.properties.plugin_install()?.is_some() {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
-        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
+        index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
     let Some(plugin) = node.storage.plugin.get(&ident)? else {
@@ -717,8 +716,7 @@ pub fn enable_plugin(
     )?;
 
     while node.storage.properties.pending_plugin_enable()?.is_some() {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
-        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
+        index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
     let plugin = node
@@ -796,8 +794,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
     )?;
 
     while node.storage.properties.pending_plugin_disable()?.is_some() {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
-        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
+        index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
     Ok(())
@@ -966,8 +963,7 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
         .pending_plugin_topology_update()?
         .is_some()
     {
-        node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
-        index = node.read_index(deadline.duration_since(Instant::now_fiber()))?;
+        index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
     let service = node
