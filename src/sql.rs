@@ -1238,7 +1238,7 @@ fn ddl_ir_node_to_op_or_result(
     }
 }
 
-fn reenterable_schema_change_request(
+pub(crate) fn reenterable_schema_change_request(
     node: &TraftNode,
     ir_node: IrNode,
 ) -> traft::Result<ConsumerResult> {

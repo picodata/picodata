@@ -1,5 +1,7 @@
 use crate::cbus::ENDPOINT_NAME;
-use crate::plugin::{do_plugin_cas, PluginIdentifier, PLUGIN_DIR};
+use crate::plugin::reenterable_plugin_cas_request;
+use crate::plugin::PreconditionCheckResult;
+use crate::plugin::{PluginIdentifier, PLUGIN_DIR};
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::traft::node;
@@ -446,17 +448,21 @@ fn down_single_file_with_commit(
     applier: &impl SqlApplier,
     deadline: Instant,
 ) {
+    let node = node::global().expect("node must be already initialized");
+
     down_single_file(queries, applier);
 
-    let node = node::global().expect("node must be already initialized");
-    let dml = Dml::delete(
-        ClusterwideTable::PluginMigration,
-        &[plugin_name, &queries.filename_from_manifest],
-        ADMIN_ID,
-    )
-    .expect("encoding should not fail");
+    let make_op = || {
+        let dml = Dml::delete(
+            ClusterwideTable::PluginMigration,
+            &[plugin_name, &queries.filename_from_manifest],
+            ADMIN_ID,
+        )?;
+        Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+    };
+
     tlog!(Debug, "updating global storage with DOWN migration");
-    if let Err(e) = do_plugin_cas(node, Op::Dml(dml), vec![], None, deadline) {
+    if let Err(e) = reenterable_plugin_cas_request(node, make_op, vec![], deadline) {
         tlog!(
             Debug,
             "failed: updating global storage with regular DOWN migration progress: {e}"
@@ -554,20 +560,31 @@ pub fn apply_up_migrations(
             }
         };
 
-        let dml = Dml::replace(
-            ClusterwideTable::PluginMigration,
-            &(
-                &plugin_ident.name,
-                &migration.filename_from_manifest,
-                &format!("{:x}", hash),
-            ),
-            ADMIN_ID,
-        )?;
+        let make_op = || {
+            let dml = Dml::replace(
+                ClusterwideTable::PluginMigration,
+                &(
+                    &plugin_ident.name,
+                    &migration.filename_from_manifest,
+                    &format!("{:x}", hash),
+                ),
+                ADMIN_ID,
+            )?;
+            Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+        };
+
         #[rustfmt::skip]
         tlog!(Debug, "updating global storage with migrations progress {num}/{migrations_count}");
-        if let Err(e) = do_plugin_cas(node, Op::Dml(dml), vec![], None, deadline) {
+        // FIXME: currently it possible that migrations will be initiated from
+        // 2 different instances simultaneously which can break some invariants.
+        // What we should do is to introduce a global lock in _pico_property
+        // such that the client first checks if the lock is acquired, then does
+        // a CaS request to acquire the lock and only after that starts doing
+        // the migrations, and releases the lock at the end.
+        if let Err(e) = reenterable_plugin_cas_request(node, make_op, vec![], deadline) {
             #[rustfmt::skip]
             tlog!(Error, "failed: updating global storage with migrations progress: {e}");
+
             handle_err(&seen_queries);
             return Err(Error::UpdateProgress(e.to_string()).into());
         }

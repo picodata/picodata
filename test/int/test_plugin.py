@@ -505,12 +505,6 @@ def test_plugin_remove(cluster: Cluster):
         i1.call("pico.remove_plugin", _PLUGIN, _PLUGIN_VERSION_1)
     plugin_ref.assert_synced()
 
-    i1.call("pico._inject_error", "PLUGIN_EXIST_AND_ENABLED", True)
-    # same, but error not returned to a client
-    i1.call("pico.remove_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    plugin_ref.assert_synced()
-    i1.call("pico._inject_error", "PLUGIN_EXIST_AND_ENABLED", False)
-
     # check default behaviour
     i1.call("pico.disable_plugin", _PLUGIN, _PLUGIN_VERSION_1)
     plugin_ref = plugin_ref.enable(False).set_topology({i1: [], i2: []})
