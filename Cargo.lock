@@ -2566,7 +2566,7 @@ dependencies = [
  "slog",
  "smol_str",
  "syn 1.0.109",
- "tarantool 5.0.0",
+ "tarantool 5.1.0",
  "tempfile",
  "thiserror",
  "time",
@@ -2600,7 +2600,7 @@ dependencies = [
  "rmpv",
  "serde",
  "serde_json",
- "tarantool 5.0.0",
+ "tarantool 5.1.0",
  "tarolog",
  "thiserror",
  "threadpool",
@@ -2614,7 +2614,7 @@ dependencies = [
  "proc-macro2 1.0.85",
  "quote 1.0.36",
  "syn 1.0.109",
- "tarantool 5.0.0",
+ "tarantool 5.1.0",
 ]
 
 [[package]]
@@ -3311,7 +3311,7 @@ dependencies = [
  "serde",
  "serde_yaml 0.8.26",
  "smol_str",
- "tarantool 5.0.0",
+ "tarantool 5.1.0",
  "time",
  "uuid 1.8.0",
 ]
@@ -3871,7 +3871,7 @@ dependencies = [
 
 [[package]]
 name = "tarantool"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "anyhow",
  "async-std",
@@ -4123,7 +4123,7 @@ dependencies = [
  "libc",
  "serde",
  "thiserror",
- "tlua-derive 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tlua-derive 0.2.0",
 ]
 
 [[package]]
@@ -4135,12 +4135,14 @@ dependencies = [
  "serde",
  "tester",
  "thiserror",
- "tlua-derive 0.2.0",
+ "tlua-derive 0.2.1",
 ]
 
 [[package]]
 name = "tlua-derive"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb7956628ae61669b782605fc8ef4fee857c20227ad59548014b7b519b71b251"
 dependencies = [
  "proc-macro2 1.0.85",
  "quote 1.0.36",
@@ -4149,9 +4151,7 @@ dependencies = [
 
 [[package]]
 name = "tlua-derive"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb7956628ae61669b782605fc8ef4fee857c20227ad59548014b7b519b71b251"
+version = "0.2.1"
 dependencies = [
  "proc-macro2 1.0.85",
  "quote 1.0.36",
