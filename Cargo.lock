@@ -2591,7 +2591,6 @@ version = "0.1.0"
 dependencies = [
  "abi_stable",
  "gensym",
- "linkme 0.3.26",
  "log",
  "picoplugin_gen",
  "reqwest",

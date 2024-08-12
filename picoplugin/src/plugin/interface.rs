@@ -1,7 +1,6 @@
 use crate::util::FfiSafeStr;
 use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
 use abi_stable::{sabi_trait, RTuple, StableAbi};
-use linkme::distributed_slice;
 use std::error::Error;
 use std::fmt::Display;
 
@@ -334,14 +333,7 @@ pub type ServiceBox = ServiceStable_TO<'static, RBox<()>>;
 
 // ---------------------------- Registrar ----------------------------------------------
 
-/// List of registrar functions.
-#[distributed_slice]
-pub static REGISTRARS: [extern "C" fn(registry: &mut ServiceRegistry)] = [..];
-
-#[no_mangle]
-extern "C" fn registrars() -> RSlice<'static, extern "C" fn(registry: &mut ServiceRegistry)> {
-    RSlice::from_slice(&REGISTRARS)
-}
+pub type FnServiceRegistrar = extern "C" fn(registry: &mut ServiceRegistry);
 
 /// The reason for the existence of this trait is that [`abi_stable`] crate doesn't support
 /// closures.

@@ -16,6 +16,7 @@ use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use picoplugin::background::{Error, InternalGlobalWorkerManager, ServiceId};
 use picoplugin::metrics::InternalGlobalMetricsCollection;
+use picoplugin::plugin::interface::FnServiceRegistrar;
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picoplugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
@@ -129,13 +130,8 @@ impl PluginManager {
 
             // fill registry with factories
             let mut registry = ServiceRegistry::default();
-            type FnRegistrars =
-                fn() -> RSlice<'static, extern "C" fn(registry: &mut ServiceRegistry)>;
-            let make_registrars = unsafe { lib.get::<FnRegistrars>("registrars")? };
-            let service_registrars = make_registrars();
-            service_registrars.iter().for_each(|registrar| {
-                registrar(&mut registry);
-            });
+            let registrar = unsafe { lib.get::<FnServiceRegistrar>("pico_service_registrar")? };
+            registrar(&mut registry);
 
             tlog!(
                 Info,

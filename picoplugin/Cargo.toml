@@ -8,7 +8,6 @@ license-file = "./../LICENSE"
 crate-type = ["lib"]
 
 [dependencies]
-linkme = "0.3.14"
 gensym = "0.1.0"
 abi_stable = "0.11.2"
 picoplugin_gen = { path = "../picoplugin_gen" }
