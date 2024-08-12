@@ -121,11 +121,10 @@ pub fn main(args: args::Run) -> ! {
                         .start_non_joinable()?;
 
                     std::panic::set_hook(Box::new(|info| {
-                        tlog!(Info, "Panic occurred, exiting: {}", info);
+                        tlog!(Critical, "{info}");
                         let backtrace = std::backtrace::Backtrace::capture();
-                        if backtrace.status() == std::backtrace::BacktraceStatus::Captured {
-                            tlog!(Info, "{}", backtrace);
-                        }
+                        tlog!(Critical, "backtrace:\n{}", backtrace);
+                        tlog!(Critical, "aborting due to panic");
                         std::process::abort();
                     }));
 
