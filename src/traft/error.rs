@@ -150,7 +150,9 @@ pub fn is_retriable_error_message(msg: &str) -> bool {
     }
 
     if msg.contains("compare-and-swap") {
-        return msg.contains("Compacted") || msg.contains("ConflictFound");
+        return msg.contains("Compacted")
+            || msg.contains("ConflictFound")
+            || msg.contains("EntryTermMismatch");
     }
 
     return false;

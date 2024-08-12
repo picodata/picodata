@@ -181,7 +181,6 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
                 node.wait_index(index, deadline.duration_since(fiber::clock()))?;
                 if term != raft::Storage::term(raft_storage, index)? {
                     // leader switched - retry
-                    node.wait_status();
                     continue;
                 }
             }
@@ -189,7 +188,7 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
                 if req.dont_retry {
                     return Err(err);
                 }
-                if err.is_cas_err() || err.is_term_mismatch_err() {
+                if err.is_retriable() {
                     // cas error - retry
                     fiber::sleep(Duration::from_millis(500));
                     continue;

@@ -397,12 +397,11 @@ fn do_routing_table_cas(
                 node.wait_index(index, deadline.duration_since(fiber::clock()))?;
                 if term != raft::Storage::term(raft_storage, index)? {
                     // leader switched - retry
-                    node.wait_status();
                     continue;
                 }
             }
             Err(err) => {
-                if err.is_cas_err() || err.is_term_mismatch_err() {
+                if err.is_retriable() {
                     // cas error - retry
                     fiber::sleep(Duration::from_millis(500));
                     continue;
@@ -514,12 +513,11 @@ fn do_plugin_cas(
                 node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
                 if term != raft::Storage::term(raft_storage, index)? {
                     // leader switched - retry
-                    node.wait_status();
                     continue;
                 }
             }
             Err(err) => {
-                if err.is_cas_err() | err.is_term_mismatch_err() {
+                if err.is_retriable() {
                     // cas error - retry
                     fiber::sleep(Duration::from_millis(500));
                     continue;

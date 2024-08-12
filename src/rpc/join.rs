@@ -135,12 +135,11 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 node.wait_index(index, deadline.duration_since(fiber::clock()))?;
                 if term != raft::Storage::term(raft_storage, index)? {
                     // leader switched - retry
-                    node.wait_status();
                     continue;
                 }
             }
             Err(err) => {
-                if err.is_cas_err() | err.is_term_mismatch_err() {
+                if err.is_retriable() {
                     // cas error - retry
                     fiber::sleep(Duration::from_millis(500));
                     continue;

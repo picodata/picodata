@@ -2469,6 +2469,7 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
         };
 
         let req = Request::new(Op::DdlAbort, predicate, effective_user_id())?;
+        // FIXME: this error handling is wrong, must retry if e.is_retriable()
         let (index, term) = compare_and_swap(&req, timeout)?;
         node.wait_index(index, timeout)?;
         if raft::Storage::term(&node.raft_storage, index)? != term {
