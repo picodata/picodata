@@ -3798,19 +3798,24 @@ impl ServiceRouteTable {
         Ok(tuple)
     }
 
-    pub fn get_by_plugin(
-        &self,
-        plugin_ident: &PluginIdentifier,
-    ) -> tarantool::Result<Vec<ServiceRouteItem>> {
+    pub fn delete_by_plugin(&self, plugin_ident: &PluginIdentifier) -> tarantool::Result<()> {
         let all_routes = self.space.select(IteratorType::All, &())?;
-        let mut result = vec![];
         for tuple in all_routes {
-            let svc = tuple.decode::<ServiceRouteItem>()?;
-            if svc.plugin_name == plugin_ident.name && svc.plugin_version == plugin_ident.version {
-                result.push(svc)
+            let item = tuple.decode::<ServiceRouteItem>()?;
+            if item.plugin_name != plugin_ident.name {
+                continue;
             }
+            if item.plugin_version != plugin_ident.version {
+                continue;
+            }
+            self.space.delete(&(
+                item.instance_id,
+                item.plugin_name,
+                item.plugin_version,
+                item.service_name,
+            ))?;
         }
-        Ok(result)
+        Ok(())
     }
 
     pub fn get_by_instance(

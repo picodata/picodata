@@ -899,9 +899,6 @@ pub enum PluginOp {
         services: Vec<ServiceDef>,
         timeout: Duration,
     },
-    DisablePlugin {
-        plugin: PluginIdentifier,
-    },
     /// Operation to change on which tiers the given services should be deployed.
     UpdateTopology(TopologyUpdateOp),
 }

@@ -625,28 +625,6 @@ pub(super) fn action_plan<'i>(
         .into());
     }
 
-    // FIXME: this should be done when the raft op is applied
-    ////////////////////////////////////////////////////////////////////////////
-    // disable plugin
-    if let PreparedPluginOp::DisablePlugin { routes } = plugin_op {
-        let routing_keys_to_del = routes.iter().map(|route| route.key()).collect::<Vec<_>>();
-        let mut ops: Vec<_> = routing_keys_to_del
-            .iter()
-            .map(|routing_key| {
-                Dml::delete(ClusterwideTable::ServiceRouteTable, &routing_key, ADMIN_ID)
-                    .expect("encoding should not fail")
-            })
-            .collect();
-        ops.push(Dml::delete(
-            ClusterwideTable::Property,
-            &[PropertyName::PendingPluginOperation],
-            ADMIN_ID,
-        )?);
-
-        let op = Op::BatchDml { ops };
-        return Ok(DisablePlugin { op }.into());
-    }
-
     ////////////////////////////////////////////////////////////////////////////
     // update plugin topology
     if let PreparedPluginOp::UpdatePluginTopology {
@@ -913,10 +891,6 @@ pub mod stage {
             pub finalize_dml: Dml,
         }
 
-        pub struct DisablePlugin {
-            pub op: Op,
-        }
-
         pub struct UpdatePluginTopology<'i> {
             pub enable_targets: Vec<&'i InstanceId>,
             pub disable_targets: Vec<&'i InstanceId>,
@@ -1045,9 +1019,6 @@ pub(super) enum PreparedPluginOp {
         manifest: plugin::Manifest,
     },
     EnablePlugin(EnablePluginConfig),
-    DisablePlugin {
-        routes: Vec<ServiceRouteItem>,
-    },
     UpdatePluginTopology {
         plugin_def: PluginDef,
         service_def: ServiceDef,

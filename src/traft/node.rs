@@ -12,7 +12,6 @@ use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
-use crate::plugin::PluginOp;
 use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
@@ -732,8 +731,6 @@ impl NodeImpl {
             Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
             Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
-            // TODO: remove this once PluginOp::DisablePlugin is removed
-            Op::Plugin(PluginRaftOp::DisablePlugin { .. }) => true,
             _ => false,
         };
 
@@ -1273,14 +1270,6 @@ impl NodeImpl {
             }
 
             Op::Plugin(PluginRaftOp::DisablePlugin { ident }) => {
-                let op = PluginOp::DisablePlugin {
-                    plugin: ident.clone(),
-                };
-                self.storage
-                    .properties
-                    .put(PropertyName::PendingPluginOperation, &op)
-                    .expect("storage should not fail");
-
                 let plugin = self
                     .storage
                     .plugin
@@ -1293,6 +1282,13 @@ impl NodeImpl {
                         .plugin
                         .put(&plugin)
                         .expect("storage should not fail");
+
+                    self.storage
+                        .service_route_table
+                        .delete_by_plugin(&ident)
+                        .expect("hallelujah");
+                } else {
+                    // FIXME: this should never happen
                 }
 
                 if let Err(e) = self

@@ -611,16 +611,6 @@ impl Loop {
                 }
             }
 
-            Plan::DisablePlugin(DisablePlugin { op }) => {
-                set_status(governor_status, "update plugin routing table");
-                governor_step! {
-                    "updating plugin routing table"
-                    async {
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
-                    }
-                }
-            }
-
             Plan::UpdatePluginTopology(UpdatePluginTopology {
                 enable_targets,
                 disable_targets,
@@ -858,13 +848,6 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
                 timeout,
             };
             PreparedPluginOp::EnablePlugin(info)
-        }
-        PluginOp::DisablePlugin { plugin } => {
-            let routes = storage
-                .service_route_table
-                .get_by_plugin(&plugin)
-                .expect("storage should not fail");
-            PreparedPluginOp::DisablePlugin { routes }
         }
         PluginOp::UpdateTopology(op) => {
             let plugin_def = storage
