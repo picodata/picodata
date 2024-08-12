@@ -732,7 +732,6 @@ impl NodeImpl {
             Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
             Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
-            Op::Plugin(PluginRaftOp::EnablePlugin { .. }) => true,
             // TODO: remove this once PluginOp::DisablePlugin is removed
             Op::Plugin(PluginRaftOp::DisablePlugin { .. }) => true,
             Op::Plugin(PluginRaftOp::UpdateServiceTopology { .. }) => true,
@@ -1225,28 +1224,6 @@ impl NodeImpl {
                     .expect("storage should not fail");
                 storage_properties
                     .delete(PropertyName::PendingSchemaVersion)
-                    .expect("storage should not fail");
-            }
-
-            // TODO: remove this, just propose a DML into _pico_property directly
-            Op::Plugin(PluginRaftOp::EnablePlugin {
-                ident,
-                on_start_timeout,
-            }) => {
-                let services = self
-                    .storage
-                    .service
-                    .get_by_plugin(&ident)
-                    .expect("storage should not fail");
-
-                let op = PluginOp::EnablePlugin {
-                    plugin: ident,
-                    services,
-                    timeout: on_start_timeout,
-                };
-                self.storage
-                    .properties
-                    .put(PropertyName::PendingPluginOperation, &op)
                     .expect("storage should not fail");
             }
 

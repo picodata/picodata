@@ -12,7 +12,6 @@ use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use tarantool::index::IndexType;
 use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
@@ -218,9 +217,6 @@ impl std::fmt::Display for Op {
                     grantee_id = priv_def.grantee_id(),
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(), )
-            }
-            Op::Plugin(PluginRaftOp::EnablePlugin { ident, .. }) => {
-                write!(f, "EnablePlugin({ident})")
             }
             Op::Plugin(PluginRaftOp::UpdatePluginConfig {
                 ident,
@@ -815,14 +811,6 @@ impl Acl {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "op_kind")]
 pub enum PluginRaftOp {
-    /// Enable a plugin.
-    ///
-    /// Provided operation will be set as pending.
-    /// Only one operation can exist at the same time.
-    EnablePlugin {
-        ident: PluginIdentifier,
-        on_start_timeout: Duration,
-    },
     /// Update plugin service configuration.
     UpdatePluginConfig {
         ident: PluginIdentifier,

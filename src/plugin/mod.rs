@@ -696,7 +696,7 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
 /// 2) set `_pico_plugin.enable` to `true`
 /// 3) update routes in `_pico_service_route`
 pub fn enable_plugin(
-    ident: &PluginIdentifier,
+    plugin: &PluginIdentifier,
     on_start_timeout: Duration,
     timeout: Duration,
 ) -> traft::Result<()> {
@@ -704,15 +704,32 @@ pub fn enable_plugin(
 
     let node = node::global()?;
 
-    let op = PluginRaftOp::EnablePlugin {
-        ident: ident.clone(),
-        on_start_timeout,
+    // FIXME: this must be done in a retry loop within reenterable_plugin_change_request
+    let services = node.storage.service.get_by_plugin(&plugin)?;
+    let op = PluginOp::EnablePlugin {
+        plugin: plugin.clone(),
+        // FIXME: we shouldn't need to send this list, it's already available on
+        // the governor, what is going on?
+        services,
+        timeout: on_start_timeout,
     };
+    let dml = Dml::replace(
+        ClusterwideTable::Property,
+        &(&PropertyName::PendingPluginOperation, &op),
+        effective_user_id(),
+    )?;
+
+    let ranges = vec![
+        // Fail if someone proposes another plugin operation
+        Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+        // Fail if someone updates this plugin record
+        Range::new(ClusterwideTable::Plugin).eq([&plugin.name]),
+    ];
 
     let mut index = do_plugin_cas(
         node,
-        Op::Plugin(op),
-        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation])],
+        Op::Dml(dml),
+        ranges,
         Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
     )?;
@@ -724,7 +741,7 @@ pub fn enable_plugin(
     let plugin = node
         .storage
         .plugin
-        .get(ident)?
+        .get(plugin)?
         .ok_or(PluginError::EnablingAborted)?;
 
     if !plugin.enabled {
