@@ -1,5 +1,6 @@
 use crate::plugin::PluginEvent;
-use crate::traft::error::Error as TraftError;
+use crate::plugin::PluginOp;
+use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
@@ -20,8 +21,14 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let op = node.storage.properties.pending_plugin_topology_update()?
-            .ok_or_else(|| TraftError::other("pending plugin topology not found"))?;
+        let Some(plugin_op) = node.storage.properties.pending_plugin_op()? else {
+            return Err(Error::other("pending plugin operation not found"));
+        };
+
+        let PluginOp::UpdateTopology(op) = plugin_op else {
+            #[rustfmt::skip]
+            return Err(Error::other("found unexpected plugin operation expected UpdateTopology, found {plugin_op:?}"));
+        };
 
         node.plugin_manager.handle_event_sync(PluginEvent::ServiceEnabled {
             ident: op.plugin_identity(),

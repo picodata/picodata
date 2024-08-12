@@ -1,4 +1,5 @@
-use crate::traft::error::Error as TraftError;
+use crate::plugin::PluginOp;
+use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
@@ -19,10 +20,14 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let storage = &node.storage;
+        let Some(plugin_op) = node.storage.properties.pending_plugin_op()? else {
+            return Err(Error::other("pending plugin operation not found"));
+        };
 
-        let manifest = storage.properties.plugin_install()?
-            .ok_or_else(|| TraftError::other("plugin not found"))?;
+        let PluginOp::InstallPlugin { manifest } = plugin_op else {
+            #[rustfmt::skip]
+            return Err(Error::other("found unexpected plugin operation expected InstallPlugin, found {plugin_op:?}"));
+        };
 
         node.plugin_manager.try_load_dry_run(&manifest)?;
         Ok(Response::Ok)

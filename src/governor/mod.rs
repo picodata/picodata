@@ -10,6 +10,7 @@ use ::tarantool::fiber::r#async::watch;
 
 use crate::op::Op;
 use crate::plugin::PluginIdentifier;
+use crate::plugin::PluginOp;
 use crate::proc_name;
 use crate::rpc;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
@@ -37,6 +38,7 @@ use crate::unwrap_ok_or;
 use plan::action_plan;
 use plan::stage::*;
 use plan::EnablePluginConfig;
+use plan::PreparedPluginOp;
 
 use futures::future::try_join_all;
 
@@ -120,71 +122,8 @@ impl Loop {
             .pending_schema_change()
             .expect("storage should never fail");
         let has_pending_schema_change = pending_schema_change.is_some();
-        let install_plugin = storage
-            .properties
-            .plugin_install()
-            .expect("storage should never fail")
-            .map(|manifest| {
-                let identity =
-                    PluginIdentifier::new(manifest.name.clone(), manifest.version.clone());
-                let installed_plugin = storage
-                    .plugin
-                    .get(&identity)
-                    .expect("storage should not fail");
-                (installed_plugin, manifest)
-            });
-        let enable_plugin = storage
-            .properties
-            .pending_plugin_enable()
-            .expect("storage should never fail")
-            .map(|(ident, services, timeout)| {
-                let installed_plugins = storage
-                    .plugin
-                    .get_all_versions(&ident.name)
-                    .expect("storage should not fail");
-                let applied_migrations = storage
-                    .plugin_migration
-                    .get_files_by_plugin(&ident.name)
-                    .expect("storage should not fail")
-                    .into_iter()
-                    .map(|record| record.migration_file)
-                    .collect();
 
-                EnablePluginConfig {
-                    ident,
-                    installed_plugins,
-                    services,
-                    applied_migrations,
-                    timeout,
-                }
-            });
-        let disable_plugin = storage
-            .properties
-            .pending_plugin_disable()
-            .expect("storage should never fail")
-            .map(|plugin_to_disable| {
-                storage
-                    .service_route_table
-                    .get_by_plugin(&plugin_to_disable)
-                    .expect("storage should not fail")
-            });
-        let update_plugin_topology = storage
-            .properties
-            .pending_plugin_topology_update()
-            .expect("storage should never fail")
-            .and_then(|op| {
-                let plugin_def = storage
-                    .plugin
-                    .get(op.plugin_identity())
-                    .expect("storage should not fail")?;
-
-                let service_def = storage
-                    .service
-                    .get(op.plugin_identity(), op.service_name())
-                    .expect("storage should not fail")?;
-
-                Some((plugin_def, service_def, op))
-            });
+        let plugin_op = get_info_for_pending_plugin_op(storage);
 
         let plan = action_plan(
             term,
@@ -201,10 +140,7 @@ impl Loop {
             target_vshard_config_version,
             vshard_bootstrapped,
             has_pending_schema_change,
-            install_plugin.as_ref(),
-            enable_plugin.as_ref(),
-            disable_plugin.as_deref(),
-            update_plugin_topology,
+            &plugin_op,
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -563,7 +499,7 @@ impl Loop {
 
                 if let Some((targets, rpc, op)) = install_substep {
                     governor_step! {
-                    "checking if plugin is ready for installation on instances"
+                        "checking if plugin is ready for installation on instances"
                         async {
                             let mut fs = vec![];
                             for instance_id in targets {
@@ -871,4 +807,83 @@ pub struct GovernorStatus {
     ///
     /// Is set by governor to explain the reason why it has yielded.
     pub governor_loop_status: &'static str,
+}
+
+// FIXME: don't copy-paste this code please, this should instead further
+// simplified. No need to clump up the data in here instead just dump all the
+// tables and pass the data to action_plan directly.
+fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
+    let Some(plugin_op) = storage
+        .properties
+        .pending_plugin_op()
+        .expect("i just want to feel something")
+    else {
+        return PreparedPluginOp::None;
+    };
+
+    match plugin_op {
+        PluginOp::InstallPlugin { manifest } => {
+            let identity = PluginIdentifier::new(manifest.name.clone(), manifest.version.clone());
+            let maybe_existing_plugin = storage
+                .plugin
+                .get(&identity)
+                .expect("storage should not fail");
+            PreparedPluginOp::InstallPlugin {
+                maybe_existing_plugin,
+                manifest,
+            }
+        }
+        PluginOp::EnablePlugin {
+            plugin,
+            services,
+            timeout,
+        } => {
+            let installed_plugins = storage
+                .plugin
+                .get_all_versions(&plugin.name)
+                .expect("storage should not fail");
+            let applied_migrations = storage
+                .plugin_migration
+                .get_files_by_plugin(&plugin.name)
+                .expect("storage should not fail")
+                .into_iter()
+                .map(|record| record.migration_file)
+                .collect();
+
+            let info = EnablePluginConfig {
+                ident: plugin,
+                installed_plugins,
+                services,
+                applied_migrations,
+                timeout,
+            };
+            PreparedPluginOp::EnablePlugin(info)
+        }
+        PluginOp::DisablePlugin { plugin } => {
+            let routes = storage
+                .service_route_table
+                .get_by_plugin(&plugin)
+                .expect("storage should not fail");
+            PreparedPluginOp::DisablePlugin { routes }
+        }
+        PluginOp::UpdateTopology(op) => {
+            let plugin_def = storage
+                .plugin
+                .get(op.plugin_identity())
+                .expect("storage should not fail")
+                .expect("client should check that plugin exists");
+
+            let service_def = storage
+                .service
+                .get(op.plugin_identity(), op.service_name())
+                .expect("storage should not fail")
+                .expect("client should check that service exists");
+
+            PreparedPluginOp::UpdatePluginTopology {
+                plugin_def,
+                service_def,
+                op,
+            }
+        }
+    }
 }

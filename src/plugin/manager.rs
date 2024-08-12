@@ -288,7 +288,7 @@ impl PluginManager {
         let enabled_plugins = node.storage.plugin.all_enabled()?;
 
         for plugin in enabled_plugins {
-            let ident = plugin.into_identity();
+            let ident = plugin.into_identifier();
             // no need to load already loaded plugins
             if self.plugins.lock().get(&ident.name).is_none() {
                 self.try_load(&ident)?;
@@ -464,7 +464,7 @@ impl PluginManager {
                     enabled_plugins.pop().expect("infallible")
                 }
             };
-            let plugin_identity = plugin_def.into_identity();
+            let plugin_identity = plugin_def.into_identifier();
 
             for service in plugin_state.services.iter() {
                 let mut service = service.lock();

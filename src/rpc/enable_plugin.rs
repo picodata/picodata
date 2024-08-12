@@ -1,5 +1,6 @@
+use crate::plugin::PluginOp;
 use crate::tlog;
-use crate::traft::error::Error as TraftError;
+use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
@@ -21,12 +22,16 @@ crate::define_rpc_request! {
         node.wait_index(req.applied, req.timeout)?;
         node.status().check_term(req.term)?;
 
-        let storage = &node.storage;
+        let Some(plugin_op) = node.storage.properties.pending_plugin_op()? else {
+            return Err(Error::other("pending plugin operation not found"));
+        };
 
-        let (identity, _, _) = storage.properties.pending_plugin_enable()?
-            .ok_or_else(|| TraftError::other("pending plugin not found"))?;
+        let PluginOp::EnablePlugin { plugin, .. } = plugin_op else {
+            #[rustfmt::skip]
+            return Err(Error::other("found unexpected plugin operation expected EnablePlugin, found {plugin_op:?}"));
+        };
 
-        let load_result = node.plugin_manager.try_load(&identity);
+        let load_result = node.plugin_manager.try_load(&plugin);
 
         match load_result {
              Ok(()) => Ok(Response::Ok),
@@ -50,12 +55,4 @@ crate::define_rpc_request! {
         /// whole cluster.
         Abort { reason: String },
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// Plugin loaded failed on this instance and should be aborted on the
-    /// whole cluster.
-    #[error("{0}")]
-    Aborted(String),
 }

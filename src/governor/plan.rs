@@ -23,14 +23,6 @@ use std::time::Duration;
 use super::cc::raft_conf_change;
 use super::Loop;
 
-pub(super) struct EnablePluginConfig {
-    pub ident: PluginIdentifier,
-    pub installed_plugins: Vec<PluginDef>,
-    pub services: Vec<ServiceDef>,
-    pub applied_migrations: Vec<String>,
-    pub timeout: Duration,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn action_plan<'i>(
     term: RaftTerm,
@@ -47,10 +39,7 @@ pub(super) fn action_plan<'i>(
     target_vshard_config_version: u64,
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
-    install_plugin: Option<&'i (Option<PluginDef>, plugin::Manifest)>,
-    enable_plugin: Option<&'i EnablePluginConfig>,
-    disable_plugin: Option<&'i [ServiceRouteItem]>,
-    update_plugin_topology: Option<(PluginDef, ServiceDef, TopologyUpdateOp)>,
+    plugin_op: &PreparedPluginOp,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -451,7 +440,11 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // install plugin
-    if let Some((maybe_existing_plugin, manifest)) = install_plugin {
+    if let PreparedPluginOp::InstallPlugin {
+        maybe_existing_plugin,
+        manifest,
+    } = plugin_op
+    {
         // if plugin with a same version already exists and already enabled - do nothing
         let should_install = maybe_existing_plugin
             .as_ref()
@@ -479,7 +472,7 @@ pub(super) fn action_plan<'i>(
                     ADMIN_ID,
                 )?];
 
-                let ident = plugin_def.into_identity();
+                let ident = plugin_def.into_identifier();
                 for service_def in manifest.service_defs() {
                     ops.push(Dml::replace(
                         ClusterwideTable::Service,
@@ -510,7 +503,7 @@ pub(super) fn action_plan<'i>(
             install_substep,
             finalize_op: Op::Dml(Dml::delete(
                 ClusterwideTable::Property,
-                &[PropertyName::PluginInstall],
+                &[PropertyName::PendingPluginOperation],
                 ADMIN_ID,
             )?),
         }
@@ -519,14 +512,15 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // enable plugin
-    if let Some(EnablePluginConfig {
-        ident,
-        installed_plugins,
-        services,
-        applied_migrations,
-        timeout: on_start_timeout,
-    }) = enable_plugin
-    {
+    if let PreparedPluginOp::EnablePlugin(config) = plugin_op {
+        let EnablePluginConfig {
+            ident,
+            installed_plugins,
+            services,
+            applied_migrations,
+            timeout: on_start_timeout,
+        } = config;
+
         let rpc = rpc::enable_plugin::Request {
             term,
             applied,
@@ -620,7 +614,7 @@ pub(super) fn action_plan<'i>(
             success_dml,
             finalize_dml: Dml::delete(
                 ClusterwideTable::Property,
-                &[PropertyName::PendingPluginEnable],
+                &[PropertyName::PendingPluginOperation],
                 ADMIN_ID,
             )?,
         }
@@ -629,7 +623,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // disable plugin
-    if let Some(routes) = disable_plugin {
+    if let PreparedPluginOp::DisablePlugin { routes } = plugin_op {
         let routing_keys_to_del = routes.iter().map(|route| route.key()).collect::<Vec<_>>();
         let mut ops: Vec<_> = routing_keys_to_del
             .iter()
@@ -640,7 +634,7 @@ pub(super) fn action_plan<'i>(
             .collect();
         ops.push(Dml::delete(
             ClusterwideTable::Property,
-            &[PropertyName::PendingPluginDisable],
+            &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
         )?);
 
@@ -650,7 +644,12 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // update plugin topology
-    if let Some((plugin_def, service_def, op)) = update_plugin_topology {
+    if let PreparedPluginOp::UpdatePluginTopology {
+        plugin_def,
+        service_def,
+        op,
+    } = plugin_op
+    {
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];
@@ -669,7 +668,7 @@ pub(super) fn action_plan<'i>(
 
         // note: no need to enable/disable service and update routing table if plugin disabled
         if plugin_def.enabled {
-            let plugin_ident = plugin_def.into_identity();
+            let plugin_ident = plugin_def.identifier();
             for i in instances {
                 if !i.may_respond() {
                     continue;
@@ -735,7 +734,7 @@ pub(super) fn action_plan<'i>(
             success_dml: on_success_dml,
             finalize_dml: Dml::delete(
                 ClusterwideTable::Property,
-                &[PropertyName::PendingPluginTopologyUpdate],
+                &[PropertyName::PendingPluginOperation],
                 ADMIN_ID,
             )?,
         }
@@ -1031,4 +1030,30 @@ fn get_first_ready_replicaset<'r>(
 #[inline(always)]
 fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
     instances.iter().filter(|instance| instance.may_respond())
+}
+
+#[allow(clippy::large_enum_variant)]
+pub(super) enum PreparedPluginOp {
+    None,
+    InstallPlugin {
+        maybe_existing_plugin: Option<PluginDef>,
+        manifest: plugin::Manifest,
+    },
+    EnablePlugin(EnablePluginConfig),
+    DisablePlugin {
+        routes: Vec<ServiceRouteItem>,
+    },
+    UpdatePluginTopology {
+        plugin_def: PluginDef,
+        service_def: ServiceDef,
+        op: TopologyUpdateOp,
+    },
+}
+
+pub(super) struct EnablePluginConfig {
+    pub ident: PluginIdentifier,
+    pub installed_plugins: Vec<PluginDef>,
+    pub services: Vec<ServiceDef>,
+    pub applied_migrations: Vec<String>,
+    pub timeout: Duration,
 }

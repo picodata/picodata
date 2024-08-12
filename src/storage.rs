@@ -23,6 +23,8 @@ use tarantool::util::NumOrStr;
 use crate::access_control::{user_by_id, UserMetadataKind};
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
+use crate::plugin::PluginIdentifier;
+use crate::plugin::PluginOp;
 use crate::replicaset::Replicaset;
 use crate::schema::{
     Distribution, PluginConfigRecord, PluginMigrationRecord, PrivilegeType, SchemaObjectType,
@@ -33,6 +35,7 @@ use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
 use crate::tier::Tier;
+use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::op::Ddl;
@@ -44,9 +47,7 @@ use crate::traft::Result;
 use crate::util::Uppercase;
 use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
-use crate::{plugin, tlog};
 
-use crate::plugin::{PluginIdentifier, TopologyUpdateOp};
 use rmpv::Utf8String;
 use std::borrow::Cow;
 use std::cell::{RefCell, UnsafeCell};
@@ -1188,22 +1189,6 @@ impl From<ClusterwideTable> for SpaceId {
     pub enum PropertyName {
         VshardBootstrapped = "vshard_bootstrapped",
 
-        /// Pending plugin installation.
-        /// Contains new plugin manifest.
-        PluginInstall = "plugin_install",
-
-        /// Pending plugin enabling operation.
-        /// Contains plugin name.
-        PendingPluginEnable = "pending_plugin_enable",
-
-        /// Pending update plugin routing table operation.
-        /// Contains plugin name.
-        PendingPluginDisable = "pending_plugin_disable",
-
-        /// Pending topology update of plugin service.
-        /// Contains plugin name, service name, and list of new tiers.
-        PendingPluginTopologyUpdate = "pending_plugin_topology_update",
-
         /// Pending ddl operation which is to be either committed or aborted.
         ///
         /// Is only present during the time between the last ddl prepare
@@ -1241,6 +1226,11 @@ impl From<ClusterwideTable> for SpaceId {
         /// to the whole cluster. If this is equal to the value of
         /// current_vshard_config_version, then the configuration is up to date.
         TargetVshardConfigVersion = "target_vshard_config_version",
+
+        /// Pending operation on the plugin system.
+        ///
+        /// See [`PluginOp`].
+        PendingPluginOperation = "pending_plugin_operation",
 
         /// Password should contain at least this many characters
         PasswordMinLength = "password_min_length",
@@ -1376,19 +1366,9 @@ impl PropertyName {
                 // Check it decodes into Ddl.
                 _ = new.field::<Ddl>(1).map_err(map_err)?;
             }
-            PropertyName::PendingPluginEnable => {
-                _ = new
-                    .field::<(PluginIdentifier, Vec<ServiceDef>, Duration)>(1)
-                    .map_err(map_err)?;
-            }
-            PropertyName::PluginInstall => {
-                _ = new.field::<plugin::Manifest>(1).map_err(map_err)?;
-            }
-            PropertyName::PendingPluginDisable => {
-                _ = new.field::<PluginIdentifier>(1).map_err(map_err)?;
-            }
-            PropertyName::PendingPluginTopologyUpdate => {
-                _ = new.field::<TopologyUpdateOp>(1).map_err(map_err)?;
+            Self::PendingPluginOperation => {
+                // Check it decodes into `PluginOp`.
+                _ = new.field::<PluginOp>(1).map_err(map_err)?;
             }
         }
 
@@ -1629,28 +1609,6 @@ impl Properties {
     }
 
     #[inline]
-    pub fn pending_plugin_enable(
-        &self,
-    ) -> tarantool::Result<Option<(PluginIdentifier, Vec<ServiceDef>, Duration)>> {
-        self.get(PropertyName::PendingPluginEnable)
-    }
-
-    #[inline]
-    pub fn pending_plugin_disable(&self) -> tarantool::Result<Option<PluginIdentifier>> {
-        self.get(PropertyName::PendingPluginDisable)
-    }
-
-    #[inline]
-    pub fn pending_plugin_topology_update(&self) -> tarantool::Result<Option<TopologyUpdateOp>> {
-        self.get(PropertyName::PendingPluginTopologyUpdate)
-    }
-
-    #[inline]
-    pub fn plugin_install(&self) -> tarantool::Result<Option<plugin::Manifest>> {
-        self.get(PropertyName::PluginInstall)
-    }
-
-    #[inline]
     pub fn pending_schema_change(&self) -> tarantool::Result<Option<Ddl>> {
         self.get(PropertyName::PendingSchemaChange)
     }
@@ -1666,6 +1624,11 @@ impl Properties {
             .get(PropertyName::GlobalSchemaVersion)?
             .unwrap_or(INITIAL_SCHEMA_VERSION);
         Ok(res)
+    }
+
+    #[inline]
+    pub fn pending_plugin_op(&self) -> tarantool::Result<Option<PluginOp>> {
+        self.get(PropertyName::PendingPluginOperation)
     }
 
     #[inline]
@@ -3656,6 +3619,19 @@ impl Plugins {
     }
 }
 
+impl ToEntryIter<MP_SERDE> for Plugins {
+    type Entry = PluginDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Services
+////////////////////////////////////////////////////////////////////////////////
+
 impl Services {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -3752,6 +3728,10 @@ impl Services {
         Ok(())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// ServiceRouteTable
+////////////////////////////////////////////////////////////////////////////////
 
 impl ServiceRouteTable {
     pub fn new() -> tarantool::Result<Self> {
@@ -3870,6 +3850,10 @@ impl ServiceRouteTable {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// PluginMigration
+////////////////////////////////////////////////////////////////////////////////
+
 impl PluginMigration {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -3932,6 +3916,10 @@ impl PluginMigration {
             .collect()
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// PluginConfig
+////////////////////////////////////////////////////////////////////////////////
 
 impl PluginConfig {
     pub fn new() -> tarantool::Result<Self> {

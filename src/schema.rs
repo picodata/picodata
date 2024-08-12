@@ -496,7 +496,16 @@ impl PluginDef {
         }
     }
 
-    pub fn into_identity(self) -> PluginIdentifier {
+    #[inline]
+    pub fn identifier(&self) -> PluginIdentifier {
+        PluginIdentifier {
+            name: self.name.clone(),
+            version: self.version.clone(),
+        }
+    }
+
+    #[inline]
+    pub fn into_identifier(self) -> PluginIdentifier {
         PluginIdentifier {
             name: self.name,
             version: self.version,

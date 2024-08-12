@@ -341,7 +341,7 @@ pub enum PluginAsyncEvent {
 }
 
 /// Unique plugin identifier in the system.
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct PluginIdentifier {
     /// Plugin name.
     pub name: String,
@@ -496,6 +496,8 @@ fn do_plugin_cas(
             }
         }
 
+        // FIXME: preconditions & operation must be recomputed on each retry
+
         let req = crate::cas::Request::new(
             op.clone(),
             cas::Predicate {
@@ -557,21 +559,22 @@ pub fn install_plugin(
     }
 
     let manifest = Manifest::load(&ident)?;
+    let op = PluginOp::InstallPlugin { manifest };
     let dml = Dml::replace(
         ClusterwideTable::Property,
-        &(&PropertyName::PluginInstall, &manifest),
+        &(&PropertyName::PendingPluginOperation, &op),
         effective_user_id(),
     )?;
 
     let mut index = do_plugin_cas(
         node,
         Op::Dml(dml),
-        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PluginInstall])],
-        Some(|node| Ok(node.storage.properties.plugin_install()?.is_some())),
+        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation])],
+        Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
     )?;
 
-    while node.storage.properties.plugin_install()?.is_some() {
+    while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
@@ -584,7 +587,7 @@ pub fn install_plugin(
             return Ok(());
         }
 
-        let plugin_identity = plugin.into_identity();
+        let plugin_identity = plugin.into_identifier();
         migration_up(&plugin_identity, migrate_timeout, migrate_rollback_timeout)?;
     }
 
@@ -710,12 +713,12 @@ pub fn enable_plugin(
     let mut index = do_plugin_cas(
         node,
         op,
-        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginEnable])],
-        Some(|node| Ok(node.storage.properties.pending_plugin_enable()?.is_some())),
+        vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation])],
+        Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
     )?;
 
-    while node.storage.properties.pending_plugin_enable()?.is_some() {
+    while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
@@ -789,11 +792,11 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
         node,
         op,
         vec![Range::new(ClusterwideTable::Plugin).eq([&ident.name])],
-        Some(|node| Ok(node.storage.properties.pending_plugin_disable()?.is_some())),
+        Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
     )?;
 
-    while node.storage.properties.pending_plugin_disable()?.is_some() {
+    while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
@@ -868,6 +871,23 @@ pub fn remove_plugin(
     )?;
 
     Ok(())
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub enum PluginOp {
+    InstallPlugin {
+        manifest: Manifest,
+    },
+    EnablePlugin {
+        plugin: PluginIdentifier,
+        services: Vec<ServiceDef>,
+        timeout: Duration,
+    },
+    DisablePlugin {
+        plugin: PluginIdentifier,
+    },
+    /// Operation to change on which tiers the given services should be deployed.
+    UpdateTopology(TopologyUpdateOp),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
@@ -947,22 +967,11 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
         node,
         op,
         ranges,
-        Some(|node| {
-            Ok(node
-                .storage
-                .properties
-                .pending_plugin_topology_update()?
-                .is_some())
-        }),
+        Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
     )?;
 
-    while node
-        .storage
-        .properties
-        .pending_plugin_topology_update()?
-        .is_some()
-    {
+    while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 

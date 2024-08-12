@@ -12,6 +12,7 @@ use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
+use crate::plugin::PluginOp;
 use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
@@ -1225,6 +1226,7 @@ impl NodeImpl {
                     .expect("storage should not fail");
             }
 
+            // TODO: remove this, just propose a DML into _pico_property directly
             Op::PluginEnable {
                 ident,
                 on_start_timeout,
@@ -1235,12 +1237,14 @@ impl NodeImpl {
                     .get_by_plugin(&ident)
                     .expect("storage should not fail");
 
+                let op = PluginOp::EnablePlugin {
+                    plugin: ident,
+                    services,
+                    timeout: on_start_timeout,
+                };
                 self.storage
                     .properties
-                    .put(
-                        PropertyName::PendingPluginEnable,
-                        &(ident, services, on_start_timeout),
-                    )
+                    .put(PropertyName::PendingPluginOperation, &op)
                     .expect("storage should not fail");
             }
 
@@ -1291,9 +1295,12 @@ impl NodeImpl {
             }
 
             Op::PluginDisable { ident } => {
+                let op = PluginOp::DisablePlugin {
+                    plugin: ident.clone(),
+                };
                 self.storage
                     .properties
-                    .put(PropertyName::PendingPluginDisable, &ident)
+                    .put(PropertyName::PendingPluginOperation, &op)
                     .expect("storage should not fail");
 
                 let plugin = self
@@ -1326,6 +1333,7 @@ impl NodeImpl {
                     .expect("storage should not fail");
 
                 if let Some(plugin) = maybe_plugin {
+                    // FIXME: this should never be happening
                     if plugin.enabled {
                         return EntryApplied;
                     }
@@ -1356,10 +1364,12 @@ impl NodeImpl {
                 }
             }
 
+            // TODO: remove this, just propose a DML into _pico_property directly
             Op::PluginUpdateTopology { op } => {
+                let plugin_op = PluginOp::UpdateTopology(op);
                 self.storage
                     .properties
-                    .put(PropertyName::PendingPluginTopologyUpdate, &op)
+                    .put(PropertyName::PendingPluginOperation, &plugin_op)
                     .expect("storage should not fail");
             }
 
