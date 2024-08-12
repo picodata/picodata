@@ -1,4 +1,4 @@
-use crate::plugin::{PluginIdentifier, TopologyUpdateOp};
+use crate::plugin::PluginIdentifier;
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
     UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
@@ -230,9 +230,6 @@ impl std::fmt::Display for Op {
             }
             Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
                 write!(f, "RemovePlugin({ident})")
-            }
-            Op::Plugin(PluginRaftOp::UpdateServiceTopology { op }) => {
-                write!(f, "UpdateServiceTopology({op:?})",)
             }
         };
 
@@ -821,8 +818,6 @@ pub enum PluginRaftOp {
     DisablePlugin { ident: PluginIdentifier },
     /// Remove selected plugin.
     RemovePlugin { ident: PluginIdentifier },
-    /// Update topology of a plugin service.
-    UpdateServiceTopology { op: TopologyUpdateOp },
 }
 
 ////////////////////////////////////////////////////////////////////////////////

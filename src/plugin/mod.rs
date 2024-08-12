@@ -970,18 +970,28 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
 
     let ident = upd_op.plugin_identity();
     let ranges = vec![
+        // Fail if someone updates this plugin record
         Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
+        // Fail if someone updates this service record
         Range::new(ClusterwideTable::Service).eq([
             &ident.name,
             upd_op.service_name(),
             &ident.version,
         ]),
+        // Fail if someone proposes another plugin operation
+        Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
     ];
-    let op = PluginRaftOp::UpdateServiceTopology { op: upd_op.clone() };
+
+    let op = PluginOp::UpdateTopology(upd_op.clone());
+    let dml = Dml::replace(
+        ClusterwideTable::Property,
+        &(&PropertyName::PendingPluginOperation, &op),
+        effective_user_id(),
+    )?;
 
     let mut index = do_plugin_cas(
         node,
-        Op::Plugin(op),
+        Op::Dml(dml),
         ranges,
         Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,

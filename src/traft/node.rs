@@ -734,7 +734,6 @@ impl NodeImpl {
             Op::DdlPrepare { .. } => true,
             // TODO: remove this once PluginOp::DisablePlugin is removed
             Op::Plugin(PluginRaftOp::DisablePlugin { .. }) => true,
-            Op::Plugin(PluginRaftOp::UpdateServiceTopology { .. }) => true,
             _ => false,
         };
 
@@ -1342,15 +1341,6 @@ impl NodeImpl {
                         .delete_all_by_plugin(&ident.name)
                         .expect("say it with me");
                 }
-            }
-
-            // TODO: remove this, just propose a DML into _pico_property directly
-            Op::Plugin(PluginRaftOp::UpdateServiceTopology { op }) => {
-                let plugin_op = PluginOp::UpdateTopology(op);
-                self.storage
-                    .properties
-                    .put(PropertyName::PendingPluginOperation, &plugin_op)
-                    .expect("storage should not fail");
             }
 
             Op::Acl(acl) => {
