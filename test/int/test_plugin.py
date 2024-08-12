@@ -29,7 +29,6 @@ _PLUGIN = "testplug"
 _PLUGIN_SERVICES = ["testservice_1", "testservice_2"]
 _PLUGIN_SMALL = "testplug_small"
 _PLUGIN_SMALL_SERVICES = ["testservice_1"]
-_PLUGIN_SMALL_SERVICES_SVC2 = ["testservice_2"]
 _PLUGIN_VERSION_1 = "0.1.0"
 _PLUGIN_VERSION_2 = "0.2.0"
 _DEFAULT_TIER = "default"
@@ -273,9 +272,16 @@ def install_and_enable_plugin(
         "pico.install_plugin",
         plugin,
         version,
-        {"migrate": migrate, "if_not_exist": if_not_exist},
+        {"if_not_exist": if_not_exist},
         timeout=timeout,
     )
+    if migrate:
+        instance.call(
+            "pico.migration_up",
+            plugin,
+            version,
+            timeout=timeout,
+        )
     for s in services:
         if default_config is not None:
             for key in default_config:
@@ -875,102 +881,23 @@ def test_migration_for_changed_migration(cluster: Cluster):
         i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.2.0_broken")
 
 
-def test_migration_on_plugin_install(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_WITH_MIGRATION_SERVICES,
-        [i1, i2],
-    )
-
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        {"migrate": True},
-        timeout=5,
-    )
-    expected_state = expected_state.install(True).set_data(_DATA_V_0_1_0)
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
-
-    i1.call(
-        "pico.remove_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        {"drop_data": True},
-        timeout=5,
-    )
-    expected_state = expected_state.install(False).set_data(_NO_DATA_V_0_1_0)
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
-
-
-def test_migration_on_plugin_next_version_install(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_WITH_MIGRATION_SERVICES,
-        [i1, i2],
-    )
-
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        {"migrate": True},
-        timeout=5,
-    )
-    expected_state = expected_state.install(True).set_data(_DATA_V_0_1_0)
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
-
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_2,
-        {"migrate": True},
-        timeout=5,
-    )
-    expected_state = (
-        PluginReflection(
-            _PLUGIN_WITH_MIGRATION,
-            _PLUGIN_VERSION_2,
-            _PLUGIN_WITH_MIGRATION_SERVICES,
-            [i1, i2],
-        )
-        .install(True)
-        .set_data(_DATA_V_0_2_0)
-    )
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
-
-    i1.call(
-        "pico.remove_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_2,
-        {"drop_data": True},
-        timeout=5,
-    )
-    expected_state = expected_state.install(False).set_data(_NO_DATA_V_0_2_0)
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
-
-
 def test_migration_file_invalid_ext(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
     # the first file in a migration list has an invalid extension
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT", True)
 
+    i1.call(
+        "pico.install_plugin",
+        _PLUGIN_WITH_MIGRATION,
+        "0.1.0",
+        timeout=5,
+    )
     with pytest.raises(ReturnError, match="invalid extension"):
         i1.call(
-            "pico.install_plugin",
+            "pico.migration_up",
             _PLUGIN_WITH_MIGRATION,
-            _PLUGIN_VERSION_1,
-            {"migrate": True},
+            "0.1.0",
             timeout=5,
         )
 
@@ -987,12 +914,17 @@ def test_migration_apply_err(cluster: Cluster):
     # second file in a migration list applied with error
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
 
+    i1.call(
+        "pico.install_plugin",
+        _PLUGIN_WITH_MIGRATION,
+        "0.1.0",
+        timeout=5,
+    )
     with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
         i1.call(
-            "pico.install_plugin",
+            "pico.migration_up",
             _PLUGIN_WITH_MIGRATION,
-            _PLUGIN_VERSION_1,
-            {"migrate": True},
+            "0.1.0",
             timeout=5,
         )
     expected_state = expected_state.install(True).set_data(_NO_DATA_V_0_1_0)
@@ -1013,8 +945,13 @@ def test_migration_next_version_apply_err(cluster: Cluster):
     i1.call(
         "pico.install_plugin",
         _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        {"migrate": True},
+        "0.1.0",
+        timeout=5,
+    )
+    i1.call(
+        "pico.migration_up",
+        _PLUGIN_WITH_MIGRATION,
+        "0.1.0",
         timeout=5,
     )
     expected_state = expected_state.install(True).set_data(_DATA_V_0_1_0)
@@ -1024,52 +961,20 @@ def test_migration_next_version_apply_err(cluster: Cluster):
     # second file in a migration list of v0.2.0 applied with error
     i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
 
-    # expect rollback to 0.1.0 migrations
-    with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
-        i1.call(
-            "pico.install_plugin",
-            _PLUGIN_WITH_MIGRATION,
-            _PLUGIN_VERSION_2,
-            {"migrate": True},
-            timeout=5,
-        )
-    expected_state.assert_data_synced()
-
-
-def test_migration_client_down(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_WITH_MIGRATION_SERVICES,
-        [i1, i2],
-    )
-
-    # client down while applied migration
-    i1.call("pico._inject_error", "PLUGIN_MIGRATION_CLIENT_DOWN", True)
-
     i1.call(
         "pico.install_plugin",
         _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        {"migrate": True},
+        "0.2.0",
         timeout=5,
     )
-    expected_state = expected_state.install(True)
-    expected_state.assert_synced()
-
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.enable_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1)
-
-    i1.call(
-        "pico.remove_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        {"migrate": True},
-        timeout=5,
-    )
-    expected_state = expected_state.install(False).set_data(_NO_DATA_V_0_1_0)
-    expected_state.assert_synced()
+    # expect rollback to 0.1.0 migrations
+    with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
+        i1.call(
+            "pico.migration_up",
+            _PLUGIN_WITH_MIGRATION,
+            "0.2.0",
+            timeout=5,
+        )
     expected_state.assert_data_synced()
 
 

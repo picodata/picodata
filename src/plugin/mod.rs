@@ -532,10 +532,7 @@ fn do_plugin_cas(
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
 pub fn install_plugin(
     ident: PluginIdentifier,
-    migrate: bool,
     timeout: Duration,
-    migrate_timeout: Duration,
-    migrate_rollback_timeout: Duration,
     if_not_exists: bool,
 ) -> traft::Result<()> {
     let deadline = fiber::clock().saturating_add(timeout);
@@ -568,17 +565,8 @@ pub fn install_plugin(
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    let Some(plugin) = node.storage.plugin.get(&ident)? else {
+    if node.storage.plugin.get(&ident)?.is_none() {
         return Err(PluginError::InstallationAborted.into());
-    };
-
-    if migrate {
-        if error_injection::is_enabled("PLUGIN_MIGRATION_CLIENT_DOWN") {
-            return Ok(());
-        }
-
-        let plugin_identity = plugin.into_identifier();
-        migration_up(&plugin_identity, migrate_timeout, migrate_rollback_timeout)?;
     }
 
     Ok(())
@@ -816,11 +804,9 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 ///
 /// * `ident`: identity of plugin to remove
 /// * `timeout`: operation timeout
-/// * `drop_data`: whether true if plugin should be removed with DOWN migration, false elsewhere
 pub fn remove_plugin(
     ident: &PluginIdentifier,
     timeout: Duration,
-    drop_data: bool,
 ) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
 
@@ -850,17 +836,10 @@ pub fn remove_plugin(
         .map(|rec| rec.migration_file)
         .collect::<Vec<_>>();
 
-    #[rustfmt::skip]
     if !migration_list.is_empty() {
-        if !drop_data {
-            return Err(traft::error::Error::other("attempt to remove plugin with applied `UP` migrations"));
-        }
-
-        let ident = PluginIdentifier::new(plugin.name, plugin.version);
-        migration::apply_down_migrations(&ident, &migration_list, deadline);
-    } else if /* migration_list.is_empty() && */ drop_data {
-        tlog!(Info, "`DOWN` migrations are up to date");
-    };
+        #[rustfmt::skip]
+        return Err(traft::error::Error::other("attempt to remove plugin with applied `UP` migrations"));
+    }
 
     let op = PluginRaftOp::RemovePlugin {
         ident: ident.clone(),
