@@ -11,25 +11,43 @@ with the `YY.MINOR.MICRO` scheme.
 ## Unreleased
 
 <!--
-- Multiline input is available in `picodata admin` and `picodata connect`.
-- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`.
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
-- New option `picodata run --tier` specifies whether an
-  instance belongs to a tier.
-- New rpc entrypoint: `.proc_get_config` which returns the effective
-  picodata configuration.
-- New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`.
+-->
+
+## [24.5] - Unreleased
+
+### SQL
+
 - Fix error "Read access to space '_raft_state' is denied"
   when executing a DML query on global tables
+
+### Configuration
+
+- Set up password for admin with `PICODATA_ADMIN_PASSWORD` environment variable
+
+- Multiline input is available in `picodata admin` and `picodata connect`.
+
+- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`.
+
+- New option `picodata run --tier` specifies whether an
+  instance belongs to a tier.
+
+- New rpc entrypoint: `.proc_get_config` which returns the effective
+  picodata configuration.
+
+  ### Compatibility
+
+- New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`.
+
 - Changed `weight` column type to DOUBLE  in `_pico_replicaset`.
+
 - Option `picodata run --peer` now defaults to `--advertise` value.
   The previous was `localhost:3301`. This leads to the important behavior change.
   Running `picodata run --listen :3302` without implicit `--peer` specified
   now bootstraps a new cluster. The old behavior was to join `:3301` by default.
--->
 
 --------------------------------------------------------------------------------
 ## [24.4.1] - 2024-06-21
