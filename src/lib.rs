@@ -9,6 +9,7 @@
 #![allow(clippy::redundant_static_lifetimes)]
 #![allow(clippy::redundant_pattern_matching)]
 #![allow(clippy::vec_init_then_push)]
+#![allow(clippy::unused_io_amount)]
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 

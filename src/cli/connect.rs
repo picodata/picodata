@@ -193,11 +193,16 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         args.password_file.as_deref(),
         args.auth_method,
     )
-    .map_err(|e| ReplError::Other(e.to_string()))?;
+    .map_err(|err| ReplError::Other(format!("Connection Error. Try to reconnect: {}", err)))?;
 
     // Check if connection is valid. We need to do it because connect is lazy
     // and we want to check whether authentication have succeeded or not
-    ::tarantool::fiber::block_on(client.ping())?;
+    if let Err(err) = ::tarantool::fiber::block_on(client.ping()) {
+        return Err(ReplError::Other(format!(
+            "Connection Error. Try to reconnect: {}",
+            err
+        )));
+    }
 
     let mut console = Console::new()?;
 
@@ -220,6 +225,13 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         Ctrl + D                        Quit interactive console";
 
     while let Some(command) = console.read()? {
+        if let Err(err) = ::tarantool::fiber::block_on(client.ping()) {
+            return Err(ReplError::Other(format!(
+                "Connection Error. Try to reconnect: {}",
+                err
+            )));
+        }
+
         match command {
             Command::Control(command) => {
                 match command {
@@ -281,7 +293,10 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 pub fn main(args: args::Connect) -> ! {
     let tt_args = args.tt_args().unwrap();
     super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
-        sql_repl(args)?;
+        if let Err(error) = sql_repl(args) {
+            println!("{}", error);
+            std::process::exit(1);
+        }
         std::process::exit(0)
     })
 }

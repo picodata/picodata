@@ -331,9 +331,9 @@ def test_admin_enoent(binary_path: str):
     cli.logfile = sys.stdout
 
     cli.expect_exact(
-        "connection via unix socket by path 'wrong/path/t.sock' is not established"
+        "Connection via unix socket by path 'wrong/path/t.sock' is not established"
     )
-    cli.expect_exact("No such file or directory")
+    cli.expect_exact("No such file or directory (os error 2)")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -348,9 +348,9 @@ def test_admin_econnrefused(binary_path: str):
     cli.logfile = sys.stdout
 
     cli.expect_exact(
-        "connection via unix socket by path '/dev/null' is not established"
+        "Connection via unix socket by path '/dev/null' is not established"
     )
-    cli.expect_exact("Connection refused")
+    cli.expect_exact("Connection refused (os error 111)")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -364,8 +364,8 @@ def test_admin_invalid_path(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("connection via unix socket by path './[][]' is not established")
-    cli.expect_exact("No such file or directory")
+    cli.expect_exact("Connection via unix socket by path './[][]' is not established")
+    cli.expect_exact("No such file or directory (os error 2)")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -379,8 +379,8 @@ def test_admin_empty_path(binary_path: str):
     )
     cli.logfile = sys.stdout
 
-    cli.expect_exact("connection via unix socket by path '' is not established")
-    cli.expect_exact("Invalid argument")
+    cli.expect_exact("Connection via unix socket by path '' is not established")
+    cli.expect_exact("Invalid argument (os error 22)")
     cli.expect_exact(pexpect.EOF)
 
 
@@ -570,25 +570,24 @@ def test_connect_with_incorrect_url(cluster: Cluster):
     # GL685
     cli = connect_to("unix:/tmp/socket")
     cli.expect_exact(
-        "CRITICAL: Error while parsing instance port '/tmp/socket': invalid digit found in string"
+        "Error while parsing instance port '/tmp/socket': invalid digit found in string"
     )
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("trash:not_a_port")
     cli.expect_exact(
-        "CRITICAL: Error while parsing instance port 'not_a_port': invalid digit found in string"
+        "Error while parsing instance port 'not_a_port': invalid digit found in string"
     )
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("random:999999999")
     cli.expect_exact(
-        "CRITICAL: Error while parsing instance port '999999999': number "
-        "too large to fit in target type"
+        "Error while parsing instance port '999999999': number too large to fit in target type"
     )
     cli.expect_exact(pexpect.EOF)
 
     cli = connect_to("random:-1")
     cli.expect_exact(
-        "CRITICAL: Error while parsing instance port '-1': invalid digit found in string"
+        "Error while parsing instance port '-1': invalid digit found in string"
     )
     cli.expect_exact(pexpect.EOF)

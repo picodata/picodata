@@ -37,8 +37,8 @@ impl Completer for LuaCompleter {
 
         let completions = match res {
             Ok(completions) => completions,
-            Err(e) => {
-                crate::tlog!(Warning, "getting completions failed: {e}");
+            Err(err) => {
+                println!("Getting completions failed: {}", err);
                 Vec::new()
             }
         };
@@ -69,10 +69,10 @@ pub struct UnixClient {
 
 #[derive(thiserror::Error, Debug)]
 pub enum UnixClientError {
-    #[error("error during IO: {0}")]
+    #[error("{0}")]
     Io(#[from] io::Error),
 
-    #[error("malformed output: {0}")]
+    #[error("{0}")]
     DeserializeMessageError(String),
 }
 
@@ -121,7 +121,14 @@ impl UnixClient {
 
     /// Writes message appended with delimiter to tarantool console
     fn write(&mut self, line: &str) -> Result<(), UnixClientError> {
-        self.write_raw(&(line.to_owned() + Self::SERVER_DELIM))
+        // check if socket is still alive
+        match self.socket.write(&[]) {
+            Ok(_) => self.write_raw(&(line.to_owned() + Self::SERVER_DELIM)),
+            Err(_) => Err(UnixClientError::Io(io::Error::new(
+                io::ErrorKind::Other,
+                "Server probably is closed, try to reconnect",
+            ))),
+        }
     }
 
     fn write_raw(&mut self, line: &str) -> Result<(), UnixClientError> {
@@ -143,7 +150,7 @@ impl UnixClient {
             let read = match self.socket.read(&mut self.buffer[pos..]) {
                 Ok(0) => {
                     return Err(UnixClientError::Io(io::Error::other(
-                        "server probably is closed, try to reconnect",
+                        "Server probably is closed, try to reconnect",
                     )))
                 }
                 Ok(n) => n,
@@ -202,8 +209,12 @@ impl UnixClient {
         //   - completion_2    <-- case when at least one completion was proposed
         //   - completion_3
         // ...
-        let completions: Option<Vec<Vec<String>>> = serde_yaml::from_str(&response)
-            .map_err(|msg| UnixClientError::DeserializeMessageError(msg.to_string()))?;
+        let completions: Option<Vec<Vec<String>>> =
+            serde_yaml::from_str(&response).map_err(|msg| {
+                UnixClientError::DeserializeMessageError(format!(
+                    "Error while deserialization of server response: {msg}"
+                ))
+            })?;
 
         let res = completions
             .unwrap_or_default()
@@ -218,7 +229,7 @@ impl UnixClient {
 fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
     let client = UnixClient::new(&args.socket_path).map_err(|err| {
         ReplError::Other(format!(
-            "connection via unix socket by path '{}' is not established, reason: {}",
+            "Connection via unix socket by path '{}' is not established: {}",
             args.socket_path, err
         ))
     })?;
@@ -286,7 +297,7 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
                     ConsoleLanguage::Sql => serde_yaml::from_str::<ResultSet>(&raw_response)
                         .map_err(|err| {
                             ReplError::Other(format!(
-                                "error occured while processing output: {}",
+                                "Error occurred while processing output: {}",
                                 err
                             ))
                         })?
@@ -298,13 +309,16 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
         };
     }
 
-    std::process::exit(0)
+    Ok(())
 }
 
 pub fn main(args: args::Admin) -> ! {
     let tt_args = args.tt_args().unwrap();
     super::tarantool::main_cb(&tt_args, || -> Result<(), ReplError> {
-        admin_repl(args)?;
+        if let Err(err) = admin_repl(args) {
+            println!("{}", err);
+            std::process::exit(1);
+        }
         std::process::exit(0)
     })
 }
@@ -363,7 +377,7 @@ mod tests {
         let output = client.read();
         assert!(output.is_ok());
         assert!(client.buffer.len() > initial_buf_size);
-        assert!(client.buffer.len() == initial_buf_size * 2);
+        assert_eq!(client.buffer.len(), initial_buf_size * 2);
     }
 
     #[test]
@@ -374,7 +388,7 @@ mod tests {
         match output {
             Err(UnixClientError::Io(err)) => assert_eq!(
                 err.to_string(),
-                "server probably is closed, try to reconnect"
+                "Server probably is closed, try to reconnect"
             ),
             _ => assert!(false),
         }

@@ -190,9 +190,7 @@ def test_lua_completion(cluster: Cluster):
     # do not crash on failed completion request to tnt
     i1.terminate()
     cli.send("\t\t")
-    cli.expect_exact(
-        "getting completions failed: error during IO: Broken pipe (os error 32)"
-    )
+    cli.expect_exact("Server probably is closed, try to reconnect")
 
 
 def test_sql_explain_ok(cluster: Cluster):
@@ -313,6 +311,11 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     i1.start()
     i1.wait_online()
 
+    i2 = cluster.add_instance(wait_online=False)
+    i2.start()
+    i2.wait_online()
+
+    # test crash error when run with `picodata connect`
     cli = pexpect.spawn(
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}"],
@@ -320,7 +323,6 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
         timeout=1,
     )
     cli.logfile = sys.stdout
-
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
     )
@@ -328,11 +330,24 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     i1.terminate()
-
     cli.sendline("ping")
-    cli.expect_exact(
-        "CRITICAL: Server closed the connection unexpectedly. Try to reconnect."
+    cli.expect("Connection Error. Try to reconnect: io error: unexpected end of file")
+    cli.terminate()
+
+    # test crash error when run with `picodata admin`
+    cli = pexpect.spawn(
+        cwd=i2.data_dir,
+        command=i2.binary_path,
+        args=["admin", "./admin.sock"],
+        encoding="utf-8",
+        timeout=1,
     )
+    cli.logfile = sys.stdout
+    cli.expect_exact("picodata> ")
+
+    i2.terminate()
+    cli.sendline("ping")
+    cli.expect_exact("Server probably is closed, try to reconnect")
 
 
 def test_input_with_custom_delimiter(cluster: Cluster):
