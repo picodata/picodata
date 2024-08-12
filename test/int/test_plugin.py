@@ -266,13 +266,13 @@ def install_and_enable_plugin(
     migrate=False,
     timeout=3,
     default_config=None,
-    if_not_exist=False,
+    if_not_exists=False,
 ):
     instance.call(
         "pico.install_plugin",
         plugin,
         version,
-        {"if_not_exist": if_not_exist},
+        {"if_not_exists": if_not_exists},
         timeout=timeout,
     )
     if migrate:
@@ -363,12 +363,12 @@ def test_plugin_install(cluster: Cluster):
     expected_state = expected_state.install(True)
     expected_state.assert_synced()
 
-    # check install already disabled plugin without if_not_exist opt
+    # check install already disabled plugin without if_not_exists opt
     with pytest.raises(ReturnError, match="Plugin `.*` already exists"):
         i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
 
-    # check install already disabled plugin with if_not_exist opt
-    i1.call("pico.install_plugin", _PLUGIN, "0.1.0", {"if_not_exist": True})
+    # check install already disabled plugin with if_not_exists opt
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0", {"if_not_exists": True})
     expected_state.assert_synced()
 
     # enable plugin and check installation of already enabled plugin
@@ -392,7 +392,7 @@ def test_plugin_install(cluster: Cluster):
     ).enable(True)
     expected_state.assert_synced()
 
-    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1, {"if_not_exist": True})
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0", {"if_not_exists": True})
     expected_state.assert_synced()
 
     # check that installation of another plugin version is ok
@@ -678,7 +678,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
 
     # assert that plugin not loaded and on_stop called on both instances
     with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exist=True)
+        install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exists=True)
 
     # plugin installed but disabled
     Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())
@@ -689,7 +689,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start", False, i2)
 
     # assert plugin loaded now
-    install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exist=True)
+    install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exists=True)
     plugin_ref = plugin_ref.enable(True).set_topology(
         {i1: _PLUGIN_SERVICES, i2: _PLUGIN_SERVICES}
     )
