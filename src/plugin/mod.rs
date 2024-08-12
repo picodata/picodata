@@ -7,7 +7,6 @@ pub mod topology;
 use once_cell::unsync;
 use picoplugin::background::ServiceId;
 use picoplugin::plugin::interface::ServiceBox;
-use serde::de::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -60,7 +59,7 @@ pub enum PluginError {
     #[error("Error while discovering manifest for plugin `{0}`: {1}")]
     ManifestNotFound(String, io::Error),
     #[error("Error while parsing manifest `{0}`, reason: {1}")]
-    InvalidManifest(String, serde_yaml::Error),
+    InvalidManifest(String, Box<dyn std::error::Error>),
     #[error("`{0}` service defenition not found")]
     ServiceDefenitionNotFound(String),
     #[error("Read plugin_dir: {0}")]
@@ -234,12 +233,12 @@ impl Manifest {
         })?;
 
         let manifest: Manifest = serde_yaml::from_reader(file).map_err(|e| {
-            PluginError::InvalidManifest(manifest_path.to_string_lossy().to_string(), e)
+            PluginError::InvalidManifest(manifest_path.to_string_lossy().to_string(), e.into())
         })?;
         if manifest.name != plugin_name || manifest.version != version {
             return Err(PluginError::InvalidManifest(
                 manifest_path.to_string_lossy().to_string(),
-                serde_yaml::Error::custom("plugin name or version should be equal to manifest one"),
+                "plugin name or version should be equal to manifest one".into(),
             ));
         }
 
