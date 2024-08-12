@@ -1,3 +1,4 @@
+pub use crate::plugin::interface::CallbackResult;
 pub use crate::plugin::interface::PicoContext;
 pub use crate::plugin::interface::Service;
 pub use crate::plugin::interface::ServiceRegistry;
