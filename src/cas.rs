@@ -139,11 +139,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
             | Op::DdlPrepare { .. }
             | Op::DdlAbort
             | Op::BatchDml { .. }
-            | Op::PluginEnable { .. }
-            | Op::PluginConfigUpdate { .. }
-            | Op::PluginDisable { .. }
-            | Op::PluginRemove { .. }
-            | Op::PluginUpdateTopology { .. }
+            | Op::Plugin { .. }
     ) {
         return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(
             req.op.clone(),
@@ -559,11 +555,7 @@ impl Predicate {
                 | Op::DdlCommit
                 | Op::DdlAbort
                 | Op::Acl { .. }
-                | Op::PluginEnable { .. }
-                | Op::PluginConfigUpdate { .. }
-                | Op::PluginDisable { .. }
-                | Op::PluginRemove { .. }
-                | Op::PluginUpdateTopology { .. } => {
+                | Op::Plugin { .. } => {
                     let space = ClusterwideTable::Property.id();
                     if space != range.table {
                         continue;

@@ -46,26 +46,8 @@ pub enum Op {
     DdlAbort,
     /// Cluster-wide access control list change operation.
     Acl(Acl),
-    /// Enable a plugin.
-    ///
-    /// Provided operation will be set as pending.
-    /// Only one operation can exist at the same time.
-    PluginEnable {
-        ident: PluginIdentifier,
-        on_start_timeout: Duration,
-    },
-    /// Update plugin service configuration.
-    PluginConfigUpdate {
-        ident: PluginIdentifier,
-        service_name: String,
-        config: rmpv::Value,
-    },
-    /// Disable selected plugin.
-    PluginDisable { ident: PluginIdentifier },
-    /// Remove selected plugin.
-    PluginRemove { ident: PluginIdentifier },
-    /// Update topology of a plugin service.
-    PluginUpdateTopology { op: TopologyUpdateOp },
+    /// Plugin system change.
+    Plugin(PluginRaftOp),
 }
 
 impl Eq for Op {}
@@ -237,24 +219,24 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(), )
             }
-            Op::PluginEnable { ident, .. } => {
-                write!(f, "PluginEnablePrepare({ident})")
+            Op::Plugin(PluginRaftOp::EnablePlugin { ident, .. }) => {
+                write!(f, "EnablePlugin({ident})")
             }
-            Op::PluginConfigUpdate {
+            Op::Plugin(PluginRaftOp::UpdatePluginConfig {
                 ident,
                 service_name,
                 ..
-            } => {
-                write!(f, "PluginConfigUpdate({ident}, {service_name})")
+            }) => {
+                write!(f, "UpdatePluginConfig({ident}, {service_name})")
             }
-            Op::PluginDisable { ident } => {
-                write!(f, "PluginDisable({ident})")
+            Op::Plugin(PluginRaftOp::DisablePlugin { ident }) => {
+                write!(f, "DisablePlugin({ident})")
             }
-            Op::PluginRemove { ident } => {
-                write!(f, "PluginRemove({ident})")
+            Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
+                write!(f, "RemovePlugin({ident})")
             }
-            Op::PluginUpdateTopology { op } => {
-                write!(f, "PluginUpdateTopology({op:?})",)
+            Op::Plugin(PluginRaftOp::UpdateServiceTopology { op }) => {
+                write!(f, "UpdateServiceTopology({op:?})",)
             }
         };
 
@@ -386,11 +368,7 @@ impl Op {
             | Self::DdlAbort
             | Self::DdlCommit
             | Self::BatchDml { .. }
-            | Self::PluginEnable { .. }
-            | Self::PluginConfigUpdate { .. }
-            | Self::PluginDisable { .. }
-            | Self::PluginRemove { .. }
-            | Self::PluginUpdateTopology { .. } => false,
+            | Self::Plugin { .. } => false,
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
         }
     }
@@ -828,6 +806,40 @@ impl Acl {
         Ok(())
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// PluginRaftOp
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "op_kind")]
+pub enum PluginRaftOp {
+    /// Enable a plugin.
+    ///
+    /// Provided operation will be set as pending.
+    /// Only one operation can exist at the same time.
+    EnablePlugin {
+        ident: PluginIdentifier,
+        on_start_timeout: Duration,
+    },
+    /// Update plugin service configuration.
+    UpdatePluginConfig {
+        ident: PluginIdentifier,
+        service_name: String,
+        config: rmpv::Value,
+    },
+    /// Disable selected plugin.
+    DisablePlugin { ident: PluginIdentifier },
+    /// Remove selected plugin.
+    RemovePlugin { ident: PluginIdentifier },
+    /// Update topology of a plugin service.
+    UpdateServiceTopology { op: TopologyUpdateOp },
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// vec_of_raw_byte_buf
+////////////////////////////////////////////////////////////////////////////////
 
 mod vec_of_raw_byte_buf {
     use super::TupleBuffer;

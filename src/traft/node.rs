@@ -35,6 +35,7 @@ use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
 use crate::traft::network::WorkerOptions;
+use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Acl, Ddl, Dml, Op};
 use crate::traft::ConnectionPool;
 use crate::traft::LogicalClock;
@@ -731,9 +732,10 @@ impl NodeImpl {
             Op::Dml(op) => dml_is_governor_wakeup_worthy(op),
             Op::BatchDml { ops } => ops.iter().any(dml_is_governor_wakeup_worthy),
             Op::DdlPrepare { .. } => true,
-            Op::PluginEnable { .. }
-            | Op::PluginDisable { .. }
-            | Op::PluginUpdateTopology { .. } => true,
+            Op::Plugin(PluginRaftOp::EnablePlugin { .. }) => true,
+            // TODO: remove this once PluginOp::DisablePlugin is removed
+            Op::Plugin(PluginRaftOp::DisablePlugin { .. }) => true,
+            Op::Plugin(PluginRaftOp::UpdateServiceTopology { .. }) => true,
             _ => false,
         };
 
@@ -1227,10 +1229,10 @@ impl NodeImpl {
             }
 
             // TODO: remove this, just propose a DML into _pico_property directly
-            Op::PluginEnable {
+            Op::Plugin(PluginRaftOp::EnablePlugin {
                 ident,
                 on_start_timeout,
-            } => {
+            }) => {
                 let services = self
                     .storage
                     .service
@@ -1248,11 +1250,11 @@ impl NodeImpl {
                     .expect("storage should not fail");
             }
 
-            Op::PluginConfigUpdate {
+            Op::Plugin(PluginRaftOp::UpdatePluginConfig {
                 ident,
                 service_name,
                 config,
-            } => {
+            }) => {
                 let maybe_service = self
                     .storage
                     .service
@@ -1294,7 +1296,7 @@ impl NodeImpl {
                 }
             }
 
-            Op::PluginDisable { ident } => {
+            Op::Plugin(PluginRaftOp::DisablePlugin { ident }) => {
                 let op = PluginOp::DisablePlugin {
                     plugin: ident.clone(),
                 };
@@ -1325,7 +1327,8 @@ impl NodeImpl {
                 }
             }
 
-            Op::PluginRemove { ident } => {
+            // FIXME: this should just be BatchDml
+            Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
                 let maybe_plugin = self
                     .storage
                     .plugin
@@ -1365,7 +1368,7 @@ impl NodeImpl {
             }
 
             // TODO: remove this, just propose a DML into _pico_property directly
-            Op::PluginUpdateTopology { op } => {
+            Op::Plugin(PluginRaftOp::UpdateServiceTopology { op }) => {
                 let plugin_op = PluginOp::UpdateTopology(op);
                 self.storage
                     .properties

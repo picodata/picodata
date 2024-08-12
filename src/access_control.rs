@@ -699,11 +699,7 @@ pub(super) fn access_check_op(
             }
             Ok(())
         }
-        Op::PluginEnable { .. }
-        | Op::PluginConfigUpdate { .. }
-        | Op::PluginDisable { .. }
-        | Op::PluginRemove { .. }
-        | Op::PluginUpdateTopology { .. } => {
+        Op::Plugin { .. } => {
             // FIXME: currently access here is not checked explicitly, but check
             // dml into system space _pico_property.
             // Same behaviour also using for check access of update and remove plugin operations.

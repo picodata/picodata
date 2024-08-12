@@ -4,7 +4,6 @@ pub mod migration;
 pub mod rpc;
 pub mod topology;
 
-use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use once_cell::unsync;
 use picoplugin::background::ServiceId;
 use picoplugin::plugin::interface::ServiceBox;
@@ -24,8 +23,10 @@ use crate::cas::{compare_and_swap, Range};
 use crate::info::InstanceInfo;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
+use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::node::Node;
+use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
 use crate::util::effective_user_id;
@@ -703,14 +704,14 @@ pub fn enable_plugin(
 
     let node = node::global()?;
 
-    let op = Op::PluginEnable {
+    let op = PluginRaftOp::EnablePlugin {
         ident: ident.clone(),
         on_start_timeout,
     };
 
     let mut index = do_plugin_cas(
         node,
-        op,
+        Op::Plugin(op),
         vec![Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation])],
         Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
@@ -751,7 +752,7 @@ pub fn update_plugin_service_configuration(
         })?;
 
     let new_cfg: rmpv::Value = rmp_serde::from_slice(new_cfg_raw).expect("out of memory");
-    let op = Op::PluginConfigUpdate {
+    let op = PluginRaftOp::UpdatePluginConfig {
         ident: ident.clone(),
         service_name: service_name.to_string(),
         config: new_cfg,
@@ -759,7 +760,7 @@ pub fn update_plugin_service_configuration(
 
     do_plugin_cas(
         node,
-        op,
+        Op::Plugin(op),
         vec![Range::new(ClusterwideTable::Service).eq((&ident.name, service_name, &ident.version))],
         None,
         deadline,
@@ -774,7 +775,7 @@ pub fn update_plugin_service_configuration(
 pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
-    let op = Op::PluginDisable {
+    let op = PluginRaftOp::DisablePlugin {
         ident: ident.clone(),
     };
 
@@ -788,7 +789,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 
     let mut index = do_plugin_cas(
         node,
-        op,
+        Op::Plugin(op),
         vec![Range::new(ClusterwideTable::Plugin).eq([&ident.name])],
         Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,
@@ -853,13 +854,13 @@ pub fn remove_plugin(
         tlog!(Info, "`DOWN` migrations are up to date");
     };
 
-    let op = Op::PluginRemove {
+    let op = PluginRaftOp::RemovePlugin {
         ident: ident.clone(),
     };
 
     do_plugin_cas(
         node,
-        op,
+        Op::Plugin(op),
         vec![
             Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
             Range::new(ClusterwideTable::Service).eq([&ident.name]),
@@ -959,11 +960,11 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
             &ident.version,
         ]),
     ];
-    let op = Op::PluginUpdateTopology { op: upd_op.clone() };
+    let op = PluginRaftOp::UpdateServiceTopology { op: upd_op.clone() };
 
     let mut index = do_plugin_cas(
         node,
-        op,
+        Op::Plugin(op),
         ranges,
         Some(|node| Ok(node.storage.properties.pending_plugin_op()?.is_some())),
         deadline,

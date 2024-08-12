@@ -11,7 +11,9 @@ use crate::schema::{
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::tier::Tier;
 use crate::tlog;
-use crate::traft::op::{Dml, Op};
+use crate::traft::op::Dml;
+use crate::traft::op::Op;
+use crate::traft::op::PluginRaftOp;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
@@ -526,9 +528,11 @@ pub(super) fn action_plan<'i>(
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let rollback_op = Op::PluginDisable {
+        let rollback_op = PluginRaftOp::DisablePlugin {
+            // TODO: add disable reason here
             ident: ident.clone(),
         };
+        let rollback_op = Op::Plugin(rollback_op);
 
         let mut targets = vec![];
         let mut success_dml = vec![];
@@ -621,6 +625,7 @@ pub(super) fn action_plan<'i>(
         .into());
     }
 
+    // FIXME: this should be done when the raft op is applied
     ////////////////////////////////////////////////////////////////////////////
     // disable plugin
     if let PreparedPluginOp::DisablePlugin { routes } = plugin_op {
