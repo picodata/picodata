@@ -9,7 +9,6 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
 use crate::op::Op;
-use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
 use crate::proc_name;
 use crate::rpc;
@@ -123,6 +122,12 @@ impl Loop {
             .expect("storage should never fail");
         let has_pending_schema_change = pending_schema_change.is_some();
 
+        let plugins: HashMap<_, _> = storage
+            .plugins
+            .iter()
+            .expect("storage should never fail")
+            .map(|plugin_def| (plugin_def.identifier(), plugin_def))
+            .collect();
         let plugin_op = get_info_for_pending_plugin_op(storage);
 
         let plan = action_plan(
@@ -140,6 +145,7 @@ impl Loop {
             target_vshard_config_version,
             vshard_bootstrapped,
             has_pending_schema_change,
+            &plugins,
             &plugin_op,
         );
         let plan = unwrap_ok_or!(plan,
@@ -492,51 +498,53 @@ impl Loop {
             }
 
             Plan::InstallPlugin(InstallPlugin {
-                install_substep,
-                finalize_op,
+                targets,
+                rpc,
+                mut success_ops,
+                cleanup_op,
             }) => {
                 set_status(governor_status, "install new plugin");
 
-                if let Some((targets, rpc, op)) = install_substep {
-                    governor_step! {
-                        "checking if plugin is ready for installation on instances"
-                        async {
-                            let mut fs = vec![];
-                            for instance_id in targets {
-                                tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_id" => %instance_id);
-                                let resp = pool.call(instance_id, proc_name!(proc_load_plugin_dry_run), &rpc, Duration::from_secs(5))?;
-                                fs.push(async move {
-                                    match resp.await {
-                                        Ok(_) => {
-                                            tlog!(Info, "instance is ready to install plugin";
-                                                "instance_id" => %instance_id,
-                                            );
-                                            Ok(())
-                                        }
-                                        Err(e) => {
-                                            tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
-                                                "instance_id" => %instance_id
-                                            );
-                                            Err(OnError::Abort)
-                                        }
+                let mut ops = vec![cleanup_op];
+                governor_step! {
+                    "checking if plugin is ready for installation on instances"
+                    async {
+                        let mut fs = vec![];
+                        for instance_id in targets {
+                            tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_id" => %instance_id);
+                            let resp = pool.call(instance_id, proc_name!(proc_load_plugin_dry_run), &rpc, Duration::from_secs(5))?;
+                            fs.push(async move {
+                                match resp.await {
+                                    Ok(_) => {
+                                        tlog!(Info, "instance is ready to install plugin";
+                                            "instance_id" => %instance_id,
+                                        );
+                                        Ok(())
                                     }
-                                });
-                            }
-
-                            if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
-                                tlog!(Error, "Plugin installation aborted: {e:?}");
-                                return Ok(());
-                            }
-
-                            node.propose_and_wait(op, Duration::from_secs(3))?;
+                                    Err(e) => {
+                                        tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
+                                            "instance_id" => %instance_id
+                                        );
+                                        Err(OnError::Abort)
+                                    }
+                                }
+                            });
                         }
+
+                        if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
+                            tlog!(Error, "Plugin installation aborted: {e:?}");
+                            return Ok(());
+                        }
+
+                        ops.append(&mut success_ops);
                     }
                 }
 
+                let op = Op::BatchDml { ops };
                 governor_step! {
                     "finalizing plugin installing"
                     async {
-                        node.propose_and_wait(finalize_op, Duration::from_secs(3))?;
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -812,17 +820,7 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
     };
 
     match plugin_op {
-        PluginOp::InstallPlugin { manifest } => {
-            let identity = PluginIdentifier::new(manifest.name.clone(), manifest.version.clone());
-            let maybe_existing_plugin = storage
-                .plugins
-                .get(&identity)
-                .expect("storage should not fail");
-            PreparedPluginOp::InstallPlugin {
-                maybe_existing_plugin,
-                manifest,
-            }
-        }
+        PluginOp::InstallPlugin { manifest } => PreparedPluginOp::InstallPlugin { manifest },
         PluginOp::EnablePlugin {
             plugin,
             services,

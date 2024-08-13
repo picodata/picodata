@@ -588,6 +588,8 @@ pub fn install_plugin(
     let ranges = vec![
         // Fail if someone proposes another plugin operation
         Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+        // Fail if someone updates this plugin record
+        Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
     ];
     let mut index = reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
 

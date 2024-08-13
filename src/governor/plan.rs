@@ -41,6 +41,7 @@ pub(super) fn action_plan<'i>(
     target_vshard_config_version: u64,
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
+    plugins: &HashMap<PluginIdentifier, PluginDef>,
     plugin_op: &PreparedPluginOp,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
@@ -442,72 +443,66 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // install plugin
-    if let PreparedPluginOp::InstallPlugin {
-        maybe_existing_plugin,
-        manifest,
-    } = plugin_op
-    {
-        // if plugin with a same version already exists and already enabled - do nothing
-        let should_install = maybe_existing_plugin
-            .as_ref()
-            .map(|p| !p.enabled)
-            .unwrap_or(true);
+    if let PreparedPluginOp::InstallPlugin { manifest } = plugin_op {
+        let ident = manifest.plugin_identifier();
+        if plugins.get(&ident).is_some() {
+            crate::warn_or_panic!(
+                "received a request to install a plugin which is already installed {ident:?}"
+            );
+        }
 
-        let install_substep = should_install
-            .then(|| -> tarantool::Result<_> {
-                let rpc = rpc::load_plugin_dry_run::Request {
-                    term,
-                    applied,
-                    timeout: Loop::SYNC_TIMEOUT,
-                };
+        let mut targets = Vec::with_capacity(instances.len());
+        for i in maybe_responding(instances) {
+            targets.push(&i.instance_id);
+        }
 
-                let mut targets = Vec::with_capacity(instances.len());
-                for i in instances {
-                    if i.may_respond() {
-                        targets.push(&i.instance_id);
-                    }
-                }
-                let plugin_def = manifest.plugin_def();
-                let mut ops = vec![Dml::replace(
-                    ClusterwideTable::Plugin,
-                    &plugin_def,
+        let rpc = rpc::load_plugin_dry_run::Request {
+            term,
+            applied,
+            timeout: Loop::SYNC_TIMEOUT,
+        };
+
+        let plugin_def = manifest.plugin_def();
+        let mut ops = vec![Dml::replace(
+            ClusterwideTable::Plugin,
+            &plugin_def,
+            ADMIN_ID,
+        )?];
+
+        let ident = plugin_def.into_identifier();
+        for service_def in manifest.service_defs() {
+            ops.push(Dml::replace(
+                ClusterwideTable::Service,
+                &service_def,
+                ADMIN_ID,
+            )?);
+
+            let config = manifest
+                .get_default_config(&service_def.name)
+                .expect("configuration should exist");
+            let config_records =
+                PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
+
+            for config_rec in config_records {
+                ops.push(Dml::replace(
+                    ClusterwideTable::PluginConfig,
+                    &config_rec,
                     ADMIN_ID,
-                )?];
+                )?);
+            }
+        }
 
-                let ident = plugin_def.into_identifier();
-                for service_def in manifest.service_defs() {
-                    ops.push(Dml::replace(
-                        ClusterwideTable::Service,
-                        &service_def,
-                        ADMIN_ID,
-                    )?);
-
-                    let config = manifest
-                        .get_default_config(&service_def.name)
-                        .expect("configuration should exist");
-                    let config_records =
-                        PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
-
-                    for config_rec in config_records {
-                        ops.push(Dml::replace(
-                            ClusterwideTable::PluginConfig,
-                            &config_rec,
-                            ADMIN_ID,
-                        )?);
-                    }
-                }
-
-                Ok((targets, rpc, Op::BatchDml { ops }))
-            })
-            .transpose()?;
+        let cleanup_op = Dml::delete(
+            ClusterwideTable::Property,
+            &[PropertyName::PendingPluginOperation],
+            ADMIN_ID,
+        )?;
 
         return Ok(InstallPlugin {
-            install_substep,
-            finalize_op: Op::Dml(Dml::delete(
-                ClusterwideTable::Property,
-                &[PropertyName::PendingPluginOperation],
-                ADMIN_ID,
-            )?),
+            targets,
+            rpc,
+            success_ops: ops,
+            cleanup_op,
         }
         .into());
     }
@@ -878,8 +873,14 @@ pub mod stage {
         }
 
         pub struct InstallPlugin<'i> {
-            pub install_substep: Option<(Vec<&'i InstanceId>, rpc::load_plugin_dry_run::Request, Op)>,
-            pub finalize_op: Op,
+            /// This is every instance which is currently online.
+            pub targets: Vec<&'i InstanceId>,
+            /// Request to call [`rpc::load_plugin_dry_run::load_plugin_dry_run`] on `targets`.
+            pub rpc: rpc::load_plugin_dry_run::Request,
+            /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config` in case of success.
+            pub success_ops: Vec<Dml>,
+            /// Global DML operation which removes the "pending_plugin_operation" from `_pico_property`.
+            pub cleanup_op: Dml,
         }
 
         pub struct EnablePlugin<'i> {
@@ -1015,7 +1016,6 @@ fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
 pub(super) enum PreparedPluginOp {
     None,
     InstallPlugin {
-        maybe_existing_plugin: Option<PluginDef>,
         manifest: plugin::Manifest,
     },
     EnablePlugin(EnablePluginConfig),
