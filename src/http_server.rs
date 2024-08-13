@@ -138,7 +138,7 @@ pub(crate) struct TierInfo {
     #[serde(rename = "can_vote")] // for compatibility with lua version
     can_vote: bool,
     name: String,
-    plugins: Vec<String>,
+    services: Vec<String>,
 }
 
 // From the Lua version:
@@ -168,6 +168,8 @@ pub(crate) struct ClusterInfo {
     instances_current_state_offline: usize,
     memory: MemoryInfo,
     instances_current_state_online: usize,
+    // list of serialized plugin identifiers - "<plugin_name> <plugin_version>"
+    plugins: Vec<String>,
 }
 
 fn get_replicasets(
@@ -365,6 +367,14 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     let storage = Clusterwide::get();
     let replicasets = get_replicasets_info(storage, true)?;
 
+    let plugins = storage
+        .plugin
+        .get_all()
+        .expect("storage shouldn't fail")
+        .iter()
+        .map(|plugin| [plugin.name.clone(), plugin.version.clone()].join(" "))
+        .collect();
+
     let mut instances = 0;
     let mut instances_online = 0;
     let mut replicasets_count = 0;
@@ -395,6 +405,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
         instances_current_state_offline: (instances - instances_online),
         memory: mem_info,
         instances_current_state_online: instances_online,
+        plugins,
     };
 
     Ok(res)
@@ -416,7 +427,13 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
                     instance_count: 0,
                     can_vote: true,
                     name: item.name.clone(),
-                    plugins: Vec::new(),
+                    services: storage
+                        .service
+                        .get_by_tier(&item.name)
+                        .expect("storage shouldn't fail")
+                        .iter()
+                        .map(|service| service.name.clone())
+                        .collect(),
                 },
             )
         })

@@ -1,5 +1,8 @@
 export const instances = {
   cluster: {
+    plugins: {
+      label: "Plugins",
+    },
     capacityProgress: {
       label: "Capacity Usage",
       valueLabel: "Useful capacity",
@@ -57,8 +60,8 @@ export const instances = {
       name: {
         label: "Tier Name",
       },
-      plugins: {
-        label: "Plugins",
+      services: {
+        label: "Services",
       },
       replicasets: {
         label: "Replicasets",

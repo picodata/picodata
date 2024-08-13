@@ -3627,12 +3627,18 @@ impl Plugins {
 
     #[inline]
     pub fn get_all_versions(&self, plugin_name: &str) -> tarantool::Result<Vec<PluginDef>> {
-        let plugins = self
-            .space
+        self.space
             .select(IteratorType::All, &(plugin_name,))?
             .map(|tuple| tuple.decode())
-            .collect::<tarantool::Result<Vec<_>>>();
-        plugins
+            .collect()
+    }
+
+    #[inline]
+    pub fn get_all(&self) -> tarantool::Result<Vec<PluginDef>> {
+        self.space
+            .select(IteratorType::All, &())?
+            .map(|tuple| tuple.decode())
+            .collect::<tarantool::Result<Vec<_>>>()
     }
 
     #[inline]
@@ -3720,6 +3726,19 @@ impl Services {
         for tuple in it {
             let svc = tuple.decode::<ServiceDef>()?;
             if svc.version == ident.version {
+                result.push(svc)
+            }
+        }
+        Ok(result)
+    }
+
+    #[inline]
+    pub fn get_by_tier(&self, tier_name: &String) -> tarantool::Result<Vec<ServiceDef>> {
+        let all_services = self.space.select(IteratorType::All, &())?;
+        let mut result = vec![];
+        for tuple in all_services {
+            let svc = tuple.decode::<ServiceDef>()?;
+            if svc.tiers.contains(tier_name) {
                 result.push(svc)
             }
         }

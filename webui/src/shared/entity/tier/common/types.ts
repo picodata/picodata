@@ -6,7 +6,7 @@ import {
 
 export type ServerTierType = {
   name: string;
-  plugins: string[];
+  services: string[];
   replicasetCount: number;
   instanceCount: number;
   rf: number;

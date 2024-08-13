@@ -2,6 +2,9 @@ import { TPages } from "./types";
 
 export const instances: TPages["instances"] = {
   cluster: {
+    plugins: {
+      label: "Плагины",
+    },
     capacityProgress: {
       label: "Потребление памяти",
       valueLabel: "Использовано",
@@ -59,8 +62,8 @@ export const instances: TPages["instances"] = {
       name: {
         label: "Название тира",
       },
-      plugins: {
-        label: "Плагин",
+      services: {
+        label: "Сервисы",
       },
       replicasets: {
         label: "Репликасеты",

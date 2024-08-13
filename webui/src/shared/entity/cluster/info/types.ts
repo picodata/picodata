@@ -8,6 +8,7 @@ export type ServerClusterInfoType = {
   instancesCurrentStateOnline: number;
   instancesCurrentStateOffline: number;
   currentInstaceVersion: string;
+  plugins: string[];
 };
 
 export type ClusterInfoType = ServerClusterInfoType;

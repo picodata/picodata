@@ -43,6 +43,25 @@ export const ClusterInfo = (props: ClusterInfoProps) => {
       <div className={styles.right}>
         <div className={cn(styles.rightColumn)}>
           <div className={styles.columnName}>
+            {clusterTranslations.plugins.label}
+          </div>
+          <div className={styles.columnContent}>
+            <div className={styles.columnValue}>
+              {clusterInfoData.plugins.map((plugin, i) =>
+                i == 0 ? (
+                  <>{plugin}</>
+                ) : (
+                  <>
+                    <br />
+                    {plugin}
+                  </>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+        <div className={cn(styles.rightColumn)}>
+          <div className={styles.columnName}>
             {clusterTranslations.replicasets.label}
           </div>
           <div className={styles.columnContent}>

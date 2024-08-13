@@ -84,7 +84,7 @@ export const mock: ServerTiersListType = [
     instanceCount: 4,
     can_vote: true,
     name: "red",
-    plugins: [],
+    services: [],
   },
   {
     replicasets: [
@@ -144,6 +144,6 @@ export const mock: ServerTiersListType = [
     instanceCount: 2,
     can_vote: true,
     name: "blue",
-    plugins: [],
+    services: [],
   },
 ];

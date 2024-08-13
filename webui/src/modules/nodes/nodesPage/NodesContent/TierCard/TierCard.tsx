@@ -46,20 +46,31 @@ export const TierCard: FC<TierCardProps> = React.memo(({ tier }) => {
         <div
           className={cn(
             styles.infoColumn,
-            styles.pluginColumn,
+            styles.servicesColumn,
             styles.hiddenColumn
           )}
         >
-          <div className={styles.label}>{tierTranslations.plugins.label}</div>
+          <div className={styles.label}>{tierTranslations.services.label}</div>
           <div
             className={cn(
               styles.infoValue,
               styles.hiddenValue,
-              styles.pluginValue
+              styles.servicesValue
             )}
           >
-            {tier.plugins.length ? (
-              <HiddenWrapper>{tier.plugins.join(", ")}</HiddenWrapper>
+            {tier.services.length ? (
+              <HiddenWrapper>
+                {tier.services.map((service, i) =>
+                  i == 0 ? (
+                    <>{service}</>
+                  ) : (
+                    <>
+                      <br />
+                      {service}
+                    </>
+                  )
+                )}
+              </HiddenWrapper>
             ) : (
               <InfoNoData text={translation.components.infoNoData.label} />
             )}
