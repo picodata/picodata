@@ -438,7 +438,7 @@ mod tarantool_decimal {
             S: serde::Serializer,
         {
             #[derive(Serialize)]
-            struct _ExtStruct((std::os::raw::c_char, serde_bytes::ByteBuf));
+            struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
             let data = unsafe {
                 let len = ffi::decimal_len(&self.inner) as usize;
@@ -457,7 +457,7 @@ mod tarantool_decimal {
             D: serde::Deserializer<'de>,
         {
             #[derive(Deserialize)]
-            struct _ExtStruct((std::os::raw::c_char, serde_bytes::ByteBuf));
+            struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
             match serde::Deserialize::deserialize(deserializer)? {
                 _ExtStruct((ffi::MP_DECIMAL, bytes)) => {
@@ -1142,7 +1142,7 @@ mod standalone_decimal {
             S: serde::Serializer,
         {
             #[derive(serde::Serialize)]
-            struct _ExtStruct((std::os::raw::c_char, serde_bytes::ByteBuf));
+            struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
             let data = {
                 let mut data = vec![];
@@ -1162,7 +1162,7 @@ mod standalone_decimal {
         {
             use serde::de::Error;
             #[derive(serde::Deserialize)]
-            struct _ExtStruct((std::os::raw::c_char, serde_bytes::ByteBuf));
+            struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
             match serde::Deserialize::deserialize(deserializer)? {
                 _ExtStruct((ffi::MP_DECIMAL, bytes)) => {

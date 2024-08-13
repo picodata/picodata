@@ -1,4 +1,4 @@
-pub const MP_DATETIME: std::os::raw::c_char = 4;
+pub const MP_DATETIME: i8 = 4;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

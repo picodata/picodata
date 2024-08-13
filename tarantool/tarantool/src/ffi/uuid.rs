@@ -1,4 +1,4 @@
-pub const MP_UUID: std::os::raw::c_char = 2;
+pub const MP_UUID: i8 = 2;
 
 #[repr(C)]
 #[derive(Copy, Clone)]

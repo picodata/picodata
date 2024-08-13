@@ -12,6 +12,7 @@
 ### Fixed
 
 - Use after free in `fiber::Builder::start_non_joinable` when the fiber exits without yielding.
+- Incorrect, off-spec MP Ext type: caused runtime errors on some platforms.
 
 ### Deprecated
 

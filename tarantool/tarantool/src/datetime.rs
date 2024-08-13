@@ -2,7 +2,6 @@ use crate::ffi::datetime as ffi;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::os::raw::c_char;
 use time::{Duration, UtcOffset};
 
 type Inner = time::OffsetDateTime;
@@ -132,7 +131,7 @@ impl serde::Serialize for Datetime {
         S: serde::Serializer,
     {
         #[derive(Serialize)]
-        struct _ExtStruct<'a>((c_char, &'a serde_bytes::Bytes));
+        struct _ExtStruct<'a>((i8, &'a serde_bytes::Bytes));
 
         let data = self.as_bytes_tt();
         let mut data = data.as_slice();
@@ -149,7 +148,7 @@ impl<'de> serde::Deserialize<'de> for Datetime {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct _ExtStruct((c_char, serde_bytes::ByteBuf));
+        struct _ExtStruct((i8, serde_bytes::ByteBuf));
 
         let _ExtStruct((kind, bytes)) = serde::Deserialize::deserialize(deserializer)?;
 
