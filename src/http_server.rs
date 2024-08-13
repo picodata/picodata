@@ -368,7 +368,7 @@ pub(crate) fn http_api_cluster() -> Result<ClusterInfo, Box<dyn Error>> {
     let replicasets = get_replicasets_info(storage, true)?;
 
     let plugins = storage
-        .plugin
+        .plugins
         .get_all()
         .expect("storage shouldn't fail")
         .iter()
@@ -428,7 +428,7 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
                     can_vote: true,
                     name: item.name.clone(),
                     services: storage
-                        .service
+                        .services
                         .get_by_tier(&item.name)
                         .expect("storage shouldn't fail")
                         .iter()

@@ -815,7 +815,7 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
         PluginOp::InstallPlugin { manifest } => {
             let identity = PluginIdentifier::new(manifest.name.clone(), manifest.version.clone());
             let maybe_existing_plugin = storage
-                .plugin
+                .plugins
                 .get(&identity)
                 .expect("storage should not fail");
             PreparedPluginOp::InstallPlugin {
@@ -829,11 +829,11 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
             timeout,
         } => {
             let installed_plugins = storage
-                .plugin
+                .plugins
                 .get_all_versions(&plugin.name)
                 .expect("storage should not fail");
             let applied_migrations = storage
-                .plugin_migration
+                .plugin_migrations
                 .get_files_by_plugin(&plugin.name)
                 .expect("storage should not fail")
                 .into_iter()
@@ -851,13 +851,13 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
         }
         PluginOp::UpdateTopology(op) => {
             let plugin_def = storage
-                .plugin
+                .plugins
                 .get(op.plugin_identity())
                 .expect("storage should not fail")
                 .expect("client should check that plugin exists");
 
             let service_def = storage
-                .service
+                .services
                 .get(op.plugin_identity(), op.service_name())
                 .expect("storage should not fail")
                 .expect("client should check that service exists");

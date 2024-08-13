@@ -565,7 +565,7 @@ pub fn install_plugin(
         }
 
         let ident = manifest.plugin_identifier();
-        let plugin_already_exists = node.storage.plugin.contains(&ident)?;
+        let plugin_already_exists = node.storage.plugins.contains(&ident)?;
         if plugin_already_exists {
             if if_not_exists {
                 return Ok(PreconditionCheckResult::AlreadyApplied);
@@ -595,7 +595,7 @@ pub fn install_plugin(
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    if node.storage.plugin.get(&ident)?.is_none() {
+    if node.storage.plugins.get(&ident)?.is_none() {
         return Err(PluginError::InstallationAborted.into());
     }
 
@@ -611,7 +611,7 @@ pub fn migration_up(
     let node = node::global()?;
 
     // plugin must be already installed
-    let installed = node.storage.plugin.contains(ident)?;
+    let installed = node.storage.plugins.contains(ident)?;
     if !installed {
         return Err(PluginError::PluginNotFound(ident.clone()).into());
     }
@@ -620,7 +620,7 @@ pub fn migration_up(
 
     let already_applied_migrations = node
         .storage
-        .plugin_migration
+        .plugin_migrations
         .get_files_by_plugin(&ident.name)?;
     if already_applied_migrations.len() > manifest.migration.len() {
         return Err(
@@ -680,14 +680,14 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
     let node = node::global()?;
 
     // plugin must be already installed
-    let installed = node.storage.plugin.contains(&ident)?;
+    let installed = node.storage.plugins.contains(&ident)?;
     if !installed {
         return Err(PluginError::PluginNotFound(ident).into());
     }
 
     let migration_list = node
         .storage
-        .plugin_migration
+        .plugin_migrations
         .get_files_by_plugin(&ident.name)?
         .into_iter()
         .map(|rec| rec.migration_file)
@@ -719,7 +719,7 @@ pub fn enable_plugin(
 
         // TODO: check if plugin already enabled
 
-        let services = node.storage.service.get_by_plugin(plugin)?;
+        let services = node.storage.services.get_by_plugin(plugin)?;
 
         let op = PluginOp::EnablePlugin {
             plugin: plugin.clone(),
@@ -750,7 +750,7 @@ pub fn enable_plugin(
 
     let plugin = node
         .storage
-        .plugin
+        .plugins
         .get(plugin)?
         .ok_or(PluginError::EnablingAborted)?;
 
@@ -811,7 +811,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
         }
 
         // TODO: support if_exists option
-        if !node.storage.plugin.contains(ident)? {
+        if !node.storage.plugins.contains(ident)? {
             return Err(PluginNotFound(ident.clone()).into());
         }
 
@@ -849,7 +849,7 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
             return Ok(PreconditionCheckResult::WaitIndexAndRetry);
         }
 
-        let Some(plugin) = node.storage.plugin.get(ident)? else {
+        let Some(plugin) = node.storage.plugins.get(ident)? else {
             // TODO: support if_exists option
             #[rustfmt::skip]
             return Err(traft::error::Error::other(format!("no such plugin `{ident}`")));
@@ -861,7 +861,7 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
 
         let migration_list = node
             .storage
-            .plugin_migration
+            .plugin_migrations
             .get_files_by_plugin(&ident.name)?
             .into_iter()
             .map(|rec| rec.migration_file)
@@ -963,7 +963,7 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
 
         let service = node
             .storage
-            .service
+            .services
             .get(upd_op.plugin_identity(), upd_op.service_name())?;
         if service.is_none() {
             return Err(PluginError::ServiceNotFound(
@@ -1003,7 +1003,7 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
 
     let service = node
         .storage
-        .service
+        .services
         .get(ident, upd_op.service_name())?
         .ok_or(PluginError::TopologyUpdateAborted)?;
 

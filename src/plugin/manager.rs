@@ -216,14 +216,14 @@ impl PluginManager {
         let node = node::global().expect("node must be already initialized");
         let plugin_def = node
             .storage
-            .plugin
+            .plugins
             .get(ident)
             .expect("storage should not fail")
             .ok_or_else(|| PluginNotFound(ident.clone()))?;
 
         let service_defs = node
             .storage
-            .service
+            .services
             .get_by_plugin(ident)
             .expect("storage should not fail");
 
@@ -285,7 +285,7 @@ impl PluginManager {
             .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
 
         // now plugins can be enabled and routing table filled again
-        let enabled_plugins = node.storage.plugin.all_enabled()?;
+        let enabled_plugins = node.storage.plugins.all_enabled()?;
 
         for plugin in enabled_plugins {
             let ident = plugin.into_identifier();
@@ -453,7 +453,7 @@ impl PluginManager {
         let mut routes_to_replace = vec![];
 
         for (plugin_name, plugin_state) in self.plugins.lock().iter() {
-            let plugin_defs = node.storage.plugin.get_all_versions(plugin_name)?;
+            let plugin_defs = node.storage.plugins.get_all_versions(plugin_name)?;
             let mut enabled_plugins: Vec<_> =
                 plugin_defs.into_iter().filter(|p| p.enabled).collect();
             let plugin_def = match enabled_plugins.len() {
@@ -529,10 +529,10 @@ impl PluginManager {
         let node = node::global().expect("node must be already initialized");
         let storage = &node.storage;
 
-        let Some(plugin_def) = storage.plugin.get(plugin_ident)? else {
+        let Some(plugin_def) = storage.plugins.get(plugin_ident)? else {
             return Err(PluginNotFound(plugin_ident.clone()));
         };
-        let Some(service_def) = storage.service.get(plugin_ident, service)? else {
+        let Some(service_def) = storage.services.get(plugin_ident, service)? else {
             return Err(PluginError::ServiceNotFound(
                 service.to_string(),
                 plugin_ident.clone(),
@@ -690,7 +690,7 @@ impl PluginManager {
         plugin_ident: &PluginIdentifier,
     ) -> Result<PluginServices> {
         let node = node::global().expect("must be initialized");
-        let plugin_def = node.storage.plugin.get(plugin_ident)?;
+        let plugin_def = node.storage.plugins.get(plugin_ident)?;
         if plugin_def.map(|def| def.enabled) != Some(true) {
             return Err(PluginError::PluginDisabled);
         }

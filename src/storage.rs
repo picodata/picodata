@@ -406,8 +406,7 @@ define_clusterwide_tables! {
             }
         }
         Plugin = 526, "_pico_plugin" => {
-            // FIXME: rename to plugins
-            Clusterwide::plugin;
+            Clusterwide::plugins;
 
             /// A struct for accessing info of all known plugins.
             pub struct Plugins {
@@ -417,8 +416,7 @@ define_clusterwide_tables! {
             }
         }
         Service = 527, "_pico_service" => {
-            // FIXME: rename to services
-            Clusterwide::service;
+            Clusterwide::services;
 
             /// A struct for accessing info of all known plugin services.
             pub struct Services {
@@ -438,7 +436,7 @@ define_clusterwide_tables! {
             }
         }
         PluginMigration = 529, "_pico_plugin_migration" => {
-            Clusterwide::plugin_migration;
+            Clusterwide::plugin_migrations;
 
             /// A struct for accessing info of applied plugin migrations.
             pub struct PluginMigration {

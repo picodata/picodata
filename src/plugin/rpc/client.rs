@@ -246,7 +246,7 @@ fn resolve_rpc_target(
         .get_available_instances(ident, service)?;
     #[rustfmt::skip]
     if candidates.is_empty() {
-        if node.storage.service.get(ident, service)?.is_none() {
+        if node.storage.services.get(ident, service)?.is_none() {
             return Err(BoxError::new(ErrorCode::NoSuchService, "service '{plugin}.{service}' not found").into());
         } else {
             return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not started on any instance")).into());

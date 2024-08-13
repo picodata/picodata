@@ -1230,7 +1230,7 @@ impl NodeImpl {
             }) => {
                 let maybe_service = self
                     .storage
-                    .service
+                    .services
                     .get(&ident, &service_name)
                     .expect("storage should not fail");
 
@@ -1247,7 +1247,7 @@ impl NodeImpl {
                         .expect("storage should not fail");
 
                     self.storage
-                        .service
+                        .services
                         .put(&svc)
                         .expect("storage should not fail");
 
@@ -1272,14 +1272,14 @@ impl NodeImpl {
             Op::Plugin(PluginRaftOp::DisablePlugin { ident }) => {
                 let plugin = self
                     .storage
-                    .plugin
+                    .plugins
                     .get(&ident)
                     .expect("storage should not fail");
 
                 if let Some(mut plugin) = plugin {
                     plugin.enabled = false;
                     self.storage
-                        .plugin
+                        .plugins
                         .put(&plugin)
                         .expect("storage should not fail");
 
@@ -1306,7 +1306,7 @@ impl NodeImpl {
             Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
                 let maybe_plugin = self
                     .storage
-                    .plugin
+                    .plugins
                     .get(&ident)
                     .expect("storage should not fail");
 
@@ -1318,12 +1318,12 @@ impl NodeImpl {
 
                     let services = self
                         .storage
-                        .service
+                        .services
                         .get_by_plugin(&ident)
                         .expect("storage should not fail");
                     for svc in services {
                         self.storage
-                            .service
+                            .services
                             .delete(&svc.plugin_name, &svc.name, &svc.version)
                             .expect("storage should not fail");
                         self.storage
@@ -1332,11 +1332,11 @@ impl NodeImpl {
                             .expect("storage should not fail");
                     }
                     self.storage
-                        .plugin
+                        .plugins
                         .delete(&ident)
                         .expect("storage should not fail");
                     self.storage
-                        .plugin_migration
+                        .plugin_migrations
                         .delete_all_by_plugin(&ident.name)
                         .expect("say it with me");
                 }
