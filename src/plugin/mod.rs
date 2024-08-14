@@ -759,11 +759,9 @@ pub fn enable_plugin(
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    let plugin = node
-        .storage
-        .plugins
-        .get(plugin)?
-        .ok_or(PluginError::EnablingAborted)?;
+    let Some(plugin) = node.storage.plugins.get(plugin)? else {
+        return Err(PluginError::PluginNotFound(plugin.clone()).into());
+    };
 
     if !plugin.enabled {
         return Err(PluginError::EnablingAborted.into());
