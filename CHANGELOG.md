@@ -51,6 +51,8 @@ with the `YY.MINOR.MICRO` scheme.
   Running `picodata run --listen :3302` without implicit `--peer` specified
   now bootstraps a new cluster. The old behavior was to join `:3301` by default
 
+- DdlAbort raft entry now contains the error information.
+
 ### Lua API
 
 - Update `pico.LUA_API_VERSION`: `3.1.0` -> `4.0.0`

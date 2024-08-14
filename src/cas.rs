@@ -137,7 +137,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         Op::Acl(..)
             | Op::Dml(..)
             | Op::DdlPrepare { .. }
-            | Op::DdlAbort
+            | Op::DdlAbort { .. }
             | Op::BatchDml { .. }
             | Op::Plugin { .. }
     ) {
@@ -553,7 +553,7 @@ impl Predicate {
                 }
                 Op::DdlPrepare { .. }
                 | Op::DdlCommit
-                | Op::DdlAbort
+                | Op::DdlAbort { .. }
                 | Op::Acl { .. }
                 | Op::Plugin { .. } => {
                     let space = ClusterwideTable::Property.id();
@@ -799,7 +799,7 @@ fn modifies_operable(op: &Op, space: SpaceId, storage: &Clusterwide) -> bool {
     };
     match op {
         Op::DdlPrepare { ddl, .. } => ddl_modifies(ddl),
-        Op::DdlCommit | Op::DdlAbort => {
+        Op::DdlCommit | Op::DdlAbort { .. } => {
             if let Some(change) = storage
                 .properties
                 .pending_schema_change()
@@ -876,7 +876,9 @@ mod tests {
         });
 
         let commit = Op::DdlCommit;
-        let abort = Op::DdlAbort;
+        let abort = Op::DdlAbort {
+            cause: crate::traft::error::ErrorInfo::for_tests(),
+        };
         let props = Properties::TABLE_ID;
         let pending_schema_change = (PropertyName::PendingSchemaChange.to_string(),);
         let pending_schema_version = (PropertyName::PendingSchemaChange.to_string(),);

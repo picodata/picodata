@@ -476,8 +476,8 @@ impl Loop {
                         }
                         // TODO: don't hard code timeout
                         let res = try_join_all(fs).timeout(Duration::from_secs(3)).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort(_cause))) = res {
-                            next_op = Op::DdlAbort;
+                        if let Err(TimeoutError::Failed(OnError::Abort(cause))) = res {
+                            next_op = Op::DdlAbort { cause };
                             return Ok(());
                         }
 
@@ -493,7 +493,7 @@ impl Loop {
                         "op" => &op_name,
                     ]
                     async {
-                        assert!(matches!(next_op, Op::DdlAbort | Op::DdlCommit));
+                        assert!(matches!(next_op, Op::DdlAbort { .. } | Op::DdlCommit));
                         node.propose_and_wait(next_op, Duration::from_secs(3))?;
                     }
                 }

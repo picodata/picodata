@@ -43,7 +43,7 @@ pub enum Op {
     /// Abort the pending DDL operation.
     ///
     /// Only one pending DDL operation can exist at the same time.
-    DdlAbort,
+    DdlAbort { cause: ErrorInfo },
     /// Cluster-wide access control list change operation.
     Acl(Acl),
     /// Plugin system change.
@@ -146,7 +146,7 @@ impl std::fmt::Display for Op {
                 )
             }
             Self::DdlCommit => write!(f, "DdlCommit"),
-            Self::DdlAbort => write!(f, "DdlAbort"),
+            Self::DdlAbort { cause } => write!(f, "DdlAbort({cause})"),
             Self::Acl(Acl::CreateUser { user_def }) => {
                 let UserDef {
                     id,
@@ -372,7 +372,7 @@ impl Op {
         match self {
             Self::Nop
             | Self::Dml(_)
-            | Self::DdlAbort
+            | Self::DdlAbort { .. }
             | Self::DdlCommit
             | Self::BatchDml { .. }
             | Self::Plugin { .. } => false,

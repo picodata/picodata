@@ -9,10 +9,12 @@ use crate::storage::{Clusterwide, SPACE_ID_INTERNAL_MAX};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::tier::DEFAULT_TIER;
 use crate::traft::error::Error;
+use crate::traft::error::ErrorInfo;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, node, RaftIndex};
 use crate::util::effective_user_id;
 use ahash::AHashSet;
+use picoplugin::error_code::ErrorCode;
 use sbroad::ir::ddl::{Language, ParamDef};
 use sbroad::ir::value::Value as IrValue;
 use serde::{Deserialize, Serialize};
@@ -1613,8 +1615,8 @@ pub fn try_space_field_type_to_index_field_type(
 pub enum DdlError {
     #[error("{0}")]
     CreateTable(#[from] CreateTableError),
-    #[error("ddl operation was aborted")]
-    Aborted,
+    #[error("ddl operation was aborted: {0}")]
+    Aborted(ErrorInfo),
     #[error("there is no pending ddl operation")]
     NoPendingDdl,
     #[error("{0}")]
@@ -2430,7 +2432,7 @@ pub fn wait_for_ddl_commit(
             let op = entry.into_op().unwrap_or(Op::Nop);
             match op {
                 Op::DdlCommit => return Ok(index),
-                Op::DdlAbort => return Err(DdlError::Aborted.into()),
+                Op::DdlAbort { cause } => return Err(DdlError::Aborted(cause).into()),
                 _ => (),
             }
         }
@@ -2453,7 +2455,7 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
         let index = node.get_index();
         let term = raft::Storage::term(&node.raft_storage, index)?;
         #[rustfmt::skip]
-            let predicate = cas::Predicate {
+        let predicate = cas::Predicate {
             index,
             term,
             ranges: vec![
@@ -2463,7 +2465,16 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
             ],
         };
 
-        let req = Request::new(Op::DdlAbort, predicate, effective_user_id())?;
+        let instance_id = node
+            .raft_storage
+            .instance_id()?
+            .expect("is persisted at boot");
+        let cause = ErrorInfo {
+            error_code: ErrorCode::Other as _,
+            message: "explicit abort by user".into(),
+            instance_id,
+        };
+        let req = Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;
         // FIXME: this error handling is wrong, must retry if e.is_retriable()
         let (index, term) = compare_and_swap(&req, timeout)?;
         node.wait_index(index, timeout)?;

@@ -1129,7 +1129,7 @@ impl NodeImpl {
                     .put(PropertyName::GlobalSchemaVersion, &v_pending)
                     .expect("storage should not fail");
             }
-            Op::DdlAbort => {
+            Op::DdlAbort { .. } => {
                 let v_local = local_schema_version().expect("storage should not fail");
                 let v_pending: u64 = storage_properties
                     .pending_schema_version()

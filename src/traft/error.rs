@@ -241,6 +241,15 @@ impl ErrorInfo {
             instance_id,
         }
     }
+
+    /// Should only be used in tests.
+    pub fn for_tests() -> Self {
+        Self {
+            error_code: ErrorCode::Other as _,
+            message: "there's a snake in my boot".into(),
+            instance_id: InstanceId::from("i3378"),
+        }
+    }
 }
 
 impl std::fmt::Display for ErrorInfo {

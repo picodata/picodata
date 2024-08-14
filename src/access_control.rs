@@ -687,7 +687,7 @@ pub(super) fn access_check_op(
             Ok(())
         }
         Op::DdlPrepare { ddl, .. } => access_check_ddl(ddl, as_user),
-        Op::DdlCommit | Op::DdlAbort => {
+        Op::DdlCommit | Op::DdlAbort { .. } => {
             if as_user != ADMIN_ID {
                 let sys_user = user_by_id(as_user)?;
                 return Err(make_access_denied(
