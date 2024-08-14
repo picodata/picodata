@@ -32,6 +32,7 @@ use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
+use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
@@ -553,7 +554,7 @@ impl Loop {
             Plan::EnablePlugin(EnablePlugin {
                 targets,
                 rpc,
-                rollback_op,
+                ident,
                 on_start_timeout,
                 success_dml,
             }) => {
@@ -583,7 +584,7 @@ impl Loop {
                                         tlog!(Error, "failed to enable plugin at instance: timeout";
                                             "instance_id" => %instance_id,
                                         );
-                                        Err(OnError::Abort(ErrorInfo::timeout(instance_id.clone(), "failed to enable plugin")))
+                                        Err(OnError::Abort(ErrorInfo::timeout(instance_id.clone(), "no response")))
                                     }
                                     Err(e) => {
                                         tlog!(Warning, "failed calling proc_load_plugin: {e}";
@@ -596,8 +597,12 @@ impl Loop {
                         }
 
                         let enable_result = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort(_cause))) = enable_result {
-                            next_op = Some(rollback_op);
+                        if let Err(TimeoutError::Failed(OnError::Abort(cause))) = enable_result {
+                            let rollback_op = PluginRaftOp::DisablePlugin {
+                                ident: ident.clone(),
+                                cause: Some(cause),
+                            };
+                            next_op = Some(Op::Plugin(rollback_op));
                             return Ok(());
                         }
 

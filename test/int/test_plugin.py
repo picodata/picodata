@@ -258,6 +258,9 @@ class PluginReflection:
         assert int(val) <= expected
 
 
+# ---------------------------------- } Test helper classes ----------------------------------------
+
+
 def install_and_enable_plugin(
     instance,
     plugin,
@@ -285,6 +288,7 @@ def install_and_enable_plugin(
     for s in services:
         if default_config is not None:
             for key in default_config:
+                # FIXME: this is obviously incorrect and is actually caused by a broken feature
                 instance.eval(
                     f"box.space._pico_plugin_config:replace"
                     f"({{'{plugin}', '0.1.0', '{s}', '{key}', ...}})",
@@ -301,44 +305,45 @@ def test_invalid_manifest_plugin(cluster: Cluster):
     with pytest.raises(
         ReturnError, match="Error while discovering manifest for plugin"
     ):
-        i1.call("pico.install_plugin", "non-existent", _PLUGIN_VERSION_1)
-    PluginReflection("non-existent", _PLUGIN_VERSION_1, [], [i1, i2]).assert_synced()
+        i1.call("pico.install_plugin", "non-existent", "0.1.0")
+    PluginReflection("non-existent", "0.1.0", [], [i1, i2]).assert_synced()
 
     # try to use invalid manifest (with undefined plugin name)
     with pytest.raises(ReturnError, match="missing field `name`"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_1", _PLUGIN_VERSION_1)
+        i1.call("pico.install_plugin", "testplug_broken_manifest_1", "0.1.0")
     PluginReflection(
-        "testplug_broken_manifest_1", _PLUGIN_VERSION_1, _PLUGIN_SERVICES, [i1, i2]
+        "testplug_broken_manifest_1", "0.1.0", _PLUGIN_SERVICES, [i1, i2]
     ).assert_synced()
 
+    plugin = "testplug_broken_manifest_2"
     # try to use invalid manifest (with invalid default configuration)
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_2", _PLUGIN_VERSION_1)
-        i1.call(
-            "pico.service_append_tier",
-            "testplug_broken_manifest_2",
-            _PLUGIN_VERSION_1,
-            "testservice_1",
-            _DEFAULT_TIER,
-        )
-        i1.call(
-            "pico.service_append_tier",
-            "testplug_broken_manifest_2",
-            _PLUGIN_VERSION_1,
-            "testservice_2",
-            _DEFAULT_TIER,
-        )
-        i1.call("pico.enable_plugin", "testplug_broken_manifest_2", _PLUGIN_VERSION_1)
-    PluginReflection(
-        "testplug_broken_manifest_2", _PLUGIN_VERSION_1, _PLUGIN_SERVICES, [i1, i2]
-    ).install(True).assert_synced()
+    i1.call("pico.install_plugin", plugin, "0.1.0")
+    i1.call(
+        "pico.service_append_tier",
+        plugin,
+        "0.1.0",
+        "testservice_1",
+        _DEFAULT_TIER,
+    )
+    i1.call(
+        "pico.service_append_tier",
+        plugin,
+        "0.1.0",
+        "testservice_2",
+        _DEFAULT_TIER,
+    )
+    with pytest.raises(ReturnError, match="box error #333: missing field `bar`"):
+        i1.call("pico.enable_plugin", plugin, "0.1.0")
+    PluginReflection(plugin, "0.1.0", _PLUGIN_SERVICES, [i1, i2]).install(
+        True
+    ).assert_synced()
 
     # try to use invalid manifest (with non-existed extra service)
     with pytest.raises(ReturnError, match="Error while install the plugin"):
-        i1.call("pico.install_plugin", "testplug_broken_manifest_3", _PLUGIN_VERSION_1)
+        i1.call("pico.install_plugin", "testplug_broken_manifest_3", "0.1.0")
     PluginReflection(
         "testplug_broken_manifest_3",
-        _PLUGIN_VERSION_1,
+        "0.1.0",
         ["testservice_1", "testservice_2", "testservice_3"],
         [i1, i2],
     ).assert_synced()
@@ -423,20 +428,28 @@ def test_plugin_enable(cluster: Cluster):
     plugin_ref.assert_cb_called("testservice_2", "on_start", 1, i1, i2)
 
     # check enable already enabled plugin
-    i1.call("pico.enable_plugin", _PLUGIN, _PLUGIN_VERSION_1)
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.enable_plugin", _PLUGIN, "0.1.0")
+    assert e.value.args[0] == f"plugin `{_PLUGIN}:0.1.0` is already enabled"
+
     plugin_ref.assert_synced()
     # assert that `on_start` don't call twice
     plugin_ref.assert_cb_called("testservice_1", "on_start", 1, i1, i2)
     plugin_ref.assert_cb_called("testservice_2", "on_start", 1, i1, i2)
 
     # check that enabling of non-installed plugin return error
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.enable_plugin", _PLUGIN_SMALL, _PLUGIN_VERSION_1)
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.enable_plugin", _PLUGIN_SMALL, "0.1.0")
+    assert e.value.args[0] == f"Plugin `{_PLUGIN_SMALL}:0.1.0` not found at instance"
 
     # check that enabling of plugin with another version return error
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_2)
-        i1.call("pico.enable_plugin", _PLUGIN, _PLUGIN_VERSION_2)
+    i1.call("pico.install_plugin", _PLUGIN, "0.2.0")
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.enable_plugin", _PLUGIN, "0.2.0")
+    # FIXME: we know the reason
+    assert (
+        e.value.args[0] == f"Failed to enable plugin `{_PLUGIN}:0.2.0`: unknown reason"
+    )
 
 
 def test_plugin_disable(cluster: Cluster):
@@ -659,8 +672,12 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
 
     # assert that plugin not loaded and on_stop called on both instances
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+    with pytest.raises(ReturnError) as e:
         install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
+    assert (
+        e.value.args[0]
+        == f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance_id:i2] Other: Callback: on_start: box error #333: error at `on_start`"  # noqa: E501
+    )
 
     # plugin installed but disabled
     plugin_ref = plugin_ref.install(True).set_topology({i1: [], i2: []})
@@ -671,7 +688,10 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start", True, i1)
 
     # assert that plugin not loaded and on_stop called on both instances
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+    with pytest.raises(
+        ReturnError,
+        match="] Other: Callback: on_start: box error #333: error at `on_start`",
+    ):
         install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exists=True)
 
     # plugin installed but disabled
@@ -699,22 +719,14 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     # inject timeout into second instance
     plugin_ref.inject_error("testservice_1", "on_start_sleep_sec", 3, i2)
 
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
-        i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-        i1.call(
-            "pico.service_append_tier",
-            _PLUGIN,
-            _PLUGIN_VERSION_1,
-            "testservice_1",
-            _DEFAULT_TIER,
-        )
-        i1.call(
-            "pico.service_append_tier",
-            _PLUGIN,
-            _PLUGIN_VERSION_1,
-            "testservice_2",
-            _DEFAULT_TIER,
-        )
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+    i1.call(
+        "pico.service_append_tier", _PLUGIN, "0.1.0", "testservice_1", _DEFAULT_TIER
+    )
+    i1.call(
+        "pico.service_append_tier", _PLUGIN, "0.1.0", "testservice_2", _DEFAULT_TIER
+    )
+    with pytest.raises(ReturnError, match="] Timeout: no response"):
         i1.call(
             "pico.enable_plugin",
             _PLUGIN,
@@ -733,7 +745,7 @@ def test_plugin_not_enable_if_on_start_timeout(cluster: Cluster):
     # inject timeout into both instances
     plugin_ref.inject_error("testservice_1", "on_start_sleep_sec", 3, i1)
 
-    with pytest.raises(ReturnError, match="Error while enable the plugin"):
+    with pytest.raises(ReturnError, match="] Timeout: no response"):
         i1.call(
             "pico.enable_plugin",
             _PLUGIN,

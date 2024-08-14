@@ -26,6 +26,7 @@ use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
 use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::error::Error;
+use crate::traft::error::ErrorInfo;
 use crate::traft::node::Node;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Dml, Op};
@@ -54,8 +55,8 @@ pub enum PluginError {
     AlreadyExist(PluginIdentifier),
     #[error("Error while install the plugin")]
     InstallationAborted,
-    #[error("Error while enable the plugin")]
-    EnablingAborted,
+    #[error("Failed to enable plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
+    EnablingAborted(PluginIdentifier, Option<ErrorInfo>),
     #[error("Error while update plugin topology")]
     TopologyUpdateAborted,
     #[error("Error while discovering manifest for plugin `{0}`: {1}")]
@@ -96,6 +97,17 @@ pub enum PluginError {
     AmbiguousInstallCandidate,
     #[error("Cannot specify enable candidate (there should be only one installed plugin version)")]
     AmbiguousEnableCandidate,
+}
+
+struct DisplaySomeOrDefault<'a>(&'a Option<ErrorInfo>, &'a str);
+impl std::fmt::Display for DisplaySomeOrDefault<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(cause) = self.0 {
+            cause.fmt(f)
+        } else {
+            f.write_str(self.1)
+        }
+    }
 }
 
 impl IntoBoxError for PluginError {
@@ -728,7 +740,15 @@ pub fn enable_plugin(
             return Ok(PreconditionCheckResult::WaitIndexAndRetry);
         }
 
-        // TODO: check if plugin already enabled
+        let Some(plugin_def) = node.storage.plugins.get(plugin)? else {
+            return Err(PluginError::PluginNotFound(plugin.clone()).into());
+        };
+
+        if plugin_def.enabled {
+            // TODO: support if_not_enabled option
+            #[rustfmt::skip]
+            return Err(Error::other(format!("plugin `{plugin}` is already enabled")));
+        }
 
         let services = node.storage.services.get_by_plugin(plugin)?;
 
@@ -753,18 +773,36 @@ pub fn enable_plugin(
         // Fail if someone updates this plugin record
         Range::new(ClusterwideTable::Plugin).eq([&plugin.name]),
     ];
-    let mut index = reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let index_of_prepare =
+        reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
 
+    let mut index = index_of_prepare;
     while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    let Some(plugin) = node.storage.plugins.get(plugin)? else {
+    let Some(plugin_def) = node.storage.plugins.get(plugin)? else {
         return Err(PluginError::PluginNotFound(plugin.clone()).into());
     };
 
-    if !plugin.enabled {
-        return Err(PluginError::EnablingAborted.into());
+    if !plugin_def.enabled {
+        let log_tail = node
+            .raft_storage
+            .entries(index_of_prepare + 1, u64::MAX, None)?;
+        for entry in log_tail {
+            let Some(Op::Plugin(PluginRaftOp::DisablePlugin { ident, cause })) = entry.into_op()
+            else {
+                continue;
+            };
+
+            if &ident != plugin {
+                continue;
+            }
+
+            debug_assert!(cause.is_some());
+            return Err(PluginError::EnablingAborted(plugin.clone(), cause).into());
+        }
+        return Err(PluginError::EnablingAborted(plugin.clone(), None).into());
     }
 
     Ok(())
@@ -826,7 +864,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 
         let op = PluginRaftOp::DisablePlugin {
             ident: ident.clone(),
-            is_automatic: false,
+            cause: None,
         };
         Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
     };

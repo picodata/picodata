@@ -13,6 +13,7 @@ use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
+#[allow(unused_imports)]
 use crate::traft::op::PluginRaftOp;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
@@ -42,7 +43,7 @@ pub(super) fn action_plan<'i>(
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
-    plugin_op: &PreparedPluginOp,
+    plugin_op: &'i PreparedPluginOp,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -523,12 +524,6 @@ pub(super) fn action_plan<'i>(
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let rollback_op = PluginRaftOp::DisablePlugin {
-            // TODO: add disable reason here
-            ident: ident.clone(),
-            is_automatic: true,
-        };
-        let rollback_op = Op::Plugin(rollback_op);
 
         let mut targets = vec![];
         let mut success_dml = vec![];
@@ -554,8 +549,11 @@ pub(super) fn action_plan<'i>(
             (Some(already_enabled_plugin), Some(same_version_plugin))
                 if already_enabled_plugin.version == same_version_plugin.version =>
             {
-                // plugin already exists - do nothing
+                crate::warn_or_panic!(
+                    "received a request to enable a plugin which is already enabled {ident:?}"
+                );
             }
+            // FIXME: this should be checked on the client
             (Some(_already_enabled_plugin), _) => {
                 // already enabled plugin with a different version
                 tlog!(Error, "Trying to enable plugin but different version of the same plugin already enabled");
@@ -615,7 +613,7 @@ pub(super) fn action_plan<'i>(
             rpc,
             targets,
             on_start_timeout: *on_start_timeout,
-            rollback_op,
+            ident,
             success_dml,
         }
         .into());
@@ -887,8 +885,9 @@ pub mod stage {
             pub rpc: rpc::enable_plugin::Request,
             /// Rpc response must arive within this timeout. Otherwise the operation is rolled back.
             pub on_start_timeout: Duration,
-            /// [`PluginRaftOp::DisablePlugin`] which will be proposed in case rpc fails on some of the instances.
-            pub rollback_op: Op,
+            /// Identifier of the plugin. This will be used to construct a [`PluginRaftOp::DisablePlugin`]
+            /// raft operation if the RPC fails on some of the targets.
+            pub ident: &'i PluginIdentifier,
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,

@@ -1269,10 +1269,7 @@ impl NodeImpl {
                 }
             }
 
-            Op::Plugin(PluginRaftOp::DisablePlugin {
-                ident,
-                is_automatic,
-            }) => {
+            Op::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
                 let plugin = self
                     .storage
                     .plugins
@@ -1297,7 +1294,7 @@ impl NodeImpl {
                     // governor algorithm.
                     // The better solution would be to redesign the governor's algorithm for enabling/disabling plugins.
                     // But for now this is not fine, the only drawback is inconsistency which is not critical.
-                    if is_automatic {
+                    if cause.is_some() {
                         let t = self
                             .storage
                             .properties
@@ -1309,7 +1306,9 @@ impl NodeImpl {
                         }
                     }
                 } else {
-                    warn_or_panic!("got DisablePlugin for a non existent plugin: {ident}, is_automatic: {is_automatic}");
+                    warn_or_panic!(
+                        "got DisablePlugin for a non existent plugin: {ident}, cause: {cause:?}"
+                    );
                 }
 
                 if let Err(e) = self

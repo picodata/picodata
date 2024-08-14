@@ -6,6 +6,7 @@ use crate::schema::{
 use crate::storage::Clusterwide;
 use crate::storage::{space_by_name, RoutineId};
 use crate::traft::error::Error as TRaftError;
+use crate::traft::error::ErrorInfo;
 use ::tarantool::auth::AuthDef;
 use ::tarantool::index::{IndexId, Part};
 use ::tarantool::space::{Field, SpaceId};
@@ -225,12 +226,20 @@ impl std::fmt::Display for Op {
             }) => {
                 write!(f, "UpdatePluginConfig({ident}, {service_name})")
             }
-            Op::Plugin(PluginRaftOp::DisablePlugin {
-                ident,
-                is_automatic,
-            }) => {
+            Op::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
                 #[rustfmt::skip]
-                write!(f, "DisablePlugin({ident}{})", if *is_automatic { ", automatic" } else { "" })?;
+                write!(f, "DisablePlugin({ident}{})", DisplayCause(cause))?;
+
+                struct DisplayCause<'a>(&'a Option<ErrorInfo>);
+                impl std::fmt::Display for DisplayCause<'_> {
+                    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        if let Some(cause) = self.0 {
+                            write!(f, ", cause: {cause}")?;
+                        }
+                        Ok(())
+                    }
+                }
+
                 Ok(())
             }
             Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
@@ -822,12 +831,13 @@ pub enum PluginRaftOp {
     /// Disable selected plugin.
     DisablePlugin {
         ident: PluginIdentifier,
-        /// If `true`, the operation was generated automatically in response to
-        /// [`PluginOp::EnablePlugin`] which failed on some instances.
-        /// If `false` then the operation is proposed by the user's request to disable the pugin.
+        /// This is `None` if the operation is proposed by the user's request to disable the plugin.
+        ///
+        /// Otherwise it is the error which happened during handling of [`PluginOp::EnablePlugin`]
+        /// which is the cause for disabling the plugin.
         ///
         /// [`PluginOp::EnablePlugin`]: crate::plugin::PluginOp::EnablePlugin
-        is_automatic: bool,
+        cause: Option<ErrorInfo>,
     },
     /// Remove records for the given plugin and records in other tables which
     /// indirectly depend on it (foreign keys).
