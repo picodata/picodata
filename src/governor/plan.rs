@@ -493,17 +493,17 @@ pub(super) fn action_plan<'i>(
             }
         }
 
-        let cleanup_op = Dml::delete(
+        ops.push(Dml::delete(
             ClusterwideTable::Property,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
-        )?;
+        )?);
 
+        let success_dml = Op::BatchDml { ops };
         return Ok(InstallPlugin {
             targets,
             rpc,
-            success_ops: ops,
-            cleanup_op,
+            success_dml,
         }
         .into());
     }
@@ -688,6 +688,15 @@ pub(super) fn action_plan<'i>(
             ADMIN_ID,
         )?);
 
+        on_success_dml.push(Dml::delete(
+            ClusterwideTable::Property,
+            &[PropertyName::PendingPluginOperation],
+            ADMIN_ID,
+        )?);
+        let success_dml = Op::BatchDml {
+            ops: on_success_dml,
+        };
+
         let enable_rpc = rpc::enable_service::Request {
             term,
             applied,
@@ -704,12 +713,7 @@ pub(super) fn action_plan<'i>(
             disable_targets,
             enable_rpc,
             disable_rpc,
-            success_dml: on_success_dml,
-            finalize_dml: Dml::delete(
-                ClusterwideTable::Property,
-                &[PropertyName::PendingPluginOperation],
-                ADMIN_ID,
-            )?,
+            success_dml,
         }
         .into());
     }
@@ -872,10 +876,9 @@ pub mod stage {
             pub targets: Vec<&'i InstanceId>,
             /// Request to call [`rpc::load_plugin_dry_run::proc_load_plugin_dry_run`] on `targets`.
             pub rpc: rpc::load_plugin_dry_run::Request,
-            /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config` in case of success.
-            pub success_ops: Vec<Dml>,
-            /// Global DML operation which removes the "pending_plugin_operation" from `_pico_property`.
-            pub cleanup_op: Dml,
+            /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config`
+            /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
+            pub success_dml: Op,
         }
 
         pub struct EnablePlugin<'i> {
@@ -894,12 +897,17 @@ pub mod stage {
         }
 
         pub struct UpdatePluginTopology<'i> {
+            /// This is the list of instances on which we want to enable the service.
             pub enable_targets: Vec<&'i InstanceId>,
+            /// This is the list of instances on which we want to disable the service.
             pub disable_targets: Vec<&'i InstanceId>,
+            /// Request to call [`rpc::enable_service::proc_enable_service`] on `enable_targets`.
             pub enable_rpc: rpc::enable_service::Request,
+            /// Request to call [`rpc::disable_service::proc_disable_service`] on `disable_targets`.
             pub disable_rpc: rpc::disable_service::Request,
-            pub success_dml: Vec<Dml>,
-            pub finalize_dml: Dml,
+            /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
+            /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
+            pub success_dml: Op,
         }
     }
 }

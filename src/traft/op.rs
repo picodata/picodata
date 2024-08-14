@@ -219,14 +219,14 @@ impl std::fmt::Display for Op {
                     object_type = priv_def.object_type(),
                     privilege = priv_def.privilege(), )
             }
-            Op::Plugin(PluginRaftOp::UpdatePluginConfig {
+            Self::Plugin(PluginRaftOp::UpdatePluginConfig {
                 ident,
                 service_name,
                 ..
             }) => {
                 write!(f, "UpdatePluginConfig({ident}, {service_name})")
             }
-            Op::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
+            Self::Plugin(PluginRaftOp::DisablePlugin { ident, cause }) => {
                 #[rustfmt::skip]
                 write!(f, "DisablePlugin({ident}{})", DisplayCause(cause))?;
 
@@ -242,9 +242,10 @@ impl std::fmt::Display for Op {
 
                 Ok(())
             }
-            Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
+            Self::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
                 write!(f, "RemovePlugin({ident})")
             }
+            Self::Plugin(PluginRaftOp::Abort { cause }) => write!(f, "PluginAbort({cause})"),
         };
 
         struct DisplayDml<'a>(&'a Dml);
@@ -846,6 +847,8 @@ pub enum PluginRaftOp {
     /// in practice the code would be a nightmare to write and maintain.
     /// It would be much easier if we supported FOREIGN KEY/ON DELETE CASCADE.
     RemovePlugin { ident: PluginIdentifier },
+    /// Abort one of the mutlistage plugin change operations.
+    Abort { cause: ErrorInfo },
 }
 
 ////////////////////////////////////////////////////////////////////////////////

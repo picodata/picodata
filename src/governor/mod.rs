@@ -502,12 +502,11 @@ impl Loop {
             Plan::InstallPlugin(InstallPlugin {
                 targets,
                 rpc,
-                mut success_ops,
-                cleanup_op,
+                success_dml,
             }) => {
                 set_status(governor_status, "install new plugin");
 
-                let mut ops = vec![cleanup_op];
+                let mut next_op = None;
                 governor_step! {
                     "checking if plugin is ready for installation on instances"
                     async {
@@ -527,25 +526,31 @@ impl Loop {
                                         tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
                                             "instance_id" => %instance_id
                                         );
-                                        Err(e)
+                                        Err(ErrorInfo::new(instance_id.clone(), e))
                                     }
                                 }
                             });
                         }
 
-                        if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
+                        if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5 + 1)).await {
                             tlog!(Error, "Plugin installation aborted: {e}");
+
+                            let cause = match e {
+                                TimeoutError::Failed(cause) => cause,
+                                TimeoutError::Expired => ErrorInfo::timeout("<unknown>", "no response"),
+                            };
+                            next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
                             return Ok(());
                         }
 
-                        ops.append(&mut success_ops);
+                        next_op = Some(success_dml);
                     }
                 }
 
-                let op = Op::BatchDml { ops };
                 governor_step! {
                     "finalizing plugin installing"
                     async {
+                        let op = next_op.expect("is set on the first substep");
                         node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
@@ -628,10 +633,9 @@ impl Loop {
                 enable_rpc,
                 disable_rpc,
                 success_dml,
-                finalize_dml,
             }) => {
                 set_status(governor_status, "update plugin service topology");
-                let mut next_ops = vec![finalize_dml];
+                let mut next_op = None;
 
                 // FIXME: this step is overcomplicated and there's probably some
                 // corner cases in which it may lead to inconsistent state.
@@ -659,7 +663,7 @@ impl Loop {
                                         tlog!(Error, "failed to call proc_enable_service: {e}";
                                             "instance_id" => %instance_id
                                         );
-                                        Err(e)
+                                        Err(ErrorInfo::new(instance_id.clone(), e))
                                     }
                                 }
                             });
@@ -667,6 +671,13 @@ impl Loop {
 
                         if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
                             tlog!(Error, "Enabling plugins fail with: {e}, rollback and abort");
+
+                            let cause = match e {
+                                TimeoutError::Failed(cause) => cause,
+                                TimeoutError::Expired => ErrorInfo::timeout("<unknown>", "no response"),
+                            };
+                            next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
+
                             // try to disable plugins at all instances
                             // where it was enabled previously
                             let mut fs = vec![];
@@ -674,6 +685,10 @@ impl Loop {
                                 let resp = pool.call(instance_id, proc_name!(proc_disable_service), &disable_rpc, Duration::from_secs(5))?;
                                 fs.push(resp);
                             }
+                            // FIXME: over here we completely ignore the result of the RPC above.
+                            // This means that the service may still be enabled on some (or even all) instances
+                            // while the global state says that it's disabled everywhere
+                            // https://git.picodata.io/picodata/picodata/picodata/-/issues/600
                             _ = try_join_all(fs).timeout(Duration::from_secs(5)).await;
                             return Ok(());
                         }
@@ -686,16 +701,14 @@ impl Loop {
                         }
                         try_join_all(fs).timeout(Duration::from_secs(5)).await?;
 
-                        next_ops.extend(success_dml);
+                        next_op = Some(success_dml);
                     }
                 }
 
                 governor_step! {
                     "finalizing topology update"
                     async {
-                        let op = Op::BatchDml {
-                            ops: next_ops,
-                        };
+                        let op = next_op.expect("is set on the first substep");
                         node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }

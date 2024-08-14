@@ -53,12 +53,12 @@ pub fn set_plugin_dir(path: &Path) {
 pub enum PluginError {
     #[error("Plugin `{0}` already exists")]
     AlreadyExist(PluginIdentifier),
-    #[error("Error while install the plugin")]
-    InstallationAborted,
+    #[error("Failed to install plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
+    InstallationAborted(PluginIdentifier, Option<ErrorInfo>),
     #[error("Failed to enable plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
     EnablingAborted(PluginIdentifier, Option<ErrorInfo>),
-    #[error("Error while update plugin topology")]
-    TopologyUpdateAborted,
+    #[error("Failed to update topology for plugin `{0}`: {}", DisplaySomeOrDefault(.1, "unknown reason"))]
+    TopologyUpdateAborted(PluginIdentifier, Option<ErrorInfo>),
     #[error("Error while discovering manifest for plugin `{0}`: {1}")]
     ManifestNotFound(String, io::Error),
     #[error("Error while parsing manifest `{0}`, reason: {1}")]
@@ -612,17 +612,38 @@ pub fn install_plugin(
         // Fail if someone updates this plugin record
         Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
     ];
-    let mut index = reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let index_of_prepare =
+        reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
 
+    let mut index = index_of_prepare;
     while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
     if node.storage.plugins.get(&ident)?.is_none() {
-        return Err(PluginError::InstallationAborted.into());
+        let cause = lookup_abort_cause(node, index_of_prepare)?;
+        return Err(PluginError::InstallationAborted(ident.clone(), cause).into());
     }
 
     Ok(())
+}
+
+fn lookup_abort_cause(
+    node: &Node,
+    index_of_prepare: RaftIndex,
+) -> traft::Result<Option<ErrorInfo>> {
+    let log_tail = node
+        .raft_storage
+        .entries(index_of_prepare + 1, u64::MAX, None)?;
+    for entry in log_tail {
+        let Some(Op::Plugin(PluginRaftOp::Abort { cause })) = entry.into_op() else {
+            continue;
+        };
+
+        return Ok(Some(cause));
+    }
+
+    Ok(None)
 }
 
 pub fn migration_up(
@@ -1043,25 +1064,28 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
         // Fail if someone proposes another plugin operation
         Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
     ];
-    let mut index = reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let index_of_prepare =
+        reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
 
+    let mut index = index_of_prepare;
     while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    let service = node
-        .storage
-        .services
-        .get(ident, upd_op.service_name())?
-        .ok_or(PluginError::TopologyUpdateAborted)?;
+    let Some(service) = node.storage.services.get(ident, upd_op.service_name())? else {
+        return Err(
+            PluginError::ServiceNotFound(upd_op.service_name().to_string(), ident.clone()).into(),
+        );
+    };
 
     let contains = service.tiers.iter().any(|t| t == upd_op.tier());
-    if matches!(upd_op, TopologyUpdateOp::Append { .. }) {
-        if !contains {
-            return Err(PluginError::TopologyUpdateAborted.into());
-        }
-    } else if contains {
-        return Err(PluginError::TopologyUpdateAborted.into());
+    let op_failed = match upd_op {
+        TopologyUpdateOp::Append { .. } => !contains,
+        TopologyUpdateOp::Remove { .. } => contains,
+    };
+    if op_failed {
+        let cause = lookup_abort_cause(node, index_of_prepare)?;
+        return Err(PluginError::TopologyUpdateAborted(ident.clone(), cause).into());
     }
 
     Ok(())

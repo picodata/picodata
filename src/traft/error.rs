@@ -241,11 +241,21 @@ pub struct ErrorInfo {
 
 impl ErrorInfo {
     #[inline(always)]
-    pub fn timeout(instance_id: InstanceId, message: impl Into<String>) -> Self {
+    pub fn timeout(instance_id: impl Into<InstanceId>, message: impl Into<String>) -> Self {
         Self {
             error_code: TarantoolErrorCode::Timeout as _,
             message: message.into(),
-            instance_id,
+            instance_id: instance_id.into(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn new(instance_id: impl Into<InstanceId>, error: impl IntoBoxError) -> Self {
+        let box_error = error.into_box_error();
+        Self {
+            error_code: box_error.error_code(),
+            message: box_error.message().into(),
+            instance_id: instance_id.into(),
         }
     }
 

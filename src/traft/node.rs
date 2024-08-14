@@ -1288,7 +1288,7 @@ impl NodeImpl {
                         .delete_by_plugin(&ident)
                         .expect("hallelujah");
 
-                    // XXX this place is not ideal. This is the only case when we delete the "pending_plugin_operation"
+                    // XXX this place is not ideal. This is one of the few cases when we delete the "pending_plugin_operation"
                     // via a special raft operation. In all other cases we use Op::Dml for this. The problem is, there's
                     // no way to batch a Op::Dml with a Op::Plugin(DisablePlugin), but we do need this right now in our
                     // governor algorithm.
@@ -1359,6 +1359,23 @@ impl NodeImpl {
                         .plugin_migrations
                         .delete_all_by_plugin(&ident.name)
                         .expect("say it with me");
+                }
+            }
+
+            Op::Plugin(PluginRaftOp::Abort { .. }) => {
+                // XXX here we delete the "pending_plugin_operation" from
+                // `_pico_property` via a special raft operation but in other
+                // places we do it via Dml. This inconsistency is not ideal,
+                // but currently there's no way around this as we can't batch
+                // non-dml operations with dml ones
+                let t = self
+                    .storage
+                    .properties
+                    .delete(PropertyName::PendingPluginOperation)
+                    .expect("storage food shot nail");
+                if t.is_none() {
+                    #[rustfmt::skip]
+                    warn_or_panic!("expected a 'pending_plugin_operation' to be in `_pico_property`");
                 }
             }
 

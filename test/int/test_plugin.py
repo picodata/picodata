@@ -339,7 +339,10 @@ def test_invalid_manifest_plugin(cluster: Cluster):
     ).assert_synced()
 
     # try to use invalid manifest (with non-existed extra service)
-    with pytest.raises(ReturnError, match="Error while install the plugin"):
+    with pytest.raises(
+        ReturnError,
+        match=r'Other: Plugin partial load \(some of services not found: \["testservice_0"\]\)',
+    ):
         i1.call("pico.install_plugin", "testplug_broken_manifest_3", "0.1.0")
     PluginReflection(
         "testplug_broken_manifest_3",
@@ -1812,7 +1815,9 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
     # inject error into tier "blue"
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
 
-    with pytest.raises(ReturnError, match="Error while update plugin topology"):
+    with pytest.raises(
+        ReturnError, match="Callback: on_start: box error #333: error at `on_start`"
+    ):
         i1.call(
             "pico.service_append_tier",
             _PLUGIN,
