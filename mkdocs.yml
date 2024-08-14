@@ -43,6 +43,9 @@ nav:
     - tutorial/monitoring.md
     - tutorial/audit_log.md
     - tutorial/backup.md
+    - Использование внешних коннекторов к Picodata:
+      - Оглавление: connectors_index.md
+      - tutorial/connectors/java.md
   - Справочные материалы:
     - Язык SQL:
       - Оглавление: sql_index.md

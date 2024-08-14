@@ -32,6 +32,7 @@ Picodata — это распределенная система промышле
 * [Мониторинг кластера](tutorial/monitoring.md)
 * [Использование журнала аудита](tutorial/audit_log.md)
 * [Резервное копирование](tutorial/backup.md)
+* [Использование внешних коннекторов к Picodata](connectors_index.md)
 
 ### Справочные материалы {: #reference }
 
