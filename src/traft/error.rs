@@ -4,8 +4,8 @@ use crate::error_code::ErrorCode;
 use crate::instance::InstanceId;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
-use tarantool::error::BoxError;
 use tarantool::error::IntoBoxError;
+use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::fiber::r#async::timeout;
 use tarantool::tlua::LuaError;
 use thiserror::Error;
@@ -215,5 +215,51 @@ impl IntoBoxError for Error {
             // TODO: give other error types specific codes
             other => BoxError::new(ErrorCode::Other, other.to_string()),
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ErrorInfo
+////////////////////////////////////////////////////////////////////////////////
+
+/// This is a serializable version of [`BoxError`].
+///
+/// TODO<https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/221> just make BoxError serializable.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct ErrorInfo {
+    pub error_code: u32,
+    pub message: String,
+    pub instance_id: InstanceId,
+}
+
+impl ErrorInfo {
+    #[inline(always)]
+    pub fn timeout(instance_id: InstanceId, message: impl Into<String>) -> Self {
+        Self {
+            error_code: TarantoolErrorCode::Timeout as _,
+            message: message.into(),
+            instance_id,
+        }
+    }
+}
+
+impl std::fmt::Display for ErrorInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "[instance_id:{}] ", self.instance_id)?;
+        if let Some(c) = ErrorCode::from_i64(self.error_code as _) {
+            write!(f, "{c:?}")?;
+        } else if let Some(c) = TarantoolErrorCode::from_i64(self.error_code as _) {
+            write!(f, "{c:?}")?;
+        } else {
+            write!(f, "#{}", self.error_code)?;
+        }
+        write!(f, ": {}", self.message)
+    }
+}
+
+impl IntoBoxError for ErrorInfo {
+    #[inline]
+    fn error_code(&self) -> u32 {
+        self.error_code
     }
 }

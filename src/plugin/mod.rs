@@ -6,6 +6,7 @@ pub mod topology;
 
 use once_cell::unsync;
 use picoplugin::background::ServiceId;
+use picoplugin::error_code::ErrorCode;
 use picoplugin::plugin::interface::ServiceBox;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -14,7 +15,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
-use tarantool::error::BoxError;
+use tarantool::error::{BoxError, IntoBoxError};
 use tarantool::fiber;
 use tarantool::time::Instant;
 
@@ -61,8 +62,6 @@ pub enum PluginError {
     ManifestNotFound(String, io::Error),
     #[error("Error while parsing manifest `{0}`, reason: {1}")]
     InvalidManifest(String, Box<dyn std::error::Error>),
-    #[error("`{0}` service defenition not found")]
-    ServiceDefenitionNotFound(String),
     #[error("Read plugin_dir: {0}")]
     ReadPluginDir(#[from] io::Error),
     #[error("Invalid shared object file: {0}")]
@@ -97,6 +96,16 @@ pub enum PluginError {
     AmbiguousInstallCandidate,
     #[error("Cannot specify enable candidate (there should be only one installed plugin version)")]
     AmbiguousEnableCandidate,
+}
+
+impl IntoBoxError for PluginError {
+    #[inline(always)]
+    fn error_code(&self) -> u32 {
+        match self {
+            Self::ServiceNotFound { .. } => ErrorCode::NoSuchService as _,
+            _ => ErrorCode::Other as _,
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]

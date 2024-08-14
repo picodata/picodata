@@ -28,6 +28,7 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tlog;
 use crate::traft::error::Error;
+use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
@@ -178,13 +179,13 @@ impl Loop {
         #[derive(Debug)]
         enum OnError {
             Retry(Error),
-            Abort,
+            Abort(ErrorInfo),
         }
         impl From<OnError> for Error {
             fn from(e: OnError) -> Error {
                 match e {
                     OnError::Retry(e) => e,
-                    OnError::Abort => Error::other("schema change was aborted"),
+                    OnError::Abort(_) => unreachable!("we never convert Abort to Error"),
                 }
             }
         }
@@ -457,11 +458,11 @@ impl Loop {
                                         );
                                         Ok(())
                                     }
-                                    Ok(rpc::ddl_apply::Response::Abort { reason }) => {
-                                        tlog!(Error, "failed to apply schema change on instance: {reason}";
+                                    Ok(rpc::ddl_apply::Response::Abort { cause }) => {
+                                        tlog!(Error, "failed to apply schema change on instance: {cause}";
                                             "instance_id" => %instance_id,
                                         );
-                                        Err(OnError::Abort)
+                                        Err(OnError::Abort(cause))
                                     }
                                     Err(e) => {
                                         tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
@@ -474,7 +475,7 @@ impl Loop {
                         }
                         // TODO: don't hard code timeout
                         let res = try_join_all(fs).timeout(Duration::from_secs(3)).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort)) = res {
+                        if let Err(TimeoutError::Failed(OnError::Abort(_cause))) = res {
                             next_op = Op::DdlAbort;
                             return Ok(());
                         }
@@ -525,14 +526,14 @@ impl Loop {
                                         tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
                                             "instance_id" => %instance_id
                                         );
-                                        Err(OnError::Abort)
+                                        Err(e)
                                     }
                                 }
                             });
                         }
 
                         if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
-                            tlog!(Error, "Plugin installation aborted: {e:?}");
+                            tlog!(Error, "Plugin installation aborted: {e}");
                             return Ok(());
                         }
 
@@ -569,22 +570,20 @@ impl Loop {
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::enable_plugin::Response::Ok) => {
-                                        tlog!(Info, "load plugin on instance";
-                                            "instance_id" => %instance_id,
-                                        );
+                                        tlog!(Info, "enable plugin on instance"; "instance_id" => %instance_id);
                                         Ok(())
                                     }
-                                    Ok(rpc::enable_plugin::Response::Abort { reason }) => {
-                                        tlog!(Error, "failed to load plugin at instance: {reason}";
+                                    Ok(rpc::enable_plugin::Response::Abort { cause }) => {
+                                        tlog!(Error, "failed to enable plugin at instance: {cause}";
                                             "instance_id" => %instance_id,
                                         );
-                                        Err(OnError::Abort)
+                                        Err(OnError::Abort(cause))
                                     }
                                     Err(Error::Timeout) => {
-                                        tlog!(Error, "failed to load plugin at instance: timeout";
+                                        tlog!(Error, "failed to enable plugin at instance: timeout";
                                             "instance_id" => %instance_id,
                                         );
-                                        Err(OnError::Abort)
+                                        Err(OnError::Abort(ErrorInfo::timeout(instance_id.clone(), "failed to enable plugin")))
                                     }
                                     Err(e) => {
                                         tlog!(Warning, "failed calling proc_load_plugin: {e}";
@@ -597,7 +596,7 @@ impl Loop {
                         }
 
                         let enable_result = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort)) = enable_result {
+                        if let Err(TimeoutError::Failed(OnError::Abort(_cause))) = enable_result {
                             next_op = Some(rollback_op);
                             return Ok(());
                         }

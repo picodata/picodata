@@ -7,9 +7,11 @@ use crate::storage::{ddl_rename_function_on_master, Clusterwide};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::tlog;
 use crate::traft::error::Error as TraftError;
+use crate::traft::error::ErrorInfo;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
+use tarantool::error::IntoBoxError;
 use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::transaction::{transaction, TransactionError};
 
@@ -60,7 +62,14 @@ crate::define_rpc_request! {
             Ok(()) => Ok(Response::Ok),
             Err(TransactionError::RolledBack(Error::Aborted(err))) => {
                 tlog!(Warning, "schema change aborted: {err}");
-                Ok(Response::Abort { reason: err})
+
+                let instance_id = node.raft_storage.instance_id()?.expect("should be persisted before procs are defined");
+                let cause = ErrorInfo {
+                    error_code: err.error_code(),
+                    message: err.to_string(),
+                    instance_id,
+                };
+                Ok(Response::Abort { cause })
             }
             Err(err) => {
                 tlog!(Warning, "applying schema change failed: {err}");
@@ -80,7 +89,7 @@ crate::define_rpc_request! {
         Ok,
         /// Schema change failed on this instance and should be aborted on the
         /// whole cluster.
-        Abort { reason: String },
+        Abort { cause: ErrorInfo },
     }
 }
 
@@ -89,7 +98,7 @@ pub enum Error {
     /// Schema change failed on this instance and should be aborted on the
     /// whole cluster.
     #[error("{0}")]
-    Aborted(String),
+    Aborted(TraftError),
 
     #[error("{0}")]
     Other(TraftError),
@@ -127,7 +136,7 @@ pub fn apply_schema_change(
                         tlog!(Error, "{}:{}: {e}", file, line);
                     }
                 }
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e.into()));
             }
         }
 
@@ -139,13 +148,13 @@ pub fn apply_schema_change(
 
             let abort_reason = ddl_drop_space_on_master(id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e.into()));
             }
         }
 
         Ddl::CreateProcedure { id, .. } => {
             if let Err(e) = ddl_create_function_on_master(storage, id) {
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e));
             }
         }
 
@@ -156,7 +165,7 @@ pub fn apply_schema_change(
 
             let abort_reason = ddl_drop_function_on_master(id).map_err(Error::Other)?;
             if let Some(e) = abort_reason {
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e.into()));
             }
         }
 
@@ -166,7 +175,7 @@ pub fn apply_schema_change(
             ..
         } => {
             if let Err(e) = ddl_rename_function_on_master(storage, routine_id, new_name) {
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e));
             }
         }
 
@@ -174,7 +183,7 @@ pub fn apply_schema_change(
             space_id, index_id, ..
         } => {
             if let Err(e) = ddl_create_index_on_master(storage, space_id, index_id) {
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e));
             }
         }
 
@@ -186,13 +195,13 @@ pub fn apply_schema_change(
             }
 
             if let Err(e) = ddl_drop_index_on_master(space_id, index_id) {
-                return Err(Error::Aborted(e.to_string()));
+                return Err(Error::Aborted(e));
             }
         }
     }
 
     if let Err(e) = set_local_schema_version(version) {
-        return Err(Error::Aborted(e.to_string()));
+        return Err(Error::Aborted(e.into()));
     }
 
     Ok(())

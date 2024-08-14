@@ -1,9 +1,11 @@
 use crate::plugin::PluginOp;
 use crate::tlog;
 use crate::traft::error::Error;
+use crate::traft::error::ErrorInfo;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
 use std::time::Duration;
+use tarantool::error::IntoBoxError;
 
 crate::define_rpc_request! {
     /// Forces the target instance to actually enable the plugin locally.
@@ -37,7 +39,14 @@ crate::define_rpc_request! {
              Ok(()) => Ok(Response::Ok),
              Err(err) => {
                 tlog!(Warning, "plugin enabling aborted: {err}");
-                Ok(Response::Abort { reason: err.to_string() })
+
+                let instance_id = node.raft_storage.instance_id()?.expect("should be persisted before procs are defined");
+                let cause = ErrorInfo {
+                    error_code: err.error_code(),
+                    message: err.to_string(),
+                    instance_id,
+                };
+                Ok(Response::Abort { cause })
             }
         }
     }
@@ -53,6 +62,6 @@ crate::define_rpc_request! {
         Ok,
         /// Plugin loaded failed on this instance and should be aborted on the
         /// whole cluster.
-        Abort { reason: String },
+        Abort { cause: ErrorInfo },
     }
 }
