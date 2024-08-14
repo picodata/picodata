@@ -225,8 +225,13 @@ impl std::fmt::Display for Op {
             }) => {
                 write!(f, "UpdatePluginConfig({ident}, {service_name})")
             }
-            Op::Plugin(PluginRaftOp::DisablePlugin { ident }) => {
-                write!(f, "DisablePlugin({ident})")
+            Op::Plugin(PluginRaftOp::DisablePlugin {
+                ident,
+                is_automatic,
+            }) => {
+                #[rustfmt::skip]
+                write!(f, "DisablePlugin({ident}{})", if *is_automatic { ", automatic" } else { "" })?;
+                Ok(())
             }
             Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
                 write!(f, "RemovePlugin({ident})")
@@ -815,7 +820,15 @@ pub enum PluginRaftOp {
         config: rmpv::Value,
     },
     /// Disable selected plugin.
-    DisablePlugin { ident: PluginIdentifier },
+    DisablePlugin {
+        ident: PluginIdentifier,
+        /// If `true`, the operation was generated automatically in response to
+        /// [`PluginOp::EnablePlugin`] which failed on some instances.
+        /// If `false` then the operation is proposed by the user's request to disable the pugin.
+        ///
+        /// [`PluginOp::EnablePlugin`]: crate::plugin::PluginOp::EnablePlugin
+        is_automatic: bool,
+    },
     /// Remove records for the given plugin and records in other tables which
     /// indirectly depend on it (foreign keys).
     ///

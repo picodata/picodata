@@ -1523,10 +1523,11 @@ impl Properties {
         Ok(())
     }
 
+    /// Returns the deleted tuple if it was deleted, `None` if there was no
+    /// tuple with the given `key`.
     #[inline]
-    pub fn delete(&self, key: PropertyName) -> tarantool::Result<()> {
-        self.space.delete(&[key])?;
-        Ok(())
+    pub fn delete(&self, key: PropertyName) -> tarantool::Result<Option<Tuple>> {
+        self.space.delete(&[key])
     }
 
     #[inline]

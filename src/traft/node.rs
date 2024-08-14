@@ -1269,7 +1269,10 @@ impl NodeImpl {
                 }
             }
 
-            Op::Plugin(PluginRaftOp::DisablePlugin { ident }) => {
+            Op::Plugin(PluginRaftOp::DisablePlugin {
+                ident,
+                is_automatic,
+            }) => {
                 let plugin = self
                     .storage
                     .plugins
@@ -1287,8 +1290,26 @@ impl NodeImpl {
                         .service_route_table
                         .delete_by_plugin(&ident)
                         .expect("hallelujah");
+
+                    // XXX this place is not ideal. This is the only case when we delete the "pending_plugin_operation"
+                    // via a special raft operation. In all other cases we use Op::Dml for this. The problem is, there's
+                    // no way to batch a Op::Dml with a Op::Plugin(DisablePlugin), but we do need this right now in our
+                    // governor algorithm.
+                    // The better solution would be to redesign the governor's algorithm for enabling/disabling plugins.
+                    // But for now this is not fine, the only drawback is inconsistency which is not critical.
+                    if is_automatic {
+                        let t = self
+                            .storage
+                            .properties
+                            .delete(PropertyName::PendingPluginOperation)
+                            .expect("storage food shot nail");
+                        if t.is_none() {
+                            #[rustfmt::skip]
+                            warn_or_panic!("expected a 'pending_plugin_operation' to be in `_pico_property`");
+                        }
+                    }
                 } else {
-                    // FIXME: this should never happen
+                    warn_or_panic!("got DisablePlugin for a non existent plugin: {ident}, is_automatic: {is_automatic}");
                 }
 
                 if let Err(e) = self

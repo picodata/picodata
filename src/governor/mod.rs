@@ -555,10 +555,9 @@ impl Loop {
                 rollback_op,
                 on_start_timeout,
                 success_dml,
-                finalize_dml,
             }) => {
                 set_status(governor_status, "enable plugin");
-                let mut next_ops = vec![finalize_dml];
+                let mut next_op = None;
 
                 governor_step! {
                     "enabling plugin"
@@ -599,22 +598,22 @@ impl Loop {
 
                         let enable_result = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
                         if let Err(TimeoutError::Failed(OnError::Abort)) = enable_result {
-                            node.propose_and_wait(rollback_op, Duration::from_secs(3))?;
+                            next_op = Some(rollback_op);
                             return Ok(());
                         }
 
+                        // Return error if this is a retriable error
                         enable_result?;
 
-                        next_ops.extend(success_dml);
+                        next_op = Some(success_dml);
                     }
                 }
 
                 governor_step! {
                     "finalizing plugin enabling"
                     async {
-                        node.propose_and_wait(Op::BatchDml {
-                            ops: next_ops,
-                        }, Duration::from_secs(3))?;
+                        let op = next_op.expect("is set on the first substep");
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -630,6 +629,15 @@ impl Loop {
                 set_status(governor_status, "update plugin service topology");
                 let mut next_ops = vec![finalize_dml];
 
+                // FIXME: this step is overcomplicated and there's probably some
+                // corner cases in which it may lead to inconsistent state.
+                // For example in case of network partition it may lead to
+                // services being enabled on instances for which the corresponding
+                // records in _pico_service_route show otherwise.
+                // Perhaps it's easier to fix these types of issues by
+                // introducing the plugin healthcheck system, but it's
+                // nevertheless concerning that there could be cases where this
+                // type of inconsistency could lead to some scary things.
                 governor_step! {
                     "enabling/disabling service at new tiers"
                     async {
@@ -681,9 +689,10 @@ impl Loop {
                 governor_step! {
                     "finalizing topology update"
                     async {
-                        node.propose_and_wait(Op::BatchDml {
+                        let op = Op::BatchDml {
                             ops: next_ops,
-                        }, Duration::from_secs(3))?;
+                        };
+                        node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }
             }

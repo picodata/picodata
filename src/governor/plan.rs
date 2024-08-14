@@ -526,6 +526,7 @@ pub(super) fn action_plan<'i>(
         let rollback_op = PluginRaftOp::DisablePlugin {
             // TODO: add disable reason here
             ident: ident.clone(),
+            is_automatic: true,
         };
         let rollback_op = Op::Plugin(rollback_op);
 
@@ -571,10 +572,8 @@ pub(super) fn action_plan<'i>(
             }
             (_, Some(plugin)) => {
                 targets = Vec::with_capacity(instances.len());
-                for i in instances {
-                    if i.may_respond() {
-                        targets.push(&i.instance_id);
-                    }
+                for i in maybe_responding(instances) {
+                    targets.push(&i.instance_id);
                 }
 
                 let mut enable_ops = UpdateOps::new();
@@ -605,17 +604,19 @@ pub(super) fn action_plan<'i>(
             }
         }
 
+        success_dml.push(Dml::delete(
+            ClusterwideTable::Property,
+            &[PropertyName::PendingPluginOperation],
+            ADMIN_ID,
+        )?);
+        let success_dml = Op::BatchDml { ops: success_dml };
+
         return Ok(EnablePlugin {
             rpc,
             targets,
             on_start_timeout: *on_start_timeout,
             rollback_op,
             success_dml,
-            finalize_dml: Dml::delete(
-                ClusterwideTable::Property,
-                &[PropertyName::PendingPluginOperation],
-                ADMIN_ID,
-            )?,
         }
         .into());
     }
@@ -647,11 +648,7 @@ pub(super) fn action_plan<'i>(
         // note: no need to enable/disable service and update routing table if plugin disabled
         if plugin_def.enabled {
             let plugin_ident = plugin_def.identifier();
-            for i in instances {
-                if !i.may_respond() {
-                    continue;
-                }
-
+            for i in maybe_responding(instances) {
                 // if instance in both new and old tiers - do nothing
                 if new_tiers.contains(&i.tier) && old_tiers.contains(&i.tier) {
                     continue;
@@ -875,7 +872,7 @@ pub mod stage {
         pub struct InstallPlugin<'i> {
             /// This is every instance which is currently online.
             pub targets: Vec<&'i InstanceId>,
-            /// Request to call [`rpc::load_plugin_dry_run::load_plugin_dry_run`] on `targets`.
+            /// Request to call [`rpc::load_plugin_dry_run::proc_load_plugin_dry_run`] on `targets`.
             pub rpc: rpc::load_plugin_dry_run::Request,
             /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config` in case of success.
             pub success_ops: Vec<Dml>,
@@ -884,12 +881,17 @@ pub mod stage {
         }
 
         pub struct EnablePlugin<'i> {
+            /// This is every instance which is currently online.
             pub targets: Vec<&'i InstanceId>,
+            /// Request to call [`rpc::enable_plugin::proc_enable_plugin`] on `targets`.
             pub rpc: rpc::enable_plugin::Request,
-            pub rollback_op: Op,
+            /// Rpc response must arive within this timeout. Otherwise the operation is rolled back.
             pub on_start_timeout: Duration,
-            pub success_dml: Vec<Dml>,
-            pub finalize_dml: Dml,
+            /// [`PluginRaftOp::DisablePlugin`] which will be proposed in case rpc fails on some of the instances.
+            pub rollback_op: Op,
+            /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
+            /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
+            pub success_dml: Op,
         }
 
         pub struct UpdatePluginTopology<'i> {

@@ -819,6 +819,7 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 
         let op = PluginRaftOp::DisablePlugin {
             ident: ident.clone(),
+            is_automatic: false,
         };
         Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
     };
