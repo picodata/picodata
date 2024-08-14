@@ -103,6 +103,18 @@ impl std::fmt::Display for DisplayIdOfInstance<'_> {
 }
 
 impl Error {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            Self::Tarantool(e) => e.error_code(),
+            Self::NotALeader => ErrorCode::NotALeader as _,
+            Self::Other { .. } => ErrorCode::Other as _,
+            Self::NoSuchInstance { .. } => ErrorCode::NoSuchInstance as _,
+            Self::NoSuchReplicaset { .. } => ErrorCode::NoSuchReplicaset as _,
+            // TODO: give other error types specific codes
+            _ => ErrorCode::Other as _,
+        }
+    }
+
     #[inline(always)]
     pub fn other<E>(error: E) -> Self
     where
@@ -199,21 +211,16 @@ where
 }
 
 impl IntoBoxError for Error {
+    fn error_code(&self) -> u32 {
+        self.error_code()
+    }
+
     #[inline]
     #[track_caller]
     fn into_box_error(self) -> BoxError {
         match self {
             Self::Tarantool(e) => e.into_box_error(),
-            Self::NotALeader => BoxError::new(ErrorCode::NotALeader, "not a leader"),
-            Self::Other(e) => BoxError::new(ErrorCode::Other, e.to_string()),
-            Self::NoSuchInstance { .. } => {
-                BoxError::new(ErrorCode::NoSuchInstance, self.to_string())
-            }
-            Self::NoSuchReplicaset { .. } => {
-                BoxError::new(ErrorCode::NoSuchReplicaset, self.to_string())
-            }
-            // TODO: give other error types specific codes
-            other => BoxError::new(ErrorCode::Other, other.to_string()),
+            _ => BoxError::new(self.error_code(), self.to_string()),
         }
     }
 }
