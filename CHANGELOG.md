@@ -49,6 +49,29 @@ with the `YY.MINOR.MICRO` scheme.
   Running `picodata run --listen :3302` without implicit `--peer` specified
   now bootstraps a new cluster. The old behavior was to join `:3301` by default.
 
+### Lua API
+
+- Update `pico.LUA_API_VERSION`: `3.1.0` -> `4.0.0`
+- The following functions removed in favor of SQL commands and RPC API
+  stored procedures:
+  * `pico.change_password` -> [ALTER USER]
+  * `pico.create_role` -> [CREATE ROLE]
+  * `pico.create_user` -> [CREATE USER]
+  * `pico.drop_role` -> [DROP ROLE]
+  * `pico.drop_user` -> [DROP USER]
+  * `pico.grant_privilege` -> [GRANT]
+  * `pico.raft_get_index` -> [.proc_get_index]
+  * `pico.revoke_privilege` -> [REVOKE]
+
+[ALTER USER]: https://docs.picodata.io/picodata/devel/reference/sql/alter_user/
+[CREATE ROLE]: https://docs.picodata.io/picodata/devel/reference/sql/create_role/
+[CREATE USER]: https://docs.picodata.io/picodata/devel/reference/sql/create_user/
+[DROP ROLE]: https://docs.picodata.io/picodata/devel/reference/sql/drop_role/
+[DROP USER]: https://docs.picodata.io/picodata/devel/reference/sql/drop_user/
+[GRANT]: https://docs.picodata.io/picodata/devel/reference/sql/grant/
+[REVOKE]: https://docs.picodata.io/picodata/devel/reference/sql/revoke/
+[.proc_get_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_get_index
+
 --------------------------------------------------------------------------------
 ## [24.4.1] - 2024-06-21
 
