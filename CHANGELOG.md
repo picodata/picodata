@@ -28,26 +28,26 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Set up password for admin with `PICODATA_ADMIN_PASSWORD` environment variable
 
-- Multiline input is available in `picodata admin` and `picodata connect`.
+- Multiline input is available in `picodata admin` and `picodata connect`
 
-- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`.
+- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`
 
 - New option `picodata run --tier` specifies whether an
-  instance belongs to a tier.
+  instance belongs to a tier
 
 - New rpc entrypoint: `.proc_get_config` which returns the effective
-  picodata configuration.
+  picodata configuration
 
-  ### Compatibility
+### Compatibility
 
-- New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`.
+- New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`
 
-- Changed `weight` column type to DOUBLE  in `_pico_replicaset`.
+- Changed `weight` column type to DOUBLE in `_pico_replicaset`
 
 - Option `picodata run --peer` now defaults to `--advertise` value.
   The previous was `localhost:3301`. This leads to the important behavior change.
   Running `picodata run --listen :3302` without implicit `--peer` specified
-  now bootstraps a new cluster. The old behavior was to join `:3301` by default.
+  now bootstraps a new cluster. The old behavior was to join `:3301` by default
 
 ### Lua API
 
