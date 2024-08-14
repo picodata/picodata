@@ -1,39 +1,3 @@
-use ahash::AHashSet;
-use sbroad::ir::ddl::{Language, ParamDef};
-use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
-use std::fmt::Display;
-use std::str::FromStr;
-use std::time::Duration;
-use tarantool::decimal::Decimal;
-use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, RtreeIndexDistanceType};
-
-use tarantool::auth::AuthData;
-use tarantool::auth::AuthDef;
-use tarantool::auth::AuthMethod;
-use tarantool::error::TarantoolError;
-use tarantool::error::TarantoolErrorCode;
-use tarantool::fiber;
-use tarantool::msgpack;
-use tarantool::session::{with_su, UserId};
-use tarantool::set_error;
-use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
-use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
-use tarantool::transaction::{transaction, TransactionError};
-use tarantool::{
-    index::IndexId,
-    index::IteratorType,
-    index::Metadata as IndexMetadata,
-    space::SpaceId,
-    tlua::{self, LuaRead},
-    tuple::Encode,
-    util::{NumOrStr, Value},
-};
-
-use sbroad::ir::value::Value as IrValue;
-
-use serde::{Deserialize, Serialize};
-
 use crate::access_control::UserMetadataKind;
 use crate::cas::{self, compare_and_swap, Request};
 use crate::config::DEFAULT_USERNAME;
@@ -48,6 +12,37 @@ use crate::traft::error::Error;
 use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, node, RaftIndex};
 use crate::util::effective_user_id;
+use ahash::AHashSet;
+use sbroad::ir::ddl::{Language, ParamDef};
+use sbroad::ir::value::Value as IrValue;
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashSet};
+use std::fmt::Display;
+use std::str::FromStr;
+use std::time::Duration;
+use tarantool::auth::AuthData;
+use tarantool::auth::AuthDef;
+use tarantool::auth::AuthMethod;
+use tarantool::decimal::Decimal;
+use tarantool::error::TarantoolError;
+use tarantool::error::TarantoolErrorCode;
+use tarantool::fiber;
+use tarantool::index::IndexId;
+use tarantool::index::IteratorType;
+use tarantool::index::Metadata as IndexMetadata;
+use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, RtreeIndexDistanceType};
+use tarantool::msgpack;
+use tarantool::session::{with_su, UserId};
+use tarantool::set_error;
+use tarantool::space::SpaceId;
+use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
+use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
+use tarantool::tlua;
+use tarantool::tlua::LuaRead;
+use tarantool::transaction::{transaction, TransactionError};
+use tarantool::tuple::Encode;
+use tarantool::util::{NumOrStr, Value};
 
 /// The initial local schema version. Immediately after the cluster is bootted
 /// it has this schema version.
