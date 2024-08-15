@@ -287,6 +287,7 @@ rows [[2, Vasya, 2000]]
         }
     }
     ```
+
 ??? example "docker-compose.yml"
     ```
     ---
