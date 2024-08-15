@@ -3901,16 +3901,7 @@ impl PluginMigration {
         }]
     }
 
-    pub fn delete_all_by_plugin(&self, plugin_name: &str) -> tarantool::Result<()> {
-        let records = self.get_files_by_plugin(plugin_name)?;
-        for record in records {
-            self.space
-                .delete(&(record.plugin_name, record.migration_file))?;
-        }
-        Ok(())
-    }
-
-    pub fn get_files_by_plugin(
+    pub fn get_by_plugin(
         &self,
         plugin_name: &str,
     ) -> tarantool::Result<Vec<PluginMigrationRecord>> {

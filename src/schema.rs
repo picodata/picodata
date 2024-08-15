@@ -524,7 +524,6 @@ pub struct ServiceDef {
     /// Service version must be the same as a plugin version.
     pub version: String,
     /// List of tiers where service must be running.
-    // FIXME: for future improvements
     pub tiers: Vec<String>,
     /// Plugin description
     pub description: String,

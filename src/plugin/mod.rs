@@ -662,10 +662,7 @@ pub fn migration_up(
     // get manifest for loading of migration files
     let manifest = Manifest::load(ident)?;
 
-    let already_applied_migrations = node
-        .storage
-        .plugin_migrations
-        .get_files_by_plugin(&ident.name)?;
+    let already_applied_migrations = node.storage.plugin_migrations.get_by_plugin(&ident.name)?;
     if already_applied_migrations.len() > manifest.migration.len() {
         return Err(
             PluginError::Migration(migration::Error::InconsistentMigrationList(
@@ -732,7 +729,7 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
     let migration_list = node
         .storage
         .plugin_migrations
-        .get_files_by_plugin(&ident.name)?
+        .get_by_plugin(&ident.name)?
         .into_iter()
         .map(|rec| rec.migration_file)
         .collect::<Vec<_>>();
@@ -761,14 +758,57 @@ pub fn enable_plugin(
             return Ok(PreconditionCheckResult::WaitIndexAndRetry);
         }
 
-        let Some(plugin_def) = node.storage.plugins.get(plugin)? else {
+        // Check if plugin with a different version is already enabled
+        let mut plugin_def = None;
+        let installed_plugins = node.storage.plugins.get_all_versions(&plugin.name)?;
+        for installed_plugin_def in installed_plugins {
+            if installed_plugin_def.version == plugin.version {
+                plugin_def = Some(installed_plugin_def);
+                break;
+            }
+
+            if installed_plugin_def.enabled {
+                let version = installed_plugin_def.version;
+                #[rustfmt::skip]
+                return Err(Error::other(format!("plugin `{plugin}` is already enabled with a different version {version}")));
+            }
+        }
+
+        // Check if plugin is installed
+        let Some(plugin_def) = plugin_def else {
             return Err(PluginError::PluginNotFound(plugin.clone()).into());
         };
 
+        // Check if plugin is already enabled
         if plugin_def.enabled {
             // TODO: support if_not_enabled option
             #[rustfmt::skip]
             return Err(Error::other(format!("plugin `{plugin}` is already enabled")));
+        }
+
+        // Check migration consistency
+        let applied_migrations = node.storage.plugin_migrations.get_by_plugin(&plugin.name)?;
+        let applied_files: Vec<_> = applied_migrations
+            .into_iter()
+            .map(|m| m.migration_file)
+            .collect();
+        let expected_files = &plugin_def.migration_list;
+
+        let applied = applied_files.len();
+        let total = plugin_def.migration_list.len();
+        let min_count = usize::min(applied, total);
+        if applied_files[..min_count] != expected_files[..min_count] {
+            let message = format!("detected incosistency in migrations for plugin `{plugin}`: _pico_plugin: {expected_files:?} vs _pico_plugin_migration: {applied_files:?}");
+            // Note this should never happen during normal operation hence warn_or_panic
+            crate::warn_or_panic!("{message}");
+            #[rustfmt::skip]
+            return Err(Error::other(message));
+        }
+
+        // Check if migrations are up to date
+        if applied < total {
+            #[rustfmt::skip]
+            return Err(Error::other(format!("cannot enable plugin `{plugin}`: need to apply migrations first (applied {applied}/{total})")));
         }
 
         let services = node.storage.services.get_by_plugin(plugin)?;
@@ -793,6 +833,13 @@ pub fn enable_plugin(
         Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
         // Fail if someone updates this plugin record
         Range::new(ClusterwideTable::Plugin).eq([&plugin.name]),
+        // Fail if someone updates this plugin's service records
+        Range::new(ClusterwideTable::Service).eq([&plugin.name]),
+        // Fail if someone updates this plugin's migration records
+        Range::new(ClusterwideTable::PluginMigration).eq([&plugin.name]),
+        // FIXME: ServiceRouteTable's primary key should start with plugin name so that this is possible:
+        // // Fail if someone updates this plugin's service route table
+        // Range::new(ClusterwideTable::ServiceRouteTable).eq([&plugin.name]),
     ];
     let index_of_prepare =
         reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
@@ -931,7 +978,7 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
         let migration_list = node
             .storage
             .plugin_migrations
-            .get_files_by_plugin(&ident.name)?
+            .get_by_plugin(&ident.name)?
             .into_iter()
             .map(|rec| rec.migration_file)
             .collect::<Vec<_>>();

@@ -38,7 +38,6 @@ use crate::traft::Result;
 use crate::unwrap_ok_or;
 use plan::action_plan;
 use plan::stage::*;
-use plan::EnablePluginConfig;
 use plan::PreparedPluginOp;
 
 use futures::future::try_join_all;
@@ -851,28 +850,12 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
             plugin,
             services,
             timeout,
-        } => {
-            let installed_plugins = storage
-                .plugins
-                .get_all_versions(&plugin.name)
-                .expect("storage should not fail");
-            let applied_migrations = storage
-                .plugin_migrations
-                .get_files_by_plugin(&plugin.name)
-                .expect("storage should not fail")
-                .into_iter()
-                .map(|record| record.migration_file)
-                .collect();
+        } => PreparedPluginOp::EnablePlugin {
+            ident: plugin,
+            services,
+            timeout,
+        },
 
-            let info = EnablePluginConfig {
-                ident: plugin,
-                installed_plugins,
-                services,
-                applied_migrations,
-                timeout,
-            };
-            PreparedPluginOp::EnablePlugin(info)
-        }
         PluginOp::UpdateTopology(op) => {
             let plugin_def = storage
                 .plugins

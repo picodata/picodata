@@ -449,9 +449,18 @@ def test_plugin_enable(cluster: Cluster):
     i1.call("pico.install_plugin", _PLUGIN, "0.2.0")
     with pytest.raises(ReturnError) as e:
         i1.call("pico.enable_plugin", _PLUGIN, "0.2.0")
-    # FIXME: we know the reason
     assert (
-        e.value.args[0] == f"Failed to enable plugin `{_PLUGIN}:0.2.0`: unknown reason"
+        e.value.args[0]
+        == f"plugin `{_PLUGIN}:0.2.0` is already enabled with a different version 0.1.0"
+    )
+
+    # check that enabling a plugin with unapplied migrations fails
+    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.enable_plugin", _PLUGIN_WITH_MIGRATION, "0.1.0")
+    assert (
+        e.value.args[0]
+        == f"cannot enable plugin `{_PLUGIN_WITH_MIGRATION}:0.1.0`: need to apply migrations first (applied 0/2)"  # noqa: E501
     )
 
 

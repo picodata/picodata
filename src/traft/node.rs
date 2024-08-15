@@ -1355,10 +1355,14 @@ impl NodeImpl {
                         .plugins
                         .delete(&ident)
                         .expect("storage should not fail");
-                    self.storage
+                    let applied_migrations = self
+                        .storage
                         .plugin_migrations
-                        .delete_all_by_plugin(&ident.name)
+                        .get_by_plugin(&ident.name)
                         .expect("say it with me");
+                    if !applied_migrations.is_empty() {
+                        warn_or_panic!("removing plugin with applied migrations");
+                    }
                 }
             }
 

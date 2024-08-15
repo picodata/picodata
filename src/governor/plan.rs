@@ -1,6 +1,8 @@
 use crate::instance::state::State;
 use crate::instance::state::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
+use crate::plugin::PluginIdentifier;
+use crate::plugin::TopologyUpdateOp;
 use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
@@ -510,14 +512,15 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // enable plugin
-    if let PreparedPluginOp::EnablePlugin(config) = plugin_op {
-        let EnablePluginConfig {
-            ident,
-            installed_plugins,
-            services,
-            applied_migrations,
-            timeout: on_start_timeout,
-        } = config;
+    if let PreparedPluginOp::EnablePlugin {
+        ident,
+        services,
+        timeout: on_start_timeout,
+    } = plugin_op
+    {
+        let targets = maybe_responding(instances)
+            .map(|i| &i.instance_id)
+            .collect();
 
         let rpc = rpc::enable_plugin::Request {
             term,
@@ -525,80 +528,26 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
 
-        let mut targets = vec![];
         let mut success_dml = vec![];
+        let mut enable_ops = UpdateOps::new();
+        enable_ops.assign(PluginDef::FIELD_ENABLE, true)?;
+        success_dml.push(Dml::update(
+            ClusterwideTable::Plugin,
+            &[&ident.name, &ident.version],
+            enable_ops,
+            ADMIN_ID,
+        )?);
 
-        let already_enabled_plugin = installed_plugins.iter().find(|p| p.enabled);
-        let same_version_plugin = installed_plugins
-            .iter()
-            .find(|p| p.version == ident.version);
-
-        fn is_subset(source: &[String], needle: &[String]) -> bool {
-            if needle.len() > source.len() {
-                return false;
-            }
-            for i in 0..needle.len() {
-                if source[i] != needle[i] {
-                    return false;
+        for i in instances {
+            for svc in services {
+                if !svc.tiers.contains(&i.tier) {
+                    continue;
                 }
-            }
-            return true;
-        }
-
-        match (already_enabled_plugin, same_version_plugin) {
-            (Some(already_enabled_plugin), Some(same_version_plugin))
-                if already_enabled_plugin.version == same_version_plugin.version =>
-            {
-                crate::warn_or_panic!(
-                    "received a request to enable a plugin which is already enabled {ident:?}"
-                );
-            }
-            // FIXME: this should be checked on the client
-            (Some(_already_enabled_plugin), _) => {
-                // already enabled plugin with a different version
-                tlog!(Error, "Trying to enable plugin but different version of the same plugin already enabled");
-            }
-            (_, Some(same_version_plugin))
-                if !is_subset(applied_migrations, &same_version_plugin.migration_list) =>
-            {
-                // migration is partially applied - do nothing
-                tlog!(Error, "Trying to enable a non-fully installed plugin (migration is partially applied)");
-            }
-            (_, None) => {
-                // plugin isn't installed
-                tlog!(Error, "Trying to enable a non-installed plugin");
-            }
-            (_, Some(plugin)) => {
-                targets = Vec::with_capacity(instances.len());
-                for i in maybe_responding(instances) {
-                    targets.push(&i.instance_id);
-                }
-
-                let mut enable_ops = UpdateOps::new();
-                enable_ops.assign(PluginDef::FIELD_ENABLE, true)?;
-
-                success_dml = vec![Dml::update(
-                    ClusterwideTable::Plugin,
-                    &[&plugin.name, &plugin.version],
-                    enable_ops,
+                success_dml.push(Dml::replace(
+                    ClusterwideTable::ServiceRouteTable,
+                    &ServiceRouteItem::new_healthy(i.instance_id.clone(), ident, &svc.name),
                     ADMIN_ID,
-                )?];
-
-                for i in instances {
-                    let topology_ctx = TopologyContext::for_instance(i);
-
-                    let active_services = services
-                        .iter()
-                        .filter(|svc| topology::probe_service(&topology_ctx, svc));
-
-                    for svc in active_services {
-                        success_dml.push(Dml::replace(
-                            ClusterwideTable::ServiceRouteTable,
-                            &ServiceRouteItem::new_healthy(i.instance_id.clone(), ident, &svc.name),
-                            ADMIN_ID,
-                        )?);
-                    }
-                }
+                )?);
             }
         }
 
@@ -759,8 +708,6 @@ macro_rules! define_plan {
     }
 }
 
-use crate::plugin::topology::TopologyContext;
-use crate::plugin::{topology, PluginIdentifier, TopologyUpdateOp};
 use stage::*;
 
 pub mod stage {
@@ -1027,18 +974,14 @@ pub(super) enum PreparedPluginOp {
     InstallPlugin {
         manifest: plugin::Manifest,
     },
-    EnablePlugin(EnablePluginConfig),
+    EnablePlugin {
+        ident: PluginIdentifier,
+        services: Vec<ServiceDef>,
+        timeout: Duration,
+    },
     UpdatePluginTopology {
         plugin_def: PluginDef,
         service_def: ServiceDef,
         op: TopologyUpdateOp,
     },
-}
-
-pub(super) struct EnablePluginConfig {
-    pub ident: PluginIdentifier,
-    pub installed_plugins: Vec<PluginDef>,
-    pub services: Vec<ServiceDef>,
-    pub applied_migrations: Vec<String>,
-    pub timeout: Duration,
 }
