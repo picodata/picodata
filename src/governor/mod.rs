@@ -859,13 +859,13 @@ fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
         PluginOp::UpdateTopology(op) => {
             let plugin_def = storage
                 .plugins
-                .get(op.plugin_identity())
+                .get(&op.plugin)
                 .expect("storage should not fail")
                 .expect("client should check that plugin exists");
 
             let service_def = storage
                 .services
-                .get(op.plugin_identity(), op.service_name())
+                .get(&op.plugin, &op.service)
                 .expect("storage should not fail")
                 .expect("client should check that service exists");
 

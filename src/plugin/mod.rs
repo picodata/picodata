@@ -879,7 +879,7 @@ pub fn enable_plugin(
 /// Update plugin service configuration.
 pub fn update_plugin_service_configuration(
     ident: &PluginIdentifier,
-    service_name: &str,
+    service: &str,
     new_cfg_raw: &[u8],
     timeout: Duration,
 ) -> traft::Result<()> {
@@ -889,7 +889,7 @@ pub fn update_plugin_service_configuration(
     node.plugin_manager
         .handle_event_sync(PluginEvent::BeforeServiceConfigurationUpdated {
             ident,
-            service: service_name,
+            service,
             new_raw: new_cfg_raw,
         })?;
 
@@ -898,7 +898,7 @@ pub fn update_plugin_service_configuration(
     let check_and_make_op = || {
         let op = PluginRaftOp::UpdatePluginConfig {
             ident: ident.clone(),
-            service_name: service_name.to_string(),
+            service_name: service.to_string(),
             config: new_cfg.clone(),
         };
         Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
@@ -906,7 +906,7 @@ pub fn update_plugin_service_configuration(
 
     let ranges = vec![
         // Fail if someone updates this service record
-        Range::new(ClusterwideTable::Service).eq((&ident.name, service_name, &ident.version)),
+        Range::new(ClusterwideTable::Service).eq((&ident.name, service, &ident.version)),
     ];
     reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
     Ok(())
@@ -1024,69 +1024,33 @@ pub enum PluginOp {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
-pub enum TopologyUpdateOp {
-    /// Append service to a new tier.
-    Append {
-        plugin_identity: PluginIdentifier,
-        service_name: String,
-        tier: String,
-    },
-    /// Remove service from a tier.
-    Remove {
-        plugin_identity: PluginIdentifier,
-        service_name: String,
-        tier: String,
-    },
+pub struct TopologyUpdateOp {
+    pub plugin: PluginIdentifier,
+    pub service: String,
+    pub tier: String,
+    pub kind: TopologyUpdateOpKind,
 }
 
-impl TopologyUpdateOp {
-    pub fn plugin_identity(&self) -> &PluginIdentifier {
-        match self {
-            TopologyUpdateOp::Append {
-                plugin_identity, ..
-            } => plugin_identity,
-            TopologyUpdateOp::Remove {
-                plugin_identity, ..
-            } => plugin_identity,
-        }
-    }
-
-    #[inline(always)]
-    pub fn service_name(&self) -> &str {
-        match self {
-            TopologyUpdateOp::Append { service_name, .. } => service_name,
-            TopologyUpdateOp::Remove { service_name, .. } => service_name,
-        }
-    }
-
-    #[inline(always)]
-    pub fn tier(&self) -> &str {
-        match self {
-            TopologyUpdateOp::Append { tier, .. } => tier,
-            TopologyUpdateOp::Remove { tier, .. } => tier,
-        }
-    }
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+pub enum TopologyUpdateOpKind {
+    Add,
+    Remove,
 }
 
 fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
 
+    let plugin = &upd_op.plugin;
+    let service = &upd_op.service;
     let check_and_make_op = || {
         if node.storage.properties.pending_plugin_op()?.is_some() {
             return Ok(PreconditionCheckResult::WaitIndexAndRetry);
         }
 
-        let service = node
-            .storage
-            .services
-            .get(upd_op.plugin_identity(), upd_op.service_name())?;
-        if service.is_none() {
-            return Err(PluginError::ServiceNotFound(
-                upd_op.service_name().to_string(),
-                upd_op.plugin_identity().clone(),
-            )
-            .into());
+        let service_def = node.storage.services.get(plugin, service)?;
+        if service_def.is_none() {
+            return Err(PluginError::ServiceNotFound(service.clone(), plugin.clone()).into());
         }
 
         let op = PluginOp::UpdateTopology(upd_op.clone());
@@ -1098,16 +1062,11 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
         Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
     };
 
-    let ident = upd_op.plugin_identity();
     let ranges = vec![
         // Fail if someone updates this plugin record
-        Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
+        Range::new(ClusterwideTable::Plugin).eq([&plugin.name, &plugin.version]),
         // Fail if someone updates this service record
-        Range::new(ClusterwideTable::Service).eq([
-            &ident.name,
-            upd_op.service_name(),
-            &ident.version,
-        ]),
+        Range::new(ClusterwideTable::Service).eq([&plugin.name, service, &plugin.version]),
         // Fail if someone proposes another plugin operation
         Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
     ];
@@ -1119,20 +1078,18 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
     }
 
-    let Some(service) = node.storage.services.get(ident, upd_op.service_name())? else {
-        return Err(
-            PluginError::ServiceNotFound(upd_op.service_name().to_string(), ident.clone()).into(),
-        );
+    let Some(service) = node.storage.services.get(plugin, service)? else {
+        return Err(PluginError::ServiceNotFound(service.clone(), plugin.clone()).into());
     };
 
-    let contains = service.tiers.iter().any(|t| t == upd_op.tier());
-    let op_failed = match upd_op {
-        TopologyUpdateOp::Append { .. } => !contains,
-        TopologyUpdateOp::Remove { .. } => contains,
+    let contains = service.tiers.iter().any(|t| t == &upd_op.tier);
+    let op_failed = match upd_op.kind {
+        TopologyUpdateOpKind::Add => !contains,
+        TopologyUpdateOpKind::Remove => contains,
     };
     if op_failed {
         let cause = lookup_abort_cause(node, index_of_prepare)?;
-        return Err(PluginError::TopologyUpdateAborted(ident.clone(), cause).into());
+        return Err(PluginError::TopologyUpdateAborted(plugin.clone(), cause).into());
     }
 
     Ok(())
@@ -1140,15 +1097,16 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
 
 /// Enable service on a new tier.
 pub fn append_tier(
-    identity: &PluginIdentifier,
-    service_name: &str,
+    plugin: &PluginIdentifier,
+    service: &str,
     tier: &str,
     timeout: Duration,
 ) -> traft::Result<()> {
     update_tier(
-        TopologyUpdateOp::Append {
-            plugin_identity: identity.clone(),
-            service_name: service_name.to_string(),
+        TopologyUpdateOp {
+            kind: TopologyUpdateOpKind::Add,
+            plugin: plugin.clone(),
+            service: service.to_string(),
             tier: tier.to_string(),
         },
         timeout,
@@ -1157,15 +1115,16 @@ pub fn append_tier(
 
 /// Disable service on a new tier.
 pub fn remove_tier(
-    identity: &PluginIdentifier,
-    service_name: &str,
+    plugin: &PluginIdentifier,
+    service: &str,
     tier: &str,
     timeout: Duration,
 ) -> traft::Result<()> {
     update_tier(
-        TopologyUpdateOp::Remove {
-            plugin_identity: identity.clone(),
-            service_name: service_name.to_string(),
+        TopologyUpdateOp {
+            kind: TopologyUpdateOpKind::Remove,
+            plugin: plugin.clone(),
+            service: service.to_string(),
             tier: tier.to_string(),
         },
         timeout,

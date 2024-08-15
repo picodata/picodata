@@ -3,6 +3,7 @@ use crate::instance::state::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::plugin::PluginIdentifier;
 use crate::plugin::TopologyUpdateOp;
+use crate::plugin::TopologyUpdateOpKind;
 use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
@@ -582,12 +583,15 @@ pub(super) fn action_plan<'i>(
 
         let mut new_service_def = service_def.clone();
         let new_tiers = &mut new_service_def.tiers;
-        if matches!(op, TopologyUpdateOp::Append { .. }) {
-            if new_tiers.iter().all(|t| t != op.tier()) {
-                new_tiers.push(op.tier().to_string());
+        match op.kind {
+            TopologyUpdateOpKind::Add => {
+                if new_tiers.iter().all(|t| t != &op.tier) {
+                    new_tiers.push(op.tier.clone());
+                }
             }
-        } else if new_tiers.iter().any(|t| t == op.tier()) {
-            new_tiers.retain(|t| t != op.tier());
+            TopologyUpdateOpKind::Remove => {
+                new_tiers.retain(|t| t != &op.tier);
+            }
         }
 
         let old_tiers = &service_def.tiers;
