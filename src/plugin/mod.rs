@@ -788,9 +788,8 @@ pub fn enable_plugin(
             Range::new(ClusterwideTable::Service).eq([&plugin.name]),
             // Fail if someone updates this plugin's migration records
             Range::new(ClusterwideTable::PluginMigration).eq([&plugin.name]),
-            // FIXME: ServiceRouteTable's primary key should start with plugin name so that this is possible:
-            // // Fail if someone updates this plugin's service route table
-            // Range::new(ClusterwideTable::ServiceRouteTable).eq([&plugin.name]),
+            // Fail if someone updates this plugin's service route table
+            Range::new(ClusterwideTable::ServiceRouteTable).eq([&plugin.name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };

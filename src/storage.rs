@@ -3783,10 +3783,10 @@ impl ServiceRouteTable {
         let primary_key = space
             .index_builder("_pico_service_routing_key")
             .unique(true)
-            .part("instance_id")
             .part("plugin_name")
             .part("plugin_version")
             .part("service_name")
+            .part("instance_id")
             .if_not_exists(true)
             .create()?;
 
@@ -3807,10 +3807,10 @@ impl ServiceRouteTable {
             ty: IndexType::Tree,
             opts: vec![IndexOption::Unique(true)],
             parts: vec![
-                Part::from(("instance_id", IndexFieldType::String)).is_nullable(false),
                 Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
                 Part::from(("plugin_version", IndexFieldType::String)).is_nullable(false),
                 Part::from(("service_name", IndexFieldType::String)).is_nullable(false),
+                Part::from(("instance_id", IndexFieldType::String)).is_nullable(false),
             ],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -3836,21 +3836,17 @@ impl ServiceRouteTable {
         Ok(tuple)
     }
 
-    pub fn delete_by_plugin(&self, plugin_ident: &PluginIdentifier) -> tarantool::Result<()> {
-        let all_routes = self.space.select(IteratorType::All, &())?;
+    pub fn delete_by_plugin(&self, plugin: &PluginIdentifier) -> tarantool::Result<()> {
+        let all_routes = self
+            .space
+            .select(IteratorType::All, &(&plugin.name, &plugin.version))?;
         for tuple in all_routes {
             let item = tuple.decode::<ServiceRouteItem>()?;
-            if item.plugin_name != plugin_ident.name {
-                continue;
-            }
-            if item.plugin_version != plugin_ident.version {
-                continue;
-            }
             self.space.delete(&(
-                item.instance_id,
                 item.plugin_name,
                 item.plugin_version,
                 item.service_name,
+                item.instance_id,
             ))?;
         }
         Ok(())
@@ -3860,31 +3856,33 @@ impl ServiceRouteTable {
         &self,
         i: &instance::InstanceId,
     ) -> tarantool::Result<Vec<ServiceRouteItem>> {
-        let all_routes = self.space.select(IteratorType::Eq, &(i,))?;
-        all_routes.map(|t| t.decode()).collect()
+        let mut result = vec![];
+
+        let iter = self.space.select(IteratorType::All, &())?;
+        for tuple in iter {
+            let item: ServiceRouteItem = tuple.decode()?;
+            if &item.instance_id != i {
+                continue;
+            }
+            result.push(item);
+        }
+
+        Ok(result)
     }
 
     pub fn get_available_instances(
         &self,
-        ident: &PluginIdentifier,
+        plugin: &PluginIdentifier,
         service: &str,
     ) -> tarantool::Result<Vec<instance::InstanceId>> {
         let mut result = vec![];
 
-        // TODO: change the primary index such that this operation is faster
-        let iter = self.space.select(IteratorType::All, &())?;
+        let iter = self
+            .space
+            .select(IteratorType::All, &(&plugin.name, &plugin.version, service))?;
         for tuple in iter {
             let item: ServiceRouteItem = tuple.decode()?;
             if item.poison {
-                continue;
-            }
-            if item.plugin_name != ident.name {
-                continue;
-            }
-            if item.plugin_version != ident.version {
-                continue;
-            }
-            if item.service_name != service {
                 continue;
             }
             result.push(item.instance_id);

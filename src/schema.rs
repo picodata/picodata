@@ -573,14 +573,14 @@ impl ServiceDef {
 /// Single route definition in _pico_service_route system table.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ServiceRouteItem {
-    /// Instance id.
-    pub instance_id: InstanceId,
     /// Plugin name.
     pub plugin_name: String,
     /// Plugin version.
     pub plugin_version: String,
     /// Service name.
     pub service_name: String,
+    /// Instance id.
+    pub instance_id: InstanceId,
     /// `true` if route is poisoned, `false` otherwise.
     pub poison: bool,
 }
@@ -599,10 +599,10 @@ impl ServiceRouteItem {
         service_name: impl ToString,
     ) -> Self {
         Self {
-            instance_id,
             plugin_name: plugin_ident.name.clone(),
             plugin_version: plugin_ident.version.to_string(),
             service_name: service_name.to_string(),
+            instance_id,
             poison: false,
         }
     }
@@ -613,10 +613,10 @@ impl ServiceRouteItem {
         service_name: impl ToString,
     ) -> Self {
         Self {
-            instance_id,
             plugin_name: plugin_ident.name.clone(),
             plugin_version: plugin_ident.version.to_string(),
             service_name: service_name.to_string(),
+            instance_id,
             poison: true,
         }
     }
@@ -626,10 +626,10 @@ impl ServiceRouteItem {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
-            Field::from(("instance_id", FieldType::String)).is_nullable(false),
             Field::from(("plugin_name", FieldType::String)).is_nullable(false),
             Field::from(("plugin_version", FieldType::String)).is_nullable(false),
             Field::from(("service_name", FieldType::String)).is_nullable(false),
+            Field::from(("instance_id", FieldType::String)).is_nullable(false),
             Field::from(("poison", FieldType::Boolean)).is_nullable(false),
         ]
     }
@@ -637,34 +637,34 @@ impl ServiceRouteItem {
     #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {
-            instance_id: InstanceId("i1".to_string()),
             plugin_name: "plugin".to_string(),
             plugin_version: "version".to_string(),
             service_name: "service".to_string(),
+            instance_id: InstanceId("i1".to_string()),
             poison: false,
         }
     }
 
     pub fn key(&self) -> ServiceRouteKey {
         ServiceRouteKey {
-            instance_id: &self.instance_id,
             plugin_name: &self.plugin_name,
             plugin_version: &self.plugin_version,
             service_name: &self.service_name,
+            instance_id: &self.instance_id,
         }
     }
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ServiceRouteKey<'a> {
-    /// Instance id.
-    pub instance_id: &'a InstanceId,
     /// Plugin name.
     pub plugin_name: &'a str,
     /// Plugin version.
     pub plugin_version: &'a str,
     /// Service name.
     pub service_name: &'a str,
+    /// Instance id.
+    pub instance_id: &'a InstanceId,
 }
 
 impl<'a> Encode for ServiceRouteKey<'a> {}

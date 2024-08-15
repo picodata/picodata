@@ -130,20 +130,23 @@ class PluginReflection:
                     assert len(svcs) == 0
 
         for i in self.topology:
-            expected_services = []
+            expected_routes = []
             for service in self.topology[i]:
-                expected_services.append(
-                    [i.instance_id, self.name, self.version, service, False]
+                expected_routes.append(
+                    [self.name, self.version, service, i.instance_id, False]
                 )
 
             for neighboring_i in self.topology:
-                routes = neighboring_i.eval(
-                    'return box.space._pico_service_route:pairs({...}, {iterator="EQ"}):totable()',
-                    i.instance_id,
+                actual_routes = neighboring_i.sql(
+                    """
+                    SELECT * FROM "_pico_service_route"
+                    WHERE "plugin_name" = ? AND "plugin_version" = ? AND "instance_id" = ?
+                    """,
                     self.name,
                     self.version,
+                    i.instance_id,
                 )
-                assert routes == expected_services
+                assert actual_routes == expected_routes
 
     def assert_data_synced(self):
         for table in self.data:
@@ -239,12 +242,16 @@ class PluginReflection:
 
     def assert_route_poisoned(self, poison_instance_id, service, poisoned=True):
         for i in self.instances:
-            route_poisoned = i.eval(
-                "return box.space._pico_service_route:get({...}).poison",
-                poison_instance_id,
+            [[route_poisoned]] = i.sql(
+                """
+                SELECT "poison" FROM "_pico_service_route"
+                WHERE "plugin_name" = ? AND "plugin_version" = ?
+                  AND "service_name" = ? AND "instance_id" = ?
+                """,
                 self.name,
                 self.version,
                 service,
+                poison_instance_id,
             )
             assert route_poisoned == poisoned
 
@@ -465,7 +472,7 @@ def test_plugin_enable(cluster: Cluster):
     )
 
 
-def test_plugin_disable(cluster: Cluster):
+def test_plugin_disable_ok(cluster: Cluster):
     """
     plugin disabling behaviour:
     disabling of enabled plugin - default behavior
@@ -1305,7 +1312,7 @@ def test_error_on_leader_change(cluster: Cluster):
     plugin_ref.assert_route_poisoned(i2.instance_id, "testservice_1", poisoned=False)
 
 
-def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
+def _test_plugin_install_and_enable_on_catchup(cluster: Cluster, compact_raft_log: bool):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4)
     p1_ref = PluginReflection.default(i1, i2, i3, i4)
     p2_ref = PluginReflection(
@@ -1379,12 +1386,12 @@ def _test_plugin_lifecycle(cluster: Cluster, compact_raft_log: bool):
     p2_ref.assert_synced()
 
 
-def test_four_plugin_install_and_enable(cluster: Cluster):
-    _test_plugin_lifecycle(cluster, compact_raft_log=False)
+def test_plugin_install_and_enable_on_catchup_by_log(cluster: Cluster):
+    _test_plugin_install_and_enable_on_catchup(cluster, compact_raft_log=False)
 
 
-def test_four_plugin_install_and_enable2(cluster: Cluster):
-    _test_plugin_lifecycle(cluster, compact_raft_log=True)
+def test_plugin_install_and_enable_on_catchup_by_snapshot(cluster: Cluster):
+    _test_plugin_install_and_enable_on_catchup(cluster, compact_raft_log=True)
 
 
 # -------------------------- topology tests -------------------------------------
