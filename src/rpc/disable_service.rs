@@ -23,9 +23,9 @@ crate::define_rpc_request! {
             return Err(Error::other("pending plugin operation not found"));
         };
 
-        let PluginOp::UpdateTopology { plugin, service, .. } = &plugin_op else {
+        let PluginOp::AlterServiceTiers { plugin, service, .. } = &plugin_op else {
             #[rustfmt::skip]
-            return Err(Error::other("found unexpected plugin operation expected UpdateTopology, found {plugin_op:?}"));
+            return Err(Error::other("found unexpected plugin operation expected AlterServiceTiers, found {plugin_op:?}"));
         };
 
         // reaction at `ServiceDisabled` is idempotent, so no errors occurred

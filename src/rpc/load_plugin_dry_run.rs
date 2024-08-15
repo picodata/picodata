@@ -24,9 +24,9 @@ crate::define_rpc_request! {
             return Err(Error::other("pending plugin operation not found"));
         };
 
-        let PluginOp::InstallPlugin { manifest } = plugin_op else {
+        let PluginOp::CreatePlugin { manifest } = plugin_op else {
             #[rustfmt::skip]
-            return Err(Error::other("found unexpected plugin operation expected InstallPlugin, found {plugin_op:?}"));
+            return Err(Error::other("found unexpected plugin operation expected CreatePlugin, found {plugin_op:?}"));
         };
 
         node.plugin_manager.try_load_dry_run(&manifest)?;

@@ -595,7 +595,7 @@ pub fn install_plugin(
             }
         }
 
-        let op = PluginOp::InstallPlugin {
+        let op = PluginOp::CreatePlugin {
             manifest: manifest.clone(),
         };
         let dml = Dml::replace(
@@ -983,7 +983,7 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
             return Err(traft::error::Error::other("attempt to remove plugin with applied `UP` migrations"));
         }
 
-        let op = PluginRaftOp::RemovePlugin {
+        let op = PluginRaftOp::DropPlugin {
             ident: ident.clone(),
         };
         Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
@@ -1006,15 +1006,15 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub enum PluginOp {
-    InstallPlugin {
+    CreatePlugin {
         manifest: Manifest,
     },
     EnablePlugin {
         plugin: PluginIdentifier,
         timeout: Duration,
     },
-    /// Operation to change on which tiers the given services should be deployed.
-    UpdateTopology {
+    /// Operation to change on which tiers the given service should be deployed.
+    AlterServiceTiers {
         plugin: PluginIdentifier,
         service: String,
         tier: String,
@@ -1053,7 +1053,7 @@ pub fn update_service_tiers(
             return Err(PluginError::ServiceNotFound(service.into(), plugin.clone()).into());
         }
 
-        let op = PluginOp::UpdateTopology {
+        let op = PluginOp::AlterServiceTiers {
             plugin: plugin.clone(),
             service: service.into(),
             tier: tier.into(),

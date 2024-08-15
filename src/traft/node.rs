@@ -1323,7 +1323,7 @@ impl NodeImpl {
             // however doing this via CaS would be nightmare. It would be much
             // simpler if we supported FOREIGN KEY/ON DELETE CASCADE
             // semantics, but we don't...
-            Op::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
+            Op::Plugin(PluginRaftOp::DropPlugin { ident }) => {
                 let maybe_plugin = self
                     .storage
                     .plugins

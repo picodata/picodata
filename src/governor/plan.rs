@@ -447,7 +447,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // install plugin
-    if let Some(PluginOp::InstallPlugin { manifest }) = plugin_op {
+    if let Some(PluginOp::CreatePlugin { manifest }) = plugin_op {
         let ident = manifest.plugin_identifier();
         if plugins.get(&ident).is_some() {
             crate::warn_or_panic!(
@@ -503,7 +503,7 @@ pub(super) fn action_plan<'i>(
         )?);
 
         let success_dml = Op::BatchDml { ops };
-        return Ok(InstallPlugin {
+        return Ok(CreatePlugin {
             targets,
             rpc,
             success_dml,
@@ -571,8 +571,8 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // update service topology
-    if let Some(PluginOp::UpdateTopology {
+    // update service tiers
+    if let Some(PluginOp::AlterServiceTiers {
         plugin,
         service,
         tier,
@@ -672,7 +672,7 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
 
-        return Ok(UpdatePluginTopology {
+        return Ok(AlterServiceTiers {
             enable_targets,
             disable_targets,
             enable_rpc,
@@ -833,7 +833,7 @@ pub mod stage {
             pub rpc: rpc::ddl_apply::Request,
         }
 
-        pub struct InstallPlugin<'i> {
+        pub struct CreatePlugin<'i> {
             /// This is every instance which is currently online.
             pub targets: Vec<&'i InstanceId>,
             /// Request to call [`rpc::load_plugin_dry_run::proc_load_plugin_dry_run`] on `targets`.
@@ -858,7 +858,7 @@ pub mod stage {
             pub success_dml: Op,
         }
 
-        pub struct UpdatePluginTopology<'i> {
+        pub struct AlterServiceTiers<'i> {
             /// This is the list of instances on which we want to enable the service.
             pub enable_targets: Vec<&'i InstanceId>,
             /// This is the list of instances on which we want to disable the service.

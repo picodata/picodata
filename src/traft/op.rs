@@ -242,8 +242,8 @@ impl std::fmt::Display for Op {
 
                 Ok(())
             }
-            Self::Plugin(PluginRaftOp::RemovePlugin { ident }) => {
-                write!(f, "RemovePlugin({ident})")
+            Self::Plugin(PluginRaftOp::DropPlugin { ident }) => {
+                write!(f, "DropPlugin({ident})")
             }
             Self::Plugin(PluginRaftOp::Abort { cause }) => write!(f, "PluginAbort({cause})"),
         };
@@ -846,7 +846,7 @@ pub enum PluginRaftOp {
     /// Note that in an ideal world this Op can be replaced with a BatchDml, but
     /// in practice the code would be a nightmare to write and maintain.
     /// It would be much easier if we supported FOREIGN KEY/ON DELETE CASCADE.
-    RemovePlugin { ident: PluginIdentifier },
+    DropPlugin { ident: PluginIdentifier },
     /// Abort one of the mutlistage plugin change operations.
     Abort { cause: ErrorInfo },
 }

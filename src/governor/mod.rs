@@ -510,7 +510,7 @@ impl Loop {
                 }
             }
 
-            Plan::InstallPlugin(InstallPlugin {
+            Plan::CreatePlugin(CreatePlugin {
                 targets,
                 rpc,
                 success_dml,
@@ -638,7 +638,7 @@ impl Loop {
                 }
             }
 
-            Plan::UpdatePluginTopology(UpdatePluginTopology {
+            Plan::AlterServiceTiers(AlterServiceTiers {
                 enable_targets,
                 disable_targets,
                 enable_rpc,
