@@ -47,6 +47,7 @@ local tables = {
     '_pico_service',
     '_pico_service_route',
     '_pico_plugin_migration',
+    '_pico_plugin_config',
 }
 
 local function printf(fmt, ...)
