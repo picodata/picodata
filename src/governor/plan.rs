@@ -1,7 +1,9 @@
+use crate::has_states;
 use crate::instance::state::State;
 use crate::instance::state::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::plugin::PluginIdentifier;
+use crate::plugin::PluginOp;
 use crate::plugin::TopologyUpdateOp;
 use crate::plugin::TopologyUpdateOpKind;
 use crate::replicaset::ReplicasetState;
@@ -21,10 +23,8 @@ use crate::traft::op::PluginRaftOp;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
-use crate::{has_states, plugin};
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
-use std::time::Duration;
 
 use super::cc::raft_conf_change;
 use super::Loop;
@@ -46,7 +46,8 @@ pub(super) fn action_plan<'i>(
     vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
-    plugin_op: &'i PreparedPluginOp,
+    services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
+    plugin_op: Option<&'i PluginOp>,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -447,7 +448,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // install plugin
-    if let PreparedPluginOp::InstallPlugin { manifest } = plugin_op {
+    if let Some(PluginOp::InstallPlugin { manifest }) = plugin_op {
         let ident = manifest.plugin_identifier();
         if plugins.get(&ident).is_some() {
             crate::warn_or_panic!(
@@ -513,11 +514,11 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // enable plugin
-    if let PreparedPluginOp::EnablePlugin {
-        ident,
+    if let Some(PluginOp::EnablePlugin {
+        plugin,
         services,
         timeout: on_start_timeout,
-    } = plugin_op
+    }) = plugin_op
     {
         let targets = maybe_responding(instances)
             .map(|i| &i.instance_id)
@@ -534,7 +535,7 @@ pub(super) fn action_plan<'i>(
         enable_ops.assign(PluginDef::FIELD_ENABLE, true)?;
         success_dml.push(Dml::update(
             ClusterwideTable::Plugin,
-            &[&ident.name, &ident.version],
+            &[&plugin.name, &plugin.version],
             enable_ops,
             ADMIN_ID,
         )?);
@@ -546,7 +547,7 @@ pub(super) fn action_plan<'i>(
                 }
                 success_dml.push(Dml::replace(
                     ClusterwideTable::ServiceRouteTable,
-                    &ServiceRouteItem::new_healthy(i.instance_id.clone(), ident, &svc.name),
+                    &ServiceRouteItem::new_healthy(i.instance_id.clone(), plugin, &svc.name),
                     ADMIN_ID,
                 )?);
             }
@@ -563,7 +564,7 @@ pub(super) fn action_plan<'i>(
             rpc,
             targets,
             on_start_timeout: *on_start_timeout,
-            ident,
+            ident: plugin,
             success_dml,
         }
         .into());
@@ -571,26 +572,37 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // update plugin topology
-    if let PreparedPluginOp::UpdatePluginTopology {
-        plugin_def,
-        service_def,
-        op,
-    } = plugin_op
-    {
+    if let Some(PluginOp::UpdateTopology(update_op)) = plugin_op {
+        let TopologyUpdateOp {
+            plugin,
+            service,
+            tier,
+            kind,
+        } = update_op;
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];
 
+        let plugin_def = plugins
+            .get(plugin)
+            .expect("operation for non existent plugin");
+        let service_def = *services
+            .get(plugin)
+            .expect("operation for non existent service")
+            .iter()
+            .find(|s| &s.name == service)
+            .expect("operation for non existent service");
+
         let mut new_service_def = service_def.clone();
         let new_tiers = &mut new_service_def.tiers;
-        match op.kind {
+        match kind {
             TopologyUpdateOpKind::Add => {
-                if new_tiers.iter().all(|t| t != &op.tier) {
-                    new_tiers.push(op.tier.clone());
+                if new_tiers.iter().all(|t| t != tier) {
+                    new_tiers.push(tier.clone());
                 }
             }
             TopologyUpdateOpKind::Remove => {
-                new_tiers.retain(|t| t != &op.tier);
+                new_tiers.retain(|t| t != tier);
             }
         }
 
@@ -598,7 +610,6 @@ pub(super) fn action_plan<'i>(
 
         // note: no need to enable/disable service and update routing table if plugin disabled
         if plugin_def.enabled {
-            let plugin_ident = plugin_def.identifier();
             for i in maybe_responding(instances) {
                 // if instance in both new and old tiers - do nothing
                 if new_tiers.contains(&i.tier) && old_tiers.contains(&i.tier) {
@@ -611,7 +622,7 @@ pub(super) fn action_plan<'i>(
                         ClusterwideTable::ServiceRouteTable,
                         &ServiceRouteItem::new_healthy(
                             i.instance_id.clone(),
-                            &plugin_ident,
+                            plugin,
                             &service_def.name,
                         ),
                         ADMIN_ID,
@@ -622,8 +633,8 @@ pub(super) fn action_plan<'i>(
                     disable_targets.push(&i.instance_id);
                     let key = ServiceRouteKey {
                         instance_id: &i.instance_id,
-                        plugin_name: &plugin_ident.name,
-                        plugin_version: &plugin_ident.version,
+                        plugin_name: &plugin.name,
+                        plugin_version: &plugin.version,
                         service_name: &service_def.name,
                     };
                     on_success_dml.push(Dml::delete(
@@ -970,22 +981,4 @@ fn get_first_ready_replicaset<'r>(
 #[inline(always)]
 fn maybe_responding(instances: &[Instance]) -> impl Iterator<Item = &Instance> {
     instances.iter().filter(|instance| instance.may_respond())
-}
-
-#[allow(clippy::large_enum_variant)]
-pub(super) enum PreparedPluginOp {
-    None,
-    InstallPlugin {
-        manifest: plugin::Manifest,
-    },
-    EnablePlugin {
-        ident: PluginIdentifier,
-        services: Vec<ServiceDef>,
-        timeout: Duration,
-    },
-    UpdatePluginTopology {
-        plugin_def: PluginDef,
-        service_def: ServiceDef,
-        op: TopologyUpdateOp,
-    },
 }

@@ -545,6 +545,14 @@ impl ServiceDef {
         ]
     }
 
+    #[inline]
+    pub fn plugin(&self) -> PluginIdentifier {
+        PluginIdentifier {
+            name: self.plugin_name.clone(),
+            version: self.version.clone(),
+        }
+    }
+
     #[cfg(test)]
     pub fn for_tests() -> Self {
         Self {

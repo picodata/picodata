@@ -3728,6 +3728,15 @@ impl Services {
     }
 }
 
+impl ToEntryIter<MP_SERDE> for Services {
+    type Entry = ServiceDef;
+
+    #[inline(always)]
+    fn index_iter(&self) -> tarantool::Result<IndexIterator> {
+        self.space.select(IteratorType::All, &())
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // ServiceRouteTable
 ////////////////////////////////////////////////////////////////////////////////

@@ -1320,10 +1320,12 @@ def test_set_topology(cluster: Cluster):
         _PLUGIN, _PLUGIN_VERSION_1, _PLUGIN_SERVICES, [i1, i2]
     )
 
+    i1.call("pico.install_plugin", _PLUGIN, "0.1.0")
+
     # set topology to non-existent plugin is forbidden
     with pytest.raises(
         ReturnError,
-        match="Service `testservice_1` for plugin `non-existent:0.1.0` not found at instance",
+        match="Plugin `non-existent:0.1.0` not found at instance",
     ):
         i1.call(
             "pico.service_append_tier",
@@ -1349,7 +1351,6 @@ def test_set_topology(cluster: Cluster):
     # set non-existent tier to first plugin service,
     # and don't set any tier for second plugin service;
     # both services must never be started
-    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
     i1.call(
         "pico.service_append_tier",
         _PLUGIN,

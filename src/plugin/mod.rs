@@ -1048,6 +1048,11 @@ fn update_tier(upd_op: TopologyUpdateOp, timeout: Duration) -> traft::Result<()>
             return Ok(PreconditionCheckResult::WaitIndexAndRetry);
         }
 
+        let plugin_def = node.storage.plugins.get(plugin)?;
+        if plugin_def.is_none() {
+            return Err(PluginError::PluginNotFound(plugin.clone()).into());
+        }
+
         let service_def = node.storage.services.get(plugin, service)?;
         if service_def.is_none() {
             return Err(PluginError::ServiceNotFound(service.clone(), plugin.clone()).into());

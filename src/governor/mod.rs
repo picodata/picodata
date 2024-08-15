@@ -9,7 +9,6 @@ use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
 use crate::op::Op;
-use crate::plugin::PluginOp;
 use crate::proc_name;
 use crate::rpc;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
@@ -38,7 +37,6 @@ use crate::traft::Result;
 use crate::unwrap_ok_or;
 use plan::action_plan;
 use plan::stage::*;
-use plan::PreparedPluginOp;
 
 use futures::future::try_join_all;
 
@@ -129,7 +127,20 @@ impl Loop {
             .expect("storage should never fail")
             .map(|plugin_def| (plugin_def.identifier(), plugin_def))
             .collect();
-        let plugin_op = get_info_for_pending_plugin_op(storage);
+        let all_services: Vec<_> = storage
+            .services
+            .iter()
+            .expect("storage should never fail")
+            .collect();
+        let mut services = HashMap::new();
+        for service_def in &all_services {
+            let e = services.entry(service_def.plugin());
+            e.or_insert_with(Vec::new).push(service_def);
+        }
+        let plugin_op = storage
+            .properties
+            .pending_plugin_op()
+            .expect("i just want to feel something");
 
         let plan = action_plan(
             term,
@@ -147,7 +158,8 @@ impl Loop {
             vshard_bootstrapped,
             has_pending_schema_change,
             &plugins,
-            &plugin_op,
+            &services,
+            plugin_op.as_ref(),
         );
         let plan = unwrap_ok_or!(plan,
             Err(e) => {
@@ -830,50 +842,4 @@ pub struct GovernorStatus {
     ///
     /// Is set by governor to explain the reason why it has yielded.
     pub governor_loop_status: &'static str,
-}
-
-// FIXME: don't copy-paste this code please, this should instead further
-// simplified. No need to clump up the data in here instead just dump all the
-// tables and pass the data to action_plan directly.
-fn get_info_for_pending_plugin_op(storage: &Clusterwide) -> PreparedPluginOp {
-    let Some(plugin_op) = storage
-        .properties
-        .pending_plugin_op()
-        .expect("i just want to feel something")
-    else {
-        return PreparedPluginOp::None;
-    };
-
-    match plugin_op {
-        PluginOp::InstallPlugin { manifest } => PreparedPluginOp::InstallPlugin { manifest },
-        PluginOp::EnablePlugin {
-            plugin,
-            services,
-            timeout,
-        } => PreparedPluginOp::EnablePlugin {
-            ident: plugin,
-            services,
-            timeout,
-        },
-
-        PluginOp::UpdateTopology(op) => {
-            let plugin_def = storage
-                .plugins
-                .get(&op.plugin)
-                .expect("storage should not fail")
-                .expect("client should check that plugin exists");
-
-            let service_def = storage
-                .services
-                .get(&op.plugin, &op.service)
-                .expect("storage should not fail")
-                .expect("client should check that service exists");
-
-            PreparedPluginOp::UpdatePluginTopology {
-                plugin_def,
-                service_def,
-                op,
-            }
-        }
-    }
 }
