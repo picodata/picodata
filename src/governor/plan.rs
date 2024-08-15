@@ -4,7 +4,6 @@ use crate::instance::state::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
-use crate::plugin::TopologyUpdateOp;
 use crate::plugin::TopologyUpdateOpKind;
 use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
@@ -572,14 +571,14 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // update plugin topology
-    if let Some(PluginOp::UpdateTopology(update_op)) = plugin_op {
-        let TopologyUpdateOp {
-            plugin,
-            service,
-            tier,
-            kind,
-        } = update_op;
+    // update service topology
+    if let Some(PluginOp::UpdateTopology {
+        plugin,
+        service,
+        tier,
+        kind,
+    }) = plugin_op
+    {
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];

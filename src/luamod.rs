@@ -5,6 +5,7 @@ use crate::cas::{self, compare_and_swap};
 use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
 use crate::plugin::PluginIdentifier;
+use crate::plugin::TopologyUpdateOpKind;
 use crate::schema::{self, CreateTableParams, ADMIN_ID};
 use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
@@ -1605,7 +1606,13 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::append_tier(&PluginIdentifier::new(plugin_name, plugin_version), &service_name, &tier, timeout)
+                plugin::update_service_tiers(
+                    &PluginIdentifier::new(plugin_name, plugin_version),
+                    &service_name,
+                    &tier,
+                    TopologyUpdateOpKind::Add,
+                    timeout
+                )
             })
         },
     );
@@ -1642,7 +1649,13 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::remove_tier(&PluginIdentifier::new(plugin_name, plugin_version), &service_name, &tier, timeout)
+                plugin::update_service_tiers(
+                    &PluginIdentifier::new(plugin_name, plugin_version),
+                    &service_name,
+                    &tier,
+                    TopologyUpdateOpKind::Remove,
+                    timeout
+                )
             })
         },
     );
