@@ -516,10 +516,11 @@ pub(super) fn action_plan<'i>(
     // enable plugin
     if let Some(PluginOp::EnablePlugin {
         plugin,
-        services,
         timeout: on_start_timeout,
     }) = plugin_op
     {
+        let service_defs = services.get(plugin).map(|v| &**v).unwrap_or(&[]);
+
         let targets = maybe_responding(instances)
             .map(|i| &i.instance_id)
             .collect();
@@ -541,7 +542,7 @@ pub(super) fn action_plan<'i>(
         )?);
 
         for i in instances {
-            for svc in services {
+            for svc in service_defs {
                 if !svc.tiers.contains(&i.tier) {
                     continue;
                 }

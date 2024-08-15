@@ -811,13 +811,8 @@ pub fn enable_plugin(
             return Err(Error::other(format!("cannot enable plugin `{plugin}`: need to apply migrations first (applied {applied}/{total})")));
         }
 
-        let services = node.storage.services.get_by_plugin(plugin)?;
-
         let op = PluginOp::EnablePlugin {
             plugin: plugin.clone(),
-            // FIXME: we shouldn't need to send this list, it's already available on
-            // the governor, what is going on?
-            services,
             timeout: on_start_timeout,
         };
         let dml = Dml::replace(
@@ -1016,7 +1011,6 @@ pub enum PluginOp {
     },
     EnablePlugin {
         plugin: PluginIdentifier,
-        services: Vec<ServiceDef>,
         timeout: Duration,
     },
     /// Operation to change on which tiers the given services should be deployed.
