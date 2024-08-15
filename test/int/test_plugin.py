@@ -1032,7 +1032,7 @@ def test_config_validation(cluster: Cluster):
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
 
-    plugin_ref.inject_error("testservice_1", "on_cfg_validate", "test error", i1)
+    plugin_ref.inject_error("testservice_1", "on_config_validate", "test error", i1)
     with pytest.raises(
         ReturnError, match="New configuration validation error:.* test error"
     ):
@@ -1115,7 +1115,7 @@ def test_error_on_config_update(cluster: Cluster):
 
     plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
 
-    plugin_ref.inject_error("testservice_1", "on_cfg_change", "test error", i1)
+    plugin_ref.inject_error("testservice_1", "on_config_change", "test error", i1)
 
     i1.eval(
         "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
@@ -1154,7 +1154,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     plugin_ref.assert_synced()
 
     plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
-    plugin_ref.inject_error("testservice_1", "on_cfg_change", "test error", i1)
+    plugin_ref.inject_error("testservice_1", "on_config_change", "test error", i1)
 
     i1.eval(
         "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
@@ -1167,7 +1167,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
         lambda: plugin_ref.assert_route_poisoned(i1.instance_id, "testservice_1")
     )
 
-    plugin_ref.remove_error("testservice_1", "on_cfg_change", i1)
+    plugin_ref.remove_error("testservice_1", "on_config_change", i1)
 
     i1.eval(
         "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "

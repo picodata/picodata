@@ -18,7 +18,6 @@ use picoplugin::{internal, log, system};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::fmt::Display;
-use std::process::exit;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync;
@@ -70,12 +69,12 @@ impl ErrInjection {
         Self::get_err_inj("on_start_sleep_sec", service)
     }
 
-    pub fn err_at_on_cfg_validate(service: &str) -> Option<String> {
-        Self::get_err_inj("on_cfg_validate", service)
+    pub fn err_at_on_config_validate(service: &str) -> Option<String> {
+        Self::get_err_inj("on_config_validate", service)
     }
 
-    pub fn err_at_on_cfg_change(service: &str) -> Option<String> {
-        Self::get_err_inj("on_cfg_change", service)
+    pub fn err_at_on_config_change(service: &str) -> Option<String> {
+        Self::get_err_inj("on_config_change", service)
     }
 }
 
@@ -137,13 +136,13 @@ fn inc_callback_calls(service: &str, callback: &str) {
     lua.exec(&exec_code).unwrap();
 }
 
-fn update_plugin_cfg(service: &str, cfg: &Service1Cfg) {
+fn update_plugin_config(service: &str, config: &Service1Config) {
     let lua = tarantool::lua_state();
     init_plugin_state_if_need(&lua, service);
 
     lua.eval_with::<_, ()>(
         format!("_G['plugin_state']['{service}']['current_config'] = ...").as_ref(),
-        cfg,
+        config,
     )
     .unwrap();
 }
@@ -161,25 +160,25 @@ fn save_last_seen_context(service: &str, ctx: &PicoContext) {
 }
 
 #[derive(Serialize, Deserialize, Debug, tlua::Push, PartialEq)]
-struct Service1Cfg {
+struct Service1Config {
     foo: bool,
     bar: i32,
     baz: Vec<String>,
 }
 
 struct Service1 {
-    cfg: Option<Service1Cfg>,
+    config: Option<Service1Config>,
 }
 
 impl Service for Service1 {
-    type CFG = Service1Cfg;
+    type Config = Service1Config;
 
-    fn on_cfg_validate(&self, _configuration: Self::CFG) -> CallbackResult<()> {
-        if let Some(err_text) = ErrInjection::err_at_on_cfg_validate("testservice_1") {
+    fn on_config_validate(&self, _configuration: Self::Config) -> CallbackResult<()> {
+        if let Some(err_text) = ErrInjection::err_at_on_config_validate("testservice_1") {
             return Err(err_text.into());
         }
 
-        inc_callback_calls("testservice_1", "on_cfg_validate");
+        inc_callback_calls("testservice_1", "on_config_validate");
 
         Ok(())
     }
@@ -187,25 +186,25 @@ impl Service for Service1 {
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
-        new_cfg: Self::CFG,
-        old_cfg: Self::CFG,
+        new_config: Self::Config,
+        old_config: Self::Config,
     ) -> CallbackResult<()> {
         if !ErrInjection::get_err_inj::<bool>("assert_config_changed", "testservice_1")
             .unwrap_or_default()
         {
-            assert_ne!(new_cfg, old_cfg);
+            assert_ne!(new_config, old_config);
         }
-        if let Some(err_text) = ErrInjection::err_at_on_cfg_change("testservice_1") {
+        if let Some(err_text) = ErrInjection::err_at_on_config_change("testservice_1") {
             return Err(err_text.into());
         }
         save_last_seen_context("testservice_1", ctx);
         inc_callback_calls("testservice_1", "on_config_change");
-        update_plugin_cfg("testservice_1", &new_cfg);
+        update_plugin_config("testservice_1", &new_config);
 
         Ok(())
     }
 
-    fn on_start(&mut self, ctx: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {
+    fn on_start(&mut self, ctx: &PicoContext, config: Self::Config) -> CallbackResult<()> {
         if let Some(sleep_secs) = ErrInjection::sleep_at_on_start_sec("testservice_1") {
             fiber::sleep(Duration::from_secs(sleep_secs));
         }
@@ -216,9 +215,9 @@ impl Service for Service1 {
 
         save_last_seen_context("testservice_1", ctx);
         inc_callback_calls("testservice_1", "on_start");
-        update_plugin_cfg("testservice_1", &cfg);
+        update_plugin_config("testservice_1", &config);
 
-        self.cfg = Some(cfg);
+        self.config = Some(config);
         Ok(())
     }
 
@@ -249,16 +248,16 @@ impl Service for Service1 {
 
 impl Service1 {
     pub fn new() -> Self {
-        Service1 { cfg: None }
+        Service1 { config: None }
     }
 }
 
 struct Service2 {}
 
 impl Service for Service2 {
-    type CFG = ();
+    type Config = ();
 
-    fn on_start(&mut self, ctx: &PicoContext, _: Self::CFG) -> CallbackResult<()> {
+    fn on_start(&mut self, ctx: &PicoContext, _: Self::Config) -> CallbackResult<()> {
         if ErrInjection::err_at_on_stop("testservice_2").unwrap_or(false) {
             return Err("error at `on_stop`".into());
         }
@@ -304,15 +303,15 @@ fn save_in_lua(service: &str, key: &str, value: impl Display) {
 }
 
 #[derive(Deserialize)]
-struct Service3Cfg {
+struct Service3Config {
     test_type: String,
 }
 
 impl Service for Service3 {
-    type CFG = Service3Cfg;
+    type Config = Service3Config;
 
-    fn on_start(&mut self, ctx: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {
-        match cfg.test_type.as_str() {
+    fn on_start(&mut self, ctx: &PicoContext, config: Self::Config) -> CallbackResult<()> {
+        match config.test_type.as_str() {
             "internal" => {
                 let version = internal::picodata_version();
                 save_in_lua("testservice_3", "version", version);
@@ -466,7 +465,7 @@ struct PingResponse {
 }
 
 impl Service for ServiceWithRpcTests {
-    type CFG = ();
+    type Config = ();
 
     fn on_start(&mut self, context: &PicoContext, _: ()) -> CallbackResult<()> {
         rpc::RouteBuilder::from(context)

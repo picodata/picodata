@@ -715,9 +715,10 @@ impl PluginManager {
             let service = service.lock();
             if service.name == service_name {
                 #[rustfmt::skip]
-                tlog!(Debug, "calling {}.{}:{}.on_cfg_validate", service.plugin_name, service.name, service.version);
+                tlog!(Debug, "calling {}.{}:{}.on_config_validate", service.plugin_name, service.name, service.version);
 
-                return if let RErr(_) = service.inner.on_cfg_validate(RSlice::from(new_cfg_raw)) {
+                return if let RErr(_) = service.inner.on_config_validate(RSlice::from(new_cfg_raw))
+                {
                     let error = BoxError::last();
                     Err(PluginError::Callback(
                         PluginCallbackError::InvalidConfiguration(error),

@@ -119,7 +119,7 @@ pub type CallbackResult<T> = Result<T, ErrorBox>;
 /// Service trait. Implement it in your code to create a service.
 pub trait Service {
     /// Use this associated type to define configuration of your service.
-    type CFG: DeserializeOwned;
+    type Config: DeserializeOwned;
 
     /// Called before new configration is loaded.
     ///
@@ -127,9 +127,9 @@ pub trait Service {
     ///
     /// # Arguments
     ///
-    /// * `cfg`: target configuration
-    fn on_cfg_validate(&self, cfg: Self::CFG) -> CallbackResult<()> {
-        _ = cfg;
+    /// * `config`: target configuration
+    fn on_config_validate(&self, config: Self::Config) -> CallbackResult<()> {
+        _ = config;
         Ok(())
     }
 
@@ -148,17 +148,17 @@ pub trait Service {
     /// # Arguments
     ///
     /// * `ctx`: instance context
-    /// * `new_cfg`: new configuration
-    /// * `old_cfg`: previous defined configuration
+    /// * `new_config`: new configuration
+    /// * `old_config`: previous defined configuration
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
-        new_cfg: Self::CFG,
-        old_cfg: Self::CFG,
+        new_config: Self::Config,
+        old_config: Self::Config,
     ) -> CallbackResult<()> {
         _ = ctx;
-        _ = new_cfg;
-        _ = old_cfg;
+        _ = new_config;
+        _ = old_config;
         Ok(())
     }
 
@@ -170,10 +170,10 @@ pub trait Service {
     /// # Arguments
     ///
     /// * `context`: instance context
-    /// * `cfg`: initial configuration
-    fn on_start(&mut self, context: &PicoContext, cfg: Self::CFG) -> CallbackResult<()> {
+    /// * `config`: initial configuration
+    fn on_start(&mut self, context: &PicoContext, config: Self::Config) -> CallbackResult<()> {
         _ = context;
-        _ = cfg;
+        _ = config;
         Ok(())
     }
 
@@ -225,7 +225,7 @@ pub trait Service {
 /// Define interface like [`Service`] trait but using safe types from [`abi_stable`] crate.
 #[sabi_trait]
 pub trait ServiceStable {
-    fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()>;
+    fn on_config_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_health_check(&self, context: &PicoContext) -> RResult<(), ()>;
     fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_stop(&mut self, context: &PicoContext) -> RResult<(), ()>;
@@ -233,18 +233,18 @@ pub trait ServiceStable {
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
-        new_cfg: RSlice<u8>,
-        old_cfg: RSlice<u8>,
+        new_config: RSlice<u8>,
+        old_config: RSlice<u8>,
     ) -> RResult<(), ()>;
 }
 
 /// Implementation of [`ServiceStable`]
 pub struct ServiceProxy<C: DeserializeOwned> {
-    service: Box<dyn Service<CFG = C>>,
+    service: Box<dyn Service<Config = C>>,
 }
 
 impl<C: DeserializeOwned> ServiceProxy<C> {
-    pub fn from_service(service: Box<dyn Service<CFG = C>>) -> Self {
+    pub fn from_service(service: Box<dyn Service<Config = C>>) -> Self {
         Self { service }
     }
 }
@@ -273,9 +273,9 @@ macro_rules! rtry {
 }
 
 impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
-    fn on_cfg_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()> {
+    fn on_config_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()> {
         let configuration: C = rtry!(rmp_serde::from_slice(configuration.as_slice()));
-        let res = self.service.on_cfg_validate(configuration);
+        let res = self.service.on_config_validate(configuration);
         match res {
             Ok(_) => ROk(()),
             Err(e) => error_into_tt_error(e),
@@ -314,13 +314,13 @@ impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
-        new_cfg: RSlice<u8>,
-        old_cfg: RSlice<u8>,
+        new_config: RSlice<u8>,
+        old_config: RSlice<u8>,
     ) -> RResult<(), ()> {
-        let new_cfg: C = rtry!(rmp_serde::from_slice(new_cfg.as_slice()));
-        let old_cfg: C = rtry!(rmp_serde::from_slice(old_cfg.as_slice()));
+        let new_config: C = rtry!(rmp_serde::from_slice(new_config.as_slice()));
+        let old_config: C = rtry!(rmp_serde::from_slice(old_config.as_slice()));
 
-        let res = self.service.on_config_change(ctx, new_cfg, old_cfg);
+        let res = self.service.on_config_change(ctx, new_config, old_config);
         match res {
             Ok(_) => ROk(()),
             Err(e) => error_into_tt_error(e),
