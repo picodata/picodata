@@ -156,8 +156,13 @@ class PluginReflection:
                 else:
                     data += i.eval(f"return box.space.{table}:select()")
 
+            def del_bucket_id(row):
+                del row[1]
+                return row
+
+            data = map(del_bucket_id, data)
             if self.data[table] is not None:
-                assert data.sort() == self.data[table].sort()
+                assert sorted(data) == sorted(self.data[table])
 
     @staticmethod
     def assert_cb_called(service, callback, called_times, *instances):
@@ -774,7 +779,7 @@ _DATA_V_0_2_0 = {
     "STORE": [
         [1, "OZON"],
         [2, "Yandex"],
-        [2, "Wildberries"],
+        [3, "Wildberries"],
     ],
     "MANAGER": [
         [1, "Manager 1", 1],
@@ -798,7 +803,7 @@ _NO_DATA_V_0_2_0: dict[str, None] = {
 
 def test_migration_separate_command(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection.default()
+    expected_state = PluginReflection.default(i1, i2)
 
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1, timeout=5)
     i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1)
@@ -833,7 +838,7 @@ def test_migration_separate_command(cluster: Cluster):
 
 def test_migration_separate_command_apply_err(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection.default()
+    expected_state = PluginReflection.default(i1, i2)
 
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1, timeout=5)
     # migration of v0.1.0 should be ok
@@ -853,7 +858,7 @@ def test_migration_separate_command_apply_err(cluster: Cluster):
 
 def test_migration_for_changed_migration(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection.default()
+    expected_state = PluginReflection.default(i1, i2)
 
     i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1, timeout=5)
     i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1)
