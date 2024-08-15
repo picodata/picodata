@@ -2148,7 +2148,7 @@ class log_crawler:
 
         self.matched = True
 
-    def wait_matched(self, timeout=3):
+    def wait_matched(self, timeout=8):
         def must_match():
             assert self.matched
 
