@@ -31,7 +31,6 @@ picodata> pico.help("help")
 | [pico.LUA_API_VERSION](#pico_lua_api_version) | Версия Lua API.
 | [pico.PICODATA_VERSION](#pico_picodata_version) | Версия Picodata.
 | [pico.abort_ddl](#pico_abort_ddl) | Отмена ожидающей операции по изменению схемы данных.
-| [pico.args](#pico_args) | Вывод аргументов запуска `picodata run`.
 | [pico.cas()](#pico_cas) | Запрос на изменение параметров методом [Compare and Swap](../overview/glossary.md#cas).
 | [pico.create_table()](#pico_create_table) | Создание таблицы.
 | [pico.drop_table()](#pico_drop_table) | Удаление таблицы.
@@ -101,46 +100,6 @@ function abort_ddl(timeout)
 она будет ожидать подтверждения отмены операции. Возвращает индекс
 соответствующей операции `DdlAbort` в raft-журнале, либо ошибку в случае
 отсутствия ожидающих операций.
-
-### pico.args {: #pico_args }
-
-Lua-таблица (не функция) с [параметрами запуска](cli.md#run) инстанса,
-которые были переданы в виде переменных окружения или аргументов
-командной строки.
-
-<!-- RTFS: https://git.picodata.io/picodata/picodata/picodata/-/blob/master/src/args.rs -->
-- `cluster_id`: (_string_)
-- `data_dir`: (_string_)
-- `instance_id`: (optional _string_)
-- `advertise_address`: (optional _string_)
-- `listen`: (_string_)
-- `peers`: ({_string_})
-- `failure_domain`: ({[_string_] = _string_})
-- `replicaset_id`: (optional _string_)
-- `init_replication_factor`: (_number_)
-- `script`: (optional _string_)
-- `log_level`: (_string_)
-- `http_listen`: (optional _string_)
-
-Возвращаемое значение:
-
-(_table_)
-
-Пример:
-
-```console
-picodata> pico.args
----
-- cluster_id: demo
-  failure_domain: {}
-  log_level: info
-  init_replication_factor: 2
-  listen: localhost:3302
-  peers:
-  - localhost:3301
-  data_dir: ./data/i2
-...
-```
 
 ### pico.cas {: #pico_cas }
 
