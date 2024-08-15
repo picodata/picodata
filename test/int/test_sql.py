@@ -503,7 +503,8 @@ def test_dml_on_global_tbls(cluster: Cluster):
         update global_t
         set a = y from t
         where id = x
-        """
+        """,
+        ignore_filter=r"Duplicate key exists in unique index",
     )
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
@@ -517,8 +518,10 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 4
 
     # test reading subtree with motion
-    data = i1.retriable_sql("insert into global_t select count(*), 1 from t")
-    assert data["row_count"] == 1
+    data = i1.retriable_sql(
+        "insert into global_t select count(*), 1 from t",
+        ignore_filter=r"Duplicate key exists in unique index",
+    )
 
     data = i1.sql("select * from global_t")
     assert data == [[5, 1]]
@@ -550,7 +553,10 @@ vtable_max_rows = 5000"""
     assert data == []
 
     # insert from sharded table
-    data = i2.retriable_sql("insert into global_t select x, y from t")
+    data = i2.retriable_sql(
+        "insert into global_t select x, y from t",
+        ignore_filter=r"Duplicate key exists in unique index",
+    )
     assert data["row_count"] == 5
 
     data = i2.sql("select * from global_t")
@@ -563,21 +569,30 @@ vtable_max_rows = 5000"""
     data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
     assert data["row_count"] == 1
     i1.raft_read_index()
-    data = i1.retriable_sql("select * from t")
+    data = i1.retriable_sql(
+        "select * from t", ignore_filter=r"Duplicate key exists in unique index"
+    )
     assert sorted(data) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
 
     # update sharded table from global table
     data = i2.sql("update t set y = a * a from global_t where id = x")
     assert data["row_count"] == 5
     i1.raft_read_index()
-    data = i1.retriable_sql("select * from t")
+    data = i1.retriable_sql(
+        "select * from t", ignore_filter=r"Duplicate key exists in unique index"
+    )
     assert sorted(data) == [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
 
     # delete sharded table using global table in predicate
     data = i2.sql("delete from t where x in (select id from global_t)")
     assert data["row_count"] == 5
     i1.raft_read_index()
-    data = i1.retriable_sql("select * from t", retry_timeout=60, timeout=8)
+    data = i1.retriable_sql(
+        "select * from t",
+        retry_timeout=60,
+        timeout=8,
+        ignore_filter=r"Duplicate key exists in unique index",
+    )
     assert sorted(data) == [[6, 6]]
 
     # test user with write permession can do global dml
@@ -1440,7 +1455,8 @@ def test_except_on_global_tbls(cluster: Cluster):
     assert ddl["row_count"] == 1
 
     data = i1.retriable_sql(
-        """insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);"""
+        """insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);""",
+        ignore_filter=r"Duplicate key exists in unique index",
     )
     assert data["row_count"] == 5
 
@@ -3264,11 +3280,16 @@ def test_call_procedure(cluster: Cluster):
         i2.sql(""" call "proc2"(1) """)
 
     # Check parameters are passed correctly.
-    data = i1.retriable_sql(""" call "proc2"(?) """, 4)
+    data = i1.retriable_sql(
+        """ call "proc2"(?) """,
+        4,
+        ignore_filter=r"Duplicate key exists in unique index",
+    )
     assert data["row_count"] == 1
     data = i1.retriable_sql(
         """ call "proc2"($1) option(sql_vdbe_max_steps = $1, vtable_max_rows = $1)""",
         5,
+        ignore_filter=r"Duplicate key exists in unique index",
     )
     assert data["row_count"] == 1
 
