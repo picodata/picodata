@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
@@ -26,16 +26,14 @@ pub fn coio_read_write() {
     let (reader_soc, writer_soc) = UnixStream::pair().unwrap();
 
     let reader_fiber = fiber::start(move || {
-        let mut stream =
-            CoIOStream::new(unsafe { TcpStream::from_raw_fd(reader_soc.as_raw_fd()) }).unwrap();
+        let mut stream = CoIOStream::new(TcpStream::from(OwnedFd::from(reader_soc))).unwrap();
         let mut buf: Vec<u8> = vec![0; 4];
         stream.read_exact(&mut buf).unwrap();
         assert_eq!(buf, vec![1, 2, 3, 4]);
     });
 
     let writer_fiber = fiber::start(move || {
-        let mut stream =
-            CoIOStream::new(unsafe { TcpStream::from_raw_fd(writer_soc.as_raw_fd()) }).unwrap();
+        let mut stream = CoIOStream::new(TcpStream::from(OwnedFd::from(writer_soc))).unwrap();
         stream.write_all(&[1, 2, 3, 4]).unwrap();
     });
 
