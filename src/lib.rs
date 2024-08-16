@@ -1,4 +1,5 @@
 #![allow(unknown_lints)]
+#![allow(non_camel_case_types)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::let_and_return)]
 #![allow(clippy::needless_return)]
@@ -324,6 +325,8 @@ fn init_handlers() {
         "#,
     )
     .expect("pico.cas registration should never fail");
+
+    forbid_unsupported_iproto_requests();
 }
 
 /// Sets interactive prompt to display `picodata>`.
@@ -1096,4 +1099,47 @@ fn postjoin(
     }
 
     Ok(())
+}
+
+::tarantool::define_enum_with_introspection! {
+    /// IPROTO request types that are forbidden on picodata side
+    enum ForbiddenIprotoTypes {
+        // TODO(kbezuglyi): uncomment when vshard's
+        // bucket distribution and discovery stop
+        // using IPROTO_SELECT requests
+        // SELECT = 1,
+        INSERT = 2,
+        REPLACE = 3,
+        UPDATE = 4,
+        DELETE = 5,
+        // CALL_16 = 6, - needed
+        // AUTH = 7, - needed
+        // EVAL = 8, - needed
+        UPSERT = 9,
+        // CALL = 10, - needed
+        EXECUTE = 11,
+        NOP = 12,
+        PREPARE = 13,
+        BEGIN = 14,
+        COMMIT = 15,
+        ROLLBACK = 16,
+    }
+}
+
+/// Automatically forbids all unsupported IPROTO request types.
+#[inline]
+fn forbid_unsupported_iproto_requests() {
+    for iproto_request in ForbiddenIprotoTypes::VARIANTS {
+        // SAFETY: function is exported properly and
+        // arguments with argument types are correct
+        let rc = unsafe {
+            tarantool::box_iproto_override(
+                *iproto_request as _,
+                Some(tarantool::iproto_override_cb),
+                None,
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, 0);
+    }
 }

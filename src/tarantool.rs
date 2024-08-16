@@ -432,3 +432,55 @@ extern "C" fn xlog_remove_cb(
         }
     };
 }
+
+extern "C" {
+    /// Sets an IPROTO request handler with the provided
+    /// context for the given request type.
+    pub fn box_iproto_override(
+        req_type: u32,
+        handler: Option<iproto_handler_t>,
+        destroy: Option<iproto_handler_destroy_t>,
+        ctx: *mut (),
+    ) -> i32;
+}
+
+/// Callback for overwritten handlers of IPROTO requests.
+/// Sets diagnostic message and returns and error to register it.
+pub extern "C" fn iproto_override_cb(
+    _header: *const u8,
+    _header_end: *const u8,
+    _body: *const u8,
+    _body_end: *const u8,
+    _ctx: *mut (),
+) -> iproto_handler_status {
+    ::tarantool::set_error!(
+        ::tarantool::error::TarantoolErrorCode::Unsupported,
+        "picodata does not support this IPROTO request type, it was disabled"
+    );
+    iproto_handler_status::IPROTO_HANDLER_ERROR
+}
+
+/// Return codes for IPROTO request handlers.
+#[allow(dead_code)]
+#[repr(C)]
+pub enum IprotoHandlerStatus {
+    IPROTO_HANDLER_OK = 0,
+    IPROTO_HANDLER_ERROR = 1,
+    IPROTO_HANDLER_FALLBACK = 2,
+}
+
+/// Status of handlers of IPROTO requests when
+/// request path of handling is overwritten.
+type iproto_handler_status = IprotoHandlerStatus;
+
+/// Type of callback for a IPROTO request handler.
+type iproto_handler_t = extern "C" fn(
+    header: *const u8,
+    header_end: *const u8,
+    body: *const u8,
+    body_end: *const u8,
+    ctx: *mut (),
+) -> iproto_handler_status;
+
+/// Type of destroy callback for a IPROTO request handler.
+type iproto_handler_destroy_t = extern "C" fn(ctx: *mut ());
