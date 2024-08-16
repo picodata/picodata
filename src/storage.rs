@@ -1091,13 +1091,13 @@ impl Clusterwide {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl ClusterwideTable {
-    /// Id of the corrseponding system global space.
+    /// Id of the corresponding system global space.
     #[inline(always)]
     pub const fn id(&self) -> SpaceId {
         *self as _
     }
 
-    /// Name of the corrseponding system global space.
+    /// Name of the corresponding system global space.
     #[inline(always)]
     pub const fn name(&self) -> &'static str {
         self.as_str()

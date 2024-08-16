@@ -363,17 +363,18 @@ def test_cas_permissions(cluster: Cluster):
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
-    index = cluster.cas(
-        "replace",
-        "_pico_property",
-        ["foo", 128],
-        user=user,
-        password=VALID_PASSWORD,
-    )
-
-    cluster.raft_wait_index(index)
-
-    assert i1.pico_property("foo") == 128
+    with pytest.raises(
+        Exception,
+        match="box error: "
+        "AccessDenied: Write access to table '_pico_property' is denied for user 'Steven'",
+    ):
+        cluster.cas(
+            "replace",
+            "_pico_property",
+            ["foo", 128],
+            user=user,
+            password=VALID_PASSWORD,
+        )
 
 
 def to_set_of_tuples(list_of_lists):

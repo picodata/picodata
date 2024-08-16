@@ -20,6 +20,7 @@ use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 
+use crate::schema::ADMIN_ID;
 use tarantool::error::Error as TntError;
 use tarantool::fiber;
 use tarantool::fiber::r#async::sleep;
@@ -30,16 +31,31 @@ use tarantool::tlua;
 use tarantool::transaction;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
 
-/// This spaces cannot be changed directly dy a [`Dml`] operation. They have
-/// dedicated operation types (e.g. Ddl, Acl) because updating these spaces
+/// These tables cannot be changed directly dy a [`Dml`] operation. They have
+/// dedicated operation types (e.g. Ddl, Acl) because updating these tables
 /// requires automatically updating corresponding local spaces.
-const PROHIBITED_SPACES: &[ClusterwideTable] = &[
+const PROHIBITED_TABLES: &[ClusterwideTable] = &[
     ClusterwideTable::Table,
     ClusterwideTable::Index,
     ClusterwideTable::User,
     ClusterwideTable::Privilege,
     ClusterwideTable::Routine,
 ];
+
+pub fn check_admin_dml_prohibited(dml: &Dml, as_user: UserId) -> traft::Result<()> {
+    let space = dml.space();
+    let Ok(table) = &ClusterwideTable::try_from(space) else {
+        return Ok(());
+    };
+    if as_user == ADMIN_ID && PROHIBITED_TABLES.contains(table) {
+        return Err(Error::TableNotAllowed {
+            table: table.name().into(),
+        }
+        .into());
+    }
+
+    Ok(())
+}
 
 // FIXME: cas::Error will be returned as a string when rpc is called
 /// Performs a clusterwide compare and swap operation.
@@ -205,39 +221,23 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     // Executed as one of the first checks to prevent spending time on
     // expensive range checks if the sender has no permissions for this operation.
     //
-    // Note: audit log record is automatically emmitted in case there is an error,
+    // Note: audit log record is automatically emitted in case there is an error,
     // because it is hooked into AccessDenied error creation (on_access_denied) trigger
     access_control::access_check_op(storage, &req.op, req.as_user)?;
 
     let last_persisted = raft::Storage::last_index(raft_storage)?;
     assert!(last_persisted <= last);
 
-    // Check if this dml operation does not modify PROHIBITED_SPACES
-    {
-        let check_dml_prohibited = |dml: &Dml| -> traft::Result<()> {
-            let space = dml.space();
-            let Ok(table) = &ClusterwideTable::try_from(space) else {
-                return Ok(());
-            };
-            if PROHIBITED_SPACES.contains(table) {
-                return Err(Error::SpaceNotAllowed {
-                    space: table.name().into(),
-                }
-                .into());
-            }
-            Ok(())
-        };
-        match &req.op {
-            Op::Dml(dml) => {
-                check_dml_prohibited(dml)?;
-            }
-            Op::BatchDml { ops: dmls } => {
-                for dml in dmls {
-                    check_dml_prohibited(dml)?;
-                }
-            }
-            _ => {}
+    match &req.op {
+        Op::Dml(dml) => {
+            check_admin_dml_prohibited(dml, req.as_user)?;
         }
+        Op::BatchDml { ops: dmls } => {
+            for dml in dmls {
+                check_admin_dml_prohibited(dml, req.as_user)?;
+            }
+        }
+        _ => {}
     }
 
     // It's tempting to just use `raft_log.entries()` here and only
@@ -431,8 +431,11 @@ pub enum Error {
         actual_term: RaftTerm,
     },
 
-    #[error("SpaceNotAllowed: space {space} is prohibited for use in a predicate")]
-    SpaceNotAllowed { space: String },
+    #[error(
+        "TableNotAllowed: table {table} cannot be modified directly, \
+             please refer to available SQL commands"
+    )]
+    TableNotAllowed { table: String },
 
     /// An error related to `key_def` operation arised from tarantool
     /// depths while checking the predicate.

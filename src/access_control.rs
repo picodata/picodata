@@ -220,7 +220,7 @@ fn box_access_check_ddl_as_user(
     box_access_check_ddl(object_name, object_id, owner_id, object_type, access)
 }
 
-fn access_check_dml(dml: &op::Dml, as_user: UserId) -> tarantool::Result<()> {
+fn access_check_dml(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
     let _su = session::su(as_user)?;
     box_access_check_space(dml.space(), PrivType::Write)
 }
@@ -672,17 +672,49 @@ fn access_check_acl(
     }
 }
 
+// Non-admin users are prohibited from performing DML operations on system tables
+// because of the shared namespace for user and catalog tables in Tarantool.
+// Allowing write access to any table via 'GRANT WRITE TABLE TO ..'
+// also grants access to catalog tables. Such changes can cause security issues,
+// and without this check would also grant access to catalog tables.
+// Admin users have limited write access to some system tables.
+// However, most tables are allowed because Picodata runs under admin to manipulate with the catalog
+// See PROHIBITED_TABLES in cas.rs for details.
+pub fn check_system_tables_access(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
+    let space = dml.space();
+    let Ok(table) = &ClusterwideTable::try_from(space) else {
+        return Ok(());
+    };
+
+    let sys_user = user_by_id(as_user)?;
+    if as_user != ADMIN_ID && as_user != PICO_SERVICE_ID {
+        return Err(make_access_denied(
+            "Write access",
+            PicoSchemaObjectType::Table,
+            table,
+            sys_user.name,
+        ));
+    }
+
+    Ok(())
+}
+
 pub(super) fn access_check_op(
     storage: &Clusterwide,
-    op: &op::Op,
+    op: &Op,
     as_user: UserId,
 ) -> tarantool::Result<()> {
     match op {
         Op::Nop => Ok(()),
-        Op::Dml(dml) => access_check_dml(dml, as_user),
+        Op::Dml(dml) => {
+            access_check_dml(dml, as_user)?;
+            check_system_tables_access(dml, as_user)?;
+            Ok(())
+        }
         Op::BatchDml { ops } => {
             for op in ops {
                 access_check_dml(op, as_user)?;
+                check_system_tables_access(op, as_user)?;
             }
             Ok(())
         }

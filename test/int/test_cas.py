@@ -82,19 +82,14 @@ def test_cas_errors(instance: Instance):
         + f"raft index {index-1} is compacted at {index}",
     )
 
-    # Prohibited spaces
-    for space in ["_pico_table", "_pico_index"]:
+    # Prohibited tables for all users, even for admin
+    for table in ["_pico_table", "_pico_index"]:
         with pytest.raises(TarantoolError) as e5:
-            instance.cas(
-                "insert",
-                space,
-                [0],
-                ranges=[CasRange(eq=0)],
-            )
+            instance.cas("insert", table, [0], ranges=[CasRange(eq=0)], user=1)
         assert e5.value.args[:2] == (
             ER_OTHER,
-            f"compare-and-swap: SpaceNotAllowed: space {space} is prohibited for use "
-            + "in a predicate",
+            f"compare-and-swap: TableNotAllowed: table {table} cannot be modified directly, "
+            + "please refer to available SQL commands",
         )
 
     # Field type error
