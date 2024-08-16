@@ -115,6 +115,8 @@ picodata run --http-listen '127.0.0.1:8081'
 curl --location 'http://127.0.0.1:8081/metrics'
 ```
 
+### Настройка Prometheus {: #prometheus }
+
 Для интеграции Picodata с системой мониторинга событий и оповещений
 [Prometheus](https://prometheus.io) настройте новую цель в файле
 `/etc/prometheus/prometheus.yml`:
@@ -127,7 +129,7 @@ scrape_configs:
   - job_name: 'prometheus'
     scrape_interval: 5s
     static_configs:
-      - targets: ['127.0.0.1::9090']
+      - targets: ['127.0.0.1:9090']
 
   - job_name: 'picodata'
     scrape_interval: 5s
@@ -135,6 +137,58 @@ scrape_configs:
     static_configs:
       - targets: ['127.0.0.1:8081']
 ```
+
+В приведенном примере:
+
+- `127.0.0.1:9090` — адрес, с которого Prometheus будет отдавать метрики
+- `127.0.0.1:8081` — адрес, с которого Prometheus собирает метрики
+  (должен соответствовать параметру `--http-listen` при запуске инстанса
+  Picodata)
+
+Под каждый инстанс Picodata нужно выделять отдельный адрес сбора метрик.
+Например, если локально запустить 4 инстанса Picodata, то файл
+конфигурации Prometheus может выглядеть так:
+
+```yaml
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['127.0.0.1:9090']
+
+  - job_name: 'picodata'
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['127.0.0.1:8081', '127.0.0.1:8082', '127.0.0.1:8083', '127.0.0.1:8084']
+```
+
+### Настройка Grafana {: #grafana }
+
+Собранные в Prometheus метрики можно удобно просматривать в
+веб-интерфейсе [Grafana]. Для этого выполните следующие шаги.
+
+1.&nbsp;Убедитесь, что в настройках подключений в Grafana (`Connections` >
+   `Data sources`) имеется источник данных Prometheus:
+
+![Prometheus data source](../images/grafana/data_sources.png)
+
+2.&nbsp;Импортируйте dashboard с данными Picodata. Для этого понадобится файл
+   [Picodata.json], который следует добавить в меню `Dashboards` > `New` > `Import`:
+
+![Import Picodata dashboard](../images/grafana/import_dashboard.png)
+
+После этого в Grafana можно будет оперативно отслеживать состояние
+инстансов, потребляемую память, нагрузку на сеть, изменения в составе
+кластера и прочие параметры:
+
+![Picodata dashboard](../images/grafana/dashboard.png)
+
+[Grafana]: https://grafana.com/
+[Picodata.json]: https://binary.picodata.io/repository/raw/picodata/monitoring/Picodata.json
 
 <!-- См. также:
 
