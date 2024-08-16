@@ -89,101 +89,119 @@ box.space._pico_property:get("current_schema_version")
 Каждое изменение схемы данных в кластере приводит к
 увеличению этого номера.
 
-## Получение журнала raft-лидера {: #getting_raft_leader_logs }
+## Просмотр отладочного журнала {: #reading_log }
 
-Для доступа к диагностическому журналу raft-лидера выполните следующие шаги.
+Способ просмотра отладочного журнала зависит от варианта запуска.
+
+Если инстансы запущены командой `picodata run` в консоли, то отладочный
+журнал по умолчанию выводится в ту же консоль.
+
+Если для запуска используются скрипты или файл конфигурации, то в них
+вывод отладочного журнала может быть настроен в файл или в службу
+`syslog`. Этим поведением управляет параметр [picodata run --log],
+переменная окружения `PICODATA_LOG`, и параметр конфигурации
+`instance.log.destination`.
+
+[picodata run --log]: ../reference/cli.md#run_log
+
+Для просмотра файла используйте команду `tail -f` или любой другой
+инструмент просмотра файлов.
+
+При развертывании кластера через Ansible отладочный журнал по умолчанию
+выводится в службу `syslog`.
+
+При использовании службы `syslog` для просмотра отладочного журнала
+используйте команду `journalctl`. Для просмотра журнала конкретного
+инстанса вам понадобится знать имя сервиса. При развертывании через
+ansible оно по умолчанию формируется как
+`<cluster_id>@<instance_id>.service`. Например, для кластера с именем
+`test` и инстанса `default-1000` команда для просмотра отладочного
+журнала будет такой:
+
+```shell
+journalctl -u test@default-1000.service
+```
+
+Пример вывода:
+
+```
+systemd[1]: Starting Picodata cluster test@default-1000...
+systemd[1]: Started Picodata cluster test@default-1000.
+picodata[4731]: 'cluster.cluster_id': "test"
+picodata[4731]: 'cluster.tier': {"default": {"replication_factor": 3, "can_vote": true}}
+picodata[4731]: 'cluster.default_replication_factor': 1
+picodata[4731]: 'instance.data_dir': "/var/lib/picodata/test/default-1000"
+picodata[4731]: 'instance.instance_id': "default-1000"
+picodata[4731]: 'instance.listen': "0.0.0.0:13301"
+picodata[4731]: 'instance.http_listen': "0.0.0.0:18001"
+picodata[4731]: 'instance.admin_socket': "/var/run/picodata/test/default-1000.sock"
+picodata[4731]: [supervisor:4731] running StartDiscover
+picodata[4733]: entering discovery phase
+...
+```
+
+### Просмотр отладочного журнала raft-лидера {: #reading_raft_leader_log }
+
+Отладочный журнал raft-лидера представляет особый интерес при
+диагностике неполадок в кластере т.к. содержит важную информацию об
+изменениях, происходящих с конфигурацией и топологией. Raft-лидером в
+каждый момент времени является только один инстанс в кластере и именно
+он управляет остальными. Для доступа к отладочному журналу raft-лидера
+выполните следующие шаги.
 
 Вычислите raft-лидера в кластере. Для этого [подключитесь](connecting.md) к
-  административной консоли любого инстанса:
+административной консоли любого инстанса:
 
-  ```shell
-  picodata admin ./admin.sock
-  ```
+```shell
+picodata admin ./admin.sock
+```
+
 Переключите язык ввода на Lua и узнайте идентификатор текущего
 raft-лидера:
 
-  ```
-  \lua
-  pico.raft_status()
-  ```
+```
+\lua
+pico.raft_status()
+```
 
 Пример вывода:
 
 ```
 ---
 - main_loop_status: idle
-  leader_id: 1
+  leader_id: 2
   id: 1
-  term: 2
-  raft_state: Leader
+  term: 30
+  raft_state: Follower
 ...
 ```
 
-C помощью полученного `leader_id` выясните адрес сервера (peer_address),
-  на котором запущен инстанс, являющийся raft-лидером:
+C помощью полученного `leader_id` выясните адрес сервера, на котором
+запущен этот инстанс:
 
-  ```
-  \sql
-  SELECT * FROM "_pico_peer_address" WHERE "raft_id" = 1
-  ```
+```
+\sql
+SELECT "instance_id", "_pico_instance"."raft_id", "_pico_peer_address"."address"
+FROM "_pico_instance" JOIN "_pico_peer_address"
+ON "_pico_peer_address"."raft_id"="_pico_instance"."raft_id"
+WHERE "_pico_instance"."raft_id" = 2 ;
+```
 
 Пример вывода:
 
 ```
-+---------+--------------------+
-| raft_id |      address       |
-+==============++==============+
-| 1       | "192.168.0.1:3301" |
-+---------+--------------------+
++-----------------------+---------+--------------------+
+| instance_id           | raft_id | address            |
++======================================================+
+| "default-2000"        | 2       | "192.168.0.2:3301" |
++-----------------------+---------+--------------------+
 (1 rows)
 ```
 
-
-Подключитесь к этому серверу по ssh и прочитайте данные диагностического
-журнала через `journalctl`. Отфильтруйте сообщения по юниту, отвечающему
-за инстанса Picodata. Для кластера с именем `test` и тиром `default`
-(заданными, к примеру, в инвентарном файле Ansible) команды будут
-такими:
-
-  ```
-  ssh 192.168.0.1
-  journalctl -u test@default-1000.service
-  ```
-
-Пример вывода:
-
-```
- systemd[1]: Starting Picodata cluster test@default-1000...
- systemd[1]: Started Picodata cluster test@default-1000.
- picodata[4731]: 'cluster.cluster_id': "test"
- picodata[4731]: 'cluster.tier': {"default": {"replication_factor": 3, "can_vote": true}}
- picodata[4731]: 'cluster.default_replication_factor': 1
- picodata[4731]: 'instance.data_dir': "/var/lib/picodata/test/default-1000"
- picodata[4731]: 'instance.config_file': "/etc/picodata/test/default.conf"
- picodata[4731]: 'instance.instance_id': "default-1000"
- picodata[4731]: 'instance.tier': "default"
- picodata[4731]: 'instance.failure_domain': {"HOST": "SERVER-1-1", "DC": "[DC1]"}
- picodata[4731]: 'instance.peer': ["big1-demo-1.picodata.int:13301"]
- picodata[4731]: 'instance.listen': "0.0.0.0:13301"
- picodata[4731]: 'instance.advertise_address': "big1-demo-1.picodata.int:13301"
- picodata[4731]: 'instance.http_listen': "0.0.0.0:18001"
- picodata[4731]: 'instance.admin_socket': "/var/run/picodata/test/default-1000.sock"
- picodata[4731]: 'instance.plugin_dir': "/var/lib/picodata/test/plugins"
- picodata[4731]: 'instance.shredding': false
- picodata[4731]: 'instance.log.level': "info"
- picodata[4731]: 'instance.log.format': "plain"
- picodata[4731]: 'instance.memtx.memory': 73400320
- picodata[4731]: 'instance.memtx.checkpoint_count': 3
- picodata[4731]: 'instance.memtx.checkpoint_interval': 7200
- picodata[4731]: 'instance.vinyl.memory': 134217728
- picodata[4731]: 'instance.vinyl.cache': 134217728
- picodata[4731]: 'instance.iproto.max_concurrent_messages': 1024
- picodata[4731]: 'instance.pg.listen': "0.0.0.0:15001"
- picodata[4731]: 'instance.pg.ssl': false
- picodata[4731]: [supervisor:4731] running StartDiscover
- picodata[4733]: entering discovery phase
- ...
-```
+Дальнейшие шаги зависят от варианта запуска. При развертывании кластера
+через Ansible потребуется подключиться к серверу по ssh и открыть
+диагностический журнал через `journalctl`, см. [Просмотр отладочного
+журнала](#reading_log).
 
 ## Метрики инстанса {: #instance_metrics }
 
