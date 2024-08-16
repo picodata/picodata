@@ -52,6 +52,7 @@ Picodata — это распределенная система промышле
 * [Описание системных таблиц](architecture/system_tables.md)
 * [Интерфейс RPC API](architecture/rpc_api.md)
 * [Файберы, потоки и многозадачность](architecture/fibers.md)
+* [Механизм плагинов](architecture/plugins.md)
 
 ### Плагины {: #plugins }
 

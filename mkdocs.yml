@@ -105,6 +105,7 @@ nav:
     - architecture/system_tables.md
     - architecture/rpc_api.md
     - architecture/fibers.md
+    - architecture/plugins.md
   - Плагины:
     - plugins/synapse.md
     - plugins/gostech_audit_log.md
