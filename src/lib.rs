@@ -1112,7 +1112,7 @@ fn postjoin(
         REPLACE = 3,
         UPDATE = 4,
         DELETE = 5,
-        // CALL_16 = 6, - needed
+        CALL_16 = 6,
         // AUTH = 7, - needed
         // EVAL = 8, - needed
         UPSERT = 9,
