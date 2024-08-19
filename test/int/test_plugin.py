@@ -2094,7 +2094,7 @@ def test_sdk_log(cluster: Cluster):
         migrate=True,
         default_config={"test_type": "log"},
     )
-    assert crawler.matched
+    crawler.wait_matched()
 
 
 @pytest.mark.webui
