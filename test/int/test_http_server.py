@@ -1,11 +1,6 @@
 from conftest import (
     Cluster,
     Instance,
-    _PLUGIN,
-    _PLUGIN_SERVICES,
-    _PLUGIN_SMALL,
-    _PLUGIN_SMALL_SERVICES,
-    _PLUGIN_VERSION_1,
 )
 from urllib.request import urlopen
 import pytest
@@ -106,31 +101,37 @@ def test_webui_with_plugin(cluster: Cluster):
     """
     cluster.set_config_file(yaml=cluster_cfg)
 
+    plugin_1 = "testplug"
+    plugin_1_services = ["testservice_1", "testservice_2"]
+    plugin_2 = "testplug_small"
+    plugin_2_service = "testservice_1"
+    version_1 = "0.1.0"
+
     i1 = cluster.add_instance(wait_online=True, tier="red", enable_http=True)
     i2 = cluster.add_instance(wait_online=True, tier="blue")
     i3 = cluster.add_instance(wait_online=True, tier="green")
 
-    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
-    i1.call("pico.install_plugin", _PLUGIN_SMALL, _PLUGIN_VERSION_1)
+    i1.call("pico.install_plugin", plugin_1, version_1)
+    i1.call("pico.install_plugin", plugin_2, version_1)
     i1.call(
         "pico.service_append_tier",
-        _PLUGIN,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_SERVICES[0],
+        plugin_1,
+        version_1,
+        plugin_1_services[0],
         "red",
     )
     i1.call(
         "pico.service_append_tier",
-        _PLUGIN,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_SERVICES[1],
+        plugin_1,
+        version_1,
+        plugin_1_services[1],
         "blue",
     )
     i1.call(
         "pico.service_append_tier",
-        _PLUGIN_SMALL,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_SMALL_SERVICES[0],
+        plugin_2,
+        version_1,
+        plugin_2_service,
         "blue",
     )
 
@@ -207,13 +208,13 @@ def test_webui_with_plugin(cluster: Cluster):
     tier_red = {
         **tier_template,
         "name": "red",
-        "services": [_PLUGIN_SERVICES[0]],
+        "services": [plugin_1_services[0]],
         "replicasets": [r1],
     }
     tier_blue = {
         **tier_template,
         "name": "blue",
-        "services": [_PLUGIN_SERVICES[1], _PLUGIN_SMALL_SERVICES[0]],
+        "services": [plugin_1_services[1], plugin_2_service],
         "replicasets": [r2],
     }
     tier_green = {**tier_template, "name": "green", "services": [], "replicasets": [r3]}
@@ -236,8 +237,8 @@ def test_webui_with_plugin(cluster: Cluster):
             "currentInstaceVersion": instance_version,
             "memory": {"usable": 201326592, "used": 100663296},
             "plugins": [
-                _PLUGIN + " " + _PLUGIN_VERSION_1,
-                _PLUGIN_SMALL + " " + _PLUGIN_VERSION_1,
+                plugin_1 + " " + version_1,
+                plugin_2 + " " + version_1,
             ],
         }
 
