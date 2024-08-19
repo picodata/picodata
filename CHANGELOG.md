@@ -15,7 +15,12 @@ with the `YY.MINOR.MICRO` scheme.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
+
 - Order of columns in `_pico_service_route` table has changed.
+
+- Support human numbers to configure memtx.memory
+  Supported suffixes: K, M, G, T, 1K = 1024
+  (e.g picodata run --memtx-memory 10G)
 -->
 
 ### Lua API

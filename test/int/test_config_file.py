@@ -104,7 +104,7 @@ instance:
             ),
             peer=dict(value=[f"{host}:{port}"], source="config_file"),
             memtx=dict(
-                memory=dict(value=64 * 1024 * 1024, source="default"),
+                memory=dict(value="64M", source="default"),
                 checkpoint_count=dict(value=2, source="default"),
                 checkpoint_interval=dict(value=3600, source="default"),
             ),
@@ -138,13 +138,13 @@ cluster:
         default:
 instance:
     memtx:
-        memory: 0xdeadbeef
+        memory: 256K
             """
         )
     instance.start(cwd=work_dir)
     instance.wait_online()
 
-    assert instance.eval("return box.cfg.memtx_memory") == 0xDEADBEEF
+    assert instance.eval("return box.cfg.memtx_memory") == 262144
     instance.terminate()
 
     # But if a config is specified explicitly, it will be used instead
@@ -158,7 +158,7 @@ cluster:
         default:
 instance:
     memtx:
-        memory: 0xcafebabe
+        memory: 512M
             """
         )
     instance.env["PICODATA_CONFIG_FILE"] = config_path
@@ -173,7 +173,7 @@ Using configuration file '{config_path}'.
     instance.wait_online()
     assert crawler.matched
 
-    assert instance.eval("return box.cfg.memtx_memory") == 0xCAFEBABE
+    assert instance.eval("return box.cfg.memtx_memory") == 536870912
     instance.terminate()
 
 
@@ -298,8 +298,7 @@ cluster:
     assert box_cfg.get("log") is None  # type: ignore
     assert box_cfg["log_level"] == 6  # means verbose -- set by our testing harness
     assert box_cfg["log_format"] == "plain"
-
-    assert box_cfg["memtx_memory"] == 64 * 1024 * 1024
+    assert box_cfg["memtx_memory"] == 67108864
     assert box_cfg["slab_alloc_factor"] == 1.05
     assert box_cfg["checkpoint_count"] == 2
     assert box_cfg["checkpoint_interval"] == 3600
@@ -337,7 +336,7 @@ instance:
         format: json
 
     memtx:
-        memory: 0x7777777
+        memory: 2G
         checkpoint_count: 8
         checkpoint_interval: 1800
 
@@ -381,7 +380,7 @@ instance:
     assert box_cfg["log_level"] == 7  # means debug
     assert box_cfg["log_format"] == "json"
 
-    assert box_cfg["memtx_memory"] == 0x777_7777
+    assert box_cfg["memtx_memory"] == 2147483648
     assert box_cfg["checkpoint_count"] == 8
     assert box_cfg["checkpoint_interval"] == 1800
 
@@ -457,7 +456,7 @@ def test_output_config_parameters(cluster: Cluster):
         instance_id: from-config
         replicaset_id: with-love
         memtx:
-            memory: 42069
+            memory: 42069B
     """
     )
 
@@ -480,7 +479,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.shredding': false
         'instance.log.level': "verbose"
         'instance.log.format': "plain"
-        'instance.memtx.memory': 42069"""
+        'instance.memtx.memory': \"42069B\""""
 
     params_list = [line.strip().encode("ASCII") for line in output_params.splitlines()]
     found_params = set()

@@ -20,9 +20,12 @@ use crate::util::edit_distance;
 use crate::util::file_exists;
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
+use std::convert::{From, Into};
+use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
 
@@ -169,7 +172,7 @@ Using configuration file '{args_path}'.");
     ///
     /// Note that this is different from [`Self::default`], which returns an
     /// "empty" instance of `Self`, because we need to distinguish between
-    /// paramteres being unspecified and parameters being set to the default
+    /// parameters being unspecified and parameters being set to the default
     /// value explicitly.
     pub fn with_defaults() -> Self {
         let mut config = Self::default();
@@ -1116,7 +1119,104 @@ impl InstanceConfig {
     pub fn memtx_memory(&self) -> u64 {
         self.memtx
             .memory
+            .clone()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
+            .into()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ByteSize
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize, Introspection)]
+#[serde(try_from = "String", into = "String")]
+pub struct ByteSize {
+    amount: u64,
+    scale: Scale,
+}
+
+impl ByteSize {
+    fn as_u64(&self) -> Option<u64> {
+        const UNIT: u64 = 1024;
+        let multiplier = match self.scale {
+            Scale::Bytes => 1,
+            Scale::Kilobytes => UNIT,
+            Scale::Megabytes => UNIT.pow(2),
+            Scale::Gigabytes => UNIT.pow(3),
+            Scale::Terabytes => UNIT.pow(4),
+        };
+
+        self.amount.checked_mul(multiplier)
+    }
+}
+
+tarantool::define_str_enum! {
+    #[derive(Default)]
+   pub enum Scale {
+        #[default]
+        Bytes = "B",
+        Kilobytes = "K",
+        Megabytes = "M",
+        Gigabytes = "G",
+        Terabytes = "T",
+   }
+}
+
+impl Scale {
+    fn from_char(value: char) -> Option<Self> {
+        value.to_string().parse().ok()
+    }
+}
+
+impl TryFrom<String> for ByteSize {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.parse()
+    }
+}
+
+impl FromStr for ByteSize {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (s, scale) = if let Some(scale) = s.chars().last().and_then(Scale::from_char) {
+            (&s[..s.len() - 1], scale)
+        } else {
+            (s, Scale::Bytes)
+        };
+
+        let size = ByteSize {
+            amount: s
+                .parse::<u64>()
+                .map_err(|err: std::num::ParseIntError| err.to_string())?,
+            scale,
+        };
+
+        if size.as_u64().is_none() {
+            return Err("Value is too large".to_string());
+        }
+
+        Ok(size)
+    }
+}
+
+impl From<ByteSize> for u64 {
+    fn from(memory: ByteSize) -> Self {
+        memory.as_u64().expect("should be valid ByteSize")
+    }
+}
+
+impl From<ByteSize> for String {
+    fn from(memory: ByteSize) -> Self {
+        memory.to_string()
+    }
+}
+
+impl Display for ByteSize {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}{}", self.amount, self.scale)
     }
 }
 
@@ -1136,8 +1236,8 @@ pub struct MemtxSection {
     /// Minimum is 32MB (32 * 1024 * 1024).
     ///
     /// Corresponds to `box.cfg.memtx_memory`.
-    #[introspection(config_default = 64 * 1024 * 1024)]
-    pub memory: Option<u64>,
+    #[introspection(config_default = "64M")]
+    pub memory: Option<ByteSize>,
 
     /// The maximum number of snapshots that are stored in the memtx_dir
     /// directory. If the number of snapshots after creating a new one exceeds
@@ -1881,12 +1981,12 @@ instance:
             );
             let config = setup_for_tests(Some(yaml), &["run",
                 "-c", "  instance.log .level =debug  ",
-                "--config-parameter", "instance. memtx . memory=  0xdeadbeef",
+                "--config-parameter", "instance. memtx . memory=  999",
             ]).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
             assert_eq!(config.cluster.cluster_id.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
-            assert_eq!(config.instance.memtx.memory.unwrap(), 0xdead_beef);
+            assert_eq!(config.instance.memtx.memory.unwrap().to_string(), String::from("999B"));
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
             assert_eq!(config.instance.data_dir.unwrap(), PathBuf::from("."));
 
@@ -1981,5 +2081,46 @@ instance:
             IprotoAddress::from_str("localhost:1234").unwrap()
         );
         assert!(!pg.ssl());
+    }
+
+    #[test]
+    fn test_bytesize_from_str() {
+        let res = |s| ByteSize::from_str(s).unwrap();
+        assert_eq!(res("1024").to_string(), "1024B");
+        assert_eq!(u64::from(res("1024")), 1024);
+
+        assert_eq!(res("256B").to_string(), "256B");
+        assert_eq!(u64::from(res("256B")), 256);
+
+        assert_eq!(res("64K").to_string(), "64K");
+        assert_eq!(u64::from(res("64K")), 65_536);
+
+        assert_eq!(res("949M").to_string(), "949M");
+        assert_eq!(u64::from(res("949M")), 995_098_624);
+
+        assert_eq!(res("1G").to_string(), "1G");
+        assert_eq!(u64::from(res("1G")), 1_073_741_824);
+
+        assert_eq!(res("10T").to_string(), "10T");
+        assert_eq!(u64::from(res("10T")), 10_995_116_277_760);
+
+        assert_eq!(res("0M").to_string(), "0M");
+        assert_eq!(u64::from(res("0M")), 0);
+
+        assert_eq!(res("185T").to_string(), "185T");
+        assert_eq!(u64::from(res("185T")), 203_409_651_138_560);
+
+        let e = |s| ByteSize::from_str(s).unwrap_err();
+        assert_eq!(e(""), "cannot parse integer from empty string");
+        assert_eq!(e("M"), "cannot parse integer from empty string");
+        assert_eq!(e("X"), "invalid digit found in string");
+        assert_eq!(e("errstr"), "invalid digit found in string");
+        assert_eq!(e(" "), "invalid digit found in string");
+        assert_eq!(e("1Z"), "invalid digit found in string");
+        assert_eq!(e("1 K"), "invalid digit found in string");
+        assert_eq!(e("1_000"), "invalid digit found in string");
+        assert_eq!(e("1 000"), "invalid digit found in string");
+        assert_eq!(e("1 000 X"), "invalid digit found in string");
+        assert_eq!(e("17000000T"), "Value is too large");
     }
 }

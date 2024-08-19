@@ -1,5 +1,5 @@
 use crate::address::{HttpAddress, IprotoAddress};
-use crate::config::DEFAULT_USERNAME;
+use crate::config::{ByteSize, DEFAULT_USERNAME};
 use crate::instance::InstanceId;
 use crate::util::Uppercase;
 use clap::Parser;
@@ -255,7 +255,7 @@ pub struct Run {
     /// The amount of memory in bytes to allocate for the database engine.
     ///
     /// By default, 64 MiB is used.
-    pub memtx_memory: Option<u64>,
+    pub memtx_memory: Option<ByteSize>,
 
     #[clap(
         long = "service-password-file",
