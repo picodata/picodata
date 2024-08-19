@@ -319,8 +319,9 @@ define_clusterwide_tables! {
             pub struct Tables {
                 space: Space,
                 #[primary]
-                index_id:   Index => "_pico_table_id",
-                index_name: Index => "_pico_table_name",
+                index_id:       Index => "_pico_table_id",
+                index_name:     Index => "_pico_table_name",
+                index_owner_id: Index => "_pico_table_owner_id",
             }
         }
         Index = 513, "_pico_index" => {
@@ -387,6 +388,7 @@ define_clusterwide_tables! {
                 #[primary]
                 index_id:   Index => "_pico_user_id",
                 index_name: Index => "_pico_user_name",
+                index_owner_id: Index => "_pico_user_owner_id",
             }
         }
         Privilege = 521, "_pico_privilege" => {
@@ -418,8 +420,9 @@ define_clusterwide_tables! {
             pub struct Routines {
                 space: Space,
                 #[primary]
-                index_id:   Index => "_pico_routine_id",
-                index_name: Index => "_pico_routine_name",
+                index_id:       Index => "_pico_routine_id",
+                index_name:     Index => "_pico_routine_name",
+                index_owner_id: Index => "_pico_routine_owner_id",
             }
         }
         Plugin = 526, "_pico_plugin" => {
@@ -2379,10 +2382,18 @@ impl Tables {
             .if_not_exists(true)
             .create()?;
 
+        let index_owner_id = space
+            .index_builder("_pico_table_owner_id")
+            .unique(false)
+            .part("owner")
+            .if_not_exists(true)
+            .create()?;
+
         Ok(Self {
             space,
             index_id,
             index_name,
+            index_owner_id,
         })
     }
 
@@ -2413,6 +2424,17 @@ impl Tables {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 2,
+                name: "_pico_table_owner_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
+                parts: vec![Part::from(("owner", IndexFieldType::Unsigned)).is_nullable(false)],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -2474,6 +2496,14 @@ impl Tables {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn by_owner_id(
+        &self,
+        owner_id: UserId,
+    ) -> tarantool::Result<EntryIter<TableDef, MP_CUSTOM>> {
+        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        Ok(EntryIter::new(iter))
     }
 }
 
@@ -3052,10 +3082,18 @@ impl Users {
             .if_not_exists(true)
             .create()?;
 
+        let index_owner_id = space
+            .index_builder("_pico_user_owner_id")
+            .unique(false)
+            .part("owner")
+            .if_not_exists(true)
+            .create()?;
+
         Ok(Self {
             space,
             index_id,
             index_name,
+            index_owner_id,
         })
     }
 
@@ -3090,6 +3128,17 @@ impl Users {
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
             },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 2,
+                name: "_pico_user_owner_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
+                parts: vec![Part::from(("owner", IndexFieldType::Unsigned)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
         ]
     }
 
@@ -3103,6 +3152,12 @@ impl Users {
     pub fn by_name(&self, user_name: &str) -> tarantool::Result<Option<UserDef>> {
         let tuple = self.index_name.get(&[user_name])?;
         tuple.as_ref().map(Tuple::decode).transpose()
+    }
+
+    #[inline]
+    pub fn by_owner_id(&self, owner_id: UserId) -> tarantool::Result<EntryIter<UserDef, MP_SERDE>> {
+        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        Ok(EntryIter::new(iter))
     }
 
     #[inline]
@@ -3455,10 +3510,18 @@ impl Routines {
             .if_not_exists(true)
             .create()?;
 
+        let index_owner_id = space
+            .index_builder("_pico_routine_owner_id")
+            .unique(false)
+            .part("owner")
+            .if_not_exists(true)
+            .create()?;
+
         Ok(Self {
             space,
             index_id,
             index_name,
+            index_owner_id,
         })
     }
 
@@ -3489,6 +3552,17 @@ impl Routines {
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
+                operable: true,
+                // This means the local schema is already up to date and main loop doesn't need to do anything
+                schema_version: INITIAL_SCHEMA_VERSION,
+            },
+            IndexDef {
+                table_id: Self::TABLE_ID,
+                id: 2,
+                name: "_pico_routine_owner_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
+                parts: vec![Part::from(("owner", IndexFieldType::Unsigned)).is_nullable(false)],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -3534,6 +3608,14 @@ impl Routines {
         ops.assign(column_name!(RoutineDef, operable), operable)?;
         self.space.update(&[routine_id], ops)?;
         Ok(())
+    }
+
+    pub fn by_owner_id(
+        &self,
+        owner_id: UserId,
+    ) -> tarantool::Result<EntryIter<RoutineDef, MP_SERDE>> {
+        let iter = self.index_owner_id.select(IteratorType::Eq, &[owner_id])?;
+        Ok(EntryIter::new(iter))
     }
 }
 
@@ -4443,14 +4525,17 @@ pub mod acl {
         Ok(())
     }
 
-    /// Remove a user definition and any entities owned by it from the internal
-    /// clusterwide storage.
+    /// Remove a user with no dependent objects.
     pub fn global_drop_user(
         storage: &Clusterwide,
         user_id: UserId,
         initiator: UserId,
-    ) -> tarantool::Result<()> {
-        let user_def = storage.users.by_id(user_id)?.expect("failed to get user");
+    ) -> traft::Result<()> {
+        let user_def = storage.users.by_id(user_id)?.ok_or_else(|| {
+            BoxError::new(TntErrorCode::NoSuchUser, format!("no such user #{user_id}"))
+        })?;
+        user_def.ensure_no_dependent_objects(storage)?;
+
         storage.privileges.delete_all_by_grantee_id(user_id)?;
         storage.users.delete(user_id)?;
 
@@ -4720,7 +4805,6 @@ pub mod acl {
         let lua = ::tarantool::lua_state();
         lua.exec_with("box.schema.user.drop(...)", user_id)
             .map_err(LuaError::from)?;
-
         Ok(())
     }
 

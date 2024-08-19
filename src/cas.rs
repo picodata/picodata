@@ -375,7 +375,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         // We can't use a `do_acl` inside of a transaction here similarly to `do_dml`,
         // as acl should be applied only on replicaset leader. Raft leader is not always
         // a replicaset leader.
-        Op::Acl(acl) => acl.validate()?,
+        Op::Acl(acl) => acl.validate(storage)?,
         _ => (),
     }
 

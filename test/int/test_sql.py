@@ -3950,6 +3950,113 @@ Alter access to user 'boba' is denied for user 'biba'\
     assert boba in names_from_pico_user_table()
 
 
+def test_drop_user(cluster: Cluster):
+    i1, _ = cluster.deploy(instance_count=2)
+    user = "user"
+    password = "Passw0rd"
+
+    # Create and drop the created user
+    i1.sql(f""" create user "{user}" with password '{password}' """)
+    i1.sql(f""" drop user "{user}" """)
+
+    # Create user with privileges
+    i1.sql(f""" create user "{user}" with password '{password}' """)
+    i1.sql(f""" grant create table to "{user}" """, sudo=True)
+    i1.sql(f""" grant create procedure to "{user}" """, sudo=True)
+
+    # Drop user shouldn't fail despite the fact that the user has privileges
+    i1.sql(f""" drop user "{user}" """)
+
+    # Create user with privileges
+    i1.sql(f""" create user "{user}" with password '{password}' """)
+    i1.sql(f""" grant create table to "{user}" """, sudo=True)
+    i1.sql(f""" grant create procedure to "{user}" """, sudo=True)
+
+    # User creates a table
+    ddl = i1.sql(
+        """
+        create table t (a text not null, b text not null, c text, primary key (a))
+        using memtx
+        distributed by (a)
+        option (timeout = 3)
+        """,
+        user=user,
+        password=password,
+    )
+    assert ddl["row_count"] == 1
+
+    # User creates a procedure
+    data = i1.sql(
+        """
+        create procedure proc1(int)
+        language SQL
+        as $$insert into t values(?, ?, ?)$$
+        """,
+        user=user,
+        password=password,
+    )
+    assert data["row_count"] == 1
+
+    # Drop user should fail as the user owns tables and routines
+    with pytest.raises(
+        TarantoolError,
+        match=r"user cannot be dropped because some objects depend on it.*"
+        r"owner of tables t.*"
+        r"owner of procedures proc1.*",
+    ):
+        i1.sql(f""" drop user "{user}" """)
+
+    # Drop user objects
+    data = i1.sql("drop table t")
+    assert data["row_count"] == 1
+
+    data = i1.sql("drop procedure proc1")
+    assert data["row_count"] == 1
+
+    # Grant create user and create role
+    data = i1.sql(f'grant create user to "{user}"', sudo=True)
+    assert data["row_count"] == 1
+
+    data = i1.sql(f'grant create role to "{user}"', sudo=True)
+    assert data["row_count"] == 1
+
+    # User creates user
+    data = i1.sql(
+        "create user lol with password 'Passw0rd'",
+        user=user,
+        password=password,
+    )
+    assert data["row_count"] == 1
+
+    # User creates role
+    data = i1.sql(
+        "create role kek",
+        user=user,
+        password=password,
+    )
+    assert data["row_count"] == 1
+
+    # Drop user should fail as the user owns another user and role
+    with pytest.raises(
+        TarantoolError,
+        match=r"user cannot be dropped because some objects depend on it.*"
+        r"owner of users lol.*"
+        r"owner of roles kek.*",
+    ):
+        i1.sql(f""" drop user "{user}" """)
+
+    # Drop user objects
+    data = i1.sql("drop user lol")
+    assert data["row_count"] == 1
+
+    data = i1.sql("drop role kek")
+    assert data["row_count"] == 1
+
+    # Drop user with no objects
+    data = i1.sql(f'drop user "{user}"')
+    assert data["row_count"] == 1
+
+
 def test_index(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

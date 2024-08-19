@@ -856,6 +856,53 @@ impl UserDef {
             ty: UserMetadataKind::User,
         }
     }
+
+    pub fn ensure_no_dependent_objects(&self, storage: &Clusterwide) -> traft::Result<()> {
+        let tables: Vec<_> = storage
+            .tables
+            .by_owner_id(self.id)?
+            .map(|def| def.name)
+            .collect();
+
+        let routines: Vec<_> = storage
+            .routines
+            .by_owner_id(self.id)?
+            .map(|def| def.name)
+            .collect();
+
+        let users: Vec<_> = storage
+            .users
+            .by_owner_id(self.id)?
+            .filter(|def| def.ty == UserMetadataKind::User)
+            .map(|def| def.name)
+            .collect();
+
+        let roles: Vec<_> = storage
+            .users
+            .by_owner_id(self.id)?
+            .filter(|def| def.ty == UserMetadataKind::Role)
+            .map(|def| def.name)
+            .collect();
+
+        if tables.is_empty() && routines.is_empty() && roles.is_empty() && users.is_empty() {
+            return Ok(());
+        }
+
+        let mut err = "user cannot be dropped because some objects depend on it\n".to_string();
+        if !tables.is_empty() {
+            err.push_str(&format!("owner of tables {}\n", tables.join(", ")));
+        }
+        if !routines.is_empty() {
+            err.push_str(&format!("owner of procedures {}\n", routines.join(", ")));
+        }
+        if !users.is_empty() {
+            err.push_str(&format!("owner of users {}\n", users.join(", ")));
+        }
+        if !roles.is_empty() {
+            err.push_str(&format!("owner of roles {}\n", roles.join(", ")));
+        }
+        Err(traft::error::Error::Other(err.into()))
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

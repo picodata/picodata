@@ -13,6 +13,7 @@ use ::tarantool::space::{Field, SpaceId};
 use ::tarantool::tlua;
 use ::tarantool::tuple::{ToTupleBuffer, TupleBuffer};
 use serde::{Deserialize, Serialize};
+use tarantool::error::{TarantoolError, TarantoolErrorCode};
 use tarantool::index::IndexType;
 use tarantool::session::UserId;
 use tarantool::space::SpaceEngineType;
@@ -203,7 +204,7 @@ impl std::fmt::Display for Op {
                 initiator,
                 schema_version,
             }) => {
-                write!(f, "DropUser({schema_version}, {user_id} {initiator})")
+                write!(f, "DropUser({schema_version}, {user_id}, {initiator})")
             }
             Self::Acl(Acl::CreateRole { role_def }) => {
                 let UserDef {
@@ -824,7 +825,7 @@ impl Acl {
     /// Performs preliminary checks on acl so that it will not fail when applied.
     /// These checks do not include authorization checks, which are done separately in
     /// [`crate::access_control::access_check_op`].
-    pub fn validate(&self) -> Result<(), TRaftError> {
+    pub fn validate(&self, storage: &Clusterwide) -> Result<(), TRaftError> {
         // THOUGHT: should we move access_check_* fns here as it's done in tarantool?
         match self {
             Self::ChangeAuth { user_id, .. } => {
@@ -840,6 +841,15 @@ impl Acl {
                 if *user_id == GUEST_ID || *user_id == ADMIN_ID {
                     return Err(TRaftError::other("dropping system user is not allowed"));
                 }
+
+                let user_def = storage.users.by_id(*user_id)?.ok_or_else(|| {
+                    TarantoolError::new(
+                        TarantoolErrorCode::NoSuchUser,
+                        format!("no such user #{user_id}"),
+                    )
+                })?;
+                user_def.ensure_no_dependent_objects(storage)?;
+
                 // user_has_data will be successful in any case https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L2846
                 // as box.schema.user.drop(..) deletes all the related spaces/priveleges/etc.
             }
