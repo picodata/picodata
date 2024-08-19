@@ -41,7 +41,7 @@ def test_gl119_panic_on_shutdown(cluster2: Cluster):
 def test_single(instance: Instance):
     crawler = log_crawler(instance, ON_SHUTDOWN_TIMEOUT)
 
-    instance.terminate(kill_after_seconds=1)
+    instance.terminate()
     assert not crawler.matched
 
 
@@ -53,7 +53,7 @@ def test_couple_leader_first(cluster2: Cluster):
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
 
     c1 = log_crawler(i1, ON_SHUTDOWN_TIMEOUT)
-    i1.terminate(kill_after_seconds=1)
+    i1.terminate()
     assert not c1.matched
 
     i2.assert_raft_status("Leader")
@@ -62,7 +62,7 @@ def test_couple_leader_first(cluster2: Cluster):
     assert i1_info["current_state"]["variant"] == "Offline"
 
     c2 = log_crawler(i2, ON_SHUTDOWN_TIMEOUT)
-    i2.terminate(kill_after_seconds=1)
+    i2.terminate()
     assert not c2.matched
 
 
@@ -74,7 +74,7 @@ def test_couple_follower_first(cluster2: Cluster):
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
 
     c2 = log_crawler(i2, ON_SHUTDOWN_TIMEOUT)
-    i2.terminate(kill_after_seconds=1)
+    i2.terminate()
     assert not c2.matched
 
     i2_info = i1.call(".proc_instance_info", i2.instance_id)
@@ -82,7 +82,7 @@ def test_couple_follower_first(cluster2: Cluster):
     assert i2_info["current_state"]["variant"] == "Offline"
 
     c1 = log_crawler(i1, ON_SHUTDOWN_TIMEOUT)
-    i1.terminate(kill_after_seconds=1)
+    i1.terminate()
     assert not c1.matched
 
 
@@ -95,11 +95,11 @@ def test_threesome(cluster3: Cluster):
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
 
     c1 = log_crawler(i1, ON_SHUTDOWN_TIMEOUT)
-    i1.terminate(kill_after_seconds=1)
+    i1.terminate()
     assert not c1.matched
 
     c2 = log_crawler(i2, ON_SHUTDOWN_TIMEOUT)
-    i2.terminate(kill_after_seconds=1)
+    i2.terminate()
     assert not c2.matched
 
 
@@ -139,7 +139,7 @@ instance:
     i1.assert_raft_status("Leader")
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
 
-    i1.terminate(kill_after_seconds=1)
+    i1.terminate()
 
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
     assert c1.matched
