@@ -62,7 +62,7 @@
 
 См. также:
 
-- [Служебные таблицы плагинов](system_tables.md#plugin_tables)
+- [Описание системных таблиц плагинов](system_tables.md#plugins)
 
 ### Манифест {: #manifest }
 
@@ -306,9 +306,9 @@ proc_service_configure(
   [миграции](#migrations)
 
 [_pico_property]: system_tables.md#_pico_property
-[_pico_plugin]: system_tables.md#pico_plugin_table
-[_pico_service]: system_tables.md#pico_service_table
-[_pico_service_route]: system_tables.md#pico_service_route_table
+[_pico_plugin]: system_tables.md#_pico_plugin
+[_pico_service]: system_tables.md#_pico_service
+[_pico_service_route]: system_tables.md#_pico_service_route
 [CaS]: ../overview/glossary.md#cas
 [migration]: ../overview/glossary.md#migration
 [ansible]: ../tutorial/deploy_ansible.md
