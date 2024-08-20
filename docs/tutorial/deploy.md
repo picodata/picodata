@@ -1,122 +1,76 @@
 # Создание кластера
 
 В данном разделе приведена информация по развертыванию кластера Picodata
-из нескольких инстансов, запущенных на одном или разных серверах. Запуск
-отдельного инстанса описан в разделе [Запуск Picodata](run.md).
+из нескольких инстансов. Описанный способ предназначен в первую очередь
+для локального использования при разработке. О промышленной эксплуатации
+читайте в разделе [Развертывание кластера через Ansible].
 
-## Кластер из нескольких инстансов {: #distributed_cluster }
+[Развертывание кластера через Ansible]: ../tutorial/deploy_ansible.md
 
-Разворачивание кластера из нескольких инстансов отражает сценарии
-полноценного использования Picodata. Данная процедура аналогична как для
-"локальных" кластеров (на одном хосте), так и для варианта с несколькими
-серверами. В последнем случае  нужно будет в примерах ниже заменить
-`127.0.0.1` на IP-адресы соответствующих серверов.
+## Файл конфигурации {: #config }
 
-Для примера мы запустим на одном хосте кластер из 4-х инстансов. Для
-этого потребуется заранее подготовить:
+Для развертывания кластера создайте файл конфигурации с параметрами,
+общими для всех инстансов:
 
-- [файл конфигурации][config] (одинаковый для вcех инстансов)
-- параметры запуска инстанса (индивидуальны для каждого)
+???+ example "my_cluster.md"
+    ```yaml
+    cluster:
+      cluster_id: my_cluster
+      tier:
+        default:
+          replication_factor: 2
+          can_vote: true
 
-Файл конфигурации удобно подготовить на основе шаблона, созданного
-командой `picodata config default`. По умолчанию файл содержит все
-параметры [picodata run][picodata_run], что избыточно для тестового
-примера. Сократите его до более компактного вида, например:
+    instance:
+      peer:
+      - 127.0.0.1:3301
+      audit: false
+      shredding: false
+      tier: default
+      log:
+        level: info
+        format: plain
+        destination: null
+      memtx:
+        memory: 67108864
+        checkpoint_count: 2
+        checkpoint_interval: 3600.0
+      vinyl:
+        memory: 134217728
+        cache: 134217728
+    ```
 
-```yml
-cluster:
-  cluster_id: my_cluster
-  tier:
-    default:
-      replication_factor: 2
-      can_vote: true
+Для примера мы запустим кластер из 4 инстансов на локальном сетевом
+интерфейсе `127.0.0.1`. Приведенный набор параметров явно задает имя
+кластера "cluster_id", имя тира "default" и фактор репликации 2.
 
-instance:
-  peer:
-  - 127.0.0.1:3301
-  audit: false
-  shredding: false
-  tier: default
-  log:
-    level: info
-    format: plain
-    destination: null
-  memtx:
-    memory: 67108864
-    checkpoint_count: 2
-    checkpoint_interval: 3600.0
-  vinyl:
-    memory: 134217728
-    cache: 134217728
-```
+Альтернативно для генерации файла конфигурации со значениями по умолчанию
+доступна команда [picodata config default]. Полный перечень возможных
+параметров конфигурации и их описание содержатся в разделе [Файл
+конфигурации].
 
-[picodata_run]: ../reference/cli.md#run
+[picodata config default]: ../reference/cli.md#config_default
+[Файл конфигурации]: ../reference/config.md
 
-Такой набор настроек явно задает имя кластера (`cluster_id`), имя [тира][tier]
-(`default`) и фактор репликации (`2`) для входящих в него репликасетов,
-а также ряд параметров, универсальных для всех инстансов.
+## Скрипты инстансов {: #instance_scripts }
 
-!!! note "Примечание"
-    Если не использовать параметр `cluster_id`, то по
-    умолчанию кластер будет носить имя demo.
+Для каждого инстанса создайте отдельный скрипт запуска с его
+индивидуальными настройками:
 
-Обратите внимание, что все инстансы будут использовать одно и то же
-значение параметрам `peer`. Он нужен для того, чтобы дать инстансам
-возможность обнаружить друг друга и позволить механизму [discovery]
-правильно собрать все найденные экземпляры Picodata в один кластер.
-Укажите в `peer` адрес какого-либо соседнего инстанса (в примере указан
-первый). Без явного указания параметра `peer` каждый инстанс образует
-свой независимый кластер.
+???+ example "i1"
+    ```shell
+    #!/bin/bash
 
-Индивидуальные настройки инстансов включают:
+    export PICODATA_CONFIG_FILE="my_cluster.yml"
 
-- директорию для хранения [рабочих файлов][files] ([data-dir])
-- адрес приема соединений ([listen])
-- адрес HTTP-сервера ([http-listen])
-- адрес подключения для клиентов PostgreSQL ([pg-listen])
+    export PICODATA_INSTANCE_ID="i1"
+    export PICODATA_DATA_DIR="./data/my_cluster/i1"
+    export PICODATA_LISTEN="127.0.0.1:3301"
+    export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
+    export PICODATA_PG_LISTEN="127.0.0.1:5432"
 
-!!! note "Примечание"
-    Адрес HTTP-сервера и сервера для подключения клиента PostgreSQL
-    достаточно указать только для первого инстанса в кластере
-
-[data-dir]: ../reference/cli.md#run_data_dir
-[listen]: ../reference/cli.md#run_listen
-[http-listen]: ../reference/cli.md#run_http_listen
-[pg-listen]: ../reference/cli.md#run_pg_listen
-
-Эти настройки задаются как в виде аргументов для `picodata run`, так
-и с помощью экспорта соответствующих переменных. Последний способ
-позволяет более удобно управлять настройками в Bash-скрипте. Ниже
-приведен пример скрипта, который задействует файл конфигурации
-(`my_cluster.yml`), определяет индивидуальные настройки первого инстанса
-(`i1`) и запускает его:
-
-!!! example "i1"
-  ```shell
-  #!/bin/bash
-
-  export PICODATA_CONFIG_FILE="my_cluster.yml"
-
-  export PICODATA_INSTANCE_ID="i1"
-  export PICODATA_DATA_DIR="tmp/i1"
-  export PICODATA_LISTEN="127.0.0.1:3301"
-  export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
-  export PICODATA_PG_LISTEN="127.0.0.1:5432"
-
-  exec picodata run
-  ```
-
-Для параметра `listen` (переменной `PICODATA_LISTEN`) формат адреса допускает
-упрощения — можно указать только хост `127.0.0.1` (порт по умолчанию
-`:3301`), или только порт, но для наглядности лучше используйте полный
-формат `<HOST>:<PORT>`.
-
-[files]: ../architecture/instance_runtime_files.md
-[cli]: ../reference/cli.md
-[config]: ../reference/config.md
-[tier]: ../overview/glossary.md#tier
-
-Примеры скриптов для остальных трех инстансов:
+    exec picodata run
+    ```
 
 ??? example "i2"
     ```
@@ -125,10 +79,8 @@ instance:
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
     export PICODATA_INSTANCE_ID="i2"
-    export PICODATA_DATA_DIR="tmp/i2"
+    export PICODATA_DATA_DIR="./data/my_cluster/i2"
     export PICODATA_LISTEN="127.0.0.1:3302"
-    # export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
-    # export PICODATA_PG_LISTEN="127.0.0.1:5432"
 
     exec picodata run
     ```
@@ -140,10 +92,8 @@ instance:
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
     export PICODATA_INSTANCE_ID="i3"
-    export PICODATA_DATA_DIR="tmp/i3"
+    export PICODATA_DATA_DIR="./data/my_cluster/i3"
     export PICODATA_LISTEN="127.0.0.1:3303"
-    # export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
-    # export PICODATA_PG_LISTEN="127.0.0.1:5432"
 
     exec picodata run
     ```
@@ -155,44 +105,29 @@ instance:
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
     export PICODATA_INSTANCE_ID="i4"
-    export PICODATA_DATA_DIR="tmp/i4"
+    export PICODATA_DATA_DIR="./data/my_cluster/i4"
     export PICODATA_LISTEN="127.0.0.1:3304"
-    # export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
-    # export PICODATA_PG_LISTEN="127.0.0.1:5432"
 
     exec picodata run
     ```
 
-Все корректно запущенные инстансы используют алгоритм [discovery] для
-получения от raft информации о текущем лидере raft-группы и
-автоматически добавляются в один кластер.
+Полный перечень возможных параметров запуска и их описание содержатся в
+разделе [Аргументы командной строки]. Запустите один за другим инстансы
+в четырех окнах терминала. Приведенные в примере параметры приведут к
+созданию кластера в рабочей директории `./data/my_cluster` с
+веб-интерфейсом, доступным по адресу
+[127.0.0.1:8080](http://127.0.0.1:8080).
 
-[discovery]: ../architecture/discovery.md
+Читайте далее:
 
-## Именование инстансов {: #instance_naming }
+- [Подключение и работа в консоли](../tutorial/connecting.md)
+- [Развертывание кластера через Ansible](../tutorial/deploy_ansible.md)
 
-Чтобы проще было отличать инстансы друг от друга, задайте им имена.
-
-При запуске с указанием параметров вручную:
-
-```shell
-picodata run --instance-id barsik
-```
-
-При запуске из скрипта, объявите в нем соответствующую переменную:
-
-```shell
-export PICODATA_INSTANCE_ID="barsik"
-```
-
-Если имя не дать, то оно будет сгенерировано автоматически в момент
-добавления в кластер. Имя инстанса задается один раз и не может быть
-изменено в дальнейшем (например, оно постоянно сохраняется в снапшотах
-инстанса). В кластере нельзя иметь два инстанса с одинаковым именем —
-пока инстанс живой, другой инстанс сразу после запуска получит ошибку
-при добавлении в кластер. Тем не менее, имя можно повторно использовать,
-если предварительно исключить первый инстанс с таким именем из кластера.
-<!-- Это делается командой `picodata expel barsik`. -->
+<!--
+TBD:
+## Кластер на нескольких серверах
+## Кластер из нескольких тиров
+-->
 
 ## Репликация и зоны доступности (failure domains) {: #failure_domains }
 
