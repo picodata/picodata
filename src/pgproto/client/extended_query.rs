@@ -14,7 +14,7 @@ pub fn process_parse_message(
     backend: &Backend,
     parse: Parse,
 ) -> PgResult<()> {
-    backend.parse(parse.name, parse.query, parse.type_oids)?;
+    backend.parse(parse.name, &parse.query, parse.type_oids)?;
     stream.write_message_noflush(messages::parse_complete())?;
     Ok(())
 }

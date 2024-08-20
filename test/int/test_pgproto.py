@@ -97,7 +97,7 @@ def test_extended_dql(pg_client: PgClient):
     assert desc["param_oids"] == []
     assert desc["query_type"] == 3
     assert desc["command_tag"] == 12
-    assert desc["metadata"] == [{'"key"': "int8"}, {'"value"': "text"}]
+    assert desc["metadata"] == [{"key": "int8"}, {"value": "text"}]
 
     data = pg_client.execute(id1)
     pg_client.close_portal(id1)
@@ -120,7 +120,7 @@ def test_extended_dql(pg_client: PgClient):
     assert desc["param_oids"] == []
     assert desc["query_type"] == 3
     assert desc["command_tag"] == 12
-    assert desc["metadata"] == [{'"value_alias"': "text"}]
+    assert desc["metadata"] == [{"value_alias": "text"}]
 
     # Third query
     dql = """ select * from (values (1)) """
@@ -137,7 +137,7 @@ def test_extended_dql(pg_client: PgClient):
     assert desc["param_oids"] == []
     assert desc["query_type"] == 3
     assert desc["command_tag"] == 12
-    assert desc["metadata"] == [{'"COLUMN_1"': "int8"}]
+    assert desc["metadata"] == [{"COLUMN_1": "int8"}]
 
 
 def test_extended_errors(pg_client: PgClient):

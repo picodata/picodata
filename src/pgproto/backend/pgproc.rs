@@ -143,7 +143,7 @@ pub fn proc_pg_parse(
     param_oids: Vec<Oid>,
     traceable: bool,
 ) -> PgResult<()> {
-    backend::parse(id, name, query, param_oids, traceable)
+    backend::parse(id, name, &query, param_oids, traceable)
 }
 
 #[proc]

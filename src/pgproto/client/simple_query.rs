@@ -10,7 +10,7 @@ pub fn process_query_message(
     backend: &Backend,
     query: Query,
 ) -> PgResult<()> {
-    match backend.simple_query(query.query)? {
+    match backend.simple_query(&query.query)? {
         ExecuteResult::AclOrDdl { tag } => {
             stream.write_message(messages::command_complete(&tag))?;
         }

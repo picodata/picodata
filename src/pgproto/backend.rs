@@ -6,16 +6,19 @@ use self::{
 use super::{
     client::ClientId,
     error::{PgError, PgResult},
+    value::PgValue,
 };
-use crate::traft::error::Error;
 use crate::{
-    pgproto::value::{FieldFormat, PgValue, RawFormat},
+    pgproto::value::{FieldFormat, RawFormat},
     schema::ADMIN_ID,
     sql::{otm::TracerKind, router::RouterRuntime, with_tracer},
 };
+use crate::{tlog, traft::error::Error};
 use bytes::Bytes;
 use opentelemetry::{sdk::trace::Tracer, Context};
 use postgres_types::Oid;
+use sbroad::errors::SbroadError;
+use sbroad::ir::value::Value as SbroadValue;
 use sbroad::{
     executor::{
         engine::{helpers::normalize_name_for_space_api, QueryCache, Router, TableVersionMap},
@@ -35,6 +38,7 @@ use std::{
 use tarantool::session::with_su;
 
 mod pgproc;
+mod well_known_queries;
 
 pub mod describe;
 pub mod result;
@@ -159,11 +163,11 @@ pub fn execute(
 pub fn parse(
     cid: ClientId,
     name: String,
-    query: String,
+    query: &str,
     param_oids: Vec<Oid>,
     traceable: bool,
 ) -> PgResult<()> {
-    let id = query_id(&query);
+    let id = query_id(query);
     // Keep the query patterns for opentelemetry spans short enough.
     let sql = query
         .char_indices()
@@ -190,7 +194,7 @@ pub fn parse(
             let metadata = &*runtime.metadata().lock();
             let plan = with_su(ADMIN_ID, || -> PgResult<IrPlan> {
                 let mut plan =
-                    <RouterRuntime as Router>::ParseTree::transform_into_plan(&query, metadata)?;
+                    <RouterRuntime as Router>::ParseTree::transform_into_plan(query, metadata)?;
                 if runtime.provides_versions() {
                     let mut table_version_map =
                         TableVersionMap::with_capacity(plan.relations.tables.len());
@@ -277,20 +281,73 @@ impl Backend {
     /// parse + bind + describe + execute and result is returned.
     ///
     /// Note that it closes the uunamed portal and statement even in case of a failure.
-    pub fn simple_query(&self, sql: String) -> PgResult<ExecuteResult> {
+    pub fn simple_query(&self, sql: &str) -> PgResult<ExecuteResult> {
+        let do_simple_query = || {
+            let close_unnamed = || {
+                self.close_statement(None);
+                self.close_portal(None);
+            };
+
+            let simple_query = || {
+                close_unnamed();
+                self.parse(None, sql, vec![])?;
+                self.bind(None, None, vec![], &[], &[FieldFormat::Text as RawFormat])?;
+                self.execute(None, -1)
+            };
+
+            simple_query().map_err(|err| {
+                close_unnamed();
+                err
+            })
+        };
+
+        let result = do_simple_query();
+
+        if let Err(PgError::PicodataError(Error::Sbroad(SbroadError::ParsingError(..)))) = result {
+            // In case of parsing error, we can try to parse and adjust some well known queries
+            // from PostgreSQL that our SQL doesn't support. Recognizing these common queries
+            // allows us to offer useful features like tab-completion.
+            if let Some(query) = well_known_queries::parse(sql) {
+                tlog!(Info, "recognized well known query: {query:?}");
+                // sudo helps to avoid read access to system tables is denied error.
+                if let Ok(Ok(result)) = with_su(ADMIN_ID, || {
+                    self.execute_query(&query.sql(), query.parameters())
+                        .inspect_err(|e| {
+                            tlog!(Info, "execution of a well know query failed: {e:?}")
+                        })
+                }) {
+                    return Ok(result);
+                }
+            }
+        }
+
+        result
+    }
+
+    /// This function is similar to `simple_query`, but the query can be parameterized.
+    fn execute_query(&self, sql: &str, params: Vec<SbroadValue>) -> PgResult<ExecuteResult> {
         let close_unnamed = || {
             self.close_statement(None);
             self.close_portal(None);
         };
 
-        let simple_query = || {
+        let do_execute_query = || {
             close_unnamed();
             self.parse(None, sql, vec![])?;
-            self.bind(None, None, vec![], &[], &[FieldFormat::Text as RawFormat])?;
+            let ncolumns = self.describe_statement(None)?.ncolumns();
+            // TODO: This looks pretty ugly, so refactoring is needed.
+            bind(
+                self.client_id,
+                "".into(),
+                "".into(),
+                params,
+                vec![FieldFormat::Text; ncolumns],
+                false,
+            )?;
             self.execute(None, -1)
         };
 
-        simple_query().map_err(|err| {
+        do_execute_query().map_err(|err| {
             close_unnamed();
             err
         })
@@ -317,7 +374,7 @@ impl Backend {
     /// Create a statement from a query and store it in the statement storage with the
     /// given name. In case of a conflict the strategy is the same with PG.
     /// The statement lasts until it is explicitly closed.
-    pub fn parse(&self, name: Option<String>, sql: String, param_oids: Vec<Oid>) -> PgResult<()> {
+    pub fn parse(&self, name: Option<String>, sql: &str, param_oids: Vec<Oid>) -> PgResult<()> {
         let name = name.unwrap_or_default();
         parse(self.client_id, name, sql, param_oids, false)
     }
