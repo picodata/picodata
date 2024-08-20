@@ -1422,6 +1422,34 @@ def test_trim(instance: Instance):
     assert data[0] == [""]
 
 
+def test_substr(instance: Instance):
+    instance.sql(
+        """
+        create table t (s string, primary key (s))
+        using memtx
+        distributed by (s)
+        """
+    )
+
+    instance.sql(""" insert into t values ('123456789') """)
+
+    # basic substr
+    data = instance.sql(""" select substr(s, 1, 5) from t """)
+    assert data[0] == ["12345"]
+
+    # substr with 0 count
+    data = instance.sql(""" select substr(s, 3) from t """)
+    assert data[0] == ["3456789"]
+
+    # nested substr
+    data = instance.sql(""" select substr(substr(s, 1, 5), 2, 3) from t """)
+    assert data[0] == ["234"]
+
+    # substr with 0 characters
+    data = instance.sql(""" select substr(s, 3, 0) from t """)
+    assert data[0] == [""]
+
+
 def test_except_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
