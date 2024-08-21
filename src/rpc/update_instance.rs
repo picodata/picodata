@@ -11,8 +11,8 @@ use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
-
-use ::tarantool::fiber;
+use tarantool::fiber;
+use tarantool::space::UpdateOps;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -137,20 +137,17 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
         let old_instance = storage.instances.get(&req.instance_id)?;
-        // TODO: this should instead be a Dml::Update operation with just the fields which are changed
-        let mut new_instance = old_instance.clone();
-        update_instance(&mut new_instance, &req, storage).map_err(raft::Error::ConfChangeError)?;
-        if old_instance == new_instance {
+        let dml = update_instance(&old_instance, &req, storage)?;
+        let Some(dml) = dml else {
             // No point in proposing an operation which doesn't change anything.
             // Note: if the request tried setting target state Online while it
             // was already Online the incarnation will be increased and so
-            // old_instance will be different from new_instance and this is the
-            // intended behaviour.
+            // dml will not be None and this is the intended behaviour.
             return Ok(());
-        }
+        };
+        debug_assert!(matches!(dml, Dml::Update { .. }), "{dml:?}");
+        debug_assert_eq!(dml.table_id(), ClusterwideTable::Instance.id());
 
-        let dml = Dml::replace(ClusterwideTable::Instance, &new_instance, ADMIN_ID)
-            .expect("encoding should not fail");
         let op = match additional_dml {
             // TODO: to eliminate redundant copies here we should refactor `BatchDml` and/or `Dml`
             Some(additional_dml) => Op::BatchDml {
@@ -203,9 +200,11 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
     }
 }
 
-/// Updates existing [`Instance`].
+/// Returns a [`Dml::Update`] operation which should be applied to the
+/// `_pico_instance` table to satisfy the `req`. May return `None` if the
+/// request is already satisfied.
 pub fn update_instance(
-    instance: &mut Instance,
+    instance: &Instance,
     req: &Request,
     storage: &Clusterwide,
 ) -> Result<Option<Dml>> {
@@ -224,17 +223,22 @@ pub fn update_instance(
         return Err(Error::other(format!("cannot update expelled instance \"{}\"", instance.instance_id)));
     }
 
+    let mut ops = UpdateOps::new();
     if let Some(fd) = req.failure_domain.as_ref() {
         let existing_fds = storage
             .instances
             .failure_domain_names()
             .expect("storage should not fail");
         fd.check(&existing_fds)?;
-        instance.failure_domain = fd.clone();
+        if fd != &instance.failure_domain {
+            ops.assign("failure_domain", fd)?;
+        }
     }
 
-    if let Some(value) = req.current_state {
-        instance.current_state = value;
+    if let Some(state) = req.current_state {
+        if state != instance.current_state {
+            ops.assign("current_state", state)?;
+        }
     }
 
     if let Some(variant) = req.target_state {
@@ -246,13 +250,23 @@ pub fn update_instance(
                 return Err(Error::other(format!("target state can only be Online, Offline or Expelled, not {other}")));
             }
         };
-        instance.target_state = State {
-            variant,
-            incarnation,
-        };
+        let state = State::new(variant, incarnation);
+        if state != instance.target_state {
+            ops.assign("target_state", state)?;
+        }
     }
 
-    Ok(())
+    if ops.as_slice().is_empty() {
+        return Ok(None);
+    }
+
+    let dml = Dml::update(
+        ClusterwideTable::Instance,
+        &[&instance.instance_id],
+        ops,
+        ADMIN_ID,
+    )?;
+    Ok(Some(dml))
 }
 
 #[cfg(test)]

@@ -152,7 +152,7 @@ impl std::fmt::Display for Instance {
 #[rustfmt::skip]
 mod tests {
     use std::collections::HashSet;
-
+    use tarantool::space::UpdateOps;
     use crate::tier::DEFAULT_TIER;
     use crate::failure_domain::FailureDomain;
     use crate::instance::state::State;
@@ -163,6 +163,7 @@ mod tests {
     use crate::rpc;
     use crate::rpc::update_instance::update_instance;
     use crate::tier::Tier;
+    use crate::traft::op::Dml;
 
     use super::*;
 
@@ -339,94 +340,130 @@ mod tests {
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13, 14]));
     }
 
+    #[track_caller]
+    fn update_instance_dml(instance_id: impl Into<InstanceId>, ops: UpdateOps) -> Dml {
+        Dml::update(
+            crate::storage::ClusterwideTable::Instance,
+            &[&instance_id.into()],
+            ops,
+            crate::schema::ADMIN_ID,
+        ).unwrap()
+    }
+
     #[::tarantool::test]
     fn test_update_state() {
         let storage = Clusterwide::for_tests();
-        let mut instance = Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER);
+        let instance = Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER);
         setup_storage(&storage, vec![instance.clone()], 1);
 
+        //
         // Current state incarnation is allowed to go down,
         // governor has the authority over it
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("current_state", State::new(Offline, 0)).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+        let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
+
+        //
         // idempotency
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
+        assert_eq!(dml, None);
 
+        //
         // Offline takes incarnation from current state
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Offline);
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("target_state", State::new(Offline, 0)).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+        let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
+
+        //
         // Online increases incarnation
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER)
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("target_state", State::new(Online, 1)).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+        let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
+
+        //
         // No idempotency, incarnation goes up
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Online, 2), FailureDomain::default(), DEFAULT_TIER)
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("target_state", State::new(Online, 2)).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+        let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
+
+        //
         // Target state can only be Online, Offline or Expelled
+        //
         let mut req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into());
         // .with_target_state will just panic
         req.target_state = Some(Replicated);
-        let e = update_instance(&mut instance, &req, &storage).unwrap_err();
+        let e = update_instance(&instance, &req, &storage).unwrap_err();
         assert_eq!(e.to_string(), "target state can only be Online, Offline or Expelled, not Replicated");
 
+        //
         // State::Expelled takes incarnation from current state
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Expelled);
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("target_state", State::new(Expelled, 0)).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+        let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
+
+        //
         // Instance gets expelled
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Expelled, 69));
-        update_instance(&mut instance, &req, &storage).unwrap();
-        storage.instances.put(&instance).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Expelled, 69), State::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
+        let dml = update_instance(&instance, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("current_state", State::new(Expelled, 69)).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+        let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
+
+        //
         // Updating expelled instances isn't allowed
+        //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        let e = update_instance(&mut instance, &req, &storage).unwrap_err();
+        let e = update_instance(&instance, &req, &storage).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
     }
 
@@ -495,50 +532,71 @@ mod tests {
         let storage = Clusterwide::for_tests();
         setup_storage(&storage, vec![], 3);
 
+        //
         // first instance
+        //
         let instance1 = build_instance(Some(&InstanceId::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER).unwrap();
         storage.instances.put(&instance1).unwrap();
         assert_eq!(instance1.failure_domain, faildoms! {planet: Earth});
         assert_eq!(instance1.replicaset_id, "r1");
 
+        //
         // reconfigure single instance, fail
+        //
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
             .with_failure_domain(faildoms! {owner: Ivan});
-        let e = update_instance(&mut instance1, &req, &storage).unwrap_err();
+        let e = update_instance(&instance1, &req, &storage).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
+        //
         // reconfigure single instance, success
+        //
+        let fd = faildoms! {planet: Mars, owner: Ivan};
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
-            .with_failure_domain(faildoms! {planet: Mars, owner: Ivan});
-        update_instance(&mut instance1, &req, &storage).unwrap();
-        storage.instances.put(&instance1).unwrap();
-        assert_eq!(instance1.failure_domain, faildoms! {planet: Mars, owner: Ivan});
-        assert_eq!(instance1.replicaset_id, "r1"); // same replicaset
+            .with_failure_domain(fd.clone());
+        let dml = update_instance(&instance1, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("failure_domain", fd).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+
+        //
         // second instance won't be joined without the newly added required
         // failure domain subdivision of "OWNER"
+        //
         let e = build_instance(Some(&InstanceId::from("i2")), None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: OWNER");
 
+        //
         // second instance
+        //
+        let fd = faildoms! {planet: Mars, owner: Mike};
         #[rustfmt::skip]
-        let mut instance2 = build_instance(Some(&InstanceId::from("i2")), None, &faildoms! {planet: Mars, owner: Mike}, &storage, DEFAULT_TIER)
-            .unwrap();
+        let instance2 = build_instance(Some(&InstanceId::from("i2")), None, &fd, &storage, DEFAULT_TIER).unwrap();
         storage.instances.put(&instance2).unwrap();
-        assert_eq!(instance2.failure_domain, faildoms! {planet: Mars, owner: Mike});
+        assert_eq!(instance2.failure_domain, fd);
         // doesn't fit into r1
         assert_eq!(instance2.replicaset_id, "r2");
 
+        //
         // reconfigure second instance, success
+        //
+        let fd = faildoms! {planet: Earth, owner: Mike};
         let req = rpc::update_instance::Request::new(instance2.instance_id.clone(), "".into())
-            .with_failure_domain(faildoms! {planet: Earth, owner: Mike});
-        update_instance(&mut instance2, &req, &storage).unwrap();
-        storage.instances.put(&instance2).unwrap();
-        assert_eq!(instance2.failure_domain, faildoms! {planet: Earth, owner: Mike});
-        // replicaset doesn't change automatically
-        assert_eq!(instance2.replicaset_id, "r2");
+            .with_failure_domain(fd.clone());
+        let dml = update_instance(&instance2, &req, &storage).unwrap();
 
+        let mut ops = UpdateOps::new();
+        ops.assign("failure_domain", fd).unwrap();
+        assert_eq!(dml, Some(update_instance_dml("i2", ops)));
+
+        storage.do_dml(&dml.unwrap()).unwrap();
+
+        //
         // add instance with new subdivision
+        //
         #[rustfmt::skip]
         let instance3_v1 = build_instance(Some(&InstanceId::from("i3")), None, &faildoms! {planet: B, owner: V, dimension: C137}, &storage, DEFAULT_TIER)
             .unwrap();
@@ -549,9 +607,11 @@ mod tests {
         );
         assert_eq!(instance3_v1.replicaset_id, "r1");
 
+        //
         // even though the only instance with failure domain subdivision of
         // `DIMENSION` is inactive, we can't add an instance without that
         // subdivision
+        //
         let e = build_instance(Some(&InstanceId::from("i4")), None, &faildoms! {planet: Theia, owner: Me}, &storage, DEFAULT_TIER).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: DIMENSION");
     }

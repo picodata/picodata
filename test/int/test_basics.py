@@ -462,9 +462,9 @@ Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
-|  0  | 2  |Replace(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Online",1],{b},"default"])|
+|  0  | 2  |Update(_pico_instance, ["i1"], [["=","target_state",["Online",1]]])|
 |  0  | 2  |BatchDml(
-Replace(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Replicated",1],["Online",1],{b},"default"]),
+Update(_pico_instance, ["i1"], [["=","current_state",["Replicated",1]]]),
 Replace(_pico_property, ["target_vshard_config_version",1])
 )|
 |  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
@@ -473,7 +473,7 @@ Replace(_pico_property, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30a
 Replace(_pico_property, ["current_vshard_config_version",1])
 )|
 |  0  | 2  |Replace(_pico_property, ["vshard_bootstrapped",true])|
-|  0  | 2  |Replace(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Online",1],["Online",1],{b},"default"])|
+|  0  | 2  |Update(_pico_instance, ["i1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+
 """.format(  # noqa: E501
         p=instance.port,
