@@ -208,7 +208,7 @@ pub fn update_instance(
     instance: &mut Instance,
     req: &Request,
     storage: &Clusterwide,
-) -> std::result::Result<(), String> {
+) -> Result<Option<Dml>> {
     if instance.current_state.variant == Expelled
         && !matches!(
             req,
@@ -220,10 +220,8 @@ pub fn update_instance(
             } if current_state.variant == Expelled
         )
     {
-        return Err(format!(
-            "cannot update expelled instance \"{}\"",
-            instance.instance_id
-        ));
+        #[rustfmt::skip]
+        return Err(Error::other(format!("cannot update expelled instance \"{}\"", instance.instance_id)));
     }
 
     if let Some(fd) = req.failure_domain.as_ref() {
@@ -244,9 +242,8 @@ pub fn update_instance(
             Online => instance.target_state.incarnation + 1,
             Offline | Expelled => instance.current_state.incarnation,
             other => {
-                return Err(format!(
-                    "target state can only be Online, Offline or Expelled, not {other}"
-                ));
+                #[rustfmt::skip]
+                return Err(Error::other(format!("target state can only be Online, Offline or Expelled, not {other}")));
             }
         };
         instance.target_state = State {

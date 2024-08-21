@@ -247,11 +247,8 @@ mod tests {
         // - Even if it's a fair rebootstrap, it will be marked as
         //   unreachable soon (when we implement failover) the error
         //   will be gone.
-        assert_eq!(
-            build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER)
-                .unwrap_err(),
-            "`i1` is already joined",
-        );
+        let e = build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap_err();
+        assert_eq!(e.to_string(), "`i1` is already joined");
 
         // join::Request with a given instance_id offline (or unreachable).
         // - Presumably it's a rebootstrap.
@@ -404,7 +401,7 @@ mod tests {
         // .with_target_state will just panic
         req.target_state = Some(Replicated);
         let e = update_instance(&mut instance, &req, &storage).unwrap_err();
-        assert_eq!(e, "target state can only be Online, Offline or Expelled, not Replicated");
+        assert_eq!(e.to_string(), "target state can only be Online, Offline or Expelled, not Replicated");
 
         // State::Expelled takes incarnation from current state
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
@@ -429,10 +426,8 @@ mod tests {
         // Updating expelled instances isn't allowed
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        assert_eq!(
-            update_instance(&mut instance, &req, &storage).unwrap_err(),
-            "cannot update expelled instance \"i1\"",
-        );
+        let e = update_instance(&mut instance, &req, &storage).unwrap_err();
+        assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
     }
 
     #[::tarantool::test]
@@ -470,11 +465,8 @@ mod tests {
         assert_eq!(instance.replicaset_id, "r2");
         storage.instances.put(&instance).unwrap();
 
-        assert_eq!(
-            build_instance(None, None, &faildoms! {os: Arch}, &storage, DEFAULT_TIER)
-                .unwrap_err(),
-            "missing failure domain names: PLANET",
-        );
+        let e = build_instance(None, None, &faildoms! {os: Arch}, &storage, DEFAULT_TIER).unwrap_err();
+        assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Venus, os: Arch}, &storage, DEFAULT_TIER)
@@ -494,11 +486,8 @@ mod tests {
         assert_eq!(instance.replicaset_id, "r3");
         storage.instances.put(&instance).unwrap();
 
-        assert_eq!(
-            build_instance(None, None, &faildoms! {}, &storage, DEFAULT_TIER)
-                .unwrap_err(),
-            "missing failure domain names: OS, PLANET",
-        );
+        let e = build_instance(None, None, &faildoms! {}, &storage, DEFAULT_TIER).unwrap_err();
+        assert_eq!(e.to_string(), "missing failure domain names: OS, PLANET");
     }
 
     #[::tarantool::test]
@@ -507,7 +496,7 @@ mod tests {
         setup_storage(&storage, vec![], 3);
 
         // first instance
-        let mut instance1 = build_instance(Some(&InstanceId::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER).unwrap();
+        let instance1 = build_instance(Some(&InstanceId::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER).unwrap();
         storage.instances.put(&instance1).unwrap();
         assert_eq!(instance1.failure_domain, faildoms! {planet: Earth});
         assert_eq!(instance1.replicaset_id, "r1");
@@ -515,10 +504,8 @@ mod tests {
         // reconfigure single instance, fail
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
             .with_failure_domain(faildoms! {owner: Ivan});
-        assert_eq!(
-            update_instance(&mut instance1, &req, &storage).unwrap_err(),
-            "missing failure domain names: PLANET",
-        );
+        let e = update_instance(&mut instance1, &req, &storage).unwrap_err();
+        assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         // reconfigure single instance, success
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
@@ -530,11 +517,8 @@ mod tests {
 
         // second instance won't be joined without the newly added required
         // failure domain subdivision of "OWNER"
-        assert_eq!(
-            build_instance(Some(&InstanceId::from("i2")), None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER)
-                .unwrap_err(),
-            "missing failure domain names: OWNER",
-        );
+        let e = build_instance(Some(&InstanceId::from("i2")), None, &faildoms! {planet: Mars}, &storage, DEFAULT_TIER).unwrap_err();
+        assert_eq!(e.to_string(), "missing failure domain names: OWNER");
 
         // second instance
         #[rustfmt::skip]
@@ -568,12 +552,8 @@ mod tests {
         // even though the only instance with failure domain subdivision of
         // `DIMENSION` is inactive, we can't add an instance without that
         // subdivision
-        #[rustfmt::skip]
-        assert_eq!(
-            build_instance(Some(&InstanceId::from("i4")), None, &faildoms! {planet: Theia, owner: Me}, &storage, DEFAULT_TIER)
-                .unwrap_err(),
-            "missing failure domain names: DIMENSION",
-        );
+        let e = build_instance(Some(&InstanceId::from("i4")), None, &faildoms! {planet: Theia, owner: Me}, &storage, DEFAULT_TIER).unwrap_err();
+        assert_eq!(e.to_string(), "missing failure domain names: DIMENSION");
     }
 
     #[::tarantool::test]
@@ -619,19 +599,12 @@ mod tests {
         assert_eq!(instance.replicaset_id, "r3");
         storage.instances.put(&instance).unwrap();
 
-
-        assert_eq!(
-            build_instance(None, None, &faildoms! {planet: 5}, &storage, "noexistent_tier")
-                .unwrap_err(),
-            r#"tier "noexistent_tier" doesn't exist"#,
-        );
+        let e = build_instance(None, None, &faildoms! {planet: 5}, &storage, "noexistent_tier").unwrap_err();
+        assert_eq!(e.to_string(), r#"tier "noexistent_tier" doesn't exist"#);
 
         // gl589
-        assert_eq!(
-            build_instance(None, Some(&ReplicasetId::from("just to skip choose_replicaset function call")), &faildoms! {planet: 5}, &storage, "noexistent_tier")
-                .unwrap_err(),
-            r#"tier "noexistent_tier" doesn't exist"#,
-        );
+        let e = build_instance(None, Some(&ReplicasetId::from("just to skip choose_replicaset function call")), &faildoms! {planet: 5}, &storage, "noexistent_tier") .unwrap_err();
+        assert_eq!(e.to_string(), r#"tier "noexistent_tier" doesn't exist"#);
     }
 }
 

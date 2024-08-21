@@ -88,8 +88,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             &req.failure_domain,
             storage,
             &req.tier,
-        )
-        .map_err(raft::Error::ConfChangeError)?;
+        )?;
         let peer_address = traft::PeerAddress {
             raft_id: instance.raft_id,
             address: req.advertise_address.clone(),
@@ -177,7 +176,7 @@ pub fn build_instance(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
     tier: &str,
-) -> std::result::Result<Instance, String> {
+) -> Result<Instance> {
     if let Some(id) = instance_id {
         if let Ok(existing_instance) = storage.instances.get(id) {
             let is_expelled = has_states!(existing_instance, Expelled -> *);
@@ -191,7 +190,7 @@ pub fn build_instance(
                 // joined it has both states Offline, which means it may be
                 // replaced by another one of the name before it sends a request
                 // for self activation.
-                return Err(format!("`{}` is already joined", id));
+                return Err(Error::other(format!("`{id}` is already joined")));
             }
         }
     }
@@ -200,7 +199,7 @@ pub fn build_instance(
         .by_name(tier)
         .expect("storage should not fail")
     else {
-        return Err(format!(r#"tier "{}" doesn't exist"#, tier));
+        return Err(Error::other(format!(r#"tier "{tier}" doesn't exist"#)));
     };
 
     let existing_fds = storage
@@ -268,7 +267,7 @@ fn choose_replicaset_id(
         name: tier_name,
         ..
     }: &Tier,
-) -> core::result::Result<ReplicasetId, String> {
+) -> Result<ReplicasetId> {
     // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.
     // E.g. if both "r1" and "r2" are suitable, "r1" will always be prefered.
     let mut replicasets: BTreeMap<_, Vec<_>> = BTreeMap::new();

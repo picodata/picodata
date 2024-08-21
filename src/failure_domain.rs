@@ -1,4 +1,5 @@
 use crate::stringify_debug;
+use crate::traft::error::Error;
 use crate::traft::Distance;
 use crate::util::Uppercase;
 use std::collections::{HashMap, HashSet};
@@ -107,7 +108,7 @@ impl FailureDomain {
     }
 
     /// Check that this failure domain contains all `required_domains`.
-    pub fn check(&self, required_domains: &HashSet<Uppercase>) -> Result<(), String> {
+    pub fn check(&self, required_domains: &HashSet<Uppercase>) -> Result<(), Error> {
         let mut res = Vec::new();
         for domain_name in required_domains {
             if !self.contains_name(domain_name) {
@@ -120,7 +121,8 @@ impl FailureDomain {
         }
 
         res.sort();
-        Err(format!("missing failure domain names: {}", res.join(", ")))
+        #[rustfmt::skip]
+        return Err(Error::other(format!("missing failure domain names: {}", res.join(", "))));
     }
 }
 
