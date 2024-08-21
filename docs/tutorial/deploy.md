@@ -69,7 +69,7 @@
     export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
     export PICODATA_PG_LISTEN="127.0.0.1:5432"
 
-    exec picodata run
+    picodata run
     ```
 
 ??? example "i2"
@@ -82,7 +82,7 @@
     export PICODATA_DATA_DIR="./data/my_cluster/i2"
     export PICODATA_LISTEN="127.0.0.1:3302"
 
-    exec picodata run
+    picodata run
     ```
 
 ??? example "i3"
@@ -95,7 +95,7 @@
     export PICODATA_DATA_DIR="./data/my_cluster/i3"
     export PICODATA_LISTEN="127.0.0.1:3303"
 
-    exec picodata run
+    picodata run
     ```
 
 ??? example "i4"
@@ -108,7 +108,7 @@
     export PICODATA_DATA_DIR="./data/my_cluster/i4"
     export PICODATA_LISTEN="127.0.0.1:3304"
 
-    exec picodata run
+    picodata run
     ```
 
 Полный перечень возможных параметров запуска и их описание содержатся в
