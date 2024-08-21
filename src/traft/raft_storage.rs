@@ -435,19 +435,22 @@ impl RaftSpaceAccess {
     /// In debug mode panics if invoked outside of a transaction.
     ///
     pub fn handle_snapshot_metadata(&self, meta: &raft::SnapshotMetadata) -> tarantool::Result<()> {
+        let meta_index = meta.index;
         // We don't want to have a hole in the log, so we clear everything
         // before applying the snapshot
         self.compact_log(meta.index + 1)?;
 
         let compacted_index = self.compacted_index()?;
-        assert!(meta.index > compacted_index);
+        #[rustfmt::skip]
+        assert!(meta_index > compacted_index, "meta_index: {meta_index}, compacted_index: {compacted_index}");
         // We must set these explicitly, because compact_log only sets them to
         // the coordinates of the last entry which was in our log.
         self.persist_compacted_term(meta.term)?;
         self.persist_compacted_index(meta.index)?;
 
         let applied = self.applied()?;
-        assert!(meta.index > applied);
+        #[rustfmt::skip]
+        assert!(meta_index > applied, "meta_index: {meta_index}, applied: {compacted_index}");
         self.persist_applied(meta.index)?;
         self.persist_conf_state(meta.get_conf_state())?;
         Ok(())
