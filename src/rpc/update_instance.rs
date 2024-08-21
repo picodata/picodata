@@ -136,9 +136,17 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let old_instance = storage.instances.get(&req.instance_id)?;
-        let dml = update_instance(&old_instance, &req, storage)?;
-        let Some(dml) = dml else {
+        let instance = storage.instances.get(&req.instance_id)?;
+
+        let replicaset_id = &instance.replicaset_id;
+        #[rustfmt::skip]
+        let Some(replicaset) = storage.replicasets.get(replicaset_id)? else {
+            crate::warn_or_panic!("replicaset info for replicaset_id: `{replicaset_id}` has disappeared, needed for instance {}", instance.instance_id);
+            return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
+        };
+
+        let dml = update_instance(&instance, &req, storage)?;
+        let Some((dml, version_bump_needed)) = dml else {
             // No point in proposing an operation which doesn't change anything.
             // Note: if the request tried setting target state Online while it
             // was already Online the incarnation will be increased and so
@@ -148,14 +156,27 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
         debug_assert!(matches!(dml, Dml::Update { .. }), "{dml:?}");
         debug_assert_eq!(dml.table_id(), ClusterwideTable::Instance.id());
 
-        let op = match additional_dml {
+        let mut ops = vec![];
+        ops.push(dml);
+
+        if version_bump_needed &&
+            // Don't bump version if it's already bumped
+            replicaset.current_config_version == replicaset.target_config_version
+        {
+            let mut update_ops = UpdateOps::new();
+            #[rustfmt::skip]
+            update_ops.assign("target_config_version", replicaset.target_config_version + 1)?;
+            #[rustfmt::skip]
+            let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], update_ops, ADMIN_ID)?;
+            ops.push(replicaset_dml);
+        }
+
+        if let Some(additional_dml) = additional_dml {
             // TODO: to eliminate redundant copies here we should refactor `BatchDml` and/or `Dml`
-            Some(additional_dml) => Op::BatchDml {
-                ops: vec![dml, additional_dml.clone()],
-            },
-            // No need to wrap it in a BatchDml and confuse the users
-            None => Op::Dml(dml),
-        };
+            ops.push(additional_dml.clone());
+        }
+
+        let op = Op::single_dml_or_batch(ops);
 
         let ranges = vec![
             cas::Range::new(ClusterwideTable::Instance),
@@ -200,14 +221,15 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
     }
 }
 
-/// Returns a [`Dml::Update`] operation which should be applied to the
-/// `_pico_instance` table to satisfy the `req`. May return `None` if the
-/// request is already satisfied.
+/// Returns a pair:
+/// - A [`Dml::Update`] operation which should be applied to the `_pico_instance` table to satisfy the `req`.
+///   May be `None` if the request is already satisfied.
+/// - `true` if `target_config_version` column should be bumped in table  `_pico_replicaset` otherwise `false`.
 pub fn update_instance(
     instance: &Instance,
     req: &Request,
     storage: &Clusterwide,
-) -> Result<Option<Dml>> {
+) -> Result<Option<(Dml, bool)>> {
     if instance.current_state.variant == Expelled
         && !matches!(
             req,
@@ -241,9 +263,13 @@ pub fn update_instance(
         }
     }
 
+    let mut replication_config_version_bump_needed = false;
     if let Some(variant) = req.target_state {
         let incarnation = match variant {
-            Online => instance.target_state.incarnation + 1,
+            Online => {
+                replication_config_version_bump_needed = true;
+                instance.target_state.incarnation + 1
+            }
             Offline | Expelled => instance.current_state.incarnation,
             other => {
                 #[rustfmt::skip]
@@ -260,13 +286,14 @@ pub fn update_instance(
         return Ok(None);
     }
 
-    let dml = Dml::update(
+    let instance_dml = Dml::update(
         ClusterwideTable::Instance,
         &[&instance.instance_id],
         ops,
         ADMIN_ID,
     )?;
-    Ok(Some(dml))
+
+    Ok(Some((instance_dml, replication_config_version_bump_needed)))
 }
 
 #[cfg(test)]

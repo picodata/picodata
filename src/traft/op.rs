@@ -380,6 +380,18 @@ impl Op {
             Self::DdlPrepare { .. } | Self::Acl(_) => true,
         }
     }
+
+    #[inline]
+    pub fn single_dml_or_batch(ops: Vec<Dml>) -> Self {
+        if ops.len() == 1 {
+            // Yay rust!
+            let dml = ops.into_iter().next().expect("just made sure it's there");
+            // No need to wrap it in a BatchDml and confuse the users
+            Self::Dml(dml)
+        } else {
+            Self::BatchDml { ops }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

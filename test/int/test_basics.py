@@ -462,7 +462,10 @@ Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
-|  0  | 2  |Update(_pico_instance, ["i1"], [["=","target_state",["Online",1]]])|
+|  0  | 2  |BatchDml(
+Update(_pico_instance, ["i1"], [["=","target_state",["Online",1]]]),
+Update(_pico_replicaset, ["r1"], [["=","target_config_version",1]])
+)|
 |  0  | 2  |BatchDml(
 Update(_pico_instance, ["i1"], [["=","current_state",["Replicated",1]]]),
 Replace(_pico_property, ["target_vshard_config_version",1])

@@ -362,13 +362,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Offline, 0)).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, false);
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
@@ -384,13 +385,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Offline);
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Offline, 0)).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, false);
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
@@ -398,13 +400,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 1)).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, true, "incarnation bump requires replicaset config version bump");
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
@@ -412,13 +415,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 2)).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, true, "incarnation bump requires replicaset config version bump");
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
@@ -435,13 +439,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Expelled);
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Expelled, 0)).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, false);
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
@@ -449,13 +454,14 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Expelled, 69));
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Expelled, 69)).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, false);
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
@@ -554,13 +560,14 @@ mod tests {
         let fd = faildoms! {planet: Mars, owner: Ivan};
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
             .with_failure_domain(fd.clone());
-        let dml = update_instance(&instance1, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance1, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i1", ops)));
+        assert_eq!(dml, update_instance_dml("i1", ops));
+        assert_eq!(do_bump, false);
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
 
         //
         // second instance won't be joined without the newly added required
@@ -586,13 +593,14 @@ mod tests {
         let fd = faildoms! {planet: Earth, owner: Mike};
         let req = rpc::update_instance::Request::new(instance2.instance_id.clone(), "".into())
             .with_failure_domain(fd.clone());
-        let dml = update_instance(&instance2, &req, &storage).unwrap();
+        let (dml, do_bump) = update_instance(&instance2, &req, &storage).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
-        assert_eq!(dml, Some(update_instance_dml("i2", ops)));
+        assert_eq!(dml, update_instance_dml("i2", ops));
+        assert_eq!(do_bump, false);
 
-        storage.do_dml(&dml.unwrap()).unwrap();
+        storage.do_dml(&dml).unwrap();
 
         //
         // add instance with new subdivision
