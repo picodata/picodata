@@ -48,6 +48,19 @@ pub struct Replicaset {
     /// replicaset is not filled up to the tier's replication factor.
     pub state: ReplicasetState,
 
+    /// Version number of the replication configuration which was most recently applied to this replicaset.
+    /// If this is not equal to the value of target_config_version,
+    /// then the actual runtime replication configuration may be different on different instances.
+    ///
+    /// The replication config consists of:
+    /// - box.cfg.replication
+    /// - box.cfg.read_only
+    pub current_config_version: u64,
+
+    /// Version number of the replication configuration which should be applied to this replicaset.
+    /// If this is equal to the value of current_config_version, then the configuration is up to date.
+    pub target_config_version: u64,
+
     /// Vclock of the current master at the moment it was promoted.
     pub promotion_vclock: Vclock,
 }
@@ -73,6 +86,8 @@ impl Replicaset {
             weight: 0.,
             weight_origin: WeightOrigin::Auto,
             state: ReplicasetState::NotReady,
+            current_config_version: 0,
+            target_config_version: 0,
             promotion_vclock: Vclock::from([]),
         }
     }
@@ -90,6 +105,8 @@ impl Replicaset {
             Field::from(("weight", FieldType::Double)),
             Field::from(("weight_origin", FieldType::String)),
             Field::from(("state", FieldType::String)),
+            Field::from(("current_config_version", FieldType::Unsigned)),
+            Field::from(("target_config_version", FieldType::Unsigned)),
             Field::from(("promotion_vclock", FieldType::Map)),
         ]
     }
@@ -106,6 +123,8 @@ impl Replicaset {
             weight: 13.37,
             weight_origin: WeightOrigin::Auto,
             state: ReplicasetState::Ready,
+            current_config_version: 13,
+            target_config_version: 13,
             promotion_vclock: Vclock::from([420, 69105]),
         }
     }

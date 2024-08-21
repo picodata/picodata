@@ -298,7 +298,7 @@ impl std::fmt::Display for Op {
         }
 
         const TRUNCATION_THRESHOLD_FOR_STRING: usize = 100;
-        const TRUNCATION_THRESHOLD_FOR_ARRAY: usize = 10;
+        const TRUNCATION_THRESHOLD_FOR_ARRAY: usize = 16;
         const TRUNCATION_THRESHOLD_FOR_MAP: usize = 10;
         struct ValueWithTruncations<'a>(&'a serde_json::Value);
         impl Serialize for ValueWithTruncations<'_> {

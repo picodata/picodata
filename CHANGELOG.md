@@ -59,6 +59,10 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Add `promotion_vclock` column to `_pico_replicaset` table.
 
+- Add `current_config_version` column to `_pico_replicaset` table.
+
+- Add `target_config_version` column to `_pico_replicaset` table.
+
 ### Lua API
 
 - Update `pico.LUA_API_VERSION`: `3.1.0` -> `4.0.0`
