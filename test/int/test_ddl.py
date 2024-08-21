@@ -1,5 +1,12 @@
 import pytest
-from conftest import PICO_SERVICE_ID, Cluster, ReturnError, Retriable, Instance
+from conftest import (
+    PICO_SERVICE_ID,
+    Cluster,
+    ReturnError,
+    Retriable,
+    Instance,
+    TarantoolError,
+)
 
 
 def test_ddl_abort(cluster: Cluster):
@@ -16,13 +23,12 @@ def test_ddl_lua_api(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
 
     #
-    # pico.create_table
+    # CREATE TABLE
     #
 
     # Successful global space creation
     cluster.create_table(
         dict(
-            id=1026,
             name="some_name",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
@@ -33,7 +39,6 @@ def test_ddl_lua_api(cluster: Cluster):
     # Called with the same args -> ok.
     cluster.create_table(
         dict(
-            id=1026,
             name="some_name",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
@@ -46,11 +51,10 @@ def test_ddl_lua_api(cluster: Cluster):
     # Called with same name/id but different format -> error.
     cluster.create_table(
         dict(
-            id=1026,
             name="some_name",
             format=[
                 dict(name="key", type="string", is_nullable=False),
-                dict(name="value", type="any", is_nullable=False),
+                dict(name="value", type="double", is_nullable=False),
             ],
             primary_key=["key"],
             distribution="global",
@@ -58,10 +62,12 @@ def test_ddl_lua_api(cluster: Cluster):
     )
 
     # No such field for primary key -> error.
-    with pytest.raises(ReturnError, match="no field with name: not_defined"):
+    with pytest.raises(
+        TarantoolError,
+        match="sbroad: invalid column: Primary key column not_defined not found.",
+    ):
         cluster.create_table(
             dict(
-                id=1027,
                 name="different_name",
                 format=[dict(name="id", type="unsigned", is_nullable=False)],
                 primary_key=["not_defined"],
@@ -78,7 +84,7 @@ def test_ddl_lua_api(cluster: Cluster):
             distribution="global",
         )
     )
-    space_id = 1027
+    space_id = i1.eval("return box.space[...].id", "space 2")
     initiator_id = PICO_SERVICE_ID
     pico_space_def = [
         space_id,
@@ -103,7 +109,7 @@ def test_ddl_lua_api(cluster: Cluster):
             distribution="global",
         )
     )
-    space_id = 1028
+    space_id = i1.eval("return box.space[...].id", "space the third")
     pico_space_def = [
         space_id,
         "space the third",
@@ -119,7 +125,21 @@ def test_ddl_lua_api(cluster: Cluster):
     assert i2.call("box.space._pico_table:get", space_id) == pico_space_def
 
     # test vinyl space can be created
-    space_id = 1029
+    cluster.create_table(
+        dict(
+            name="stuffy",
+            format=[
+                dict(name="id", type="unsigned", is_nullable=False),
+                dict(name="foo", type="integer", is_nullable=False),
+            ],
+            primary_key=["id"],
+            distribution="sharded",
+            sharding_key=["foo"],
+            sharding_fn="murmur3",
+            engine="vinyl",
+        ),
+    )
+    space_id = i1.eval("return box.space.stuffy.id")
     pico_space_def = [
         space_id,
         "stuffy",
@@ -135,21 +155,7 @@ def test_ddl_lua_api(cluster: Cluster):
         initiator_id,
         "",
     ]
-    cluster.create_table(
-        dict(
-            id=space_id,
-            name="stuffy",
-            format=[
-                dict(name="id", type="unsigned", is_nullable=False),
-                dict(name="foo", type="integer", is_nullable=False),
-            ],
-            primary_key=["id"],
-            distribution="sharded",
-            sharding_key=["foo"],
-            sharding_fn="murmur3",
-            engine="vinyl",
-        ),
-    )
+
     assert i1.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i1.eval("return box.space.stuffy.engine") == "vinyl"
     assert i2.eval("return box.space.stuffy.engine") == "vinyl"
@@ -260,13 +266,14 @@ def test_ddl_create_table_bulky(cluster: Cluster):
 
     cluster.create_table(
         dict(
-            id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
             distribution="global",
         ),
     )
+
+    space_id = i1.eval("return box.space.stuff.id")
 
     # This time schema version did change
     assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 2
@@ -374,10 +381,8 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
     # Propose a space creation which will succeed
     schema_version = i1.next_schema_version()
-    space_id = 679
     cluster.create_table(
         dict(
-            id=space_id,
             name="stuff",
             format=[
                 dict(name="id", type="unsigned", is_nullable=False),
@@ -387,9 +392,9 @@ def test_ddl_create_sharded_space(cluster: Cluster):
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["foo", "bar"],
-            sharding_fn="murmur3",
         ),
     )
+    space_id = i1.eval("return box.space.stuff.id")
 
     ############################################################################
     # Space was created and is operable
@@ -703,17 +708,15 @@ def test_successful_wakeup_after_ddl(cluster: Cluster):
     # present for the ddl to be committed.
 
     # Propose a space creation which will succeed
-    space_id = 901
     space_def = dict(
-        id=space_id,
         name="ids",
         format=[dict(name="id", type="unsigned", is_nullable=False)],
         primary_key=["id"],
         distribution="global",
     )
     index = i1.create_table(space_def)
-
     i2.raft_wait_index(index, 3)
+    space_id = i1.eval("return box.space.ids.id")
 
     # Space created
     assert i1.call("box.space._space:get", space_id) is not None
@@ -736,18 +739,16 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
 
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
-    space_id = 632
     cluster.create_table(
         dict(
-            id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["id"],
-            sharding_fn="murmur3",
         ),
     )
+    space_id = i1.eval("return box.space.stuff.id")
 
     initiator_id = PICO_SERVICE_ID
     tt_space_def = [
@@ -819,10 +820,8 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
 
     # TODO: check other ddl operations
     # Propose a space creation which will succeed
-    space_id = 649
     index = i1.create_table(
         dict(
-            id=space_id,
             name="stuff",
             format=[dict(name="id", type="unsigned", is_nullable=False)],
             primary_key=["id"],
@@ -832,6 +831,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     )
     i1.raft_wait_index(index)
     i2.raft_wait_index(index)
+    space_id = i1.eval("return box.space.stuff.id")
 
     initiator_id = PICO_SERVICE_ID
     tt_space_def = [
@@ -944,7 +944,7 @@ def test_ddl_drop_table_normal(cluster: Cluster):
             name=space_name,
             format=[
                 dict(name="id", type="unsigned", is_nullable=False),
-                dict(name="value", type="any", is_nullable=False),
+                dict(name="value", type="double", is_nullable=False),
             ],
             primary_key=["id"],
             distribution="global",
@@ -1061,7 +1061,6 @@ def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["id"],
-            sharding_fn="murmur3",
         ),
     )
     for i in cluster.instances:
@@ -1133,7 +1132,6 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["id"],
-            sharding_fn="murmur3",
         ),
     )
     for i in cluster.instances:
@@ -1213,7 +1211,6 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["id"],
-            sharding_fn="murmur3",
         ),
     )
     for i in cluster.instances:
@@ -1226,7 +1223,6 @@ def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["id"],
-            sharding_fn="murmur3",
         ),
     )
     for i in cluster.instances:
@@ -1297,7 +1293,6 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
             primary_key=["id"],
             distribution="sharded",
             sharding_key=["id"],
-            sharding_fn="murmur3",
         ),
     )
 

@@ -1120,15 +1120,49 @@ class Instance:
 
     def create_table(self, params: dict, timeout: float = 3.0) -> int:
         """
-        Creates a space. Returns a raft index at which a newly created space
+        Creates a table. Returns a raft index at which a newly created table
         has to exist on all peers.
 
-        Works through Lua API in difference to `propose_create_space`,
-        which is more low level and directly proposes a raft entry.
+        Submits SQL: CREATE TABLE.
         """
-        params["timeout"] = timeout
-        index = self.call("pico.create_table", params, timeout, timeout=timeout + 0.5)
-        return index
+        name = params["name"]
+        format = params["format"]
+        engine = params.get("engine", "")
+        distribution = params["distribution"]
+
+        primary_key = ",".join(params["primary_key"])
+        sharding_key = ",".join(params.get("sharding_key", ""))
+
+        data = ""
+
+        for record in format:
+            is_nullable = "NOT NULL" if not record["is_nullable"] else ""
+            data += f'"{record["name"]}" {record["type"].upper()} {is_nullable},'
+
+        if params["distribution"] == "global":
+            distribution = "GLOBALLY"
+        elif params["distribution"] == "sharded":
+            distribution = f"BY ({sharding_key})"
+        else:
+            raise Exception(
+                f'Wrong distribution: {params["distribution"]}. '
+                "Possible options: global, sharded"
+            )
+
+        if engine:
+            engine = f"USING {engine}"
+
+        self.sql(
+            f'CREATE TABLE "{name}" ('
+            f"{data} "
+            f"PRIMARY KEY ({primary_key})) "
+            f"{engine}"
+            f"DISTRIBUTED {distribution} "
+            f"OPTION (TIMEOUT = {timeout});",
+            timeout=timeout + 0.5,
+        )
+
+        return self.raft_get_index()
 
     def drop_table(self, space: int | str, timeout: float = 3.0):
         """
@@ -1663,7 +1697,7 @@ class Cluster:
 
     def create_table(self, params: dict, timeout: float = 3.0):
         """
-        Creates a space. Waits for all online peers to be aware of it.
+        Creates a table. Waits for all online peers to be aware of it.
         """
         index = self.instances[0].create_table(params, timeout)
         self.raft_wait_index(index, timeout)
