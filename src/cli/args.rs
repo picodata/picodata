@@ -49,7 +49,7 @@ pub struct Run {
     #[clap(long, value_name = "PATH", env = "PICODATA_CONFIG_FILE")]
     /// Path to configuration file in yaml format.
     ///
-    /// `./config.yaml` is used by default, if it exists.
+    /// By default "./config.yaml" is used if it exists.
     pub config: Option<PathBuf>,
 
     #[clap(
@@ -81,8 +81,15 @@ pub struct Run {
         value_name = "[HOST][:PORT]",
         env = "PICODATA_ADVERTISE"
     )]
-    /// Address the other instances should use to connect to this instance.
-    /// Defaults to `--listen` value.
+    /// Public network address of the instance. It is announced to the
+    /// cluster during the instance start. Later it's used by other
+    /// instances for connecting to this one.
+    ///
+    /// Defaults to `--listen` value which is enough in most cases. But,
+    /// for example, in case of `--listen 0.0.0.0` it should be
+    /// specified explicitly:
+    ///
+    /// picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
     pub advertise_address: Option<IprotoAddress>,
 
     #[clap(
@@ -111,7 +118,8 @@ pub struct Run {
     /// Used during cluster initialization
     /// and joining an instance to an existing cluster.
     ///
-    /// By default "localhost:3301" is used.
+    /// Defaults to `--advertise` value which results in creating a new
+    /// cluster
     pub peers: Vec<IprotoAddress>,
 
     #[clap(
