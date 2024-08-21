@@ -1,7 +1,7 @@
 use crate::cas;
 use crate::cbus::ENDPOINT_NAME;
-use crate::plugin::reenterable_plugin_cas_request;
 use crate::plugin::PreconditionCheckResult;
+use crate::plugin::{lock, reenterable_plugin_cas_request};
 use crate::plugin::{PluginIdentifier, PLUGIN_DIR};
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
@@ -43,6 +43,12 @@ pub enum Error {
 
     #[error("Update migration progress: {0}")]
     UpdateProgress(String),
+
+    #[error("Release migration lock: {0}")]
+    ReleaseLock(String),
+
+    #[error("Acquire migration lock: {0}")]
+    AcquireLock(String),
 
     #[error("inconsistent with previous version migration list, reason: {0}")]
     InconsistentMigrationList(String),
@@ -393,6 +399,8 @@ struct SBroadApplier;
 
 impl SqlApplier for SBroadApplier {
     fn apply(&self, sql: &str, deadline: Option<Instant>) -> traft::Result<()> {
+        // check that lock is still actual
+        lock::lock_is_acquired_by_us()?;
         // Should sbroad accept a timeout parameter?
         if let Some(deadline) = deadline {
             if fiber::clock() > deadline {
@@ -454,6 +462,8 @@ fn down_single_file_with_commit(
     down_single_file(queries, applier);
 
     let make_op = || {
+        lock::lock_is_acquired_by_us()?;
+
         let dml = Dml::delete(
             ClusterwideTable::PluginMigration,
             &[plugin_name, &queries.filename_from_manifest],
@@ -487,6 +497,8 @@ pub fn apply_up_migrations(
     deadline: Instant,
     rollback_timeout: Duration,
 ) -> crate::plugin::Result<()> {
+    crate::error_injection!(block "PLUGIN_MIGRATION_LONG_MIGRATION");
+
     // checking the existence of migration files
     let mut migration_files = vec![];
     for file in migrations {
@@ -550,6 +562,8 @@ pub fn apply_up_migrations(
         };
 
         let make_op = || {
+            lock::lock_is_acquired_by_us()?;
+
             let dml = Dml::replace(
                 ClusterwideTable::PluginMigration,
                 &(

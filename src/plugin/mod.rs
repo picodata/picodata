@@ -1,4 +1,5 @@
 mod ffi;
+pub mod lock;
 pub mod manager;
 pub mod migration;
 pub mod rpc;
@@ -21,6 +22,7 @@ use tarantool::time::Instant;
 
 use crate::cas::Range;
 use crate::info::InstanceInfo;
+use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
 use crate::schema::{PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID};
@@ -96,6 +98,12 @@ pub enum PluginError {
     AmbiguousInstallCandidate,
     #[error("Cannot specify enable candidate (there should be only one installed plugin version)")]
     AmbiguousEnableCandidate,
+    #[error("Migration lock is already acquired")]
+    LockAlreadyAcquired,
+    #[error("Migration lock is unexpected gone away")]
+    LockGoneUnexpected,
+    #[error("Migration lock is already released")]
+    LockAlreadyReleased,
 }
 
 struct DisplaySomeOrDefault<'a>(&'a Option<ErrorInfo>, &'a str);
@@ -671,8 +679,11 @@ pub fn migration_up(
         return Ok(());
     }
 
-    migration::apply_up_migrations(ident, &migration_delta, deadline, rollback_timeout)?;
-    Ok(())
+    lock::try_acquire(deadline)?;
+    let error = migration::apply_up_migrations(ident, &migration_delta, deadline, rollback_timeout);
+    lock::release(deadline)?;
+
+    error.map_err(Error::Plugin)
 }
 
 pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Result<()> {
@@ -696,7 +707,10 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
         tlog!(Info, "`DOWN` migrations are up to date");
     }
 
+    lock::try_acquire(deadline)?;
     migration::apply_down_migrations(&ident, &migration_list, deadline);
+    lock::release(deadline)?;
+
     Ok(())
 }
 
@@ -945,6 +959,8 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
             ident: ident.clone(),
         };
         let ranges = vec![
+            // Fail if any plugin migration in process
+            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
             // Fail if someone updates this plugin record
             Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
             // Fail if someone updates any service record of this plugin
@@ -978,6 +994,7 @@ pub enum PluginOp {
         tier: String,
         kind: TopologyUpdateOpKind,
     },
+    MigrationLock(PicoPropertyLock),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Copy)]

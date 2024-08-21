@@ -21,6 +21,7 @@ import requests  # type: ignore
 from conftest import (
     ErrorCode,
 )
+import signal
 
 _3_SEC = 3
 _DEFAULT_CFG = {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
@@ -35,6 +36,7 @@ _PLUGIN_VERSION_1 = "0.1.0"
 _PLUGIN_VERSION_2 = "0.2.0"
 _DEFAULT_TIER = "default"
 _PLUGIN_WITH_MIGRATION = "testplug_w_migration"
+_PLUGIN_WITH_MIGRATION_2 = "testplug_w_migration_2"
 _PLUGIN_W_SDK = "testplug_sdk"
 _PLUGIN_W_SDK_SERVICES = ["testservice_3"]
 SERVICE_W_RPC = "service_with_rpc_tests"
@@ -1079,6 +1081,83 @@ DROP DATABASE everything;
         """ SELECT "name" FROM "_pico_table" WHERE "name" = 'also_should_not_exist' """
     )
     assert rows == []
+
+
+def test_migration_lock(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True)
+    i2 = cluster.add_instance(wait_online=False, replicaset_id="storage")
+    i3 = cluster.add_instance(wait_online=False, replicaset_id="storage")
+    cluster.wait_online()
+
+    # Decrease auto_offline_timeout so that sentinel notices that the instance
+    # disappeared quicker
+    i1.sql(
+        """ UPDATE "_pico_property" SET "value" = 1 WHERE "key" = 'auto_offline_timeout' """
+    )
+
+    # successfully install v0.1.0
+    i2.call(
+        "pico.install_plugin",
+        _PLUGIN_WITH_MIGRATION_2,
+        "0.1.0",
+        timeout=5,
+    )
+
+    i2.call("pico._inject_error", "PLUGIN_MIGRATION_LONG_MIGRATION", True)
+    i2.eval(
+        """
+            local fiber = require('fiber')
+            function migrate()
+                local res = {pico.migration_up('testplug_w_migration_2', '0.1.0', {timeout = 20})}
+                rawset(_G, "migration_up_result", res)
+            end
+            fiber.create(migrate)
+    """
+    )
+    time.sleep(1)
+
+    with pytest.raises(ReturnError, match="Migration lock is already acquired"):
+        i3.call(
+            "pico.migration_up",
+            _PLUGIN_WITH_MIGRATION_2,
+            "0.1.0",
+            timeout=10,
+        )
+
+    #
+    # i2 suddenly stops responding before it has finished applying migrations
+    #
+    assert i2.process
+    os.killpg(i2.process.pid, signal.SIGSTOP)
+
+    def check_instance_is_offline(peer: Instance, instance_id):
+        instance_info = peer.call(".proc_instance_info", instance_id)
+        assert instance_info["current_state"]["variant"] == "Offline"
+        assert instance_info["target_state"]["variant"] == "Offline"
+
+    # sentinel has noticed that i2 is offline and changed it's state
+    Retriable(timeout=10).call(check_instance_is_offline, i1, i2.instance_id)
+
+    #
+    # i3 can now apply the migrations, because the lock holder is not online
+    #
+    i3.call("pico.migration_up", _PLUGIN_WITH_MIGRATION_2, "0.1.0", timeout=10)
+
+    #
+    # i2 wakes up and attempts to continue with applying the migrations
+    #
+    os.killpg(i2.process.pid, signal.SIGCONT)
+    i2.call("pico._inject_error", "PLUGIN_MIGRATION_LONG_MIGRATION", False)
+
+    def check_migration_up_result(instance: Instance):
+        result = instance.eval("return migration_up_result")
+        assert result is not None
+        return result
+
+    # i2 notices that the lock was forcefully taken away
+    ok, err = Retriable(timeout=10).call(check_migration_up_result, i2)
+    assert ok is None
+    assert err == "Migration lock is already released"
 
 
 # -------------------------- configuration tests -------------------------------------

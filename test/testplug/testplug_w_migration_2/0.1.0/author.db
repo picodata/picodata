@@ -1,0 +1,8 @@
+-- pico.UP
+
+CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED GLOBALLY;
+
+-- pico.DOWN
+DROP TABLE author;
