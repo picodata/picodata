@@ -1164,15 +1164,16 @@ class Instance:
 
         return self.raft_get_index()
 
-    def drop_table(self, space: int | str, timeout: float = 3.0):
+    def drop_table(self, table: int | str, timeout: float = 3.0):
         """
-        Drops the space. Returns a raft index at which the space has to be
+        Drops the table. Returns a raft index at which the table has to be
         dropped on all peers.
         """
-        index = self.call(
-            "pico.drop_table", space, dict(timeout=timeout), timeout=timeout + 0.5
+        self.sql(
+            f'DROP TABLE "{table}" OPTION (TIMEOUT = {timeout});',
+            timeout=timeout + 0.5,
         )
-        return index
+        return self.raft_get_index()
 
     def abort_ddl(self, timeout: float = 3.0) -> int:
         """
