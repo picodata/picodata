@@ -358,22 +358,20 @@ test-mac-m1:
         compare_to: *main-branch
         paths:
           - helm/picodata.Dockerfile
-          - helm/picodata-diag.Dockerfile
+          - helm/docker-compose.yml
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       when: on_success
     - when: manual
       allow_failure: true
   variables:
-    PUSH_DOCKER: "--no-push"
+    PUSH_DOCKER: ""
 
 test-helm-image:
   extends: .test-helm
   parallel:
     matrix:
-      - DOCKERFILE: helm/picodata-diag.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata-diag:${PARENT_CI_COMMIT_SHA}
       - DOCKERFILE: helm/picodata.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata:${PARENT_CI_COMMIT_SHA}
+        DESTINATION: ${REGISTRY}/picodata:master
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
@@ -483,14 +481,38 @@ deploy-docker:
   extends: .deploy-docker-tmpl
   parallel:
     matrix:
-      - DOCKERFILE: helm/picodata-diag.Dockerfile
-        DESTINATION: ${REGISTRY}/picodata-diag:${CI_COMMIT_TAG}
       - DOCKERFILE: helm/picodata.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
     strategy: depend
+
+docker-compose:
+  stage: docker
+  needs: [test-helm-image]
+  tags:
+    - picodata-shell
+  rules:
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      changes:
+        compare_to: *main-branch
+        paths:
+          - helm/docker-compose.yml
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      when: on_success
+    - when: manual
+      allow_failure: true
+  script:
+    - mkdir --mode=777 pico/
+    - docker-compose -f helm/docker-compose.yml up -d --wait
+    - echo "ALTER USER \"admin\" WITH PASSWORD 'T0psecret' using md5" > alter_pass.sql
+    - docker cp alter_pass.sql picodata-1-1:/pico/
+    - docker exec -t picodata-1-1 sh -c "cat /pico/alter_pass.sql |picodata admin /pico/data/picodata-1-1/admin.sock"
+    - count=$(psql "user=admin host=127.0.0.1 port=55432 password=T0psecret sslmode=disable" -t -A -c "select count(*) from \"_pico_instance\"") && if [[ $count -eq 4 ]] ; then echo "OK"; else echo count=$count; exit 2; fi
+  after_script:
+    - docker-compose -f helm/docker-compose.yml rm -fsv
+    - sudo rm -rf pico/
 
 # Stages of independent stress testing in downstream pipeline
 # We cannot move artefacts to the downstream pipeline, so we need to build and upload them to our repo

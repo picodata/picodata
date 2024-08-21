@@ -1,0 +1,81 @@
+version: '3'
+
+services:
+  picodata-1-1:
+    image: ${REGISTRY}/picodata:master
+    container_name: picodata-1-1
+    hostname: picodata-1-1
+    environment:
+      PICODATA_PEER: picodata-1-1:3301
+      PICODATA_LISTEN: picodata-1-1:3301
+      PICODATA_DATA_DIR: /pico/data/picodata-1-1
+      PICODATA_ADVERTISE: picodata-1-1:3301
+      PICODATA_FAILURE_DOMAIN: HOST=picodata-1
+      PICODATA_INIT_REPLICATION_FACTOR: 2
+      PICODATA_HTTP_LISTEN: picodata-1-1:8001
+      PICODATA_PG_LISTEN: picodata-1-1:5432
+      PICODATA_ADMIN_PASSWORD: T0psecret
+      PICODATA_LOG_LEVEL: info
+    volumes:
+      - $PWD/pico:/pico
+    ports:
+      - "13301:3301"
+      - "18301:8001"
+      - "55432:5432"
+
+  picodata-1-2:
+    image: ${REGISTRY}/picodata:master
+    container_name: picodata-1-2
+    hostname: picodata-1-2
+    environment:
+      PICODATA_PEER: picodata-1-1:3301
+      PICODATA_LISTEN: picodata-1-2:3301
+      PICODATA_DATA_DIR: /pico/data/picodata-1-2
+      PICODATA_ADVERTISE: picodata-1-2:3301
+      PICODATA_FAILURE_DOMAIN: HOST=picodata-1
+      PICODATA_INIT_REPLICATION_FACTOR: 2
+      PICODATA_HTTP_LISTEN: picodata-1-2:8001
+      PICODATA_LOG_LEVEL: info
+    volumes:
+      - $PWD/pico:/pico
+    ports:
+      - "13302:3301"
+      - "18302:8001"
+
+  picodata-2-1:
+    image: ${REGISTRY}/picodata:master
+    container_name: picodata-2-1
+    hostname: picodata-2-1
+    environment:
+      PICODATA_PEER: picodata-1-1:3301
+      PICODATA_LISTEN: picodata-2-1:3301
+      PICODATA_DATA_DIR: /pico/data/picodata-2-1
+      PICODATA_ADVERTISE: picodata-2-1:3301
+      PICODATA_FAILURE_DOMAIN: HOST=picodata-2
+      PICODATA_INIT_REPLICATION_FACTOR: 2
+      PICODATA_HTTP_LISTEN: picodata-2-1:8001
+      PICODATA_LOG_LEVEL: info
+    volumes:
+      - $PWD/pico:/pico
+    ports:
+      - "13303:3301"
+      - "18303:8001"
+
+  picodata-2-2:
+    image: ${REGISTRY}/picodata:master
+    container_name: picodata-2-2
+    hostname: picodata-2-2
+    environment:
+      PICODATA_PEER: picodata-1-1:3301
+      PICODATA_LISTEN: picodata-2-2:3301
+      PICODATA_DATA_DIR: /pico/data/picodata-2-2
+      PICODATA_ADVERTISE: picodata-2-2:3301
+      PICODATA_FAILURE_DOMAIN: HOST=picodata-2
+      PICODATA_INIT_REPLICATION_FACTOR: 2
+      PICODATA_HTTP_LISTEN: picodata-2-2:8001
+      PICODATA_LOG_LEVEL: info
+    volumes:
+      - $PWD/pico:/pico
+    ports:
+      - "13304:3301"
+      - "18304:8001"
