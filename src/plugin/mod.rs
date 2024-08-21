@@ -845,7 +845,8 @@ pub fn enable_plugin(
     }
 
     let Some(plugin_def) = node.storage.plugins.get(plugin)? else {
-        return Err(PluginError::PluginNotFound(plugin.clone()).into());
+        #[rustfmt::skip]
+        return Err(Error::other(format!("plugin `{plugin}` has been dropped by a concurrent request")));
     };
 
     if !plugin_def.enabled {
