@@ -315,6 +315,15 @@ SELECT * FROM "_pico_user"
 GRANT READ ON TABLE "_pico_user" TO <grantee>
 ```
 
+### Установка и изменение пароля {: #setting_password }
+
+Для установки или изменения пароля пользователя используйте следующую
+SQL-команду:
+
+```sql
+ALTER USER <user name> WITH PASSWORD '<password>'
+```
+
 ### Требования к паролю {: #allowed_passwords }
 
 При установке или изменении пароля пользователя следует учитывать
