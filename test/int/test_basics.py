@@ -379,7 +379,7 @@ def test_raft_log(instance: Instance):
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
 Insert(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
-Insert(_pico_replicaset, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready"]))|
+Insert(_pico_replicaset, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready",{{}}]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
@@ -435,7 +435,7 @@ Insert(_pico_index, [{_pico_instance},1,"_pico_instance_raft_id","tree",[{{"uniq
 Insert(_pico_index, [{_pico_instance},2,"_pico_instance_replicaset_id","tree",[{{"unique":false}}],[["replicaset_id","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_property},"_pico_property",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":false,"name":"value"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_property},0,"_pico_property_key","tree",[{{"unique":true}}],[["key","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_replicaset},"_pico_replicaset",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"string","is_nullable":false,"name":"current_master_id"}},{{"field_type":"string","is_nullable":false,"name":"target_master_id"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"double","is_nullable":false,"name":"weight"}},{{"field_type":"string","is_nullable":false,"name":"weight_origin"}},{{"field_type":"string","is_nullable":false,"name":"state"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_replicaset},"_pico_replicaset",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"string","is_nullable":false,"name":"current_master_id"}},{{"field_type":"string","is_nullable":false,"name":"target_master_id"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"double","is_nullable":false,"name":"weight"}},{{"field_type":"string","is_nullable":false,"name":"weight_origin"}},{{"field_type":"string","is_nullable":false,"name":"state"}},{{"field_type":"map","is_nullable":false,"name":"promotion_vclock"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_replicaset},0,"_pico_replicaset_id","tree",[{{"unique":true}}],[["replicaset_id","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_replicaset},1,"_pico_replicaset_uuid","tree",[{{"unique":true}}],[["replicaset_uuid","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_user},"_pico_user",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"array","is_nullable":true,"name":"auth"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"type"}}],0,true,"memtx",1,""]),

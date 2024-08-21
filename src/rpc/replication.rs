@@ -72,9 +72,7 @@ crate::define_rpc_request! {
     /// Returns errors in the following cases: See implementation.
     fn proc_replication_promote(req: SyncAndPromoteRequest) -> Result<SyncAndPromoteResponse> {
         // TODO: find a way to guard against stale governor requests.
-        if let Some(vclock) = req.vclock {
-            crate::sync::wait_vclock(vclock, req.timeout)?;
-        }
+        crate::sync::wait_vclock(req.vclock, req.timeout)?;
 
         // XXX: Currently we just change the box.cfg.read_only option of the
         // instance but at some point we will implement support for
@@ -99,7 +97,7 @@ crate::define_rpc_request! {
 
     /// Request to promote instance to tarantool replication leader.
     pub struct SyncAndPromoteRequest {
-        pub vclock: Option<Vclock>,
+        pub vclock: Vclock,
         pub timeout: Duration,
     }
 

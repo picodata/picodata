@@ -214,14 +214,8 @@ pub(super) fn action_plan<'i>(
         let old_master_id = &r.current_master_id;
         let new_master_id = &r.target_master_id;
 
-        let mut ops = UpdateOps::new();
-        ops.assign("current_master_id", new_master_id)?;
-        let op = Dml::update(
-            ClusterwideTable::Replicaset,
-            &[&r.replicaset_id],
-            ops,
-            ADMIN_ID,
-        )?;
+        let mut update_ops = UpdateOps::new();
+        update_ops.assign("current_master_id", new_master_id)?;
 
         let mut demote = None;
         let old_master_may_respond = instances
@@ -231,12 +225,6 @@ pub(super) fn action_plan<'i>(
         if let Some(true) = old_master_may_respond {
             demote = Some(rpc::replication::DemoteRequest {});
         }
-
-        let sync_and_promote = rpc::replication::SyncAndPromoteRequest {
-            // This will be set to the value returned by old master.
-            vclock: None,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
 
         let mut vshard_config_version_bump = None;
         #[rustfmt::skip]
@@ -254,9 +242,8 @@ pub(super) fn action_plan<'i>(
             old_master_id,
             demote,
             new_master_id,
-            sync_and_promote,
             replicaset_id,
-            op,
+            update_ops,
             vshard_config_version_bump,
         }
         .into());
@@ -763,12 +750,12 @@ pub mod stage {
             /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
             /// It is optional because we don't try demoting the old master if it's already offline.
             pub demote: Option<rpc::replication::DemoteRequest>,
-            /// This instance will be promoted.
+            /// This instance will be promoted via RPC [`rpc::replication::proc_replication_promote`].
             pub new_master_id: &'i InstanceId,
-            /// Request to call [`rpc::replication::proc_replication`] on new master.
-            pub sync_and_promote: rpc::replication::SyncAndPromoteRequest,
-            /// Global DML operation which updates `current_master_id` in table `_pico_replicaset`.
-            pub op: Dml,
+            /// Part of the global DML operation which updates a `_pico_replicaset` record
+            /// with the new values for `current_master_id` & `promotion_vclock`.
+            /// Note: it is only the part of the operation, because we don't know the promotion_vclock yet.
+            pub update_ops: UpdateOps,
             /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
             pub vshard_config_version_bump: Option<Dml>,
         }

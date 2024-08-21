@@ -20,17 +20,23 @@ use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
 use crate::rpc::replication::proc_replication;
 use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::proc_replication_promote;
+use crate::rpc::replication::SyncAndPromoteRequest;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
 use crate::rpc::update_instance::handle_update_instance_request_in_governor_and_also_wait_too;
+use crate::schema::ADMIN_ID;
 use crate::storage::Clusterwide;
+use crate::storage::ClusterwideTable;
 use crate::storage::ToEntryIter as _;
+use crate::sync::proc_get_vclock;
+use crate::sync::GetVclockRpc;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
 use crate::traft::network::ConnectionPool;
 use crate::traft::node::global;
 use crate::traft::node::Status;
+use crate::traft::op::Dml;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::Result;
@@ -237,9 +243,8 @@ impl Loop {
                 old_master_id,
                 demote,
                 new_master_id,
-                mut sync_and_promote,
                 replicaset_id,
-                op,
+                mut update_ops,
                 vshard_config_version_bump,
             }) => {
                 set_status(governor_status, "transfer replication leader");
@@ -248,6 +253,7 @@ impl Loop {
                     "transferring replicaset mastership from {old_master_id} to {new_master_id}"
                 );
 
+                let mut promotion_vclock = None;
                 if let Some(rpc) = demote {
                     governor_step! {
                         "demoting old master" [
@@ -258,8 +264,45 @@ impl Loop {
                             let resp = pool.call(old_master_id, proc_name!(proc_replication_demote), &rpc, Self::RPC_TIMEOUT)?
                                 .timeout(Self::RPC_TIMEOUT)
                                 .await?;
-                            sync_and_promote.vclock = Some(resp.vclock);
+                            promotion_vclock = Some(resp.vclock);
                         }
+                    }
+                } else {
+                    governor_step! {
+                        "getting promotion vclock from new master" [
+                            "new_master_id" => %new_master_id,
+                            "replicaset_id" => %replicaset_id,
+                        ]
+                        async {
+                            let rpc = GetVclockRpc {};
+                            let vclock = pool.call(new_master_id, proc_name!(proc_get_vclock), &rpc, Self::RPC_TIMEOUT)?
+                                .timeout(Self::RPC_TIMEOUT)
+                                .await?;
+                            promotion_vclock = Some(vclock);
+                        }
+                    }
+                }
+
+                let promotion_vclock = promotion_vclock.expect("is always set on a previous step");
+                governor_step! {
+                    "proposing replicaset current master change" [
+                        "current_master_id" => %new_master_id,
+                        "replicaset_id" => %replicaset_id,
+                    ]
+                    async {
+                        update_ops.assign("promotion_vclock", &promotion_vclock).expect("shan't fail");
+                        let op = Dml::update(
+                            ClusterwideTable::Replicaset,
+                            &[replicaset_id],
+                            update_ops,
+                            ADMIN_ID,
+                        )?;
+
+                        let op = match vshard_config_version_bump {
+                            Some(vshard_config_version_bump) => Op::BatchDml { ops: vec![op, vshard_config_version_bump] },
+                            None => Op::Dml(op),
+                        };
+                        node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
 
@@ -267,26 +310,16 @@ impl Loop {
                     "promoting new master" [
                         "new_master_id" => %new_master_id,
                         "replicaset_id" => %replicaset_id,
-                        "vclock" => ?sync_and_promote.vclock,
+                        "vclock" => ?promotion_vclock,
                     ]
                     async {
+                        let sync_and_promote = SyncAndPromoteRequest {
+                            vclock: promotion_vclock.clone(),
+                            timeout: Loop::SYNC_TIMEOUT,
+                        };
                         pool.call(new_master_id, proc_name!(proc_replication_promote), &sync_and_promote, Self::SYNC_TIMEOUT)?
                             .timeout(Self::SYNC_TIMEOUT)
                             .await?
-                    }
-                }
-
-                governor_step! {
-                    "proposing replicaset current master change" [
-                        "current_master_id" => %new_master_id,
-                        "replicaset_id" => %replicaset_id,
-                    ]
-                    async {
-                        let op = match vshard_config_version_bump {
-                            Some(vshard_config_version_bump) => Op::BatchDml { ops: vec![op, vshard_config_version_bump] },
-                            None => Op::Dml(op),
-                        };
-                        node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
             }

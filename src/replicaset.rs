@@ -2,6 +2,7 @@ use super::instance::InstanceId;
 use crate::instance::Instance;
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
+use ::tarantool::vclock::Vclock;
 
 // TODO: this redundant boilerplate needs to be removed
 crate::define_string_newtype! {
@@ -46,6 +47,9 @@ pub struct Replicaset {
     /// Current state of the replicaset. This is set to `NotReady` when the
     /// replicaset is not filled up to the tier's replication factor.
     pub state: ReplicasetState,
+
+    /// Vclock of the current master at the moment it was promoted.
+    pub promotion_vclock: Vclock,
 }
 impl Encode for Replicaset {}
 
@@ -65,10 +69,11 @@ impl Replicaset {
             replicaset_uuid: master.replicaset_uuid.clone(),
             current_master_id: master.instance_id.clone(),
             target_master_id: master.instance_id.clone(),
+            tier: master.tier.clone(),
             weight: 0.,
             weight_origin: WeightOrigin::Auto,
             state: ReplicasetState::NotReady,
-            tier: master.tier.clone(),
+            promotion_vclock: Vclock::from([]),
         }
     }
 
@@ -85,6 +90,7 @@ impl Replicaset {
             Field::from(("weight", FieldType::Double)),
             Field::from(("weight_origin", FieldType::String)),
             Field::from(("state", FieldType::String)),
+            Field::from(("promotion_vclock", FieldType::Map)),
         ]
     }
 
@@ -100,6 +106,7 @@ impl Replicaset {
             weight: 13.37,
             weight_origin: WeightOrigin::Auto,
             state: ReplicasetState::Ready,
+            promotion_vclock: Vclock::from([420, 69105]),
         }
     }
 }

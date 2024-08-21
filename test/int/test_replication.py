@@ -258,13 +258,8 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     assert i5.eval("return box.space.mytable") is None
     vclock = get_vclock_without_local(i5)
     assert vclock != master_vclock
-    assert (
-        i5.eval(
-            "return box.space._pico_replicaset:get(...).current_master_id",
-            i5.replicaset_id,
-        )
-        == i4.instance_id
-    )
+    # i5 does not become writable until it synchronizes
+    assert i5.eval("return box.info.ro") is True
 
     # Fix i5's replication config, so it's able to continue synching.
     print("\x1b[32mfixing i5's replication config\x1b[0m")
@@ -276,10 +271,4 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     assert i5.eval("return box.space.mytable.id") is not None
     vclock = get_vclock_without_local(i5)
     assert vclock >= master_vclock
-    assert (
-        i5.eval(
-            "return box.space._pico_replicaset:get(...).current_master_id",
-            i5.replicaset_id,
-        )
-        == i5.instance_id
-    )
+    assert i5.eval("return box.info.ro") is False

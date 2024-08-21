@@ -197,8 +197,16 @@ mod tests {
             .unwrap();
         crate::init_handlers();
 
-        let result = pool.call(&instance.raft_id, crate::proc_name!(proc_get_vclock), &GetVclockRpc {}, None)
-            .unwrap().await.unwrap();
+        let result = pool
+            .call(
+                &instance.raft_id,
+                crate::proc_name!(proc_get_vclock),
+                &GetVclockRpc {},
+                None,
+            )
+            .unwrap()
+            .await
+            .unwrap();
         assert_eq!(result, Vclock::current());
 
         pool.call(
