@@ -1,5 +1,7 @@
 use quote::quote;
 
+use crate::default_tarantool_crate_path;
+
 macro_rules! unwrap_or_compile_error {
     ($expr:expr) => {
         match $expr {
@@ -66,7 +68,7 @@ struct Context {
 
 impl Context {
     fn from_args(tokens: proc_macro2::TokenStream) -> Result<Self, syn::Error> {
-        let mut tarantool = syn::parse_quote! { ::tarantool };
+        let mut tarantool = default_tarantool_crate_path();
         let mut linkme = None;
         let mut section = None;
         let mut should_panic = syn::parse_quote! { false };

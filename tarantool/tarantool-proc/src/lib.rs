@@ -3,8 +3,8 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use proc_macro_error::{proc_macro_error, SpanRange};
 use quote::{quote, ToTokens};
 use syn::{
-    parse_macro_input, punctuated::Punctuated, Attribute, AttributeArgs, DeriveInput, FnArg, Ident,
-    Item, ItemFn, Signature, Token,
+    parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, AttributeArgs, DeriveInput,
+    FnArg, Ident, Item, ItemFn, Signature, Token,
 };
 
 // https://git.picodata.io/picodata/picodata/tarantool-module/-/merge_requests/505#note_78473
@@ -15,6 +15,10 @@ macro_rules! unwrap_or_compile_error {
             Err(e) => return e.to_compile_error().into(),
         }
     };
+}
+
+fn default_tarantool_crate_path() -> syn::Path {
+    parse_quote! { tarantool }
 }
 
 mod test;
@@ -842,8 +846,13 @@ pub fn derive_encode(input: TokenStream) -> TokenStream {
 
     // Get attribute arguments
     let args: msgpack::Args = darling::FromDeriveInput::from_derive_input(&input).unwrap();
-    let tarantool_crate = args.tarantool.as_deref().unwrap_or("tarantool");
-    let tarantool_crate = Ident::new(tarantool_crate, Span::call_site()).into();
+    let tarantool_crate = args
+        .tarantool
+        .as_deref()
+        .map(syn::parse_str)
+        .transpose()
+        .unwrap()
+        .unwrap_or_else(default_tarantool_crate_path);
 
     // Add a bound to every type parameter.
     let generics = msgpack::add_trait_bounds(input.generics, &tarantool_crate);
@@ -1049,7 +1058,7 @@ struct Context {
 
 impl Context {
     fn from_args(args: AttributeArgs) -> Self {
-        let mut tarantool: syn::Path = syn::parse2(quote! { ::tarantool }).unwrap();
+        let mut tarantool: syn::Path = default_tarantool_crate_path();
         let mut linkme = None;
         let mut section = None;
         let mut debug_tuple_needed = false;

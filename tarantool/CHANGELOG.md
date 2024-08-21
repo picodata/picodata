@@ -15,6 +15,7 @@
 - Use after free in `fiber::Builder::start_non_joinable` when the fiber exits without yielding.
 - Incorrect, off-spec MP Ext type: caused runtime errors on some platforms.
 - Panic in coio test starting from 1.80 Rust.
+- Impossible to use procedural macros(like `tarantool::proc`, `tarantool::test`) through reexporting tarantool.
 
 ### Deprecated
 
