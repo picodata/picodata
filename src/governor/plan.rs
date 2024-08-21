@@ -115,9 +115,9 @@ pub(super) fn action_plan<'i>(
         if target_vshard_config_version == current_vshard_config_version {
             // Only bump the version if it's not already bumped.
             vshard_config_version_bump = Some(Dml::replace(
-                    ClusterwideTable::Property,
-                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                    ADMIN_ID,
+                ClusterwideTable::Property,
+                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                ADMIN_ID,
             )?);
         };
 
@@ -186,9 +186,9 @@ pub(super) fn action_plan<'i>(
         if target_vshard_config_version == current_vshard_config_version {
             // Only bump the version if it's not already bumped.
             vshard_config_version_bump = Some(Dml::replace(
-                    ClusterwideTable::Property,
-                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                    ADMIN_ID,
+                ClusterwideTable::Property,
+                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                ADMIN_ID,
             )?);
         };
 
@@ -231,9 +231,9 @@ pub(super) fn action_plan<'i>(
         if target_vshard_config_version == current_vshard_config_version {
             // Only bump the version if it's not already bumped.
             vshard_config_version_bump = Some(Dml::replace(
-                    ClusterwideTable::Property,
-                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                    ADMIN_ID,
+                ClusterwideTable::Property,
+                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                ADMIN_ID,
             )?);
         };
 
@@ -270,9 +270,9 @@ pub(super) fn action_plan<'i>(
         if target_vshard_config_version == current_vshard_config_version {
             // Only bump the version if it's not already bumped.
             vshard_config_version_bump = Some(Dml::replace(
-                    ClusterwideTable::Property,
-                    &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                    ADMIN_ID,
+                ClusterwideTable::Property,
+                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                ADMIN_ID,
             )?);
         };
 
