@@ -249,7 +249,7 @@ impl<C: DeserializeOwned> ServiceProxy<C> {
     }
 }
 
-// TODO move this code into tarantool-module
+// TODO move to error_code.rs
 const PLUGIN_ERROR_CODE: u32 = 333;
 
 /// Use this function for conversion between user error and picodata internal error.
