@@ -431,13 +431,15 @@ where
 /// HashMap
 ////////////////////////////////////////////////////////////////////////////////
 
-impl<L, K, V> LuaRead<L> for HashMap<K, V>
+impl<L, K, V, S> LuaRead<L> for HashMap<K, V, S>
 where
     L: AsLua,
     K: 'static + Hash + Eq,
     K: for<'k> LuaRead<&'k LuaTable<L>>,
     V: 'static,
     V: for<'v> LuaRead<PushGuard<&'v LuaTable<L>>>,
+    S: Default,
+    S: std::hash::BuildHasher,
 {
     fn lua_read_at_position(lua: L, index: NonZeroI32) -> ReadResult<Self, L> {
         let table = LuaTable::lua_read_at_position(lua, index)?;
@@ -462,7 +464,7 @@ macro_rules! push_hashmap_impl {
     };
 }
 
-impl<L, K, V> Push<L> for HashMap<K, V>
+impl<L, K, V, S> Push<L> for HashMap<K, V, S>
 where
     L: AsLua,
     K: PushOne<LuaState> + Eq + Hash + Debug,
@@ -476,7 +478,7 @@ where
     }
 }
 
-impl<L, K, V> PushOne<L> for HashMap<K, V>
+impl<L, K, V, S> PushOne<L> for HashMap<K, V, S>
 where
     L: AsLua,
     K: PushOne<LuaState> + Eq + Hash + Debug,
@@ -484,7 +486,7 @@ where
 {
 }
 
-impl<L, K, V> PushInto<L> for HashMap<K, V>
+impl<L, K, V, S> PushInto<L> for HashMap<K, V, S>
 where
     L: AsLua,
     K: PushOneInto<LuaState> + Eq + Hash + Debug,
@@ -498,7 +500,7 @@ where
     }
 }
 
-impl<L, K, V> PushOneInto<L> for HashMap<K, V>
+impl<L, K, V, S> PushOneInto<L> for HashMap<K, V, S>
 where
     L: AsLua,
     K: PushOneInto<LuaState> + Eq + Hash + Debug,
@@ -522,7 +524,7 @@ macro_rules! push_hashset_impl {
     };
 }
 
-impl<L, K> Push<L> for HashSet<K>
+impl<L, K, S> Push<L> for HashSet<K, S>
 where
     L: AsLua,
     K: PushOne<LuaState> + Eq + Hash + Debug,
@@ -535,14 +537,14 @@ where
     }
 }
 
-impl<L, K> PushOne<L> for HashSet<K>
+impl<L, K, S> PushOne<L> for HashSet<K, S>
 where
     L: AsLua,
     K: PushOne<LuaState> + Eq + Hash + Debug,
 {
 }
 
-impl<L, K> PushInto<L> for HashSet<K>
+impl<L, K, S> PushInto<L> for HashSet<K, S>
 where
     L: AsLua,
     K: PushOneInto<LuaState> + Eq + Hash + Debug,
@@ -555,7 +557,7 @@ where
     }
 }
 
-impl<L, K> PushOneInto<L> for HashSet<K>
+impl<L, K, S> PushOneInto<L> for HashSet<K, S>
 where
     L: AsLua,
     K: PushOneInto<LuaState> + Eq + Hash + Debug,

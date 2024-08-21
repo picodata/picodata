@@ -1,7 +1,7 @@
 # Change Log
 
 
-# [5.1.0] Unreleased
+# [?.?.?] Unreleased
 
 ### Added
 - `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
@@ -10,6 +10,7 @@
 ### Changed
 
 ### Fixed
+- `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
 
 - Use after free in `fiber::Builder::start_non_joinable` when the fiber exits without yielding.
 - Incorrect, off-spec MP Ext type: caused runtime errors on some platforms.

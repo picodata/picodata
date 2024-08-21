@@ -68,29 +68,39 @@ pub fn push_vec() {
     assert_eq!(values, orig_vec);
 }
 
+#[derive(Clone, Default)]
+struct CustomHasher;
+impl std::hash::BuildHasher for CustomHasher {
+    type Hasher = std::collections::hash_map::DefaultHasher;
+    #[inline(always)]
+    fn build_hasher(&self) -> Self::Hasher {
+        Self::Hasher::new()
+    }
+}
+
 pub fn push_hashmap() {
     let lua = Lua::new();
 
-    let mut orig_map = HashMap::new();
+    let mut orig_map = HashMap::with_hasher(CustomHasher);
     orig_map.insert(5, 8);
     orig_map.insert(13, 21);
     orig_map.insert(34, 55);
 
     // By reference
     let table: LuaTable<_> = (&lua).push(&orig_map).read().unwrap();
-    let values: HashMap<i32, i32> = table.iter().flatten().collect();
+    let values: HashMap<i32, i32, CustomHasher> = table.iter().flatten().collect();
     assert_eq!(values, orig_map);
 
     // By value
     let table: LuaTable<_> = (&lua).push(orig_map.clone()).read().unwrap();
-    let values: HashMap<i32, i32> = table.iter().flatten().collect();
+    let values: HashMap<i32, i32, CustomHasher> = table.iter().flatten().collect();
     assert_eq!(values, orig_map);
 }
 
 pub fn push_hashset() {
     let lua = Lua::new();
 
-    let mut orig_set = HashSet::new();
+    let mut orig_set = HashSet::with_hasher(CustomHasher);
     orig_set.insert(5);
     orig_set.insert(8);
     orig_set.insert(13);
@@ -100,7 +110,7 @@ pub fn push_hashset() {
 
     // Be reference
     let table: LuaTable<_> = (&lua).push(&orig_set).read().unwrap();
-    let values: HashSet<i32> = table
+    let values: HashSet<i32, CustomHasher> = table
         .iter::<i32, bool>()
         .flatten()
         .filter_map(|(v, is_set)| is_set.then_some(v))
@@ -109,7 +119,7 @@ pub fn push_hashset() {
 
     // Be value
     let table: LuaTable<_> = (&lua).push(orig_set.clone()).read().unwrap();
-    let values: HashSet<i32> = table
+    let values: HashSet<i32, CustomHasher> = table
         .iter::<i32, bool>()
         .flatten()
         .filter_map(|(v, is_set)| is_set.then_some(v))
