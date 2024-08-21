@@ -9,14 +9,15 @@ use std::time::Duration;
 
 use crate::tlog;
 use crate::traft::error::Error;
-use crate::traft::network::IdOfInstance;
-use crate::traft::{ConnectionPool, RaftIndex};
+#[allow(unused_imports)]
+use crate::traft::network::ConnectionPool;
+use crate::traft::RaftIndex;
 use crate::util::duration_from_secs_f64_clamped;
 use crate::{rpc, traft};
 
-/////////////////////////////////////////////////////////////////
-// Vclock
-/////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// proc_get_vclock
+////////////////////////////////////////////////////////////////////////////////
 
 /// A stored procedure to get current [`Vclock`].
 ///
@@ -27,16 +28,23 @@ fn proc_get_vclock() -> traft::Result<Vclock> {
     Ok(vclock)
 }
 
-/// Calls [`proc_get_vclock`] on instance with `instance_id`.
-pub async fn call_get_vclock(
-    pool: &ConnectionPool,
-    instance_id: &impl IdOfInstance,
-) -> traft::Result<Vclock> {
-    let vclock: Vclock = pool
-        .call_raw(instance_id, crate::proc_name!(proc_get_vclock), &(), None)?
-        .await?;
-    Ok(vclock)
+/// RPC request to [`proc_wait_vclock`].
+///
+/// Can be used in [`ConnectionPool::call`] to call [`proc_wait_vclock`] on
+/// the corresponding instance.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GetVclockRpc {}
+
+impl Encode for GetVclockRpc {}
+
+impl rpc::RequestArgs for GetVclockRpc {
+    const PROC_NAME: &'static str = crate::proc_name!(proc_get_vclock);
+    type Response = Vclock;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// proc_wait_vclock
+////////////////////////////////////////////////////////////////////////////////
 
 /// RPC request to [`proc_wait_vclock`].
 ///
@@ -72,35 +80,30 @@ fn proc_wait_vclock(target: Vclock, timeout: f64) -> traft::Result<Vclock> {
 /// **This function yields**
 ///
 pub fn wait_vclock(target: Vclock, timeout: Duration) -> traft::Result<Vclock> {
-    // TODO: this all should be a part of tarantool C API
     let target = target.ignore_zero();
     let deadline = fiber::clock().saturating_add(timeout);
     tlog!(Debug, "waiting for vclock {target:?}");
     loop {
         let current = Vclock::current().ignore_zero();
         if current >= target {
-            tlog!(
-                Debug,
-                "done waiting for vclock {target:?}, current: {current:?}"
-            );
+            #[rustfmt::skip]
+            tlog!(Debug, "done waiting for vclock {target:?}, current: {current:?}");
             return Ok(current);
         }
 
         if fiber::clock() < deadline {
             fiber::sleep(traft::node::MainLoop::TICK);
         } else {
-            tlog!(
-                Debug,
-                "failed waiting for vclock {target:?}: timeout, current: {current:?}"
-            );
+            #[rustfmt::skip]
+            tlog!(Debug, "failed waiting for vclock {target:?}: timeout, current: {current:?}");
             return Err(Error::Timeout);
         }
     }
 }
 
-/////////////////////////////////////////////////////////////////
-// RaftIndex
-/////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// proc_get_index
+////////////////////////////////////////////////////////////////////////////////
 
 /// A stored procedure to get current [`RaftIndex`].
 ///
@@ -111,16 +114,9 @@ fn proc_get_index() -> traft::Result<RaftIndex> {
     Ok(node.get_index())
 }
 
-/// Calls [`proc_get_index`] on instance with `instance_id`.
-pub async fn call_get_index(
-    pool: &mut ConnectionPool,
-    instance_id: &impl IdOfInstance,
-) -> traft::Result<RaftIndex> {
-    let (index,): (RaftIndex,) = pool
-        .call_raw(instance_id, crate::proc_name!(proc_get_index), &(), None)?
-        .await?;
-    Ok(index)
-}
+////////////////////////////////////////////////////////////////////////////////
+// proc_read_index
+////////////////////////////////////////////////////////////////////////////////
 
 /// RPC request to [`proc_read_index`].
 ///
@@ -201,7 +197,8 @@ mod tests {
             .unwrap();
         crate::init_handlers();
 
-        let result = call_get_vclock(&pool, &instance.raft_id).await.unwrap();
+        let result = pool.call(&instance.raft_id, crate::proc_name!(proc_get_vclock), &GetVclockRpc {}, None)
+            .unwrap().await.unwrap();
         assert_eq!(result, Vclock::current());
 
         pool.call(
