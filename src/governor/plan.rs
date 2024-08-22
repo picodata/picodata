@@ -82,9 +82,8 @@ pub(super) fn action_plan<'i>(
         ////////////////////////////////////////////////////////////////////////
         // transfer leadership, if we're the one who goes offline
         if *raft_id == my_raft_id {
-            let new_leader = maybe_responding(instances)
-                // FIXME: linear search
-                .find(|instance| voters.contains(&instance.raft_id));
+            let new_leader =
+                maybe_responding(instances).find(|instance| voters.contains(&instance.raft_id));
             if let Some(new_leader) = new_leader {
                 return Ok(TransferLeadership { to: new_leader }.into());
             } else {
@@ -171,8 +170,11 @@ pub(super) fn action_plan<'i>(
                 targets.push(&instance.instance_id);
             }
         }
-        // FIXME: if current_master_id != target_master_id nobody sould become writable
-        let master_id = &replicaset.current_master_id;
+
+        let mut master_id = None;
+        if replicaset.current_master_id == replicaset.target_master_id {
+            master_id = Some(&replicaset.current_master_id);
+        }
 
         let mut ops = UpdateOps::new();
         ops.assign("current_config_version", replicaset.target_config_version)?;
@@ -185,6 +187,7 @@ pub(super) fn action_plan<'i>(
         let replication_config_version_actualize = dml;
 
         return Ok(ConfigureReplication {
+            // TODO: also send the promotion vclock
             replicaset_id,
             targets,
             master_id,
@@ -768,7 +771,8 @@ pub mod stage {
             /// request to call [`rpc::replication::proc_replication`].
             pub targets: Vec<&'i InstanceId>,
             /// This instance will also become the replicaset master.
-            pub master_id: &'i InstanceId,
+            /// This will be `None` if replicaset's current_master_id != target_master_id.
+            pub master_id: Option<&'i InstanceId>,
             /// This is an explicit list of peer addresses (one for each target).
             pub replicaset_peers: Vec<String>,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.

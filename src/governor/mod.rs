@@ -383,7 +383,7 @@ impl Loop {
                         };
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::replication"; "instance_id" => %instance_id);
-                            rpc.is_master = instance_id == master_id;
+                            rpc.is_master = Some(instance_id) == master_id;
                             let resp = pool.call(instance_id, proc_name!(proc_replication), &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
