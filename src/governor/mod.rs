@@ -387,10 +387,9 @@ impl Loop {
                             let resp = pool.call(instance_id, proc_name!(proc_replication), &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
-                                    Ok(resp) => {
+                                    Ok(_) => {
                                         tlog!(Info, "configured replication with instance";
                                             "instance_id" => %instance_id,
-                                            "lsn" => resp.lsn,
                                         );
                                         Ok(())
                                     }

@@ -33,7 +33,6 @@ crate::define_rpc_request! {
         // box.cfg checks if the replication is already the same
         // and ignores it if nothing changed
         set_cfg_field("replication", &replication_cfg)?;
-        let lsn = crate::tarantool::eval("return box.info.lsn")?;
 
         // We do this everytime because firstly it helps when waking up.
         // And secondly just in case, it doesn't hurt anyways.
@@ -41,7 +40,7 @@ crate::define_rpc_request! {
             set_cfg_field("read_only", false)?;
         }
 
-        Ok(Response { lsn })
+        Ok(Response {})
     }
 
     /// Request to configure tarantool replication.
@@ -59,9 +58,7 @@ crate::define_rpc_request! {
     /// Response to [`replication::Request`].
     ///
     /// [`replication::Request`]: Request
-    pub struct Response {
-        pub lsn: u64,
-    }
+    pub struct Response {}
 }
 
 crate::define_rpc_request! {
