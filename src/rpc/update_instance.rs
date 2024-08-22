@@ -7,7 +7,9 @@ use crate::instance::StateVariant;
 use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::schema::ADMIN_ID;
-use crate::storage::{Clusterwide, ClusterwideTable};
+use crate::storage::Clusterwide;
+use crate::storage::ClusterwideTable;
+use crate::storage::PropertyName;
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -152,6 +154,9 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
         };
 
+        let target_vshard_config_version = storage.properties.target_vshard_config_version()?;
+        let current_vshard_config_version = storage.properties.current_vshard_config_version()?;
+
         let dml = update_instance(&instance, &req, storage)?;
         let Some((dml, version_bump_needed)) = dml else {
             // No point in proposing an operation which doesn't change anything.
@@ -176,6 +181,19 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             #[rustfmt::skip]
             let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], update_ops, ADMIN_ID)?;
             ops.push(replicaset_dml);
+        }
+
+        if version_bump_needed &&
+            // Don't bump version if it's already bumped
+            target_vshard_config_version == current_vshard_config_version
+        {
+            #[rustfmt::skip]
+            let vshard_bump = Dml::replace(
+                ClusterwideTable::Property,
+                &(PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
+                ADMIN_ID,
+            )?;
+            ops.push(vshard_bump);
         }
 
         if !additional_dml.is_empty() {
