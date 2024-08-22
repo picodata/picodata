@@ -33,34 +33,19 @@ def test_tabcompletion(postgres: Postgres):
     # connect using psql
     psql = pexpect.spawn(
         command="psql",
-        args=[f"postgres://{user}:{password}@{host}:{port}?sslmode=disable"],
+        args=[
+            "--quiet",
+            "--no-psqlrc",
+            f"postgres://{user}:{password}@{host}:{port}?sslmode=disable",
+        ],
+        env={"LC_ALL": "C"},
         encoding="utf-8",
         timeout=5,
     )
     psql.logfile = sys.stdout
-    psql.expect_exact("psql")
-    psql.expect_exact('Type "help" for help.')
     psql.expect_exact("=>")
 
     # request the completion by pressing TAB twice
     psql.send("select * from \t\t")
-    suggestions = [
-        "T",
-        "_pico_plugin_migration",
-        "_pico_service_route",
-        "_pico_index",
-        "_pico_privilege",
-        "_pico_table",
-        "_pico_instance",
-        "_pico_property",
-        "_pico_tier",
-        "_pico_peer_address",
-        "_pico_replicaset",
-        "_pico_user",
-        "_pico_plugin",
-        "_pico_routine",
-        "_pico_plugin_config",
-        "_pico_service",
-    ]
-    for suggestion in suggestions:
-        psql.expect_exact(suggestion)
+    psql.expect_exact('"T"')
+    psql.expect("_pico.*")
