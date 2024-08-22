@@ -15,9 +15,15 @@ impl WellKnownQuery {
         match self {
             WellKnownQuery::ListOfTables(..) => {
                 // TODO: filter _pico names like PostgreSQL filters pg_ names
-                "select \"name\" as \"relname\", cast(NULL as text) as \"text\" from \"_pico_table\" \
-                    where substr(\"name\", 1, $1::int) = $2::text \
-                    order by \"relname\"".into()
+                r#"
+                    select
+                        "name" as "relname",
+                        NULL::text as "text"
+                    from "_pico_table"
+                    where substr("name", 1, $1::int) = $2::text
+                    order by "relname"
+                "#
+                .into()
             }
         }
     }
