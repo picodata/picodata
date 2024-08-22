@@ -25,6 +25,7 @@ use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
+use tarantool::vclock::Vclock;
 
 use super::cc::raft_conf_change;
 use super::Loop;
@@ -186,12 +187,13 @@ pub(super) fn action_plan<'i>(
         )?;
         let replication_config_version_actualize = dml;
 
+        let promotion_vclock = &replicaset.promotion_vclock;
         return Ok(ConfigureReplication {
-            // TODO: also send the promotion vclock
             replicaset_id,
             targets,
             master_id,
             replicaset_peers,
+            promotion_vclock,
             replication_config_version_actualize,
         }
         .into());
@@ -741,7 +743,10 @@ pub mod stage {
             /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
             /// It is optional because we don't try demoting the old master if it's already offline.
             pub demote: Option<rpc::replication::DemoteRequest>,
-            /// This instance will be promoted via RPC [`rpc::replication::proc_replication_promote`].
+            /// This is the new master. It will be sent a RPC [`proc_get_vclock`] to set the
+            /// promotion vclock in case the old master is not available.
+            ///
+            /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
             pub new_master_id: &'i InstanceId,
             /// Part of the global DML operation which updates a `_pico_replicaset` record
             /// with the new values for `current_master_id` & `promotion_vclock`.
@@ -765,7 +770,7 @@ pub mod stage {
         }
 
         pub struct ConfigureReplication<'i> {
-            /// This replicaset is being [re]configured. The id is only used for logging.
+            /// This replicaset is being (re)configured. The id is only used for logging.
             pub replicaset_id: &'i ReplicasetId,
             /// These instances belong to one replicaset and will be sent a
             /// request to call [`rpc::replication::proc_replication`].
@@ -773,8 +778,11 @@ pub mod stage {
             /// This instance will also become the replicaset master.
             /// This will be `None` if replicaset's current_master_id != target_master_id.
             pub master_id: Option<&'i InstanceId>,
-            /// This is an explicit list of peer addresses (one for each target).
+            /// This is an explicit list of peer addresses.
             pub replicaset_peers: Vec<String>,
+            /// The value of `promotion_vclock` column of the given replicaset.
+            /// It's used to synchronize new master before making it writable.
+            pub promotion_vclock: &'i Vclock,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
             pub replication_config_version_actualize: Dml,
         }

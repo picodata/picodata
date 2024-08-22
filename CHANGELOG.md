@@ -65,6 +65,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Replicated is no longer a valid instance state.
 
+- Removed stored procedure `.proc_replication_promote`.
+
 ### Lua API
 
 - Update `pico.LUA_API_VERSION`: `3.1.0` -> `4.0.0`

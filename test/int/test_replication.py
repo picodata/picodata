@@ -215,13 +215,9 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
 
-    # Temporarilly break i5's replication config, so that it's vclock is outdated.
-    print("\x1b[31mbreaking i5's replication config\x1b[0m")
-    i5.eval(
-        """
-        replication_before = box.cfg.replication
-        box.cfg { replication = {} }
-        """
+    # Make sure i5 will not be able to synchronize before promoting
+    i5.call(
+        "pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", True
     )
 
     # Do some storage modifications, which will need to be replicated.
@@ -249,21 +245,20 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
 
     master_vclock = get_vclock_without_local(i4)
 
-    # Wait until governor starts switching the replication leader from i4 to i5.
+    # Wait until governor switches the replicaset master from i4 to i5
+    # and tries to reconfigure replication between them which will require i5 to synchronize first.
     # This will block until i5 synchronizes with old master, which it won't
-    # until we fix it's replication config.
+    # until the injected error is disabled.
     time.sleep(1)  # Just in case, nothing really relies on this sleep
-    wait_governor_status(i1, "transfer replication leader")
+    wait_governor_status(i1, "configure replication")
 
-    assert i5.eval("return box.space.mytable") is None
-    vclock = get_vclock_without_local(i5)
-    assert vclock != master_vclock
     # i5 does not become writable until it synchronizes
     assert i5.eval("return box.info.ro") is True
 
-    # Fix i5's replication config, so it's able to continue synching.
-    print("\x1b[32mfixing i5's replication config\x1b[0m")
-    i5.eval("box.cfg { replication = replication_before }")
+    # Uninject the error, so it's able to continue synching.
+    i5.call(
+        "pico._inject_error", "TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER", False
+    )
 
     # Wait until governor finishes with all the needed changes.
     wait_governor_status(i1, "idle")

@@ -19,7 +19,6 @@ use crate::rpc::enable_service::proc_enable_service;
 use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
 use crate::rpc::replication::proc_replication;
 use crate::rpc::replication::proc_replication_demote;
-use crate::rpc::replication::proc_replication_promote;
 use crate::rpc::replication::SyncAndPromoteRequest;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
@@ -313,24 +312,6 @@ impl Loop {
                         node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
-
-                // FIXME: remove this, it will be done on the ConfigureReplication step
-                governor_step! {
-                    "promoting new master" [
-                        "new_master_id" => %new_master_id,
-                        "replicaset_id" => %replicaset_id,
-                        "vclock" => ?promotion_vclock,
-                    ]
-                    async {
-                        let sync_and_promote = SyncAndPromoteRequest {
-                            vclock: promotion_vclock.clone(),
-                            timeout: Loop::SYNC_TIMEOUT,
-                        };
-                        pool.call(new_master_id, proc_name!(proc_replication_promote), &sync_and_promote, Self::SYNC_TIMEOUT)?
-                            .timeout(Self::SYNC_TIMEOUT)
-                            .await?
-                    }
-                }
             }
 
             Plan::Downgrade(Downgrade {
@@ -370,6 +351,7 @@ impl Loop {
                 targets,
                 master_id,
                 replicaset_peers,
+                promotion_vclock,
                 replication_config_version_actualize,
             }) => {
                 set_status(governor_status, "configure replication");
@@ -377,13 +359,30 @@ impl Loop {
                     "configuring replication"
                     async {
                         let mut fs = vec![];
-                        let mut rpc = rpc::replication::Request {
-                            is_master: false,
+                        let mut rpc = rpc::replication::ConfigureReplicationRequest {
+                            // Is only specified for the master replica
+                            sync_and_promote: None,
                             replicaset_peers,
                         };
+
+                        let mut sync_and_promote = None;
+                        if master_id.is_some() {
+                            sync_and_promote = Some(SyncAndPromoteRequest {
+                                vclock: promotion_vclock.clone(),
+                                timeout: Loop::SYNC_TIMEOUT,
+                            });
+                        }
+
                         for instance_id in targets {
                             tlog!(Info, "calling rpc::replication"; "instance_id" => %instance_id);
-                            rpc.is_master = Some(instance_id) == master_id;
+                            rpc.sync_and_promote = None;
+                            if master_id == Some(instance_id) {
+                                let Some(sync) = sync_and_promote.take() else {
+                                    unreachable!("sync_and_promote request should only be sent to at most one replica");
+                                };
+                                rpc.sync_and_promote = Some(sync);
+                            }
+
                             let resp = pool.call(instance_id, proc_name!(proc_replication), &rpc, Self::RPC_TIMEOUT)?;
                             fs.push(async move {
                                 match resp.await {
