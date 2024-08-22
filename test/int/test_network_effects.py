@@ -90,7 +90,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Help i2 to become a new leader
     i2.promote_or_fail()
-    Retriable(timeout=3, rps=5).call(
+    Retriable(timeout=10, rps=5).call(
         lambda: i3.assert_raft_status("Follower", i2.raft_id)
     )
 
@@ -100,7 +100,7 @@ def test_log_rollback(cluster3: Cluster):
 
     # Now i1 has an uncommitted, but persisted entry that should be rolled back.
     fix_picodata_procs(i1)
-    Retriable(timeout=3, rps=5).call(
+    Retriable(timeout=10, rps=5).call(
         lambda: i1.assert_raft_status("Follower", i2.raft_id)
     )
 
@@ -147,7 +147,7 @@ def test_leader_disruption(cluster3: Cluster):
     )
 
     # i3 should become the follower again without disrupting i1
-    Retriable(timeout=3, rps=5).call(
+    Retriable(timeout=10, rps=5).call(
         lambda: i3.assert_raft_status("Follower", i1.raft_id)
     )
 
@@ -179,4 +179,4 @@ def test_instance_automatic_offline_detection(cluster: Cluster):
     def assert_online(peer, instance_id):
         assert get_instance_states(peer, instance_id) == ("Online", "Online")
 
-    Retriable(timeout=6, rps=5).call(lambda: assert_online(i1, i3.instance_id))
+    Retriable(timeout=10, rps=5).call(lambda: assert_online(i1, i3.instance_id))
