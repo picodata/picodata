@@ -426,15 +426,6 @@ mod tests {
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
 
         //
-        // Target state can only be Online, Offline or Expelled
-        //
-        let mut req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into());
-        // .with_target_state will just panic
-        req.target_state = Some(Replicated);
-        let e = update_instance(&instance, &req, &storage).unwrap_err();
-        assert_eq!(e.to_string(), "target state can only be Online, Offline or Expelled, not Replicated");
-
-        //
         // State::Expelled takes incarnation from current state
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())

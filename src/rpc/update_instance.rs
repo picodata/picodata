@@ -298,10 +298,6 @@ pub fn update_instance(
                 instance.target_state.incarnation + 1
             }
             Offline | Expelled => instance.current_state.incarnation,
-            other => {
-                #[rustfmt::skip]
-                return Err(Error::other(format!("target state can only be Online, Offline or Expelled, not {other}")));
-            }
         };
         let state = State::new(variant, incarnation);
         if state != instance.target_state {
@@ -321,18 +317,4 @@ pub fn update_instance(
     )?;
 
     Ok(Some((instance_dml, replication_config_version_bump_needed)))
-}
-
-#[cfg(test)]
-#[allow(non_snake_case)]
-mod test {
-    use super::*;
-
-    #[test]
-    #[should_panic]
-    fn update_instance_req_with_target_state_Replicated() {
-        Request::new("".into(), "".into()).with_target_state(Replicated);
-        #[cfg(not(debug_assertions))]
-        panic!("this is a synthetic panic, because the test is expected to panic, but the actual code only panics in debug mode");
-    }
 }

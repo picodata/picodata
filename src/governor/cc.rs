@@ -166,7 +166,6 @@ pub(crate) fn raft_conf_change(
                 let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
-            _ => unreachable!("target state can only be Online, Offline or Expelled"),
         }
     }
 
@@ -194,7 +193,6 @@ pub(crate) fn raft_conf_change(
                 let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
                 changes.push(ccs);
             }
-            _ => unreachable!("target state can only be Online, Offline or Expelled"),
         }
     }
 
@@ -423,7 +421,7 @@ mod tests {
         );
 
         assert_eq!(
-            cc(&[p1(), p!(2, Replicated -> Online)], &[1], &[2]),
+            cc(&[p1(), p!(2, Offline -> Online)], &[1], &[2]),
             // nothing to do until p2 attains current_state online
             None
         );
@@ -441,7 +439,7 @@ mod tests {
         );
 
         assert_eq!(
-            cc(&[p1(), p!(2, Replicated -> Offline)], &[1], &[2]),
+            cc(&[p1(), p!(2, Online -> Offline)], &[1], &[2]),
             // p2 went offline even before being promoted.
             None
         );
@@ -530,7 +528,7 @@ mod tests {
 
         assert_eq!(
             cc(
-                &[p1(), p!(2, Online -> Offline), p!(3, Replicated -> Online)],
+                &[p1(), p!(2, Online -> Offline), p!(3, Offline -> Online)],
                 &[1, 2],
                 &[3]
             ),

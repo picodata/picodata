@@ -63,6 +63,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Add `target_config_version` column to `_pico_replicaset` table.
 
+- Replicated is no longer a valid instance state.
+
 ### Lua API
 
 - Update `pico.LUA_API_VERSION`: `3.1.0` -> `4.0.0`

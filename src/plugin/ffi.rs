@@ -41,7 +41,6 @@ impl From<StateVariant> for types::StateVariant {
     fn from(variant: StateVariant) -> Self {
         match variant {
             StateVariant::Offline => types::StateVariant::Offline,
-            StateVariant::Replicated => types::StateVariant::Replicated,
             StateVariant::Online => types::StateVariant::Online,
             StateVariant::Expelled => types::StateVariant::Expelled,
         }

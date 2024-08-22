@@ -202,8 +202,6 @@ impl Predicate {
         /// Instance has gracefully shut down or has not been started yet.
         #[default]
         Offline = "Offline",
-        /// Instance has configured replication.
-        Replicated = "Replicated",
         /// Instance is active and is handling requests.
         Online = "Online",
         /// Instance has permanently removed from cluster.
@@ -228,7 +226,6 @@ impl State {
 
     /// State name. May be one of:
     /// - Offline
-    /// - Replicated
     /// - Online
     /// - Expelled
     pub fn name(&self) -> StateVariant {
