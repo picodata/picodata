@@ -937,6 +937,7 @@ pub(crate) fn setup() {
                                 if first {
                                     first = false;
                                     start = token.start;
+                                    end = token.start;
                                 } else {
                                     // also count the spaces between this and previous token
                                     added_chars += token.start - prev_token.end;
@@ -947,20 +948,28 @@ pub(crate) fn setup() {
                                 // and make an ugly row. We could subdivide such tokens
                                 // even further, but I don't want to make this code
                                 // even more complicated than it already is...
-                                if utf8_len + added_chars > cw && start != end {
+                                let new_token_will_overflow = utf8_len + added_chars > cw;
+                                let added_at_least_one_token = start != end;
+                                if new_token_will_overflow && added_at_least_one_token {
                                     break;
                                 }
 
+                                // FIXME the depth should not be modified if we're not adding the token
                                 match token.text {
                                     "(" => paren_depth += 1,
                                     ")" => paren_depth -= 1,
                                     _ => {}
                                 }
 
-                                if args_on_separate_rows && paren_depth == 0 && token.text == ")" {
+                                if args_on_separate_rows
+                                    && added_at_least_one_token
+                                    && paren_depth == 0
+                                    && token.text == ")"
+                                {
                                     break;
                                 }
 
+                                // At this point the new token is added to the current piece
                                 utf8_len += added_chars;
                                 end = token.end;
                                 _ = lexer.next_token();
