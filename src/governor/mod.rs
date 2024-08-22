@@ -341,7 +341,7 @@ impl Loop {
                     async {
                         handle_update_instance_request_in_governor_and_also_wait_too(
                             req,
-                            vshard_config_version_bump.as_ref(),
+                            vshard_config_version_bump.as_slice(),
                             Loop::UPDATE_INSTANCE_TIMEOUT,
                         )?
                     }
@@ -401,7 +401,7 @@ impl Loop {
                     async {
                         handle_update_instance_request_in_governor_and_also_wait_too(
                             req,
-                            vshard_config_version_bump.as_ref(),
+                            vshard_config_version_bump.as_slice(),
                             Loop::UPDATE_INSTANCE_TIMEOUT,
                         )?
                     }
@@ -480,7 +480,7 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
-                        handle_update_instance_request_in_governor_and_also_wait_too(req, None, Loop::UPDATE_INSTANCE_TIMEOUT)?
+                        handle_update_instance_request_in_governor_and_also_wait_too(req, &[], Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }

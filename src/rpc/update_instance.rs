@@ -98,7 +98,7 @@ impl Request {
 /// **This function yields**
 #[inline(always)]
 pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
-    handle_update_instance_request_in_governor_and_also_wait_too(req, None, timeout)
+    handle_update_instance_request_in_governor_and_also_wait_too(req, &[], timeout)
 }
 
 /// Processes the [`crate::rpc::update_instance::Request`] and appends
@@ -113,7 +113,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 /// **This function yields**
 pub fn handle_update_instance_request_in_governor_and_also_wait_too(
     req: Request,
-    additional_dml: Option<&Dml>,
+    additional_dml: &[Dml],
     timeout: Duration,
 ) -> Result<()> {
     let node = node::global()?;
@@ -130,8 +130,15 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
     }
 
     #[cfg(debug_assertions)]
-    if let Some(op) = additional_dml {
-        debug_assert_eq!(op.table_id(), ClusterwideTable::Property.id(), "for CaS safety reasons currently we only allow updating _pico_property simultaneously with instance");
+    for op in additional_dml {
+        match ClusterwideTable::from_i64(op.table_id() as _) {
+            Some(ClusterwideTable::Property | ClusterwideTable::Replicaset) => {
+                // Allowed
+            }
+            _ => {
+                panic!("for CaS safety reasons currently we only allow updating _pico_property or _pico_replicaset simultaneously with instance")
+            }
+        }
     }
 
     let deadline = fiber::clock().saturating_add(timeout);
@@ -171,9 +178,11 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             ops.push(replicaset_dml);
         }
 
-        if let Some(additional_dml) = additional_dml {
+        if !additional_dml.is_empty() {
+            #[rustfmt::skip]
+            debug_assert!(!version_bump_needed, "there can only be 1 replicaset version bump");
             // TODO: to eliminate redundant copies here we should refactor `BatchDml` and/or `Dml`
-            ops.push(additional_dml.clone());
+            ops.extend_from_slice(additional_dml);
         }
 
         let op = Op::single_dml_or_batch(ops);
