@@ -162,6 +162,7 @@ pub struct Node {
     pub instances_update: Mutex<()>,
     /// Manage plugins loaded or must be loaded at this node.
     pub plugin_manager: Rc<PluginManager>,
+    pub(crate) instance_reachability: InstanceReachabilityManagerRef,
 }
 
 impl std::fmt::Debug for Node {
@@ -230,7 +231,7 @@ impl Node {
                 status.clone(),
                 storage.clone(),
                 raft_storage.clone(),
-                instance_reachability,
+                instance_reachability.clone(),
             ),
             pool,
             node_impl,
@@ -240,6 +241,7 @@ impl Node {
             applied,
             instances_update: Mutex::new(()),
             plugin_manager,
+            instance_reachability,
         };
 
         unsafe { RAFT_NODE = Some(Box::new(node)) };
@@ -2411,7 +2413,11 @@ pub fn global() -> traft::Result<&'static Node> {
 fn proc_raft_interact(pbs: Vec<traft::MessagePb>) -> traft::Result<()> {
     let node = global()?;
     for pb in pbs {
-        node.step_and_yield(raft::Message::try_from(pb).map_err(Error::other)?);
+        let msg = raft::Message::try_from(pb).map_err(Error::other)?;
+        node.instance_reachability
+            .borrow_mut()
+            .report_result(msg.from, true);
+        node.step_and_yield(msg);
     }
     Ok(())
 }
