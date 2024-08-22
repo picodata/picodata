@@ -954,16 +954,10 @@ pub(crate) fn setup() {
                                     break;
                                 }
 
-                                // FIXME the depth should not be modified if we're not adding the token
-                                match token.text {
-                                    "(" => paren_depth += 1,
-                                    ")" => paren_depth -= 1,
-                                    _ => {}
-                                }
-
                                 if args_on_separate_rows
                                     && added_at_least_one_token
-                                    && paren_depth == 0
+                                    // This depth doesn't take into account the current ")" itself
+                                    && paren_depth == 1
                                     && token.text == ")"
                                 {
                                     break;
@@ -978,6 +972,12 @@ pub(crate) fn setup() {
                                 let prev_token_ = prev_token;
                                 // Must be assigned before `break`
                                 prev_token = token;
+
+                                match token.text {
+                                    "(" => paren_depth += 1,
+                                    ")" => paren_depth -= 1,
+                                    _ => {}
+                                }
 
                                 if args_on_separate_rows && paren_depth == 1 {
                                     if token.text == "(" {
