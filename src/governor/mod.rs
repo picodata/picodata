@@ -54,6 +54,7 @@ impl Loop {
     const SYNC_TIMEOUT: Duration = Duration::from_secs(10);
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
     const UPDATE_INSTANCE_TIMEOUT: Duration = Duration::from_secs(3);
+    // TODO: const PROPOSE_RAFT_OP_TIMEOUT: Duration = Duration::from_secs(3);
 
     async fn iter_fn(
         State {
@@ -245,6 +246,7 @@ impl Loop {
                 new_master_id,
                 replicaset_id,
                 mut update_ops,
+                replication_config_version_bump,
                 vshard_config_version_bump,
             }) => {
                 set_status(governor_status, "transfer replication leader");
@@ -290,6 +292,8 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
+                        let mut ops = vec![];
+
                         update_ops.assign("promotion_vclock", &promotion_vclock).expect("shan't fail");
                         let op = Dml::update(
                             ClusterwideTable::Replicaset,
@@ -297,15 +301,20 @@ impl Loop {
                             update_ops,
                             ADMIN_ID,
                         )?;
+                        ops.push(op);
 
-                        let op = match vshard_config_version_bump {
-                            Some(vshard_config_version_bump) => Op::BatchDml { ops: vec![op, vshard_config_version_bump] },
-                            None => Op::Dml(op),
-                        };
+                        if let Some(bump) = replication_config_version_bump {
+                            ops.push(bump);
+                        }
+                        if let Some(bump) = vshard_config_version_bump {
+                            ops.push(bump);
+                        }
+                        let op = Op::single_dml_or_batch(ops);
                         node.propose_and_wait(op, Duration::from_secs(3))?
                     }
                 }
 
+                // FIXME: remove this, it will be done on the ConfigureReplication step
                 governor_step! {
                     "promoting new master" [
                         "new_master_id" => %new_master_id,
@@ -326,6 +335,7 @@ impl Loop {
 
             Plan::Downgrade(Downgrade {
                 req,
+                replication_config_version_bump,
                 vshard_config_version_bump,
             }) => {
                 set_status(governor_status, "update instance state to offline");
@@ -339,21 +349,28 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
+                        let mut ops = vec![];
+                        if let Some(bump) = replication_config_version_bump {
+                            ops.push(bump);
+                        }
+                        if let Some(bump) = vshard_config_version_bump {
+                            ops.push(bump);
+                        }
                         handle_update_instance_request_in_governor_and_also_wait_too(
                             req,
-                            vshard_config_version_bump.as_slice(),
+                            &ops,
                             Loop::UPDATE_INSTANCE_TIMEOUT,
                         )?
                     }
                 }
             }
 
-            Plan::Replication(Replication {
+            Plan::ConfigureReplication(ConfigureReplication {
+                replicaset_id,
                 targets,
                 master_id,
                 replicaset_peers,
-                req,
-                vshard_config_version_bump,
+                replication_config_version_actualize,
             }) => {
                 set_status(governor_status, "configure replication");
                 governor_step! {
@@ -391,19 +408,12 @@ impl Loop {
                     }
                 }
 
-                let instance_id = req.instance_id.clone();
-                let current_state = req.current_state.expect("must be set");
                 governor_step! {
-                    "handling instance state change" [
-                        "instance_id" => %instance_id,
-                        "current_state" => %current_state,
+                    "actualizing replicaset configuration version" [
+                        "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        handle_update_instance_request_in_governor_and_also_wait_too(
-                            req,
-                            vshard_config_version_bump.as_slice(),
-                            Loop::UPDATE_INSTANCE_TIMEOUT,
-                        )?
+                        node.propose_and_wait(replication_config_version_actualize, Duration::from_secs(3))?;
                     }
                 }
             }
@@ -432,10 +442,12 @@ impl Loop {
                 governor_step! {
                     "proposing replicaset state change"
                     async {
-                        let op = match vshard_config_version_bump {
-                            Some(vshard_config_version_bump) => Op::BatchDml { ops: vec![op, vshard_config_version_bump] },
-                            None => Op::Dml(op),
-                        };
+                        let mut ops = vec![];
+                        ops.push(op);
+                        if let Some(bump) = vshard_config_version_bump {
+                            ops.push(bump);
+                        }
+                        let op = Op::single_dml_or_batch(ops);
                         node.propose_and_wait(op, Duration::from_secs(3))?;
                     }
                 }

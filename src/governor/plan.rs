@@ -22,6 +22,7 @@ use crate::traft::op::PluginRaftOp;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
+use crate::warn_or_panic;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
 
@@ -73,6 +74,7 @@ pub(super) fn action_plan<'i>(
     if let Some(Instance {
         raft_id,
         instance_id,
+        replicaset_id,
         target_state,
         ..
     }) = to_downgrade
@@ -110,6 +112,9 @@ pub(super) fn action_plan<'i>(
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_state(*target_state);
 
+        let replication_config_version_bump =
+            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_id);
+
         let mut vshard_config_version_bump = None;
         #[rustfmt::skip]
         if target_vshard_config_version == current_vshard_config_version {
@@ -123,6 +128,7 @@ pub(super) fn action_plan<'i>(
 
         return Ok(Downgrade {
             req,
+            replication_config_version_bump,
             vshard_config_version_bump,
         }
         .into());
@@ -144,19 +150,12 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // replication
-    let to_replicate = instances
-        .iter()
-        // TODO: find all such instances in a given replicaset,
-        // not just the first one
-        .find(|instance| has_states!(instance, Offline -> Online) || instance.is_reincarnated());
-    if let Some(Instance {
-        instance_id,
-        replicaset_id,
-        target_state,
-        ..
-    }) = to_replicate
-    {
+    // configure replication
+    let replicaset_to_configure = replicasets
+        .values()
+        .find(|replicaset| replicaset.current_config_version != replicaset.target_config_version);
+    if let Some(replicaset) = replicaset_to_configure {
+        let replicaset_id = &replicaset.replicaset_id;
         let mut targets = Vec::new();
         let mut replicaset_peers = Vec::new();
         for instance in instances {
@@ -166,38 +165,31 @@ pub(super) fn action_plan<'i>(
             if let Some(address) = peer_addresses.get(&instance.raft_id) {
                 replicaset_peers.push(address.clone());
             } else {
-                tlog!(Warning, "replica {} address unknown, will be excluded from box.cfg.replication", instance.instance_id;
-                    "replicaset_id" => %replicaset_id,
-                );
+                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_id}`", instance.instance_id);
             }
             if instance.may_respond() {
                 targets.push(&instance.instance_id);
             }
         }
-        let replicaset = replicasets
-            .get(replicaset_id)
-            .expect("replicaset info should be available at this point");
+        // FIXME: if current_master_id != target_master_id nobody sould become writable
         let master_id = &replicaset.current_master_id;
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_state(State::new(Replicated, target_state.incarnation));
 
-        let mut vshard_config_version_bump = None;
-        #[rustfmt::skip]
-        if target_vshard_config_version == current_vshard_config_version {
-            // Only bump the version if it's not already bumped.
-            vshard_config_version_bump = Some(Dml::replace(
-                ClusterwideTable::Property,
-                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                ADMIN_ID,
-            )?);
-        };
+        let mut ops = UpdateOps::new();
+        ops.assign("current_config_version", replicaset.target_config_version)?;
+        let dml = Dml::update(
+            ClusterwideTable::Replicaset,
+            &[replicaset_id],
+            ops,
+            ADMIN_ID,
+        )?;
+        let replication_config_version_actualize = dml;
 
-        return Ok(Replication {
+        return Ok(ConfigureReplication {
+            replicaset_id,
             targets,
             master_id,
             replicaset_peers,
-            req,
-            vshard_config_version_bump,
+            replication_config_version_actualize,
         }
         .into());
     }
@@ -211,6 +203,7 @@ pub(super) fn action_plan<'i>(
         .values()
         .find(|r| r.current_master_id != r.target_master_id);
     if let Some(r) = new_current_master {
+        let replicaset_id = &r.replicaset_id;
         let old_master_id = &r.current_master_id;
         let new_master_id = &r.target_master_id;
 
@@ -226,6 +219,9 @@ pub(super) fn action_plan<'i>(
             demote = Some(rpc::replication::DemoteRequest {});
         }
 
+        let replication_config_version_bump =
+            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_id);
+
         let mut vshard_config_version_bump = None;
         #[rustfmt::skip]
         if target_vshard_config_version == current_vshard_config_version {
@@ -237,13 +233,13 @@ pub(super) fn action_plan<'i>(
             )?);
         };
 
-        let replicaset_id = &r.replicaset_id;
         return Ok(UpdateCurrentReplicasetMaster {
             old_master_id,
             demote,
             new_master_id,
             replicaset_id,
             update_ops,
+            replication_config_version_bump,
             vshard_config_version_bump,
         }
         .into());
@@ -304,7 +300,9 @@ pub(super) fn action_plan<'i>(
     if ok_to_configure_vshard && current_vshard_config_version != target_vshard_config_version {
         let vshard_config = VshardConfig::new(instances, peer_addresses, replicasets);
         let targets = maybe_responding(instances)
-            .filter(|instance| instance.current_state.variant >= Replicated)
+            // Note at this point all the instances should have their replication configured,
+            // so it's ok to configure sharding for them
+            .filter(|instance| has_states!(instance, * -> Online))
             .map(|instance| &instance.instance_id)
             .collect();
         let rpc = rpc::sharding::Request {
@@ -366,7 +364,7 @@ pub(super) fn action_plan<'i>(
     // to online
     let to_online = instances
         .iter()
-        .find(|instance| has_states!(instance, Replicated -> Online));
+        .find(|instance| has_states!(instance, not Online -> Online) || instance.is_reincarnated());
     if let Some(Instance {
         instance_id,
         target_state,
@@ -427,7 +425,7 @@ pub(super) fn action_plan<'i>(
     if let Some(PluginOp::CreatePlugin { manifest }) = plugin_op {
         let ident = manifest.plugin_identifier();
         if plugins.get(&ident).is_some() {
-            crate::warn_or_panic!(
+            warn_or_panic!(
                 "received a request to install a plugin which is already installed {ident:?}"
             );
         }
@@ -746,6 +744,8 @@ pub mod stage {
             /// with the new values for `current_master_id` & `promotion_vclock`.
             /// Note: it is only the part of the operation, because we don't know the promotion_vclock yet.
             pub update_ops: UpdateOps,
+            /// Global DML operation which updates `target_config_version` in table `_pico_replicaset` for the replicaset.
+            pub replication_config_version_bump: Option<Dml>,
             /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
             pub vshard_config_version_bump: Option<Dml>,
         }
@@ -754,11 +754,16 @@ pub mod stage {
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Offline` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
+            /// Global DML operation which updates `target_config_version` in table `_pico_replicaset`
+            /// for the replicaset of the instance which is going `Offline`.
+            pub replication_config_version_bump: Option<Dml>,
             /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
             pub vshard_config_version_bump: Option<Dml>,
         }
 
-        pub struct Replication<'i> {
+        pub struct ConfigureReplication<'i> {
+            /// This replicaset is being [re]configured. The id is only used for logging.
+            pub replicaset_id: &'i ReplicasetId,
             /// These instances belong to one replicaset and will be sent a
             /// request to call [`rpc::replication::proc_replication`].
             pub targets: Vec<&'i InstanceId>,
@@ -766,11 +771,8 @@ pub mod stage {
             pub master_id: &'i InstanceId,
             /// This is an explicit list of peer addresses (one for each target).
             pub replicaset_peers: Vec<String>,
-            /// Update instance request which translates into a global DML operation
-            /// which updates `current_state` to `Replicated` in table `_pico_instance` for a given instance.
-            pub req: rpc::update_instance::Request,
-            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
-            pub vshard_config_version_bump: Option<Dml>,
+            /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
+            pub replication_config_version_actualize: Dml,
         }
 
         pub struct ShardingBoot<'i> {
@@ -862,7 +864,7 @@ fn get_new_replicaset_master_if_needed<'i>(
         // XXX:                                        is this correct? vvvvvv
         #[rustfmt::skip]
         let Some(master) = instances.iter().find(|i| i.instance_id == r.target_master_id) else {
-            crate::warn_or_panic!(
+            warn_or_panic!(
                 "couldn't find instance with id {}, which is chosen as next master of replicaset {}",
                 r.target_master_id,
                 r.replicaset_id,
@@ -950,6 +952,38 @@ fn get_first_ready_replicaset<'r>(
         }
     }
     None
+}
+
+/// Constructs a global Dml operation to bump the target_config_version field
+/// in the given replicaset, if it's not already bumped.
+fn get_replicaset_config_version_bump_op_if_needed(
+    replicasets: &HashMap<&ReplicasetId, &Replicaset>,
+    replicaset_id: &ReplicasetId,
+) -> Option<Dml> {
+    let Some(replicaset) = replicasets.get(replicaset_id) else {
+        warn_or_panic!("replicaset info for `{replicaset_id}` is missing");
+        return None;
+    };
+
+    // Only bump the version if it's not already bumped.
+    if replicaset.current_config_version != replicaset.target_config_version {
+        return None;
+    }
+
+    let mut ops = UpdateOps::new();
+    ops.assign(
+        "target_config_version",
+        replicaset.target_config_version + 1,
+    )
+    .expect("won't fail");
+    let dml = Dml::update(
+        ClusterwideTable::Replicaset,
+        &[replicaset_id],
+        ops,
+        ADMIN_ID,
+    )
+    .expect("can't fail");
+    Some(dml)
 }
 
 #[inline(always)]

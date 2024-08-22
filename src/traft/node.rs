@@ -348,7 +348,11 @@ impl Node {
         })
     }
 
-    /// Propose an operation and wait for it's result.
+    /// Propose a raft operation and wait until it is applied on the current
+    /// instance (the leader).
+    ///
+    /// If called on a non leader, returns an error.
+    ///
     /// **This function yields**
     #[inline]
     pub fn propose_and_wait(&self, op: impl Into<Op>, timeout: Duration) -> traft::Result<()> {
