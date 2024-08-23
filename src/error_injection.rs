@@ -1,7 +1,10 @@
-use std::{collections::HashSet, env, ptr};
+#[allow(unused_imports)]
+use std::{collections::HashSet, ptr};
 
+#[cfg(feature = "error_injection")]
 static mut INJECTED_ERRORS: Option<HashSet<String>> = None;
 
+#[cfg(feature = "error_injection")]
 #[inline(always)]
 pub fn enable(error: &str, enable: bool) {
     // SAFETY: safe as long as only called from tx thread
@@ -21,16 +24,20 @@ pub fn enable(error: &str, enable: bool) {
 #[inline(always)]
 pub fn is_enabled(error: &str) -> bool {
     // SAFETY: safe as long as only called from tx thread
-    match unsafe { ptr::addr_of!(INJECTED_ERRORS).as_ref() }.unwrap() {
-        Some(injected_errors) => injected_errors.contains(error),
-        None => false,
+    #[cfg(feature = "error_injection")]
+    if let Some(injected_errors) = unsafe { &*ptr::addr_of!(INJECTED_ERRORS) } {
+        return injected_errors.contains(error);
     }
+
+    _ = error;
+    false
 }
 
 // Scan environment variables for `PICODATA_ERROR_INJECTION_<NAME>`-like
 // patterns. Arm corresponding injection for each one.
+#[cfg(feature = "error_injection")]
 pub fn set_from_env() {
-    for (key, _) in env::vars() {
+    for (key, _) in std::env::vars() {
         let inject_name = match key.strip_prefix("PICODATA_ERROR_INJECTION_") {
             Some(name) => name,
             None => continue,
