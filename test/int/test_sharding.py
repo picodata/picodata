@@ -222,20 +222,30 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
 def test_vshard_bootstrap_timeout(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False, init_replication_factor=1)
 
-    injection_log = "Injection: SHARDING_BOOTSTRAP_SPURIOUS_FAILURE"
+    error_injection = "SHARDING_BOOTSTRAP_SPURIOUS_FAILURE"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
     lc1 = log_crawler(i1, injection_log)
 
-    i1.env["PICODATA_ERROR_INJECTION_SHARDING_BOOTSTRAP_SPURIOUS_FAILURE"] = "1"
+    i1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
     i1.start()
+
+    # Wait until governor starts trying to bootstrap bucket distribution
+    # and triggers the injected error
+    lc1.wait_matched()
+
+    # Governor gets stuck because of the injected error
+    vshard_bootstrapped = i1.sql(
+        """ select "value" from "_pico_property" where "key" = 'vshard_bootstrapped' """
+    )
+
+    assert vshard_bootstrapped == []
+
+    i1.call("pico._inject_error", error_injection, False)
 
     i1.wait_online()
 
-    lc1.wait_matched()
-
     vshard_bootstrapped = i1.sql(
-        """
-        select "value" from "_pico_property" where "key" = 'vshard_bootstrapped'
-        """
+        """ select "value" from "_pico_property" where "key" = 'vshard_bootstrapped' """
     )[0][0]
 
     assert vshard_bootstrapped is True

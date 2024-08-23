@@ -1,4 +1,3 @@
-use crate::tlog;
 use std::{collections::HashSet, env, ptr};
 
 static mut INJECTED_ERRORS: Option<HashSet<String>> = None;
@@ -10,11 +9,11 @@ pub fn enable(error: &str, enable: bool) {
         .unwrap()
         .get_or_insert_with(Default::default);
 
+    // DO NOT LOG "ERROR INJECTION '{error}'" HERE!!!
+    // We check this error message in tests to catch the moment the injected error happens
     if enable {
         injected_errors.insert(error.into());
-        tlog!(Info, "ERROR INJECTION '{error}': fused");
     } else {
-        tlog!(Info, "ERROR INJECTION '{error}': defused");
         injected_errors.remove(error);
     }
 }
@@ -80,8 +79,8 @@ macro_rules! error_injection {
     }};
     ($error:expr => return $result:expr) => {{
         let error = $error;
-        let result = $result;
         if $crate::error_injection::is_enabled(error) {
+            let result = $result;
             $crate::tlog!(Info, "################################################################");
             $crate::tlog!(Info, "ERROR INJECTION '{error}': RETURNING {result:?}");
             $crate::tlog!(Info, "################################################################");
