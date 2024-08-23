@@ -21,17 +21,29 @@ Picodata — это распределенная система промышле
 ### Инструкции и руководства {: #tutorial }
 
 * [Установка Picodata](tutorial/install.md)
+
+#### Запуск и развертывание {: #run_deploy }
+
 * [Запуск Picodata](tutorial/run.md)
 * [Создание кластера](tutorial/deploy.md)
 * [Развертывание кластера через Ansible](tutorial/deploy_ansible.md)
+
+#### Начало работы {: #getting_started }
+
 * [Подключение и работа в консоли](tutorial/connecting.md)
 * [Работа с данными SQL](tutorial/sql_examples.md)
 * [Работа в веб-интерфейсе](tutorial/webui.md)
+
+#### Администрирование кластера {: #administration }
+
+* [Мониторинг](tutorial/monitoring.md)
+* [Резервное копирование](tutorial/backup.md)
 * [Управление доступом](tutorial/access_control.md)
 * [Аутентификация с помощью LDAP](tutorial/ldap.md)
-* [Мониторинг кластера](tutorial/monitoring.md)
 * [Использование журнала аудита](tutorial/audit_log.md)
-* [Резервное копирование](tutorial/backup.md)
+
+#### Разработка приложений {: #app_development }
+
 * [Использование внешних коннекторов к Picodata](connectors_index.md)
 
 ### Справочные материалы {: #reference }

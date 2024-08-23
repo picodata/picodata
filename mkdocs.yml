@@ -32,18 +32,21 @@ nav:
     - overview/versioning.md
   - Инструкции и руководства:
     - tutorial/install.md
-    - tutorial/run.md
-    - tutorial/deploy.md
-    - tutorial/deploy_ansible.md
-    - tutorial/connecting.md
-    - tutorial/sql_examples.md
-    - tutorial/webui.md
-    - tutorial/access_control.md
-    - tutorial/ldap.md
-    - tutorial/monitoring.md
-    - tutorial/audit_log.md
-    - tutorial/backup.md
-    - Использование внешних коннекторов к Picodata:
+    - Запуск и развертывание:
+      - tutorial/run.md
+      - tutorial/deploy.md
+      - tutorial/deploy_ansible.md
+    - Начало работы:
+      - tutorial/connecting.md
+      - tutorial/sql_examples.md
+      - tutorial/webui.md
+    - Администрирование кластера:
+      - tutorial/monitoring.md
+      - tutorial/backup.md
+      - tutorial/access_control.md
+      - tutorial/ldap.md
+      - tutorial/audit_log.md
+    - Разработка приложений:
       - Оглавление: connectors_index.md
       - tutorial/connectors/java.md
   - Справочные материалы:
