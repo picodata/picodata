@@ -374,15 +374,6 @@ pub(super) fn action_plan<'i>(
     }) = to_online
     {
         let target = instance_id;
-        let mut rpc = None;
-        if vshard_bootstrapped {
-            rpc = Some(rpc::sharding::Request {
-                term,
-                applied,
-                timeout: Loop::SYNC_TIMEOUT,
-                do_reconfigure: false,
-            });
-        }
         let plugin_rpc = rpc::enable_all_plugins::Request {
             term,
             applied,
@@ -392,7 +383,6 @@ pub(super) fn action_plan<'i>(
             .with_current_state(State::new(Online, target_state.incarnation));
         return Ok(ToOnline {
             target,
-            rpc,
             plugin_rpc,
             req,
         }
@@ -802,9 +792,6 @@ pub mod stage {
 
         pub struct ToOnline<'i> {
             pub target: &'i InstanceId,
-            /// Request to call [`rpc::sharding::proc_sharding`] on `target`.
-            /// It is optional, because we don't do this RPC if `vshard_bootstrapped` is `false`.
-            pub rpc: Option<rpc::sharding::Request>,
             /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
             /// It is not optional, although it probably should be.
             pub plugin_rpc: rpc::enable_all_plugins::Request,

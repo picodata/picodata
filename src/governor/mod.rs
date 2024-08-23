@@ -443,24 +443,10 @@ impl Loop {
 
             Plan::ToOnline(ToOnline {
                 target,
-                rpc,
                 plugin_rpc,
                 req,
             }) => {
                 set_status(governor_status, "update instance state to online");
-                if let Some(rpc) = rpc {
-                    governor_step! {
-                        "updating sharding config" [
-                            "instance_id" => %target,
-                        ]
-                        async {
-                            pool.call(target, proc_name!(proc_sharding), &rpc, Self::RPC_TIMEOUT)?
-                                .timeout(Duration::from_secs(3))
-                                .await?
-                        }
-                    }
-                }
-
                 governor_step! {
                     "enable plugins on instance" [
                         "instance_id" => %target,
