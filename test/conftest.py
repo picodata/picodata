@@ -66,6 +66,11 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
+def assert_starts_with(actual_string: str, expected_prefix: str):
+    """Using this function results in a better pytest output in case of assertion failure."""
+    assert actual_string[: len(expected_prefix)] == expected_prefix
+
+
 def pytest_addoption(parser: pytest.Parser):
     parser.addoption(
         "--seed", action="store", default=None, help="Seed for randomized tests"
@@ -2015,6 +2020,8 @@ def cluster(
     binary_path, tmpdir, cluster_ids, port_distributor
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
+    # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
+    # see how it's done in def binary_path()
     plugin_dir = os.getcwd() + "/test/testplug"
     cluster = Cluster(
         binary_path=binary_path,

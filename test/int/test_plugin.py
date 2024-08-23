@@ -6,6 +6,7 @@ import uuid
 import msgpack  # type: ignore
 import os
 import hashlib
+from pathlib import Path
 from conftest import (
     Cluster,
     ReturnError,
@@ -13,6 +14,7 @@ from conftest import (
     Instance,
     TarantoolError,
     log_crawler,
+    assert_starts_with,
 )
 from decimal import Decimal
 import requests  # type: ignore
@@ -33,7 +35,6 @@ _PLUGIN_VERSION_1 = "0.1.0"
 _PLUGIN_VERSION_2 = "0.2.0"
 _DEFAULT_TIER = "default"
 _PLUGIN_WITH_MIGRATION = "testplug_w_migration"
-_PLUGIN_WITH_MIGRATION_SERVICES = ["testservice_2"]
 _PLUGIN_W_SDK = "testplug_sdk"
 _PLUGIN_W_SDK_SERVICES = ["testservice_3"]
 SERVICE_W_RPC = "service_with_rpc_tests"
@@ -860,26 +861,6 @@ def test_migration_separate_command(cluster: Cluster):
     expected_state.assert_data_synced()
 
 
-def test_migration_separate_command_apply_err(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection.default(i1, i2)
-
-    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1, timeout=5)
-    # migration of v0.1.0 should be ok
-    i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_1)
-    expected_state = expected_state.set_data(_DATA_V_0_1_0)
-    expected_state.assert_data_synced()
-
-    # second file in a migration list of v0.2.0 applied with error
-    i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
-
-    # expect that migration of v0.2.0 rollback to v0.1.0
-    i1.call("pico.install_plugin", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_2, timeout=5)
-    with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
-        i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, _PLUGIN_VERSION_2)
-    expected_state.assert_data_synced()
-
-
 def test_migration_for_changed_migration(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     expected_state = PluginReflection.default(i1, i2)
@@ -900,100 +881,209 @@ def test_migration_for_changed_migration(cluster: Cluster):
 
 
 def test_migration_file_invalid_ext(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
+    plugin_name = "plugin_for_test_migration_file_invalid_ext"
 
-    # the first file in a migration list has an invalid extension
-    i1.call("pico._inject_error", "PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT", True)
-
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        "0.1.0",
-        timeout=5,
-    )
-    with pytest.raises(ReturnError, match="invalid extension"):
-        i1.call(
-            "pico.migration_up",
-            _PLUGIN_WITH_MIGRATION,
-            "0.1.0",
-            timeout=5,
+    #
+    # Prepare plugin
+    #
+    cluster.plugin_dir = cluster.data_dir
+    plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
+    os.makedirs(plugin_dir)
+    with open(plugin_dir / "manifest.yaml", "w") as f:
+        print(
+            f"""
+description: plugin for test purposes
+name: {plugin_name}
+version: 0.1.0
+services:
+migration:
+  - invalid.extension
+""",
+            file=f,
         )
+
+    #
+    # Start instance and check
+    #
+    [i1] = cluster.deploy(instance_count=1)
+
+    i1.call("pico.install_plugin", plugin_name, "0.1.0", timeout=5)
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.migration_up", plugin_name, "0.1.0", timeout=5)
+    assert (
+        e.value.args[0] == "File `invalid.extension` invalid extension, `.db` expected"
+    )
 
 
 def test_migration_apply_err(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_WITH_MIGRATION_SERVICES,
-        [i1, i2],
-    )
+    plugin_name = "plugin_for_test_migration_apply_err"
 
-    # second file in a migration list applied with error
-    i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
-
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        "0.1.0",
-        timeout=5,
-    )
-    with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
-        i1.call(
-            "pico.migration_up",
-            _PLUGIN_WITH_MIGRATION,
-            "0.1.0",
-            timeout=5,
+    #
+    # Prepare plugin
+    #
+    cluster.plugin_dir = cluster.data_dir
+    plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
+    os.makedirs(plugin_dir)
+    with open(plugin_dir / "manifest.yaml", "w") as f:
+        f.write(
+            f"""
+description: plugin for test purposes
+name: {plugin_name}
+version: 0.1.0
+services:
+migration:
+  - good.db
+  - bad.db
+""",
         )
-    expected_state = expected_state.install(True).set_data(_NO_DATA_V_0_1_0)
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
+
+    with open(plugin_dir / "good.db", "w") as f:
+        f.write(
+            """
+-- pico.UP
+CREATE TABLE "stuff" (id INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL) USING memtx DISTRIBUTED BY (id);
+
+-- pico.DOWN
+DROP TABLE "stuff";
+""",  # noqa: E501
+        )
+
+    with open(plugin_dir / "bad.db", "w") as f:
+        f.write(
+            """
+-- pico.UP
+CREATE DATABASE everything;
+
+-- pico.DOWN
+DROP DATABASE everything;
+""",
+        )
+
+    #
+    # Start instance and check
+    #
+    [i1] = cluster.deploy(instance_count=1)
+
+    i1.call("pico.install_plugin", plugin_name, "0.1.0", timeout=5)
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.migration_up", plugin_name, "0.1.0", timeout=5)
+    assert_starts_with(
+        e.value.args[0],
+        "Failed to apply `UP` command (file: bad.db) `CREATE DATABASE everything;`",
+    )
+
+    # The good migration was rolled back (good.db:DOWN was applied)
+    rows = i1.sql(""" SELECT * FROM "_pico_table" WHERE "name" = 'stuff' """)
+    assert rows == []
 
 
 def test_migration_next_version_apply_err(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
+    plugin_name = "plugin_for_test_migration_next_version_apply_err"
+
+    #
+    # Prepare plugin
+    #
+    cluster.plugin_dir = cluster.data_dir
+    base_plugin_dir = Path(cluster.plugin_dir)
+    plugin_dir_v1 = base_plugin_dir / plugin_name / "0.1.0"
+    os.makedirs(plugin_dir_v1)
+    plugin_dir_v2 = base_plugin_dir / plugin_name / "0.2.0"
+    os.makedirs(plugin_dir_v2)
+
+    with open(plugin_dir_v1 / "manifest.yaml", "w") as f:
+        f.write(
+            f"""
+description: plugin for test purposes
+name: {plugin_name}
+version: 0.1.0
+services:
+migration:
+  - ../good.db
+""",
+        )
+
+    with open(plugin_dir_v2 / "manifest.yaml", "w") as f:
+        f.write(
+            f"""
+description: plugin for test purposes
+name: {plugin_name}
+version: 0.2.0
+services:
+migration:
+  - ../good.db
+  - ../good_v2.db
+  - ../bad.db
+""",
+        )
+
+    with open(base_plugin_dir / plugin_name / "good.db", "w") as f:
+        f.write(
+            """
+-- pico.UP
+CREATE TABLE "stuff" (id INTEGER NOT NULL PRIMARY KEY) USING memtx DISTRIBUTED BY (id);
+
+-- pico.DOWN
+DROP TABLE "stuff";
+""",  # noqa: E501
+        )
+
+    with open(base_plugin_dir / plugin_name / "good_v2.db", "w") as f:
+        f.write(
+            """
+-- pico.UP
+CREATE TABLE "should_not_exist" (id INTEGER NOT NULL PRIMARY KEY) USING memtx DISTRIBUTED BY (id);
+
+-- pico.DOWN
+DROP TABLE "should_not_exist";
+""",  # noqa: E501
+        )
+
+    with open(base_plugin_dir / plugin_name / "bad.db", "w") as f:
+        f.write(
+            """
+-- pico.UP
+CREATE TABLE "also_should_not_exist" (id INTEGER NOT NULL PRIMARY KEY) USING memtx DISTRIBUTED BY (id);
+CREATE DATABASE everything;
+
+-- pico.DOWN
+DROP TABLE "also_should_not_exist";
+DROP DATABASE everything;
+""",  # noqa: E501
+        )
+
+    #
+    # Start instance and check
+    #
+    [i1] = cluster.deploy(instance_count=1)
 
     # successfully install v0.1.0
-    expected_state = PluginReflection(
-        _PLUGIN_WITH_MIGRATION,
-        _PLUGIN_VERSION_1,
-        _PLUGIN_WITH_MIGRATION_SERVICES,
-        [i1, i2],
-    )
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        "0.1.0",
-        timeout=5,
-    )
-    i1.call(
-        "pico.migration_up",
-        _PLUGIN_WITH_MIGRATION,
-        "0.1.0",
-        timeout=5,
-    )
-    expected_state = expected_state.install(True).set_data(_DATA_V_0_1_0)
-    expected_state.assert_synced()
-    expected_state.assert_data_synced()
+    i1.call("pico.install_plugin", plugin_name, "0.1.0", timeout=5)
+    i1.call("pico.migration_up", plugin_name, "0.1.0", timeout=5)
 
-    # second file in a migration list of v0.2.0 applied with error
-    i1.call("pico._inject_error", "PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR", True)
-
-    i1.call(
-        "pico.install_plugin",
-        _PLUGIN_WITH_MIGRATION,
-        "0.2.0",
-        timeout=5,
-    )
+    i1.call("pico.install_plugin", plugin_name, "0.2.0", timeout=5)
     # expect rollback to 0.1.0 migrations
-    with pytest.raises(ReturnError, match="Failed to apply `UP` command"):
-        i1.call(
-            "pico.migration_up",
-            _PLUGIN_WITH_MIGRATION,
-            "0.2.0",
-            timeout=5,
-        )
-    expected_state.assert_data_synced()
+    with pytest.raises(ReturnError) as e:
+        i1.call("pico.migration_up", plugin_name, "0.2.0", timeout=5)
+    assert_starts_with(
+        e.value.args[0],
+        "Failed to apply `UP` command (file: ../bad.db) `CREATE DATABASE everything;`",
+    )
+
+    # The good migration is still applied, as we rolled back to schema v0.1.0
+    rows = i1.sql(""" SELECT "name" FROM "_pico_table" WHERE "name" = 'stuff' """)
+    assert rows == [["stuff"]]
+
+    # The good_v2 migration is rolled back
+    rows = i1.sql(
+        """ SELECT "name" FROM "_pico_table" WHERE "name" = 'should_not_exist' """
+    )
+    assert rows == []
+
+    # The bad migration is also rolled back
+    rows = i1.sql(
+        """ SELECT "name" FROM "_pico_table" WHERE "name" = 'also_should_not_exist' """
+    )
+    assert rows == []
 
 
 # -------------------------- configuration tests -------------------------------------

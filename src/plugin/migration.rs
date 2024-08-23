@@ -8,7 +8,7 @@ use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
-use crate::{error_injection, sql, tlog, traft};
+use crate::{sql, tlog, traft};
 use std::fs::File;
 use std::io;
 use std::io::{ErrorKind, Read};
@@ -490,9 +490,6 @@ pub fn apply_up_migrations(
     for file in migrations {
         let migration = MigrationInfo::new_unparsed(plugin_ident, file.clone());
 
-        if error_injection::is_enabled("PLUGIN_MIGRATION_FIRST_FILE_INVALID_EXT") {
-            return Err(Error::Extension(file.to_string()).into());
-        }
         if migration
             .path()
             .extension()
@@ -536,16 +533,6 @@ pub fn apply_up_migrations(
         }
         seen_queries.push(migration);
         let migration = seen_queries.last().expect("just inserted");
-
-        if num == 1 && error_injection::is_enabled("PLUGIN_MIGRATION_SECOND_FILE_APPLY_ERROR") {
-            handle_err(&seen_queries);
-            return Err(Error::Up {
-                filename: migration.filename_from_manifest.clone(),
-                command: "<no-command>".into(),
-                error: "injected error".into(),
-            }
-            .into());
-        }
 
         if let Err(e) = up_single_file(migration, &SBroadApplier, deadline) {
             handle_err(&seen_queries);
