@@ -9,3 +9,14 @@ pub mod sql;
 pub mod system;
 pub mod transport;
 pub mod util;
+
+#[cfg(feature = "internal_test")]
+mod test_macros {
+    use super::system::tarantool;
+
+    #[tarantool::test]
+    fn test() {}
+
+    #[tarantool::proc]
+    fn example() {}
+}

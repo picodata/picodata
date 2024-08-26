@@ -3,6 +3,7 @@ use picoplugin::internal::types::{Dml, Op, Predicate};
 use picoplugin::log::rs_log;
 use picoplugin::plugin::interface::CallbackResult;
 use picoplugin::plugin::prelude::*;
+use picoplugin::system::tarantool;
 use picoplugin::system::tarantool::datetime::Datetime;
 use picoplugin::system::tarantool::decimal::Decimal;
 use picoplugin::system::tarantool::error::BoxError;
@@ -604,6 +605,14 @@ impl Service for ServiceWithRpcTests {
         Ok(())
     }
 }
+
+// Ensures that macros usage at least compiles.
+#[tarantool::proc]
+fn example_stored_proc() {}
+
+#[tarantool::test]
+fn example_tarantool_test() {}
+
 #[service_registrar]
 pub fn service_registrar(reg: &mut ServiceRegistry) {
     ErrInjection::init(&["testservice_1", "testservice_2"]);
