@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.5.0-231-g97f4637f`.
+Описание соответствует версии Picodata `24.5.0-317-g7facc1e1`.
 
 ### _pico_table
 
@@ -112,6 +112,7 @@
 * `weight`: (_double_)
 * `weight_origin`: (_string_)
 * `state`: (_string_)
+* `promotion_vclock`: (_map_)
 
 Индексы:
 
