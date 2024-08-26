@@ -57,3 +57,20 @@ SELECT CAST("score" AS INT) FROM "scoring";
   [47]]
 ...
 ```
+
+В качестве альтернативы можем использовать синтаксис PostgreSQL —
+двойное двоеточие:
+
+```sql
+picodata> SELECT "score"::INT FROM "scoring"
++-------+
+| COL_1 |
++=======+
+| 78    |
+|-------|
+| 84    |
+|-------|
+| 47    |
++-------+
+(3 rows)
+```
