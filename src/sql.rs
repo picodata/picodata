@@ -944,6 +944,8 @@ fn alter_system_ir_node_to_op_or_result(
     current_user: UserId,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     if tier_name.is_some() {
+        // TODO: Should be resolved as a part of
+        //       https://git.picodata.io/picodata/picodata/picodata/-/issues/867.
         return Err(Error::other(
             "Specifying tier name in alter system is not supported yet. Use 'all tiers' instead.",
         ));
@@ -1372,6 +1374,7 @@ pub(crate) fn reenterable_schema_change_request(
         let is_ddl_prepare = matches!(op, Op::DdlPrepare { .. });
 
         let term = raft::Storage::term(&node.raft_storage, index)?;
+        // TODO: Should look at https://git.picodata.io/picodata/picodata/picodata/-/issues/866.
         let predicate = cas::Predicate {
             index,
             term,
