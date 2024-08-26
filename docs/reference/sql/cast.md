@@ -29,8 +29,8 @@
 
 ![Table_scores](../../images/table_scores.svg)
 
-В обычном виде значения столбца `score` имеют дробную часть и определены
-в схеме данных типом `decimal`:
+В обычном виде значения колонки `score` имеют дробную часть и определены
+в схеме данных типом DECIMAL:
 
 ```sql
 SELECT "score" FROM "scoring";
@@ -44,18 +44,20 @@ SELECT "score" FROM "scoring";
 ...
 ```
 
-Преобразуем эти числа в `int`:
+Преобразуем тип значений из колонки `score` в INT с помощью функции `CAST`:
 
 ```sql
-SELECT CAST("score" AS INT) FROM "scoring";
----
-  'metadata': [
- {'name': 'COL_1', 'type': 'integer'}],
-  'rows': [
-  [78],
-  [84],
-  [47]]
-...
+picodata> SELECT CAST("score" AS INT) FROM "scoring";
++-------+
+| COL_1 |
++=======+
+| 78    |
+|-------|
+| 84    |
+|-------|
+| 47    |
++-------+
+(3 rows)
 ```
 
 В качестве альтернативы можем использовать синтаксис PostgreSQL —
