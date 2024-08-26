@@ -10,8 +10,8 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::{space_by_name, PropertyName, UnknownPropertyError};
 use crate::traft::error::Error;
+use crate::storage::{space_by_name, PropertyName};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
@@ -954,7 +954,7 @@ fn alter_system_ir_node_to_op_or_result(
     let parse_property_name = |param_name: &str| -> traft::Result<PropertyName> {
         param_name
             .parse::<PropertyName>()
-            .map_err(|_| UnknownPropertyError::new(param_name))
+            .map_err(|_| Error::other(format!("unknown property: '{param_name}'")))
     };
 
     match ty {

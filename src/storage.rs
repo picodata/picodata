@@ -54,7 +54,6 @@ use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
 use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -1381,21 +1380,6 @@ impl PropertyName {
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
 
-#[derive(thiserror::Error, Debug)]
-#[error("unknown property: '{property}'")]
-pub(crate) struct UnknownPropertyError {
-    property: String,
-}
-
-impl UnknownPropertyError {
-    #[allow(clippy::new_ret_no_self)]
-    pub(crate) fn new(property: impl Display) -> Error {
-        Error::other(UnknownPropertyError {
-            property: format!("{}", property),
-        })
-    }
-}
-
 pub(crate) fn property_key_value_to_tuple(key: PropertyName, value: &Value) -> Result<TupleBuffer> {
     use PropertyName::*;
 
@@ -1403,7 +1387,7 @@ pub(crate) fn property_key_value_to_tuple(key: PropertyName, value: &Value) -> R
         PasswordEnforceDigits => Type::Boolean,
         PasswordMinLength | AutoOfflineTimeout | SnapshotChunkMaxSize => Type::Unsigned,
         MaxHeartbeatPeriod | SnapshotReadViewCloseTimeout => Type::Double,
-        key => return Err(UnknownPropertyError::new(key)),
+        key => return Err(Error::other(format!("unknown property: '{key}'"))),
     };
     let casted_value = value.cast(&property_expected_type).map_err(|_| {
         Error::other(format!(
@@ -1424,7 +1408,7 @@ pub(crate) fn default_property_tuple(key: PropertyName) -> Result<TupleBuffer> {
         SnapshotReadViewCloseTimeout => {
             (key, DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT).to_tuple_buffer()
         }
-        key => return Err(UnknownPropertyError::new(key)),
+        key => return Err(Error::other(format!("unknown property: '{key}'"))),
     };
 
     tuple.map_err(Error::other)
