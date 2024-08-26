@@ -356,37 +356,6 @@ pub(crate) fn setup() {
             traft::node::global()?.read_index(duration_from_secs_f64_clamped(timeout))
         }),
     );
-    luamod_set(
-        &l,
-        "raft_wait_index",
-        indoc! {"
-        pico.raft_wait_index(target, timeout)
-        =====================================
-
-        Waits for the `target` index to be applied to the storage locally.
-
-        Returns current applied raft index. It can be equal to or
-        greater than the requested one. If timeout expires beforehand,
-        the function returns an error.
-
-        Params:
-
-            1. target (number)
-            2. timeout (number), in seconds
-
-        Returns:
-
-            (number)
-            or
-            (nil, string) in case of an error
-        "},
-        tlua::function2(
-            |target: RaftIndex, timeout: f64| -> traft::Result<RaftIndex> {
-                let node = traft::node::global()?;
-                node.wait_index(target, duration_from_secs_f64_clamped(timeout))
-            },
-        ),
-    );
 
     // sql
     ///////////////////////////////////////////////////////////////////////////

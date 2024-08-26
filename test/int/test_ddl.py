@@ -333,7 +333,7 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     )
 
     # Schema change is blocked.
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.raft_wait_index(index, timeout=3)
 
     # Space is created but is not operable.
@@ -485,7 +485,7 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
     # Propose again, now the proposal hangs indefinitely, because all replicaset
     # masters are required to be present during schema change, but i5 is asleep.
     index = i1.propose_create_space(space_def, wait_index=False)
-    with pytest.raises(ReturnError, match="timeout"):
+    with pytest.raises(TarantoolError, match="timeout"):
         i1.raft_wait_index(index, timeout=3)
 
     entry, *_ = i1.call(

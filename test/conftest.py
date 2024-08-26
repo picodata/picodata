@@ -1368,7 +1368,7 @@ class Instance:
 
         def make_attempt():
             return self.call(
-                "pico.raft_wait_index",
+                ".proc_wait_index",
                 target,
                 timeout,  # this timeout is passed as an argument
                 timeout=timeout + 1,  # this timeout is for network call
