@@ -17,7 +17,6 @@ use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
 
-use crate::schema::ADMIN_ID;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -40,12 +39,12 @@ const PROHIBITED_TABLES: &[ClusterwideTable] = &[
     ClusterwideTable::Routine,
 ];
 
-pub fn check_admin_dml_prohibited(dml: &Dml, as_user: UserId) -> traft::Result<()> {
+pub fn check_dml_prohibited(dml: &Dml) -> traft::Result<()> {
     let space = dml.space();
     let Ok(table) = &ClusterwideTable::try_from(space) else {
         return Ok(());
     };
-    if as_user == ADMIN_ID && PROHIBITED_TABLES.contains(table) {
+    if PROHIBITED_TABLES.contains(table) {
         return Err(Error::TableNotAllowed {
             table: table.name().into(),
         }
@@ -252,11 +251,11 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
 
     match &req.op {
         Op::Dml(dml) => {
-            check_admin_dml_prohibited(dml, req.as_user)?;
+            check_dml_prohibited(dml)?;
         }
         Op::BatchDml { ops: dmls } => {
             for dml in dmls {
-                check_admin_dml_prohibited(dml, req.as_user)?;
+                check_dml_prohibited(dml)?;
             }
         }
         _ => {}
@@ -450,10 +449,7 @@ pub enum Error {
         actual_term: RaftTerm,
     },
 
-    #[error(
-        "TableNotAllowed: table {table} cannot be modified directly, \
-             please refer to available SQL commands"
-    )]
+    #[error("TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly")]
     TableNotAllowed { table: String },
 
     /// An error related to `key_def` operation arised from tarantool

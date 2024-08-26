@@ -85,7 +85,7 @@ def test_cas_errors(instance: Instance):
             instance.cas("insert", table, [0], ranges=[CasRange(eq=0)], user=1)
         assert e5.value.args[:2] == (
             ErrorCode.CasTableNotAllowed,
-            f"TableNotAllowed: table {table} cannot be modified directly, please refer to available SQL commands",  # noqa: E501
+            f"TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly",
         )
 
     # Field type error

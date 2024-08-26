@@ -43,7 +43,7 @@ use tarantool::{
     tuple::Encode,
 };
 
-use crate::storage::ClusterwideTable;
+use crate::storage::{ClusterwideTable, SPACE_ID_INTERNAL_MAX};
 use crate::traft::error::Error;
 use crate::traft::op::Dml;
 use crate::{
@@ -221,8 +221,21 @@ fn box_access_check_ddl_as_user(
 }
 
 fn access_check_dml(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
+    let space_id = dml.space();
+    if space_id <= SPACE_ID_INTERNAL_MAX && as_user != ADMIN_ID && as_user != PICO_SERVICE_ID {
+        let table_name = ClusterwideTable::try_from(space_id)
+            .map_or(format!("id={}", space_id), |table| table.name().to_string());
+
+        tarantool::set_error!(
+            tarantool::error::TarantoolErrorCode::AccessDenied,
+            "Write access to table '{}' is denied for all users",
+            table_name
+        );
+        return Err(tarantool::error::TarantoolError::last().into());
+    }
+
     let _su = session::su(as_user)?;
-    box_access_check_space(dml.space(), PrivType::Write)
+    box_access_check_space(space_id, PrivType::Write)
 }
 
 /// This function performs access control checks that are identical to ones performed in
@@ -672,33 +685,6 @@ fn access_check_acl(
     }
 }
 
-// Non-admin users are prohibited from performing DML operations on system tables
-// because of the shared namespace for user and catalog tables in Tarantool.
-// Allowing write access to any table via 'GRANT WRITE TABLE TO ..'
-// also grants access to catalog tables. Such changes can cause security issues,
-// and without this check would also grant access to catalog tables.
-// Admin users have limited write access to some system tables.
-// However, most tables are allowed because Picodata runs under admin to manipulate with the catalog
-// See PROHIBITED_TABLES in cas.rs for details.
-pub fn check_system_tables_access(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
-    let space = dml.space();
-    let Ok(table) = &ClusterwideTable::try_from(space) else {
-        return Ok(());
-    };
-
-    let sys_user = user_by_id(as_user)?;
-    if as_user != ADMIN_ID && as_user != PICO_SERVICE_ID {
-        return Err(make_access_denied(
-            "Write access",
-            PicoSchemaObjectType::Table,
-            table,
-            sys_user.name,
-        ));
-    }
-
-    Ok(())
-}
-
 pub(super) fn access_check_op(
     storage: &Clusterwide,
     op: &Op,
@@ -708,13 +694,11 @@ pub(super) fn access_check_op(
         Op::Nop => Ok(()),
         Op::Dml(dml) => {
             access_check_dml(dml, as_user)?;
-            check_system_tables_access(dml, as_user)?;
             Ok(())
         }
         Op::BatchDml { ops } => {
             for op in ops {
                 access_check_dml(op, as_user)?;
-                check_system_tables_access(op, as_user)?;
             }
             Ok(())
         }
@@ -889,7 +873,11 @@ mod tests {
 
         // space
         let space_name = "test_box_access_check_ddl";
-        let space = Space::create(space_name, &SpaceCreateOptions::default()).unwrap();
+        let opts = SpaceCreateOptions {
+            id: Some(1025),
+            ..Default::default()
+        };
+        let space = Space::create(space_name, &opts).unwrap();
 
         // create space
         {

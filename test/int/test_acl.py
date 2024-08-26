@@ -349,7 +349,7 @@ def test_cas_permissions(cluster: Cluster):
 
     with pytest.raises(
         Exception,
-        match="Write access to space '_pico_property' is denied for user 'Steven'",
+        match="Write access to table '_pico_property' is denied for all users",
     ):
         cluster.cas(
             "replace",
@@ -365,8 +365,7 @@ def test_cas_permissions(cluster: Cluster):
 
     with pytest.raises(
         Exception,
-        match="box error: "
-        "AccessDenied: Write access to table '_pico_property' is denied for user 'Steven'",
+        match="Write access to table '_pico_property' is denied for all users",
     ):
         cluster.cas(
             "replace",
