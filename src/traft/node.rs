@@ -2209,6 +2209,17 @@ impl NodeImpl {
             }
         }
 
+        #[cfg(feature = "error_injection")]
+        if crate::error_injection::is_enabled("BLOCK_WHEN_PERSISTING_DDL_COMMIT") {
+            for entry in entries_to_persist {
+                let row = traft::Entry::try_from(entry).unwrap();
+                let op = row.into_op();
+                if let Some(Op::DdlCommit) = op {
+                    crate::error_injection!(block "BLOCK_WHEN_PERSISTING_DDL_COMMIT");
+                }
+            }
+        }
+
         // Apply committed entries.
         let committed_entries = ready.committed_entries();
         if !committed_entries.is_empty() {

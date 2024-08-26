@@ -180,3 +180,30 @@ def test_instance_automatic_offline_detection(cluster: Cluster):
         assert get_instance_states(peer, instance_id) == ("Online", "Online")
 
     Retriable(timeout=10, rps=5).call(lambda: assert_online(i1, i3.instance_id))
+
+
+def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3)
+
+    i2.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", True)
+    i3.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", True)
+
+    with pytest.raises(TimeoutError):
+        i1.sql(
+            """
+            CREATE TABLE dining_table (id INTEGER NOT NULL PRIMARY KEY) DISTRIBUTED BY (id)
+            """
+        )
+
+    # Wait until governor starts applying the DDL.
+    # This will block because both followers can't apply.
+    i1.wait_governor_status("apply clusterwide schema change")
+
+    # FIXME: this is going to be flaky, need some way to make this stable
+    time.sleep(3)
+
+    i2.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", False)
+    i3.call("pico._inject_error", "BLOCK_WHEN_PERSISTING_DDL_COMMIT", False)
+
+    # Wait until governor finishes with all the needed changes.
+    i1.wait_governor_status("idle")

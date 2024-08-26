@@ -413,6 +413,10 @@ class ProcessDead(Exception):
     pass
 
 
+class NotALeader(Exception):
+    pass
+
+
 class Retriable:
     """A utility class for handling retries.
 
@@ -1399,6 +1403,19 @@ class Instance:
             timeout,  # this timeout is passed as an argument
             timeout=timeout + 1,  # this timeout is for network call
         )
+
+    def wait_governor_status(self, expected_status: str, timeout: int | float = 5):
+        assert expected_status != "not a leader", "use another function"
+
+        def impl():
+            info = self.call(".proc_runtime_info")["internal"]
+            actual_status = info["governor_loop_status"]
+            if actual_status == "not a leader":
+                raise NotALeader("not a leader")
+
+            assert actual_status == expected_status
+
+        Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
 
     def promote_or_fail(self):
         attempt = 0

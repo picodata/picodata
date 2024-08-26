@@ -181,22 +181,6 @@ def test_master_auto_switchover(cluster: Cluster):
     assert not i5.eval("return box.info.ro")
 
 
-def wait_governor_status(i: Instance, expected_status, timeout=5):
-    assert expected_status != "not a leader", "use another function"
-
-    class NotALeader(Exception):
-        pass
-
-    def impl():
-        actual_status = i.call(".proc_runtime_info")["internal"]["governor_loop_status"]
-        if actual_status == "not a leader":
-            raise NotALeader("not a leader")
-
-        assert actual_status == expected_status
-
-    Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
-
-
 def get_vclock_without_local(i: Instance):
     vclock = i.eval("return box.info.vclock")
     del vclock[0]
@@ -250,7 +234,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     # This will block until i5 synchronizes with old master, which it won't
     # until the injected error is disabled.
     time.sleep(1)  # Just in case, nothing really relies on this sleep
-    wait_governor_status(i1, "configure replication")
+    i1.wait_governor_status("configure replication")
 
     # i5 does not become writable until it synchronizes
     assert i5.eval("return box.info.ro") is True
@@ -261,7 +245,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     )
 
     # Wait until governor finishes with all the needed changes.
-    wait_governor_status(i1, "idle")
+    i1.wait_governor_status("idle")
 
     assert i5.eval("return box.space.mytable.id") is not None
     vclock = get_vclock_without_local(i5)
