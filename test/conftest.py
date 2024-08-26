@@ -1355,10 +1355,10 @@ class Instance:
         """
 
         return self.call(
-            "pico.raft_read_index",
+            ".proc_read_index",
             timeout,  # this timeout is passed as an argument
             timeout=timeout + 1,  # this timeout is for network call
-        )
+        )[0]
 
     def raft_wait_index(self, target: int, timeout: int | float = 3) -> int:
         """

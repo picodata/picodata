@@ -317,46 +317,6 @@ pub(crate) fn setup() {
         }),
     );
 
-    // raft index
-    ///////////////////////////////////////////////////////////////////////////
-
-    luamod_set(
-        &l,
-        "raft_read_index",
-        indoc! {"
-        pico.raft_read_index(timeout)
-        =============================
-
-        Performs the quorum read operation.
-
-        It works the following way:
-
-        1. The instance forwards a request (`MsgReadIndex`) to a raft
-           leader. In case there's no leader at the moment, the function
-           returns the error 'raft: proposal dropped'.
-        2. Raft leader tracks its `commit_index` and broadcasts a
-           heartbeat to followers to make certain that it's still a
-           leader.
-        3. As soon as the heartbeat is acknowledged by the quorum, the
-           leader returns that index to the instance.
-        4. The instance awaits when the index is applied. If timeout
-           expires beforehand, the function returns the error 'timeout'.
-
-        Params:
-
-            1. timeout (number), in seconds
-
-        Returns:
-
-            (number)
-            or
-            (nil, string) in case of an error
-        "},
-        tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
-            traft::node::global()?.read_index(duration_from_secs_f64_clamped(timeout))
-        }),
-    );
-
     // sql
     ///////////////////////////////////////////////////////////////////////////
     luamod_set_help_only(
