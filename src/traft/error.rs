@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter};
 
 use crate::error_code::ErrorCode;
 use crate::instance::InstanceId;
@@ -9,6 +9,28 @@ use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::fiber::r#async::timeout;
 use tarantool::tlua::LuaError;
 use thiserror::Error;
+
+#[derive(Debug)]
+pub struct Unsupported {
+    entity: String,
+    help: Option<String>,
+}
+
+impl Unsupported {
+    pub(crate) fn new(entity: String, help: Option<String>) -> Self {
+        Self { entity, help }
+    }
+}
+
+impl Display for Unsupported {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unsupported action/entity: {}", self.entity)?;
+        if let Some(ref help) = self.help {
+            write!(f, ", {help}")?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -86,6 +108,9 @@ pub enum Error {
 
     #[error(transparent)]
     Plugin(#[from] PluginError),
+
+    #[error("{0}")]
+    Unsupported(Unsupported),
 
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),

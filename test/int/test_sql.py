@@ -5176,7 +5176,8 @@ def test_alter_system_property_errors(cluster: Cluster):
     # properties may be changed only globally yet
     with pytest.raises(
         TarantoolError,
-        match="Specifying tier name in alter system is not supported yet.",
+        match="unsupported action/entity: "
+        "specifying tier name in alter system, use 'all tiers' instead",
     ):
         dml = i1.sql(
             """

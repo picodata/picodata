@@ -10,8 +10,8 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::traft::error::Error;
 use crate::storage::{space_by_name, PropertyName};
+use crate::traft::error::{Error, Unsupported};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
@@ -946,9 +946,10 @@ fn alter_system_ir_node_to_op_or_result(
     if tier_name.is_some() {
         // TODO: Should be resolved as a part of
         //       https://git.picodata.io/picodata/picodata/picodata/-/issues/867.
-        return Err(Error::other(
-            "Specifying tier name in alter system is not supported yet. Use 'all tiers' instead.",
-        ));
+        return Err(Error::Unsupported(Unsupported::new(
+            String::from("specifying tier name in alter system"),
+            Some(String::from("use 'all tiers' instead")),
+        )));
     }
 
     let parse_property_name = |param_name: &str| -> traft::Result<PropertyName> {
