@@ -467,6 +467,7 @@ impl NodeImpl {
             .map_err(box_err)?
             .expect("raft_id should be set by the time the node is being initialized");
         let applied: RaftIndex = raft_storage.applied().map_err(box_err)?;
+        let term: RaftTerm = raft_storage.term().map_err(box_err)?;
         let lc = {
             let gen = raft_storage.gen().unwrap() + 1;
             raft_storage.persist_gen(gen).unwrap();
@@ -488,7 +489,7 @@ impl NodeImpl {
         let (status, _) = watch::channel(Status {
             id: raft_id,
             leader_id: None,
-            term: traft::INIT_RAFT_TERM,
+            term,
             raft_state: RaftState::Follower,
             main_loop_status: "idle",
         });
