@@ -1,7 +1,7 @@
 //! Lua API exported as `_G.pico`
 //!
 
-use crate::cas::{self, compare_and_swap};
+use crate::cas;
 use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
 use crate::plugin::PluginIdentifier;
@@ -688,7 +688,8 @@ pub(crate) fn setup() {
                 };
 
                 let req = crate::cas::Request::new(op, predicate, effective_user_id())?;
-                let res = compare_and_swap(&req, deadline)?;
+                let res = cas::compare_and_swap(&req, false, deadline)?;
+                let res = res.no_retries()?;
                 Ok(res)
             },
         ),
@@ -1183,7 +1184,8 @@ pub(crate) fn setup() {
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
                 let req = crate::cas::Request::new(op.into(), predicate, su.original_user_id)?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
-                let (index, _) = compare_and_swap(&req, deadline)?;
+                let res = cas::compare_and_swap(&req, false, deadline)?;
+                let (index, _) = res.no_retries()?;
                 Ok(index)
             },
         ),
@@ -1219,7 +1221,8 @@ pub(crate) fn setup() {
                     su.original_user_id,
                 )?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
-                let (index, _) = compare_and_swap(&req, deadline)?;
+                let res = cas::compare_and_swap(&req, false, deadline)?;
+                let (index, _) = res.no_retries()?;
                 Ok(index)
             },
         ),

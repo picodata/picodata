@@ -127,23 +127,10 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             },
             ADMIN_ID,
         )?;
-        let res = cas::compare_and_swap(&cas_req, deadline);
-        let (index, term) = crate::unwrap_ok_or!(res,
-            Err(e) => {
-                if e.is_retriable() {
-                    crate::tlog!(Debug, "local CaS rejected: {e}");
-                    fiber::sleep(Duration::from_millis(250));
-                    continue;
-                } else {
-                    return Err(e);
-                }
-            }
-        );
-
-        node.wait_index(index, deadline.duration_since(fiber::clock()))?;
-
-        if term != raft::Storage::term(&node.raft_storage, index)? {
-            // Leader has changed and the entry got rolled back, retry.
+        let res = cas::compare_and_swap(&cas_req, true, deadline)?;
+        if let Some(e) = res.into_retriable_error() {
+            crate::tlog!(Debug, "local CaS rejected: {e}");
+            fiber::sleep(Duration::from_millis(250));
             continue;
         }
 

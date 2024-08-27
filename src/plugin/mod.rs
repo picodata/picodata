@@ -31,7 +31,6 @@ use crate::traft::node::Node;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{node, RaftIndex};
-use crate::unwrap_ok_or;
 use crate::util::effective_user_id;
 use crate::{cas, tlog, traft};
 
@@ -416,21 +415,8 @@ fn do_routing_table_cas(
             ranges: ranges.clone(),
         };
         let req = crate::cas::Request::new(op.clone(), predicate, ADMIN_ID)?;
-        let res = cas::compare_and_swap(&req, deadline);
-        let (index, term) = unwrap_ok_or!(res,
-            Err(e) => {
-                if e.is_retriable() {
-                    continue;
-                } else {
-                    return Err(e);
-                }
-            }
-        );
-
-        node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-
-        if term != raft::Storage::term(&node.raft_storage, index)? {
-            // Leader has changed and the entry got rolled back, retry.
+        let res = cas::compare_and_swap(&req, true, deadline)?;
+        if res.is_retriable_error() {
             continue;
         }
 
@@ -535,21 +521,8 @@ fn reenterable_plugin_cas_request(
         // FIXME: access rules will be implemented in future release
         let current_user = effective_user_id();
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;
-        let res = cas::compare_and_swap(&req, deadline);
-        let (index, term) = unwrap_ok_or!(res,
-            Err(e) => {
-                if e.is_retriable() {
-                    continue;
-                } else {
-                    return Err(e);
-                }
-            }
-        );
-
-        node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-
-        if term != raft::Storage::term(&node.raft_storage, index)? {
-            // Leader has changed and the entry got rolled back, retry.
+        let res = cas::compare_and_swap(&req, true, deadline)?;
+        if res.is_retriable_error() {
             continue;
         }
 

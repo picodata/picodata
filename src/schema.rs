@@ -1,5 +1,5 @@
 use crate::access_control::UserMetadataKind;
-use crate::cas::{self, compare_and_swap, Request};
+use crate::cas;
 use crate::config::DEFAULT_USERNAME;
 use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
@@ -2482,25 +2482,12 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
             message: "explicit abort by user".into(),
             instance_id,
         };
-        let req = Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;
-        let res = compare_and_swap(&req, deadline);
-        let (index, term) = crate::unwrap_ok_or!(res,
-            Err(e) => {
-                if e.is_retriable() {
-                    continue;
-                } else {
-                    return Err(e);
-                }
-            }
-        );
-
-        node.wait_index(index, deadline.duration_since(fiber::clock()))?;
-
-        if raft::Storage::term(&node.raft_storage, index)? != term {
-            // leader switched - retry
-            continue;
+        let req = cas::Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;
+        let res = cas::compare_and_swap(&req, true, deadline)?;
+        match res {
+            cas::CasResult::RetriableError(_) => continue,
+            cas::CasResult::Ok((index, _)) => return Ok(index),
         }
-        return Ok(index);
     }
 }
 

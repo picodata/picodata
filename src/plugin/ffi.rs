@@ -1,4 +1,4 @@
-use crate::cas::{compare_and_swap, Bound, Range, Request};
+use crate::cas::{Bound, Range};
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
@@ -17,7 +17,6 @@ use picoplugin::transport::rpc::server::FfiRpcHandler;
 use picoplugin::util::FfiSafeBytes;
 use sbroad::ir::value::double::Double;
 use sbroad::ir::value::{LuaValue, Tuple, Value};
-use std::time::Duration;
 use std::{mem, slice};
 use tarantool::datetime::Datetime;
 use tarantool::error::IntoBoxError;
@@ -212,20 +211,18 @@ extern "C" fn pico_ffi_cas(
     predicate: types::Predicate,
     timeout: RDuration,
 ) -> RResult<ROption<RTuple!(u64, u64)>, ()> {
+    let deadline = fiber::clock().saturating_add(timeout.into());
     let op = Op::from(op);
     let pred = cas::Predicate::from(predicate);
-    let timeout = Duration::from(timeout);
     let user_id = effective_user_id();
-    let request = match Request::new(op, pred, user_id) {
-        Ok(req) => req,
-        Err(e) => {
-            return error_into_tt_error(e);
-        }
-    };
-
-    let deadline = fiber::clock().saturating_add(timeout);
-    match compare_and_swap(&request, deadline) {
-        Ok((index, term)) => ROk(RSome(Tuple2(index, term))),
+    let res = (|| -> Result<_, _> {
+        let request = cas::Request::new(op, pred, user_id)?;
+        cas::compare_and_swap(&request, false, deadline)
+    })();
+    match res {
+        Ok(cas::CasResult::Ok((index, term))) => ROk(RSome(Tuple2(index, term))),
+        Ok(cas::CasResult::RetriableError(e)) => error_into_tt_error(e),
+        // FIXME: this is wrong, just return an error instead
         Err(traft::error::Error::Timeout) => ROk(RNone),
         Err(e) => error_into_tt_error(e),
     }

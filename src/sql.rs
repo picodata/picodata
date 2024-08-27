@@ -16,7 +16,7 @@ use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{cas, tlog, unwrap_ok_or};
+use crate::{cas, tlog};
 
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
 use sbroad::debug;
@@ -1382,23 +1382,11 @@ pub(crate) fn reenterable_schema_change_request(
             ranges: cas::schema_change_ranges().into(),
         };
         let req = crate::cas::Request::new(op, predicate, current_user)?;
-        let res = cas::compare_and_swap(&req, deadline);
-        let (index, term) = unwrap_ok_or!(res,
-            Err(e) => {
-                if e.is_retriable() {
-                    continue 'retry;
-                } else {
-                    return Err(e);
-                }
-            }
-        );
-
-        node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-
-        if term != raft::Storage::term(&node.raft_storage, index)? {
-            // Leader has changed and the entry got rolled back, retry.
-            continue 'retry;
-        }
+        let res = cas::compare_and_swap(&req, true, deadline)?;
+        let index = match res {
+            cas::CasResult::Ok((index, _)) => index,
+            cas::CasResult::RetriableError(_) => continue,
+        };
 
         if is_ddl_prepare {
             wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
@@ -1586,7 +1574,6 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
     // there.
     with_su(ADMIN_ID, || -> traft::Result<ConsumerResult> {
         let timeout = Duration::from_secs(DEFAULT_QUERY_TIMEOUT);
-        let node = node::global()?;
         let deadline = Instant::now_fiber().saturating_add(timeout);
 
         let ops_count = ops.len();
@@ -1598,18 +1585,8 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
             ranges: vec![],
         };
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
-        let (index, term) = crate::cas::compare_and_swap(&cas_req, deadline)?;
-
-        node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-
-        let actual_term = raft::Storage::term(&raft_node.raft_storage, index)?;
-        if term != actual_term {
-            // Leader has changed and the entry got rolled back.
-            return Err(Error::TermMismatch {
-                requested: term,
-                current: actual_term,
-            });
-        }
+        let res = crate::cas::compare_and_swap(&cas_req, true, deadline)?;
+        res.no_retries()?;
 
         Ok(ConsumerResult {
             row_count: ops_count as u64,

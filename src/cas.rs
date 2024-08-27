@@ -66,8 +66,9 @@ pub fn check_admin_dml_prohibited(dml: &Dml, as_user: UserId) -> traft::Result<(
 /// It can also return general picodata errors in cases of faulty network or storage.
 pub fn compare_and_swap(
     request: &Request,
+    wait_index: bool,
     deadline: Instant,
-) -> traft::Result<(RaftIndex, RaftTerm)> {
+) -> traft::Result<CasResult> {
     let node = node::global()?;
 
     if let Op::BatchDml { ops } = &request.op {
@@ -100,8 +101,61 @@ pub fn compare_and_swap(
         res = fiber::block_on(future);
     }
 
-    let response = res?;
-    return Ok((response.index, response.term));
+    let response = crate::unwrap_ok_or!(res,
+        Err(e) => {
+            if e.is_retriable() {
+                return Ok(CasResult::RetriableError(e));
+            } else {
+                return Err(e);
+            }
+        }
+    );
+
+    if wait_index {
+        node.wait_index(response.index, deadline.duration_since(fiber::clock()))?;
+
+        let actual_term = raft::Storage::term(&node.raft_storage, response.index)?;
+        if response.term != actual_term {
+            // Leader has changed and the entry got rolled back, ok to retry.
+            return Ok(CasResult::RetriableError(TraftError::TermMismatch {
+                requested: response.term,
+                current: actual_term,
+            }));
+        }
+    }
+
+    return Ok(CasResult::Ok((response.index, response.term)));
+}
+
+#[must_use = "You must decide if you're retrying the error or returning it to user"]
+pub enum CasResult {
+    Ok((RaftIndex, RaftTerm)),
+    RetriableError(TraftError),
+}
+
+impl CasResult {
+    #[inline(always)]
+    pub fn into_retriable_error(self) -> Option<TraftError> {
+        match self {
+            Self::RetriableError(e) => Some(e),
+            Self::Ok(_) => None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_retriable_error(&self) -> bool {
+        matches!(self, Self::RetriableError { .. })
+    }
+
+    /// Converts the result into `std::result::Result` for your convenience if
+    /// you want to return the retriable error to the user.
+    #[inline(always)]
+    pub fn no_retries(self) -> traft::Result<(RaftIndex, RaftTerm)> {
+        match self {
+            Self::Ok(v) => Ok(v),
+            Self::RetriableError(e) => Err(e),
+        }
+    }
 }
 
 fn proc_cas_local(req: &Request) -> Result<Response> {
