@@ -221,27 +221,28 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             ADMIN_ID,
         )?;
         let res = cas::compare_and_swap(&cas_req, deadline.duration_since(fiber::clock()));
-        match res {
-            Ok((index, term)) => {
-                node.wait_index(index, deadline.duration_since(fiber::clock()))?;
-                if term != raft::Storage::term(raft_storage, index)? {
-                    // leader switched - retry
-                    continue;
-                }
-            }
-            Err(err) => {
+        let (index, term) = crate::unwrap_ok_or!(res,
+            Err(e) => {
                 if req.dont_retry {
-                    return Err(err);
+                    return Err(e);
                 }
-                if err.is_retriable() {
-                    // cas error - retry
-                    fiber::sleep(Duration::from_millis(500));
+                if e.is_retriable() {
+                    crate::tlog!(Debug, "local CaS rejected: {e}");
+                    fiber::sleep(Duration::from_millis(250));
                     continue;
                 } else {
-                    return Err(err);
+                    return Err(e);
                 }
             }
+        );
+
+        node.wait_index(index, deadline.duration_since(fiber::clock()))?;
+
+        if term != raft::Storage::term(raft_storage, index)? {
+            // Leader has changed and the entry got rolled back, retry.
+            continue;
         }
+
         node.main_loop.wakeup();
         drop(guard);
         return Ok(());

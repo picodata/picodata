@@ -118,7 +118,6 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             cas::Range::new(ClusterwideTable::Tier),
             cas::Range::new(ClusterwideTable::Replicaset),
         ];
-        // Only in this order - so that when instance exists - address will always be there.
         let cas_req = crate::cas::Request::new(
             Op::BatchDml { ops },
             cas::Predicate {
@@ -129,24 +128,25 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             ADMIN_ID,
         )?;
         let res = cas::compare_and_swap(&cas_req, deadline.duration_since(fiber::clock()));
-        match res {
-            Ok((index, term)) => {
-                node.wait_index(index, deadline.duration_since(fiber::clock()))?;
-                if term != raft::Storage::term(raft_storage, index)? {
-                    // leader switched - retry
-                    continue;
-                }
-            }
-            Err(err) => {
-                if err.is_retriable() {
-                    // cas error - retry
-                    fiber::sleep(Duration::from_millis(500));
+        let (index, term) = crate::unwrap_ok_or!(res,
+            Err(e) => {
+                if e.is_retriable() {
+                    crate::tlog!(Debug, "local CaS rejected: {e}");
+                    fiber::sleep(Duration::from_millis(250));
                     continue;
                 } else {
-                    return Err(err);
+                    return Err(e);
                 }
             }
+        );
+
+        node.wait_index(index, deadline.duration_since(fiber::clock()))?;
+
+        if term != raft::Storage::term(&node.raft_storage, index)? {
+            // Leader has changed and the entry got rolled back, retry.
+            continue;
         }
+
         node.main_loop.wakeup();
 
         // A joined instance needs to communicate with other nodes.
