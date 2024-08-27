@@ -448,7 +448,11 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // install plugin
-    if let Some(PluginOp::CreatePlugin { manifest }) = plugin_op {
+    if let Some(PluginOp::CreatePlugin {
+        manifest,
+        inherit_topology,
+    }) = plugin_op
+    {
         let ident = manifest.plugin_identifier();
         if plugins.get(&ident).is_some() {
             warn_or_panic!(
@@ -476,7 +480,10 @@ pub(super) fn action_plan<'i>(
         ops.push(dml);
 
         let ident = plugin_def.into_identifier();
-        for service_def in manifest.service_defs() {
+        for mut service_def in manifest.service_defs() {
+            if let Some(service_topology) = inherit_topology.get(&service_def.name) {
+                service_def.tiers = service_topology.clone();
+            }
             let dml = Dml::replace(ClusterwideTable::Service, &service_def, ADMIN_ID)?;
             ranges.push(cas::Range::for_dml(&dml)?);
             ops.push(dml);

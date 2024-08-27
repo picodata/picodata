@@ -16,7 +16,7 @@ use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
-use crate::{cas, tlog};
+use crate::{cas, plugin, tlog};
 
 use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
 use sbroad::debug;
@@ -42,6 +42,13 @@ use sbroad::ir::node::{
     Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,
     Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
     Update,
+};
+use tarantool::decimal::Decimal;
+
+use crate::plugin::{InheritOpts, PluginIdentifier, TopologyUpdateOpKind};
+use sbroad::ir::node::plugin::{
+    AppendServiceToTier, ChangeConfig, CreatePlugin, DisablePlugin, DropPlugin, EnablePlugin,
+    MigrateTo, Plugin, RemoveServiceFromTier, SettingsPair,
 };
 use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::relation::Type;
@@ -223,6 +230,128 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         let result = reenterable_schema_change_request(node, ir_node)?;
         let tuple = Tuple::new(&(result,))?;
         Ok(tuple)
+    } else if query.is_plugin()? {
+        let ir_plan = query.get_exec_plan().get_ir_plan();
+        let top_id = ir_plan.get_top()?;
+        let plugin = ir_plan.get_plugin_node(top_id)?;
+        let timeout_from_decimal = |decimal: Decimal| -> traft::Result<_> {
+            let secs = decimal
+                .to_smolstr()
+                .parse::<f64>()
+                .map_err(|e| Error::Other(e.into()))?;
+            Ok(duration_from_secs_f64_clamped(secs))
+        };
+
+        match plugin {
+            Plugin::Create(CreatePlugin {
+                name,
+                version,
+                if_not_exists,
+                timeout,
+            }) => plugin::install_plugin(
+                PluginIdentifier::new(name.to_string(), version.to_string()),
+                timeout_from_decimal(*timeout)?,
+                *if_not_exists,
+                InheritOpts {
+                    // config and topology inheritance always enabled currently
+                    config: true,
+                    topology: true,
+                },
+            )?,
+            Plugin::Enable(EnablePlugin {
+                name,
+                version,
+                timeout,
+            }) => plugin::enable_plugin(
+                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                // TODO this option should be un-hardcoded and moved into picodata configuration
+                Duration::from_secs(10),
+                timeout_from_decimal(*timeout)?,
+            )?,
+            Plugin::Disable(DisablePlugin {
+                name,
+                version,
+                timeout,
+            }) => plugin::disable_plugin(
+                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                timeout_from_decimal(*timeout)?,
+            )?,
+            Plugin::Drop(DropPlugin {
+                name,
+                version,
+                if_exists,
+                with_data,
+                timeout,
+            }) => plugin::remove_plugin(
+                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                *with_data,
+                *if_exists,
+                timeout_from_decimal(*timeout)?,
+            )?,
+            Plugin::MigrateTo(MigrateTo {
+                name,
+                version,
+                opts,
+            }) => plugin::migration_up(
+                &PluginIdentifier::new(name.to_string(), version.to_string()),
+                timeout_from_decimal(opts.timeout)?,
+                timeout_from_decimal(opts.rollback_timeout)?,
+            )?,
+            Plugin::AppendServiceToTier(AppendServiceToTier {
+                service_name,
+                plugin_name,
+                version,
+                tier,
+                timeout,
+            }) => plugin::update_service_tiers(
+                &PluginIdentifier::new(plugin_name.to_string(), version.to_string()),
+                service_name,
+                tier,
+                TopologyUpdateOpKind::Add,
+                timeout_from_decimal(*timeout)?,
+            )?,
+            Plugin::RemoveServiceFromTier(RemoveServiceFromTier {
+                service_name,
+                plugin_name,
+                version,
+                tier,
+                timeout,
+            }) => plugin::update_service_tiers(
+                &PluginIdentifier::new(plugin_name.to_string(), version.to_string()),
+                service_name,
+                tier,
+                TopologyUpdateOpKind::Remove,
+                timeout_from_decimal(*timeout)?,
+            )?,
+            Plugin::ChangeConfig(ChangeConfig {
+                plugin_name,
+                version,
+                key_value_grouped: key_value,
+                timeout,
+            }) => {
+                let config = key_value
+                    .iter()
+                    .map(|settings| {
+                        (
+                            settings.name.as_str(),
+                            settings
+                                .pairs
+                                .iter()
+                                .map(|SettingsPair { key, value }| (key.as_str(), value.as_str()))
+                                .collect(),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                plugin::change_config_atom(
+                    &PluginIdentifier::new(plugin_name.to_string(), version.to_string()),
+                    &config,
+                    timeout_from_decimal(*timeout)?,
+                )?
+            }
+        };
+
+        Ok(Tuple::new(&(ConsumerResult { row_count: 1 },))?)
     } else if query.is_block()? {
         check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
         let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();

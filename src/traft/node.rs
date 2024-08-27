@@ -1395,6 +1395,56 @@ impl NodeImpl {
                 }
             }
 
+            Op::Plugin(PluginRaftOp::PluginConfigPartialUpdate { ident, updates }) => {
+                for (service, config_part) in updates {
+                    let maybe_service = self
+                        .storage
+                        .services
+                        .get(&ident, &service)
+                        .expect("storage should not fail");
+
+                    if let Some(svc) = maybe_service {
+                        let old_cfg = self
+                            .storage
+                            .plugin_config
+                            .get_by_entity(&ident, &svc.name)
+                            .expect("storage should not fail");
+                        self.storage
+                            .plugin_config
+                            .replace_many(&ident, &service, config_part)
+                            .expect("storage should not fail");
+                        let new_cfg = self
+                            .storage
+                            .plugin_config
+                            .get_by_entity(&ident, &svc.name)
+                            .expect("storage should not fail");
+
+                        let new_raw_cfg =
+                            rmp_serde::encode::to_vec_named(&new_cfg).expect("out of memory");
+                        let old_cfg_raw =
+                            rmp_serde::encode::to_vec_named(&old_cfg).expect("out of memory");
+
+                        if let Err(e) = self.plugin_manager.handle_event_async(
+                            PluginAsyncEvent::ServiceConfigurationUpdated {
+                                ident: ident.clone(),
+                                service: svc.name,
+                                old_raw: old_cfg_raw,
+                                new_raw: new_raw_cfg,
+                            },
+                        ) {
+                            tlog!(Warning, "async plugin event: {e}");
+                        }
+                    } else {
+                        crate::warn_or_panic!(
+                            "got request to update configuration of non-existent service {}.{}:{}",
+                            ident.name,
+                            service,
+                            ident.version
+                        )
+                    }
+                }
+            }
+
             Op::Acl(acl) => {
                 let v_local = local_schema_version().expect("storage should not fail");
                 let v_pending = acl.schema_version();

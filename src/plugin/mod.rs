@@ -9,7 +9,10 @@ use once_cell::unsync;
 use picoplugin::background::ServiceId;
 use picoplugin::error_code::ErrorCode;
 use picoplugin::plugin::interface::{ServiceBox, ValidatorBox};
+use rmpv::Value;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io;
@@ -104,6 +107,14 @@ pub enum PluginError {
     LockGoneUnexpected,
     #[error("Migration lock is already released")]
     LockAlreadyReleased,
+    #[error("Some of configuration keys are unknown ({0})")]
+    InvalidConfigurationKey(String),
+    #[error("Trying to update an empty configuration")]
+    UpdateEmptyConfig,
+    #[error("Unexpected invalid configuration")]
+    InvalidConfiguration,
+    #[error("Invalid configuration value (should be a json string): {0}")]
+    ConfigDecode(serde_json::Error),
 }
 
 struct DisplaySomeOrDefault<'a>(&'a Option<ErrorInfo>, &'a str);
@@ -300,12 +311,12 @@ impl Manifest {
     pub fn service_defs(&self) -> Vec<ServiceDef> {
         self.services
             .iter()
-            .map(|srv| ServiceDef {
+            .map(|svc| ServiceDef {
                 plugin_name: self.name.to_string(),
-                name: srv.name.to_string(),
+                name: svc.name.to_string(),
                 tiers: vec![],
                 version: self.version.to_string(),
-                description: srv.description.to_string(),
+                description: svc.description.to_string(),
             })
             .collect()
     }
@@ -536,6 +547,12 @@ enum PreconditionCheckResult {
 // External plugin interface
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Default)]
+pub struct InheritOpts {
+    pub config: bool,
+    pub topology: bool,
+}
+
 /// Install plugin:
 /// 1) check that plugin is ready for run at all instances
 /// 2) fill `_pico_service`, `_pico_plugin` and set `_pico_plugin.ready` to `false`
@@ -543,6 +560,7 @@ pub fn install_plugin(
     ident: PluginIdentifier,
     timeout: Duration,
     if_not_exists: bool,
+    inherit_opts: InheritOpts,
 ) -> traft::Result<()> {
     let deadline = fiber::clock().saturating_add(timeout);
     let node = node::global()?;
@@ -557,15 +575,51 @@ pub fn install_plugin(
         let ident = manifest.plugin_identifier();
         let plugin_already_exists = node.storage.plugins.contains(&ident)?;
         if plugin_already_exists {
-            if if_not_exists {
-                return Ok(PreconditionCheckResult::AlreadyApplied);
+            return if if_not_exists {
+                Ok(PreconditionCheckResult::AlreadyApplied)
             } else {
-                return Err(PluginError::AlreadyExist(ident).into());
+                Err(PluginError::AlreadyExist(ident).into())
+            };
+        }
+
+        let mut inherit_topology = HashMap::new();
+        let mut manifest = manifest.clone();
+        if inherit_opts.topology || inherit_opts.config {
+            // find plugin with the same name
+            let mut existed_plugins = node.storage.plugins.get_all_versions(&ident.name)?;
+            debug_assert!(
+                existed_plugins.len() <= 2,
+                "Only two or less plugins with same name may be in the system in the same time"
+            );
+            if !existed_plugins.is_empty() {
+                let existed_plugin = existed_plugins.pop().expect("infallible");
+                let existed_identity = existed_plugin.into_identifier();
+
+                if inherit_opts.config {
+                    let mut entities =
+                        node.storage.plugin_config.all_entities(&existed_identity)?;
+
+                    manifest.services.iter_mut().for_each(|svc_manifest| {
+                        if let Some(cfg) = entities.remove(&svc_manifest.name) {
+                            svc_manifest.default_configuration = cfg;
+                        }
+                    });
+                }
+                if inherit_opts.topology {
+                    node.storage
+                        .services
+                        .get_by_plugin(&existed_identity)?
+                        .into_iter()
+                        .for_each(|svc| {
+                            inherit_topology.insert(svc.name, svc.tiers);
+                        });
+                }
             }
         }
 
         let op = PluginOp::CreatePlugin {
-            manifest: manifest.clone(),
+            manifest,
+            inherit_topology,
         };
         let dml = Dml::replace(
             ClusterwideTable::Property,
@@ -576,7 +630,9 @@ pub fn install_plugin(
             // Fail if someone proposes another plugin operation
             Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
             // Fail if someone updates this plugin record
-            Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
+            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
+            Range::new(ClusterwideTable::PluginConfig).eq([&ident.name]),
+            Range::new(ClusterwideTable::Service).eq([&ident.name]),
         ];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
@@ -923,8 +979,15 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
 /// # Arguments
 ///
 /// * `ident`: identity of plugin to remove
+/// * `drop_data`: whether true if plugin should be removed with DOWN migration, false elsewhere
+/// * `if_exists`: if true then no errors acquired if plugin not exists
 /// * `timeout`: operation timeout
-pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Result<()> {
+pub fn remove_plugin(
+    ident: &PluginIdentifier,
+    drop_data: bool,
+    if_exists: bool,
+    timeout: Duration,
+) -> traft::Result<()> {
     let deadline = Instant::now_fiber().saturating_add(timeout);
     let node = node::global()?;
 
@@ -935,8 +998,13 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
 
         let Some(plugin) = node.storage.plugins.get(ident)? else {
             // TODO: support if_exists option
-            #[rustfmt::skip]
-            return Err(traft::error::Error::other(format!("no such plugin `{ident}`")));
+            return if !if_exists {
+                Err(traft::error::Error::other(format!(
+                    "no such plugin `{ident}`"
+                )))
+            } else {
+                Ok(PreconditionCheckResult::AlreadyApplied)
+            };
         };
 
         if plugin.enabled {
@@ -970,6 +1038,26 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
         Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };
 
+    let migration_list = node
+        .storage
+        .plugin_migrations
+        .get_by_plugin(&ident.name)?
+        .into_iter()
+        .map(|rec| rec.migration_file)
+        .collect::<Vec<_>>();
+
+    #[rustfmt::skip]
+    if !migration_list.is_empty() {
+        if !drop_data {
+            return Err(Error::other("attempt to remove plugin with applied `UP` migrations"));
+        }
+        lock::try_acquire(deadline)?;
+        migration::apply_down_migrations(ident, &migration_list, deadline);
+        lock::release(deadline)?;
+    } else if /* migration_list.is_empty() && */ drop_data {
+        tlog!(Info, "`DOWN` migrations are up to date");
+    };
+
     reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
     Ok(())
@@ -983,6 +1071,7 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
 pub enum PluginOp {
     CreatePlugin {
         manifest: Manifest,
+        inherit_topology: HashMap<String, Vec<String>>,
     },
     EnablePlugin {
         plugin: PluginIdentifier,
@@ -1073,4 +1162,75 @@ pub fn update_service_tiers(
     }
 
     Ok(())
+}
+
+pub fn change_config_atom(
+    ident: &PluginIdentifier,
+    kv: &[(&str, Vec<(&str, &str)>)],
+    timeout: Duration,
+) -> traft::Result<()> {
+    let deadline = Instant::now_fiber().saturating_add(timeout);
+    let node = node::global()?;
+    let make_op = || {
+        let mut service_config_part = Vec::with_capacity(kv.len());
+        let mut ranges = Vec::with_capacity(kv.len());
+        for (service, kv) in kv {
+            ranges.push(Range::new(ClusterwideTable::Service).eq((
+                &ident.name,
+                service,
+                &ident.version,
+            )));
+            ranges.push(Range::new(ClusterwideTable::PluginConfig).eq((
+                &ident.name,
+                &ident.version,
+                service,
+            )));
+
+            let kv: Vec<(String, rmpv::Value)> = kv
+                .iter()
+                .map(|(k, v)| {
+                    let value = serde_json::from_str::<rmpv::Value>(v)
+                        .map_err(|e| traft::error::Error::Plugin(PluginError::ConfigDecode(e)))?;
+                    Ok((k.to_string(), value))
+                })
+                .collect::<Result<Vec<(String, rmpv::Value)>, traft::error::Error>>()?;
+
+            let current_cfg = node.storage.plugin_config.get_by_entity(ident, service)?;
+            let mut current_cfg = match current_cfg {
+                Value::Nil => return Err(PluginError::UpdateEmptyConfig.into()),
+                Value::Map(cfg) => cfg,
+                _ => return Err(PluginError::InvalidConfiguration.into()),
+            };
+
+            for (key, value) in kv.clone() {
+                let Some((_, value_to_replace)) = current_cfg
+                    .iter_mut()
+                    .find(|(current_key, _)| current_key.as_str() == Some(key.as_str()))
+                else {
+                    return Err(PluginError::InvalidConfigurationKey(key).into());
+                };
+                *value_to_replace = value;
+            }
+
+            let new_cfg_raw =
+                rmp_serde::to_vec_named(&Value::Map(current_cfg)).expect("out of memory");
+            let event = PluginEvent::BeforeServiceConfigurationUpdated {
+                ident,
+                service,
+                new_raw: new_cfg_raw.as_slice(),
+            };
+            node.plugin_manager.handle_event_sync(event)?;
+            service_config_part.push((service.to_string(), kv));
+        }
+
+        Ok(PreconditionCheckResult::DoOp((
+            Op::Plugin(PluginRaftOp::PluginConfigPartialUpdate {
+                ident: ident.clone(),
+                updates: service_config_part,
+            }),
+            ranges.clone(),
+        )))
+    };
+
+    reenterable_plugin_cas_request(node, make_op, deadline).map(|_| ())
 }

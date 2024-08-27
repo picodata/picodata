@@ -4076,6 +4076,51 @@ impl PluginConfig {
 
         Ok(())
     }
+
+    pub fn replace_many(
+        &self,
+        ident: &PluginIdentifier,
+        entity: &str,
+        kv_pairs: Vec<(String, rmpv::Value)>,
+    ) -> tarantool::Result<()> {
+        let new_config_records = kv_pairs.into_iter().map(|(k, v)| PluginConfigRecord {
+            plugin: ident.name.to_string(),
+            version: ident.version.to_string(),
+            entity: entity.to_string(),
+            key: k,
+            value: v,
+        });
+
+        // now save a new config
+        for config_rec in new_config_records {
+            self.space.put(&config_rec)?;
+        }
+        Ok(())
+    }
+
+    /// Return configuration for the whole plugin.
+    #[inline]
+    pub fn all_entities(
+        &self,
+        ident: &PluginIdentifier,
+    ) -> tarantool::Result<HashMap<String, rmpv::Value>> {
+        let cfg_records = self
+            .space
+            .select(IteratorType::Eq, &(&ident.name, &ident.version))?;
+
+        let mut grouped_records = HashMap::new();
+        for tuple in cfg_records {
+            let cfg_record: PluginConfigRecord = tuple.decode()?;
+            let entry = grouped_records
+                .entry(cfg_record.entity.clone())
+                .or_insert(vec![]);
+            entry.push((rmpv::Value::String(cfg_record.key.into()), cfg_record.value));
+        }
+        Ok(grouped_records
+            .into_iter()
+            .map(|(k, v)| (k, rmpv::Value::Map(v)))
+            .collect())
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

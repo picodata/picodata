@@ -12,8 +12,8 @@ use sbroad::{
     ir::{
         acl::GrantRevokeType,
         node::{
-            acl::Acl, block::Block, ddl::Ddl, expression::Expression, relational::Relational,
-            Alias, GrantPrivilege, Node, RevokePrivilege,
+            acl::Acl, block::Block, ddl::Ddl, expression::Expression, plugin::Plugin,
+            relational::Relational, Alias, GrantPrivilege, Node, RevokePrivilege,
         },
         relation::Type as SbroadType,
         Plan,
@@ -42,6 +42,7 @@ pub enum QueryType {
 #[derive(Clone, Debug, Default, Deserialize_repr, Serialize_repr)]
 #[repr(u8)]
 pub enum CommandTag {
+    AddTrier = 37,
     AlterRole = 0,
     AlterSystem = 22,
     CallProcedure = 16,
@@ -49,16 +50,23 @@ pub enum CommandTag {
     CreateRole = 1,
     CreateTable = 2,
     CreateIndex = 18,
+    CreatePlugin = 31,
+    ChangeConfig = 39,
     DropProcedure = 15,
     DropRole = 3,
     DropTable = 4,
-    DropIndex = 19,
     Delete = 5,
+    DisablePlugin = 33,
+    DropIndex = 19,
+    DropPlugin = 34,
+    EnablePlugin = 32,
     EmptyQuery = 55,
     Explain = 6,
     Grant = 7,
     GrantRole = 8,
     Insert = 9,
+    MigrateUp = 35,
+    RemoveTier = 38,
     RenameRoutine = 17,
     Revoke = 10,
     RevokeRole = 11,
@@ -102,6 +110,14 @@ impl CommandTag {
             Self::CallProcedure => "CALL",
             Self::RenameRoutine => "RENAME ROUTINE",
             Self::SetParam | Self::SetTransaction => "SET",
+            Self::CreatePlugin => "CREATE PLUGIN",
+            Self::EnablePlugin => "ALTER PLUGIN ENABLE",
+            Self::DisablePlugin => "ALTER PLUGIN DISABLE",
+            Self::DropPlugin => "DROP PLUGIN",
+            Self::MigrateUp => "ALTER PLUGIN MIGRATE TO",
+            Self::AddTrier => "ALTER PLUGIN ADD SERVICE TO TIER",
+            Self::RemoveTier => "ALTER PLUGIN REMOVE SERVICE FROM TIER",
+            Self::ChangeConfig => "ALTER PLUGIN SET",
             // Response on an empty query is EmptyQueryResponse with no tag.
             // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-EMPTYQUERYRESPONSE
             Self::EmptyQuery => "",
@@ -128,6 +144,14 @@ impl From<CommandTag> for QueryType {
             | CommandTag::DropIndex
             | CommandTag::SetParam
             | CommandTag::SetTransaction
+            | CommandTag::CreatePlugin
+            | CommandTag::DropPlugin
+            | CommandTag::EnablePlugin
+            | CommandTag::DisablePlugin
+            | CommandTag::MigrateUp
+            | CommandTag::AddTrier
+            | CommandTag::RemoveTier
+            | CommandTag::ChangeConfig
             | CommandTag::DropProcedure => QueryType::Ddl,
             CommandTag::Delete
             | CommandTag::Insert
@@ -172,6 +196,16 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 Ddl::RenameRoutine { .. } => Ok(CommandTag::RenameRoutine),
                 Ddl::SetParam { .. } => Ok(CommandTag::SetParam),
                 Ddl::SetTransaction { .. } => Ok(CommandTag::SetTransaction),
+            },
+            Node::Plugin(plugin) => match plugin {
+                Plugin::Create { .. } => Ok(CommandTag::CreatePlugin),
+                Plugin::Drop { .. } => Ok(CommandTag::DropPlugin),
+                Plugin::Enable { .. } => Ok(CommandTag::EnablePlugin),
+                Plugin::Disable { .. } => Ok(CommandTag::DisablePlugin),
+                Plugin::MigrateTo { .. } => Ok(CommandTag::MigrateUp),
+                Plugin::AppendServiceToTier { .. } => Ok(CommandTag::AddTrier),
+                Plugin::RemoveServiceFromTier { .. } => Ok(CommandTag::RemoveTier),
+                Plugin::ChangeConfig { .. } => Ok(CommandTag::ChangeConfig),
             },
             Node::Relational(rel) => match rel {
                 Relational::Delete { .. } => Ok(CommandTag::Delete),

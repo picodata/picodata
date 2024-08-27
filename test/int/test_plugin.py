@@ -815,7 +815,7 @@ _DATA_V_0_2_0 = {
     ],
 }
 
-_NO_DATA_V_0_1_0: dict[str, None] = {
+_NO_DATA_V_0_1_0: dict[str, Optional[list[Any]]] = {
     "author": None,
     "book": None,
 }
@@ -1188,7 +1188,8 @@ def test_config_validation(cluster: Cluster):
 
     # test default validator
     with pytest.raises(
-        ReturnError, match="New configuration validation error:.* invalid type"
+        ReturnError,
+        match="New configuration validation error:.* expected struct Service2Config",
     ):
         i1.eval(
             "return pico.update_plugin_config('testplug', '0.1.0', 'testservice_2', {})"
@@ -2623,3 +2624,114 @@ def test_sdk_background(cluster: Cluster):
     PluginReflection.assert_persisted_data_exists("background_job_stopped", i1)
 
     PluginReflection.clear_persisted_data(i1)
+
+
+def test_sql_interface(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    plugin_ref = PluginReflection(
+        _PLUGIN_WITH_MIGRATION, "0.1.0", ["testservice_2"], [i1, i2]
+    )
+
+    i1.sql(f'CREATE PLUGIN "{_PLUGIN_WITH_MIGRATION}" 0.1.0')
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN_WITH_MIGRATION}" MIGRATE TO 0.1.0')
+    plugin_ref = plugin_ref.install(True).set_data(_DATA_V_0_1_0)
+    plugin_ref.assert_synced()
+    plugin_ref.assert_data_synced()
+
+    i1.sql(
+        f'ALTER PLUGIN "{_PLUGIN_WITH_MIGRATION}" 0.1.0 ADD SERVICE "testservice_2" '
+        f'TO TIER "{_DEFAULT_TIER}"'
+    )
+    plugin_ref = plugin_ref.set_topology({i1: ["testservice_2"], i2: ["testservice_2"]})
+
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN_WITH_MIGRATION}" 0.1.0 ENABLE')
+    plugin_ref = plugin_ref.enable(True)
+    plugin_ref.assert_synced()
+
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN_WITH_MIGRATION}" 0.1.0 DISABLE')
+    plugin_ref = plugin_ref.enable(False).set_topology({})
+    plugin_ref.assert_synced()
+
+    i1.sql(f'DROP PLUGIN IF EXISTS "{_PLUGIN_WITH_MIGRATION}" 0.1.0 WITH DATA')
+    plugin_ref = plugin_ref.set_data(_NO_DATA_V_0_1_0).install(False)
+    plugin_ref.assert_synced()
+    plugin_ref.assert_data_synced()
+
+
+def test_sql_interface_update_config(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+    plugin_ref = PluginReflection.default(i1, i2)
+
+    i1.sql(f'CREATE PLUGIN "{_PLUGIN}" 0.1.0')
+    i1.sql(
+        f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ADD SERVICE "testservice_1" TO TIER "{_DEFAULT_TIER}"'
+    )
+    i1.sql(
+        f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ADD SERVICE "testservice_2" TO TIER "{_DEFAULT_TIER}"'
+    )
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ENABLE')
+
+    plugin_ref = plugin_ref.install(True).enable(True)
+    plugin_ref.assert_synced()
+    plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
+
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 SET "testservice_1"."foo" = \'false\'')
+
+    # retrying, cause new service configuration callback call asynchronously
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_config(
+            "testservice_1",
+            {"foo": False, "bar": 101, "baz": ["one", "two", "three"]},
+            i1,
+            i2,
+        )
+    )
+    new_cfg = (
+        '"testservice_1"."foo" = \'true\', "testservice_1"."bar"= \'102\', '
+        '"testservice_1"."baz" = \'["one"]\', "testservice_2"."foo" = \'5\''
+    )
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 SET {new_cfg}')
+
+    # retrying, cause new service configuration callback call asynchronously
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_config(
+            "testservice_1",
+            {"foo": True, "bar": 102, "baz": ["one"]},
+            i1,
+            i2,
+        )
+    )
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_config(
+            "testservice_2",
+            {"foo": 5},
+            i1,
+            i2,
+        )
+    )
+    plugin_ref.assert_cb_called("testservice_1", "on_config_change", 2, i1)
+    plugin_ref.assert_cb_called("testservice_2", "on_config_change", 1, i1)
+
+
+def test_sql_interface_inheritance(cluster: Cluster):
+    i1, i2 = cluster.deploy(instance_count=2)
+
+    plugin_ref = PluginReflection(_PLUGIN, "0.2.0", _PLUGIN_SERVICES, [i1, i2])
+
+    i1.sql(f'CREATE PLUGIN "{_PLUGIN}" 0.1.0')
+    i1.sql(
+        f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ADD SERVICE "testservice_1" TO TIER "{_DEFAULT_TIER}"'
+    )
+    i1.sql(
+        f'ALTER PLUGIN "{_PLUGIN}" 0.1.0 ADD SERVICE "testservice_2" TO TIER "{_DEFAULT_TIER}"'
+    )
+
+    # install v0.2.0 with config and topology inherit (currently inheritance are always enabled)
+    i1.sql(f'CREATE PLUGIN "{_PLUGIN}" 0.2.0')
+    i1.sql(f'ALTER PLUGIN "{_PLUGIN}" 0.2.0 ENABLE')
+    plugin_ref = plugin_ref.install(True).enable(True)
+    plugin_ref = plugin_ref.set_topology({i1: _PLUGIN_SERVICES, i2: _PLUGIN_SERVICES})
+    plugin_ref.assert_synced()
+    cfg_space = plugin_ref.get_config("testservice_1", i1)
+    assert cfg_space == {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}

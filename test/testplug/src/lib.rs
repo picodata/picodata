@@ -9,7 +9,9 @@ use picoplugin::system::tarantool::decimal::Decimal;
 use picoplugin::system::tarantool::error::BoxError;
 use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
 use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
-use picoplugin::system::tarantool::tlua::{LuaFunction, LuaRead, LuaThread, PushGuard};
+use picoplugin::system::tarantool::tlua::{
+    LuaFunction, LuaRead, LuaState, LuaThread, PushGuard, PushInto,
+};
 use picoplugin::system::tarantool::tuple::Tuple;
 use picoplugin::system::tarantool::util::DisplayAsHexBytes;
 use picoplugin::system::tarantool::{fiber, index, tlua};
@@ -137,15 +139,14 @@ fn inc_callback_calls(service: &str, callback: &str) {
     lua.exec(&exec_code).unwrap();
 }
 
-fn update_plugin_config(service: &str, config: &Service1Config) {
+fn update_plugin_config(service: &str, config: impl PushInto<LuaState>) {
     let lua = tarantool::lua_state();
     init_plugin_state_if_need(&lua, service);
 
-    lua.eval_with::<_, ()>(
+    _ = lua.eval_with::<_, ()>(
         format!("_G['plugin_state']['{service}']['current_config'] = ...").as_ref(),
         config,
-    )
-    .unwrap();
+    );
 }
 
 fn save_last_seen_context(service: &str, ctx: &PicoContext) {
@@ -243,10 +244,15 @@ impl Service1 {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, tlua::Push, PartialEq)]
+struct Service2Config {
+    foo: i32,
+}
+
 struct Service2 {}
 
 impl Service for Service2 {
-    type Config = ();
+    type Config = Service2Config;
 
     fn on_start(&mut self, ctx: &PicoContext, _: Self::Config) -> CallbackResult<()> {
         if ErrInjection::err_at_on_stop("testservice_2").unwrap_or(false) {
@@ -268,6 +274,22 @@ impl Service for Service2 {
         save_last_seen_context("testservice_2", ctx);
         save_persisted_data("testservice_2_stopd");
 
+        Ok(())
+    }
+
+    fn on_config_validate(&self, _: Self::Config) -> CallbackResult<()> {
+        inc_callback_calls("testservice_2", "on_cfg_validate");
+        Ok(())
+    }
+
+    fn on_config_change(
+        &mut self,
+        _: &PicoContext,
+        new_cfg: Self::Config,
+        _: Self::Config,
+    ) -> CallbackResult<()> {
+        inc_callback_calls("testservice_2", "on_config_change");
+        update_plugin_config("testservice_2", &new_cfg);
         Ok(())
     }
 }

@@ -272,6 +272,9 @@ impl std::fmt::Display for Op {
                 write!(f, "DropPlugin({ident})")
             }
             Self::Plugin(PluginRaftOp::Abort { cause }) => write!(f, "PluginAbort({cause})"),
+            Self::Plugin(PluginRaftOp::PluginConfigPartialUpdate { ident, updates }) => {
+                write!(f, "PluginConfigPartialUpdate({ident}, {updates:?})")
+            }
         };
 
         struct DisplayDml<'a>(&'a Dml);
@@ -885,6 +888,12 @@ pub enum PluginRaftOp {
     /// in practice the code would be a nightmare to write and maintain.
     /// It would be much easier if we supported FOREIGN KEY/ON DELETE CASCADE.
     DropPlugin { ident: PluginIdentifier },
+    /// Update plugin service configuration.
+    PluginConfigPartialUpdate {
+        ident: PluginIdentifier,
+        /// Pairs of { service name -> list of new key-value }
+        updates: Vec<(String, Vec<(String, rmpv::Value)>)>,
+    },
     /// Abort one of the mutlistage plugin change operations.
     Abort { cause: ErrorInfo },
 }

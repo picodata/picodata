@@ -5,13 +5,12 @@ services:
   - name: testservice_1
     description: testservice_1 descr
     default_configuration:
-      foo: true
-      bar: 101
+      foo: false
+      bar: 104
       baz:
-        - "one"
-        - "two"
-        - "three"
+        - "zero"
   - name: testservice_2
     description: testservice_2 descr
     default_configuration:
+      foo: 0
 

@@ -5,6 +5,7 @@ use crate::cas;
 use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
 use crate::plugin;
+use crate::plugin::InheritOpts;
 use crate::plugin::PluginIdentifier;
 use crate::plugin::TopologyUpdateOpKind;
 use crate::rpc;
@@ -1379,24 +1380,31 @@ pub(crate) fn setup() {
             2. version - plugin version
             3. opts (optional table)
                 - timeout (optional number), in seconds, default: 10
-                - if_not_exists (optional bool), in seconds, default: false
+                - if_not_exists (optional bool), default: false
+                - inherit_config (optional bool), inherit config from previous installed version, default: false
+                - inherit_topology (optional bool), inherit topology from previous installed version, default: false
         "},
         {
             #[derive(::tarantool::tlua::LuaRead)]
             struct Opts {
                 timeout: Option<f64>,
                 if_not_exists: Option<bool>,
+                inherit_config: Option<bool>,
+                inherit_topology: Option<bool>,
             }
             tlua::function3(|name: String, version: String, opts: Option<Opts>| -> traft::Result<()> {
                 let mut timeout = Duration::from_secs(10);
                 let mut if_not_exists = false;
+                let mut inherit_opts = InheritOpts::default();
                 if let Some(opts) = opts {
                     if_not_exists = opts.if_not_exists.unwrap_or_default();
+                    inherit_opts.config = opts.inherit_config.unwrap_or_default();
+                    inherit_opts.topology = opts.inherit_topology.unwrap_or_default();
                     if let Some(t) = opts.timeout {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::install_plugin(PluginIdentifier::new(name, version), timeout, if_not_exists)
+                plugin::install_plugin(PluginIdentifier::new(name, version), timeout, if_not_exists, inherit_opts)
             })
         },
     );
@@ -1632,7 +1640,7 @@ pub(crate) fn setup() {
                         timeout = duration_from_secs_f64_clamped(t);
                     }
                 }
-                plugin::remove_plugin(&PluginIdentifier::new(name, version), timeout)
+                plugin::remove_plugin(&PluginIdentifier::new(name, version),  false, false, timeout)
             })
         },
     );
