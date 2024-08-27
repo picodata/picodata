@@ -1394,13 +1394,14 @@ pub(crate) fn reenterable_schema_change_request(
         );
 
         node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-        if is_ddl_prepare {
-            wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
-        }
 
         if term != raft::Storage::term(&node.raft_storage, index)? {
             // Leader has changed and the entry got rolled back, retry.
             continue 'retry;
+        }
+
+        if is_ddl_prepare {
+            wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
         }
 
         return Ok(ConsumerResult { row_count: 1 });
@@ -1599,12 +1600,15 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
         let (index, term) =
             crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now_fiber()))?;
+
         node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
-        let current_term = raft::Storage::term(&raft_node.raft_storage, raft_index)?;
-        if current_term != term {
+
+        let actual_term = raft::Storage::term(&raft_node.raft_storage, index)?;
+        if term != actual_term {
+            // Leader has changed and the entry got rolled back.
             return Err(Error::TermMismatch {
                 requested: term,
-                current: current_term,
+                current: actual_term,
             });
         }
 
