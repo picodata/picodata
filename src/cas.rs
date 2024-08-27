@@ -1,7 +1,6 @@
 use crate::access_control;
 use crate::error_code::ErrorCode;
 use crate::proc_name;
-use crate::rpc;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
 use crate::tlog;
@@ -89,12 +88,11 @@ pub fn compare_and_swap(
         // for example on shutdown
         res = proc_cas_local(request);
     } else {
-        let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
-
         let future = async {
-            // TODO: use node.pool
-            rpc::network_call(&leader_address, proc_name!(proc_cas), request)
-                .deadline(deadline)
+            let timeout = deadline.duration_since(fiber::clock());
+            node.pool
+                .call(&leader_id, proc_name!(proc_cas), request, timeout)?
+                .timeout(timeout)
                 .await
                 .map_err(Into::into)
         };
