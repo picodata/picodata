@@ -83,6 +83,9 @@ impl ErrorCode {
             // Raft leader has changed since the CaS request was generated.
             // The client should synchronize and retry the request.
             ErrorCode::NotALeader
+            // Raft term has changed since the CaS request was generated.
+            // The client should synchronize and retry the request.
+            | ErrorCode::TermMismatch
             // Raft log was compacted on the leader, so the predicate cannot be checked.
             // The client should synchronize and retry the request.
             | ErrorCode::RaftLogCompacted
