@@ -22,7 +22,7 @@ use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::SyncAndPromoteRequest;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
-use crate::rpc::update_instance::handle_update_instance_request_in_governor_and_also_wait_too;
+use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::schema::ADMIN_ID;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
@@ -314,11 +314,7 @@ impl Loop {
                 }
             }
 
-            Plan::Downgrade(Downgrade {
-                req,
-                replication_config_version_bump,
-                vshard_config_version_bump,
-            }) => {
+            Plan::Downgrade(Downgrade { req }) => {
                 set_status(governor_status, "update instance state to offline");
                 tlog!(Info, "downgrading instance {}", req.instance_id);
 
@@ -330,18 +326,7 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
-                        let mut ops = vec![];
-                        if let Some(bump) = replication_config_version_bump {
-                            ops.push(bump);
-                        }
-                        if let Some(bump) = vshard_config_version_bump {
-                            ops.push(bump);
-                        }
-                        handle_update_instance_request_in_governor_and_also_wait_too(
-                            req,
-                            &ops,
-                            Loop::UPDATE_INSTANCE_TIMEOUT,
-                        )?
+                        handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }
@@ -476,7 +461,7 @@ impl Loop {
                         "current_state" => %current_state,
                     ]
                     async {
-                        handle_update_instance_request_in_governor_and_also_wait_too(req, &[], Loop::UPDATE_INSTANCE_TIMEOUT)?
+                        handle_update_instance_request_and_wait(req, Loop::UPDATE_INSTANCE_TIMEOUT)?
                     }
                 }
             }

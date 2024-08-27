@@ -390,7 +390,7 @@ mod tests {
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Offline, 0)).unwrap();
         assert_eq!(dml, update_instance_dml("i1", ops));
-        assert_eq!(do_bump, false);
+        assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
@@ -405,7 +405,7 @@ mod tests {
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 1)).unwrap();
         assert_eq!(dml, update_instance_dml("i1", ops));
-        assert_eq!(do_bump, true, "incarnation bump requires replicaset config version bump");
+        assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
@@ -420,7 +420,7 @@ mod tests {
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 2)).unwrap();
         assert_eq!(dml, update_instance_dml("i1", ops));
-        assert_eq!(do_bump, true, "incarnation bump requires replicaset config version bump");
+        assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();
@@ -435,7 +435,7 @@ mod tests {
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Expelled, 0)).unwrap();
         assert_eq!(dml, update_instance_dml("i1", ops));
-        assert_eq!(do_bump, false);
+        assert_eq!(do_bump, true, "target state change requires replicaset config version bump");
 
         storage.do_dml(&dml).unwrap();
         let instance = storage.instances.get(&InstanceId::from("i1")).unwrap();

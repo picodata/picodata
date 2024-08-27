@@ -100,24 +100,6 @@ impl Request {
 /// **This function yields**
 #[inline(always)]
 pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
-    handle_update_instance_request_in_governor_and_also_wait_too(req, &[], timeout)
-}
-
-/// Processes the [`crate::rpc::update_instance::Request`] and appends
-/// the corresponding operation along with the provided `additional_dml` entry
-/// to the raft log within a single [`Op::BatchDml`] (if successful).
-///
-/// **This function should be used directly only from governor** everywhere else
-/// should use [`handle_update_instance_request_and_wait`] instead.
-///
-/// Returns `Ok(())` when the entry is committed.
-///
-/// **This function yields**
-pub fn handle_update_instance_request_in_governor_and_also_wait_too(
-    req: Request,
-    additional_dml: &[Dml],
-    timeout: Duration,
-) -> Result<()> {
     let node = node::global()?;
     let cluster_id = node.raft_storage.cluster_id()?;
     let storage = &node.storage;
@@ -128,18 +110,6 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             instance_cluster_id: req.cluster_id,
             cluster_cluster_id: cluster_id,
         });
-    }
-
-    #[cfg(debug_assertions)]
-    for op in additional_dml {
-        match ClusterwideTable::from_i64(op.table_id() as _) {
-            Some(ClusterwideTable::Property | ClusterwideTable::Replicaset) => {
-                // Allowed
-            }
-            _ => {
-                panic!("for CaS safety reasons currently we only allow updating _pico_property or _pico_replicaset simultaneously with instance")
-            }
-        }
     }
 
     let deadline = fiber::clock().saturating_add(timeout);
@@ -193,13 +163,6 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
                 ADMIN_ID,
             )?;
             ops.push(vshard_bump);
-        }
-
-        if !additional_dml.is_empty() {
-            #[rustfmt::skip]
-            debug_assert!(!version_bump_needed, "there can only be 1 replicaset version bump");
-            // TODO: to eliminate redundant copies here we should refactor `BatchDml` and/or `Dml`
-            ops.extend_from_slice(additional_dml);
         }
 
         let op = Op::single_dml_or_batch(ops);
@@ -272,14 +235,12 @@ pub fn update_instance(
     let mut replication_config_version_bump_needed = false;
     if let Some(variant) = req.target_state {
         let incarnation = match variant {
-            Online => {
-                replication_config_version_bump_needed = true;
-                instance.target_state.incarnation + 1
-            }
+            Online => instance.target_state.incarnation + 1,
             Offline | Expelled => instance.current_state.incarnation,
         };
         let state = State::new(variant, incarnation);
         if state != instance.target_state {
+            replication_config_version_bump_needed = true;
             ops.assign("target_state", state)?;
         }
     }

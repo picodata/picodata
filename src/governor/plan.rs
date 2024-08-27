@@ -75,7 +75,6 @@ pub(super) fn action_plan<'i>(
     if let Some(Instance {
         raft_id,
         instance_id,
-        replicaset_id,
         target_state,
         ..
     }) = to_downgrade
@@ -112,26 +111,7 @@ pub(super) fn action_plan<'i>(
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
             .with_current_state(*target_state);
 
-        let replication_config_version_bump =
-            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_id);
-
-        let mut vshard_config_version_bump = None;
-        #[rustfmt::skip]
-        if target_vshard_config_version == current_vshard_config_version {
-            // Only bump the version if it's not already bumped.
-            vshard_config_version_bump = Some(Dml::replace(
-                ClusterwideTable::Property,
-                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                ADMIN_ID,
-            )?);
-        };
-
-        return Ok(Downgrade {
-            req,
-            replication_config_version_bump,
-            vshard_config_version_bump,
-        }
-        .into());
+        return Ok(Downgrade { req }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -762,11 +742,6 @@ pub mod stage {
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Offline` in table `_pico_instance` for a given instance.
             pub req: rpc::update_instance::Request,
-            /// Global DML operation which updates `target_config_version` in table `_pico_replicaset`
-            /// for the replicaset of the instance which is going `Offline`.
-            pub replication_config_version_bump: Option<Dml>,
-            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
-            pub vshard_config_version_bump: Option<Dml>,
         }
 
         pub struct ConfigureReplication<'i> {
