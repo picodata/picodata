@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::access_control;
+use crate::error_code::ErrorCode;
 use crate::proc_name;
 use crate::rpc;
 use crate::storage::Clusterwide;
@@ -22,6 +23,7 @@ use ::raft::StorageError;
 
 use crate::schema::ADMIN_ID;
 use tarantool::error::Error as TntError;
+use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
 use tarantool::fiber::r#async::sleep;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
@@ -449,6 +451,22 @@ pub enum Error {
 
     #[error("InvalidOp: empty batch")]
     EmptyBatch,
+}
+
+impl Error {
+    #[inline]
+    pub fn error_code(&self) -> u32 {
+        match self {
+            Self::Compacted { .. } => ErrorCode::RaftLogCompacted as _,
+            Self::NoSuchIndex { .. } => ErrorCode::CasNoSuchRaftIndex as _,
+            Self::ConflictFound { .. } => ErrorCode::CasConflictFound as _,
+            Self::EntryTermMismatch { .. } => ErrorCode::CasEntryTermMismatch as _,
+            Self::TableNotAllowed { .. } => ErrorCode::CasTableNotAllowed as _,
+            Self::InvalidOpKind { .. } => ErrorCode::CasInvalidOpKind as _,
+            Self::KeyTypeMismatch { .. } => ErrorCode::StorageCorrupted as _,
+            Self::EmptyBatch => TarantoolErrorCode::IllegalParams as _,
+        }
+    }
 }
 
 /// Represents a lua table describing a [`Predicate`].

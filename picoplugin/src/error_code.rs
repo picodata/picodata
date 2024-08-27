@@ -29,6 +29,30 @@ tarantool::define_enum_with_introspection! {
         /// Contents of a builtin table has invalid format.
         StorageCorrupted = 10002,
 
+        /// Operation request from different term.
+        TermMismatch = 10003,
+
+        /// Raft log is temporarily unavailable.
+        RaftLogUnavailable = 10004,
+
+        /// Can't check the predicate because raft log is compacted.
+        RaftLogCompacted = 10005,
+
+        /// Nearly impossible error indicating invalid request.
+        CasNoSuchRaftIndex = 10006,
+
+        /// Checking the predicate revealed a collision.
+        CasConflictFound = 10007,
+
+        /// Request expected raft entry to have a different term.
+        CasEntryTermMismatch = 10008,
+
+        /// SpaceNotAllowed: space {space} is prohibited for use in a predicate
+        CasTableNotAllowed = 10009,
+
+        /// Unexpected traft operation kind.
+        CasInvalidOpKind = 10010,
+
         NoSuchService = 10011,
         ServiceNotStarted = 10012,
         ServicePoisoned = 10013,
@@ -38,11 +62,31 @@ tarantool::define_enum_with_introspection! {
         NoSuchInstance = 10016,
         NoSuchReplicaset = 10017,
 
-        // TODO: put in particular compare-and-swap related ones, but also other ones
-
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range
+    }
+}
+
+impl ErrorCode {
+    /// These types of errors signify different kinds of conflicts which can
+    /// occur during a [`compare_and_swap`] RPC request. If such an error
+    /// happens it's safe to retry the request under the following conditions:
+    /// - The raft read index operation is performed before each retry
+    /// - The preconditions of the request are checked before each retry
+    /// - The request is generated before each retry with an up to date raft index
+    ///
+    /// [`compare_and_swap`]: crate::internal::cas::compare_and_swap
+    #[inline]
+    pub fn is_retriable_for_cas(&self) -> bool {
+        match *self {
+            ErrorCode::RaftLogCompacted
+            | ErrorCode::CasConflictFound
+            | ErrorCode::CasEntryTermMismatch
+            | ErrorCode::NotALeader
+            | ErrorCode::RaftLogUnavailable => true,
+            _ => false,
+        }
     }
 }
 

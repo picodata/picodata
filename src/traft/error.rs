@@ -89,6 +89,7 @@ pub enum Error {
     #[error("governor has stopped")]
     GovernorStopped,
 
+    /// TODO: this prefix is only needed for the LUA DDL API, remove it ASAP.
     #[error("compare-and-swap: {0}")]
     Cas(#[from] crate::cas::Error),
     #[error("{0}")]
@@ -131,9 +132,23 @@ impl Error {
     pub fn error_code(&self) -> u32 {
         match self {
             Self::Tarantool(e) => e.error_code(),
+            Self::Cas(e) => e.error_code(),
+            Self::Raft(raft::Error::Store(raft::StorageError::Compacted)) => {
+                ErrorCode::RaftLogCompacted as _
+            }
+            Self::Raft(raft::Error::Store(raft::StorageError::Unavailable))
+            | Self::Raft(raft::Error::Store(raft::StorageError::LogTemporarilyUnavailable)) => {
+                ErrorCode::RaftLogUnavailable as _
+            }
+            Self::Raft(_) => ErrorCode::Other as _,
+            Self::Plugin(e) => e.error_code(),
+            // TODO: when sbroad will need boxed errors, implement
+            // `IntoBoxError` for `sbroad::errors::SbroadError` and
+            // uncomment the following line:
+            // Self::Sbroad(e) => e.error_code(),
             Self::NotALeader => ErrorCode::NotALeader as _,
-            Self::Other { .. } => ErrorCode::Other as _,
-            Self::NoSuchInstance { .. } => ErrorCode::NoSuchInstance as _,
+            Self::TermMismatch { .. } => ErrorCode::TermMismatch as _,
+            Self::NoSuchInstance(_) => ErrorCode::NoSuchInstance as _,
             Self::NoSuchReplicaset { .. } => ErrorCode::NoSuchReplicaset as _,
             // TODO: give other error types specific codes
             _ => ErrorCode::Other as _,
@@ -153,28 +168,29 @@ impl Error {
         Self::InvalidConfiguration(msg.to_string())
     }
 
-    /// Temporary solution until proc_cas returns structured errors
-    #[inline(always)]
-    pub fn is_cas_err(&self) -> bool {
-        self.to_string().contains("compare-and-swap")
+    // FIXME: remove this function, replace it with `is_retriable` everywhere it's used
+    #[inline]
+    pub fn is_retriable_cas_err(&self) -> bool {
+        matches!(
+            ErrorCode::try_from(self.error_code()),
+            Ok(ErrorCode::RaftLogCompacted)
+                | Ok(ErrorCode::CasConflictFound)
+                | Ok(ErrorCode::CasEntryTermMismatch)
+        )
     }
 
-    /// Temporary solution until proc_cas returns structured errors
-    #[inline(always)]
-    pub fn is_term_mismatch_err(&self) -> bool {
-        self.to_string()
-            .contains("operation request from different term")
-    }
-
-    /// Temporary solution until proc_cas returns structured errors
     #[inline(always)]
     pub fn is_not_leader_err(&self) -> bool {
-        self.to_string().contains("not a leader")
+        self.error_code() == ErrorCode::NotALeader as u32
     }
 
-    #[inline(always)]
+    #[inline]
     pub fn is_retriable(&self) -> bool {
-        is_retriable_error_message(&self.to_string())
+        let code = self.error_code();
+        let Ok(code) = ErrorCode::try_from(code) else {
+            return false;
+        };
+        code.is_retriable_for_cas()
     }
 }
 
@@ -236,17 +252,23 @@ where
 }
 
 impl IntoBoxError for Error {
+    #[inline(always)]
     fn error_code(&self) -> u32 {
-        self.error_code()
+        // Redirect to the inherent method
+        Error::error_code(self)
     }
 
     #[inline]
     #[track_caller]
     fn into_box_error(self) -> BoxError {
-        match self {
-            Self::Tarantool(e) => e.into_box_error(),
-            _ => BoxError::new(self.error_code(), self.to_string()),
+        if let Self::Tarantool(e) = self {
+            // Optimization
+            return e.into_box_error();
         }
+
+        // FIXME: currently these errors capture the source location of where this function is called (see #[track_caller]),
+        // but we probably want to instead capture the location where the original error was created.
+        BoxError::new(self.error_code(), self.to_string())
     }
 }
 

@@ -1,8 +1,7 @@
 import pytest
-from conftest import Cluster, Instance, TarantoolError, ReturnError, CasRange
+from conftest import Cluster, Instance, TarantoolError, ReturnError, CasRange, ErrorCode
 
 _3_SEC = 3
-ER_OTHER = 10000
 
 
 def test_cas_errors(instance: Instance):
@@ -24,7 +23,7 @@ def test_cas_errors(instance: Instance):
             term=term + 1,
         )
     assert e1.value.args[:2] == (
-        ER_OTHER,
+        ErrorCode.TermMismatch,
         "operation request from different term 3, current term is 2",
     )
 
@@ -38,7 +37,7 @@ def test_cas_errors(instance: Instance):
             term=term - 1,
         )
     assert e2.value.args[:2] == (
-        ER_OTHER,
+        ErrorCode.TermMismatch,
         "operation request from different term 1, current term is 2",
     )
 
@@ -52,7 +51,7 @@ def test_cas_errors(instance: Instance):
             term=2,  # actually 1
         )
     assert e3.value.args[:2] == (
-        ER_OTHER,
+        ErrorCode.CasEntryTermMismatch,
         "compare-and-swap: EntryTermMismatch: entry at index 1 has term 1, request implies term 2",
     )
 
@@ -65,7 +64,7 @@ def test_cas_errors(instance: Instance):
             index=2048,
         )
     assert e4.value.args[:2] == (
-        ER_OTHER,
+        ErrorCode.CasNoSuchRaftIndex,
         "compare-and-swap: NoSuchIndex: "
         + f"raft entry at index 2048 does not exist yet, the last is {index}",
     )
@@ -77,7 +76,7 @@ def test_cas_errors(instance: Instance):
     with pytest.raises(TarantoolError) as e5:
         instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
     assert e5.value.args[:2] == (
-        ER_OTHER,
+        ErrorCode.RaftLogCompacted,
         "compare-and-swap: Compacted: "
         + f"raft index {index-1} is compacted at {index}",
     )
@@ -87,7 +86,7 @@ def test_cas_errors(instance: Instance):
         with pytest.raises(TarantoolError) as e5:
             instance.cas("insert", table, [0], ranges=[CasRange(eq=0)], user=1)
         assert e5.value.args[:2] == (
-            ER_OTHER,
+            ErrorCode.CasTableNotAllowed,
             f"compare-and-swap: TableNotAllowed: table {table} cannot be modified directly, "
             + "please refer to available SQL commands",
         )
@@ -190,7 +189,7 @@ def test_cas_predicate(instance: Instance):
             ranges=[CasRange(eq="fruit")],
         )
     assert e5.value.args[:2] == (
-        ER_OTHER,
+        ErrorCode.CasConflictFound,
         "compare-and-swap: ConflictFound: "
         + f"found a conflicting entry at index {read_index+1}",
     )

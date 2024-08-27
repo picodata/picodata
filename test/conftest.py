@@ -58,6 +58,15 @@ PICO_SERVICE_ID = 32
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
 class ErrorCode:
     Loading = 116
+    Other = 10000
+    TermMismatch = 10003
+    RaftLogUnavailable = 10004
+    RaftLogCompacted = 10005
+    CasNoSuchRaftIndex = 10006
+    CasConflictFound = 10007
+    CasEntryTermMismatch = 10008
+    CasTableNotAllowed = 10009
+    CasInvalidOpKind = 10010
     NoSuchInstance = 10016
     NoSuchReplicaset = 10017
 

@@ -1,4 +1,5 @@
 use std::io;
+use tarantool::error::IntoBoxError;
 use thiserror::Error;
 
 /// See <https://www.postgresql.org/docs/current/errcodes-appendix.html>.
@@ -40,6 +41,8 @@ impl EncodingError {
     }
 }
 
+impl IntoBoxError for EncodingError {}
+
 // Use case: server could not decode a value received from client.
 // To the client it's as meaningful & informative as any other "internal error".
 #[derive(Error, Debug)]
@@ -52,6 +55,8 @@ impl DecodingError {
         Self(e.into())
     }
 }
+
+impl IntoBoxError for DecodingError {}
 
 pub type PgResult<T> = Result<T, PgError>;
 
@@ -115,11 +120,7 @@ impl From<tarantool::error::Error> for PgError {
     }
 }
 
-impl tarantool::error::IntoBoxError for PgError {
-    fn into_box_error(self) -> tarantool::error::BoxError {
-        self.to_string().into_box_error()
-    }
-}
+impl IntoBoxError for PgError {}
 
 impl PgError {
     /// Convert the error into a corresponding postgres error code.
