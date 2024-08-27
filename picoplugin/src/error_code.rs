@@ -62,6 +62,8 @@ tarantool::define_enum_with_introspection! {
         NoSuchInstance = 10016,
         NoSuchReplicaset = 10017,
 
+        LeaderUnknown = 10018,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range
@@ -80,9 +82,12 @@ impl ErrorCode {
     #[inline]
     pub fn is_retriable_for_cas(&self) -> bool {
         match *self {
+            // Raft leader is in the middle of being changed.
+            // The client should synchronize and retry the request.
+            ErrorCode::LeaderUnknown
             // Raft leader has changed since the CaS request was generated.
             // The client should synchronize and retry the request.
-            ErrorCode::NotALeader
+            | ErrorCode::NotALeader
             // Raft term has changed since the CaS request was generated.
             // The client should synchronize and retry the request.
             | ErrorCode::TermMismatch

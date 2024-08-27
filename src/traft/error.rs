@@ -145,6 +145,7 @@ impl Error {
             // `IntoBoxError` for `sbroad::errors::SbroadError` and
             // uncomment the following line:
             // Self::Sbroad(e) => e.error_code(),
+            Self::LeaderUnknown => ErrorCode::LeaderUnknown as _,
             Self::NotALeader => ErrorCode::NotALeader as _,
             Self::TermMismatch { .. } => ErrorCode::TermMismatch as _,
             Self::NoSuchInstance(_) => ErrorCode::NoSuchInstance as _,
@@ -165,22 +166,6 @@ impl Error {
     #[inline(always)]
     pub fn invalid_configuration(msg: impl ToString) -> Self {
         Self::InvalidConfiguration(msg.to_string())
-    }
-
-    // FIXME: remove this function, replace it with `is_retriable` everywhere it's used
-    #[inline]
-    pub fn is_retriable_cas_err(&self) -> bool {
-        matches!(
-            ErrorCode::try_from(self.error_code()),
-            Ok(ErrorCode::RaftLogCompacted)
-                | Ok(ErrorCode::CasConflictFound)
-                | Ok(ErrorCode::CasEntryTermMismatch)
-        )
-    }
-
-    #[inline(always)]
-    pub fn is_not_leader_err(&self) -> bool {
-        self.error_code() == ErrorCode::NotALeader as u32
     }
 
     #[inline]

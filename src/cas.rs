@@ -14,7 +14,6 @@ use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::EntryContext;
 use crate::traft::Result;
 use crate::traft::{RaftIndex, RaftTerm};
-use crate::unwrap_ok_or;
 
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
@@ -25,7 +24,6 @@ use crate::schema::ADMIN_ID;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
-use tarantool::fiber::r#async::sleep;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
@@ -78,47 +76,21 @@ pub async fn compare_and_swap_async(request: &Request) -> traft::Result<(RaftInd
         }
     }
 
-    loop {
-        let Some(leader_id) = node.status().leader_id else {
-            tlog!(
-                Warning,
-                "leader id is unknown, waiting for status change..."
-            );
-            node.wait_status();
-            continue;
-        };
-        let leader_address = unwrap_ok_or!(
-            node.storage.peer_addresses.try_get(leader_id),
-            Err(e) => {
-                tlog!(Warning, "failed getting leader address: {e}");
-                tlog!(Info, "going to retry in a while...");
-                sleep(Duration::from_millis(250)).await;
-                continue;
-            }
-        );
-        let resp = if leader_id == node.raft_id {
-            // cas has to be called locally in cases when listen ports are closed,
-            // for example on shutdown
-            proc_cas_local(request)
-        } else {
-            rpc::network_call(&leader_address, proc_name!(proc_cas), request)
-                .await
-                .map_err(TraftError::from)
-        };
-        match resp {
-            Ok(Response { index, term }) => return Ok((index, term)),
-            Err(e) => {
-                tlog!(Warning, "{e}");
-                if e.is_not_leader_err() {
-                    tlog!(Info, "going to retry in a while...");
-                    node.wait_status();
-                    continue;
-                } else {
-                    return Err(e);
-                }
-            }
-        }
+    let Some(leader_id) = node.status().leader_id else {
+        return Err(TraftError::LeaderUnknown);
+    };
+
+    let i_am_leader = leader_id == node.raft_id;
+    if i_am_leader {
+        // cas has to be called locally in cases when listen ports are closed,
+        // for example on shutdown
+        let resp = proc_cas_local(request)?;
+        return Ok((resp.index, resp.term));
     }
+
+    let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
+    let resp = rpc::network_call(&leader_address, proc_name!(proc_cas), request).await?;
+    Ok((resp.index, resp.term))
 }
 
 /// Performs a clusterwide compare and swap operation.
