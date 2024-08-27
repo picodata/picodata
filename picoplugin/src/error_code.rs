@@ -80,11 +80,23 @@ impl ErrorCode {
     #[inline]
     pub fn is_retriable_for_cas(&self) -> bool {
         match *self {
-            ErrorCode::RaftLogCompacted
-            | ErrorCode::CasConflictFound
+            // Raft leader has changed since the CaS request was generated.
+            // The client should synchronize and retry the request.
+            ErrorCode::NotALeader
+            // Raft log was compacted on the leader, so the predicate cannot be checked.
+            // The client should synchronize and retry the request.
+            | ErrorCode::RaftLogCompacted
+            // Some raft log entries have disappeared on the leader, so the predicate cannot be checked.
+            // XXX Not sure how this would happen.
+            // The client should synchronize and retry the request.
+            | ErrorCode::RaftLogUnavailable
+            // Entry at requested index has a mismatched term in the leader's log.
+            // The client should synchronize ( raft log will likely be truncated) and retry the request.
             | ErrorCode::CasEntryTermMismatch
-            | ErrorCode::NotALeader
-            | ErrorCode::RaftLogUnavailable => true,
+            // Leader checked the predicate and found a conflict.
+            // The client should synchronize and check the preconditions.
+            | ErrorCode::CasConflictFound
+            => true,
             _ => false,
         }
     }
