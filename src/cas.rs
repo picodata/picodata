@@ -57,42 +57,6 @@ pub fn check_admin_dml_prohibited(dml: &Dml, as_user: UserId) -> traft::Result<(
     Ok(())
 }
 
-// FIXME: cas::Error will be returned as a string when rpc is called
-/// Performs a clusterwide compare and swap operation.
-///
-/// E.g. it checks the `predicate` on leader and if no conflicting
-/// entries were found appends the `op` to the raft log and returns its
-/// index and term.
-///
-/// # Errors
-/// See [`cas::Error`][Error] for CaS-specific errors.
-/// It can also return general picodata errors in cases of faulty network or storage.
-pub async fn compare_and_swap_async(request: &Request) -> traft::Result<(RaftIndex, RaftTerm)> {
-    let node = node::global()?;
-
-    if let Op::BatchDml { ops } = &request.op {
-        if ops.is_empty() {
-            return Err(Error::EmptyBatch.into());
-        }
-    }
-
-    let Some(leader_id) = node.status().leader_id else {
-        return Err(TraftError::LeaderUnknown);
-    };
-
-    let i_am_leader = leader_id == node.raft_id;
-    if i_am_leader {
-        // cas has to be called locally in cases when listen ports are closed,
-        // for example on shutdown
-        let resp = proc_cas_local(request)?;
-        return Ok((resp.index, resp.term));
-    }
-
-    let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
-    let resp = rpc::network_call(&leader_address, proc_name!(proc_cas), request).await?;
-    Ok((resp.index, resp.term))
-}
-
 /// Performs a clusterwide compare and swap operation.
 ///
 /// E.g. it checks the `predicate` on leader and if no conflicting entries were found
@@ -105,7 +69,42 @@ pub fn compare_and_swap(
     request: &Request,
     timeout: Duration,
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
-    fiber::block_on(compare_and_swap_async(request).timeout(timeout)).map_err(Into::into)
+    let node = node::global()?;
+
+    let deadline = fiber::clock().saturating_add(timeout);
+
+    if let Op::BatchDml { ops } = &request.op {
+        if ops.is_empty() {
+            return Err(Error::EmptyBatch.into());
+        }
+    }
+
+    let Some(leader_id) = node.status().leader_id else {
+        return Err(TraftError::LeaderUnknown);
+    };
+
+    let i_am_leader = leader_id == node.raft_id;
+
+    let res;
+    if i_am_leader {
+        // cas has to be called locally in cases when listen ports are closed,
+        // for example on shutdown
+        res = proc_cas_local(request);
+    } else {
+        let leader_address = node.storage.peer_addresses.try_get(leader_id)?;
+
+        let future = async {
+            // TODO: use node.pool
+            rpc::network_call(&leader_address, proc_name!(proc_cas), request)
+                .deadline(deadline)
+                .await
+                .map_err(Into::into)
+        };
+        res = fiber::block_on(future);
+    }
+
+    let response = res?;
+    return Ok((response.index, response.term));
 }
 
 fn proc_cas_local(req: &Request) -> Result<Response> {
