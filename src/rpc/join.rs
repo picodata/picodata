@@ -127,7 +127,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             },
             ADMIN_ID,
         )?;
-        let res = cas::compare_and_swap(&cas_req, deadline.duration_since(fiber::clock()));
+        let res = cas::compare_and_swap(&cas_req, deadline);
         let (index, term) = crate::unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {

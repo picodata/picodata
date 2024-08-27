@@ -22,6 +22,7 @@ use std::{mem, slice};
 use tarantool::datetime::Datetime;
 use tarantool::error::IntoBoxError;
 use tarantool::ffi::tarantool::BoxTuple;
+use tarantool::fiber;
 use tarantool::tuple::{RawByteBuf, TupleBuffer};
 use tarantool::uuid::Uuid;
 
@@ -222,7 +223,8 @@ extern "C" fn pico_ffi_cas(
         }
     };
 
-    match compare_and_swap(&request, timeout) {
+    let deadline = fiber::clock().saturating_add(timeout);
+    match compare_and_swap(&request, deadline) {
         Ok((index, term)) => ROk(RSome(Tuple2(index, term))),
         Err(traft::error::Error::Timeout) => ROk(RNone),
         Err(e) => error_into_tt_error(e),

@@ -220,7 +220,7 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             },
             ADMIN_ID,
         )?;
-        let res = cas::compare_and_swap(&cas_req, deadline.duration_since(fiber::clock()));
+        let res = cas::compare_and_swap(&cas_req, deadline);
         let (index, term) = crate::unwrap_ok_or!(res,
             Err(e) => {
                 if req.dont_retry {

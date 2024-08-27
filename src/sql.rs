@@ -1382,7 +1382,7 @@ pub(crate) fn reenterable_schema_change_request(
             ranges: cas::schema_change_ranges().into(),
         };
         let req = crate::cas::Request::new(op, predicate, current_user)?;
-        let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now_fiber()));
+        let res = cas::compare_and_swap(&req, deadline);
         let (index, term) = unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {
@@ -1598,8 +1598,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
             ranges: vec![],
         };
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
-        let (index, term) =
-            crate::cas::compare_and_swap(&cas_req, deadline.duration_since(Instant::now_fiber()))?;
+        let (index, term) = crate::cas::compare_and_swap(&cas_req, deadline)?;
 
         node.wait_index(index, deadline.duration_since(Instant::now_fiber()))?;
 

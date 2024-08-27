@@ -416,7 +416,7 @@ fn do_routing_table_cas(
             ranges: ranges.clone(),
         };
         let req = crate::cas::Request::new(op.clone(), predicate, ADMIN_ID)?;
-        let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now_fiber()));
+        let res = cas::compare_and_swap(&req, deadline);
         let (index, term) = unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {
@@ -535,7 +535,7 @@ fn reenterable_plugin_cas_request(
         // FIXME: access rules will be implemented in future release
         let current_user = effective_user_id();
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;
-        let res = cas::compare_and_swap(&req, deadline.duration_since(Instant::now_fiber()));
+        let res = cas::compare_and_swap(&req, deadline);
         let (index, term) = unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {

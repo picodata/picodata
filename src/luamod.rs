@@ -677,6 +677,7 @@ pub(crate) fn setup() {
 
                 let timeout: f64 = (&lua).read_at(3).map_err(|(_, e)| LuaError::from(e))?;
                 let timeout = duration_from_secs_f64_clamped(timeout);
+                let deadline = fiber::clock().saturating_add(timeout);
 
                 let node = node::global()?;
                 let term = raft::Storage::term(&node.raft_storage, index)?;
@@ -687,7 +688,7 @@ pub(crate) fn setup() {
                 };
 
                 let req = crate::cas::Request::new(op, predicate, effective_user_id())?;
-                let res = compare_and_swap(&req, timeout)?;
+                let res = compare_and_swap(&req, deadline)?;
                 Ok(res)
             },
         ),
@@ -1181,7 +1182,8 @@ pub(crate) fn setup() {
                     .map_err(traft::error::Error::other)?;
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
                 let req = crate::cas::Request::new(op.into(), predicate, su.original_user_id)?;
-                let (index, _) = compare_and_swap(&req, Duration::from_secs(3))?;
+                let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
+                let (index, _) = compare_and_swap(&req, deadline)?;
                 Ok(index)
             },
         ),
@@ -1216,7 +1218,8 @@ pub(crate) fn setup() {
                     predicate,
                     su.original_user_id,
                 )?;
-                let (index, _) = compare_and_swap(&req, Duration::from_secs(3))?;
+                let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
+                let (index, _) = compare_and_swap(&req, deadline)?;
                 Ok(index)
             },
         ),
@@ -1376,7 +1379,8 @@ pub(crate) fn setup() {
                 } else {
                     INFINITY
                 };
-                schema::abort_ddl(timeout)
+                let deadline = fiber::clock().saturating_add(timeout);
+                schema::abort_ddl(deadline)
             })
         },
     );

@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::access_control;
 use crate::error_code::ErrorCode;
 use crate::proc_name;
@@ -27,6 +25,7 @@ use tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
 use tarantool::session::UserId;
 use tarantool::space::{Space, SpaceId};
+use tarantool::time::Instant;
 use tarantool::tlua;
 use tarantool::transaction;
 use tarantool::tuple::{KeyDef, ToTupleBuffer, Tuple, TupleBuffer};
@@ -67,11 +66,9 @@ pub fn check_admin_dml_prohibited(dml: &Dml, as_user: UserId) -> traft::Result<(
 /// It can also return general picodata errors in cases of faulty network or storage.
 pub fn compare_and_swap(
     request: &Request,
-    timeout: Duration,
+    deadline: Instant,
 ) -> traft::Result<(RaftIndex, RaftTerm)> {
     let node = node::global()?;
-
-    let deadline = fiber::clock().saturating_add(timeout);
 
     if let Op::BatchDml { ops } = &request.op {
         if ops.is_empty() {

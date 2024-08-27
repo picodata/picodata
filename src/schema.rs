@@ -40,6 +40,7 @@ use tarantool::set_error;
 use tarantool::space::SpaceId;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
+use tarantool::time::Instant;
 use tarantool::tlua;
 use tarantool::tlua::LuaRead;
 use tarantool::transaction::{transaction, TransactionError};
@@ -2453,7 +2454,7 @@ pub fn wait_for_ddl_commit(
 ///
 /// Returns an index of the corresponding DdlAbort raft entry, or an error if
 /// there is no pending DDL operation.
-pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
+pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
     let node = node::global()?;
     loop {
         if node.storage.properties.pending_schema_change()?.is_none() {
@@ -2482,7 +2483,7 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
             instance_id,
         };
         let req = Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;
-        let res = compare_and_swap(&req, timeout);
+        let res = compare_and_swap(&req, deadline);
         let (index, term) = crate::unwrap_ok_or!(res,
             Err(e) => {
                 if e.is_retriable() {
@@ -2493,7 +2494,7 @@ pub fn abort_ddl(timeout: Duration) -> traft::Result<RaftIndex> {
             }
         );
 
-        node.wait_index(index, timeout)?;
+        node.wait_index(index, deadline.duration_since(fiber::clock()))?;
 
         if raft::Storage::term(&node.raft_storage, index)? != term {
             // leader switched - retry
