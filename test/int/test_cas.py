@@ -52,7 +52,7 @@ def test_cas_errors(instance: Instance):
         )
     assert e3.value.args[:2] == (
         ErrorCode.CasEntryTermMismatch,
-        "compare-and-swap: EntryTermMismatch: entry at index 1 has term 1, request implies term 2",
+        "EntryTermMismatch: entry at index 1 has term 1, request implies term 2",
     )
 
     # Wrong index (too big)
@@ -65,8 +65,7 @@ def test_cas_errors(instance: Instance):
         )
     assert e4.value.args[:2] == (
         ErrorCode.CasNoSuchRaftIndex,
-        "compare-and-swap: NoSuchIndex: "
-        + f"raft entry at index 2048 does not exist yet, the last is {index}",
+        f"NoSuchIndex: raft entry at index 2048 does not exist yet, the last is {index}",
     )
 
     # Compact the whole raft log
@@ -77,8 +76,7 @@ def test_cas_errors(instance: Instance):
         instance.cas("insert", "_pico_property", ["foo", "420"], index=index - 1)
     assert e5.value.args[:2] == (
         ErrorCode.RaftLogCompacted,
-        "compare-and-swap: Compacted: "
-        + f"raft index {index-1} is compacted at {index}",
+        f"Compacted: raft index {index-1} is compacted at {index}",
     )
 
     # Prohibited tables for all users, even for admin
@@ -87,8 +85,7 @@ def test_cas_errors(instance: Instance):
             instance.cas("insert", table, [0], ranges=[CasRange(eq=0)], user=1)
         assert e5.value.args[:2] == (
             ErrorCode.CasTableNotAllowed,
-            f"compare-and-swap: TableNotAllowed: table {table} cannot be modified directly, "
-            + "please refer to available SQL commands",
+            f"TableNotAllowed: table {table} cannot be modified directly, please refer to available SQL commands",  # noqa: E501
         )
 
     # Field type error
@@ -190,8 +187,7 @@ def test_cas_predicate(instance: Instance):
         )
     assert e5.value.args[:2] == (
         ErrorCode.CasConflictFound,
-        "compare-and-swap: ConflictFound: "
-        + f"found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
 
     # Stale index, yet successful insert of another key
@@ -326,8 +322,7 @@ def test_cas_batch(cluster: Cluster):
             ranges=[CasRange(table="some_space", eq="car")],
         )
     assert err.value.args[:2] == (
-        "compare-and-swap: ConflictFound: "
-        + f"found a conflicting entry at index {ret1+1}",
+        f"ConflictFound: found a conflicting entry at index {ret1+1}",
     )
 
 
@@ -378,7 +373,6 @@ def test_cas_lua_api(cluster: Cluster):
             ranges=[CasRange(eq="fruit")],
         )
     assert e5.value.args[:2] == (
-        "compare-and-swap: ConflictFound: "
-        + f"found a conflicting entry at index {read_index+1}",
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
     pass

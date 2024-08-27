@@ -400,9 +400,6 @@ impl Request {
 ///
 /// Usually it can't be handled and should be either retried from
 /// scratch or returned to a user as is.
-///
-// NOTE: these error messages are relied on in luamod.lua,
-// don't forget to update them everywhere if you're changing them.
 #[derive(Debug, ::thiserror::Error)]
 pub enum Error {
     /// Can't check the predicate because raft log is compacted.

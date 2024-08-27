@@ -89,8 +89,7 @@ pub enum Error {
     #[error("governor has stopped")]
     GovernorStopped,
 
-    /// TODO: this prefix is only needed for the LUA DDL API, remove it ASAP.
-    #[error("compare-and-swap: {0}")]
+    #[error("{0}")]
     Cas(#[from] crate::cas::Error),
     #[error("{0}")]
     Ddl(#[from] crate::schema::DdlError),
@@ -192,23 +191,6 @@ impl Error {
         };
         code.is_retriable_for_cas()
     }
-}
-
-pub fn is_retriable_error_message(msg: &str) -> bool {
-    if msg.contains("not a leader")
-        || msg.contains("log unavailable")
-        || msg.contains("operation request from different term")
-    {
-        return true;
-    }
-
-    if msg.contains("compare-and-swap") {
-        return msg.contains("Compacted")
-            || msg.contains("ConflictFound")
-            || msg.contains("EntryTermMismatch");
-    }
-
-    return false;
 }
 
 impl<E> From<timeout::Error<E>> for Error

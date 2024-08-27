@@ -1472,28 +1472,6 @@ pub(crate) fn setup() {
         },
     );
 
-    luamod_set(
-        &l,
-        "_is_retriable_error_message",
-        indoc! {"
-        pico._is_retriable_error_message(msg)
-        ============================
-
-        Internal API, see src/luamod.rs for the details.
-
-        Params:
-
-            1. msg (string)
-
-        Returns:
-
-            (bool)
-        "},
-        tlua::Function::new(|msg: String| -> bool {
-            crate::traft::error::is_retriable_error_message(&msg)
-        }),
-    );
-
     ///////////////////////////////////////////////////////////////////////////
     #[rustfmt::skip]
     luamod_set(
