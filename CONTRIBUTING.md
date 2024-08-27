@@ -20,15 +20,16 @@ sudo dnf in -y gcc gcc-c++ make cmake git patch libstdc++-static
 sudo dnf module install nodejs:19
 sudo corepack enable
 ```
-### Prerequisites for Ubuntu 22.04
+### Prerequisites for Ubuntu 22.04 and 24.04
 Use the following command to install the required build prerequisites. Note that Ubuntu 22.04 provides recent Rust and Cargo versions, so it's preferable to install it via `apt-get`:
 ```bash
-sudo apt-get install build-essential git cmake -y
+sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config -y
 
 # Optional - to build with Web UI
-curl -fsSL https://deb.nodesource.com/setup_19.x | sudo -E bash - &&\
-sudo apt-get install -y nodejs
-sudo corepack enable
+curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+sudo apt install yarn npm -y
+sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
 ```
 
 ### Prerequisites for Alt Workstation p10
