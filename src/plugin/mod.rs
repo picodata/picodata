@@ -400,20 +400,13 @@ fn do_routing_table_cas(
     ranges: Vec<Range>,
     timeout: Duration,
 ) -> traft::Result<()> {
-    let node = node::global()?;
-    let raft_storage = &node.raft_storage;
-
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
         let op = Op::BatchDml {
             ops: dml_ops.clone(),
         };
 
-        let predicate = cas::Predicate {
-            index: raft_storage.applied()?,
-            term: raft_storage.term()?,
-            ranges: ranges.clone(),
-        };
+        let predicate = cas::Predicate::with_applied_index(ranges.clone());
         let req = crate::cas::Request::new(op.clone(), predicate, ADMIN_ID)?;
         let res = cas::compare_and_swap(&req, true, deadline)?;
         if res.is_retriable_error() {
@@ -512,12 +505,7 @@ fn reenterable_plugin_cas_request(
             AlreadyApplied => return Ok(index),
         };
 
-        let term = raft::Storage::term(&node.raft_storage, index)?;
-        let predicate = cas::Predicate {
-            index,
-            term,
-            ranges: ranges.clone(),
-        };
+        let predicate = cas::Predicate::new(index, ranges.clone());
         // FIXME: access rules will be implemented in future release
         let current_user = effective_user_id();
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;

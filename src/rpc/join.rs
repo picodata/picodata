@@ -70,7 +70,6 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
     let node = node::global()?;
     let cluster_id = node.raft_storage.cluster_id()?;
     let storage = &node.storage;
-    let raft_storage = &node.raft_storage;
     let guard = node.instances_update.lock();
 
     if req.cluster_id != cluster_id {
@@ -118,15 +117,8 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
             cas::Range::new(ClusterwideTable::Tier),
             cas::Range::new(ClusterwideTable::Replicaset),
         ];
-        let cas_req = crate::cas::Request::new(
-            Op::BatchDml { ops },
-            cas::Predicate {
-                index: raft_storage.applied()?,
-                term: raft_storage.term()?,
-                ranges,
-            },
-            ADMIN_ID,
-        )?;
+        let predicate = cas::Predicate::with_applied_index(ranges);
+        let cas_req = crate::cas::Request::new(Op::BatchDml { ops }, predicate, ADMIN_ID)?;
         let res = cas::compare_and_swap(&cas_req, true, deadline)?;
         if let Some(e) = res.into_retriable_error() {
             crate::tlog!(Debug, "local CaS rejected: {e}");

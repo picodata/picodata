@@ -514,18 +514,48 @@ pub struct Predicate {
 }
 
 impl Predicate {
+    /// Constructs a predicate consisting of:
+    /// - current raft term
+    /// - provided `index`
+    /// - provided `ranges`
+    #[inline]
+    pub fn new(index: RaftIndex, ranges: impl Into<Vec<Range>>) -> Self {
+        let node = traft::node::global().expect("shouldn't be called before node is initialized");
+
+        Self {
+            index,
+            term: node.status().term,
+            ranges: ranges.into(),
+        }
+    }
+
+    /// Constructs a predicate consisting of:
+    /// - current raft term
+    /// - current applied index
+    /// - provided `ranges`
+    #[inline]
+    pub fn with_applied_index(ranges: impl Into<Vec<Range>>) -> Self {
+        let node = traft::node::global().expect("shouldn't be called before node is initialized");
+
+        Self {
+            index: node.get_index(),
+            term: node.status().term,
+            ranges: ranges.into(),
+        }
+    }
+
     pub fn from_lua_args(predicate: PredicateInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
         let (index, term) = if let Some(index) = predicate.index {
             if let Some(term) = predicate.term {
                 (index, term)
             } else {
-                let term = raft::Storage::term(&node.raft_storage, index)?;
+                let term = node.status().term;
                 (index, term)
             }
         } else {
             let index = node.get_index();
-            let term = raft::Storage::term(&node.raft_storage, index)?;
+            let term = node.status().term;
             (index, term)
         };
         Ok(Self {

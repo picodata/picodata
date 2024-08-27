@@ -1374,13 +1374,8 @@ pub(crate) fn reenterable_schema_change_request(
         };
         let is_ddl_prepare = matches!(op, Op::DdlPrepare { .. });
 
-        let term = raft::Storage::term(&node.raft_storage, index)?;
         // TODO: Should look at https://git.picodata.io/picodata/picodata/picodata/-/issues/866.
-        let predicate = cas::Predicate {
-            index,
-            term,
-            ranges: cas::schema_change_ranges().into(),
-        };
+        let predicate = cas::Predicate::new(index, cas::schema_change_ranges());
         let req = crate::cas::Request::new(op, predicate, current_user)?;
         let res = cas::compare_and_swap(&req, true, deadline)?;
         let index = match res {
@@ -1472,9 +1467,6 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
 
     let raft_node = node::global()?;
     let raft_index = raft_node.get_index();
-    let raft_term = with_su(ADMIN_ID, || -> traft::Result<u64> {
-        Ok(raft::Storage::term(&raft_node.raft_storage, raft_index)?)
-    })??;
 
     // Materialize reading subtree and extract some needed data from Plan
     let (table_id, dml_kind, vtable) = {
@@ -1579,11 +1571,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
         let ops_count = ops.len();
         let op = crate::traft::op::Op::BatchDml { ops };
 
-        let predicate = Predicate {
-            index: raft_index,
-            term: raft_term,
-            ranges: vec![],
-        };
+        let predicate = Predicate::new(raft_index, []);
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
         let res = crate::cas::compare_and_swap(&cas_req, true, deadline)?;
         res.no_retries()?;

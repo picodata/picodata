@@ -121,7 +121,6 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
     let node = node::global()?;
     let cluster_id = node.raft_storage.cluster_id()?;
     let storage = &node.storage;
-    let raft_storage = &node.raft_storage;
     let guard = node.instances_update.lock();
 
     if req.cluster_id != cluster_id {
@@ -211,15 +210,8 @@ pub fn handle_update_instance_request_in_governor_and_also_wait_too(
             cas::Range::new(ClusterwideTable::Tier),
         ];
 
-        let cas_req = crate::cas::Request::new(
-            op,
-            cas::Predicate {
-                index: raft_storage.applied()?,
-                term: raft_storage.term()?,
-                ranges,
-            },
-            ADMIN_ID,
-        )?;
+        let predicate = cas::Predicate::with_applied_index(ranges);
+        let cas_req = crate::cas::Request::new(op, predicate, ADMIN_ID)?;
         let res = cas::compare_and_swap(&cas_req, true, deadline)?;
         if req.dont_retry {
             res.no_retries()?;

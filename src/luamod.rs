@@ -679,14 +679,7 @@ pub(crate) fn setup() {
                 let timeout = duration_from_secs_f64_clamped(timeout);
                 let deadline = fiber::clock().saturating_add(timeout);
 
-                let node = node::global()?;
-                let term = raft::Storage::term(&node.raft_storage, index)?;
-                let predicate = cas::Predicate {
-                    index,
-                    term,
-                    ranges: cas::schema_change_ranges().into(),
-                };
-
+                let predicate = cas::Predicate::new(index, cas::schema_change_ranges());
                 let req = crate::cas::Request::new(op, predicate, effective_user_id())?;
                 let res = cas::compare_and_swap(&req, false, deadline)?;
                 let res = res.no_retries()?;

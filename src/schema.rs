@@ -2460,18 +2460,6 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
         if node.storage.properties.pending_schema_change()?.is_none() {
             return Err(DdlError::NoPendingDdl.into());
         }
-        let index = node.get_index();
-        let term = raft::Storage::term(&node.raft_storage, index)?;
-        #[rustfmt::skip]
-        let predicate = cas::Predicate {
-            index,
-            term,
-            ranges: vec![
-                cas::Range::new(ClusterwideTable::Property).eq([PropertyName::PendingSchemaChange]),
-                cas::Range::new(ClusterwideTable::Property).eq([PropertyName::GlobalSchemaVersion]),
-                cas::Range::new(ClusterwideTable::Property).eq([PropertyName::NextSchemaVersion]),
-            ],
-        };
 
         let instance_id = node
             .raft_storage
@@ -2482,6 +2470,14 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
             message: "explicit abort by user".into(),
             instance_id,
         };
+
+        #[rustfmt::skip]
+        let ranges = vec![
+            cas::Range::new(ClusterwideTable::Property).eq([PropertyName::PendingSchemaChange]),
+            cas::Range::new(ClusterwideTable::Property).eq([PropertyName::GlobalSchemaVersion]),
+            cas::Range::new(ClusterwideTable::Property).eq([PropertyName::NextSchemaVersion]),
+        ];
+        let predicate = cas::Predicate::with_applied_index(ranges);
         let req = cas::Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;
         let res = cas::compare_and_swap(&req, true, deadline)?;
         match res {
