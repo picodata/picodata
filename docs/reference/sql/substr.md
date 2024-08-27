@@ -1,0 +1,50 @@
+# SUBSTR {: #substr }
+
+Функция `SUBSTR` извлекает подстроку из строки *string*, начиная с позиции
+*from*, длиной *count* символов.
+
+Нумерация символов в строке *string* начинается с единицы. Если длина
+*count* не указана, конец подстроки будет совпадать с концом строки
+*string*.
+
+!!! note "Примечание"
+    *from* и *count* — результаты [выражений](#expression) типа [UNSIGNED].
+
+[UNSIGNED]: ../sql_types.md#unsigned
+
+## Синтаксис {: #syntax }
+
+![SUBSTR](../../images/ebnf/substr.svg)
+
+### Выражение {: #expression }
+
+??? note "Диаграмма"
+    ![Expression](../../images/ebnf/expression.svg)
+
+### Литерал {: #literal }
+
+??? note "Диаграмма"
+    ![Literal](../../images/ebnf/literal.svg)
+
+## Примеры {: #examples }
+
+```title="Запрос VALUES с функцией SUBSTR и параметром <i>from</i>"
+picodata> VALUES ( SUBSTR('picodata', 3) );
++----------+
+| COLUMN_1 |
++==========+
+| "codata" |
++----------+
+(1 rows)
+
+```
+
+```title="Запрос VALUES с функцией SUBSTR и параметрами <i>from</i> и <i>count</i>"
+picodata> VALUES ( SUBSTR('picodata', 3, 4) );
++----------+
+| COLUMN_1 |
++==========+
+| "coda"   |
++----------+
+(1 rows)
+```

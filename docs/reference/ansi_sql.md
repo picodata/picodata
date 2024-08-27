@@ -183,10 +183,10 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">E021-06</span></td>
+            <td class="center"><span class="partly">E021-06</span></td>
             <td>Функция SUBSTRING</td>
-            <td class="td3 center"></td>
-            <td></td>
+            <td class="td3 center">[SUBSTR](sql/substr.md)</td>
+            <td>Функция SUBSTRING не поддерживается, но есть SUBSTR</td>
         </tr>
         <tr>
             <td class="center"><span class="full">E021-07</span></td>

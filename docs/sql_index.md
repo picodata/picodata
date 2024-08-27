@@ -45,6 +45,7 @@
 * [Агрегатные функции](reference/sql/aggregate.md)
 * [CASE](reference/sql/case.md)
 * [CAST](reference/sql/cast.md)
+* [SUBSTR](reference/sql/substr.md)
 * [TRIM](reference/sql/trim.md)
 
 ### Дата и время {: #date_and_time }
