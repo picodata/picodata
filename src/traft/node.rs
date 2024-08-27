@@ -790,12 +790,13 @@ impl NodeImpl {
                     Dml::Delete { key, .. } => s.get(key),
                     Dml::Replace { tuple, .. } => {
                         let tuple = Tuple::from(tuple);
-                        let index = s.primary_key();
-                        // Safety: safe as long as `tuple` has the correct format
-                        // for the `index`, which should be checked via cas before
-                        // this log entry is committed.
-                        // TODO: rewrite using the safe `KeyDef::extract_key` alternative
-                        let key = unsafe { index.extract_key(tuple) };
+                        let key_def = self
+                            .storage
+                            .key_def(s.id(), 0)
+                            .expect("index for space must be found");
+                        let key = key_def
+                            .extract_key(&tuple)
+                            .expect("cas should validate operation before committing a log entry");
                         s.get(&key)
                     }
                 }
