@@ -2237,12 +2237,13 @@ class AuditServer:
 class Postgres:
     cluster: Cluster
 
-    def __init__(self, cluster: Cluster, ssl: bool = False):
+    def __init__(self, cluster: Cluster, ssl: bool = False, ssl_verify: bool = False):
         # use random port in order to avoid "cannot assign requested address" error
         self.port = random.randint(2000, 30000)
         self.host = "localhost"
         self.cluster = cluster
         self.ssl = ssl
+        self.ssl_verify = ssl_verify
 
     def install(self):
         self.cluster.set_config_file(
@@ -2262,6 +2263,10 @@ instance:
         instance_dir.mkdir()
         shutil.copyfile(ssl_dir / "server.crt", instance_dir / "server.crt")
         shutil.copyfile(ssl_dir / "server.key", instance_dir / "server.key")
+
+        if self.ssl_verify:
+            shutil.copyfile(ssl_dir / "root.crt", instance_dir / "ca.crt")
+
         self.cluster.deploy(instance_count=1)
         return self
 
@@ -2278,3 +2283,8 @@ def postgres(cluster: Cluster):
 @pytest.fixture
 def postgres_with_tls(cluster: Cluster):
     return Postgres(cluster, ssl=True).install()
+
+
+@pytest.fixture
+def postgres_with_mtls(cluster: Cluster):
+    return Postgres(cluster, ssl=True, ssl_verify=True).install()

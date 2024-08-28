@@ -114,12 +114,28 @@ impl Context {
             .map_err(Error::invalid_configuration)?;
 
         let addr = (host, port);
-        tlog!(Info, "starting postgres server at {:?}...", addr);
-        let server = server::new_listener(addr)?;
+
+        let tls_note = match &tls_acceptor {
+            Some(acceptor) => {
+                if acceptor.mtls() {
+                    " with mTLS"
+                } else {
+                    " with TLS"
+                }
+            }
+            _ => "",
+        };
+
+        tlog!(
+            Info,
+            "starting postgres server at {:?}{}...",
+            addr,
+            tls_note
+        );
 
         Ok(Self {
-            server,
             tls_acceptor,
+            server: server::new_listener(addr)?,
         })
     }
 }

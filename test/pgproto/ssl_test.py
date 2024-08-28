@@ -45,22 +45,53 @@ def test_ssl_refuse(postgres: Postgres):
 
 
 def test_ssl_accept(postgres_with_tls: Postgres):
-    # where the server should find .crt and .key files
-    instance = postgres_with_tls.instance
-    host = postgres_with_tls.host
-    port = postgres_with_tls.port
+    conn = psycopg.connect(prepare_with_tls(postgres_with_tls, ""))
+    conn.close()
 
+
+def test_mtls_with_known_cert(postgres_with_mtls: Postgres):
+    conn = psycopg.connect(prepare_with_tls(postgres_with_mtls, "server"))
+    conn.close()
+
+
+def test_mtls_without_client_cert(postgres_with_mtls: Postgres):
+    with pytest.raises(
+        psycopg.OperationalError,
+        match="(certificate required)|(Connection refused)",
+    ):
+        conn = psycopg.connect(prepare_with_tls(postgres_with_mtls, ""))
+        conn.close()
+
+
+def test_mtls_with_unknown_cert(postgres_with_mtls: Postgres):
+    with pytest.raises(
+        psycopg.OperationalError,
+        match="(unknown ca)|(Connection refused)",
+    ):
+        conn = psycopg.connect(prepare_with_tls(postgres_with_mtls, "self-signed"))
+        conn.close()
+
+
+def prepare_with_tls(pg: Postgres, client_tls_pair_name: str):
+    instance = pg.instance
+    host = pg.host
+    port = pg.port
     user = "user"
     password = "P@ssw0rd"
+    connection_string = f"\
+            user = {user} \
+            password={password} \
+            host={host} \
+            port={port} \
+            sslmode=require"
+
     instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
 
-    # where the client should find his certificate
-    test_dir = Path(os.path.realpath(__file__)).parent
-    client_cert_file = test_dir.parent / "ssl_certs" / "root.crt"
-    os.environ["SSL_CERT_FILE"] = str(client_cert_file)
+    if client_tls_pair_name != "":
+        ssl_dir = Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"
+        client_cert_path = ssl_dir / (client_tls_pair_name + ".crt")
+        client_key_path = ssl_dir / (client_tls_pair_name + ".key")
+        connection_string += f" sslcert={client_cert_path} sslkey={client_key_path}"
+        os.chmod(client_key_path, 0o600)
 
-    os.environ["PGSSLMODE"] = "require"
-    conn = psycopg.connect(
-        f"user = {user} password={password} host={host} port={port} sslmode=require"
-    )
-    conn.close()
+    return connection_string

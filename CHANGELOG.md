@@ -69,6 +69,16 @@ users must specify the expected type of the parameter:
 
 - Ability to change cluster properties via SQL `ALTER SYSTEM` command
 
+- Mutual TLS authentication for Pgproto. 
+
+    1. Set `instance.pg.ssl` configuration parameter to `true`
+    1. Put PEM-encoded `ca.crt` file into instance's data directory along with `server.crt` and `server.key`.
+
+  As a result pgproto server will only accept connection if client has presented a certificate 
+  which was signed by `ca.crt` or it's derivatives.
+
+  If `ca.crt` is absent in instance's data directory, then client certificates are not requested and not validated.
+
 ### Compatibility
 
 - New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`
