@@ -469,10 +469,7 @@ Replace(_pico_property, ["target_vshard_config_version",1])
 )|
 |  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","current_config_version",1]])|
 |  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
-|  0  | 2  |BatchDml(
-Replace(_pico_property, ["current_vshard_config",[{{"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07":[{{"68d4a766-4144-3248-aeb4-e212356716e4":["pico_service@127.0.0.1:{p}","i1",true]}},1.0]}},"on"]]),
-Replace(_pico_property, ["current_vshard_config_version",1])
-)|
+|  0  | 2  |Replace(_pico_property, ["current_vshard_config_version",1])|
 |  0  | 2  |Replace(_pico_property, ["vshard_bootstrapped",true])|
 |  0  | 2  |Update(_pico_instance, ["i1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+

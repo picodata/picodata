@@ -135,6 +135,27 @@ pub(crate) fn setup() {
 
     luamod_set(
         &l,
+        "vshard_config",
+        indoc! {"
+        pico.vshard_config()
+        =========
+
+        Returns a Lua table containing current vshard configuration.
+
+        Returns:
+
+            (table)
+
+        "},
+        tlua::Function::new(move || -> traft::Result<_> {
+            let node = node::global()?;
+            let config = crate::vshard::VshardConfig::from_storage(&node.storage)?;
+            Ok(config)
+        }),
+    );
+
+    luamod_set(
+        &l,
         "whoami",
         indoc! {"
         pico.whoami()

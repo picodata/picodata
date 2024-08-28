@@ -45,7 +45,6 @@ use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Result;
 use crate::util::Uppercase;
-use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 
 use rmpv::Utf8String;
@@ -1287,10 +1286,6 @@ impl From<ClusterwideTable> for SpaceId {
         // read views if the corresponding instances are *deteremined* to not
         // need them anymore. Or maybe timeouts is the better way..
         SnapshotReadViewCloseTimeout = "snapshot_read_view_close_timeout",
-
-        /// Vshard configuration which has most recently been applied on all the
-        /// instances of the cluster.
-        CurrentVshardConfig = "current_vshard_config",
     }
 }
 
@@ -1357,10 +1352,6 @@ impl PropertyName {
                 // Check it's a floating point number.
                 // NOTE: serde implicitly converts integers to floats for us here.
                 _ = new.field::<f64>(1).map_err(map_err)?;
-            }
-            Self::CurrentVshardConfig => {
-                // Check it decodes into VshardConfig.
-                _ = new.field::<VshardConfig>(1).map_err(map_err)?;
             }
             Self::PendingSchemaChange => {
                 // Check it decodes into Ddl.
@@ -1564,13 +1555,6 @@ impl Properties {
     #[inline]
     pub fn delete(&self, key: PropertyName) -> tarantool::Result<Option<Tuple>> {
         self.space.delete(&[key])
-    }
-
-    #[inline]
-    pub fn current_vshard_config(&self) -> tarantool::Result<VshardConfig> {
-        Ok(self
-            .get(PropertyName::CurrentVshardConfig)?
-            .unwrap_or_default())
     }
 
     #[inline]

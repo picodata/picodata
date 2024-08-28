@@ -20,7 +20,6 @@ use crate::traft::op::Op;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
-use crate::vshard::VshardConfig;
 use crate::warn_or_panic;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
@@ -282,7 +281,6 @@ pub(super) fn action_plan<'i>(
     let ok_to_configure_vshard = vshard_bootstrapped || first_ready_replicaset.is_some();
 
     if ok_to_configure_vshard && current_vshard_config_version != target_vshard_config_version {
-        let vshard_config = VshardConfig::new(instances, peer_addresses, replicasets);
         let targets = maybe_responding(instances)
             // Note at this point all the instances should have their replication configured,
             // so it's ok to configure sharding for them
@@ -296,16 +294,6 @@ pub(super) fn action_plan<'i>(
             do_reconfigure: true,
         };
 
-        // Note: currently the "current_vshard_config" is only stored in "_pico_property" for debugging purposes,
-        // nobody actually uses it directly to configure vshard, instead the actual config is generated
-        // based on the contents of "_pico_instance", "_pico_replicaset" & "_pico_peer_address" tables.
-        let dml = Dml::replace(
-            ClusterwideTable::Property,
-            // FIXME: encode as map
-            &(&PropertyName::CurrentVshardConfig, vshard_config),
-            ADMIN_ID,
-        )?;
-
         #[rustfmt::skip]
         let vshard_config_version_actualize = Dml::replace(
             ClusterwideTable::Property,
@@ -316,7 +304,6 @@ pub(super) fn action_plan<'i>(
         return Ok(UpdateCurrentVshardConfig {
             targets,
             rpc,
-            dml,
             vshard_config_version_actualize,
         }
         .into());
@@ -699,8 +686,6 @@ pub mod stage {
             pub targets: Vec<&'i InstanceId>,
             /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
-            /// Global DML operation which updates `current_vshard_config` in table `_pico_property`.
-            pub dml: Dml,
             /// Global DML operation which updates `current_vshard_config_version` in table `_pico_property`.
             pub vshard_config_version_actualize: Dml,
         }

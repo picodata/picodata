@@ -8,8 +8,10 @@ use crate::traft::node;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::RaftTerm;
+use crate::vshard::VshardConfig;
 use std::borrow::Cow;
 use tarantool::proc;
+use tarantool::tuple::RawByteBuf;
 
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
 pub const RPC_API_VERSION: &'static str = "0.1.0";
@@ -300,4 +302,16 @@ pub fn proc_runtime_info() -> Result<RuntimeInfo<'static>, Error> {
 #[proc]
 pub fn proc_get_config() -> Result<rmpv::Value, Error> {
     Ok(PicodataConfig::get().parameters_with_sources_as_rmpv())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// .proc_get_vshard_config
+////////////////////////////////////////////////////////////////////////////////
+
+#[proc]
+pub fn proc_get_vshard_config() -> Result<RawByteBuf, Error> {
+    let node = node::global()?;
+    let config = VshardConfig::from_storage(&node.storage)?;
+    let data = rmp_serde::to_vec_named(&config).map_err(Error::other)?;
+    Ok(RawByteBuf::from(data))
 }

@@ -164,14 +164,13 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance):
     )
 
 
-def wait_current_vshard_config_changed(
-    peer: Instance, old_current_vshard_config, timeout=5
-):
+def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=10):
     def impl():
-        new_current_vshard_config = peer.eval(
-            "return box.space._pico_property:get('current_vshard_config').value",
+        rows = peer.sql(
+            """ SELECT value FROM _pico_property WHERE key = 'current_vshard_config_version' """
         )
-        assert new_current_vshard_config != old_current_vshard_config
+        new_version = rows[0][0]
+        assert new_version != old_version
 
     Retriable(timeout=timeout, rps=10).call(impl)
 
@@ -191,9 +190,10 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         assert replicaset_masters[r1_uuid] == i1.instance_id
         assert replicaset_masters[r2_uuid] == i3.instance_id
 
-    old_vshard_config = i1.eval(
-        "return box.space._pico_property:get('current_vshard_config').value"
+    rows = i1.sql(
+        """ SELECT value FROM _pico_property WHERE key = 'current_vshard_config_version' """
     )
+    old_vshard_config_version = rows[0][0]
 
     cluster.cas(
         "update",
@@ -210,7 +210,7 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
     cluster.raft_wait_index(index)
 
     # Wait for governor to change current master and update the vshard config.
-    wait_current_vshard_config_changed(i1, old_vshard_config)
+    wait_current_vshard_config_changed(i1, old_vshard_config_version)
 
     for i in cluster.instances:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)

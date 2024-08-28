@@ -742,7 +742,6 @@ impl Loop {
             Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig {
                 targets,
                 rpc,
-                dml,
                 vshard_config_version_actualize,
             }) => {
                 set_status(governor_status, "update current sharding configuration");
@@ -770,8 +769,7 @@ impl Loop {
                 governor_step! {
                     "updating current vshard config"
                     async {
-                        let batch = Op::BatchDml { ops: vec![dml, vshard_config_version_actualize] };
-                        node.propose_and_wait(batch, Duration::from_secs(3))?;
+                        node.propose_and_wait(vshard_config_version_actualize, Duration::from_secs(3))?;
                     }
                 }
             }
