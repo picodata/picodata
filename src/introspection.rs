@@ -8,6 +8,7 @@
 //! supports some basic struct field information.
 //!
 //! [`PicodataConfig`]: crate::config::PicodataConfig
+use crate::config::SbroadType;
 use crate::traft::error::Error;
 pub use pico_proc_macro::Introspection;
 
@@ -191,6 +192,41 @@ pub trait Introspection {
         &self,
         path: &str,
     ) -> Result<Option<rmpv::Value>, IntrospectionError>;
+
+    /// Get `SbroadType` which was specified via the `#[introspection(sbroad_type = expr)]` attribute.
+    ///
+    /// Returns `Ok(None)` if `sbroad_type` attribute wasn't provided for
+    /// given field.
+    ///
+    /// Note that the value is not checked neither against the field's type nor
+    /// against value specified in `config_default` attribute.
+    /// So it's the user's responsibility to make sure the types are consistent.
+    ///
+    /// The `expr` in `#[introspection(sbroad_type = expr)]` must be of type
+    /// [`SbroadType`] otherwise your code will not compile.
+    ///
+    /// # Examples:
+    /// ```
+    /// use picodata::introspection::Introspection;
+    /// use picodata::config::SbroadType;
+    ///
+    /// #[derive(Introspection, Default)]
+    /// #[introspection(crate = picodata)]
+    /// struct MyStruct {
+    ///     #[introspection(sbroad_type = SbroadType::Integer)]
+    ///     number: i32,
+    ///     #[introspection(sbroad_type = SbroadType::String)]
+    ///     text: String,
+    ///     type_wasnt_specified: bool,
+    /// }
+    ///
+    /// assert_eq!(MyStruct::get_sbroad_type_of_field("number").unwrap(), Some(SbroadType::Integer));
+    ///
+    /// assert_eq!(MyStruct::get_sbroad_type_of_field("text").unwrap(), Some(SbroadType::String));
+    ///
+    /// assert_eq!(MyStruct::get_sbroad_type_of_field("type_wasnt_specified").unwrap(), None);
+    /// ```
+    fn get_sbroad_type_of_field(path: &str) -> Result<Option<SbroadType>, IntrospectionError>;
 }
 
 /// Information about a single struct field. This is the type which is stored
@@ -384,12 +420,16 @@ mod test {
     struct S {
         x: i32,
         #[introspection(config_default = self.x as f32 * 0.5)]
+        #[introspection(sbroad_type = SbroadType::Double)]
         y: f32,
         #[introspection(config_default = "this is a &str but it still works")]
+        #[introspection(sbroad_type = SbroadType::String)]
         s: String,
         #[introspection(config_default = &["this", "also", "works"])]
+        #[introspection(sbroad_type = SbroadType::Array)]
         v: Vec<String>,
         #[introspection(nested)]
+        #[introspection(sbroad_type = SbroadType::Map)]
         r#struct: Nested,
 
         #[introspection(ignore)]
@@ -399,6 +439,7 @@ mod test {
     #[derive(Default, Debug, Introspection, PartialEq)]
     struct Nested {
         #[introspection(config_default = "nested of course works")]
+        #[introspection(sbroad_type = SbroadType::String)]
         a: String,
         #[introspection(config_default = format!("{}, but type safety is missing unfortunately", self.a))]
         b: i64,
@@ -810,5 +851,61 @@ mod test {
                 (rmpv::Value::from("b"), rmpv::Value::from("self.a which was set explicitly, but type safety is missing unfortunately")),
             ])),
         );
+    }
+
+    #[test]
+    fn get_sbroad_type_of_field() {
+        //
+        // Error cases are mostly covered in tests above
+        //
+        let e = S::get_sbroad_type_of_field("struct.no_such_field").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "struct: unknown field `no_such_field`, expected one of `a`, `b`, `empty`"
+        );
+
+        let e = S::get_sbroad_type_of_field("ignored").unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "unknown field `ignored`, expected one of `x`, `y`, `s`, `v`, `struct`"
+        );
+
+        //
+        // Success cases
+        //
+        // We didn't specify type for `x` so it's `None`.
+        assert_eq!(S::get_sbroad_type_of_field("x").unwrap(), None);
+        // Remember, it's `self.x * 0.5`
+        assert_eq!(
+            S::get_sbroad_type_of_field("y").unwrap(),
+            Some(SbroadType::Double)
+        );
+
+        assert_eq!(
+            S::get_sbroad_type_of_field("s").unwrap(),
+            Some(SbroadType::String)
+        );
+
+        assert_eq!(
+            S::get_sbroad_type_of_field("v").unwrap(),
+            Some(SbroadType::Array)
+        );
+
+        // Type of whole subsection also works, if specified.
+        assert_eq!(
+            S::get_sbroad_type_of_field("struct").unwrap(),
+            Some(SbroadType::Map),
+        );
+
+        assert_eq!(
+            S::get_sbroad_type_of_field("struct.a").unwrap(),
+            Some(SbroadType::String)
+        );
+
+        // Didn't specify
+        assert_eq!(S::get_sbroad_type_of_field("struct.b").unwrap(), None);
+
+        // Type of nested subsection wasn't specified in this case.
+        assert_eq!(S::get_sbroad_type_of_field("struct.empty").unwrap(), None);
     }
 }

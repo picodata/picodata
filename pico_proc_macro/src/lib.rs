@@ -99,6 +99,8 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
     let body_for_get_field_default_value_as_rmpv =
         generate_body_for_get_field_default_value_as_rmpv(&context);
 
+    let body_for_get_sbroad_type_of_field = generate_body_for_get_sbroad_type_of_field(&context);
+
     let crate_ = &context.args.crate_;
     quote! {
         #[automatically_derived]
@@ -126,11 +128,17 @@ pub fn derive_introspection(input: proc_macro::TokenStream) -> proc_macro::Token
                 use #crate_::introspection::IntrospectionError;
                 #body_for_get_field_default_value_as_rmpv
             }
+
+            fn get_sbroad_type_of_field(path: &str) -> Result<Option<#crate_::config::SbroadType>, #crate_::introspection::IntrospectionError> {
+                use #crate_::introspection::IntrospectionError;
+                #body_for_get_sbroad_type_of_field
+            }
         }
     }
     .into()
 }
 
+/// Generates body of `Introspection::FIELD_INFOS` constants array.
 fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream {
     let crate_ = &context.args.crate_;
 
@@ -161,6 +169,8 @@ fn generate_body_for_field_infos(context: &Context) -> proc_macro2::TokenStream 
     code
 }
 
+/// Generates body of `Introspection::set_field_from_yaml` or `Introspection::set_field_from_rmpv` method.
+/// Or may be used for other methods also if we add those.
 fn generate_body_for_set_field_from_something(
     context: &Context,
     fn_ident: &syn::Ident,
@@ -274,6 +284,7 @@ fn generate_body_for_set_field_from_something(
     }
 }
 
+/// Generates body of `Introspection::get_field_as_rmpv` method.
 fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenStream {
     let crate_ = &context.args.crate_;
 
@@ -385,6 +396,7 @@ fn generate_body_for_get_field_as_rmpv(context: &Context) -> proc_macro2::TokenS
     }
 }
 
+/// Generates body of `Introspection::get_field_default_value_as_rmpv` method.
 fn generate_body_for_get_field_default_value_as_rmpv(
     context: &Context,
 ) -> proc_macro2::TokenStream {
@@ -512,6 +524,110 @@ fn generate_body_for_get_field_default_value_as_rmpv(
     }
 }
 
+/// Generates body of `Introspection::get_sbroad_type_of_field` method.
+fn generate_body_for_get_sbroad_type_of_field(context: &Context) -> proc_macro2::TokenStream {
+    let mut sbroad_type_for_non_nestable = quote! {};
+    let mut sbroad_type_for_whole_nestable = quote! {};
+    let mut sbroad_type_for_nested_subfield = quote! {};
+    let mut non_nestable_names = vec![];
+    for field in &context.fields {
+        let name = &field.name;
+        #[allow(non_snake_case)]
+        let Type = &field.field.ty;
+
+        if !field.attrs.nested {
+            non_nestable_names.push(name);
+
+            // Handle getting sbroad type for a non-nestable field
+            if let Some(sbroad_type) = &field.attrs.sbroad_type {
+                sbroad_type_for_non_nestable.extend(quote! {
+                    #name => { return Ok(Some(#sbroad_type)); }
+                });
+            } else {
+                sbroad_type_for_non_nestable.extend(quote! {
+                    #name => { return Ok(None); }
+                });
+            }
+        } else {
+            // Handle getting sbroad type for a field marked with `#[introspection(nested)]`.
+            // Note that this code is exactly the same as in the non-nestable case.
+            if let Some(sbroad_type) = &field.attrs.sbroad_type {
+                sbroad_type_for_whole_nestable.extend(quote! {
+                    #name => { return Ok(Some(#sbroad_type)); }
+                });
+            } else {
+                sbroad_type_for_whole_nestable.extend(quote! {
+                    #name => { return Ok(None); }
+                });
+            }
+
+            // Handle getting sbroad type for a nested field
+            sbroad_type_for_nested_subfield.extend(quote! {
+                #name => {
+                    return #Type::get_sbroad_type_of_field(tail)
+                        .map_err(|e| e.with_prepended_prefix(head));
+                }
+            });
+        }
+    }
+
+    // Handle if a nested path is specified for non-nestable field
+    let mut error_if_non_nestable = quote! {};
+    if !non_nestable_names.is_empty() {
+        error_if_non_nestable = quote! {
+            #( #non_nestable_names )|* => {
+                return Err(IntrospectionError::NotNestable { field: head.into() })
+            }
+        };
+    }
+
+    // Actual generated body:
+    quote! {
+        match path.split_once('.') {
+            Some((head, tail)) => {
+                let head = head.trim();
+                if head.is_empty() {
+                    return Err(IntrospectionError::InvalidPath {
+                        expected: "expected a field name before",
+                        path: format!(".{tail}"),
+                    })
+                }
+                let tail = tail.trim();
+                if !tail.chars().next().map_or(false, char::is_alphabetic) {
+                    return Err(IntrospectionError::InvalidPath {
+                        expected: "expected a field name after",
+                        path: format!("{head}."),
+                    })
+                }
+                match head {
+                    #error_if_non_nestable
+                    #sbroad_type_for_nested_subfield
+                    _ => {
+                        return Err(IntrospectionError::NoSuchField {
+                            parent: "".into(),
+                            field: head.into(),
+                            expected: Self::FIELD_INFOS,
+                        });
+                    }
+                }
+            }
+            None => {
+                match path {
+                    #sbroad_type_for_non_nestable
+                    #sbroad_type_for_whole_nestable
+                    _ => {
+                        return Err(IntrospectionError::NoSuchField {
+                            parent: "".into(),
+                            field: path.into(),
+                            expected: Self::FIELD_INFOS,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct Context {
     fields: Vec<FieldInfo>,
     args: Args,
@@ -575,13 +691,19 @@ struct FieldAttrs {
     /// as a default configuration parameter value. See also doc comments of
     /// `Introspection::get_field_default_value_as_rmpv` for more details.
     config_default: Option<syn::Expr>,
+
+    /// Looks like this in the source code: `#[introspection(sbroad_type = <expr>)]`.
+    ///
+    /// The provided expression must have type `picodata::config::SbroadType`.
+    /// The user must make sure that `config_default` is not conflicting with `sbroad_type`.
+    sbroad_type: Option<syn::Expr>,
 }
 
 impl FieldAttrs {
     fn from_attributes(attrs: Vec<syn::Attribute>) -> Result<Self, syn::Error> {
         let mut result = Self::default();
 
-        for attr in attrs {
+        for attr in &attrs {
             if !attr.path.is_ident("introspection") {
                 continue;
             }
@@ -604,10 +726,18 @@ impl FieldAttrs {
                         input.parse::<syn::Token![=]>()?;
 
                         result.config_default = Some(input.parse::<syn::Expr>()?);
+                    } else if ident == "sbroad_type" {
+                        if result.sbroad_type.is_some() {
+                            return Err(syn::Error::new(ident.span(), "duplicate `sbroad_type` specified"));
+                        }
+
+                        input.parse::<syn::Token![=]>()?;
+
+                        result.sbroad_type = Some(input.parse::<syn::Expr>()?);
                     } else {
                         return Err(syn::Error::new(
                             ident.span(),
-                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`"),
+                            format!("unknown attribute argument `{ident}`, expected one of `ignore`, `nested`, `config_default`, `sbroad_type`"),
                         ));
                     }
 

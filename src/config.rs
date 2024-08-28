@@ -29,6 +29,9 @@ use std::str::FromStr;
 use tarantool::log::SayLevel;
 use tarantool::tlua;
 
+/// This reexport is used in the derive macro for Introspection.
+pub use sbroad::ir::relation::Type as SbroadType;
+
 pub use crate::address::{DEFAULT_IPROTO_PORT, DEFAULT_LISTEN_HOST, DEFAULT_USERNAME};
 pub const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
