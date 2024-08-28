@@ -1528,3 +1528,35 @@ cluster:
             """,
         )
         assert query["row_count"] == 1
+
+
+def test_long_term_transaction_causing_rpc_timeouts(cluster: Cluster):
+    """
+    This test is designed to reproduces the issue described in
+    https://git.picodata.io/picodata/picodata/picodata/-/issues/748
+    """
+    i1, i2, _ = cluster.deploy(instance_count=3)
+
+    ddl = i1.sql("CREATE TABLE t (id INT PRIMARY KEY, data INT, data2 INT)")
+    assert ddl["row_count"] == 1
+
+    # Simulate a long-term transaction by blocking the next schema change for 1.5 seconds.
+    # The RPC timeout is set to 1 second, so this block will trigger an RPC timeout.
+    # After the timeout occurs, another RPC will be re-sent and blocked by the schema change lock.
+    # Once the injection is disabled, the initial RPC will create the index, complete
+    # the transaction and release the lock, allowing subsequent RPC to begin and send an
+    # acknowledgement to the governor.
+    i2.eval(
+        """
+        local fiber = require('fiber')
+        function block_next_apply_schema_change_transaction_for_one_and_a_half_secs()
+            pico._inject_error("BLOCK_APPLY_SCHEMA_CHANGE_TRANSACTION", true)
+            fiber.sleep(1.5)
+            pico._inject_error("BLOCK_APPLY_SCHEMA_CHANGE_TRANSACTION", false)
+        end
+        fiber.create(block_next_apply_schema_change_transaction_for_one_and_a_half_secs)
+        """
+    )
+
+    ddl = i1.sql("CREATE INDEX tdata ON t (data) OPTION (TIMEOUT = 3)")
+    assert ddl["row_count"] == 1

@@ -965,6 +965,12 @@ impl NodeImpl {
                         return SleepAndRetry;
                     } else {
                         // Master applies schema change at this point.
+                        // Note: Unlike RPC handler `proc_apply_schema_change`, there is no need
+                        // for a schema change lock. When instance is catching up to the cluster,
+                        // RPCs will be blocked waiting for the applied index from the request to
+                        // be applied on master *, so no concurrent changes can happen.
+                        //
+                        // * https://git.picodata.io/picodata/picodata/picodata/-/blob/ccba5cf1956e41b31eac8cdfacd0e4344033dda1/src/rpc/ddl_apply.rs#L32
                         let res = rpc::ddl_apply::apply_schema_change(
                             &self.storage,
                             &ddl,

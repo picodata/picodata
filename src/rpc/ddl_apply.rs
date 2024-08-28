@@ -10,9 +10,24 @@ use crate::traft::error::Error as TraftError;
 use crate::traft::error::ErrorInfo;
 use crate::traft::node;
 use crate::traft::{RaftIndex, RaftTerm};
+use std::rc::Rc;
 use std::time::Duration;
 use tarantool::error::{BoxError, TarantoolErrorCode};
+use tarantool::fiber;
 use tarantool::transaction::{transaction, TransactionError};
+
+// A global lock for schema changes that solves the following issue:
+// An expensive index creation can cause RPC timeouts, resulting in re-sending of the
+// same RPC even though the operation is still in progress on the master. The second RPC
+// attempts to create the same index, but it realizes that the index already exists,
+// even if the operation has not been completed yet. To handle this scenario, a global
+// lock was added for `apply_schema_change` to prevent concurrent schema changes.
+//
+// Note: The issue was discovered in
+// `<https://git.picodata.io/picodata/picodata/picodata/-/issues/748>`.
+thread_local! {
+    static LOCK: Rc<fiber::Mutex<()>> = Rc::new(fiber::Mutex::new(()));
+}
 
 crate::define_rpc_request! {
     /// Forces the target instance to actually apply the pending schema change locally.
@@ -34,6 +49,12 @@ crate::define_rpc_request! {
 
         let storage = &node.storage;
 
+        // While the schema change is being applied, repeated RPCs will be blocked by this lock.
+        // Once the change is applied and the lock is released, repeated RPC will finish quickly
+        // after checking the schema versions.
+        let lock = LOCK.with(Rc::clone);
+        let _guard = lock.lock();
+
         let pending_schema_version = storage.properties.pending_schema_version()?
             .ok_or_else(|| TraftError::other("pending schema version not found"))?;
         // Already applied.
@@ -52,10 +73,6 @@ crate::define_rpc_request! {
         let ddl = storage.properties.pending_schema_change()?
             .ok_or_else(|| TraftError::other("pending schema change not found"))?;
 
-
-        // TODO: transaction may have already started, if we're in a process of
-        // creating a big index. If governor sends a repeat rpc request to us we
-        // should handle this correctly
         let res = transaction(|| apply_schema_change(storage, &ddl, pending_schema_version, false));
         match res {
             Ok(()) => Ok(Response::Ok),
@@ -125,6 +142,9 @@ pub fn apply_schema_change(
     is_commit: bool,
 ) -> Result<(), Error> {
     debug_assert!(unsafe { tarantool::ffi::tarantool::box_txn() });
+
+    // Injection allowing to block the transaction for an indefinite period of time.
+    crate::error_injection!(block "BLOCK_APPLY_SCHEMA_CHANGE_TRANSACTION");
 
     match *ddl {
         Ddl::CreateTable { id, .. } => {
