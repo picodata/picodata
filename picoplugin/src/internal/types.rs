@@ -1,5 +1,4 @@
-use abi_stable::derive_macro_reexports::ROption;
-use abi_stable::std_types::{RSome, RString, RVec};
+use abi_stable::std_types::{RString, RVec};
 use abi_stable::StableAbi;
 use tarantool::session::UserId;
 use tarantool::space::{SpaceId, UpdateOps};
@@ -140,30 +139,21 @@ impl Op {
     }
 }
 
-#[derive(Default, StableAbi, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum BoundKind {
-    Included,
-    Excluded,
-    #[default]
-    Unbounded,
-}
-
 #[derive(StableAbi, Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
 pub struct Bound {
-    pub kind: BoundKind,
-    pub key: ROption<RVec<u8>>,
+    pub is_included: bool,
+    pub key: RVec<u8>,
 }
 
 impl Bound {
-    pub fn new(kind: BoundKind, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
+    pub fn new(is_included: bool, key: &impl ToTupleBuffer) -> tarantool::Result<Self> {
         let tb = key.to_tuple_buffer()?;
         let raw_key = Vec::from(tb);
 
         Ok(Self {
-            kind,
-            key: RSome(RVec::from(raw_key)),
+            is_included,
+            key: RVec::from(raw_key),
         })
     }
 }

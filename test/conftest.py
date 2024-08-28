@@ -326,23 +326,13 @@ class KeyDef:
 
 
 class CasRange:
+    # FIXME: these values are associated with the class, not the object.
+    # All objects have access to the same variables
     key_min = dict(kind="unbounded", key=None)
     key_max = dict(kind="unbounded", key=None)
     repr_min = "unbounded"
     repr_max = "unbounded"
     table = None
-
-    @property
-    def key_min_packed(self) -> dict:
-        key = self.key_min.copy()
-        key["key"] = msgpack.packb([key["key"][0]])  # type: ignore
-        return key
-
-    @property
-    def key_max_packed(self) -> dict:
-        key = self.key_max.copy()
-        key["key"] = msgpack.packb([key["key"][0]])  # type: ignore
-        return key
 
     def __repr__(self):
         return f"CasRange({self.repr_min}, {self.repr_max})"
@@ -1066,13 +1056,12 @@ class Instance:
         predicate_ranges = []
         if ranges is not None:
             for range in ranges:
-                predicate_ranges.append(
-                    dict(
-                        table=table_id,
-                        key_min=range.key_min_packed,
-                        key_max=range.key_max_packed,
-                    )
-                )
+                assert range.key_min == range.key_max, "we don't use other ranges ever"
+                key = range.key_min["key"]
+                key_packed = msgpack.packb(key)
+                bounds = dict(kind="eq", key=key_packed)
+                range_packed = dict(table=table_id, bounds=bounds)
+                predicate_ranges.append(range_packed)
 
         predicate = dict(
             index=index,

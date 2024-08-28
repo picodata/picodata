@@ -1036,7 +1036,7 @@ pub(crate) fn setup() {
                 let op = op::Dml::from_lua_args(op, su.original_user_id)
                     .map_err(traft::error::Error::other)?;
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
-                let req = crate::cas::Request::new(op.into(), predicate, su.original_user_id)?;
+                let req = crate::cas::Request::new(op, predicate, su.original_user_id)?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
                 let res = cas::compare_and_swap(&req, false, deadline)?;
                 let (index, _) = res.no_retries()?;

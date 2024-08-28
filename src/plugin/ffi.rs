@@ -1,4 +1,3 @@
-use crate::cas::{Bound, Range};
 use crate::info::{InstanceInfo, RaftInfo, VersionInfo};
 use crate::instance::StateVariant;
 use crate::plugin::{rpc, PluginIdentifier};
@@ -22,7 +21,7 @@ use tarantool::datetime::Datetime;
 use tarantool::error::IntoBoxError;
 use tarantool::ffi::tarantool::BoxTuple;
 use tarantool::fiber;
-use tarantool::tuple::{RawByteBuf, TupleBuffer};
+use tarantool::tuple::TupleBuffer;
 use tarantool::uuid::Uuid;
 
 #[no_mangle]
@@ -165,38 +164,39 @@ impl From<types::Op> for Op {
     }
 }
 
-impl From<types::Bound> for Bound {
-    fn from(value: types::Bound) -> Self {
-        match value.kind {
-            types::BoundKind::Included => {
-                let raw = value.key.expect("should be Some").to_vec();
-                Bound::included(&RawByteBuf(raw))
-            }
-            types::BoundKind::Excluded => {
-                let raw = value.key.expect("should be Some").to_vec();
-                Bound::included(&RawByteBuf(raw))
-            }
-            types::BoundKind::Unbounded => Bound::unbounded(),
+fn convert_predicate(predicate: types::Predicate) -> Result<cas::Predicate, traft::error::Error> {
+    let index = predicate.index;
+    let term = predicate.term;
+    let mut ranges = Vec::with_capacity(predicate.ranges.len());
+    for ffi_range in predicate.ranges {
+        let mut key_min = None;
+        let ffi_key_min: Vec<_> = ffi_range.key_min.key.into();
+        if !ffi_key_min.is_empty() {
+            key_min = Some(TupleBuffer::try_from_vec(ffi_key_min)?);
         }
-    }
-}
+        let key_min_included = ffi_range.key_min.is_included;
 
-impl From<types::Predicate> for cas::Predicate {
-    fn from(value: types::Predicate) -> Self {
-        cas::Predicate {
-            index: value.index,
-            term: value.term,
-            ranges: value
-                .ranges
-                .into_iter()
-                .map(|safe_range| Range {
-                    table: safe_range.table,
-                    key_min: safe_range.key_min.into(),
-                    key_max: safe_range.key_max.into(),
-                })
-                .collect(),
+        let mut key_max = None;
+        let ffi_key_max: Vec<_> = ffi_range.key_max.key.into();
+        if !ffi_key_max.is_empty() {
+            key_max = Some(TupleBuffer::try_from_vec(ffi_key_max)?);
         }
+        let key_max_included = ffi_range.key_max.is_included;
+
+        let range = cas::Range::from_parts(
+            ffi_range.table,
+            key_min,
+            key_min_included,
+            key_max,
+            key_max_included,
+        );
+        ranges.push(range);
     }
+    Ok(cas::Predicate {
+        index,
+        term,
+        ranges,
+    })
 }
 
 fn error_into_tt_error<T>(source: impl IntoBoxError) -> RResult<T, ()> {
@@ -213,10 +213,12 @@ extern "C" fn pico_ffi_cas(
 ) -> RResult<ROption<RTuple!(u64, u64)>, ()> {
     let deadline = fiber::clock().saturating_add(timeout.into());
     let op = Op::from(op);
-    let pred = cas::Predicate::from(predicate);
+    let predicate = crate::unwrap_ok_or!(convert_predicate(predicate),
+        Err(e) => return error_into_tt_error(e)
+    );
     let user_id = effective_user_id();
     let res = (|| -> Result<_, _> {
-        let request = cas::Request::new(op, pred, user_id)?;
+        let request = cas::Request::new(op, predicate, user_id)?;
         cas::compare_and_swap(&request, false, deadline)
     })();
     match res {

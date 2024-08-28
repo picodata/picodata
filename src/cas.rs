@@ -404,12 +404,13 @@ crate::define_rpc_request! {
 }
 
 impl Request {
-    pub fn new(op: Op, predicate: Predicate, as_user: UserId) -> traft::Result<Self> {
+    #[inline(always)]
+    pub fn new(op: impl Into<Op>, predicate: Predicate, as_user: UserId) -> traft::Result<Self> {
         let node = node::global()?;
         Ok(Request {
             cluster_id: node.raft_storage.cluster_id()?,
             predicate,
-            op,
+            op: op.into(),
             as_user,
         })
     }
@@ -689,7 +690,7 @@ pub fn schema_change_ranges() -> &'static [Range] {
 ///
 /// This is only used to parse lua arguments from lua api functions such as
 /// `pico.cas`.
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead, PartialEq)]
 pub struct RangeInLua {
     /// Table name.
     pub table: String,
@@ -698,17 +699,17 @@ pub struct RangeInLua {
 }
 
 /// A range of keys used as an argument for a [`Predicate`].
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Range {
     pub table: SpaceId,
-    pub key_min: Bound,
-    pub key_max: Bound,
+    pub bounds: Option<RangeBounds>,
 }
 
 impl Range {
     pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
-        let table_id = if let Some(table) = node.storage.tables.by_name(&range.table)? {
+        let table = if let Some(table) = node.storage.tables.by_name(&range.table)? {
             table.id
         } else if let Some(table) = Space::find(&range.table) {
             table.id()
@@ -718,11 +719,13 @@ impl Range {
                 range.table
             )));
         };
-        Ok(Self {
-            table: table_id,
-            key_min: range.key_min,
-            key_max: range.key_max,
-        })
+        Ok(Self::from_parts(
+            table,
+            range.key_min.key,
+            range.key_min.kind == BoundKind::Included,
+            range.key_max.key,
+            range.key_max.kind == BoundKind::Included,
+        ))
     }
 
     /// Creates new unbounded range in `table`. Use other methods to restrict it.
@@ -739,104 +742,181 @@ impl Range {
     pub fn new(table: impl Into<SpaceId>) -> Self {
         Self {
             table: table.into(),
-            key_min: Bound::unbounded(),
-            key_max: Bound::unbounded(),
+            bounds: None,
+        }
+    }
+
+    #[inline(always)]
+    pub fn from_parts(
+        table: impl Into<SpaceId>,
+        key_min: Option<TupleBuffer>,
+        key_min_included: bool,
+        key_max: Option<TupleBuffer>,
+        key_max_included: bool,
+    ) -> Self {
+        let bounds = if key_min == key_max {
+            key_min.map(|key| RangeBounds::Eq { key })
+        } else {
+            Some(RangeBounds::Range {
+                key_min_included,
+                key_min,
+                key_max_included,
+                key_max,
+            })
+        };
+        Self {
+            table: table.into(),
+            bounds,
         }
     }
 
     /// Add a "greater than" restriction.
     #[inline(always)]
     pub fn gt(mut self, key: impl ToTupleBuffer) -> Self {
-        self.key_min = Bound::excluded(&key);
+        let bounds = self.bounds.get_or_insert_with(RangeBounds::default);
+        let key = key.to_tuple_buffer().expect("never fails");
+        bounds.set_min(key, false);
         self
     }
 
     /// Add a "greater or equal" restriction.
     #[inline(always)]
     pub fn ge(mut self, key: impl ToTupleBuffer) -> Self {
-        self.key_min = Bound::included(&key);
+        let bounds = self.bounds.get_or_insert_with(RangeBounds::default);
+        let key = key.to_tuple_buffer().expect("never fails");
+        bounds.set_min(key, true);
         self
     }
 
     /// Add a "less than" restriction.
     #[inline(always)]
     pub fn lt(mut self, key: impl ToTupleBuffer) -> Self {
-        self.key_max = Bound::excluded(&key);
+        let bounds = self.bounds.get_or_insert_with(RangeBounds::default);
+        let key = key.to_tuple_buffer().expect("never fails");
+        bounds.set_max(key, false);
         self
     }
 
     /// Add a "less or equal" restriction.
     #[inline(always)]
     pub fn le(mut self, key: impl ToTupleBuffer) -> Self {
-        self.key_max = Bound::included(&key);
+        let bounds = self.bounds.get_or_insert_with(RangeBounds::default);
+        let key = key.to_tuple_buffer().expect("never fails");
+        bounds.set_max(key, true);
         self
     }
 
     /// Add a "equal" restriction.
     #[inline(always)]
     pub fn eq(mut self, key: impl ToTupleBuffer) -> Self {
-        self.key_min = Bound::included(&key);
-        self.key_max = Bound::included(&key);
+        let key = key.to_tuple_buffer().expect("never fails");
+        self.bounds = Some(RangeBounds::Eq { key });
         self
     }
 
     pub fn contains(&self, key_def: &KeyDef, tuple: &Tuple) -> bool {
-        let min_satisfied = match self.key_min.kind {
-            BoundKind::Included => key_def
-                .compare_with_key(tuple, self.key_min.key.as_ref().unwrap())
-                .is_ge(),
-            BoundKind::Excluded => key_def
-                .compare_with_key(tuple, self.key_min.key.as_ref().unwrap())
-                .is_gt(),
-            BoundKind::Unbounded => true,
+        let Some(bounds) = &self.bounds else {
+            return true;
         };
-        // short-circuit
-        if !min_satisfied {
-            return false;
+
+        match bounds {
+            RangeBounds::Eq { key } => {
+                return key_def.compare_with_key(tuple, key).is_eq();
+            }
+            RangeBounds::Range {
+                key_min_included,
+                key_min,
+                key_max_included,
+                key_max,
+            } => {
+                if let Some(key_min) = key_min {
+                    let cmp = key_def.compare_with_key(tuple, key_min);
+                    if cmp.is_lt() || !key_min_included && cmp.is_eq() {
+                        return false;
+                    }
+                }
+
+                if let Some(key_max) = key_max {
+                    let cmp = key_def.compare_with_key(tuple, key_max);
+                    if cmp.is_gt() || !key_max_included && cmp.is_eq() {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
-        let max_satisfied = match self.key_max.kind {
-            BoundKind::Included => key_def
-                .compare_with_key(tuple, self.key_max.key.as_ref().unwrap())
-                .is_le(),
-            BoundKind::Excluded => key_def
-                .compare_with_key(tuple, self.key_max.key.as_ref().unwrap())
-                .is_lt(),
-            BoundKind::Unbounded => true,
-        };
-        // min_satisfied && max_satisfied
-        max_satisfied
+    }
+}
+
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[serde(tag = "kind")]
+#[serde(rename_all = "snake_case")]
+pub enum RangeBounds {
+    Eq {
+        #[serde(with = "serde_bytes")]
+        key: TupleBuffer,
+    },
+    Range {
+        key_min_included: bool,
+        #[serde(with = "serde_bytes")]
+        key_min: Option<TupleBuffer>,
+        key_max_included: bool,
+        #[serde(with = "serde_bytes")]
+        key_max: Option<TupleBuffer>,
+    },
+}
+
+impl Default for RangeBounds {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::Range {
+            key_min_included: false,
+            key_min: None,
+            key_max_included: false,
+            key_max: None,
+        }
+    }
+}
+
+impl RangeBounds {
+    #[inline(always)]
+    fn set_min(&mut self, key: TupleBuffer, included: bool) {
+        match self {
+            Self::Eq { .. } => panic!("already set to Eq"),
+            Self::Range {
+                key_min,
+                key_min_included,
+                ..
+            } => {
+                *key_min = Some(key);
+                *key_min_included = included;
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn set_max(&mut self, key: TupleBuffer, included: bool) {
+        match self {
+            Self::Eq { .. } => panic!("already set to Eq"),
+            Self::Range {
+                key_max,
+                key_max_included,
+                ..
+            } => {
+                *key_max = Some(key);
+                *key_max_included = included;
+            }
+        }
     }
 }
 
 /// A bound for keys.
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead, PartialEq)]
 pub struct Bound {
     kind: BoundKind,
     #[serde(with = "serde_bytes")]
     key: Option<TupleBuffer>,
-}
-
-impl Bound {
-    pub fn included(key: &impl ToTupleBuffer) -> Self {
-        Self {
-            kind: BoundKind::Included,
-            key: Some(key.to_tuple_buffer().expect("cannot fail")),
-        }
-    }
-
-    pub fn excluded(key: &impl ToTupleBuffer) -> Self {
-        Self {
-            kind: BoundKind::Excluded,
-            key: Some(key.to_tuple_buffer().expect("cannot fail")),
-        }
-    }
-
-    pub fn unbounded() -> Self {
-        Self {
-            kind: BoundKind::Unbounded,
-            key: None,
-        }
-    }
 }
 
 ::tarantool::define_str_enum! {
