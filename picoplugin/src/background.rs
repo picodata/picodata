@@ -32,7 +32,7 @@ impl CancellationToken {
     /// Create a cancellation token and cancellation token handle pair.
     /// User should use cancellation token for graceful shutdown their job.
     /// Cancellation token handle used by `picodata` for sending cancel signal to a user job.
-    fn new() -> (CancellationToken, CancellationTokenHandle) {
+    pub fn new() -> (CancellationToken, CancellationTokenHandle) {
         let (cancel_tx, cancel_rx) = Channel::new(1).into_clones();
         (
             CancellationToken {
@@ -63,7 +63,7 @@ impl CancellationToken {
 }
 
 #[derive(Debug)]
-struct CancellationTokenHandle {
+pub struct CancellationTokenHandle {
     cancel_channel: Channel<()>,
     finish_channel: Channel<()>,
 }
@@ -72,7 +72,7 @@ impl CancellationTokenHandle {
     /// Cancel related job and return a backpressure channel.
     /// Caller should wait a message in the backpressure channel
     /// to make sure the job is completed successfully (graceful shutdown occurred).
-    fn cancel(self) -> Channel<()> {
+    pub fn cancel(self) -> Channel<()> {
         let Self {
             cancel_channel,
             finish_channel,
