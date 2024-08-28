@@ -1482,6 +1482,27 @@ pub struct AlterSystemParameters {
     #[introspection(sbroad_type = SbroadType::Double)]
     #[introspection(config_default = (24 * 3600))]
     pub snapshot_read_view_close_timeout: f64,
+
+    /// Governor proposes operations to raft log and waits for them to be
+    /// applied to the local raft machine.
+    /// Governor will only wait for this many seconds before going to the new loop iteration.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 3.0)]
+    pub governor_raft_op_timeout: f64,
+
+    /// Governor sets up replication and configuration in the cluster as well as
+    /// applying global schema changes. It is doing so by making RPC requests to
+    /// other instances.
+    /// Governor will only wait for the RPC responses for this many seconds before going to the new loop iteration.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 3.0)]
+    pub governor_common_rpc_timeout: f64,
+
+    /// Governor sets up the plugin system by making RPC requests to other instances.
+    /// Governor will only wait for the RPC responses for this many seconds before going to the new loop iteration.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 10.0)]
+    pub governor_plugin_rpc_timeout: f64,
 }
 
 /// A special macro helper for referring to alter system parameters thoroughout

@@ -49,9 +49,6 @@ pub(crate) mod plan;
 
 impl Loop {
     const RETRY_TIMEOUT: Duration = Duration::from_millis(250);
-    const RAFT_OP_TIMEOUT: Duration = Duration::from_secs(3);
-    const COMMON_RPC_TIMEOUT: Duration = Duration::from_secs(3);
-    const PLUGIN_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
     async fn iter_fn(
         State {
@@ -69,9 +66,23 @@ impl Loop {
             return ControlFlow::Continue(());
         }
 
-        let raft_op_timeout = Loop::RAFT_OP_TIMEOUT;
-        let rpc_timeout = Loop::COMMON_RPC_TIMEOUT;
-        let plugin_rpc_timeout = Loop::PLUGIN_RPC_TIMEOUT;
+        let v: f64 = storage
+            .properties
+            .get_or_alter_system_default(crate::system_parameter_name!(governor_raft_op_timeout))
+            .expect("storage should never ever fail");
+        let raft_op_timeout = Duration::from_secs_f64(v);
+
+        let v: f64 = storage
+            .properties
+            .get_or_alter_system_default(crate::system_parameter_name!(governor_common_rpc_timeout))
+            .expect("storage should never ever fail");
+        let rpc_timeout = Duration::from_secs_f64(v);
+
+        let v: f64 = storage
+            .properties
+            .get_or_alter_system_default(crate::system_parameter_name!(governor_plugin_rpc_timeout))
+            .expect("storage should never ever fail");
+        let plugin_rpc_timeout = Duration::from_secs_f64(v);
 
         let instances = storage
             .instances
@@ -218,7 +229,7 @@ impl Loop {
                 tlog!(Info, "proposing conf_change"; "cc" => ?conf_change);
                 if let Err(e) = node.propose_conf_change_and_wait(term, conf_change) {
                     tlog!(Warning, "failed proposing conf_change: {e}");
-                    fiber::sleep(Duration::from_secs(1));
+                    fiber::sleep(Loop::RETRY_TIMEOUT);
                 }
             }
 

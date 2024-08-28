@@ -398,6 +398,9 @@ def test_read_from_system_tables(cluster: Cluster):
     assert keys == [
         "auto_offline_timeout",
         "global_schema_version",
+        "governor_common_rpc_timeout",
+        "governor_plugin_rpc_timeout",
+        "governor_raft_op_timeout",
         "max_heartbeat_period",
         "max_login_attempts",
         "max_pg_portals",
@@ -5065,6 +5068,9 @@ def test_alter_system_property(cluster: Cluster):
         ("max_login_attempts", 8),
         ("max_pg_statements", 4096),
         ("max_pg_portals", 2048),
+        ("governor_raft_op_timeout", 10),
+        ("governor_common_rpc_timeout", 10),
+        ("governor_plugin_rpc_timeout", 20),
     ]
 
     default_prop = []
