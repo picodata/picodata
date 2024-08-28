@@ -49,7 +49,6 @@ use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Result;
-use crate::util::check_msgpack_matches_type;
 use crate::util::Uppercase;
 use crate::warn_or_panic;
 
@@ -63,7 +62,7 @@ use std::iter::Peekable;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use self::acl::{on_master_drop_role, on_master_drop_user};
@@ -1333,14 +1332,6 @@ impl PropertyName {
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Cached value of "pg_max_statements" option from "_pico_property".
-/// 0 means that the value must be read from the table.
-static MAX_PG_STATEMENTS: AtomicUsize = AtomicUsize::new(0);
-
-/// Cached value of "pg_max_portals" option from "_pico_property".
-/// 0 means that the value must be read from the table.
-static MAX_PG_PORTALS: AtomicUsize = AtomicUsize::new(0);
-
 impl Properties {
     pub fn new() -> tarantool::Result<Self> {
         let space = Space::builder(Self::TABLE_NAME)
@@ -1409,34 +1400,10 @@ impl Properties {
                     .expect("key has type string")
                     .expect("key is not nullable");
 
-                if let Some(expected_type) = config::get_type_of_alter_system_parameter(key) {
-                    let field_count = new.len();
-                    if field_count != 2 {
-                        return Err(Error::other(format!(
-                            "too many fields: got {field_count}, expected 2"
-                        )));
-                    }
-
+                if config::get_type_of_alter_system_parameter(key).is_some() {
                     // This is an alter system parameter.
                     // TODO: move these to a separate table
-                    let raw_field = new.field::<&RawBytes>(1)?.expect("value is not nullable");
-                    check_msgpack_matches_type(raw_field, expected_type)?;
-
-                    // TODO: implement caching for all `config::AlterSystemParameters`.
-                    if key == system_parameter_name!(max_pg_portals) {
-                        let value = new
-                            .field::<usize>(1)?
-                            .expect("just verified with verify_new_tuple");
-                        // Cache the value.
-                        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
-                    }
-                    if key == system_parameter_name!(max_pg_statements) {
-                        let value = new
-                            .field::<usize>(1)?
-                            .expect("just verified with verify_new_tuple");
-                        // Cache the value.
-                        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
-                    }
+                    config::validate_alter_system_parameter_tuple(key, &new)?;
                 } else {
                     let Ok(key) = key.parse::<PropertyName>() else {
                         // Not a builtin property.
@@ -1563,7 +1530,7 @@ impl Properties {
 
     #[inline]
     pub fn max_pg_statements(&self) -> tarantool::Result<usize> {
-        let cached = MAX_PG_STATEMENTS.load(Ordering::Relaxed);
+        let cached = config::MAX_PG_STATEMENTS.load(Ordering::Relaxed);
         if cached != 0 {
             return Ok(cached);
         }
@@ -1571,13 +1538,13 @@ impl Properties {
         let res = self.get_or_alter_system_default(system_parameter_name!(max_pg_statements))?;
 
         // Cache the value.
-        MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
+        config::MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
         Ok(res)
     }
 
     #[inline]
     pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
-        let cached = MAX_PG_PORTALS.load(Ordering::Relaxed);
+        let cached = config::MAX_PG_PORTALS.load(Ordering::Relaxed);
         if cached != 0 {
             return Ok(cached);
         }
@@ -1585,7 +1552,7 @@ impl Properties {
         let res = self.get_or_alter_system_default(system_parameter_name!(max_pg_portals))?;
 
         // Cache the value.
-        MAX_PG_PORTALS.store(res, Ordering::Relaxed);
+        config::MAX_PG_PORTALS.store(res, Ordering::Relaxed);
         Ok(res)
     }
 

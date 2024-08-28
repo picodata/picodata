@@ -26,8 +26,11 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tarantool::log::SayLevel;
 use tarantool::tlua;
+use tarantool::tuple::RawBytes;
+use tarantool::tuple::Tuple;
 
 /// This reexport is used in the derive macro for Introspection.
 pub use sbroad::ir::relation::Type as SbroadType;
@@ -1520,6 +1523,44 @@ macro_rules! system_parameter_name {
         const DUMMY: usize = ::tarantool::offset_of!($crate::config::AlterSystemParameters, $name);
         ::std::stringify!($name)
     }};
+}
+
+/// Cached value of "pg_max_statements" option from "_pico_property".
+/// 0 means that the value must be read from the table.
+pub static MAX_PG_STATEMENTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Cached value of "pg_max_portals" option from "_pico_property".
+/// 0 means that the value must be read from the table.
+pub static MAX_PG_PORTALS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn validate_alter_system_parameter_tuple(name: &str, tuple: &Tuple) -> Result<(), Error> {
+    let Some(expected_type) = get_type_of_alter_system_parameter(name) else {
+        return Err(Error::other(format!("unknown parameter: '{name}'")));
+    };
+
+    let field_count = tuple.len();
+    if field_count != 2 {
+        #[rustfmt::skip]
+        return Err(Error::other(format!("too many fields: got {field_count}, expected 2")));
+    }
+
+    let raw_field = tuple.field::<&RawBytes>(1)?.expect("value is not nullable");
+    crate::util::check_msgpack_matches_type(raw_field, expected_type)?;
+
+    // TODO: implement caching for all `config::AlterSystemParameters`.
+    if name == system_parameter_name!(max_pg_portals) {
+        let value = tuple.field::<usize>(1)?.expect("type already checked");
+        // Cache the value.
+        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+    }
+
+    if name == system_parameter_name!(max_pg_statements) {
+        let value = tuple.field::<usize>(1)?.expect("type already checked");
+        // Cache the value.
+        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+    }
+
+    Ok(())
 }
 
 /// Returns `None` if there's no such parameter.
