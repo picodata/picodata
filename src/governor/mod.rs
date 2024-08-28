@@ -1,10 +1,9 @@
 use std::collections::HashMap;
-use std::ops::{Add, ControlFlow};
+use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::time::Duration;
 
 use ::tarantool::fiber;
-use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
@@ -260,9 +259,7 @@ impl Loop {
                             "replicaset_id" => %replicaset_id,
                         ]
                         async {
-                            let resp = pool.call(old_master_id, proc_name!(proc_replication_demote), &rpc, rpc_timeout)?
-                                .timeout(Self::RPC_TIMEOUT)
-                                .await?;
+                            let resp = pool.call(old_master_id, proc_name!(proc_replication_demote), &rpc, rpc_timeout)?.await?;
                             promotion_vclock = Some(resp.vclock);
                         }
                     }
@@ -274,9 +271,7 @@ impl Loop {
                         ]
                         async {
                             let rpc = GetVclockRpc {};
-                            let vclock = pool.call(new_master_id, proc_name!(proc_get_vclock), &rpc, rpc_timeout)?
-                                .timeout(rpc_timeout)
-                                .await?;
+                            let vclock = pool.call(new_master_id, proc_name!(proc_get_vclock), &rpc, rpc_timeout)?.await?;
                             promotion_vclock = Some(vclock);
                         }
                     }
@@ -384,8 +379,7 @@ impl Loop {
                                 }
                             });
                         }
-                        // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
+                        try_join_all(fs).await?
                     }
                 }
 
@@ -413,10 +407,7 @@ impl Loop {
                         "tier" => %tier_name,
                     ]
                     async {
-                        pool
-                            .call(target, proc_name!(proc_sharding_bootstrap), &rpc, rpc_timeout)?
-                            .timeout(Self::SYNC_TIMEOUT)
-                            .await?;
+                        pool.call(target, proc_name!(proc_sharding_bootstrap), &rpc, rpc_timeout)?.await?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
@@ -445,10 +436,7 @@ impl Loop {
                         "instance_id" => %target,
                     ]
                     async {
-                        pool.call(target, proc_name!(proc_enable_all_plugins), &plugin_rpc, rpc_timeout)?
-                            // TODO looks like we need a big timeout here
-                            .timeout(Duration::from_secs(10))
-                            .await?
+                        pool.call(target, proc_name!(proc_enable_all_plugins), &plugin_rpc, plugin_rpc_timeout)?.await?
                     }
                 }
 
@@ -497,9 +485,8 @@ impl Loop {
                                 }
                             });
                         }
-                        // TODO: don't hard code timeout
-                        let res = try_join_all(fs).timeout(Duration::from_secs(3)).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort(cause))) = res {
+                        let res = try_join_all(fs).await;
+                        if let Err(OnError::Abort(cause)) = res {
                             next_op = Op::DdlAbort { cause };
                             return Ok(());
                         }
@@ -560,13 +547,8 @@ impl Loop {
                             });
                         }
 
-                        if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5 + 1)).await {
-                            tlog!(Error, "Plugin installation aborted: {e}");
-
-                            let cause = match e {
-                                TimeoutError::Failed(cause) => cause,
-                                TimeoutError::Expired => ErrorInfo::timeout("<unknown>", "no response"),
-                            };
+                        if let Err(cause) = try_join_all(fs).await {
+                            tlog!(Error, "Plugin installation aborted: {cause}");
                             next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
                             return Ok(());
                         }
@@ -608,7 +590,7 @@ impl Loop {
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::enable_plugin::Response::Ok) => {
-                                        tlog!(Info, "enable plugin on instance"; "instance_id" => %instance_id);
+                                        tlog!(Info, "enabled plugin on instance"; "instance_id" => %instance_id);
                                         Ok(())
                                     }
                                     Ok(rpc::enable_plugin::Response::Abort { cause }) => {
@@ -633,8 +615,8 @@ impl Loop {
                             });
                         }
 
-                        let enable_result = try_join_all(fs).timeout(on_start_timeout.add(Duration::from_secs(1))).await;
-                        if let Err(TimeoutError::Failed(OnError::Abort(cause))) = enable_result {
+                        let enable_result = try_join_all(fs).await;
+                        if let Err(OnError::Abort(cause)) = enable_result {
                             let rollback_op = PluginRaftOp::DisablePlugin {
                                 ident: ident.clone(),
                                 cause: Some(cause),
@@ -705,13 +687,8 @@ impl Loop {
                             });
                         }
 
-                        if let Err(e) = try_join_all(fs).timeout(Duration::from_secs(5)).await {
-                            tlog!(Error, "Enabling plugins fail with: {e}, rollback and abort");
-
-                            let cause = match e {
-                                TimeoutError::Failed(cause) => cause,
-                                TimeoutError::Expired => ErrorInfo::timeout("<unknown>", "no response"),
-                            };
+                        if let Err(cause) = try_join_all(fs).await {
+                            tlog!(Error, "Enabling plugins fail with: {cause}, rollback and abort");
                             next_op = Some(Op::Plugin(PluginRaftOp::Abort { cause }));
 
                             // try to disable plugins at all instances
@@ -725,7 +702,7 @@ impl Loop {
                             // This means that the service may still be enabled on some (or even all) instances
                             // while the global state says that it's disabled everywhere
                             // https://git.picodata.io/picodata/picodata/picodata/-/issues/600
-                            _ = try_join_all(fs).timeout(Duration::from_secs(5)).await;
+                            _ = try_join_all(fs).await;
                             return Ok(());
                         }
 
@@ -735,7 +712,7 @@ impl Loop {
                             let resp = pool.call(instance_id, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                             fs.push(resp);
                         }
-                        try_join_all(fs).timeout(Duration::from_secs(5)).await?;
+                        try_join_all(fs).await?;
 
                         next_op = Some(success_dml);
                     }
@@ -778,8 +755,7 @@ impl Loop {
                                 })
                             });
                         }
-                        // TODO: don't hard code timeout
-                        try_join_all(fs).timeout(Duration::from_secs(3)).await?
+                        try_join_all(fs).await?
                     }
                 }
 
