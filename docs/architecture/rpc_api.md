@@ -342,7 +342,7 @@ fn proc_instance_info(instance_id) -> InstanceInfo
     - `cluster_id`: (MP_STR)
     - `current_state`: (MP_MAP [`State`](../overview/glossary.md#state)), текущее состояние инстанса
       <br>формат: `MP_MAP { variant = MP_STR, incarnation = MP_UINT}`
-      <br>возможные значения `variant`: `Offline`, `Replicated`, `Online`, `Expelled`
+      <br>возможные значения `variant`: `Offline`, `Online`, `Expelled`
     - `target_state`: (MP_MAP [`State`](../overview/glossary.md#state)), целевое состояние инстанса
     - `tier`: (MP_STR)
 
