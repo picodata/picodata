@@ -508,6 +508,7 @@ docker-compose:
     - docker-compose -f helm/docker-compose.yml up -d --wait
     - echo "ALTER USER \"admin\" WITH PASSWORD 'T0psecret' using md5" > alter_pass.sql
     - docker cp alter_pass.sql picodata-1-1:/pico/
+    - sleep 30 # the cluster does not manage to assemble quickly enough
     - docker exec -t picodata-1-1 sh -c "cat /pico/alter_pass.sql |picodata admin /pico/data/picodata-1-1/admin.sock"
     - count=$(psql "user=admin host=127.0.0.1 port=55432 password=T0psecret sslmode=disable" -t -A -c "select count(*) from \"_pico_instance\"") && if [[ $count -eq 4 ]] ; then echo "OK"; else echo count=$count; exit 2; fi
   after_script:
