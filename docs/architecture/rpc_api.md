@@ -518,7 +518,7 @@ fn proc_read_index(timeout) -> RaftIndex
 ### .proc_replication {: #proc_replication }
 
 ```rust
-fn proc_replication(is_master, replicaset_peers) -> Lsn
+fn proc_replication(sync_and_promote, replicaset_peers) -> LSN
 ```
 
 Обновляет конфигурацию топологии репликации текущего инстанса с остальными
@@ -551,7 +551,9 @@ fn proc_replication(is_master, replicaset_peers) -> Lsn
 
 Параметры:
 
-- `is_master`: (MP_BOOL)
+- `sync_and_promote`: (optional MP_MAP):
+    - `vclock`: (MP_MAP `Vclock`)
+    - `timeout`: (MP_INT | MP_FLOAT) в секундах
 - `replicaset_peers`: (MP_ARRAY of MP_STR)
 
 Возвращаемое значение:
