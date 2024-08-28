@@ -11,7 +11,7 @@ use crate::schema::{
 };
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
-use crate::storage::{space_by_name, PropertyName};
+use crate::storage::space_by_name;
 use crate::sync::wait_for_index_globally;
 use crate::traft::error::{self, Error, Unsupported};
 use crate::traft::node::Node as TraftNode;
@@ -1121,58 +1121,47 @@ fn alter_system_ir_node_to_op_or_result(
         )));
     }
 
-    let parse_property_name = |param_name: &str| -> traft::Result<PropertyName> {
-        param_name
-            .parse::<PropertyName>()
-            .map_err(|_| Error::other(format!("unknown property: '{param_name}'")))
-    };
-
+    let table = crate::storage::ClusterwideTable::Property;
+    let initiator = current_user;
     match ty {
         AlterSystemType::AlterSystemSet {
             param_name,
             param_value,
         } => {
-            let key = parse_property_name(param_name)?;
-            let tuple = crate::storage::property_key_value_to_tuple(key, param_value)?;
+            let Some(expected_type) = crate::config::get_type_of_alter_system_parameter(param_name)
+            else {
+                return Err(Error::other(format!("unknown parameter: '{param_name}'")));
+            };
+            let Ok(casted_value) = param_value.cast(&expected_type) else {
+                let actual_type = value_type_str(param_value);
+                return Err(Error::other(format!(
+                    "invalid value for '{param_name}' expected {expected_type}, got {actual_type}",
+                )));
+            };
+            let dml = Dml::replace(table, &(param_name, casted_value), initiator)?;
 
-            Ok(Continue(Op::Dml(Dml::Replace {
-                table: crate::storage::ClusterwideTable::Property.into(),
-                tuple,
-                initiator: current_user,
-            })))
+            Ok(Continue(Op::Dml(dml)))
         }
         AlterSystemType::AlterSystemReset { param_name } => {
             match param_name {
-                Some(key) => {
+                Some(param_name) => {
                     // reset one
-                    let key = parse_property_name(key)?;
-                    let tuple = crate::storage::default_property_tuple(key)?;
+                    let Some(default_value) =
+                        crate::config::get_default_value_of_alter_system_parameter(param_name)
+                    else {
+                        return Err(Error::other(format!("unknown parameter: '{param_name}'")));
+                    };
+                    let dml = Dml::replace(table, &(param_name, default_value), initiator)?;
 
-                    Ok(Continue(Op::Dml(Dml::Replace {
-                        table: crate::storage::ClusterwideTable::Property.into(),
-                        tuple,
-                        initiator: current_user,
-                    })))
+                    Ok(Continue(Op::Dml(dml)))
                 }
                 None => {
                     // reset all
-                    use PropertyName::*;
-
-                    let mut dmls = vec![];
-                    for prop in [
-                        PasswordMinLength,
-                        PasswordEnforceDigits,
-                        AutoOfflineTimeout,
-                        MaxHeartbeatPeriod,
-                        SnapshotChunkMaxSize,
-                        SnapshotReadViewCloseTimeout,
-                    ] {
-                        let tuple = crate::storage::default_property_tuple(prop)?;
-                        dmls.push(Dml::Replace {
-                            table: crate::storage::ClusterwideTable::Property.into(),
-                            tuple,
-                            initiator: current_user,
-                        })
+                    let defaults = crate::config::get_defaults_for_all_alter_system_parameters();
+                    let mut dmls = Vec::with_capacity(defaults.len());
+                    for (param_name, default_value) in defaults {
+                        let dml = Dml::replace(table, &(param_name, default_value), initiator)?;
+                        dmls.push(dml);
                     }
                     Ok(Continue(Op::BatchDml { ops: dmls }))
                 }
@@ -1784,4 +1773,20 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
             row_count: ops_count as u64,
         })
     })?
+}
+
+// TODO: move this to sbroad
+fn value_type_str(value: &Value) -> &'static str {
+    match value {
+        Value::Boolean { .. } => "boolean",
+        Value::Decimal { .. } => "decimal",
+        Value::Double { .. } => "double",
+        Value::Datetime { .. } => "datetime",
+        Value::Integer { .. } => "integer",
+        Value::Null { .. } => "null",
+        Value::String { .. } => "string",
+        Value::Unsigned { .. } => "unsigned",
+        Value::Tuple { .. } => "tuple",
+        Value::Uuid { .. } => "uuid",
+    }
 }

@@ -1,3 +1,4 @@
+use crate::config::SbroadType;
 use crate::traft::error::Error;
 use nix::sys::termios::{tcgetattr, tcsetattr, LocalFlags, SetArg::TCSADRAIN};
 use std::any::{Any, TypeId};
@@ -821,6 +822,170 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
         };
         if !ok {
             panic!("expected field '{field_name}' to be {field_type:?}, but got {field:?}");
+        }
+    }
+}
+
+// TODO: this should be in sbroad
+pub fn check_msgpack_matches_type(
+    msgpack: &[u8],
+    expected_type: SbroadType,
+) -> crate::traft::Result<()> {
+    use rmp::Marker;
+
+    let mut cursor = msgpack;
+    let marker = rmp::decode::read_marker(&mut cursor).map_err(|e|
+        // XXX: here format the error using Debug because rmp doesn't implement Display for the error type.
+        // This is very bad. You should always implement Display for error types and format them using Display, not Debug!
+        Error::other(format!("{e:?}")))?;
+    let ok = match expected_type {
+        SbroadType::Any => true,
+        SbroadType::Map => {
+            matches!(
+                marker,
+                Marker::FixMap { .. } | Marker::Map16 | Marker::Map32
+            )
+        }
+        SbroadType::Array => {
+            matches!(
+                marker,
+                Marker::FixArray { .. } | Marker::Array16 | Marker::Array32
+            )
+        }
+        SbroadType::Boolean => {
+            matches!(marker, Marker::True | Marker::False)
+        }
+        SbroadType::Datetime => {
+            // FIXME: should check actual extension type
+            is_ext(marker)
+        }
+        SbroadType::Decimal | SbroadType::Number => {
+            // FIXME: should check actual extension type
+            // XXX: Also is this even correct?
+            is_ext(marker) || is_int(marker) || is_float(marker)
+        }
+        SbroadType::Double => is_int(marker) || is_float(marker),
+        SbroadType::Integer => is_int(marker),
+        SbroadType::Scalar => {
+            is_ext(marker) || is_int(marker) || is_float(marker) || is_str(marker) || is_bin(marker)
+        }
+        SbroadType::String => {
+            is_str(marker) ||
+                // XXX: is this correct?
+                is_bin(marker)
+        }
+        SbroadType::Uuid => {
+            // FIXME: should check actual extension type
+            is_ext(marker)
+        }
+        SbroadType::Unsigned => is_uint(marker),
+    };
+
+    if !ok {
+        return Err(Error::other(format!(
+            "invalid type: expected {expected_type}, got {}",
+            mp_type_name(marker),
+        )));
+    }
+
+    return Ok(());
+
+    #[inline(always)]
+    fn is_ext(marker: Marker) -> bool {
+        matches!(
+            marker,
+            Marker::FixExt1
+                | Marker::FixExt2
+                | Marker::FixExt4
+                | Marker::FixExt8
+                | Marker::FixExt16
+                | Marker::Ext8
+                | Marker::Ext16
+                | Marker::Ext32
+        )
+    }
+
+    #[inline(always)]
+    fn is_int(marker: Marker) -> bool {
+        matches!(
+            marker,
+            Marker::FixPos { .. }
+                | Marker::FixNeg { .. }
+                | Marker::U8
+                | Marker::U16
+                | Marker::U32
+                | Marker::U64
+                | Marker::I8
+                | Marker::I16
+                | Marker::I32
+                | Marker::I64
+        )
+    }
+
+    #[inline(always)]
+    fn is_uint(marker: Marker) -> bool {
+        matches!(
+            marker,
+            Marker::FixPos { .. } | Marker::U8 | Marker::U16 | Marker::U32 | Marker::U64
+        )
+    }
+
+    #[inline(always)]
+    fn is_float(marker: Marker) -> bool {
+        matches!(marker, Marker::F32 | Marker::F64)
+    }
+
+    #[inline(always)]
+    fn is_str(marker: Marker) -> bool {
+        matches!(
+            marker,
+            Marker::FixStr { .. } | Marker::Str8 | Marker::Str16 | Marker::Str32
+        )
+    }
+
+    #[inline(always)]
+    fn is_bin(marker: Marker) -> bool {
+        matches!(marker, Marker::Bin8 | Marker::Bin16 | Marker::Bin32)
+    }
+
+    #[rustfmt::skip]
+    fn mp_type_name(marker: Marker) -> &'static str {
+        match marker {
+            Marker::Null => "null",
+            Marker::True | Marker::False => "boolean",
+            Marker::FixPos { .. }
+            | Marker::U8
+            | Marker::U16
+            | Marker::U32
+            | Marker::U64 => "unsigned",
+            Marker::FixNeg { .. }
+            | Marker::I8
+            | Marker::I16
+            | Marker::I32
+            | Marker::I64 => "integer",
+            Marker::F32 | Marker::F64 => "double",
+            Marker::FixStr { .. }
+            | Marker::Str8
+            | Marker::Str16
+            | Marker::Str32 => "string",
+            Marker::Bin8
+            | Marker::Bin16
+            | Marker::Bin32 => "binary",
+            Marker::FixArray { .. }
+            | Marker::Array16
+            | Marker::Array32 => "array",
+            Marker::FixMap { .. }
+            | Marker::Map16
+            | Marker::Map32 => "map",
+            Marker::FixExt1
+            | Marker::FixExt2
+            | Marker::FixExt4
+            | Marker::FixExt8
+            | Marker::FixExt16
+            | Marker::Ext8
+            | Marker::Ext16
+            | Marker::Ext32 => "msgpack extension",
+            Marker::Reserved => "<reserved>",
         }
     }
 }

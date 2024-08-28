@@ -1391,6 +1391,161 @@ tarantool::define_str_enum! {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// AlterSystemParameters
+////////////////////////////////////////////////////////////////////////////////
+
+/// A struct which represents an enumeration of system parameters which can be
+/// configured via ALTER SYSTEM.
+///
+/// This struct uses the `Introspection` trait to associate with each paramater
+/// a `SbroadType` and a default value.
+///
+/// At the moment this struct is never actually used as a struct, but only as
+/// a container for the metadata described above.
+#[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
+#[serde(deny_unknown_fields)]
+pub struct AlterSystemParameters {
+    /// Password should contain at least this many characters
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 8)]
+    pub password_min_length: u64,
+
+    /// Password should contain at least one uppercase letter
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = true)]
+    pub password_enforce_uppercase: bool,
+
+    /// Password should contain at least one lowercase letter
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = true)]
+    pub password_enforce_lowercase: bool,
+
+    /// Password should contain at least one digit
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = true)]
+    pub password_enforce_digits: bool,
+
+    /// Password should contain at least one special symbol.
+    /// Special symbols - &, |, ?, !, $, @
+    #[introspection(sbroad_type = SbroadType::Boolean)]
+    #[introspection(config_default = false)]
+    pub password_enforce_specialchars: bool,
+
+    /// Maximum number of login attempts through `picodata connect`.
+    /// Each failed login attempt increases a local per user counter of failed attempts.
+    /// When the counter reaches the value of this property any subsequent logins
+    /// of this user will be denied.
+    /// Local counter for a user is reset on successful login.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 4)]
+    pub max_login_attempts: u64,
+
+    /// Number of seconds to wait before automatically changing an
+    /// unresponsive instance's state to Offline.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 5.0)]
+    pub auto_offline_timeout: f64,
+
+    /// Maximum number of seconds to wait before sending another heartbeat
+    /// to an unresponsive instance.
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = 5.0)]
+    pub max_heartbeat_period: f64,
+
+    /// PG statement storage size.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 1024)]
+    pub max_pg_statements: u64,
+
+    /// PG portal storage size.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 1024)]
+    pub max_pg_portals: u64,
+
+    /// Raft snapshot will be sent out in chunks not bigger than this threshold.
+    /// Note: actual snapshot size may exceed this threshold. In most cases
+    /// it will just add a couple of dozen metadata bytes. But in extreme
+    /// cases if there's a tuple larger than this threshold, it will be sent
+    /// in one piece whatever size it has. Please don't store tuples of size
+    /// greater than this.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 16 * 1024 * 1024)]
+    pub snapshot_chunk_max_size: u64,
+
+    /// Snapshot read views with live reference counts will be forcefully
+    /// closed after this number of seconds. This is necessary if followers
+    /// do not properly finalize the snapshot application.
+    // NOTE: maybe we should instead track the instance/raft ids of
+    // followers which requested the snapshots and automatically close the
+    // read views if the corresponding instances are *deteremined* to not
+    // need them anymore. Or maybe timeouts is the better way..
+    #[introspection(sbroad_type = SbroadType::Double)]
+    #[introspection(config_default = (24 * 3600))]
+    pub snapshot_read_view_close_timeout: f64,
+}
+
+/// Returns `None` if there's no such parameter.
+pub fn get_type_of_alter_system_parameter(name: &str) -> Option<SbroadType> {
+    let Ok(typ) = AlterSystemParameters::get_sbroad_type_of_field(name) else {
+        return None;
+    };
+
+    let typ = typ.expect("types must be specified for all parameters");
+    Some(typ)
+}
+
+/// Returns `None` if there's no such parameter.
+pub fn get_default_value_of_alter_system_parameter(name: &str) -> Option<rmpv::Value> {
+    // NOTE: we need an instance of this struct because of how `Introspection::get_field_default_value_as_rmpv`
+    // works. We allow default values to refer to other fields of the struct
+    // which were actuall provided (see `InstanceConfig::advertise_address` for example).
+    // But for alter system parameters it doesn't make sense because these are not
+    // stored in the struct itself but in a system table.
+    // Alter system parameters currently don't delegate their defaults to other
+    // fields, so we just construct a default value of the struct ad hoc when
+    // needed.
+    //
+    // In the future maybe we want to maintain the values of the system
+    // parameters in an actual struct and update those every time the values in
+    // the system table change.
+    let parameters = AlterSystemParameters::default();
+
+    let Ok(default) = parameters.get_field_default_value_as_rmpv(name) else {
+        return None;
+    };
+
+    let default = default.expect("default must be specified explicitly for all parameters");
+    Some(default)
+}
+
+/// Returns an array of pairs (parameter name, default value).
+pub fn get_defaults_for_all_alter_system_parameters() -> Vec<(String, rmpv::Value)> {
+    // NOTE: we need an instance of this struct because of how `Introspection::get_field_default_value_as_rmpv`
+    // works. We allow default values to refer to other fields of the struct
+    // which were actuall provided (see `InstanceConfig::advertise_address` for example).
+    // But for alter system parameters it doesn't make sense because these are not
+    // stored in the struct itself but in a system table.
+    // Alter system parameters currently don't delegate their defaults to other
+    // fields, so we just construct a default value of the struct ad hoc when
+    // needed.
+    //
+    // In the future maybe we want to maintain the values of the system
+    // parameters in an actual struct and update those every time the values in
+    // the system table change.
+    let parameters = AlterSystemParameters::default();
+
+    let mut result = Vec::with_capacity(AlterSystemParameters::FIELD_INFOS.len());
+    for name in &leaf_field_paths::<AlterSystemParameters>() {
+        let default = parameters
+            .get_field_default_value_as_rmpv(name)
+            .expect("paths are correct");
+        let default = default.expect("default must be specified explicitly for all parameters");
+        result.push((name.clone(), default));
+    }
+    result
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // deserialize_map_forbid_duplicate_keys
 ////////////////////////////////////////////////////////////////////////////////
 

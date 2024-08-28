@@ -65,8 +65,6 @@ use std::time::Duration;
 
 use self::acl::{on_master_drop_role, on_master_drop_user};
 use pico_proc_macro::get_doc_literal;
-use sbroad::ir::relation::Type;
-use sbroad::ir::value::Value;
 
 macro_rules! define_clusterwide_tables {
     (
@@ -1407,40 +1405,6 @@ impl PropertyName {
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
 
-pub(crate) fn property_key_value_to_tuple(key: PropertyName, value: &Value) -> Result<TupleBuffer> {
-    use PropertyName::*;
-
-    let property_expected_type = match key {
-        PasswordEnforceDigits => Type::Boolean,
-        PasswordMinLength | AutoOfflineTimeout | SnapshotChunkMaxSize => Type::Unsigned,
-        MaxHeartbeatPeriod | SnapshotReadViewCloseTimeout => Type::Double,
-        key => return Err(Error::other(format!("unknown property: '{key}'"))),
-    };
-    let casted_value = value.cast(&property_expected_type).map_err(|_| {
-        Error::other(format!(
-            "'{key}' property expected value of {property_expected_type} type."
-        ))
-    })?;
-    (key, casted_value).to_tuple_buffer().map_err(Error::other)
-}
-
-pub(crate) fn default_property_tuple(key: PropertyName) -> Result<TupleBuffer> {
-    use PropertyName::*;
-    let tuple = match key {
-        PasswordMinLength => (key, DEFAULT_PASSWORD_MIN_LENGTH).to_tuple_buffer(),
-        PasswordEnforceDigits => (key, DEFAULT_PASSWORD_ENFORCE_DIGITS).to_tuple_buffer(),
-        AutoOfflineTimeout => (key, DEFAULT_AUTO_OFFLINE_TIMEOUT).to_tuple_buffer(),
-        MaxHeartbeatPeriod => (key, DEFAULT_MAX_HEARTBEAT_PERIOD).to_tuple_buffer(),
-        SnapshotChunkMaxSize => (key, DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE).to_tuple_buffer(),
-        SnapshotReadViewCloseTimeout => {
-            (key, DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT).to_tuple_buffer()
-        }
-        key => return Err(Error::other(format!("unknown property: '{key}'"))),
-    };
-
-    tuple.map_err(Error::other)
-}
-
 pub const DEFAULT_PASSWORD_MIN_LENGTH: usize = 8;
 pub const DEFAULT_PASSWORD_ENFORCE_UPPERCASE: bool = true;
 pub const DEFAULT_PASSWORD_ENFORCE_LOWERCASE: bool = true;
@@ -1524,43 +1488,66 @@ impl Properties {
             }
             (old, Some(new)) => {
                 // Insert or Update
-                let Ok(Some(key)) = new.field::<PropertyName>(0) else {
-                    // Not a builtin property.
-                    // Cannot be a wrong type error, because tarantool checks
-                    // the format for us.
-                    if old.is_none() {
-                        // Insert
-                        // FIXME: this is currently printed twice
-                        tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
-                    }
-                    return Ok(());
-                };
 
-                key.verify_new_tuple(&new)?;
+                let key = new
+                    .field::<&str>(0)
+                    .expect("key has type string")
+                    .expect("key is not nullable");
 
-                let field_count = new.len();
-                if field_count != 2 {
-                    return Err(Error::other(format!(
-                        "too many fields: got {field_count}, expected 2"
-                    )));
-                }
+                if let Some(expected_type) = config::get_type_of_alter_system_parameter(key) {
+                    let field_count = new.len();
+                    if field_count != 2 {
+                        return Err(Error::other(format!(
+                            "too many fields: got {field_count}, expected 2"
+                        )));
+                    }
 
-                match key {
-                    PropertyName::MaxPgPortals => {
-                        let value = new
-                            .field::<usize>(1)?
-                            .expect("just verified with verify_new_tuple");
-                        // Cache the value.
-                        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+                    // This is an alter system parameter.
+                    // TODO: move these to a separate table
+                    let raw_field = new.field::<&RawBytes>(1)?.expect("value is not nullable");
+                    check_msgpack_matches_type(raw_field, expected_type)?;
+
+                    // TODO: implement caching for all `config::AlterSystemParameters`.
+                    match key {
+                        // TODO: type safety
+                        "max_pg_portals" => {
+                            let value = new
+                                .field::<usize>(1)?
+                                .expect("just verified with verify_new_tuple");
+                            // Cache the value.
+                            MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+                        }
+                        // TODO: type safety
+                        "max_pg_statements" => {
+                            let value = new
+                                .field::<usize>(1)?
+                                .expect("just verified with verify_new_tuple");
+                            // Cache the value.
+                            MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+                        }
+                        _ => (),
                     }
-                    PropertyName::MaxPgStatements => {
-                        let value = new
-                            .field::<usize>(1)?
-                            .expect("just verified with verify_new_tuple");
-                        // Cache the value.
-                        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
+                } else {
+                    let Ok(key) = key.parse::<PropertyName>() else {
+                        // Not a builtin property.
+                        // Cannot be a wrong type error, because tarantool checks
+                        // the format for us.
+                        if old.is_none() {
+                            // Insert
+                            // FIXME: this is currently printed twice
+                            tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
+                        }
+                        return Ok(());
+                    };
+
+                    let field_count = new.len();
+                    if field_count != 2 {
+                        return Err(Error::other(format!(
+                            "too many fields: got {field_count}, expected 2"
+                        )));
                     }
-                    _ => (),
+
+                    key.verify_new_tuple(&new)?;
                 }
             }
             (None, None) => unreachable!(),

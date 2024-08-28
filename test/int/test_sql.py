@@ -5058,6 +5058,12 @@ def test_alter_system_property(cluster: Cluster):
         ("max_heartbeat_period", 6.6),
         ("snapshot_chunk_max_size", 1500),
         ("snapshot_read_view_close_timeout", 12312.4),
+        ("password_enforce_uppercase", False),
+        ("password_enforce_lowercase", False),
+        ("password_enforce_specialchars", True),
+        ("max_login_attempts", 8),
+        ("max_pg_statements", 4096),
+        ("max_pg_portals", 2048),
     ]
 
     default_prop = []
@@ -5141,7 +5147,7 @@ def test_alter_system_property_errors(cluster: Cluster):
 
     # such property does not exist
     with pytest.raises(
-        TarantoolError, match="unknown property: 'invalid_parameter_name'"
+        TarantoolError, match="unknown parameter: 'invalid_parameter_name'"
     ):
         dml = i1.sql(
             """
@@ -5152,7 +5158,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     # property expects different value type
     with pytest.raises(
         TarantoolError,
-        match="'password_enforce_digits' property expected value of boolean type.",
+        match="invalid value for 'password_enforce_digits' expected boolean, got unsigned.",
     ):
         dml = i1.sql(
             """
@@ -5161,7 +5167,9 @@ def test_alter_system_property_errors(cluster: Cluster):
         )
 
     # such property exists but must not be allowed to be changed through alter system
-    with pytest.raises(TarantoolError, match="unknown property: 'next_schema_version'"):
+    with pytest.raises(
+        TarantoolError, match="unknown parameter: 'next_schema_version'"
+    ):
         dml = i1.sql(
             """
             alter system set "next_schema_version" to 3
