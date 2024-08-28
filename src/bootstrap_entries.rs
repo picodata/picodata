@@ -4,12 +4,12 @@ use protobuf::Message;
 use ::tarantool::msgpack;
 
 use crate::access_control::validate_password;
+use crate::config;
 use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema;
 use crate::schema::{ADMIN_ID, GUEST_ID};
-use crate::storage;
 use crate::storage::PropertyName;
 use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::tier::Tier;
@@ -111,104 +111,16 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
     );
 
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::PasswordMinLength, storage::DEFAULT_PASSWORD_MIN_LENGTH),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::PasswordEnforceUppercase, storage::DEFAULT_PASSWORD_ENFORCE_UPPERCASE),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::PasswordEnforceLowercase, storage::DEFAULT_PASSWORD_ENFORCE_LOWERCASE),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::PasswordEnforceDigits, storage::DEFAULT_PASSWORD_ENFORCE_DIGITS),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::PasswordEnforceSpecialchars, storage::DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::AutoOfflineTimeout, storage::DEFAULT_AUTO_OFFLINE_TIMEOUT),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::MaxHeartbeatPeriod, storage::DEFAULT_MAX_HEARTBEAT_PERIOD),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::MaxPgStatements, storage::DEFAULT_MAX_PG_STATEMENTS),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::MaxPgPortals, storage::DEFAULT_MAX_PG_PORTALS),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::SnapshotChunkMaxSize, storage::DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
-
-    #[rustfmt::skip]
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::SnapshotReadViewCloseTimeout, storage::DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT),
-            ADMIN_ID,
-        )
-    .expect("serialization cannot fail"));
+    for (name, default) in config::get_defaults_for_all_alter_system_parameters() {
+        #[rustfmt::skip]
+        ops.push(
+            op::Dml::insert(
+                ClusterwideTable::Property,
+                &(name, default),
+                ADMIN_ID,
+            )
+        .expect("serialization cannot fail"));
+    }
 
     let context = traft::EntryContext::Op(op::Op::BatchDml { ops });
     init_entries.push(

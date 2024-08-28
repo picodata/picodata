@@ -1,6 +1,4 @@
-use crate::storage;
 use crate::storage::Clusterwide;
-use crate::storage::PropertyName;
 use crate::traft::RaftId;
 use crate::util::NoYieldsRefCell;
 use std::collections::HashMap;
@@ -171,14 +169,14 @@ impl InstanceReachabilityManager {
         // could store it in a field of this struct and only update it's value
         // once per raft loop iteration by calling a method update_configuration
         // or something like that.
-        if let Some(storage) = &self.storage {
-            // FIXME: silently ignoring an error if the user specified a value
-            // of the wrong type.
-            if let Ok(Some(t)) = storage.properties.get(PropertyName::AutoOfflineTimeout) {
-                return Duration::from_secs_f64(t);
-            }
-        };
-        Duration::from_secs_f64(storage::DEFAULT_AUTO_OFFLINE_TIMEOUT)
+        let storage = self
+            .storage
+            .as_ref()
+            .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
+        storage
+            .properties
+            .auto_offline_timeout()
+            .expect("storage aint gonna fail")
     }
 
     fn max_heartbeat_period(&self) -> Duration {
@@ -187,14 +185,14 @@ impl InstanceReachabilityManager {
         // could store it in a field of this struct and only update it's value
         // once per raft loop iteration by calling a method update_configuration
         // or something like that.
-        if let Some(storage) = &self.storage {
-            // FIXME: silently ignoring an error if the user specified a value
-            // of the wrong type.
-            if let Ok(Some(t)) = storage.properties.get(PropertyName::MaxHeartbeatPeriod) {
-                return Duration::from_secs_f64(t);
-            }
-        };
-        Duration::from_secs_f64(storage::DEFAULT_MAX_HEARTBEAT_PERIOD)
+        let storage = self
+            .storage
+            .as_ref()
+            .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
+        storage
+            .properties
+            .max_heartbeat_period()
+            .expect("storage aint gonna fail")
     }
 }
 

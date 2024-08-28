@@ -399,6 +399,7 @@ def test_read_from_system_tables(cluster: Cluster):
         "auto_offline_timeout",
         "global_schema_version",
         "max_heartbeat_period",
+        "max_login_attempts",
         "max_pg_portals",
         "max_pg_statements",
         "next_schema_version",

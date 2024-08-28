@@ -1484,6 +1484,23 @@ pub struct AlterSystemParameters {
     pub snapshot_read_view_close_timeout: f64,
 }
 
+/// A special macro helper for referring to alter system parameters thoroughout
+/// the codebase. It makes sure the parameter with this name exists and returns
+/// it's name.
+///
+/// You also get goto definition and other LSP goodness for the parameter with this macro.
+#[macro_export]
+macro_rules! system_parameter_name {
+    ($name:ident) => {{
+        #[allow(dead_code)]
+        /// A helper which makes sure that the struct has a field with the given name.
+        /// BTW we use the macro from `tarantool` and not from `std::mem`
+        /// because rust-analyzer works with our macro but not with the builtin one ¯\_(ツ)_/¯.
+        const DUMMY: usize = ::tarantool::offset_of!($crate::config::AlterSystemParameters, $name);
+        ::std::stringify!($name)
+    }};
+}
+
 /// Returns `None` if there's no such parameter.
 pub fn get_type_of_alter_system_parameter(name: &str) -> Option<SbroadType> {
     let Ok(typ) = AlterSystemParameters::get_sbroad_type_of_field(name) else {

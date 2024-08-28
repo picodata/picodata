@@ -61,7 +61,7 @@ def test_statement_storage_config_limit(postgres: Postgres):
         pg8000.Error,
         match=f'Statement storage is full. Current size limit: {max_pg_statements}. \
 Please, increase storage limit using: \
-UPDATE "_pico_property" SET "value" = <new-limit> WHERE "key" = \\\\\'max_pg_statements\\\\\'',
+ALTER SYSTEM SET "max_pg_statements" TO <new-limit>',
     ):
         statements.append(
             conn.prepare(""" insert into "t" values (cast (:p as int)) """)

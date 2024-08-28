@@ -8,7 +8,6 @@ use crate::{
         value::{FieldFormat, PgValue},
     },
     sql::{dispatch, router::RouterRuntime},
-    storage::PropertyName,
     tlog,
     traft::node,
 };
@@ -37,7 +36,8 @@ pub type ClientId = u32;
 
 // Object that stores information specific to the portal or statement storage.
 struct StorageContext {
-    capacity_property: PropertyName,
+    value_kind: &'static str,
+    capacity_parameter: &'static str,
     get_capacity: fn() -> PgResult<usize>,
     dublicate_key_error_code: PgErrorCode,
 }
@@ -49,7 +49,8 @@ impl StorageContext {
         }
 
         Self {
-            capacity_property: PropertyName::MaxPgPortals,
+            value_kind: "Portal",
+            capacity_parameter: crate::system_parameter_name!(max_pg_portals),
             get_capacity,
             dublicate_key_error_code: PgErrorCode::DuplicateCursor,
         }
@@ -61,7 +62,8 @@ impl StorageContext {
         }
 
         Self {
-            capacity_property: PropertyName::MaxPgStatements,
+            value_kind: "Statement",
+            capacity_parameter: crate::system_parameter_name!(max_pg_statements),
             get_capacity,
             dublicate_key_error_code: PgErrorCode::DuplicatePreparedStatement,
         }
@@ -95,16 +97,15 @@ impl<S> PgStorage<S> {
 
     pub fn put(&mut self, key: (ClientId, Rc<str>), value: S) -> PgResult<()> {
         let capacity = self.context.get_capacity()?;
+        let kind = self.context.value_kind;
         if self.len() >= capacity {
+            let parameter = self.context.capacity_parameter;
             // TODO: it should be configuration_limit_exceeded error
             return Err(PgError::Other(
                 format!(
-                    "{} storage is full. Current size limit: {}. \
+                    "{kind} storage is full. Current size limit: {capacity}. \
                     Please, increase storage limit using: \
-                    UPDATE \"_pico_property\" SET \"value\" = <new-limit> WHERE \"key\" = '{}';",
-                    self.value_kind(),
-                    capacity,
-                    self.context.capacity_property
+                    ALTER SYSTEM SET \"{parameter}\" TO <new-limit>",
                 )
                 .into(),
             ));
@@ -116,13 +117,12 @@ impl<S> PgStorage<S> {
             return Ok(());
         }
 
-        let value_name = self.value_kind();
         match self.map.entry(key) {
             Entry::Occupied(entry) => {
                 let (id, name) = entry.key();
                 Err(PgError::WithExplicitCode(
                     self.context.dublicate_key_error_code,
-                    format!("{} \'{name}\' for client {id} already exists", value_name),
+                    format!("{kind} \'{name}\' for client {id} already exists"),
                 ))
             }
             Entry::Vacant(entry) => {
@@ -153,14 +153,6 @@ impl<S> PgStorage<S> {
 
     pub fn len(&self) -> usize {
         self.map.len()
-    }
-
-    fn value_kind(&self) -> &'static str {
-        match self.context.capacity_property {
-            PropertyName::MaxPgStatements => "Statement",
-            PropertyName::MaxPgPortals => "Portal",
-            prop => panic!("unexpected property for pg storage: {prop}"),
-        }
     }
 }
 

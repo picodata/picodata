@@ -23,6 +23,7 @@ use tarantool::tuple::{RawBytes, ToTupleBuffer, Tuple, TupleBuffer};
 use tarantool::util::NumOrStr;
 
 use crate::access_control::{user_by_id, UserMetadataKind};
+use crate::config;
 use crate::failure_domain::FailureDomain;
 use crate::instance::{self, Instance};
 use crate::plugin::PluginIdentifier;
@@ -36,6 +37,7 @@ use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
+use crate::system_parameter_name;
 use crate::tarantool::box_schema_version;
 use crate::tier::Tier;
 use crate::tlog;
@@ -47,6 +49,7 @@ use crate::traft::RaftEntryId;
 use crate::traft::RaftId;
 use crate::traft::RaftIndex;
 use crate::traft::Result;
+use crate::util::check_msgpack_matches_type;
 use crate::util::Uppercase;
 use crate::warn_or_panic;
 
@@ -1274,62 +1277,6 @@ impl From<ClusterwideTable> for SpaceId {
         ///
         /// See [`PluginOp`].
         PendingPluginOperation = "pending_plugin_operation",
-
-        /// Password should contain at least this many characters
-        PasswordMinLength = "password_min_length",
-
-        /// Password should contain at least one uppercase letter
-        PasswordEnforceUppercase = "password_enforce_uppercase",
-
-        /// Password should contain at least one lowercase letter
-        PasswordEnforceLowercase = "password_enforce_lowercase",
-
-        /// Password should contain at least one digit
-        PasswordEnforceDigits = "password_enforce_digits",
-
-        /// Password should contain at least one special symbol.
-        /// Special symbols - &, |, ?, !, $, @
-        PasswordEnforceSpecialchars = "password_enforce_specialchars",
-
-        /// Maximum number of login attempts through `picodata connect`.
-        /// Each failed login attempt increases a local per user counter of failed attempts.
-        /// When the counter reaches the value of this property any subsequent logins
-        /// of this user will be denied.
-        /// Local counter for a user is reset on successful login.
-        ///
-        /// Default value is [`DEFAULT_MAX_LOGIN_ATTEMPTS`].
-        MaxLoginAttempts = "max_login_attempts",
-
-        /// Number of seconds to wait before automatically changing an
-        /// unresponsive instance's state to Offline.
-        AutoOfflineTimeout = "auto_offline_timeout",
-
-        /// Maximum number of seconds to wait before sending another heartbeat
-        /// to an unresponsive instance.
-        MaxHeartbeatPeriod = "max_heartbeat_period",
-
-        /// PG statement storage size.
-        MaxPgStatements = "max_pg_statements",
-
-        /// PG portal storage size.
-        MaxPgPortals = "max_pg_portals",
-
-        /// Raft snapshot will be sent out in chunks not bigger than this threshold.
-        /// Note: actual snapshot size may exceed this threshold. In most cases
-        /// it will just add a couple of dozen metadata bytes. But in extreme
-        /// cases if there's a tuple larger than this threshold, it will be sent
-        /// in one piece whatever size it has. Please don't store tuples of size
-        /// greater than this.
-        SnapshotChunkMaxSize = "snapshot_chunk_max_size",
-
-        /// Snapshot read views with live reference counts will be forcefully
-        /// closed after this number of seconds. This is necessary if followers
-        /// do not properly finalize the snapshot application.
-        // NOTE: maybe we should instead track the instance/raft ids of
-        // followers which requested the snapshots and automatically close the
-        // read views if the corresponding instances are *deteremined* to not
-        // need them anymore. Or maybe timeouts is the better way..
-        SnapshotReadViewCloseTimeout = "snapshot_read_view_close_timeout",
     }
 }
 
@@ -1362,30 +1309,11 @@ impl PropertyName {
         };
 
         match self {
-            Self::PasswordEnforceUppercase
-            | Self::PasswordEnforceLowercase
-            | Self::PasswordEnforceDigits
-            | Self::PasswordEnforceSpecialchars => {
-                // Check it's a bool.
-                _ = new.field::<bool>(1)?;
-            }
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
-            | Self::GlobalSchemaVersion
-            | Self::PasswordMinLength
-            | Self::MaxLoginAttempts
-            | Self::MaxPgPortals
-            | Self::MaxPgStatements
-            | Self::SnapshotChunkMaxSize => {
+            | Self::GlobalSchemaVersion => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
-            }
-            Self::AutoOfflineTimeout
-            | Self::MaxHeartbeatPeriod
-            | Self::SnapshotReadViewCloseTimeout => {
-                // Check it's a floating point number.
-                // NOTE: serde implicitly converts integers to floats for us here.
-                _ = new.field::<f64>(1).map_err(map_err)?;
             }
             Self::PendingSchemaChange => {
                 // Check it decodes into Ddl.
@@ -1404,19 +1332,6 @@ impl PropertyName {
 ////////////////////////////////////////////////////////////////////////////////
 // Properties
 ////////////////////////////////////////////////////////////////////////////////
-
-pub const DEFAULT_PASSWORD_MIN_LENGTH: usize = 8;
-pub const DEFAULT_PASSWORD_ENFORCE_UPPERCASE: bool = true;
-pub const DEFAULT_PASSWORD_ENFORCE_LOWERCASE: bool = true;
-pub const DEFAULT_PASSWORD_ENFORCE_DIGITS: bool = true;
-pub const DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS: bool = false;
-pub const DEFAULT_AUTO_OFFLINE_TIMEOUT: f64 = 5.0;
-pub const DEFAULT_MAX_HEARTBEAT_PERIOD: f64 = 5.0;
-pub const DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE: usize = 16 * 1024 * 1024;
-pub const DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT: f64 = (24 * 3600) as _;
-pub const DEFAULT_MAX_LOGIN_ATTEMPTS: usize = 4;
-pub const DEFAULT_MAX_PG_STATEMENTS: usize = 1024;
-pub const DEFAULT_MAX_PG_PORTALS: usize = 1024;
 
 /// Cached value of "pg_max_statements" option from "_pico_property".
 /// 0 means that the value must be read from the table.
@@ -1508,24 +1423,19 @@ impl Properties {
                     check_msgpack_matches_type(raw_field, expected_type)?;
 
                     // TODO: implement caching for all `config::AlterSystemParameters`.
-                    match key {
-                        // TODO: type safety
-                        "max_pg_portals" => {
-                            let value = new
-                                .field::<usize>(1)?
-                                .expect("just verified with verify_new_tuple");
-                            // Cache the value.
-                            MAX_PG_PORTALS.store(value, Ordering::Relaxed);
-                        }
-                        // TODO: type safety
-                        "max_pg_statements" => {
-                            let value = new
-                                .field::<usize>(1)?
-                                .expect("just verified with verify_new_tuple");
-                            // Cache the value.
-                            MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
-                        }
-                        _ => (),
+                    if key == system_parameter_name!(max_pg_portals) {
+                        let value = new
+                            .field::<usize>(1)?
+                            .expect("just verified with verify_new_tuple");
+                        // Cache the value.
+                        MAX_PG_PORTALS.store(value, Ordering::Relaxed);
+                    }
+                    if key == system_parameter_name!(max_pg_statements) {
+                        let value = new
+                            .field::<usize>(1)?
+                            .expect("just verified with verify_new_tuple");
+                        // Cache the value.
+                        MAX_PG_STATEMENTS.store(value, Ordering::Relaxed);
                     }
                 } else {
                     let Ok(key) = key.parse::<PropertyName>() else {
@@ -1557,7 +1467,7 @@ impl Properties {
     }
 
     #[inline]
-    pub fn get<T>(&self, key: PropertyName) -> tarantool::Result<Option<T>>
+    pub fn get<T>(&self, key: &'static str) -> tarantool::Result<Option<T>>
     where
         T: DecodeOwned,
     {
@@ -1565,6 +1475,24 @@ impl Properties {
             Some(t) => t.field(1),
             None => Ok(None),
         }
+    }
+
+    #[inline]
+    pub fn get_or_alter_system_default<T>(&self, key: &'static str) -> tarantool::Result<T>
+    where
+        T: DecodeOwned,
+        T: serde::de::DeserializeOwned,
+    {
+        if let Some(t) = self.space.get(&[key])? {
+            if let Some(res) = t.field(1)? {
+                return Ok(res);
+            }
+        }
+
+        let value = config::get_default_value_of_alter_system_parameter(key)
+            .expect("parameter name is validated using system_parameter_name! macro");
+        let res = rmpv::ext::from_value(value).expect("default value type is correct");
+        Ok(res)
     }
 
     #[inline]
@@ -1582,74 +1510,55 @@ impl Properties {
 
     #[inline]
     pub fn password_min_length(&self) -> tarantool::Result<usize> {
-        let res = self
-            .get(PropertyName::PasswordMinLength)?
-            .unwrap_or(DEFAULT_PASSWORD_MIN_LENGTH);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(password_min_length))
     }
 
     #[inline]
     pub fn password_enforce_uppercase(&self) -> tarantool::Result<bool> {
-        let res = self
-            .get(PropertyName::PasswordEnforceUppercase)?
-            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_UPPERCASE);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(password_enforce_uppercase))
     }
 
     #[inline]
     pub fn password_enforce_lowercase(&self) -> tarantool::Result<bool> {
-        let res = self
-            .get(PropertyName::PasswordEnforceLowercase)?
-            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_LOWERCASE);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(password_enforce_lowercase))
     }
 
     #[inline]
     pub fn password_enforce_digits(&self) -> tarantool::Result<bool> {
-        let res = self
-            .get(PropertyName::PasswordEnforceDigits)?
-            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_DIGITS);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(password_enforce_digits))
     }
 
     #[inline]
     pub fn password_enforce_specialchars(&self) -> tarantool::Result<bool> {
-        let res = self
-            .get(PropertyName::PasswordEnforceSpecialchars)?
-            .unwrap_or(DEFAULT_PASSWORD_ENFORCE_SPECIALCHARS);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(password_enforce_specialchars))
     }
 
-    /// See [`PropertyName::MaxLoginAttempts`]
     #[inline]
     pub fn max_login_attempts(&self) -> tarantool::Result<usize> {
-        let res = self
-            .get(PropertyName::MaxLoginAttempts)?
-            .unwrap_or(DEFAULT_MAX_LOGIN_ATTEMPTS);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(max_login_attempts))
     }
 
     #[inline]
     pub fn pending_schema_change(&self) -> tarantool::Result<Option<Ddl>> {
-        self.get(PropertyName::PendingSchemaChange)
+        self.get(PropertyName::PendingSchemaChange.as_str())
     }
 
     #[inline]
     pub fn pending_schema_version(&self) -> tarantool::Result<Option<u64>> {
-        self.get(PropertyName::PendingSchemaVersion)
+        self.get(PropertyName::PendingSchemaVersion.as_str())
     }
 
     #[inline]
     pub fn global_schema_version(&self) -> tarantool::Result<u64> {
         let res = self
-            .get(PropertyName::GlobalSchemaVersion)?
+            .get(PropertyName::GlobalSchemaVersion.as_str())?
             .unwrap_or(INITIAL_SCHEMA_VERSION);
         Ok(res)
     }
 
     #[inline]
     pub fn pending_plugin_op(&self) -> tarantool::Result<Option<PluginOp>> {
-        self.get(PropertyName::PendingPluginOperation)
+        self.get(PropertyName::PendingPluginOperation.as_str())
     }
 
     #[inline]
@@ -1659,9 +1568,7 @@ impl Properties {
             return Ok(cached);
         }
 
-        let res = self
-            .get(PropertyName::MaxPgStatements)?
-            .unwrap_or(DEFAULT_MAX_PG_STATEMENTS);
+        let res = self.get_or_alter_system_default(system_parameter_name!(max_pg_statements))?;
 
         // Cache the value.
         MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
@@ -1675,9 +1582,7 @@ impl Properties {
             return Ok(cached);
         }
 
-        let res = self
-            .get(PropertyName::MaxPgPortals)?
-            .unwrap_or(DEFAULT_MAX_PG_PORTALS);
+        let res = self.get_or_alter_system_default(system_parameter_name!(max_pg_portals))?;
 
         // Cache the value.
         MAX_PG_PORTALS.store(res, Ordering::Relaxed);
@@ -1686,25 +1591,33 @@ impl Properties {
 
     #[inline]
     pub fn snapshot_chunk_max_size(&self) -> tarantool::Result<usize> {
-        let res = self
-            .get(PropertyName::SnapshotChunkMaxSize)?
-            // Just in case user deletes this property.
-            .unwrap_or(DEFAULT_SNAPSHOT_CHUNK_MAX_SIZE);
-        Ok(res)
+        self.get_or_alter_system_default(system_parameter_name!(snapshot_chunk_max_size))
     }
 
     #[inline]
     pub fn snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
-        let res = self
-            .get(PropertyName::SnapshotReadViewCloseTimeout)?
-            // Just in case user deletes this property.
-            .unwrap_or(DEFAULT_SNAPSHOT_READ_VIEW_CLOSE_TIMEOUT);
+        #[rustfmt::skip]
+        let res: f64 = self.get_or_alter_system_default(system_parameter_name!(snapshot_read_view_close_timeout))?;
+        Ok(Duration::from_secs_f64(res))
+    }
+
+    #[inline]
+    pub fn auto_offline_timeout(&self) -> tarantool::Result<Duration> {
+        #[rustfmt::skip]
+        let res: f64 = self.get_or_alter_system_default(system_parameter_name!(auto_offline_timeout))?;
+        Ok(Duration::from_secs_f64(res))
+    }
+
+    #[inline]
+    pub fn max_heartbeat_period(&self) -> tarantool::Result<Duration> {
+        #[rustfmt::skip]
+        let res: f64 = self.get_or_alter_system_default(system_parameter_name!(max_heartbeat_period))?;
         Ok(Duration::from_secs_f64(res))
     }
 
     #[inline]
     pub fn next_schema_version(&self) -> tarantool::Result<u64> {
-        let res = if let Some(version) = self.get(PropertyName::NextSchemaVersion)? {
+        let res = if let Some(version) = self.get(PropertyName::NextSchemaVersion.as_str())? {
             version
         } else {
             let current = self.global_schema_version()?;

@@ -360,7 +360,7 @@ fn redirect_interactive_sql() {
 /// Sets a check that will be performed when a user is logging in
 /// Checks for user exceeding maximum number of login attempts and if user was blocked.
 ///
-/// Also see [`storage::PropertyName::MaxLoginAttempts`].
+/// Also see [`config::AlterSystemParameters::max_login_attempts`].
 fn set_login_check(storage: Clusterwide) {
     const MAX_ATTEMPTS_EXCEEDED: &str = "Maximum number of login attempts exceeded";
     const NO_LOGIN_PRIVILEGE: &str = "User does not have login privilege";
