@@ -201,7 +201,7 @@ fn box_access_check_ddl_as_user(
 
 fn access_check_dml(dml: &Dml, as_user: UserId) -> tarantool::Result<()> {
     let space_id = dml.space();
-    if space_id <= SPACE_ID_INTERNAL_MAX && as_user != ADMIN_ID && as_user != PICO_SERVICE_ID {
+    if space_id <= SPACE_ID_INTERNAL_MAX && !is_superuser(as_user) {
         let table_name = ClusterwideTable::try_from(space_id)
             .map_or(format!("id={}", space_id), |table| table.name().to_string());
 
@@ -667,17 +667,23 @@ pub(super) fn access_check_op(
             Ok(())
         }
         Op::Plugin { .. } => {
-            // FIXME: currently access here is not checked explicitly, but check
-            // dml into system space _pico_property.
-            // Same behaviour also using for check access of update and remove plugin operations.
-            // This will be fixed later by adding special rights for plugin system.
-            access_check_dml(
-                &Dml::replace(ClusterwideTable::Property, &(), as_user).expect("infallible"),
-                as_user,
-            )
+            if !is_superuser(as_user) {
+                let sys_user = user_by_id(as_user)?;
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("Plugin system access is denied for user '{}'", sys_user.name)).into());
+            }
+            Ok(())
         }
         Op::Acl(acl) => access_check_acl(storage, acl, as_user),
     }
+}
+
+// TODO: use this function everywhere we check `id != ADMIN_ID`
+#[inline(always)]
+pub fn is_superuser(user_id: UserId) -> bool {
+    // TODO: some users may have a "super" role which theoretically should make them
+    // equivalent in power to ADMIN, but currently we don't do this for some reason...
+    user_id == ADMIN_ID || user_id == PICO_SERVICE_ID
 }
 
 mod tests {
