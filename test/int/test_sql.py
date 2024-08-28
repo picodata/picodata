@@ -5195,6 +5195,16 @@ def test_alter_system_property_errors(cluster: Cluster):
             """
         )
 
+    # timeout values cannot be negative
+    for param in ["auto_offline_timeout", "governor_raft_op_timeout"]:
+        with pytest.raises(TarantoolError) as e:
+            dml = i1.sql(
+                f"""
+                ALTER SYSTEM SET {param} TO -1
+                """
+            )
+        assert e.value.args[1] == "timeout value cannot be negative"
+
 
 def test_global_dml_cas_conflict(cluster: Cluster):
     # Number of update operations per worker

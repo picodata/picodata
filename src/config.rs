@@ -1547,6 +1547,15 @@ pub fn validate_alter_system_parameter_tuple(name: &str, tuple: &Tuple) -> Resul
     let raw_field = tuple.field::<&RawBytes>(1)?.expect("value is not nullable");
     crate::util::check_msgpack_matches_type(raw_field, expected_type)?;
 
+    // Not sure how I feel about this...
+    if name.ends_with("_timeout") {
+        let value = tuple.field::<f64>(1)?.expect("type already checked");
+        if value < 0.0 {
+            #[rustfmt::skip]
+            return Err(Error::other(format!("timeout value cannot be negative")));
+        }
+    }
+
     // TODO: implement caching for all `config::AlterSystemParameters`.
     if name == system_parameter_name!(max_pg_portals) {
         let value = tuple.field::<usize>(1)?.expect("type already checked");
