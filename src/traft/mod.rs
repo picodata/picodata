@@ -30,7 +30,7 @@ pub type Distance = u64;
 
 pub const INIT_RAFT_TERM: RaftTerm = 1;
 
-pub type Result<T> = std::result::Result<T, error::Error>;
+pub type Result<T, E = error::Error> = std::result::Result<T, E>;
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // RaftEntryId

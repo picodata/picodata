@@ -8,6 +8,7 @@ use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
 
+use crate::cas;
 use crate::op::Op;
 use crate::proc_name;
 use crate::rpc;
@@ -70,6 +71,8 @@ impl Loop {
             raft_status.changed().await.unwrap();
             return ControlFlow::Continue(());
         }
+
+        let raft_op_timeout = Duration::from_secs(3);
 
         let instances = storage
             .instances
@@ -229,12 +232,13 @@ impl Loop {
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
             }
 
-            Plan::UpdateTargetReplicasetMaster(UpdateTargetReplicasetMaster { op }) => {
+            Plan::UpdateTargetReplicasetMaster(UpdateTargetReplicasetMaster { cas }) => {
                 set_status(governor_status, "update target replication leader");
                 governor_step! {
                     "proposing replicaset target master change"
                     async {
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -245,8 +249,8 @@ impl Loop {
                 new_master_id,
                 replicaset_id,
                 mut update_ops,
-                replication_config_version_bump,
-                vshard_config_version_bump,
+                bump_ranges,
+                bump_ops,
             }) => {
                 set_status(governor_status, "transfer replication leader");
                 tlog!(
@@ -291,7 +295,8 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        let mut ops = vec![];
+                        let mut ops = bump_ops;
+                        let mut ranges = bump_ranges;
 
                         update_ops.assign("promotion_vclock", &promotion_vclock).expect("shan't fail");
                         let op = Dml::update(
@@ -300,16 +305,14 @@ impl Loop {
                             update_ops,
                             ADMIN_ID,
                         )?;
+                        ranges.push(cas::Range::for_dml(&op)?);
                         ops.push(op);
 
-                        if let Some(bump) = replication_config_version_bump {
-                            ops.push(bump);
-                        }
-                        if let Some(bump) = vshard_config_version_bump {
-                            ops.push(bump);
-                        }
                         let op = Op::single_dml_or_batch(ops);
-                        node.propose_and_wait(op, Duration::from_secs(3))?
+                        let predicate = cas::Predicate::new(applied, ranges);
+                        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -396,12 +399,13 @@ impl Loop {
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
-                        node.propose_and_wait(replication_config_version_actualize, Duration::from_secs(3))?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&replication_config_version_actualize, true, deadline)?.no_retries()?;
                     }
                 }
             }
 
-            Plan::ShardingBoot(ShardingBoot { target, rpc, op }) => {
+            Plan::ShardingBoot(ShardingBoot { target, rpc, cas }) => {
                 set_status(governor_status, "bootstrap bucket distribution");
                 governor_step! {
                     "bootstrapping bucket distribution" [
@@ -412,26 +416,19 @@ impl Loop {
                             .call(target, proc_name!(proc_sharding_bootstrap), &rpc, Self::SYNC_TIMEOUT)?
                             .timeout(Self::SYNC_TIMEOUT)
                             .await?;
-                        node.propose_and_wait(op, Duration::from_secs(3))?
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }
 
-            Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges {
-                op,
-                vshard_config_version_bump,
-            }) => {
+            Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges { cas }) => {
                 set_status(governor_status, "update replicaset state");
                 governor_step! {
                     "proposing replicaset state change"
                     async {
-                        let mut ops = vec![];
-                        ops.push(op);
-                        if let Some(bump) = vshard_config_version_bump {
-                            ops.push(bump);
-                        }
-                        let op = Op::single_dml_or_batch(ops);
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -739,11 +736,7 @@ impl Loop {
                 }
             }
 
-            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig {
-                targets,
-                rpc,
-                vshard_config_version_actualize,
-            }) => {
+            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig { targets, rpc, cas }) => {
                 set_status(governor_status, "update current sharding configuration");
                 governor_step! {
                     "applying vshard config changes"
@@ -769,7 +762,8 @@ impl Loop {
                 governor_step! {
                     "updating current vshard config"
                     async {
-                        node.propose_and_wait(vshard_config_version_actualize, Duration::from_secs(3))?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }

@@ -1,3 +1,4 @@
+use crate::cas;
 use crate::has_states;
 use crate::instance::state::StateVariant;
 use crate::instance::{Instance, InstanceId};
@@ -118,13 +119,16 @@ pub(super) fn action_plan<'i>(
     if let Some(to) = new_target_master {
         let mut ops = UpdateOps::new();
         ops.assign("target_master_id", &to.instance_id)?;
-        let op = Dml::update(
+        let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[&to.replicaset_id],
             ops,
             ADMIN_ID,
         )?;
-        return Ok(UpdateTargetReplicasetMaster { op }.into());
+        let ranges = vec![cas::Range::for_dml(&dml)?];
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+        return Ok(UpdateTargetReplicasetMaster { cas }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -163,7 +167,10 @@ pub(super) fn action_plan<'i>(
             ops,
             ADMIN_ID,
         )?;
-        let replication_config_version_actualize = dml;
+        let ranges = vec![cas::Range::for_dml(&dml)?];
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+        let replication_config_version_actualize = cas;
 
         let promotion_vclock = &replicaset.promotion_vclock;
         return Ok(ConfigureReplication {
@@ -202,18 +209,26 @@ pub(super) fn action_plan<'i>(
             demote = Some(rpc::replication::DemoteRequest {});
         }
 
-        let replication_config_version_bump =
-            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_id);
+        let mut ranges = vec![];
+        let mut ops = vec![];
 
-        let mut vshard_config_version_bump = None;
+        if let Some(bump) =
+            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_id)
+        {
+            ranges.push(cas::Range::for_dml(&bump)?);
+            ops.push(bump);
+        }
+
         #[rustfmt::skip]
         if target_vshard_config_version == current_vshard_config_version {
             // Only bump the version if it's not already bumped.
-            vshard_config_version_bump = Some(Dml::replace(
+            let bump = Dml::replace(
                 ClusterwideTable::Property,
                 &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
                 ADMIN_ID,
-            )?);
+            )?;
+            ranges.push(cas::Range::for_dml(&bump)?);
+            ops.push(bump);
         };
 
         return Ok(UpdateCurrentReplicasetMaster {
@@ -222,8 +237,8 @@ pub(super) fn action_plan<'i>(
             new_master_id,
             replicaset_id,
             update_ops,
-            replication_config_version_bump,
-            vshard_config_version_bump,
+            bump_ranges: ranges,
+            bump_ops: ops,
         }
         .into());
     }
@@ -237,29 +252,35 @@ pub(super) fn action_plan<'i>(
             uops.assign("weight", 1.)?;
         }
         uops.assign("state", ReplicasetState::Ready)?;
-        let op = Dml::update(
+        let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[replicaset_id],
             uops,
             ADMIN_ID,
         )?;
 
-        let mut vshard_config_version_bump = None;
+        let mut ranges = vec![];
+        let mut ops = vec![];
+        ranges.push(cas::Range::for_dml(&dml)?);
+        ops.push(dml);
+
         #[rustfmt::skip]
         if target_vshard_config_version == current_vshard_config_version {
             // Only bump the version if it's not already bumped.
-            vshard_config_version_bump = Some(Dml::replace(
+            let bump = Dml::replace(
                 ClusterwideTable::Property,
                 &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
                 ADMIN_ID,
-            )?);
+            )?;
+            ranges.push(cas::Range::for_dml(&bump)?);
+            ops.push(bump);
         };
 
-        return Ok(ProposeReplicasetStateChanges {
-            op,
-            vshard_config_version_bump,
-        }
-        .into());
+        let op = Op::single_dml_or_batch(ops);
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+
+        return Ok(ProposeReplicasetStateChanges { cas }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -295,18 +316,17 @@ pub(super) fn action_plan<'i>(
         };
 
         #[rustfmt::skip]
-        let vshard_config_version_actualize = Dml::replace(
+        let bump = Dml::replace(
             ClusterwideTable::Property,
             &(&PropertyName::CurrentVshardConfigVersion, target_vshard_config_version),
             ADMIN_ID,
         )?;
 
-        return Ok(UpdateCurrentVshardConfig {
-            targets,
-            rpc,
-            vshard_config_version_actualize,
-        }
-        .into());
+        let ranges = vec![cas::Range::for_dml(&bump)?];
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(bump, predicate, ADMIN_ID)?;
+
+        return Ok(UpdateCurrentVshardConfig { targets, rpc, cas }.into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -323,12 +343,15 @@ pub(super) fn action_plan<'i>(
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
-        let op = Dml::replace(
+        let dml = Dml::replace(
             ClusterwideTable::Property,
             &(PropertyName::VshardBootstrapped, true),
             ADMIN_ID,
         )?;
-        return Ok(ShardingBoot { target, rpc, op }.into());
+        let ranges = vec![cas::Range::for_dml(&dml)?];
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+        return Ok(ShardingBoot { target, rpc, cas }.into());
     };
 
     ////////////////////////////////////////////////////////////////////////////
@@ -687,7 +710,7 @@ pub mod stage {
             /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
             /// Global DML operation which updates `current_vshard_config_version` in table `_pico_property`.
-            pub vshard_config_version_actualize: Dml,
+            pub cas: cas::Request,
         }
 
         pub struct TransferLeadership<'i> {
@@ -697,7 +720,7 @@ pub mod stage {
 
         pub struct UpdateTargetReplicasetMaster {
             /// Global DML operation which updates `target_master_id` in table `_pico_replicaset`.
-            pub op: Dml,
+            pub cas: cas::Request,
         }
 
         pub struct UpdateCurrentReplicasetMaster<'i> {
@@ -717,10 +740,10 @@ pub mod stage {
             /// with the new values for `current_master_id` & `promotion_vclock`.
             /// Note: it is only the part of the operation, because we don't know the promotion_vclock yet.
             pub update_ops: UpdateOps,
-            /// Global DML operation which updates `target_config_version` in table `_pico_replicaset` for the replicaset.
-            pub replication_config_version_bump: Option<Dml>,
-            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
-            pub vshard_config_version_bump: Option<Dml>,
+            /// Cas ranges for the `bump_ops` operations.
+            pub bump_ranges: Vec<cas::Range>,
+            /// Optional operations to bump versions of replication and sharding configs.
+            pub bump_ops: Vec<Dml>,
         }
 
         pub struct Downgrade {
@@ -744,7 +767,7 @@ pub mod stage {
             /// It's used to synchronize new master before making it writable.
             pub promotion_vclock: &'i Vclock,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
-            pub replication_config_version_actualize: Dml,
+            pub replication_config_version_actualize: cas::Request,
         }
 
         pub struct ShardingBoot<'i> {
@@ -753,15 +776,15 @@ pub mod stage {
             /// Request to call [`rpc::sharding::bootstrap::proc_sharding_bootstrap`] on `target`.
             pub rpc: rpc::sharding::bootstrap::Request,
             /// Global DML operation which updates value for `vshard_bootstrapped` to `true` in table `_pico_property`.
-            pub op: Dml,
+            pub cas: cas::Request,
         }
 
         pub struct ProposeReplicasetStateChanges {
             /// Global DML operation which updates `weight` to `1` & `state` to `ready`
             /// in table `_pico_replicaset` for given replicaset.
-            pub op: Dml,
-            /// Global DML operation which updates `target_vshard_config_version` in table `_pico_property`.
-            pub vshard_config_version_bump: Option<Dml>,
+            ///
+            /// This also optionally includes version bumps for replicaset and vshard.
+            pub cas: cas::Request,
         }
 
         pub struct ToOnline<'i> {
