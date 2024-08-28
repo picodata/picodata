@@ -382,9 +382,10 @@ def test_read_from_system_tables(cluster: Cluster):
     instance_count = 2
     cluster.deploy(instance_count=instance_count)
     i1, _ = cluster.instances
+    # Check we can read everything from the table
     data = i1.sql(
         """
-        select * from "_pico_property"
+        SELECT * FROM "_pico_property" ORDER BY "key"
         """,
         strip_metadata=False,
     )
@@ -392,7 +393,23 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "key", "type": "string"},
         {"name": "value", "type": "any"},
     ]
-    assert len(data["rows"]) == 13
+    # Ignore values for the sake of stability
+    keys = [row[0] for row in data["rows"]]
+    assert keys == [
+        "auto_offline_timeout",
+        "global_schema_version",
+        "max_heartbeat_period",
+        "max_pg_portals",
+        "max_pg_statements",
+        "next_schema_version",
+        "password_enforce_digits",
+        "password_enforce_lowercase",
+        "password_enforce_specialchars",
+        "password_enforce_uppercase",
+        "password_min_length",
+        "snapshot_chunk_max_size",
+        "snapshot_read_view_close_timeout",
+    ]
 
     data = i1.sql(
         """
