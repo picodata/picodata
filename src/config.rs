@@ -1552,7 +1552,7 @@ pub fn validate_alter_system_parameter_tuple(name: &str, tuple: &Tuple) -> Resul
         let value = tuple.field::<f64>(1)?.expect("type already checked");
         if value < 0.0 {
             #[rustfmt::skip]
-            return Err(Error::other(format!("timeout value cannot be negative")));
+            return Err(Error::other("timeout value cannot be negative"));
         }
     }
 
