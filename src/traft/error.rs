@@ -183,6 +183,7 @@ impl Error {
             Self::TermMismatch { .. } => ErrorCode::TermMismatch as _,
             Self::NoSuchInstance(_) => ErrorCode::NoSuchInstance as _,
             Self::NoSuchReplicaset { .. } => ErrorCode::NoSuchReplicaset as _,
+            Self::Unsupported { .. } => TarantoolErrorCode::Unsupported as _,
             // TODO: give other error types specific codes
             _ => ErrorCode::Other as _,
         }
