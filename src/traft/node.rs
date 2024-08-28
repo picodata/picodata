@@ -23,6 +23,7 @@ use crate::schema::SchemaObjectType;
 use crate::schema::{Distribution, IndexDef, IndexOption, TableDef};
 use crate::sentinel;
 use crate::storage::acl;
+use crate::storage::cached_key_def;
 use crate::storage::ddl_meta_drop_routine;
 use crate::storage::ddl_meta_drop_space;
 use crate::storage::space_by_id;
@@ -791,10 +792,8 @@ impl NodeImpl {
                     Dml::Delete { key, .. } => s.get(key),
                     Dml::Replace { tuple, .. } => {
                         let tuple = Tuple::from(tuple);
-                        let key_def = self
-                            .storage
-                            .key_def(s.id(), 0)
-                            .expect("index for space must be found");
+                        let key_def =
+                            cached_key_def(s.id(), 0).expect("index for space must be found");
                         let key = key_def
                             .extract_key(&tuple)
                             .expect("cas should validate operation before committing a log entry");

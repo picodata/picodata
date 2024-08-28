@@ -1014,62 +1014,6 @@ impl Clusterwide {
         Ok(())
     }
 
-    /// Return a `KeyDef` to be used for comparing **tuples** of the
-    /// corresponding global space.
-    pub(crate) fn key_def(
-        &self,
-        space_id: SpaceId,
-        index_id: IndexId,
-    ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
-        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
-            let key_def = match key_defs.entry((sys_space_id, index_id)) {
-                Entry::Occupied(o) => o.into_mut(),
-                Entry::Vacant(v) => {
-                    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-                    let key_def = index.meta()?.to_key_def();
-                    // System space definition's never change during a single
-                    // execution, so it's safe to cache these
-                    v.insert(Rc::new(key_def))
-                }
-            };
-            return Ok(key_def.clone());
-        }
-
-        let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-        let key_def = index.meta()?.to_key_def();
-        Ok(Rc::new(key_def))
-    }
-
-    /// Return a `KeyDef` to be used for comparing **keys** of the
-    /// corresponding global space.
-    pub(crate) fn key_def_for_key(
-        &self,
-        space_id: SpaceId,
-        index_id: IndexId,
-    ) -> tarantool::Result<Rc<KeyDef>> {
-        static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
-        let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-        if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
-            let key_def = match key_defs.entry((sys_space_id, index_id)) {
-                Entry::Occupied(o) => o.into_mut(),
-                Entry::Vacant(v) => {
-                    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-                    let key_def = index.meta()?.to_key_def_for_key();
-                    // System space definition's never change during a single
-                    // execution, so it's safe to cache these
-                    v.insert(Rc::new(key_def))
-                }
-            };
-            return Ok(key_def.clone());
-        }
-
-        let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-        let key_def = index.meta()?.to_key_def_for_key();
-        Ok(Rc::new(key_def))
-    }
-
     /// Perform the `dml` operation on the local storage.
     /// When possible, return the new tuple produced by the operation:
     ///   * `Some(tuple)` in case of insert and replace;
@@ -1085,6 +1029,59 @@ impl Clusterwide {
             Dml::Delete { key, .. } => space.delete(key).map(|_| None),
         }
     }
+}
+
+/// Return a `KeyDef` to be used for comparing **tuples** of the corresponding global table.
+///
+/// The return value is cached for system tables.
+pub fn cached_key_def(space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Rc<KeyDef>> {
+    static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
+    let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
+    if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
+        let key_def = match key_defs.entry((sys_space_id, index_id)) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
+                let key_def = index.meta()?.to_key_def();
+                // System space definition's never change during a single
+                // execution, so it's safe to cache these
+                v.insert(Rc::new(key_def))
+            }
+        };
+        return Ok(key_def.clone());
+    }
+
+    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
+    let key_def = index.meta()?.to_key_def();
+    Ok(Rc::new(key_def))
+}
+
+/// Return a `KeyDef` to be used for comparing **keys** of the corresponding global table.
+///
+/// The return value is cached for system tables.
+pub(crate) fn cached_key_def_for_key(
+    space_id: SpaceId,
+    index_id: IndexId,
+) -> tarantool::Result<Rc<KeyDef>> {
+    static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
+    let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
+    if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
+        let key_def = match key_defs.entry((sys_space_id, index_id)) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
+                let key_def = index.meta()?.to_key_def_for_key();
+                // System space definition's never change during a single
+                // execution, so it's safe to cache these
+                v.insert(Rc::new(key_def))
+            }
+        };
+        return Ok(key_def.clone());
+    }
+
+    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
+    let key_def = index.meta()?.to_key_def_for_key();
+    Ok(Rc::new(key_def))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

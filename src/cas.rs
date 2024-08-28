@@ -1,6 +1,7 @@
 use crate::access_control;
 use crate::error_code::ErrorCode;
 use crate::proc_name;
+use crate::storage;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
 use crate::tlog;
@@ -580,14 +581,14 @@ impl Predicate {
                 match op {
                     Dml::Update { key, .. } | Dml::Delete { key, .. } => {
                         let key = Tuple::new(key)?;
-                        let key_def = storage.key_def_for_key(space_id, 0)?;
+                        let key_def = storage::cached_key_def_for_key(space_id, 0)?;
                         if range.contains(&key_def, &key) {
                             return Err(error());
                         }
                     }
                     Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => {
                         let tuple = Tuple::new(tuple)?;
-                        let key_def = storage.key_def(space_id, 0)?;
+                        let key_def = storage::cached_key_def(space_id, 0)?;
                         if range.contains(&key_def, &tuple) {
                             return Err(error());
                         }
@@ -625,7 +626,7 @@ impl Predicate {
                     if space != range.table {
                         continue;
                     }
-                    let key_def = storage.key_def_for_key(space, 0)?;
+                    let key_def = storage::cached_key_def_for_key(space, 0)?;
                     for key in schema_related_property_keys() {
                         if range.contains(&key_def, key) {
                             return Err(error());
@@ -744,6 +745,22 @@ impl Range {
             table: table.into(),
             bounds: None,
         }
+    }
+
+    pub fn for_dml(dml: &Dml) -> Result<Self> {
+        let table = dml.table_id();
+        let key = match dml {
+            Dml::Update { key, .. } | Dml::Delete { key, .. } => key.clone(),
+            Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => {
+                let key_def = storage::cached_key_def(table, 0)?;
+                let tuple = Tuple::new(tuple)?;
+                key_def.extract_key(&tuple)?
+            }
+        };
+        Ok(Self {
+            table,
+            bounds: Some(RangeBounds::Eq { key }),
+        })
     }
 
     #[inline(always)]
