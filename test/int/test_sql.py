@@ -2402,7 +2402,7 @@ def test_sql_alter_login(cluster: Cluster):
     assert acl["row_count"] == 1
     with pytest.raises(
         Exception,
-        match=f"Grant Login from '{username}' is denied for {other_username}",
+        match=f"Grant Login from '{username}' is denied for '{other_username}'",
     ):
         acl = i1.sql(
             f"alter user {username} with login",
@@ -2411,7 +2411,7 @@ def test_sql_alter_login(cluster: Cluster):
         )
     with pytest.raises(
         Exception,
-        match=f"Revoke Login from '{username}' is denied for {other_username}",
+        match=f"Revoke Login from '{username}' is denied for '{other_username}'",
     ):
         acl = i1.sql(
             f"alter user {username} with nologin",
@@ -3610,6 +3610,7 @@ def test_procedure_privileges(cluster: Cluster):
             ddl = i1.sql(query, user=as_user, password=as_pwd)
         assert ddl["row_count"] == 1
 
+    # TODO: remove this function, the tests are impossible to understand because of these
     def grant_procedure(priv: str, user: str, fun=None, as_user=None, as_pwd=None):
         query = f"grant {priv}"
         if fun:
@@ -3754,14 +3755,15 @@ def test_procedure_privileges(cluster: Cluster):
     # Check that user can't grant create procedure (only admin can)
     with pytest.raises(
         TarantoolError,
-        match=f"Grant to routine '' is denied for user '{alice}'",
+        # WTF is "grant to routine"?
+        match=f"Grant to routine is denied for user '{alice}'",
     ):
         grant_procedure("create", bob, as_user=alice, as_pwd=alice_pwd)
 
     # Check that user can't grant execute procedure (only admin can)
     with pytest.raises(
         TarantoolError,
-        match=f"Grant to routine '' is denied for user '{alice}'",
+        match=f"Grant to routine is denied for user '{alice}'",
     ):
         grant_procedure("execute", bob, as_user=alice, as_pwd=alice_pwd)
 

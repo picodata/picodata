@@ -26,12 +26,10 @@
 //! tarantool perspective so we bypass vanilla checks by using `box.session.su(ADMIN)`. Then on the raft leader box.session.su
 //! is used again to switch to user provided in the request. This is needed because tarantool functions we use for access checks
 //! make them based on effective user.
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-};
+use std::collections::{HashMap, HashSet};
 
 use tarantool::auth::AuthMethod;
+use tarantool::error::TarantoolErrorCode::AccessDenied;
 use tarantool::{
     access_control::{
         box_access_check_ddl, box_access_check_space, PrivType,
@@ -93,25 +91,6 @@ fn make_no_such_user(name: &str) -> tarantool::error::Error {
         name
     );
     tarantool::error::TarantoolError::last().into()
-}
-
-/// The function produces an error that has the same format as one that is generated
-/// by vanilla tarantool. See original definition in errcode.h
-fn make_access_denied(
-    access_name: impl Display,
-    object_type: PicoSchemaObjectType,
-    object_name: impl Display,
-    user_name: impl Display,
-) -> tarantool::error::Error {
-    tarantool::set_error!(
-        tarantool::error::TarantoolErrorCode::AccessDenied,
-        "{} to {} '{}' is denied for user '{}'",
-        access_name,
-        object_type,
-        object_name,
-        user_name
-    );
-    return tarantool::error::TarantoolError::last().into();
 }
 
 pub fn user_by_id(id: UserId) -> tarantool::Result<UserMetadata> {
@@ -418,6 +397,8 @@ fn access_check_grant_revoke(
 ) -> tarantool::Result<()> {
     // Note: this is vanilla tarantool user, not picodata one.
     let grantor = user_by_id(grantor_id)?;
+    let user_name = &grantor.name;
+    let object_type = priv_def.object_type();
 
     let object_id = match priv_def.object_id() {
         None => {
@@ -426,12 +407,8 @@ fn access_check_grant_revoke(
             // i e BOX_SC_ENTITY_SPACE. Since these variants are not stored we do
             // not materialize them as valid SchemaObjectType variants and streamline this check.
             if grantor_id != ADMIN_ID {
-                return Err(make_access_denied(
-                    access_name,
-                    priv_def.object_type(),
-                    "",
-                    grantor.name,
-                ));
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} to {object_type} is denied for user '{user_name}'")).into());
             }
             return Ok(());
         }
@@ -450,7 +427,7 @@ fn access_check_grant_revoke(
         return Err(tarantool::error::TarantoolError::last().into());
     }
 
-    match priv_def.object_type() {
+    match object_type {
         PicoSchemaObjectType::Universe => {
             if priv_def.privilege() != PrivilegeType::Login {
                 // This assumption is used in the following checks
@@ -458,12 +435,8 @@ fn access_check_grant_revoke(
                     "Only Login privilege can be granted on Universe, got {}",
                     priv_def.privilege()
                 );
-                return Err(make_access_denied(
-                    access_name,
-                    PicoSchemaObjectType::Universe,
-                    "Only Login privilege can be granted on Universe",
-                    grantor.name,
-                ));
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} to {object_type} is denied for user '{user_name}'")).into());
             }
 
             // Following checks are assuming that it's a grant or revoke of Login privilege
@@ -475,14 +448,8 @@ fn access_check_grant_revoke(
 
             // Only owner or admin can grant login on user
             if target_sys_user.owner_id != grantor_id && grantor_id != ADMIN_ID {
-                tarantool::set_error!(
-                    tarantool::error::TarantoolErrorCode::AccessDenied,
-                    "{} Login from '{}' is denied for {}",
-                    access_name,
-                    target_sys_user.name,
-                    grantor.name
-                );
-                return Err(tarantool::error::TarantoolError::last().into());
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} Login from '{}' is denied for '{user_name}'", target_sys_user.name)).into());
             }
         }
         PicoSchemaObjectType::Table => {
@@ -493,12 +460,9 @@ fn access_check_grant_revoke(
 
             // Only owner or admin can grant on space
             if meta.user_id != grantor_id && grantor_id != ADMIN_ID {
-                return Err(make_access_denied(
-                    access_name,
-                    PicoSchemaObjectType::Table,
-                    meta.name,
-                    grantor.name,
-                ));
+                let table_name = meta.name;
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} to {object_type} '{table_name}' is denied for user '{user_name}'")).into());
             }
 
             return box_access_check_ddl_as_user(
@@ -523,12 +487,9 @@ fn access_check_grant_revoke(
                 && !(granted_role.name == "public"
                     && priv_def.privilege() == PrivilegeType::Execute)
             {
-                return Err(make_access_denied(
-                    access_name,
-                    PicoSchemaObjectType::Role,
-                    granted_role.name,
-                    grantor.name,
-                ));
+                let role_name = &granted_role.name;
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} to {object_type} '{role_name}' is denied for user '{user_name}'")).into());
             }
 
             detect_role_grant_cycles(&granted_role, priv_def, storage)?;
@@ -550,12 +511,9 @@ fn access_check_grant_revoke(
 
             // Only owner or admin can grant on user
             if target_sys_user.owner_id != grantor_id && grantor_id != ADMIN_ID {
-                return Err(make_access_denied(
-                    access_name,
-                    PicoSchemaObjectType::User,
-                    target_sys_user.name,
-                    grantor.name,
-                ));
+                let target_user_name = &target_sys_user.name;
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} to {object_type} '{target_user_name}' is denied for user '{user_name}'")).into());
             }
 
             return box_access_check_ddl_as_user(
@@ -576,12 +534,9 @@ fn access_check_grant_revoke(
 
             // Only owner or admin can grant on routine.
             if routine.owner != grantor_id && grantor_id != ADMIN_ID {
-                return Err(make_access_denied(
-                    access_name,
-                    PicoSchemaObjectType::Routine,
-                    &routine.name,
-                    grantor.name,
-                ));
+                let routine_name = &routine.name;
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("{access_name} to {object_type} '{routine_name}' is denied for user '{user_name}'")).into());
             }
 
             return box_access_check_ddl_as_user(
@@ -706,12 +661,8 @@ pub(super) fn access_check_op(
         Op::DdlCommit | Op::DdlAbort { .. } => {
             if as_user != ADMIN_ID {
                 let sys_user = user_by_id(as_user)?;
-                return Err(make_access_denied(
-                    "ddl",
-                    PicoSchemaObjectType::Universe,
-                    "",
-                    sys_user.name,
-                ));
+                #[rustfmt::skip]
+                return Err(BoxError::new(AccessDenied, format!("DDL access is denied for user '{}'", sys_user.name)).into());
             }
             Ok(())
         }
@@ -1742,7 +1693,7 @@ mod tests {
         assert_eq!(
             e.to_string(),
             format!(
-                "box error: AccessDenied: Grant Login from '{user_name}' is denied for test_user"
+                "box error: AccessDenied: Grant Login from '{user_name}' is denied for 'test_user'"
             )
         );
 
@@ -1766,7 +1717,7 @@ mod tests {
         assert_eq!(
             e.to_string(),
             format!(
-                "box error: AccessDenied: Revoke Login from '{user_name}' is denied for test_user"
+                "box error: AccessDenied: Revoke Login from '{user_name}' is denied for 'test_user'"
             )
         );
 
