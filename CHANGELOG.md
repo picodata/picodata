@@ -27,6 +27,31 @@ with the `YY.MINOR.MICRO` scheme.
   the former is not specified in `create table` clause
 - SQL normalizes unquoted identifiers to lowercase instead of
   uppercase
+- SQL supports LIMIT clause
+- SQL supports SUBSTR function
+
+### Pgproto
+
+- SQL supports postgres cast notation: expr::type
+- pgproto supports tab-completion for tables names in psql:
+```sql
+postgres=> select * from _pico_<TAB>
+_pico_index             _pico_plugin            _pico_privilege         _pico_routine           _pico_table
+_pico_instance          _pico_plugin_config     _pico_property          _pico_service           _pico_tier
+_pico_peer_address      _pico_plugin_migration  _pico_replicaset        _pico_service_route     _pico_user
+
+```
+
+- pgproto supports explicit parameter type declarations in SQL via casting.
+This is helpful for drivers that do not specify parameters types, such as
+pq and pgx drivers for Go. In such drivers, users need to explicitly cast all
+query parameters.
+
+If the driver doesn't specify the type and the parameter isn't cast, the query
+will fail. For instance, running `SELECT * FROM t WHERE id = $1` in pgx will
+return "could not determine data type of parameter $1" error. To resolve this,
+users must specify the expected type of the parameter:
+`SELECT * FROM t WHERE id = $1::INT`.
 
 ### Configuration
 
