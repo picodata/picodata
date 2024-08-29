@@ -516,7 +516,11 @@ impl Loop {
                     ]
                     async {
                         assert!(matches!(next_op, Op::DdlAbort { .. } | Op::DdlCommit));
-                        node.propose_and_wait(next_op, Duration::from_secs(3))?;
+                        let ranges = cas::Range::for_op(&next_op)?;
+                        let predicate = cas::Predicate::new(applied, ranges);
+                        let cas = cas::Request::new(next_op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }

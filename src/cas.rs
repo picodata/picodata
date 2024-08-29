@@ -169,21 +169,6 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         });
     }
 
-    // Other operation types are not used with CaS
-    if !matches!(
-        req.op,
-        Op::Acl(..)
-            | Op::Dml(..)
-            | Op::DdlPrepare { .. }
-            | Op::DdlAbort { .. }
-            | Op::BatchDml { .. }
-            | Op::Plugin { .. }
-    ) {
-        return Err(TraftError::Cas(Error::InvalidOpKind(Box::new(
-            req.op.clone(),
-        ))));
-    }
-
     let Predicate {
         index: requested,
         term: requested_term,
@@ -459,11 +444,6 @@ pub enum Error {
     #[error("KeyTypeMismatch: failed comparing predicate ranges: {0}")]
     KeyTypeMismatch(#[from] TntError),
 
-    /// NOTE: Boxing is caused by big difference in size compared to other variants
-    /// See <https://rust-lang.github.io/rust-clippy/master/index.html#/result_large_err> for more context
-    #[error("InvalidOpKind: Expected one of Acl, Dml, DdlPrepare or DdlAbort, got {0}")]
-    InvalidOpKind(Box<Op>),
-
     #[error("InvalidOp: empty batch")]
     EmptyBatch,
 }
@@ -477,7 +457,6 @@ impl Error {
             Self::ConflictFound { .. } => ErrorCode::CasConflictFound as _,
             Self::EntryTermMismatch { .. } => ErrorCode::CasEntryTermMismatch as _,
             Self::TableNotAllowed { .. } => ErrorCode::CasTableNotAllowed as _,
-            Self::InvalidOpKind { .. } => ErrorCode::CasInvalidOpKind as _,
             Self::KeyTypeMismatch { .. } => ErrorCode::StorageCorrupted as _,
             Self::EmptyBatch => TarantoolErrorCode::IllegalParams as _,
         }
@@ -795,12 +774,12 @@ impl Range {
             Op::BatchDml { ops } => ops.iter().map(Self::for_dml).collect(),
             Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
                 let range = Self::new(ClusterwideTable::Property)
-                    .eq(&[storage::PropertyName::GlobalSchemaVersion]);
+                    .eq([storage::PropertyName::GlobalSchemaVersion]);
                 Ok(vec![range])
             }
             Op::Plugin { .. } => {
                 let range = Self::new(ClusterwideTable::Property)
-                    .eq(&[storage::PropertyName::PendingPluginOperation]);
+                    .eq([storage::PropertyName::PendingPluginOperation]);
                 Ok(vec![range])
             }
         }
