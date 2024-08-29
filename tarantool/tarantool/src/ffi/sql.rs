@@ -3,6 +3,7 @@
 use libc::{iovec, size_t};
 use std::cmp;
 use std::io::Read;
+use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_int, c_void};
 
 pub const IPROTO_DATA: u8 = 0x30;
@@ -72,18 +73,11 @@ impl ObufWrapper {
         let inner_buf = unsafe {
             let slab_c = cord_slab_cache();
 
-            let mut buf = Obuf {
-                _slab_cache: std::mem::zeroed(),
-                pos: 0,
-                n_iov: 0,
-                used: 0,
-                start_capacity: start_capacity as size_t,
-                capacity: std::mem::zeroed(),
-                iov: std::mem::zeroed(),
-            };
-            obuf_create(&mut buf as *mut Obuf, slab_c, 1024);
-            buf
+            let mut buf = MaybeUninit::<Obuf>::zeroed();
+            obuf_create(buf.as_mut_ptr(), slab_c, start_capacity);
+            buf.assume_init()
         };
+
         Self {
             inner: inner_buf,
             read_pos: 0,
@@ -135,6 +129,7 @@ impl Read for ObufWrapper {
     }
 }
 
+// TODO: ASan-enabled build has a different layout (obuf_asan.h).
 #[repr(C)]
 pub(crate) struct Obuf {
     _slab_cache: *const c_void,
@@ -144,6 +139,11 @@ pub(crate) struct Obuf {
     pub start_capacity: size_t,
     pub capacity: [size_t; 32],
     pub iov: [iovec; 32],
+    // This flag is only present in debug builds (!NDEBUG),
+    // but it's easier to just add it unconditionally to
+    // prevent illegal memory access in obuf_create.
+    // TODO: prevent this class of errors using a better solution.
+    pub reserved: bool,
 }
 
 impl Drop for Obuf {
