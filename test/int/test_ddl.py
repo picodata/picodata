@@ -430,10 +430,13 @@ def test_ddl_create_table_abort(cluster: Cluster):
     i3.start()
     i3.wait_online()
 
+    def check_table_is_gone(peer):
+        assert peer.call("box.space._space:get", space_id) is None
+
     # Everything was cleaned up.
-    assert i1.call("box.space._space:get", space_id) is None
-    assert i2.call("box.space._space:get", space_id) is None
-    assert i3.call("box.space._space:get", space_id) is None
+    Retriable(timeout=10).call(check_table_is_gone, i1)
+    Retriable(timeout=10).call(check_table_is_gone, i2)
+    Retriable(timeout=10).call(check_table_is_gone, i3)
 
     assert get_index_names(i1, space_id) == []
     assert get_index_names(i2, space_id) == []

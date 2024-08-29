@@ -430,8 +430,8 @@ class Retriable:
 
     def __init__(
         self,
-        timeout: int | float,
-        rps: int | float,
+        timeout: int | float = 10,
+        rps: int | float = 4,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
         ignore_predicate: Callable[[Exception], bool] = lambda x: False,
     ) -> None:
