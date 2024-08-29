@@ -482,6 +482,12 @@ impl Error {
             Self::EmptyBatch => TarantoolErrorCode::IllegalParams as _,
         }
     }
+
+    #[allow(non_snake_case)]
+    #[inline(always)]
+    pub fn ConflictFound(conflict_index: RaftIndex) -> Self {
+        Self::ConflictFound { conflict_index }
+    }
 }
 
 /// Represents a lua table describing a [`Predicate`].
@@ -573,9 +579,6 @@ impl Predicate {
         entry_op: &Op,
         storage: &Clusterwide,
     ) -> std::result::Result<(), Error> {
-        let error = || Error::ConflictFound {
-            conflict_index: entry_index,
-        };
         let check_dml =
             |op: &Dml, space_id: u32, range: &Range| -> std::result::Result<(), Error> {
                 match op {
@@ -583,14 +586,14 @@ impl Predicate {
                         let key = Tuple::new(key)?;
                         let key_def = storage::cached_key_def_for_key(space_id, 0)?;
                         if range.contains(&key_def, &key) {
-                            return Err(error());
+                            return Err(Error::ConflictFound(entry_index));
                         }
                     }
                     Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => {
                         let tuple = Tuple::new(tuple)?;
                         let key_def = storage::cached_key_def(space_id, 0)?;
                         if range.contains(&key_def, &tuple) {
-                            return Err(error());
+                            return Err(Error::ConflictFound(entry_index));
                         }
                     }
                 }
@@ -598,7 +601,7 @@ impl Predicate {
             };
         for range in &self.ranges {
             if modifies_operable(entry_op, range.table, storage) {
-                return Err(error());
+                return Err(Error::ConflictFound(entry_index));
             }
 
             // TODO: check operation's space exists
@@ -617,20 +620,29 @@ impl Predicate {
                         check_dml(dml, dml.space(), range)?
                     }
                 }
-                Op::DdlPrepare { .. }
-                | Op::DdlCommit
-                | Op::DdlAbort { .. }
-                | Op::Acl { .. }
-                | Op::Plugin { .. } => {
+                Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
                     let space = ClusterwideTable::Property.id();
                     if space != range.table {
                         continue;
                     }
                     let key_def = storage::cached_key_def_for_key(space, 0)?;
                     for key in schema_related_property_keys() {
+                        // NOTE: this is just a string comparison
                         if range.contains(&key_def, key) {
-                            return Err(error());
+                            return Err(Error::ConflictFound(entry_index));
                         }
+                    }
+                }
+                Op::Plugin { .. } => {
+                    let space = ClusterwideTable::Property.id();
+                    if space != range.table {
+                        continue;
+                    }
+                    let key_def = storage::cached_key_def_for_key(space, 0)?;
+                    let key = pending_plugin_operation_key();
+                    // NOTE: this is just a string comparison
+                    if range.contains(&key_def, key) {
+                        return Err(Error::ConflictFound(entry_index));
                     }
                 }
                 Op::Nop => (),
@@ -664,6 +676,16 @@ fn schema_related_property_keys() -> &'static [Tuple] {
         }
 
         DATA.as_ref().unwrap()
+    }
+}
+
+fn pending_plugin_operation_key() -> &'static Tuple {
+    static mut TUPLE: Option<Tuple> = None;
+    // Safety: only called from main thread
+    unsafe {
+        TUPLE.get_or_insert_with(|| {
+            Tuple::new(&[storage::PropertyName::PendingPluginOperation]).expect("cannot fail")
+        })
     }
 }
 
@@ -761,6 +783,27 @@ impl Range {
             table,
             bounds: Some(RangeBounds::Eq { key }),
         })
+    }
+
+    pub fn for_op(op: &Op) -> Result<Vec<Self>> {
+        match op {
+            Op::Nop => Ok(vec![]),
+            Op::Dml(dml) => {
+                let range = Self::for_dml(dml)?;
+                Ok(vec![range])
+            }
+            Op::BatchDml { ops } => ops.iter().map(Self::for_dml).collect(),
+            Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
+                let range = Self::new(ClusterwideTable::Property)
+                    .eq(&[storage::PropertyName::GlobalSchemaVersion]);
+                Ok(vec![range])
+            }
+            Op::Plugin { .. } => {
+                let range = Self::new(ClusterwideTable::Property)
+                    .eq(&[storage::PropertyName::PendingPluginOperation]);
+                Ok(vec![range])
+            }
+        }
     }
 
     #[inline(always)]
