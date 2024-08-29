@@ -529,6 +529,7 @@ impl Loop {
                 targets,
                 rpc,
                 success_dml,
+                ranges,
             }) => {
                 set_status(governor_status, "install new plugin");
 
@@ -577,7 +578,10 @@ impl Loop {
                     "finalizing plugin installing"
                     async {
                         let op = next_op.expect("is set on the first substep");
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
+                        let predicate = cas::Predicate::new(applied, ranges);
+                        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -588,6 +592,7 @@ impl Loop {
                 ident,
                 on_start_timeout,
                 success_dml,
+                ranges,
             }) => {
                 set_status(governor_status, "enable plugin");
                 let mut next_op = None;
@@ -648,7 +653,10 @@ impl Loop {
                     "finalizing plugin enabling"
                     async {
                         let op = next_op.expect("is set on the first substep");
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
+                        let predicate = cas::Predicate::new(applied, ranges);
+                        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -659,6 +667,7 @@ impl Loop {
                 enable_rpc,
                 disable_rpc,
                 success_dml,
+                ranges,
             }) => {
                 set_status(governor_status, "update plugin service topology");
                 let mut next_op = None;
@@ -735,7 +744,10 @@ impl Loop {
                     "finalizing topology update"
                     async {
                         let op = next_op.expect("is set on the first substep");
-                        node.propose_and_wait(op, Duration::from_secs(3))?;
+                        let predicate = cas::Predicate::new(applied, ranges);
+                        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
                     }
                 }
             }

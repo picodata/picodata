@@ -437,19 +437,18 @@ pub(super) fn action_plan<'i>(
         };
 
         let plugin_def = manifest.plugin_def();
-        let mut ops = vec![Dml::replace(
-            ClusterwideTable::Plugin,
-            &plugin_def,
-            ADMIN_ID,
-        )?];
+        let mut ranges = vec![];
+        let mut ops = vec![];
+
+        let dml = Dml::replace(ClusterwideTable::Plugin, &plugin_def, ADMIN_ID)?;
+        ranges.push(cas::Range::for_dml(&dml)?);
+        ops.push(dml);
 
         let ident = plugin_def.into_identifier();
         for service_def in manifest.service_defs() {
-            ops.push(Dml::replace(
-                ClusterwideTable::Service,
-                &service_def,
-                ADMIN_ID,
-            )?);
+            let dml = Dml::replace(ClusterwideTable::Service, &service_def, ADMIN_ID)?;
+            ranges.push(cas::Range::for_dml(&dml)?);
+            ops.push(dml);
 
             let config = manifest
                 .get_default_config(&service_def.name)
@@ -458,25 +457,26 @@ pub(super) fn action_plan<'i>(
                 PluginConfigRecord::from_config(&ident, &service_def.name, config.clone())?;
 
             for config_rec in config_records {
-                ops.push(Dml::replace(
-                    ClusterwideTable::PluginConfig,
-                    &config_rec,
-                    ADMIN_ID,
-                )?);
+                let dml = Dml::replace(ClusterwideTable::PluginConfig, &config_rec, ADMIN_ID)?;
+                ranges.push(cas::Range::for_dml(&dml)?);
+                ops.push(dml);
             }
         }
 
-        ops.push(Dml::delete(
+        let dml = Dml::delete(
             ClusterwideTable::Property,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
-        )?);
+        )?;
+        ranges.push(cas::Range::for_dml(&dml)?);
+        ops.push(dml);
 
         let success_dml = Op::BatchDml { ops };
         return Ok(CreatePlugin {
             targets,
             rpc,
             success_dml,
+            ranges,
         }
         .into());
     }
@@ -500,34 +500,41 @@ pub(super) fn action_plan<'i>(
             timeout: Loop::SYNC_TIMEOUT,
         };
 
+        let mut ranges = vec![];
         let mut success_dml = vec![];
         let mut enable_ops = UpdateOps::new();
         enable_ops.assign(PluginDef::FIELD_ENABLE, true)?;
-        success_dml.push(Dml::update(
+        let dml = Dml::update(
             ClusterwideTable::Plugin,
             &[&plugin.name, &plugin.version],
             enable_ops,
             ADMIN_ID,
-        )?);
+        )?;
+        ranges.push(cas::Range::for_dml(&dml)?);
+        success_dml.push(dml);
 
         for i in instances {
             for svc in service_defs {
                 if !svc.tiers.contains(&i.tier) {
                     continue;
                 }
-                success_dml.push(Dml::replace(
+                let dml = Dml::replace(
                     ClusterwideTable::ServiceRouteTable,
                     &ServiceRouteItem::new_healthy(i.instance_id.clone(), plugin, &svc.name),
                     ADMIN_ID,
-                )?);
+                )?;
+                ranges.push(cas::Range::for_dml(&dml)?);
+                success_dml.push(dml);
             }
         }
 
-        success_dml.push(Dml::delete(
+        let dml = Dml::delete(
             ClusterwideTable::Property,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
-        )?);
+        )?;
+        ranges.push(cas::Range::for_dml(&dml)?);
+        success_dml.push(dml);
         let success_dml = Op::BatchDml { ops: success_dml };
 
         return Ok(EnablePlugin {
@@ -536,6 +543,7 @@ pub(super) fn action_plan<'i>(
             on_start_timeout: *on_start_timeout,
             ident: plugin,
             success_dml,
+            ranges,
         }
         .into());
     }
@@ -552,6 +560,7 @@ pub(super) fn action_plan<'i>(
         let mut enable_targets = Vec::with_capacity(instances.len());
         let mut disable_targets = Vec::with_capacity(instances.len());
         let mut on_success_dml = vec![];
+        let mut ranges = vec![];
 
         let plugin_def = plugins
             .get(plugin)
@@ -588,7 +597,7 @@ pub(super) fn action_plan<'i>(
 
                 if new_tiers.contains(&i.tier) {
                     enable_targets.push(&i.instance_id);
-                    on_success_dml.push(Dml::replace(
+                    let dml = Dml::replace(
                         ClusterwideTable::ServiceRouteTable,
                         &ServiceRouteItem::new_healthy(
                             i.instance_id.clone(),
@@ -596,7 +605,9 @@ pub(super) fn action_plan<'i>(
                             &service_def.name,
                         ),
                         ADMIN_ID,
-                    )?);
+                    )?;
+                    ranges.push(cas::Range::for_dml(&dml)?);
+                    on_success_dml.push(dml);
                 }
 
                 if old_tiers.contains(&i.tier) {
@@ -607,26 +618,24 @@ pub(super) fn action_plan<'i>(
                         plugin_version: &plugin.version,
                         service_name: &service_def.name,
                     };
-                    on_success_dml.push(Dml::delete(
-                        ClusterwideTable::ServiceRouteTable,
-                        &key,
-                        ADMIN_ID,
-                    )?);
+                    let dml = Dml::delete(ClusterwideTable::ServiceRouteTable, &key, ADMIN_ID)?;
+                    ranges.push(cas::Range::for_dml(&dml)?);
+                    on_success_dml.push(dml);
                 }
             }
         }
 
-        on_success_dml.push(Dml::replace(
-            ClusterwideTable::Service,
-            &new_service_def,
-            ADMIN_ID,
-        )?);
+        let dml = Dml::replace(ClusterwideTable::Service, &new_service_def, ADMIN_ID)?;
+        ranges.push(cas::Range::for_dml(&dml)?);
+        on_success_dml.push(dml);
 
-        on_success_dml.push(Dml::delete(
+        let dml = Dml::delete(
             ClusterwideTable::Property,
             &[PropertyName::PendingPluginOperation],
             ADMIN_ID,
-        )?);
+        )?;
+        ranges.push(cas::Range::for_dml(&dml)?);
+        on_success_dml.push(dml);
         let success_dml = Op::BatchDml {
             ops: on_success_dml,
         };
@@ -648,6 +657,7 @@ pub(super) fn action_plan<'i>(
             enable_rpc,
             disable_rpc,
             success_dml,
+            ranges,
         }
         .into());
     }
@@ -812,6 +822,9 @@ pub mod stage {
             /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
+            /// Ranges for both the `success_dml` and the rollback_op which may
+            /// occur if creating the plugin fails.
+            pub ranges: Vec<cas::Range>,
         }
 
         pub struct EnablePlugin<'i> {
@@ -827,6 +840,9 @@ pub mod stage {
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
+            /// Ranges for both the `success_dml` and the rollback_op which may
+            /// occur if enabling the plugin fails.
+            pub ranges: Vec<cas::Range>,
         }
 
         pub struct AlterServiceTiers<'i> {
@@ -841,6 +857,9 @@ pub mod stage {
             /// Global batch DML operation which updates records in `_pico_service`, `_pico_service_route`
             /// and removes "pending_plugin_operation" from `_pico_property` in case of success.
             pub success_dml: Op,
+            /// Ranges for both the `success_dml` and the rollback_op which may
+            /// occur if enabling the services fails.
+            pub ranges: Vec<cas::Range>,
         }
     }
 }
