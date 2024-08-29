@@ -2240,7 +2240,7 @@ class Postgres:
     def __init__(self, cluster: Cluster, ssl: bool = False, ssl_verify: bool = False):
         # use random port in order to avoid "cannot assign requested address" error
         self.port = random.randint(2000, 30000)
-        self.host = "localhost"
+        self.host = "127.0.0.1"
         self.cluster = cluster
         self.ssl = ssl
         self.ssl_verify = ssl_verify

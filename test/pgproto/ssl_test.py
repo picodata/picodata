@@ -57,7 +57,7 @@ def test_mtls_with_known_cert(postgres_with_mtls: Postgres):
 def test_mtls_without_client_cert(postgres_with_mtls: Postgres):
     with pytest.raises(
         psycopg.OperationalError,
-        match="(certificate required)|(Connection refused)",
+        match="certificate required",
     ):
         conn = psycopg.connect(prepare_with_tls(postgres_with_mtls, ""))
         conn.close()
@@ -66,7 +66,7 @@ def test_mtls_without_client_cert(postgres_with_mtls: Postgres):
 def test_mtls_with_unknown_cert(postgres_with_mtls: Postgres):
     with pytest.raises(
         psycopg.OperationalError,
-        match="(unknown ca)|(Connection refused)",
+        match="unknown ca",
     ):
         conn = psycopg.connect(prepare_with_tls(postgres_with_mtls, "self-signed"))
         conn.close()
