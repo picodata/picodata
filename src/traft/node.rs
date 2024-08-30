@@ -349,18 +349,16 @@ impl Node {
         })
     }
 
-    /// Propose a raft operation and wait until it is applied on the current
-    /// instance (the leader).
+    /// Proposes a `Op::Nop` operation to raft log.
+    /// Returns the index of the resuling entry.
     ///
     /// If called on a non leader, returns an error.
     ///
     /// **This function yields**
     #[inline]
-    pub fn propose_and_wait(&self, op: impl Into<Op>, timeout: Duration) -> traft::Result<()> {
-        let entry_id = self.raw_operation(|node_impl| node_impl.propose_async(op))?;
-        self.wait_index(entry_id.index, timeout)?;
-        // TODO: check entry_id.term
-        Ok(())
+    pub fn propose_nop(&self) -> traft::Result<RaftIndex> {
+        let entry_id = self.raw_operation(|node_impl| node_impl.propose_async(Op::Nop))?;
+        Ok(entry_id.index)
     }
 
     /// Become a candidate and wait for a main loop round so that there's a

@@ -525,17 +525,17 @@ pub(crate) fn setup() {
 
         Internal API. Proposes and waits for Op::Nop to be applied.
         It shouldn't be used except for tests.
+
+        Returns:
+
+            (number) raft index of the nop entry
         "},
-        tlua::function0(|| {
-            traft::node::global()?.propose_and_wait(Op::Nop, Duration::from_secs(1))
-        }),
+        tlua::function0(|| traft::node::global()?.propose_nop()),
     );
 
     luamod_set(
         &l,
         "raft_propose",
-        // TODO: Provide a more Lua friendly interface for `Op` and then document it
-        // or maybe mark this function `internal`
         indoc! {"
         pico.raft_propose(op)
         ============================
