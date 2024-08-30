@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error};
 
-use ::tarantool::net_box::{Conn, ConnOptions, Options};
-use ::tarantool::tuple::Tuple;
+use ::tarantool::fiber;
 
 use crate::info::VersionInfo;
 use crate::instance::{Instance, InstanceId, StateVariant};
@@ -11,9 +10,11 @@ use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::tlog;
+use crate::traft::network::ConnectionPool;
+use crate::unwrap_ok_or;
 use crate::util::Uppercase;
 
-const DEFAULT_TIMEOUT: u64 = 60;
+const DEFAULT_TIMEOUT: Option<std::time::Duration> = Some(std::time::Duration::from_secs(60));
 
 /// Struct for box.slab.info() result
 #[derive(Deserialize)]
@@ -203,76 +204,67 @@ fn get_peer_addresses(
 
 // Get data from instance: memory, PICO_VERSION, httpd address if exists
 //
-fn get_instance_data(full_address: &String) -> InstanceDataResponse {
+fn get_instance_data(
+    pool: &std::rc::Rc<ConnectionPool>,
+    instance_id: &InstanceId,
+) -> InstanceDataResponse {
     let mut res = InstanceDataResponse {
         httpd_address: String::new(),
         version: String::new(),
         mem_usable: 0u64,
         mem_used: 0u64,
     };
-    match Conn::new(
-        full_address,
-        ConnOptions {
-            user: crate::pico_service::PICO_SERVICE_USER_NAME.to_string(),
-            password: crate::pico_service::pico_service_password().into(),
-            ..ConnOptions::default()
-        },
-        None,
-    ) {
-        Ok(conn) => {
-            match conn.call(
-                ".proc_runtime_info",
-                &(),
-                &Options {
-                    timeout: Some(std::time::Duration::from_secs(DEFAULT_TIMEOUT)),
-                    ..Options::default()
-                },
-            ) {
-                Ok(info_res) => {
-                    if let Ok(Some((ri,))) = info_res
-                        .as_ref()
-                        .map(Tuple::decode::<(crate::info::RuntimeInfo,)>)
-                        .transpose()
-                    {
-                        if let Some(http) = ri.http {
-                            res.httpd_address.push_str(&http.host);
-                            res.httpd_address.push_str(&String::from(":"));
-                            res.httpd_address.push_str(&http.port.to_string());
-                        }
-                        res.version = ri.version_info.picodata_version.to_string();
-                    }
-                }
-                Err(e) => tlog!(
-                    Error,
-                    "webui: error on calling .proc_runtime_info on {full_address}: {e}"
-                ),
-            }
-            match conn.call(
-                "box.slab.info",
-                &(),
-                &Options {
-                    timeout: Some(std::time::Duration::from_secs(DEFAULT_TIMEOUT)),
-                    ..Options::default()
-                },
-            ) {
-                Ok(slab_res) => {
-                    if let Ok(Some((si,))) = slab_res
-                        .as_ref()
-                        .map(Tuple::decode::<(SlabInfo,)>)
-                        .transpose()
-                    {
-                        res.mem_usable = si.quota_size;
-                        res.mem_used = si.quota_used;
-                    };
-                }
-                Err(e) => tlog!(
-                    Error,
-                    "webui: error on calling box.slab.info on {full_address}: {e}"
-                ),
-            }
+    let fut = pool.call_raw(instance_id, ".proc_runtime_info", &(), DEFAULT_TIMEOUT);
+    let fut = unwrap_ok_or!(fut,
+        Err(e) => {
+                tlog!(
+                Error,
+                "webui: error on calling .proc_runtime_info on {instance_id}: {e}"
+            );
+            return res;
         }
-        Err(e) => tlog!(Error, "webui: can't connect with {full_address}: {e}"),
+    );
+    let resp = fiber::block_on(fut);
+    let resp: crate::info::RuntimeInfo = unwrap_ok_or!(resp,
+        Err(e) => {
+                tlog!(
+                Error,
+                "webui: error on calling .proc_runtime_info on {instance_id}: {e}"
+            );
+            return res;
+        }
+    );
+    if let Some(http) = resp.http {
+        res.httpd_address.push_str(&http.host);
+        res.httpd_address.push_str(&String::from(":"));
+        res.httpd_address.push_str(&http.port.to_string());
     }
+    res.version = resp.version_info.picodata_version.to_string();
+
+    let fut = pool.call_raw(instance_id, "box.slab.info", &(), DEFAULT_TIMEOUT);
+    let fut = unwrap_ok_or!(fut,
+        Err(e) => {
+                tlog!(
+                Error,
+                "webui: error on calling box.slab.info on {instance_id}: {e}"
+            );
+            return res;
+        }
+    );
+    let resp = fiber::block_on(fut);
+    let resp: SlabInfo = unwrap_ok_or!(resp,
+        Err(e) => {
+                tlog!(
+                Error,
+                "webui: error on calling box.slab.info on {instance_id}: {e}"
+            );
+            return res;
+        }
+    );
+
+    res.mem_usable = resp.quota_size;
+    res.mem_used = resp.quota_used;
+
     return res;
 }
 
@@ -282,13 +274,14 @@ fn get_replicasets_info(
     storage: &Clusterwide,
     only_leaders: bool,
 ) -> Result<Vec<ReplicasetInfo>, Box<dyn Error>> {
+    let node = crate::traft::node::global()?;
     let instances = storage.instances.all_instances()?;
+    let instances_props: HashMap<u64, InstanceDataResponse> = instances
+        .iter()
+        .map(|i| (i.raft_id, get_instance_data(&node.pool, &i.instance_id)))
+        .collect();
     let replicasets = get_replicasets(storage)?;
     let addresses = get_peer_addresses(storage, &replicasets, &instances, only_leaders)?;
-    let instances_props: HashMap<u64, InstanceDataResponse> = addresses
-        .iter()
-        .map(|(raft_id, full_address)| (*raft_id, get_instance_data(full_address)))
-        .collect();
 
     let mut res: HashMap<ReplicasetId, ReplicasetInfo> = HashMap::with_capacity(replicasets.len());
 
