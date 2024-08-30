@@ -2,6 +2,7 @@ use crate::cli::args;
 use crate::ipc;
 use ::tarantool::test::TestCase;
 use nix::unistd::{self, fork, ForkResult};
+use std::io::Write;
 
 macro_rules! color {
     (@priv red) => { "\x1b[0;31m" };
@@ -26,7 +27,7 @@ pub fn main(args: args::Test) -> ! {
     const PASSED: &str = color![green "ok" clear];
     const FAILED: &str = color![red "FAILED" clear];
     let mut cnt_passed = 0u32;
-    let mut cnt_failed = 0u32;
+    let mut failed = vec![];
     let mut cnt_skipped = 0u32;
 
     let now = std::time::Instant::now();
@@ -88,34 +89,58 @@ pub fn main(args: args::Test) -> ! {
                     cnt_passed += 1;
                 } else {
                     println!("{FAILED}");
-                    cnt_failed += 1;
-
-                    if args.nocapture {
-                        continue;
-                    }
-
-                    use std::io::Write;
-                    println!();
-                    std::io::stderr()
-                        .write_all(&log)
-                        .map_err(|e| println!("error writing stderr: {e}"))
-                        .ok();
-                    println!();
+                    let log = if args.nocapture { None } else { Some(log) };
+                    failed.push((t.name(), log));
                 }
             }
         };
     }
 
-    let ok = cnt_failed == 0;
-    println!();
+    let ok = failed.is_empty();
+
+    let (_, mut screen_width) = terminal_size();
+    if screen_width == 0 {
+        screen_width = 80;
+    }
+    if !ok {
+        println!();
+        println!("failed tests:");
+        for (test, log) in &failed {
+            if let Some(log) = log {
+                println!("{}", "=".repeat(screen_width));
+                println!("test {test} output:");
+                println!("{}", "-".repeat(screen_width));
+
+                let res = std::io::stdout().write_all(log);
+                if let Err(e) = res {
+                    eprintln!("failed writing stdout: {e}")
+                }
+                println!();
+            } else {
+                println!("\x1b[31m    {test}\x1b[0m");
+            }
+        }
+        println!();
+    }
+
     print!("test result: {}.", if ok { PASSED } else { FAILED });
     print!(" {cnt_passed} passed;");
-    print!(" {cnt_failed} failed;");
+    print!(" {} failed;", failed.len());
     print!(" {cnt_skipped} skipped;");
     println!(" finished in {:.2}s", now.elapsed().as_secs_f32());
     println!();
 
     std::process::exit(!ok as _);
+}
+
+/// Returns a pair (rows, columns).
+fn terminal_size() -> (usize, usize) {
+    // Safety: always safe
+    unsafe {
+        let mut screen_size: libc::winsize = std::mem::zeroed();
+        libc::ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut screen_size);
+        (screen_size.ws_row as _, screen_size.ws_col as _)
+    }
 }
 
 fn test_one(test: &TestCase) {
