@@ -337,6 +337,97 @@ pub(crate) fn setup() {
         }),
     );
 
+    ///////////////////////////////////////////////////////////////////////////
+    // raft index
+    ///////////////////////////////////////////////////////////////////////////
+
+    luamod_set(
+        &l,
+        "raft_get_index",
+        indoc! {"
+        pico.raft_get_index()
+        =====================
+
+        Returns the current applied raft index.
+
+        Returns:
+
+            (number)
+            or
+            (nil, string) in case of an error, if the raft node is
+                not initialized yet
+        "},
+        tlua::function0(|| traft::node::global().map(|n| n.get_index())),
+    );
+    luamod_set(
+        &l,
+        "raft_read_index",
+        indoc! {"
+        pico.raft_read_index(timeout)
+        =============================
+
+        Performs the quorum read operation.
+
+        It works the following way:
+
+        1. The instance forwards a request (`MsgReadIndex`) to a raft
+           leader. In case there's no leader at the moment, the function
+           returns the error 'raft: proposal dropped'.
+        2. Raft leader tracks its `commit_index` and broadcasts a
+           heartbeat to followers to make certain that it's still a
+           leader.
+        3. As soon as the heartbeat is acknowledged by the quorum, the
+           leader returns that index to the instance.
+        4. The instance awaits when the index is applied. If timeout
+           expires beforehand, the function returns the error 'timeout'.
+
+        Params:
+
+            1. timeout (number), in seconds
+
+        Returns:
+
+            (number)
+            or
+            (nil, string) in case of an error
+        "},
+        tlua::function1(|timeout: f64| -> traft::Result<RaftIndex> {
+            traft::node::global()?.read_index(duration_from_secs_f64_clamped(timeout))
+        }),
+    );
+    luamod_set(
+        &l,
+        "raft_wait_index",
+        indoc! {"
+        pico.raft_wait_index(target, timeout)
+        =====================================
+
+        Waits for the `target` index to be applied to the storage locally.
+
+        Returns current applied raft index. It can be equal to or
+        greater than the requested one. If timeout expires beforehand,
+        the function returns an error.
+
+        Params:
+
+            1. target (number)
+            2. timeout (number), in seconds
+
+        Returns:
+
+            (number)
+            or
+            (nil, string) in case of an error
+        "},
+        tlua::function2(
+            |target: RaftIndex, timeout: f64| -> traft::Result<RaftIndex> {
+                let node = traft::node::global()?;
+                node.wait_index(target, duration_from_secs_f64_clamped(timeout))
+            },
+        ),
+    );
+
+    ///////////////////////////////////////////////////////////////////////////
     // sql
     ///////////////////////////////////////////////////////////////////////////
     luamod_set_help_only(

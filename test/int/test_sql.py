@@ -5186,3 +5186,92 @@ def test_alter_system_property_errors(cluster: Cluster):
             alter system set "auto_offline_timeout" to true for tier foo
             """
         )
+
+
+def test_global_dml_cas_conflict(cluster: Cluster):
+    # Number of update operations per worker
+    N = 100
+    # Number of parallel workers running update operations
+    K = 4
+    # Add one for raft leader (not going to be a worker)
+    instance_count = K + 1
+    [i1, *_] = cluster.deploy(instance_count=instance_count)
+    workers = [i for i in cluster.instances if i != i1]
+
+    i1.sql(
+        """
+        CREATE TABLE test_table (id UNSIGNED PRIMARY KEY, counter UNSIGNED) DISTRIBUTED GLOBALLY
+        """
+    )
+    i1.sql(""" INSERT INTO test_table VALUES (0, 0) """)
+
+    test_sql = """ UPDATE test_table SET counter = counter + 1 WHERE id = 0 """
+    prepare = """
+        local N, test_sql = ...
+        local fiber = require 'fiber'
+        local log = require 'log'
+        function test_body()
+            while not box.space.test_table do
+                fiber.sleep(.1)
+            end
+
+            local i = 0
+            local stats = { n_retries = 0 }
+            while i < N do
+                log.info("UPDATE #%d running...", i)
+                while true do
+                    local ok, err = pico.sql(test_sql)
+                    if err == nil then break end
+                    log.error("UPDATE #%d failed: %s, retry", i, err)
+                    stats.n_retries = stats.n_retries + 1
+                    pico.raft_wait_index(pico.raft_get_index() + 1, 3)
+                end
+                log.info("UPDATE #%d OK", i)
+                i = i + 1
+            end
+
+            log.info("DONE: n_retries = %d", stats.n_retries)
+            return stats
+        end
+
+        function wait_result()
+            while true do
+                local result = rawget(_G, 'result')
+                if result ~= nil then
+                    if not result[1] then
+                        error(result[2])
+                    end
+                    return result[2]
+                end
+                fiber.sleep(.1)
+            end
+        end
+
+        function start_test()
+            fiber.create(function()
+                rawset(_G, 'result', { pcall(test_body) })
+            end)
+        end
+    """  # noqa: E501
+    for i in workers:
+        i.eval(prepare, N, test_sql)
+
+    #
+    # Run parallel updates to same table row from several instances simultaniously
+    #
+    for i in workers:
+        i.call("start_test")
+
+    #
+    # Wait for the test results
+    #
+    for i in workers:
+        stats = i.call("wait_result", timeout=20)
+        # There were conflicts
+        assert stats["n_retries"] > 0
+
+    #
+    # All operations were successfull
+    #
+    rows = i1.sql(""" SELECT * FROM test_table """)
+    assert rows == [[0, N * K]]
