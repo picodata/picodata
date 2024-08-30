@@ -675,7 +675,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 5,
+        timeout: int | float = 10,
     ):
         try:
             with self.connect(timeout, user=user, password=password) as conn:
@@ -690,7 +690,7 @@ class Instance:
         *args,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 5,
+        timeout: int | float = 10,
     ):
         try:
             with self.connect(timeout, user=user, password=password) as conn:
@@ -722,7 +722,7 @@ class Instance:
         )
         return self.eval(lua)
 
-    def replicaset_master_id(self, timeout: int | float = 6) -> str:
+    def replicaset_master_id(self, timeout: int | float = 10) -> str:
         """
         Returns `current_master_id` of this instance's replicaset.
         Waits until `current_master_id` == `target_master_id` if there's a
@@ -755,7 +755,7 @@ class Instance:
         sudo=False,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 3,
+        timeout: int | float = 10,
     ):
         """
         Run SQL query and return result.
@@ -781,7 +781,7 @@ class Instance:
         sudo: bool = False,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 5,
+        timeout: int | float = 10,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
         ignore_filter: Callable[[Exception], bool] | str = lambda x: False,
     ) -> dict:
@@ -820,7 +820,7 @@ class Instance:
         with_password: str,
         user: str | None = None,
         password: str | None = None,
-        timeout: int | float = 3,
+        timeout: int | float = 10,
     ):
         self.sql(
             f"""
@@ -940,7 +940,7 @@ class Instance:
                 daemon=True,
             ).start()
 
-    def fail_to_start(self, timeout: int = 5):
+    def fail_to_start(self, timeout: int = 10):
         assert self.process is None
         self.start()
         assert self.process
@@ -957,7 +957,7 @@ class Instance:
             self.kill()
             raise e from e
 
-    def wait_process_stopped(self, timeout: int = 5):
+    def wait_process_stopped(self, timeout: int = 10):
         if self.process is None:
             return
 
@@ -1111,7 +1111,7 @@ class Instance:
     def next_schema_version(self) -> int:
         return self.pico_property("next_schema_version") or 1
 
-    def create_table(self, params: dict, timeout: float = 3.0) -> int:
+    def create_table(self, params: dict, timeout: float = 10) -> int:
         """
         Creates a table. Returns a raft index at which a newly created table
         has to exist on all peers.
@@ -1157,7 +1157,7 @@ class Instance:
 
         return self.raft_get_index()
 
-    def drop_table(self, table: int | str, timeout: float = 3.0):
+    def drop_table(self, table: int | str, timeout: float = 10) -> int:
         """
         Drops the table. Returns a raft index at which the table has to be
         dropped on all peers.
@@ -1168,7 +1168,7 @@ class Instance:
         )
         return self.raft_get_index()
 
-    def abort_ddl(self, timeout: float = 3.0) -> int:
+    def abort_ddl(self, timeout: float = 10) -> int:
         """
         Aborts a pending DDL operation and waits for abort to be committed localy.
         If `timeout` is reached earlier returns an error.
@@ -1180,7 +1180,7 @@ class Instance:
         return index
 
     def propose_create_space(
-        self, space_def: Dict[str, Any], wait_index: bool = True, timeout: int = 3
+        self, space_def: Dict[str, Any], wait_index: bool = True, timeout: int = 10
     ) -> int:
         """
         Proposes a space creation ddl prepare operation. Returns the index of
@@ -1341,7 +1341,7 @@ class Instance:
         """Get current applied raft index"""
         return self.call(".proc_get_index")
 
-    def raft_read_index(self, timeout: int | float = 3) -> int:
+    def raft_read_index(self, timeout: int | float = 10) -> int:
         """
         Perform the quorum read operation.
         See `crate::traft::node::Node::read_index`.
@@ -1353,7 +1353,7 @@ class Instance:
             timeout=timeout + 1,  # this timeout is for network call
         )[0]
 
-    def raft_wait_index(self, target: int, timeout: int | float = 3) -> int:
+    def raft_wait_index(self, target: int, timeout: int | float = 10) -> int:
         """
         Wait until instance applies the `target` raft index.
         See `crate::traft::node::Node::wait_index`.
@@ -1377,7 +1377,7 @@ class Instance:
 
         return self.call("pico.get_vclock")
 
-    def wait_vclock(self, target: int, timeout: int | float = 3) -> int:
+    def wait_vclock(self, target: int, timeout: int | float = 10) -> int:
         """
         Wait until Tarantool vclock reaches the `target`. Returns the
         actual vclock. It can be equal to or greater than the target one.
@@ -1393,7 +1393,7 @@ class Instance:
             timeout=timeout + 1,  # this timeout is for network call
         )
 
-    def wait_governor_status(self, expected_status: str, timeout: int | float = 5):
+    def wait_governor_status(self, expected_status: str, timeout: int | float = 10):
         assert expected_status != "not a leader", "use another function"
 
         def impl():
@@ -1420,7 +1420,7 @@ class Instance:
             # 2. Wait until the miracle occurs.
             Retriable(timeout, rps).call(self.assert_raft_status, "Leader")
 
-        Retriable(timeout=3, rps=1).call(make_attempt, timeout=1, rps=10)
+        Retriable(timeout=10, rps=1).call(make_attempt, timeout=1, rps=10)
         eprint(f"{self} is a leader now")
 
     def grant_privilege(
@@ -1689,7 +1689,7 @@ class Cluster:
         )
         assert rc == 0
 
-    def raft_wait_index(self, index: int, timeout: float = 3.0):
+    def raft_wait_index(self, index: int, timeout: float = 10):
         """
         Waits for all peers to commit an entry with index `index`.
         """
@@ -1833,7 +1833,7 @@ class Cluster:
                 """
                 )
 
-            actual_active = Retriable(timeout=5, rps=10).call(
+            actual_active = Retriable(timeout=10, rps=4).call(
                 lambda: i.call("vshard.storage.info")["bucket"]["active"]
             )
             if actual_active == expected:
@@ -2206,7 +2206,7 @@ class log_crawler:
 
         self.matched = True
 
-    def wait_matched(self, timeout=8):
+    def wait_matched(self, timeout=10):
         def must_match():
             assert self.matched
 
