@@ -1,6 +1,5 @@
 use crate::has_states;
-use crate::instance::state::State;
-use crate::instance::state::StateVariant::*;
+use crate::instance::state::StateVariant;
 use crate::instance::{Instance, InstanceId};
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
@@ -362,8 +361,9 @@ pub(super) fn action_plan<'i>(
             applied,
             timeout: Loop::SYNC_TIMEOUT,
         };
+        debug_assert_eq!(target_state.variant, StateVariant::Online);
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_state(State::new(Online, target_state.incarnation));
+            .with_current_state(*target_state);
         return Ok(ToOnline {
             target,
             plugin_rpc,
