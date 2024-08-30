@@ -179,6 +179,13 @@ impl Loop {
             }
         );
 
+        // NOTE: this is a macro, because borrow checker is hot garbage
+        macro_rules! set_status {
+            ($status:expr) => {
+                set_status(governor_status, $status);
+            };
+        }
+
         macro_rules! governor_step {
             ($desc:literal $([ $($kv:tt)* ])? async { $($body:tt)+ }) => {
                 tlog!(Info, $desc $(; $($kv)*)?);
@@ -213,7 +220,7 @@ impl Loop {
 
         match plan {
             Plan::ConfChange(ConfChange { conf_change }) => {
-                set_status(governor_status, "conf change");
+                set_status!("conf change");
                 // main_loop gives the warranty that every ProposeConfChange
                 // will sometimes be handled and there's no need in timeout.
                 // It also guarantees that the notification will arrive only
@@ -226,14 +233,14 @@ impl Loop {
             }
 
             Plan::TransferLeadership(TransferLeadership { to }) => {
-                set_status(governor_status, "transfer raft leader");
+                set_status!("transfer raft leader");
                 tlog!(Info, "transferring leadership to {}", to.instance_id);
                 node.transfer_leadership_and_yield(to.raft_id);
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
             }
 
             Plan::UpdateTargetReplicasetMaster(UpdateTargetReplicasetMaster { cas }) => {
-                set_status(governor_status, "update target replication leader");
+                set_status!("update target replication leader");
                 governor_step! {
                     "proposing replicaset target master change"
                     async {
@@ -252,7 +259,7 @@ impl Loop {
                 bump_ranges,
                 bump_ops,
             }) => {
-                set_status(governor_status, "transfer replication leader");
+                set_status!("transfer replication leader");
                 tlog!(
                     Info,
                     "transferring replicaset mastership from {old_master_id} to {new_master_id}"
@@ -318,7 +325,7 @@ impl Loop {
             }
 
             Plan::Downgrade(Downgrade { req }) => {
-                set_status(governor_status, "update instance state to offline");
+                set_status!("update instance state to offline");
                 tlog!(Info, "downgrading instance {}", req.instance_id);
 
                 let instance_id = req.instance_id.clone();
@@ -342,7 +349,7 @@ impl Loop {
                 promotion_vclock,
                 replication_config_version_actualize,
             }) => {
-                set_status(governor_status, "configure replication");
+                set_status!("configure replication");
                 governor_step! {
                     "configuring replication"
                     async {
@@ -406,7 +413,7 @@ impl Loop {
             }
 
             Plan::ShardingBoot(ShardingBoot { target, rpc, cas }) => {
-                set_status(governor_status, "bootstrap bucket distribution");
+                set_status!("bootstrap bucket distribution");
                 governor_step! {
                     "bootstrapping bucket distribution" [
                         "instance_id" => %target,
@@ -423,7 +430,7 @@ impl Loop {
             }
 
             Plan::ProposeReplicasetStateChanges(ProposeReplicasetStateChanges { cas }) => {
-                set_status(governor_status, "update replicaset state");
+                set_status!("update replicaset state");
                 governor_step! {
                     "proposing replicaset state change"
                     async {
@@ -438,7 +445,7 @@ impl Loop {
                 plugin_rpc,
                 req,
             }) => {
-                set_status(governor_status, "update instance state to online");
+                set_status!("update instance state to online");
                 governor_step! {
                     "enable plugins on instance" [
                         "instance_id" => %target,
@@ -464,7 +471,7 @@ impl Loop {
             }
 
             Plan::ApplySchemaChange(ApplySchemaChange { targets, rpc }) => {
-                set_status(governor_status, "apply clusterwide schema change");
+                set_status!("apply clusterwide schema change");
                 let mut next_op = Op::Nop;
                 governor_step! {
                     "applying pending schema change"
@@ -531,7 +538,7 @@ impl Loop {
                 success_dml,
                 ranges,
             }) => {
-                set_status(governor_status, "install new plugin");
+                set_status!("install new plugin");
 
                 let mut next_op = None;
                 governor_step! {
@@ -594,7 +601,7 @@ impl Loop {
                 success_dml,
                 ranges,
             }) => {
-                set_status(governor_status, "enable plugin");
+                set_status!("enable plugin");
                 let mut next_op = None;
 
                 governor_step! {
@@ -669,7 +676,7 @@ impl Loop {
                 success_dml,
                 ranges,
             }) => {
-                set_status(governor_status, "update plugin service topology");
+                set_status!("update plugin service topology");
                 let mut next_op = None;
 
                 // FIXME: this step is overcomplicated and there's probably some
@@ -753,7 +760,7 @@ impl Loop {
             }
 
             Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig { targets, rpc, cas }) => {
-                set_status(governor_status, "update current sharding configuration");
+                set_status!("update current sharding configuration");
                 governor_step! {
                     "applying vshard config changes"
                     async {
@@ -785,7 +792,7 @@ impl Loop {
             }
 
             Plan::None => {
-                set_status(governor_status, "idle");
+                set_status!("idle");
                 tlog!(Info, "nothing to do, waiting for events to handle");
                 waker.mark_seen();
                 _ = waker.changed().await;
