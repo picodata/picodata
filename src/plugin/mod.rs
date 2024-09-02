@@ -488,7 +488,6 @@ fn reenterable_plugin_cas_request(
     node: &Node,
     check_operation_preconditions_and_make_op_for_cas: impl Fn()
         -> Result<PreconditionCheckResult, Error>,
-    ranges: Vec<Range>,
     deadline: Instant,
 ) -> traft::Result<RaftIndex> {
     loop {
@@ -496,8 +495,8 @@ fn reenterable_plugin_cas_request(
 
         let res = check_operation_preconditions_and_make_op_for_cas()?;
         use PreconditionCheckResult::*;
-        let op = match res {
-            DoOp(op) => op,
+        let (op, ranges) = match res {
+            DoOp(v) => v,
             WaitIndexAndRetry => {
                 node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
                 continue;
@@ -505,7 +504,7 @@ fn reenterable_plugin_cas_request(
             AlreadyApplied => return Ok(index),
         };
 
-        let predicate = cas::Predicate::new(index, ranges.clone());
+        let predicate = cas::Predicate::new(index, ranges);
         // FIXME: access rules will be implemented in future release
         let current_user = effective_user_id();
         let req = crate::cas::Request::new(op.clone(), predicate, current_user)?;
@@ -521,7 +520,7 @@ fn reenterable_plugin_cas_request(
 enum PreconditionCheckResult {
     AlreadyApplied,
     WaitIndexAndRetry,
-    DoOp(Op),
+    DoOp((Op, Vec<cas::Range>)),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -564,17 +563,16 @@ pub fn install_plugin(
             &(&PropertyName::PendingPluginOperation, &op),
             effective_user_id(),
         )?;
-        Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+        let ranges = vec![
+            // Fail if someone proposes another plugin operation
+            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            // Fail if someone updates this plugin record
+            Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
+        ];
+        Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
-    let ranges = vec![
-        // Fail if someone proposes another plugin operation
-        Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
-        // Fail if someone updates this plugin record
-        Range::new(ClusterwideTable::Plugin).eq([&ident.name, &ident.version]),
-    ];
-    let index_of_prepare =
-        reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let index_of_prepare = reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
     let mut index = index_of_prepare;
     while node.storage.properties.pending_plugin_op()?.is_some() {
@@ -781,24 +779,23 @@ pub fn enable_plugin(
             &(&PropertyName::PendingPluginOperation, &op),
             effective_user_id(),
         )?;
-        Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+        let ranges = vec![
+            // Fail if someone proposes another plugin operation
+            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+            // Fail if someone updates this plugin record
+            Range::new(ClusterwideTable::Plugin).eq([&plugin.name]),
+            // Fail if someone updates this plugin's service records
+            Range::new(ClusterwideTable::Service).eq([&plugin.name]),
+            // Fail if someone updates this plugin's migration records
+            Range::new(ClusterwideTable::PluginMigration).eq([&plugin.name]),
+            // FIXME: ServiceRouteTable's primary key should start with plugin name so that this is possible:
+            // // Fail if someone updates this plugin's service route table
+            // Range::new(ClusterwideTable::ServiceRouteTable).eq([&plugin.name]),
+        ];
+        Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
-    let ranges = vec![
-        // Fail if someone proposes another plugin operation
-        Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
-        // Fail if someone updates this plugin record
-        Range::new(ClusterwideTable::Plugin).eq([&plugin.name]),
-        // Fail if someone updates this plugin's service records
-        Range::new(ClusterwideTable::Service).eq([&plugin.name]),
-        // Fail if someone updates this plugin's migration records
-        Range::new(ClusterwideTable::PluginMigration).eq([&plugin.name]),
-        // FIXME: ServiceRouteTable's primary key should start with plugin name so that this is possible:
-        // // Fail if someone updates this plugin's service route table
-        // Range::new(ClusterwideTable::ServiceRouteTable).eq([&plugin.name]),
-    ];
-    let index_of_prepare =
-        reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let index_of_prepare = reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
     let mut index = index_of_prepare;
     while node.storage.properties.pending_plugin_op()?.is_some() {
@@ -858,14 +855,14 @@ pub fn update_plugin_service_configuration(
             service_name: service.to_string(),
             config: new_cfg.clone(),
         };
-        Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
+        let ranges = vec![
+            // Fail if someone updates this service record
+            Range::new(ClusterwideTable::Service).eq((&ident.name, service, &ident.version)),
+        ];
+        Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };
 
-    let ranges = vec![
-        // Fail if someone updates this service record
-        Range::new(ClusterwideTable::Service).eq((&ident.name, service, &ident.version)),
-    ];
-    reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
     Ok(())
 }
 
@@ -891,14 +888,14 @@ pub fn disable_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Res
             ident: ident.clone(),
             cause: None,
         };
-        Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
+        let ranges = vec![
+            // Fail if someone updates this plugin record
+            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
+        ];
+        Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };
 
-    let ranges = vec![
-        // Fail if someone updates this plugin record
-        Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
-    ];
-    let mut index = reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let mut index = reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
     while node.storage.properties.pending_plugin_op()?.is_some() {
         index = node.wait_index(index + 1, deadline.duration_since(Instant::now_fiber()))?;
@@ -948,16 +945,16 @@ pub fn remove_plugin(ident: &PluginIdentifier, timeout: Duration) -> traft::Resu
         let op = PluginRaftOp::DropPlugin {
             ident: ident.clone(),
         };
-        Ok(PreconditionCheckResult::DoOp(Op::Plugin(op)))
+        let ranges = vec![
+            // Fail if someone updates this plugin record
+            Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
+            // Fail if someone updates any service record of this plugin
+            Range::new(ClusterwideTable::Service).eq([&ident.name]),
+        ];
+        Ok(PreconditionCheckResult::DoOp((Op::Plugin(op), ranges)))
     };
 
-    let ranges = vec![
-        // Fail if someone updates this plugin record
-        Range::new(ClusterwideTable::Plugin).eq([&ident.name]),
-        // Fail if someone updates any service record of this plugin
-        Range::new(ClusterwideTable::Service).eq([&ident.name]),
-    ];
-    reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
     Ok(())
 }
@@ -1026,19 +1023,18 @@ pub fn update_service_tiers(
             &(&PropertyName::PendingPluginOperation, &op),
             effective_user_id(),
         )?;
-        Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+        let ranges = vec![
+            // Fail if someone updates this plugin record
+            Range::new(ClusterwideTable::Plugin).eq([&plugin.name, &plugin.version]),
+            // Fail if someone updates this service record
+            Range::new(ClusterwideTable::Service).eq([&plugin.name, service, &plugin.version]),
+            // Fail if someone proposes another plugin operation
+            Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
+        ];
+        Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
-    let ranges = vec![
-        // Fail if someone updates this plugin record
-        Range::new(ClusterwideTable::Plugin).eq([&plugin.name, &plugin.version]),
-        // Fail if someone updates this service record
-        Range::new(ClusterwideTable::Service).eq([&plugin.name, service, &plugin.version]),
-        // Fail if someone proposes another plugin operation
-        Range::new(ClusterwideTable::Property).eq([PropertyName::PendingPluginOperation]),
-    ];
-    let index_of_prepare =
-        reenterable_plugin_cas_request(node, check_and_make_op, ranges, deadline)?;
+    let index_of_prepare = reenterable_plugin_cas_request(node, check_and_make_op, deadline)?;
 
     let mut index = index_of_prepare;
     while node.storage.properties.pending_plugin_op()?.is_some() {

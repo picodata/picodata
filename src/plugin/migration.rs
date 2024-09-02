@@ -458,11 +458,12 @@ fn down_single_file_with_commit(
             &[plugin_name, &queries.filename_from_manifest],
             ADMIN_ID,
         )?;
-        Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+        let ranges = vec![];
+        Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
     tlog!(Debug, "updating global storage with DOWN migration");
-    if let Err(e) = reenterable_plugin_cas_request(node, make_op, vec![], deadline) {
+    if let Err(e) = reenterable_plugin_cas_request(node, make_op, deadline) {
         tlog!(
             Debug,
             "failed: updating global storage with regular DOWN migration progress: {e}"
@@ -557,7 +558,8 @@ pub fn apply_up_migrations(
                 ),
                 ADMIN_ID,
             )?;
-            Ok(PreconditionCheckResult::DoOp(Op::Dml(dml)))
+            let ranges = vec![];
+            Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
         };
 
         #[rustfmt::skip]
@@ -568,7 +570,7 @@ pub fn apply_up_migrations(
         // such that the client first checks if the lock is acquired, then does
         // a CaS request to acquire the lock and only after that starts doing
         // the migrations, and releases the lock at the end.
-        if let Err(e) = reenterable_plugin_cas_request(node, make_op, vec![], deadline) {
+        if let Err(e) = reenterable_plugin_cas_request(node, make_op, deadline) {
             #[rustfmt::skip]
             tlog!(Error, "failed: updating global storage with migrations progress: {e}");
 
