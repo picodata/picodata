@@ -370,3 +370,66 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
 
     for instance in others:
         assert get_table_size(instance, "sharded_table") > 0
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
+    # Need 3 instances for quorum
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
+
+    i1.sql(
+        """ CREATE TABLE somedata (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """
+    )
+
+    original_row_count = 3000
+    values = []
+    for id in range(original_row_count):
+        value = str(id)
+        values.append(f"({id}, '{value}')")
+    values_str = str.join(", ", values)
+    i1.sql(f""" INSERT INTO somedata VALUES {values_str}""")
+
+    # Clean up the variables with large values so as not to polute the output
+    # when pytest displays the values of all local variables
+    del values_str
+    del values
+
+    rows = i1.sql(
+        """ SELECT replicaset_id, weight FROM _pico_replicaset ORDER BY replicaset_id """
+    )
+    assert rows == [
+        ["r1", 1.0],
+        ["r2", 1.0],
+        ["r3", 1.0],
+    ]
+
+    # We have 3 replicasets 1 replica each
+    row_counts_and_instances = []
+    for instance in cluster.instances:
+        rows_on_instance = instance.call("box.space.somedata:count")
+        row_counts_and_instances.append((instance, rows_on_instance))
+
+    total_row_count = sum((count for _, count in row_counts_and_instances))
+    assert total_row_count == original_row_count
+
+    # Vshard doesn't always rebalance data to all three replicasets unfortunately
+    # so we have to manually pick the one with non empy bucket set
+    instance_to_expel = next(
+        instance for instance, count in row_counts_and_instances if count > 0
+    )
+
+    # Expel one of the instances
+    cluster.expel(instance_to_expel)
+    Retriable().call(instance_to_expel.assert_process_dead)
+
+    # We now have 2 replicasets 1 replica each
+    total_row_count = 0
+    for instance in cluster.instances:
+        if instance == instance_to_expel:
+            continue
+        rows_on_instance = instance.call("box.space.somedata:count")
+        assert rows_on_instance > 0
+        total_row_count += rows_on_instance
+
+    # The buckets must be rebalanced and all of the data still available
+    assert total_row_count == original_row_count
