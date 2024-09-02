@@ -358,10 +358,13 @@ def test_ddl_create_table_unfinished_from_snapshot(cluster: Cluster):
     i3.start()
     i3.wait_online()
 
+    def check(instance):
+        assert instance.call("box.space._space:get", space_id) is not None
+        assert instance.eval("return box.space._pico_table:get(...).operable", space_id)
+
     # The schema change finalized.
     for i in cluster.instances:
-        assert i.call("box.space._space:get", space_id) is not None
-        assert i.eval("return box.space._pico_table:get(...).operable", space_id)
+        Retriable(timeout=10).call(check, i)
 
 
 ################################################################################
