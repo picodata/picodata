@@ -39,81 +39,108 @@ picodata run --config <PATH>
 
 ``` yaml title="config.yaml"
 cluster:
-  cluster_id: demo # (4)!
+  cluster_id: demo # (1)!
   tier:
     default:
-      replication_factor: 1 # (20)!
-      can_vote: true # (21)!
-  default_replication_factor: 1 # (8)!
+      replication_factor: 1 # (4)!
+      can_vote: true # (3)!
+  default_replication_factor: 1 # (2)!
 instance:
-  data_dir: . # (5)!
-  service_password_file: null # (16)!
-  instance_id: null # (9)!
-  replicaset_id: null # (15)!
-  tier: default # (18)!
-  failure_domain: {} # (6)!
-  peer: # (13)!
+  data_dir: . # (8)!
+  service_password_file: null # (25)!
+  instance_id: null # (11)!
+  replicaset_id: null # (24)!
+  tier: default # (27)!
+  failure_domain: {} # (9)!
+  peer: # (20)!
   - localhost:3301
-  listen: localhost:3301 # (10)!
-  advertise_address: localhost:3301 # (2)!
-  http_listen: null # (7)!
-  admin_socket: ./admin.sock # (1)!
-  plugin_dir: null # (14)!
-  audit: null # (3)!
-  shredding: false # (17)!
+  listen: localhost:3301 # (13)!
+  advertise_address: localhost:3301 # (6)!
+  http_listen: null # (10)!
+  admin_socket: ./admin.sock # (5)!
+  plugin_dir: null # (23)!
+  audit: null # (7)!
+  shredding: false # (26)!
   log:
-    level: info # (12)!
-    destination: null # (11)!
-    format: plain # (22)!
+    level: info # (16)!
+    destination: null # (14)!
+    format: plain # (15)!
   memtx:
-    memory: 67108864 # (23)!
-    checkpoint_count: 2 # (24)!
-    checkpoint_interval: 3600.0 # (25)!
+    memory: 67108864 # (19)!
+    checkpoint_count: 2 # (17)!
+    checkpoint_interval: 3600.0 # (18)!
   vinyl:
-    memory: 134217728 # (26)!
-    cache: 134217728 # (27)!
+    memory: 134217728 # (29)!
+    cache: 134217728 # (28)!
   iproto:
-    max_concurrent_messages: 768 # (28)!
+    max_concurrent_messages: 768 # (12)!
   pg:
-    listen: null # (19)!
-    ssl: false # (29)!
+    listen: null # (21)!
+    ssl: false # (22)!
 ```
 
-1.  [🔗 picodata run --admin-sock](cli.md#run_admin_sock)
-2.  [🔗 picodata run --advertise](cli.md#run_advertise)
-3.  [🔗 picodata run --audit](cli.md#run_audit)
-4.  [🔗 picodata run --cluster-id](cli.md#run_cluster_id)
-5.  [🔗 picodata run --data-dir](cli.md#run_data_dir)
-6.  [🔗 picodata run --failure-domain](cli.md#run_failure_domain)
-7.  [🔗 picodata run --http-listen](cli.md#run_http_listen)
-8.  [🔗 picodata run --init-replication-factor](cli.md#run_init_replication_factor)
-9.  [🔗 picodata run --instance-id](cli.md#run_instance_id)
-10. [🔗 picodata run --listen](cli.md#run_listen)
-11. [🔗 picodata run --log](cli.md#run_log)
-12. [🔗 picodata run --log-level](cli.md#run_log_level)
-13. [🔗 picodata run --peer](cli.md#run_peer)
-14. [🔗 picodata run --plugin-dir](cli.md#run_plugin_dir)
-15. [🔗 picodata run --replicaset-id](cli.md#run_replicaset_id)
-16. [🔗 picodata run --service-password-file](cli.md#run_service_password_file)
-17. [🔗 picodata run --shredding](cli.md#run_shredding)
-18. [🔗 picodata run --tier](cli.md#run_tier)
-19. [🔗 picodata run --pg-listen](cli.md#run_pg_listen)
-20. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
-21. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
-22. [instance.log.format](#instance_log_format)
-23. [instance.memtx.memory](#instance_memtx_memory)
-24. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
-25. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
-26. [instance.vinyl.memory](#instance_vinyl_memory)
-27. [instance.vinyl.cache](#instance_vinyl_cache)
-28. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
-29. [instance.pg.ssl](#instance_pg_ssl)
+1. [cluster.cluster_id](#cluster_cluster_id)
+2. [cluster.default_replication_factor](#cluster_default_replication_factor)
+3. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
+4. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
+5. [instance.admin_socket](#instance_admin_socket)
+6. [instance.advertise_address](#instance_advertise_address)
+7. [instance.audit](#instance_audit)
+8. [instance.data_dir](#instance_data_dir)
+9. [instance.failure_domain](#instance_failure_domain)
+10. [instance.http_listen](#instance_http_listen)
+11. [instance.instance_id](#instance_instance_id)
+12. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
+13. [instance.listen](#instance_listen)
+14. [instance.log.destination](#instance_log_destination)
+15. [instance.log.format](#instance_log_format)
+16. [instance.log.level](#instance_log_level)
+17. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
+18. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
+19. [instance.memtx.memory](#instance_memtx_memory)
+20. [instance.peer](#instance_peer)
+21. [instance.pg.listen](#instance_pg_listen)
+22. [instance.pg.ssl](#instance_pg_ssl)
+23. [instance.plugin_dir](#instance_plugin_dir)
+24. [instance.replicaset_id](#instance_replicaset_id)
+25. [instance.service_password_file](#instance_service_password_file)
+26. [instance.shredding](#instance_shredding)
+27. [instance.tier](#instance_tier)
+28. [instance.vinyl.cache](#instance_vinyl_cache)
+29. [instance.vinyl.memory](#instance_vinyl_memory)
 
 См. также:
 
 * [picodata config default](cli.md#config_default)
 
 ## Параметры файла конфигурации {: #config_file_parameters }
+
+### cluster.cluster_id {: #cluster_cluster_id }
+
+Имя кластера. Инстанс не сможет присоединиться к кластеру с другим именем.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `demo`
+
+Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`<br>
+Аналогичная команда:
+[picodata run --cluster-id](cli.md#run_cluster_id)
+
+### cluster.default_replication_factor {: #cluster_default_replication_factor }
+
+Число реплик — инстансов с одинаковым набором хранимых данных — для каждого
+репликасета.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `1`
+
+Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
+Аналогичная команда:
+[picodata run --init-replication-factor](cli.md#run_init_replication_factor)
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
@@ -124,6 +151,13 @@ instance:
 
 * Тип: *bool*
 * Значение по умолчанию: `true`
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c cluster.tier='{"default": {"replication_factor": 1, "can_vote": false}}'
+```
 
 См. также:
 
@@ -137,6 +171,122 @@ instance:
 
 * Тип: *int*
 * Значение по умолчанию: `1`
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": true}}'
+```
+
+### instance.admin_socket {: #instance_admin_socket }
+
+Путь к unix-сокету для подключения к консоли администратора с помощью
+команды `picodata admin`. В отличие от `picodata connect`, коммуникация
+осуществляется в виде обычного текста и всегда происходит под учетной
+записью администратора.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `./admin.sock`
+
+Аналогичная переменная окружения: `PICODATA_ADMIN_SOCK`<br>
+Аналогичная команда:
+[picodata run --admin-sock](cli.md#run_admin_sock)
+
+### instance.advertise_address {: #instance_advertise_address }
+
+Публичный сетевой адрес инстанса. Анонсируется кластеру при запуске
+инстанса и используется для подключения к нему других инстансов.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `localhost:3301`
+
+Аналогичная переменная окружения: `PICODATA_ADVERTISE`<br>
+Аналогичная команда:
+[picodata run --advertise](cli.md#run_advertise)
+
+### instance.audit {: #instance_audit }
+
+Конфигурация журнала аудита. Доступны следующие варианты:
+
+* `file:<FILE>` или просто `<FILE>` — запись в файл
+* `pipe:<COMMAND>` или `| <COMMAND>` — перенаправление вывода в подпроцесс
+* `syslog:` — перенаправление вывода в службу `syslog` защищенной ОС
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`<br>
+Аналогичная команда:
+[picodata run --audit](cli.md#run_audit)
+
+### instance.data_dir {: #instance_data_dir }
+
+Рабочая директория инстанса. Здесь Picodata хранит все данные.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `.`
+
+Аналогичная переменная окружения: `PICODATA_DATA_DIR`<br>
+Аналогичная команда:
+[picodata run --data-dir](cli.md#run_data_dir)
+
+### instance.failure_domain {: #instance_failure_domain }
+
+Список пар ключ-значение, разделенных запятыми, определяющий географическое
+расположение сервера — [зоны доступности]. Picodata не будет объединять
+два инстанса в один репликасет, если у них совпадают значения хотя бы в
+одном ключе. Вместо этого будет создан новый репликасет. Репликасеты
+формируются из инстансов с разными зонами доступности до тех пор, пока не
+будет достигнут желаемый [фактор репликации].
+
+[зоны доступности]: ../tutorial/deploy.md#failure_domains
+[фактор репликации]: ../overview/glossary.md#replication_factor
+
+Данные:
+
+<!-- https://yaml.org/spec/1.2.2/#822-block-mappings -->
+* Тип: Block Mappings of *{ str: str }*
+* Значение по умолчанию: `{}`
+
+Аналогичная переменная окружения: `PICODATA_FAILURE_DOMAIN`<br>
+Аналогичная команда:
+[picodata run --failure-domain](cli.md#run_failure_domain)
+
+### instance.http_listen {: #instance_http_listen }
+
+Адрес HTTP-сервера.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
+Аналогичная команда:
+[picodata run --http-listen](cli.md#run_http_listen)
+
+### instance.instance_id {: #instance_instance_id }
+
+Имя инстанса. При отсутствии параметра значение будет автоматически
+сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_INSTANCE_ID`<br>
+Аналогичная команда:
+[picodata run --instance-id](cli.md#run_instance_id)
 
 ### instance.iproto.max_concurrent_messages {: #instance_iproto_max_concurrent_messages }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-networking-net-msg-max -->
@@ -173,6 +323,45 @@ not be processed until some time after delivery. -->
 * Тип: *int*
 * Значение по умолчанию: `768`
 
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.iproto.max_concurrent_messages=1536
+```
+
+### instance.listen {: #instance_listen }
+
+Сетевой адрес инстанса.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `localhost:3301`
+
+Аналогичная переменная окружения: `PICODATA_LISTEN`<br>
+Аналогичная команда:
+[picodata run --listen](cli.md#run_listen)
+
+### instance.log.destination {: #instance_log_destination }
+
+Конфигурация отладочного журнала. Доступны следующие варианты:
+
+* `file:<FILE>` или просто `<FILE>` — запись в файл
+* `pipe:<COMMAND>` или `| <COMMAND>` — перенаправление вывода в подпроцесс
+* `syslog:` — перенаправление вывода в службу `syslog` защищенной ОС
+
+По умолчанию отладочный журнал выводится в *stderr*.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_LOG`<br>
+Аналогичная команда:
+[picodata run --log](cli.md#run_log)
+
 ### instance.log.format {: #instance_log_format }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-logging-log-format -->
 
@@ -184,6 +373,30 @@ not be processed until some time after delivery. -->
 
 * Тип: *str*
 * Значение по умолчанию: `plain`
+
+Аналогичная переменная окружения: `PICODATA_LOG`<br>
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.log.format=json
+```
+
+### instance.log.level {: #instance_log_level }
+
+Уровень важности событий, регистрируемых в отладочном журнале.
+
+Возможные значения: `fatal`, `system`, `error`, `crit`, `warn`, `info`,
+`verbose`, `debug`
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `info`
+
+Аналогичная переменная окружения: `PICODATA_LOG_LEVEL`<br>
+Аналогичная команда:
+[picodata run --log-level](cli.md#run_log_level)
 
 ### instance.memtx.checkpoint_count {: #instance_memtx_checkpoint_count }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-count -->
@@ -198,6 +411,13 @@ not be processed until some time after delivery. -->
 * Тип: *int*
 * Значение по умолчанию: `2`
 
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.memtx.checkpoint_count=5
+```
+
 ### instance.memtx.checkpoint_interval {: #instance_memtx_checkpoint_interval }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-interval -->
 
@@ -211,6 +431,13 @@ not be processed until some time after delivery. -->
 
 * Тип: *float*
 * Значение по умолчанию: `3600.0` (1 час)
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.memtx.checkpoint_interval=7200.0
+```
 
 ### instance.memtx.memory {: #instance_memtx_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
@@ -228,9 +455,37 @@ not be processed until some time after delivery. -->
 * Тип: *int*
 * Значение по умолчанию: `67108864` (64 МБ)
 
-См. также:
+Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
+Аналогичная команда:
+[picodata run --memtx-memory](cli.md#run_memtx_memory)
 
-* [picodata run --memtx-memory](cli.md#run_memtx_memory)
+### instance.peer {: #instance_peer }
+
+Список сетевых адресов других инстансов. Используется при инициализации
+кластера и присоединении инстанса к уже существующему кластеру.
+
+Данные:
+
+<!-- https://yaml.org/spec/1.2.2/#821-block-sequences -->
+* Тип: Block Sequence of *str*
+* Значение по умолчанию: `- localhost:3301`
+
+Аналогичная переменная окружения: `PICODATA_PEER`<br>
+Аналогичная команда:
+[picodata run --peer](cli.md#run_peer)
+
+### instance.pg.listen {: #instance_pg_listen }
+
+Адрес сервера [Pgproto](../tutorial/connecting.md#pgproto).
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
+Аналогичная команда:
+[picodata run --pg-listen](cli.md#run_pg_listen)
 
 ### instance.pg.ssl {: #instance_pg_ssl }
 
@@ -248,6 +503,86 @@ SSL-сертификаты:
 * Тип: *bool*
 * Значение по умолчанию: `false`
 
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.pg.ssl=true
+```
+
+### instance.plugin_dir {: #instance_plugin_dir }
+
+Путь к директории, содержащей файлы плагинов.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
+Аналогичная команда:
+[picodata run --plugin-dir](cli.md#run_plugin_dir)
+
+### instance.replicaset_id {: #instance_replicaset_id }
+
+Имя репликасета. Используется при инициализации кластера и присоединении
+инстанса к уже существующему кластеру. При отсутствии параметра репликасет
+будет выбран автоматически на основе зон доступности.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_REPLICASET_ID`<br>
+Аналогичная команда:
+[picodata run --replicaset-id](cli.md#run_replicaset_id)
+
+### instance.service_password_file {: #instance_service_password_file }
+
+Путь к файлу с паролем для системного пользователя `pico_service`.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_SERVICE_PASSWORD_FILE`<br>
+Аналогичная команда:
+[picodata run --service-password-file](cli.md#run_service_password_file)
+
+### instance.shredding {: #instance_shredding }
+
+Режим безопасного удаления [рабочих файлов инстанса][runfiles] путем
+многократной перезаписи специальными битовыми последовательностями, см.
+[Безопасный запуск](../tutorial/run.md#secure_run).
+
+[runfiles]: ../architecture/instance_runtime_files.md
+
+Данные:
+
+* Тип: *bool*
+* Значение по умолчанию: `false`
+
+Аналогичная переменная окружения: `PICODATA_SHREDDING`<br>
+Аналогичная команда:
+[picodata run --shredding](cli.md#run_shredding)
+
+### instance.tier {: #instance_tier }
+
+Имя [тира](../overview/glossary.md#tier), которому будет принадлежать
+инстанс. Используется при инициализации кластера и присоединении
+инстанса к уже существующему кластеру.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `default`
+
+Аналогичная переменная окружения: `PICODATA_INSTANCE_TIER`<br>
+Аналогичная команда:
+[picodata run --tier](cli.md#run_tier)
+
 ### instance.vinyl.cache {: #instance_vinyl_cache }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-cache -->
 
@@ -257,6 +592,13 @@ SSL-сертификаты:
 
 * Тип: *int*
 * Значение по умолчанию: `134217728` (128 МБ)
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.vinyl.cache=268435456
+```
 
 ### instance.vinyl.memory {: #instance_vinyl_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-memory -->
@@ -268,3 +610,10 @@ SSL-сертификаты:
 
 * Тип: *int*
 * Значение по умолчанию: `134217728` (128 МБ)
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+
+```bash
+picodata run -c instance.vinyl.memory=268435456
+```
