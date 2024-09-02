@@ -1,5 +1,5 @@
 import pytest
-from conftest import Cluster, Instance, Retriable, pid_alive
+from conftest import Cluster, Instance, Retriable
 
 
 @pytest.fixture
@@ -20,10 +20,6 @@ def assert_voters(voters: list[Instance], instance: Instance):
     assert sorted(actual_voters) == sorted(expected_voters)
 
 
-def assert_pid_down(pid):
-    assert not pid_alive(pid)
-
-
 def test_expel_follower(cluster3: Cluster):
     # Scenario: expel a Follower instance by command to Leader
     #   Given a cluster
@@ -42,7 +38,7 @@ def test_expel_follower(cluster3: Cluster):
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    # Retriable(timeout=10).call(lambda: assert_pid_down(i3.process.pid))
+    Retriable(timeout=10).call(i3.assert_process_dead)
 
 
 def test_expel_leader(cluster3: Cluster):
@@ -63,7 +59,7 @@ def test_expel_leader(cluster3: Cluster):
     Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
 
     # assert i1.process
-    # Retriable(timeout=10).call(lambda: assert_pid_down(i1.process.pid))
+    Retriable(timeout=10).call(i1.assert_process_dead)
 
 
 def test_expel_by_follower(cluster3: Cluster):
@@ -84,7 +80,7 @@ def test_expel_by_follower(cluster3: Cluster):
     Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    # Retriable(timeout=10).call(lambda: assert_pid_down(i3.process.pid))
+    Retriable(timeout=10).call(i3.assert_process_dead)
 
 
 def test_raft_id_after_expel(cluster: Cluster):

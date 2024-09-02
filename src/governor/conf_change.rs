@@ -5,6 +5,12 @@ use crate::{has_states, tlog};
 use ::raft::prelude as raft;
 use ::raft::prelude::ConfChangeType::*;
 use std::collections::HashMap;
+// TODO: do not use BTreeSet, it's very bad for performance.
+// Instead we should use a sorted array. All operations will be faster because
+// of cache locality. Inserting into/removing from a sorted array is simple:
+// find the location using binary search and shift the tail of the array.
+// For our purposes this is going to be much more performant that the binary tree,
+// because there will be dramatically fewer memory allocations and cache misses.
 use std::collections::{BTreeMap, BTreeSet};
 
 struct RaftConf<'a> {
@@ -138,13 +144,16 @@ pub(crate) fn raft_conf_change(
             continue;
         }
 
-        if has_states!(instance, * -> Expelled) {
-            // Expelled instance is removed unconditionally.
+        if has_states!(instance, Expelled -> *) {
+            // Instance was already expelled => remove it unconditionally.
             let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
             changes.push(ccs);
-        } else if has_states!(instance, * -> Offline) {
-            // A voter goes offline. Replace it with
-            // another online instance if possible.
+            continue;
+        }
+
+        if has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled) {
+            // A voter is shutting down or getting expelled.
+            // Replace it with another online instance if possible.
             let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
                 continue;
             };
@@ -174,7 +183,7 @@ pub(crate) fn raft_conf_change(
             continue;
         };
 
-        if has_states!(instance, * -> Expelled) {
+        if has_states!(instance, Expelled -> *) {
             // Instance was already expelled => remove it unconditionally.
             let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
             changes.push(ccs);
@@ -213,7 +222,7 @@ pub(crate) fn raft_conf_change(
 
     // Promote remaining instances as learners
     for instance in instances {
-        if has_states!(instance, * -> Expelled)
+        if has_states!(instance, Expelled -> *)
             || raft_conf.voters.contains(&instance.raft_id)
             || raft_conf.learners.contains(&instance.raft_id)
         {
@@ -492,19 +501,31 @@ mod tests {
 
         assert_eq!(
             cc(&[p1(), p!(2, Online -> Expelled)], &[1, 2], &[]),
+            // If a voters starts getting expelled, it becomes a learner
+            cc![AddLearnerNode(2)]
+        );
+
+        assert_eq!(
+            cc(&[p1(), p!(2, Online -> Expelled)], &[1], &[2]),
+            // If a learner starts getting expelled, nothing happens
+            None
+        );
+
+        assert_eq!(
+            cc(&[p1(), p!(2, Expelled -> Expelled)], &[1, 2], &[]),
             // Expelled voters should be removed
             cc![RemoveNode(2)]
         );
 
         assert_eq!(
-            cc(&[p1(), p!(2, Offline -> Expelled)], &[1], &[2]),
+            cc(&[p1(), p!(2, Expelled -> Expelled)], &[1], &[2]),
             // Expelled learners are removed too
             cc![RemoveNode(2)]
         );
 
         assert_eq!(
             cc(
-                &[p1(), p2(), p3(), p4(), p!(5, Online -> Expelled)],
+                &[p1(), p2(), p3(), p4(), p!(5, Expelled -> Expelled)],
                 &[1, 2, 3, 4, 5],
                 &[]
             ),

@@ -1232,6 +1232,13 @@ class Instance:
         else:
             raise ProcessDead(f"process exited unexpectedly, {exit_code=}")
 
+    def assert_process_dead(self):
+        try:
+            self.check_process_alive()
+            assert False
+        except ProcessDead:
+            pass
+
     def wait_online(
         self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None
     ):

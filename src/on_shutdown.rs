@@ -35,6 +35,11 @@ pub async fn callback() {
             }
         );
 
+        if has_states!(me, Expelled -> *) {
+            tlog!(Info, "instance has been expelled");
+            break;
+        }
+
         if has_states!(me, Offline -> *) {
             tlog!(Info, "graceful shutdown succeeded");
 

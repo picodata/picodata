@@ -58,6 +58,11 @@ impl Loop {
                 return ControlFlow::Continue(());
             };
 
+            if has_states!(instance, * -> Expelled) {
+                tlog!(Debug, "instance has been expelled, sentinel out");
+                return ControlFlow::Break(());
+            }
+
             let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
                 .with_target_state(Offline);
 
