@@ -1,3 +1,5 @@
+use super::conf_change::raft_conf_change;
+use super::Loop;
 use crate::cas;
 use crate::has_states;
 use crate::instance::state::StateVariant;
@@ -25,9 +27,6 @@ use crate::warn_or_panic;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
 use tarantool::vclock::Vclock;
-
-use super::cc::raft_conf_change;
-use super::Loop;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn action_plan<'i>(

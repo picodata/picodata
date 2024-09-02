@@ -46,7 +46,7 @@ use plan::stage::*;
 
 use futures::future::try_join_all;
 
-pub(crate) mod cc;
+pub(crate) mod conf_change;
 pub(crate) mod plan;
 
 impl Loop {
