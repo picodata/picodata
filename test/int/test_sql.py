@@ -289,7 +289,7 @@ def test_uuid(
     # checking cast uuid as text
     data = i1.sql("""select cast(id as Text) from t1""", t1_id1, strip_metadata=False)
     assert data == {
-        "metadata": [{"name": "COL_1", "type": "string"}],
+        "metadata": [{"name": "col_1", "type": "string"}],
         "rows": [[t1_id2], [t1_id1]],
     }
 
@@ -4621,30 +4621,30 @@ def test_metadata(instance: Instance):
     # picodata> select 1 from g
     # ---
     # - metadata:
-    #   - {'name': 'COL_1', 'type': 'integer'}
+    #   - {'name': 'col_1', 'type': 'integer'}
     #   rows: []
     # ...
     #
     # picodata> explain select 1 from g
     # ---
-    # - - projection (1::unsigned -> "COL_1")
+    # - - projection (1::unsigned -> "col_1")
     #   - '    scan "G"'
     #   - 'execution options:'
     #   - sql_vdbe_max_steps = 45000
     #   - vtable_max_rows = 5000
     # ...
     data = instance.sql(""" select 1 from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "COL_1", "type": "unsigned"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
 
     data = instance.sql(""" select -2 + 1 from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "COL_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
 
     # Test that we can infer the actual type of min/max functions, which depends on the argument.
     data = instance.sql(""" select min(a) from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "COL_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
 
     data = instance.sql(""" select min(a) + max(a) from t """, strip_metadata=False)
-    assert data["metadata"] == [{"name": "COL_1", "type": "integer"}]
+    assert data["metadata"] == [{"name": "col_1", "type": "integer"}]
 
     # verify that we've fixed the problem from
     # https://git.picodata.io/picodata/picodata/sbroad/-/issues/632

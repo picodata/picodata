@@ -250,10 +250,10 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010""")
 
     cli.expect_exact('update "characters')
-    cli.expect_exact('"year" = "COL_0"')
+    cli.expect_exact('"year" = "col_0"')
     cli.expect_exact("motion [policy: local]")
     cli.expect_exact(
-        'projection (2010::unsigned -> "COL_0", "characters"."id"::integer -> "COL_1")'
+        'projection (2010::unsigned -> "col_0", "characters"."id"::integer -> "col_1")'
     )
     cli.expect_exact('scan "characters"')
     cli.expect_exact("execution options:")
@@ -265,12 +265,12 @@ def test_sql_explain_ok(cluster: Cluster):
     )
 
     cli.expect_exact('update "characters"')
-    cli.expect_exact('"name" = "COL_0"')
-    cli.expect_exact('"year" = "COL_1"')
+    cli.expect_exact('"name" = "col_0"')
+    cli.expect_exact('"year" = "col_1"')
     cli.expect_exact("motion [policy: local]")
     cli.expect_exact(
-        'projection (\'Etch\'::string -> "COL_0", 2010::unsigned -> "COL_1", '
-        '"characters"."id"::integer -> "COL_2")'
+        'projection (\'Etch\'::string -> "col_0", 2010::unsigned -> "col_1", '
+        '"characters"."id"::integer -> "col_2")'
     )
     cli.expect_exact('selection ROW("characters"."id"::integer) = ROW(2::unsigned)')
     cli.expect_exact('scan "characters"')
