@@ -125,7 +125,8 @@ impl Instance {
     #[inline]
     #[allow(clippy::nonminimal_bool)]
     pub fn may_respond(&self) -> bool {
-        has_states!(self, * -> not Offline) && has_states!(self, * -> not Expelled)
+        // TODO: add when/if we add this state has_states!(self, * -> GracefulShutdown)
+        has_states!(self, * -> Online)
     }
 
     #[inline]

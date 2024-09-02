@@ -59,17 +59,11 @@ pub(super) fn action_plan<'i>(
         return Ok(ConfChange { conf_change }.into());
     }
 
-    // TODO: reduce number of iterations over all instances
-
     ////////////////////////////////////////////////////////////////////////////
-    // downgrading
+    // instance going offline non-gracefully
     let to_downgrade = instances
         .iter()
-        // TODO: process them all, not just the first one
-        .find(|instance| {
-            has_states!(instance, not Offline -> Offline)
-                || has_states!(instance, not Expelled -> Expelled)
-        });
+        .find(|instance| has_states!(instance, not Offline -> Offline));
     if let Some(Instance {
         raft_id,
         instance_id,
@@ -352,6 +346,20 @@ pub(super) fn action_plan<'i>(
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
         return Ok(ShardingBoot { target, rpc, cas }.into());
     };
+
+    ////////////////////////////////////////////////////////////////////////////
+    // expel instance
+    let target = instances
+        .iter()
+        .find(|instance| has_states!(instance, not Expelled -> Expelled));
+    if let Some(to_expel) = target {
+        let instance_id = &to_expel.instance_id;
+        let target_state = &to_expel.target_state;
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
+            .with_current_state(*target_state);
+
+        return Ok(Downgrade { req }.into());
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     // to online
@@ -755,6 +763,7 @@ pub mod stage {
             pub bump_ops: Vec<Dml>,
         }
 
+        // TODO: rename, after we renamed `grade` -> `state` this step's name makes no sense at all
         pub struct Downgrade {
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Offline` in table `_pico_instance` for a given instance.
