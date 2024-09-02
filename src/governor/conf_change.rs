@@ -1,14 +1,11 @@
-use ::raft::prelude as raft;
-use ::raft::prelude::ConfChangeType::*;
-
-use std::collections::HashMap;
-use std::collections::{BTreeMap, BTreeSet};
-
 use crate::instance::Instance;
-use crate::instance::StateVariant::*;
 use crate::tier::Tier;
 use crate::traft::{Distance, RaftId};
 use crate::{has_states, tlog};
+use ::raft::prelude as raft;
+use ::raft::prelude::ConfChangeType::*;
+use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 struct RaftConf<'a> {
     all: BTreeMap<RaftId, &'a Instance>,
@@ -85,7 +82,6 @@ pub(crate) fn raft_conf_change(
     };
     let mut changes: Vec<raft::ConfChangeSingle> = vec![];
 
-    let not_expelled = |instance: &&Instance| has_states!(instance, * -> not Expelled);
     // Only an instance from tier with `can_vote = true` can be considered as voter.
     let tier_can_vote = |instance: &&Instance| {
         tiers
@@ -96,7 +92,7 @@ pub(crate) fn raft_conf_change(
 
     let number_of_eligible_for_vote = instances
         .iter()
-        .filter(not_expelled)
+        .filter(|instance| has_states!(instance, * -> not Expelled))
         .filter(tier_can_vote)
         .count();
 
@@ -123,49 +119,40 @@ pub(crate) fn raft_conf_change(
 
     // Remove / replace voters
     for voter_id in raft_conf.voters.clone().iter() {
-        let instance = match raft_conf.all.get(voter_id) {
-            Some(instance) if tier_can_vote(instance) => instance,
-            // case when bootstrap leader from tier with `can_vote = false`
-            Some(Instance {
-                tier, instance_id, ..
-            }) => {
-                tlog!(
-                    Warning,
-                    "instance with instance_id '{instance_id}' from \
-                     tier '{tier}' with 'can_vote' = false is in raft configuration as voter, making it follower"
-                );
-                let ccs = raft_conf.change_single(RemoveNode, *voter_id);
-                changes.push(ccs);
-                continue;
-            }
+        let Some(instance) = raft_conf.all.get(voter_id) else {
             // unknown instance which is not in configuration of cluster, nearly impossible
-            None => {
-                let ccs = raft_conf.change_single(RemoveNode, *voter_id);
-                changes.push(ccs);
-                continue;
-            }
+            #[rustfmt::skip]
+            tlog!(Warning, "no info found for instance which is a raft voter: raft_id = {voter_id}");
+            let ccs = raft_conf.change_single(RemoveNode, *voter_id);
+            changes.push(ccs);
+            continue;
         };
-        match instance.target_state.variant {
-            Online => {
-                // Do nothing
-            }
-            Offline => {
-                // A voter goes offline. Replace it with
-                // another online instance if possible.
-                let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
-                    continue;
-                };
 
-                let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
-                let ccs2 = raft_conf.change_single(AddNode, next_voter_id);
-                changes.extend_from_slice(&[ccs1, ccs2]);
-                promotable.remove(&next_voter_id);
-            }
-            Expelled => {
-                // Expelled instance is removed unconditionally.
-                let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
-                changes.push(ccs);
-            }
+        if !tier_can_vote(instance) {
+            // case when bootstrap leader from tier with `can_vote = false`
+            #[rustfmt::skip]
+            tlog!(Warning, "instance with instance_id '{}' from tier '{}' with 'can_vote' = false is in raft configuration as voter, making it follower",
+                  instance.instance_id, instance.tier);
+            let ccs = raft_conf.change_single(RemoveNode, *voter_id);
+            changes.push(ccs);
+            continue;
+        }
+
+        if has_states!(instance, * -> Expelled) {
+            // Expelled instance is removed unconditionally.
+            let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
+            changes.push(ccs);
+        } else if has_states!(instance, * -> Offline) {
+            // A voter goes offline. Replace it with
+            // another online instance if possible.
+            let Some((next_voter_id, _)) = next_farthest(&raft_conf, &promotable) else {
+                continue;
+            };
+
+            let ccs1 = raft_conf.change_single(AddLearnerNode, instance.raft_id);
+            let ccs2 = raft_conf.change_single(AddNode, next_voter_id);
+            changes.extend_from_slice(&[ccs1, ccs2]);
+            promotable.remove(&next_voter_id);
         }
     }
 
@@ -179,20 +166,18 @@ pub(crate) fn raft_conf_change(
     // Remove unknown / expelled learners
     for learner_id in raft_conf.learners.clone().iter() {
         let Some(instance) = raft_conf.all.get(learner_id) else {
-            // Nearly impossible, but rust forces me to check it.
+            // unknown instance which is not in configuration of cluster, nearly impossible
+            #[rustfmt::skip]
+            tlog!(Warning, "no info found for instance which is a raft voter: raft_id = {learner_id}");
             let ccs = raft_conf.change_single(RemoveNode, *learner_id);
             changes.push(ccs);
             continue;
         };
-        match instance.target_state.variant {
-            Online | Offline => {
-                // Do nothing
-            }
-            Expelled => {
-                // Expelled instance is removed unconditionally.
-                let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
-                changes.push(ccs);
-            }
+
+        if has_states!(instance, * -> Expelled) {
+            // Instance was already expelled => remove it unconditionally.
+            let ccs = raft_conf.change_single(RemoveNode, instance.raft_id);
+            changes.push(ccs);
         }
     }
 
@@ -227,13 +212,17 @@ pub(crate) fn raft_conf_change(
     }
 
     // Promote remaining instances as learners
-    for instance in instances.iter().filter(not_expelled) {
-        if !raft_conf.voters.contains(&instance.raft_id)
-            && !raft_conf.learners.contains(&instance.raft_id)
+    for instance in instances {
+        if has_states!(instance, * -> Expelled)
+            || raft_conf.voters.contains(&instance.raft_id)
+            || raft_conf.learners.contains(&instance.raft_id)
         {
-            let ccs = raft_conf.change_single(AddLearnerNode, instance.raft_id);
-            changes.push(ccs);
+            continue;
         }
+        // Non-expelled instance which is neither a learner nor a voter.
+        // It should become a learner.
+        let ccs = raft_conf.change_single(AddLearnerNode, instance.raft_id);
+        changes.push(ccs);
     }
 
     if changes.is_empty() {
@@ -252,13 +241,12 @@ pub(crate) fn raft_conf_change(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use ::raft::prelude as raft;
-    use std::collections::{BTreeMap, BTreeSet};
-
     use crate::failure_domain::FailureDomain;
     use crate::instance::State;
+    use crate::instance::StateVariant::*;
     use crate::traft::RaftId;
+    use ::raft::prelude as raft;
+    use std::collections::{BTreeMap, BTreeSet};
 
     macro_rules! fd {
         ($(,)?) => { FailureDomain::default() };
