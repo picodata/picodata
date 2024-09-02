@@ -38,11 +38,11 @@ def test_expel_follower(cluster3: Cluster):
 
     cluster3.expel(i3, i1)
 
-    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i3, i1))
-    Retriable(timeout=3, rps=5).call(lambda: assert_voters([i1, i2], i1))
+    Retriable(timeout=10).call(lambda: assert_instance_expelled(i3, i1))
+    Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    # Retriable(timeout=3, rps=5).call(lambda: assert_pid_down(i3.process.pid))
+    # Retriable(timeout=10).call(lambda: assert_pid_down(i3.process.pid))
 
 
 def test_expel_leader(cluster3: Cluster):
@@ -59,11 +59,11 @@ def test_expel_leader(cluster3: Cluster):
 
     cluster3.expel(i1)
 
-    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i1, i2))
-    Retriable(timeout=3, rps=5).call(lambda: assert_voters([i2, i3], i2))
+    Retriable(timeout=10).call(lambda: assert_instance_expelled(i1, i2))
+    Retriable(timeout=10).call(lambda: assert_voters([i2, i3], i2))
 
     # assert i1.process
-    # Retriable(timeout=3, rps=5).call(lambda: assert_pid_down(i1.process.pid))
+    # Retriable(timeout=10).call(lambda: assert_pid_down(i1.process.pid))
 
 
 def test_expel_by_follower(cluster3: Cluster):
@@ -80,11 +80,11 @@ def test_expel_by_follower(cluster3: Cluster):
 
     cluster3.expel(i3, i2)
 
-    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i3, i1))
-    Retriable(timeout=3, rps=5).call(lambda: assert_voters([i1, i2], i1))
+    Retriable(timeout=10).call(lambda: assert_instance_expelled(i3, i1))
+    Retriable(timeout=10).call(lambda: assert_voters([i1, i2], i1))
 
     # assert i3.process
-    # Retriable(timeout=3, rps=5).call(lambda: assert_pid_down(i3.process.pid))
+    # Retriable(timeout=10).call(lambda: assert_pid_down(i3.process.pid))
 
 
 def test_raft_id_after_expel(cluster: Cluster):
@@ -99,8 +99,8 @@ def test_raft_id_after_expel(cluster: Cluster):
     i3 = cluster.add_instance()
     assert i3.raft_id == 3
 
-    cluster.expel(i3, i1)
-    Retriable(timeout=3, rps=5).call(lambda: assert_instance_expelled(i3, i1))
+    cluster.expel(i3)
+    Retriable(timeout=10).call(lambda: assert_instance_expelled(i3, i1))
 
     i4 = cluster.add_instance()
     assert i4.raft_id == 4

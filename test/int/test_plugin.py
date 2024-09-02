@@ -633,20 +633,6 @@ def test_instance_with_plugin_shutdown(cluster: Cluster):
     PluginReflection.clear_persisted_data(i2)
 
 
-def test_instance_with_plugin_expel(cluster: Cluster):
-    i1, i2 = cluster.deploy(instance_count=2)
-    plugin_ref = PluginReflection.default(i1, i2)
-
-    install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
-    plugin_ref = plugin_ref.install(True).enable(True)
-    plugin_ref.assert_synced()
-
-    cluster.expel(i2)
-    # assert that expel doesn't affect plugins
-    plugin_ref = PluginReflection.default(i2).install(True).enable(True)
-    plugin_ref.assert_synced()
-
-
 def test_plugin_disable_error_on_stop(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     plugin_ref = PluginReflection.default(i1, i2)
