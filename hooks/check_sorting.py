@@ -16,7 +16,7 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
     elif page.file.src_uri == "reference/audit_events.md":
         return reference_audit_events(markdown, page)
     elif page.file.src_uri == "architecture/rpc_api.md":
-        return reference_rpc_api(markdown, page)
+        return architecture_rpc_api(markdown, page)
 
 
 def reference_cli(markdown: str, page: Page):
@@ -52,7 +52,8 @@ def reference_audit_events(markdown: str, page: Page):
         diff = difflib.unified_diff(h3, h3_sorted)
         log.info("\n" + "\n".join(diff))
 
-def reference_rpc_api(markdown: str, page: Page):
+
+def architecture_rpc_api(markdown: str, page: Page):
     lines: list[str] = re.sub("<!--.*?-->", "", markdown, flags=re.DOTALL).split("\n")
     headers: list[str] = list(filter(lambda line: re.match("^##+ ", line), lines))
 
