@@ -1,3 +1,4 @@
+use crate::cas;
 use crate::cbus::ENDPOINT_NAME;
 use crate::plugin::reenterable_plugin_cas_request;
 use crate::plugin::PreconditionCheckResult;
@@ -458,7 +459,7 @@ fn down_single_file_with_commit(
             &[plugin_name, &queries.filename_from_manifest],
             ADMIN_ID,
         )?;
-        let ranges = vec![];
+        let ranges = vec![cas::Range::for_dml(&dml)?];
         Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
     };
 
@@ -558,7 +559,7 @@ pub fn apply_up_migrations(
                 ),
                 ADMIN_ID,
             )?;
-            let ranges = vec![];
+            let ranges = vec![cas::Range::for_dml(&dml)?];
             Ok(PreconditionCheckResult::DoOp((Op::Dml(dml), ranges)))
         };
 
