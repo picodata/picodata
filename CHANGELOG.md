@@ -21,53 +21,34 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### SQL
 
-- Fix error "Read access to space '_raft_state' is denied"
-  when executing a DML query on global tables
-- SQL now supports inferring sharding key from primary key, when
+- SQL now infers sharding key from primary key, when
   the former is not specified in `create table` clause
 - SQL normalizes unquoted identifiers to lowercase instead of
   uppercase
-- SQL supports LIMIT clause
-- SQL supports SUBSTR function
+- SQL supports `LIMIT` clause
+- SQL supports `SUBSTR` function
+- SQL supports postgres [cast notation]: `expr::type`
 
 ### Pgproto
 
-- SQL supports postgres cast notation: expr::type
 - pgproto supports tab-completion for tables names in psql:
-```sql
-postgres=> select * from _pico_<TAB>
-_pico_index             _pico_plugin            _pico_privilege         _pico_routine           _pico_table
-_pico_instance          _pico_plugin_config     _pico_property          _pico_service           _pico_tier
-_pico_peer_address      _pico_plugin_migration  _pico_replicaset        _pico_service_route     _pico_user
-
-```
+  ```sql
+  postgres=> select * from _pico_<TAB>
+  _pico_index             _pico_plugin            _pico_privilege         _pico_routine           _pico_table
+  _pico_instance          _pico_plugin_config     _pico_property          _pico_service           _pico_tier
+  _pico_peer_address      _pico_plugin_migration  _pico_replicaset        _pico_service_route     _pico_user
+  ```
 
 - pgproto supports explicit parameter type declarations in SQL via casting.
-This is helpful for drivers that do not specify parameters types, such as
-pq and pgx drivers for Go. In such drivers, users need to explicitly cast all
-query parameters.
+  This is helpful for drivers that do not specify parameters types, such as
+  pq and pgx drivers for Go. In such drivers, users need to explicitly cast all
+  query parameters.
 
-If the driver doesn't specify the type and the parameter isn't cast, the query
-will fail. For instance, running `SELECT * FROM t WHERE id = $1` in pgx will
-return "could not determine data type of parameter $1" error. To resolve this,
-users must specify the expected type of the parameter:
-`SELECT * FROM t WHERE id = $1::INT`.
-
-### Configuration
-
-- Set up password for admin with `PICODATA_ADMIN_PASSWORD` environment variable
-
-- Multiline input is available in `picodata admin` and `picodata connect`
-
-- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`
-
-- New option `picodata run --tier` specifies whether an
-  instance belongs to a tier
-
-- New rpc entrypoint: `.proc_get_config` which returns the effective
-  picodata configuration
-
-- Ability to change cluster properties via SQL `ALTER SYSTEM` command
+  If the driver doesn't specify the type and the parameter isn't cast, the query
+  will fail. For instance, running `SELECT * FROM t WHERE id = $1` in pgx will
+  return "could not determine data type of parameter $1" error. To resolve this,
+  users must specify the expected type of the parameter:
+  `SELECT * FROM t WHERE id = $1::INT`.
 
 - Mutual TLS authentication for Pgproto. 
 
@@ -79,7 +60,25 @@ users must specify the expected type of the parameter:
 
   If `ca.crt` is absent in instance's data directory, then client certificates are not requested and not validated.
 
+### Configuration
+
+- Set up password for admin with `PICODATA_ADMIN_PASSWORD` environment variable
+
+- Multiline input is available in `picodata admin` and `picodata connect`
+
+- Set delimiter for multiline input with `\set delimiter my-shiny-delimiter`
+
+- Ability to change cluster properties via SQL `ALTER SYSTEM` command
+
+### Fixes
+
+- Fix error "Read access to space '_raft_state' is denied"
+  when executing a DML query on global tables
+  
 ### Compatibility
+
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots
 
 - New index for the system table `_pico_replicaset` - `_pico_replicaset_uuid`
 
@@ -90,7 +89,7 @@ users must specify the expected type of the parameter:
   Running `picodata run --listen :3302` without implicit `--peer` specified
   now bootstraps a new cluster. The old behavior was to join `:3301` by default
 
-- DdlAbort raft entry now contains the error information.
+- DdlAbort raft log entry now contains the error information.
 
 - Add `promotion_vclock` column to `_pico_replicaset` table.
 
@@ -98,9 +97,14 @@ users must specify the expected type of the parameter:
 
 - Add `target_config_version` column to `_pico_replicaset` table.
 
-- Replicated is no longer a valid instance state.
+- `Replicated` is no longer a valid instance state.
+
+### RPC API
 
 - Removed stored procedure `.proc_replication_promote`.
+
+- New rpc entrypoint: `.proc_get_config` which returns the effective
+  picodata configuration
 
 ### Lua API
 
@@ -124,6 +128,7 @@ users must specify the expected type of the parameter:
 [GRANT]: https://docs.picodata.io/picodata/devel/reference/sql/grant/
 [REVOKE]: https://docs.picodata.io/picodata/devel/reference/sql/revoke/
 [.proc_get_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_get_index
+[cast notation]: https://docs.picodata.io/picodata/devel/reference/sql/cast/
 
 --------------------------------------------------------------------------------
 ## [24.4.1] - 2024-06-21
