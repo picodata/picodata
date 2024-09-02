@@ -104,7 +104,11 @@ impl TlsAcceptor {
         })
     }
 
-    pub fn mtls(&self) -> bool {
-        self.0.context().verify_mode().contains(SslVerifyMode::PEER)
+    pub fn kind(&self) -> &'static str {
+        if self.0.context().verify_mode().contains(SslVerifyMode::PEER) {
+            "mTLS"
+        } else {
+            "TLS"
+        }
     }
 }

@@ -111,31 +111,16 @@ impl Context {
             .ssl()
             .then(|| TlsAcceptor::new_from_dir(data_dir))
             .transpose()
-            .map_err(Error::invalid_configuration)?;
+            .map_err(Error::invalid_configuration)?
+            .inspect(|tls| tlog!(Info, "configured {} for pgproto", tls.kind()));
 
         let addr = (host, port);
-
-        let tls_note = match &tls_acceptor {
-            Some(acceptor) => {
-                if acceptor.mtls() {
-                    " with mTLS"
-                } else {
-                    " with TLS"
-                }
-            }
-            _ => "",
-        };
-
-        tlog!(
-            Info,
-            "starting postgres server at {:?}{}...",
-            addr,
-            tls_note
-        );
+        tlog!(Info, "starting postgres server at {:?}...", addr);
+        let server = server::new_listener(addr)?;
 
         Ok(Self {
+            server,
             tls_acceptor,
-            server: server::new_listener(addr)?,
         })
     }
 }
