@@ -281,6 +281,7 @@ impl PluginManager {
             .get_by_instance(&instance_id)
             .expect("storage should not fail");
         let routing_keys: Vec<_> = instance_routes.iter().map(|r| r.key()).collect();
+        // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
         remove_routes(&routing_keys, Duration::from_secs(10))
             .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
 
@@ -301,6 +302,7 @@ impl PluginManager {
                     ServiceRouteItem::new_healthy(instance_id.clone(), &ident, &svc.lock().name)
                 })
                 .collect();
+            // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
             replace_routes(&items, Duration::from_secs(10))
                 .map_err(|traft_err| PluginError::RemoteError(traft_err.to_string()))?;
         }
@@ -422,6 +424,7 @@ impl PluginManager {
                         plugin_identity,
                         service_name,
                     );
+                    // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
                     replace_routes(&[route], Duration::from_secs(10))?;
                 }
             }
@@ -437,6 +440,7 @@ impl PluginManager {
                     plugin_identity,
                     service_name,
                 );
+                // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
                 replace_routes(&[route], Duration::from_secs(10))?;
             }
         }
@@ -516,6 +520,7 @@ impl PluginManager {
             }
         }
 
+        // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
         replace_routes(&routes_to_replace, Duration::from_secs(10))?;
 
         Ok(())
