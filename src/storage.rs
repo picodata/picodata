@@ -243,6 +243,19 @@ macro_rules! define_clusterwide_tables {
     }
 }
 
+/// A helper macro for getting name of the struct field in a type safe phasion.
+#[macro_export]
+macro_rules! column_name {
+    ($record:ty, $name:ident) => {{
+        #[allow(dead_code)]
+        /// A helper which makes sure that the struct has a field with the given name.
+        /// BTW we use the macro from `tarantool` and not from `std::mem`
+        /// because rust-analyzer works with our macro but not with the builtin one ¯\_(ツ)_/¯.
+        const DUMMY: usize = ::tarantool::offset_of!($record, $name);
+        ::std::stringify!($name)
+    }};
+}
+
 #[inline(always)]
 fn space_by_id_unchecked(space_id: SpaceId) -> Space {
     unsafe { Space::from_id_unchecked(space_id) }
@@ -2432,7 +2445,7 @@ impl Tables {
     #[inline]
     pub fn update_operable(&self, id: SpaceId, operable: bool) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(TableDef::FIELD_OPERABLE, operable)?;
+        ops.assign(column_name!(TableDef, operable), operable)?;
         self.space.update(&[id], ops)?;
         Ok(())
     }
@@ -2563,7 +2576,7 @@ impl Indexes {
         operable: bool,
     ) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(IndexDef::FIELD_OPERABLE, operable)?;
+        ops.assign(column_name!(IndexDef, operable), operable)?;
         self.space.update(&(space_id, index_id), ops)?;
         Ok(())
     }
@@ -3113,7 +3126,7 @@ impl Users {
     #[inline]
     pub fn update_name(&self, user_id: UserId, name: &str) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(UserDef::FIELD_NAME, name)?;
+        ops.assign(column_name!(UserDef, name), name)?;
         self.space.update(&[user_id], ops)?;
         Ok(())
     }
@@ -3121,7 +3134,7 @@ impl Users {
     #[inline]
     pub fn update_auth(&self, user_id: UserId, auth: &AuthDef) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(UserDef::FIELD_AUTH, auth)?;
+        ops.assign(column_name!(UserDef, auth), auth)?;
         self.space.update(&[user_id], ops)?;
         Ok(())
     }
@@ -3478,7 +3491,7 @@ impl Routines {
     #[inline(always)]
     pub fn rename(&self, id: u32, new_name: &str) -> tarantool::Result<Option<RoutineDef>> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(RoutineDef::FIELD_NAME, new_name)?;
+        ops.assign(column_name!(RoutineDef, name), new_name)?;
         let tuple = self.space.update(&[id], ops)?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
@@ -3510,7 +3523,7 @@ impl Routines {
     #[inline]
     pub fn update_operable(&self, routine_id: RoutineId, operable: bool) -> tarantool::Result<()> {
         let mut ops = UpdateOps::with_capacity(1);
-        ops.assign(RoutineDef::FIELD_OPERABLE, operable)?;
+        ops.assign(column_name!(RoutineDef, operable), operable)?;
         self.space.update(&[routine_id], ops)?;
         Ok(())
     }

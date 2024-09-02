@@ -1,11 +1,13 @@
 use std::time::Duration;
 
 use crate::cas;
+use crate::column_name;
 use crate::failure_domain::FailureDomain;
 use crate::instance::State;
 use crate::instance::StateVariant;
 use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
+use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
@@ -146,7 +148,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         {
             let mut update_ops = UpdateOps::new();
             #[rustfmt::skip]
-            update_ops.assign("target_config_version", replicaset.target_config_version + 1)?;
+            update_ops.assign(column_name!(Replicaset, target_config_version), replicaset.target_config_version + 1)?;
             #[rustfmt::skip]
             let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[replicaset_id], update_ops, ADMIN_ID)?;
             ops.push(replicaset_dml);
@@ -222,13 +224,13 @@ pub fn update_instance(
             .expect("storage should not fail");
         fd.check(&existing_fds)?;
         if fd != &instance.failure_domain {
-            ops.assign("failure_domain", fd)?;
+            ops.assign(column_name!(Instance, failure_domain), fd)?;
         }
     }
 
     if let Some(state) = req.current_state {
         if state != instance.current_state {
-            ops.assign("current_state", state)?;
+            ops.assign(column_name!(Instance, current_state), state)?;
         }
     }
 
@@ -241,7 +243,7 @@ pub fn update_instance(
         let state = State::new(variant, incarnation);
         if state != instance.target_state {
             replication_config_version_bump_needed = true;
-            ops.assign("target_state", state)?;
+            ops.assign(column_name!(Instance, target_state), state)?;
         }
     }
 

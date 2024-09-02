@@ -1,6 +1,7 @@
 use super::conf_change::raft_conf_change;
 use super::Loop;
 use crate::cas;
+use crate::column_name;
 use crate::has_states;
 use crate::instance::state::StateVariant;
 use crate::instance::{Instance, InstanceId};
@@ -111,7 +112,7 @@ pub(super) fn action_plan<'i>(
     let new_target_master = get_new_replicaset_master_if_needed(instances, replicasets);
     if let Some(to) = new_target_master {
         let mut ops = UpdateOps::new();
-        ops.assign("target_master_id", &to.instance_id)?;
+        ops.assign(column_name!(Replicaset, target_master_id), &to.instance_id)?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[&to.replicaset_id],
@@ -153,7 +154,10 @@ pub(super) fn action_plan<'i>(
         }
 
         let mut ops = UpdateOps::new();
-        ops.assign("current_config_version", replicaset.target_config_version)?;
+        ops.assign(
+            column_name!(Replicaset, current_config_version),
+            replicaset.target_config_version,
+        )?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[replicaset_id],
@@ -191,7 +195,7 @@ pub(super) fn action_plan<'i>(
         let new_master_id = &r.target_master_id;
 
         let mut update_ops = UpdateOps::new();
-        update_ops.assign("current_master_id", new_master_id)?;
+        update_ops.assign(column_name!(Replicaset, current_master_id), new_master_id)?;
 
         let mut demote = None;
         let old_master_may_respond = instances
@@ -242,9 +246,9 @@ pub(super) fn action_plan<'i>(
     if let Some((replicaset_id, need_to_update_weight)) = to_change_weights {
         let mut uops = UpdateOps::new();
         if need_to_update_weight {
-            uops.assign("weight", 1.)?;
+            uops.assign(column_name!(Replicaset, weight), 1.)?;
         }
-        uops.assign("state", ReplicasetState::Ready)?;
+        uops.assign(column_name!(Replicaset, state), ReplicasetState::Ready)?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[replicaset_id],
@@ -510,7 +514,7 @@ pub(super) fn action_plan<'i>(
         let mut ranges = vec![];
         let mut success_dml = vec![];
         let mut enable_ops = UpdateOps::new();
-        enable_ops.assign(PluginDef::FIELD_ENABLE, true)?;
+        enable_ops.assign(column_name!(PluginDef, enabled), true)?;
         let dml = Dml::update(
             ClusterwideTable::Plugin,
             &[&plugin.name, &plugin.version],
@@ -981,7 +985,7 @@ fn get_replicaset_config_version_bump_op_if_needed(
 
     let mut ops = UpdateOps::new();
     ops.assign(
-        "target_config_version",
+        column_name!(Replicaset, target_config_version),
         replicaset.target_config_version + 1,
     )
     .expect("won't fail");
