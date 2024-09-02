@@ -294,3 +294,45 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
     # All buckets are eventually available to the whole cluster
     for i in cluster.instances:
         Retriable(timeout=10, rps=4).call(check_available_buckets, i, 3000)
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
+    # Need 3 instances for quorum
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
+
+    i1.sql(
+        """ CREATE TABLE somedata (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """
+    )
+
+    original_row_count = 3000
+    values = []
+    for id in range(original_row_count):
+        value = str(id)
+        values.append(f"({id}, '{value}')")
+    values_str = str.join(", ", values)
+    i1.sql(f""" INSERT INTO somedata VALUES {values_str}""")
+
+    # We have 3 replicasets 1 replica each
+    total_row_count = 0
+    for instance in cluster.instances:
+        rows_on_instance = instance.call("box.space.somedata:count")
+        assert rows_on_instance > 0
+        total_row_count += rows_on_instance
+    assert total_row_count == original_row_count
+
+    # Expel one of the instances
+    cluster.expel(i3)
+    Retriable().call(i3.assert_process_dead)
+
+    # We now have 2 replicasets 1 replica each
+    total_row_count = 0
+    for instance in cluster.instances:
+        if instance == i3:
+            continue
+        rows_on_instance = instance.call("box.space.somedata:count")
+        assert rows_on_instance > 0
+        total_row_count += rows_on_instance
+
+    # The buckets must be rebalanced and all of the data still available
+    assert total_row_count == original_row_count
