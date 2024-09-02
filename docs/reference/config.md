@@ -115,15 +115,6 @@ instance:
 
 ## Параметры файла конфигурации {: #config_file_parameters }
 
-### cluster.tier.<tier_name\>.replication_factor {: #cluster_tier_tier_replication_factor }
-
-[Фактор репликации](../overview/glossary.md#replication_factor) тира *<tier_name\>*.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `1`
-
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
 Признак тира *<tier_name\>*, определяющий возможность инстансов участвовать
@@ -138,85 +129,14 @@ instance:
 
 * [Динамическое переключение голосующих узлов в Raft](../architecture/raft_failover.md#raft_voter_failover)
 
-### instance.log.format {: #instance_log_format }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-logging-log-format -->
+### cluster.tier.<tier_name\>.replication_factor {: #cluster_tier_tier_replication_factor }
 
-Формат отладочного журнала.
-
-Возможные значения: `plain`, `json`
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `plain`
-
-### instance.memtx.memory {: #instance_memtx_memory }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
-
-Объем памяти *в байтах*, выделяемый для хранения кортежей. Когда
-достигается лимит использования памяти, запросы команд [INSERT](./sql/insert.md)
-и [UPDATE](./sql/update.md) начинают отклоняться с ошибкой *ER_MEMORY_ISSUE*.
-Сервер хранит в выделяемом объеме памяти только кортежи — для хранения индексов
-и информации о соединениях используется дополнительная память.
-
-Минимальное значение — 33,554,432 байтов (32 МБ)
+[Фактор репликации](../overview/glossary.md#replication_factor) тира *<tier_name\>*.
 
 Данные:
 
 * Тип: *int*
-* Значение по умолчанию: `67108864` (64 МБ)
-
-См. также:
-
-* [picodata run --memtx-memory](cli.md#run_memtx_memory)
-
-### instance.memtx.checkpoint_count {: #instance_memtx_checkpoint_count }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-count -->
-
-Максимальное количество снапшотов, хранящихся в директории *memtx_dir*.
-Если после создания нового снапшота их общее количество превысит значение
-этого параметра, старые снапшоты будут удалены. Если значение параметра
-равно `0`, старые снапшоты останутся нетронутыми.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `2`
-
-### instance.memtx.checkpoint_interval {: #instance_memtx_checkpoint_interval }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-interval -->
-
-Период активности службы создания снапшотов (checkpoint daemon) *в секундах*.
-Если значение параметра больше нуля и произошло изменение в базе данных, служба
-создания снапшотов периодически вызывает функцию, которая
-создает новый снапшот. Если значение параметра равно `0.0`, служба создания
-снапшотов отключается.
-
-Данные:
-
-* Тип: *float*
-* Значение по умолчанию: `3600.0` (1 час)
-
-### instance.vinyl.memory {: #instance_vinyl_memory }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-memory -->
-
-Максимальное количество оперативной памяти *в байтах*, которое использует
-движок хранения `vinyl`.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `134217728` (128 МБ)
-
-### instance.vinyl.cache {: #instance_vinyl_cache }
-<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-cache -->
-
-Размер кэша *в байтах* для движка хранения `vinyl`.
-
-Данные:
-
-* Тип: *int*
-* Значение по умолчанию: `134217728` (128 МБ)
+* Значение по умолчанию: `1`
 
 ### instance.iproto.max_concurrent_messages {: #instance_iproto_max_concurrent_messages }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-networking-net-msg-max -->
@@ -253,6 +173,65 @@ not be processed until some time after delivery. -->
 * Тип: *int*
 * Значение по умолчанию: `768`
 
+### instance.log.format {: #instance_log_format }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-logging-log-format -->
+
+Формат отладочного журнала.
+
+Возможные значения: `plain`, `json`
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `plain`
+
+### instance.memtx.checkpoint_count {: #instance_memtx_checkpoint_count }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-count -->
+
+Максимальное количество снапшотов, хранящихся в директории *memtx_dir*.
+Если после создания нового снапшота их общее количество превысит значение
+этого параметра, старые снапшоты будут удалены. Если значение параметра
+равно `0`, старые снапшоты останутся нетронутыми.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `2`
+
+### instance.memtx.checkpoint_interval {: #instance_memtx_checkpoint_interval }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-checkpoint-daemon-checkpoint-interval -->
+
+Период активности службы создания снапшотов (checkpoint daemon) *в секундах*.
+Если значение параметра больше нуля и произошло изменение в базе данных, служба
+создания снапшотов периодически вызывает функцию, которая
+создает новый снапшот. Если значение параметра равно `0.0`, служба создания
+снапшотов отключается.
+
+Данные:
+
+* Тип: *float*
+* Значение по умолчанию: `3600.0` (1 час)
+
+### instance.memtx.memory {: #instance_memtx_memory }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-memtx-memory -->
+
+Объем памяти *в байтах*, выделяемый для хранения кортежей. Когда
+достигается лимит использования памяти, запросы команд [INSERT](./sql/insert.md)
+и [UPDATE](./sql/update.md) начинают отклоняться с ошибкой *ER_MEMORY_ISSUE*.
+Сервер хранит в выделяемом объеме памяти только кортежи — для хранения индексов
+и информации о соединениях используется дополнительная память.
+
+Минимальное значение — 33,554,432 байтов (32 МБ)
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `67108864` (64 МБ)
+
+См. также:
+
+* [picodata run --memtx-memory](cli.md#run_memtx_memory)
+
 ### instance.pg.ssl {: #instance_pg_ssl }
 
 Признак использования протокола SSL при подключении к Pgproto.
@@ -268,3 +247,24 @@ SSL-сертификаты:
 
 * Тип: *bool*
 * Значение по умолчанию: `false`
+
+### instance.vinyl.cache {: #instance_vinyl_cache }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-cache -->
+
+Размер кэша *в байтах* для движка хранения `vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `134217728` (128 МБ)
+
+### instance.vinyl.memory {: #instance_vinyl_memory }
+<!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-memory -->
+
+Максимальное количество оперативной памяти *в байтах*, которое использует
+движок хранения `vinyl`.
+
+Данные:
+
+* Тип: *int*
+* Значение по умолчанию: `134217728` (128 МБ)
