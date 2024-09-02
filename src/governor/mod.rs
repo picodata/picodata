@@ -296,6 +296,7 @@ impl Loop {
                 }
 
                 let promotion_vclock = promotion_vclock.expect("is always set on a previous step");
+                let promotion_vclock = promotion_vclock.ignore_zero();
                 governor_step! {
                     "proposing replicaset current master change" [
                         "current_master_id" => %new_master_id,
