@@ -5206,3 +5206,75 @@ def test_does_not_exist_error(instance: Instance):
 
     with pytest.raises(TarantoolError, match="user foo does not exist"):
         instance.sql("ALTER USER foo RENAME TO bar")
+
+
+def test_like(instance: Instance):
+    instance.sql(
+        """
+        create table t (id int primary key, s string)
+        using memtx
+        """
+    )
+
+    instance.sql(""" insert into t values (1, 'abacaba'), (2, 'AbaC'), (3, '%__%')""")
+
+    data = instance.sql(r" select '_' like '\_' and '%' like '\%' from (values (1))")
+    assert data == [[True]]
+
+    data = instance.sql(r" select '_pico_table' like '\_%' from (values (1))")
+    assert data == [[True]]
+
+    data = instance.sql(""" select s like '%a%' from t """)
+    assert data == [[True], [True], [False]]
+
+    data = instance.sql(r""" select s from t where s like '%\_\__' escape '\' """)
+    assert data[0] == ["%__%"]
+
+    data = instance.sql(
+        r""" select s like 'AbaC%', count(*) from t group by s like 'AbaC%'"""
+    )
+    assert sorted(data) == [[False, 2], [True, 1]]
+
+    data = instance.sql(r"""select s like '%' from t""")
+    assert sorted(data) == [[True], [True], [True]]
+
+    data = instance.sql(r"""select 'a' || 'a' like 'a' || 'a' from (values (1))""")
+    assert data == [[True]]
+
+    data = instance.sql(r"""select true and 'a' like 'a' and true from (values (1))""")
+    assert data == [[True]]
+
+    data = instance.sql(r"""select false or 'a' like 'a' or false from (values (1))""")
+    assert data == [[True]]
+
+    data = instance.sql(
+        r"""select ? like ? escape ? from (values (1))""", "%%", "x%x%", "x"
+    )
+    assert data == [[True]]
+
+    data = instance.sql(
+        r"""select ? like ? escape 'x' from (values (1))""", "%%", "x%x%"
+    )
+    assert data == [[True]]
+
+    data = instance.sql(
+        r"""select ? like 'x%x%' escape ? from (values (1))""", "%%", "x"
+    )
+    assert data == [[True]]
+
+    data = instance.sql(r"""select '%%' like 'x%x%' escape ? from (values (1))""", "x")
+    assert data == [[True]]
+
+    data = instance.sql(
+        r"""
+        select "COLUMN_1" from (values (1))
+        where (values ('a_')) like (values ('%\_')) escape (values ('\'))
+    """
+    )
+    assert data == [[1]]
+
+    with pytest.raises(
+        TarantoolError,
+        match="ESCAPE expression must be a single character",
+    ):
+        instance.sql(r"""select s like '%' escape 'a' || 'a' from t""")

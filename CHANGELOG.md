@@ -43,6 +43,9 @@ with the `YY.MINOR.MICRO` scheme.
 [.proc_read_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_read_index
 [.proc_wait_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_wait_index
 
+### SQL
+- SQL supports `LIKE` operator
+
 ## [24.5.1] - 2024-09-04
 
 ### SQL
