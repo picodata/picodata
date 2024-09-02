@@ -17,7 +17,7 @@ def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
 def assert_voters(voters: list[Instance], instance: Instance):
     expected_voters = list(map(lambda i: i.raft_id, voters))
     actual_voters = instance.eval("return box.space._raft_state:get('voters').value")
-    assert actual_voters.sort() == expected_voters.sort()
+    assert sorted(actual_voters) == sorted(expected_voters)
 
 
 def assert_pid_down(pid):
