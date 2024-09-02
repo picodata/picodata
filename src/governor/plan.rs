@@ -874,32 +874,22 @@ fn get_new_replicaset_master_if_needed<'i>(
 ) -> Option<&'i Instance> {
     // TODO: construct a map from replicaset id to instance to improve performance
     for r in replicasets.values() {
-        // XXX:                                        is this correct? vvvvvv
         #[rustfmt::skip]
         let Some(master) = instances.iter().find(|i| i.instance_id == r.target_master_id) else {
-            warn_or_panic!(
-                "couldn't find instance with id {}, which is chosen as next master of replicaset {}",
-                r.target_master_id,
-                r.replicaset_id,
-            );
+            #[rustfmt::skip]
+            warn_or_panic!("couldn't find instance with id {}, which is chosen as next master of replicaset {}",
+                           r.target_master_id, r.replicaset_id);
             continue;
         };
 
         if master.replicaset_id != r.replicaset_id {
-            tlog!(
-                Warning,
-                "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
-                master.instance_id,
-                master.replicaset_id,
-                r.replicaset_id,
-            );
+            #[rustfmt::skip]
+            tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
+                  master.instance_id, master.replicaset_id, r.replicaset_id);
         } else if !master.may_respond() {
-            tlog!(
-                Info,
-                "target master {} of replicaset {} is not online: trying to choose a new one",
-                master.instance_id,
-                master.replicaset_id,
-            );
+            #[rustfmt::skip]
+            tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
+                  master.instance_id, master.replicaset_id);
         } else {
             continue;
         }
@@ -907,11 +897,8 @@ fn get_new_replicaset_master_if_needed<'i>(
         let Some(new_master) =
             maybe_responding(instances).find(|i| i.replicaset_id == r.replicaset_id)
         else {
-            tlog!(
-                Warning,
-                "there are no instances suitable as master of replicaset {}",
-                r.replicaset_id,
-            );
+            #[rustfmt::skip]
+            tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.replicaset_id);
             continue;
         };
 
