@@ -19,14 +19,19 @@ crate::define_dlsym_reloc! {
     /// Free memory allocated by this buffer
     pub fn ibuf_reinit(ibuf: *mut Ibuf);
 
-    pub(crate) fn sql_prepare_ext(sql: *const u8, len: u32, stmt_id: *mut u32) -> c_int;
+    pub(crate) fn sql_prepare_ext(
+        sql: *const u8,
+        len: u32,
+        stmt_id: *mut u32,
+        session_id: *mut u64,
+    ) -> c_int;
     pub(crate) fn sql_execute_prepared_ext(
         stmt_id: u32,
         mp_params: *const u8,
         vdbe_max_steps: u64,
         obuf: *mut Obuf,
     ) -> c_int;
-    pub(crate) fn sql_unprepare(stmt_id: u32) -> c_int;
+    pub(crate) fn sql_unprepare_ext(stmt_id: u32, session_id: u64) -> c_int;
     pub(crate) fn sql_stmt_calculate_id(sql_str: *const c_char, len: size_t) -> u32;
     pub(crate) fn sql_prepare_and_execute_ext(
         sql: *const u8,

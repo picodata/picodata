@@ -58,15 +58,25 @@ where
 
 pub fn prepare(query: String) -> crate::Result<Statement> {
     let mut stmt_id: u32 = 0;
+    let mut session_id: u64 = 0;
 
     if unsafe {
-        ffi::sql::sql_prepare_ext(query.as_ptr(), query.len() as u32, &mut stmt_id as *mut u32)
+        ffi::sql::sql_prepare_ext(
+            query.as_ptr(),
+            query.len() as u32,
+            &mut stmt_id as *mut u32,
+            &mut session_id as *mut u64,
+        )
     } < 0
     {
         return Err(TarantoolError::last().into());
     }
 
-    Ok(Statement { query, id: stmt_id })
+    Ok(Statement {
+        query,
+        stmt_id,
+        session_id,
+    })
 }
 
 /// Removes SQL prepared statement from the session.
@@ -74,17 +84,19 @@ pub fn prepare(query: String) -> crate::Result<Statement> {
 /// The statement is removed from the session, and its reference counter in
 /// the instance cache is decremented. If the counter reaches zero, the
 /// statement is removed from the instance cache.
-pub fn unprepare(stmt: Statement) {
-    unsafe {
-        ffi::sql::sql_unprepare(stmt.id);
+pub fn unprepare(stmt: Statement) -> crate::Result<()> {
+    if unsafe { ffi::sql::sql_unprepare_ext(stmt.id(), stmt.session_id()) } < 0 {
+        return Err(TarantoolError::last().into());
     }
+    Ok(())
 }
 
 /// SQL prepared statement.
 #[derive(Default, Debug)]
 pub struct Statement {
     query: String,
-    id: u32,
+    stmt_id: u32,
+    session_id: u64,
 }
 
 impl Statement {
@@ -95,7 +107,12 @@ impl Statement {
 
     /// Returns the statement ID generated from the SQL query text.
     pub fn id(&self) -> u32 {
-        self.id
+        self.stmt_id
+    }
+
+    /// Returns the session ID.
+    pub fn session_id(&self) -> u64 {
+        self.session_id
     }
 
     /// Executes prepared statement and returns a wrapper over the raw msgpack bytes.
@@ -114,7 +131,7 @@ impl Statement {
         }
         let param_ptr = param_data.as_ptr() as *const u8;
         let execute_result = unsafe {
-            ffi::sql::sql_execute_prepared_ext(self.id, param_ptr, vdbe_max_steps, buf.obuf())
+            ffi::sql::sql_execute_prepared_ext(self.id(), param_ptr, vdbe_max_steps, buf.obuf())
         };
 
         if execute_result < 0 {

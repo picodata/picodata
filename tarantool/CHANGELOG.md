@@ -28,6 +28,8 @@
 ### Fixed (picodata)
 
 ### Breaking changes (picodata)
+- Add session ID to the argument list of the `sql_prepare_ext`.
+- Replace `sql_unprepare` with `sql_unprepare_ext` (contains an additional session ID argument).
 
 
 
