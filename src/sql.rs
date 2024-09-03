@@ -892,11 +892,11 @@ fn acl_ir_node_to_op_or_result(
             }
             Ok(Continue(Op::Acl(OpAcl::GrantPrivilege {
                 priv_def: PrivilegeDef::new(
+                    grantor_id,
+                    grantee_id,
                     privilege,
                     object_type,
                     object_id,
-                    grantee_id,
-                    grantor_id,
                     schema_version,
                 )
                 .map_err(Error::other)?,
@@ -924,11 +924,11 @@ fn acl_ir_node_to_op_or_result(
 
             Ok(Continue(Op::Acl(OpAcl::RevokePrivilege {
                 priv_def: PrivilegeDef::new(
+                    grantor_id,
+                    grantee_id,
                     privilege,
                     object_type,
                     object_id,
-                    grantee_id,
-                    grantor_id,
                     schema_version,
                 )
                 .map_err(Error::other)?,

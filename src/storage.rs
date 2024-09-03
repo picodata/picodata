@@ -4283,31 +4283,31 @@ pub mod acl {
         [
             // SQL: GRANT 'public' TO <user_name>
             PrivilegeDef::new(
+                grantor_id,
+                user_def.id,
                 PrivilegeType::Execute,
                 SchemaObjectType::Role,
                 PUBLIC_ID as _,
-                user_def.id,
-                grantor_id,
                 user_def.schema_version,
             )
             .expect("valid"),
             // SQL: ALTER USER <user_name> WITH LOGIN
             PrivilegeDef::new(
+                ADMIN_ID,
+                user_def.id,
                 PrivilegeType::Login,
                 SchemaObjectType::Universe,
                 UNIVERSE_ID,
-                user_def.id,
-                ADMIN_ID,
                 user_def.schema_version,
             )
             .expect("valid"),
             // SQL: GRANT ALTER ON <user_name> TO <user_name>
             PrivilegeDef::new(
+                grantor_id,
+                user_def.id,
                 PrivilegeType::Alter,
                 SchemaObjectType::User,
                 user_def.id as _,
-                user_def.id,
-                grantor_id,
                 user_def.schema_version,
             )
             .expect("valid"),

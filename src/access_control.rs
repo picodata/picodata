@@ -770,11 +770,11 @@ mod tests {
         grantor_id: Option<UserId>,
     ) {
         let priv_def = PrivilegeDef::new(
+            grantor_id.unwrap_or(session::uid().unwrap()),
+            grantee_id,
             privilege,
             object_type,
             object_id,
-            grantee_id,
-            grantor_id.unwrap_or(session::uid().unwrap()),
             0,
         )
         .expect("must be valid");
@@ -800,11 +800,11 @@ mod tests {
         object_id: i64,
     ) {
         let priv_def = PrivilegeDef::new(
+            session::uid().unwrap(),
+            grantee_id,
             privilege,
             object_type,
             object_id,
-            grantee_id,
-            session::uid().unwrap(),
             0,
         )
         .expect("must be valid");
@@ -1629,11 +1629,11 @@ mod tests {
 
             // grant child to parent
             let privilege = PrivilegeDef::new(
+                ADMIN_ID,
+                parent_id,
                 PrivilegeType::Execute,
                 SchemaObjectType::Role,
                 child_id as i64,
-                parent_id,
-                ADMIN_ID,
                 0,
             )
             .unwrap();
@@ -1642,11 +1642,11 @@ mod tests {
 
             // grant parent to child
             let privilege = PrivilegeDef::new(
+                ADMIN_ID,
+                child_id,
                 PrivilegeType::Execute,
                 SchemaObjectType::Role,
                 parent_id as i64,
-                child_id,
-                ADMIN_ID,
                 0,
             )
             .unwrap();
@@ -1684,11 +1684,11 @@ mod tests {
             &storage,
             &Acl::GrantPrivilege {
                 priv_def: PrivilegeDef::new(
+                    user_id,
+                    user_id,
                     PrivilegeType::Login,
                     SchemaObjectType::Universe,
                     UNIVERSE_ID,
-                    user_id,
-                    user_id,
                     0,
                 )
                 .unwrap(),
@@ -1707,11 +1707,11 @@ mod tests {
             &storage,
             &Acl::RevokePrivilege {
                 priv_def: PrivilegeDef::new(
+                    user_id,
+                    user_id,
                     PrivilegeType::Login,
                     SchemaObjectType::Universe,
                     UNIVERSE_ID,
-                    user_id,
-                    user_id,
                     0,
                 )
                 .unwrap(),
@@ -1732,11 +1732,11 @@ mod tests {
             &storage,
             &Acl::GrantPrivilege {
                 priv_def: PrivilegeDef::new(
+                    owner_id,
+                    user_id,
                     PrivilegeType::Login,
                     SchemaObjectType::Universe,
                     UNIVERSE_ID,
-                    user_id,
-                    owner_id,
                     0,
                 )
                 .unwrap(),
@@ -1748,11 +1748,11 @@ mod tests {
             &storage,
             &Acl::RevokePrivilege {
                 priv_def: PrivilegeDef::new(
+                    owner_id,
+                    user_id,
                     PrivilegeType::Login,
                     SchemaObjectType::Universe,
                     UNIVERSE_ID,
-                    user_id,
-                    owner_id,
                     0,
                 )
                 .unwrap(),
@@ -1767,11 +1767,11 @@ mod tests {
             &storage,
             &Acl::GrantPrivilege {
                 priv_def: PrivilegeDef::new(
+                    ADMIN_ID,
+                    user_id,
                     PrivilegeType::Login,
                     SchemaObjectType::Universe,
                     UNIVERSE_ID,
-                    user_id,
-                    ADMIN_ID,
                     0,
                 )
                 .unwrap(),
@@ -1783,11 +1783,11 @@ mod tests {
             &storage,
             &Acl::RevokePrivilege {
                 priv_def: PrivilegeDef::new(
+                    ADMIN_ID,
+                    user_id,
                     PrivilegeType::Login,
                     SchemaObjectType::Universe,
                     UNIVERSE_ID,
-                    user_id,
-                    ADMIN_ID,
                     0,
                 )
                 .unwrap(),

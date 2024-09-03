@@ -313,7 +313,7 @@ def test_raft_log(instance: Instance):
 
             # generated output should only contain endlines after "+" (handled
             # above) or "|", but in our expected string we may add linebreaks
-            # for readability. Here we join these artifically broken up lines.
+            # for readability. Here we join these artificially broken up lines.
             # Notice how "\n" is replaced with " ", so keep this in mind when
             # editting the expected string.
             while tail and not line.endswith("|"):
@@ -369,7 +369,7 @@ def test_raft_log(instance: Instance):
         return instance.eval("return box.space[...].id", space_name)
 
     #
-    # NOTE: run pytest with `-vv --no-showlocals` options for managable output
+    # NOTE: run pytest with `-vv --no-showlocals` options for manageable output
     #       in case of test failure
     #
     expected = """\
@@ -399,25 +399,25 @@ Insert(_pico_property, ["snapshot_chunk_max_size",16777216]),
 Insert(_pico_property, ["snapshot_read_view_close_timeout",86400.0]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_user, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"]),
-Insert(_pico_privilege, ["login","universe",0,0,1,0]),
-Insert(_pico_privilege, ["execute","role",2,0,1,0]),
+Insert(_pico_privilege, [1,0,"login","universe",0,0]),
+Insert(_pico_privilege, [1,0,"execute","role",2,0]),
 Insert(_pico_user, [1,"admin",0,["chap-sha1",""],1,"user"]),
-Insert(_pico_privilege, ["read","universe",0,1,1,0]),
-Insert(_pico_privilege, ["write","universe",0,1,1,0]),
-Insert(_pico_privilege, ["execute","universe",0,1,1,0]),
-Insert(_pico_privilege, ["login","universe",0,1,1,0]),
-Insert(_pico_privilege, ["create","universe",0,1,1,0]),
-Insert(_pico_privilege, ["drop","universe",0,1,1,0]),
-Insert(_pico_privilege, ["alter","universe",0,1,1,0]),
+Insert(_pico_privilege, [1,1,"read","universe",0,0]),
+Insert(_pico_privilege, [1,1,"write","universe",0,0]),
+Insert(_pico_privilege, [1,1,"execute","universe",0,0]),
+Insert(_pico_privilege, [1,1,"login","universe",0,0]),
+Insert(_pico_privilege, [1,1,"create","universe",0,0]),
+Insert(_pico_privilege, [1,1,"drop","universe",0,0]),
+Insert(_pico_privilege, [1,1,"alter","universe",0,0]),
 Insert(_pico_user, [32,"pico_service",0,["chap-sha1","WMA2zaUdjou7vy+epavxEa2kRPA="],1,"user"]),
-Insert(_pico_privilege, ["read","universe",0,32,1,0]),
-Insert(_pico_privilege, ["write","universe",0,32,1,0]),
-Insert(_pico_privilege, ["execute","universe",0,32,1,0]),
-Insert(_pico_privilege, ["login","universe",0,32,1,0]),
-Insert(_pico_privilege, ["create","universe",0,32,1,0]),
-Insert(_pico_privilege, ["drop","universe",0,32,1,0]),
-Insert(_pico_privilege, ["alter","universe",0,32,1,0]),
-Insert(_pico_privilege, ["execute","role",3,32,1,0]),
+Insert(_pico_privilege, [1,32,"read","universe",0,0]),
+Insert(_pico_privilege, [1,32,"write","universe",0,0]),
+Insert(_pico_privilege, [1,32,"execute","universe",0,0]),
+Insert(_pico_privilege, [1,32,"login","universe",0,0]),
+Insert(_pico_privilege, [1,32,"create","universe",0,0]),
+Insert(_pico_privilege, [1,32,"drop","universe",0,0]),
+Insert(_pico_privilege, [1,32,"alter","universe",0,0]),
+Insert(_pico_privilege, [1,32,"execute","role",3,0]),
 Insert(_pico_user, [2,"public",0,null,1,"role"]),
 Insert(_pico_user, [31,"super",0,null,1,"role"]))|
 |  0  | 1  |BatchDml(
@@ -441,7 +441,7 @@ Insert(_pico_index, [{_pico_replicaset},1,"_pico_replicaset_uuid","tree",[{{"uni
 Insert(_pico_table, [{_pico_user},"_pico_user",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"array","is_nullable":true,"name":"auth"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"type"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_user},0,"_pico_user_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_user},1,"_pico_user_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_privilege},0,"_pico_privilege_primary","tree",[{{"unique":true}}],[["grantee_id","unsigned",null,false,null],["object_type","string",null,false,null],["object_id","integer",null,false,null],["privilege","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_privilege},1,"_pico_privilege_object","tree",[{{"unique":false}}],[["object_type","string",null,false,null],["object_id","integer",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}}],0,true,"memtx",1,""]),

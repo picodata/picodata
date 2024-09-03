@@ -983,6 +983,8 @@ impl PrivilegeType {
 ///    prior to serialization thus deserialization always creates a valid object.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PrivilegeDef {
+    grantor_id: UserId,
+    grantee_id: UserId,
     privilege: PrivilegeType,
     object_type: SchemaObjectType,
     /// `-1` denotes an absense of a target object.
@@ -993,12 +995,6 @@ pub struct PrivilegeDef {
     ///
     /// To get the value of this field as `Option<u32>` see [`Self::object_id`]
     object_id: i64,
-    /// Id of the user or role to whom the privilege is granted.
-    ///
-    /// In tarantool users and roles are stored in the same space, which means a
-    /// role and a user cannot have the same id or name.
-    grantee_id: UserId,
-    grantor_id: UserId,
     schema_version: u64,
 }
 
@@ -1022,19 +1018,19 @@ impl Display for InvalidPrivilegeError {
 
 impl PrivilegeDef {
     pub fn new(
+        grantor_id: UserId,
+        grantee_id: UserId,
         privilege: PrivilegeType,
         object_type: SchemaObjectType,
         object_id: i64,
-        grantee_id: UserId,
-        grantor_id: UserId,
         schema_version: u64,
     ) -> Result<PrivilegeDef, InvalidPrivilegeError> {
         let privilege_def = PrivilegeDef {
+            grantor_id,
+            grantee_id,
             privilege,
             object_type,
             object_id,
-            grantee_id,
-            grantor_id,
             schema_version,
         };
 
@@ -1073,11 +1069,11 @@ impl PrivilegeDef {
 
     pub fn login(grantee_id: UserId, grantor_id: UserId, schema_version: u64) -> Self {
         Self::new(
+            grantor_id,
+            grantee_id,
             PrivilegeType::Login,
             SchemaObjectType::Universe,
             0,
-            grantee_id,
-            grantor_id,
             schema_version,
         )
         .expect("cant fail, valid login privilege")
@@ -1129,11 +1125,11 @@ impl PrivilegeDef {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::Field;
         vec![
+            Field::from(("grantor_id", FieldType::Unsigned)).is_nullable(false),
+            Field::from(("grantee_id", FieldType::Unsigned)).is_nullable(false),
             Field::from(("privilege", FieldType::String)).is_nullable(false),
             Field::from(("object_type", FieldType::String)).is_nullable(false),
             Field::from(("object_id", FieldType::Integer)).is_nullable(false),
-            Field::from(("grantee_id", FieldType::Unsigned)).is_nullable(false),
-            Field::from(("grantor_id", FieldType::Unsigned)).is_nullable(false),
             Field::from(("schema_version", FieldType::Unsigned)).is_nullable(false),
         ]
     }
@@ -1144,9 +1140,9 @@ impl PrivilegeDef {
         Self {
             grantor_id: 13,
             grantee_id: 37,
+            privilege: PrivilegeType::Create,
             object_type: SchemaObjectType::User,
             object_id: -1,
-            privilege: PrivilegeType::Create,
             schema_version: 337,
         }
     }
@@ -2830,7 +2826,7 @@ mod test {
         object_id: i64,
     ) {
         for privilege in PrivilegeType::VARIANTS {
-            let res = PrivilegeDef::new(*privilege, object_type, object_id, 1, 1, 1);
+            let res = PrivilegeDef::new(1, 1, *privilege, object_type, object_id, 1);
 
             if valid_privileges.contains(privilege) {
                 assert!(res.is_ok())
