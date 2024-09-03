@@ -17,7 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
   tier a table belongs to.
 -->
 
-## [24.5] - Unreleased
+## [24.5] - 2024-09-04
 
 ### SQL
 
