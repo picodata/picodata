@@ -58,6 +58,9 @@ the timeout for address resolving operation.
 - SQL supports `SELECT` statements without scans: `select 1`
 - `CREATE TABLE`, `CREATE INDEX`, `CREATE PROCEDURE`, `CREATE USER` and `CREATE ROLE` support `IF NOT EXISTS` option
 - `DROP TABLE`, `DROP INDEX`, `DROP PROCEDURE`, `DROP USER` and `DROP ROLE` support `IF EXISTS` option
+- `CREATE TABLE`, `CREATE INDEX`, `CREATE PROCEDURE`, `DROP TABLE`, `DROP INDEX` and `DROP PROCEDURE`
+  support WAIT APPLIED (GLOBALLY | LOCALLY) options, allowing users to wait for operations to be
+  committed across all replicasets or only on the current one
 
 ## [24.5.1] - 2024-09-04
 

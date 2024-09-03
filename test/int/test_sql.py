@@ -729,7 +729,7 @@ def test_datetime(cluster: Cluster):
 
     # check we can't insert out of limits date
     # FIXME: https://git.picodata.io/picodata/picodata/sbroad/-/issues/639
-    with pytest.raises(TarantoolError, match="failed to decode tuple"):
+    with pytest.raises(TarantoolError, match="decode bytes into inner format"):
         i1.sql(
             """
             insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values
@@ -738,7 +738,7 @@ def test_datetime(cluster: Cluster):
             """
         )
 
-    with pytest.raises(TarantoolError, match="failed to decode tuple"):
+    with pytest.raises(TarantoolError, match="decode bytes into inner format"):
         i1.sql(
             """
             insert into t2 select cast("COLUMN_1" as int), to_date("COLUMN_2", '') from (values

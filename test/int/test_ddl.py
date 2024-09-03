@@ -1377,3 +1377,118 @@ def test_long_term_transaction_causing_rpc_timeouts(cluster: Cluster):
 
     ddl = i1.sql("CREATE INDEX tdata ON t (data) OPTION (TIMEOUT = 3)")
     assert ddl["row_count"] == 1
+
+
+def test_wait_applied_options(cluster: Cluster):
+    i1, i2, _ = cluster.deploy(instance_count=3)
+
+    # Wait applied options shouldn't affect operations in stable networks.
+    ddl = i1.sql(
+        """
+        CREATE TABLE t1 (id INT PRIMARY KEY)
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i2.sql(
+        """
+        CREATE TABLE t2 (id INT PRIMARY KEY)
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Simulate unstable network by injecting an error blocking wait index RPC
+    # that is called by the client to get acknowledgements from other
+    # replicasets that the DDL operation is committed locally.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", True)
+
+    # i2 doesn't acknowledge operation commitment, so WAIT APPLIED GLOBALLY
+    # option results in an error.
+    with pytest.raises(
+        TarantoolError,
+        match="ddl operation committed, "
+        "but failed to receive acknowledgements from all replicasets",
+    ):
+        i1.sql(
+            """
+            CREATE TABLE t3 (id INT PRIMARY KEY)
+            WAIT APPLIED GLOBALLY
+            OPTION (TIMEOUT = 1)
+            """
+        )
+
+    # Verify that the table was created despite the timeout error.
+    ddl = i1.sql(
+        """
+        CREATE TABLE IF NOT EXISTS t3 (id INT PRIMARY KEY)
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 1)
+        """
+    )
+    assert ddl["row_count"] == 0
+
+    # WAIT APPLIED LOCALLY doesn't require acknowlegments from other
+    # replicasets, so operation should be performed with no errors.
+    ddl = i1.sql(
+        """
+        CREATE TABLE t4 (id INT PRIMARY KEY)
+        WAIT APPLIED LOCALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    # Disable injection.
+    i2.call("pico._inject_error", "BLOCK_PROC_WAIT_INDEX", False)
+
+    # WAIT APPLIED with other SQL commands
+    ddl = i1.sql(
+        """
+        CREATE TABLE t (id INT PRIMARY KEY)
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        CREATE INDEX index ON t (id)
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        DROP INDEX index
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        CREATE PROCEDURE proc(INT)
+        LANGUAGE SQL
+        AS $$INSERT INTO t VALUES(?)$$
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    ddl = i1.sql(
+        """
+        DROP PROCEDURE proc
+        WAIT APPLIED GLOBALLY
+        OPTION (TIMEOUT = 3)
+        """
+    )
+    assert ddl["row_count"] == 1
