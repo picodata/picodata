@@ -408,7 +408,7 @@ function instance_info(instance)
       `variant` (_string_), варианты: `'Offline'` | `'Online'` | `'Expelled'`;
       `incarnation` (_number_)
     - `target_state` (_table_).
-      `variant` (_string_), варианты: `'Offline'` | `'Replicated'` | `'ShardingInitialized'` | `'Online'` | `'Expelled'`;
+      `variant` (_string_), варианты: `'Offline'` | `'Online'` | `'Expelled'`;
       `incarnation`(_number_),
 
 Пример:
