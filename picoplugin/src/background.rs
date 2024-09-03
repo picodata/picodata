@@ -146,7 +146,7 @@ pub struct ServiceWorkerManager {
 impl ServiceWorkerManager {
     fn register_job_inner<F>(&self, job: F, maybe_tag: Option<&str>) -> tarantool::Result<()>
     where
-        F: Fn(CancellationToken) + 'static,
+        F: FnOnce(CancellationToken) + 'static,
     {
         let (token, handle) = CancellationToken::new();
         let finish_chan = handle.finish_channel.clone();
@@ -197,7 +197,7 @@ impl ServiceWorkerManager {
     /// ```
     pub fn register_job<F>(&self, job: F) -> tarantool::Result<()>
     where
-        F: Fn(CancellationToken) + 'static,
+        F: FnOnce(CancellationToken) + 'static,
     {
         self.register_job_inner(job, None)
     }
@@ -211,7 +211,7 @@ impl ServiceWorkerManager {
     /// * `tag`: tag, that will be related to a job, single tag may be related to the multiple jobs
     pub fn register_tagged_job<F>(&self, job: F, tag: &str) -> tarantool::Result<()>
     where
-        F: Fn(CancellationToken) + 'static,
+        F: FnOnce(CancellationToken) + 'static,
     {
         self.register_job_inner(job, Some(tag))
     }
