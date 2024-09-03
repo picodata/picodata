@@ -267,7 +267,7 @@ where
     /// }
     /// ```
     #[inline]
-    pub fn get_or_create_metatable(self) -> LuaTable<PushGuard<L>> {
+    pub fn get_or_create_metatable(&self) -> LuaTable<PushGuard<&Self>> {
         unsafe {
             let index = self.as_ref().index().into();
             // We put the metatable at the top of the stack.
@@ -279,7 +279,7 @@ where
                 debug_assert!(r != 0);
             }
 
-            LuaTable::new(PushGuard::new(self.into_inner(), 1), crate::NEGATIVE_ONE)
+            LuaTable::new(PushGuard::new(self, 1), crate::NEGATIVE_ONE)
         }
     }
 

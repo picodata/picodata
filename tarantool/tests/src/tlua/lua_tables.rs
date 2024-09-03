@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use tarantool::tlua::{function0, Lua, LuaTable, PushGuard};
 
 pub fn iterable() {
@@ -103,6 +105,33 @@ pub fn metatable() {
 
     let r: i32 = lua.eval("return a + a").unwrap();
     assert_eq!(r, 5);
+}
+
+pub fn complex_anonymous_table_metatable() {
+    let lua = Lua::new();
+    lua.openlibs();
+
+    let table = LuaTable::empty(&lua);
+    let return_value = "sample_result";
+
+    {
+        let mt = table.get_or_create_metatable();
+        let mut mt_methods = HashMap::new();
+
+        mt_methods.insert("example_method".to_owned(), function0(move || return_value));
+        mt.set("__index".to_owned(), mt_methods);
+
+        // ensure we can push metatable itself on stack.
+        table.set("mt", &mt);
+    };
+
+    let r: String = lua
+        .eval_with(
+            "assert((...).mt == getmetatable(...)); return (...):example_method()",
+            &table,
+        )
+        .unwrap();
+    assert_eq!(&r, return_value);
 }
 
 pub fn empty_array() {

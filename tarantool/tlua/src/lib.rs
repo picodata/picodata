@@ -1511,7 +1511,8 @@ where
     ///
     /// let lua = Lua::new();
     /// {
-    ///     let metatable = lua.globals_table().get_or_create_metatable();
+    ///     let globals = lua.globals_table();
+    ///     let metatable = globals.get_or_create_metatable();
     ///     metatable.set("__index", tlua::function2(|_: AnyLuaValue, var: String| -> AnyLuaValue {
     ///         println!("The user tried to access the variable {:?}", var);
     ///         AnyLuaValue::LuaNumber(48.0)

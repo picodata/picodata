@@ -8,6 +8,8 @@
 - `tlua::LuaRead` trait implementations for `OsString`, `PathBuf`
 
 ### Changed
+- tlua::LuaTable::get_or_create_metatable now borrows the table itself,
+allowing easier usage with anonymous tables.
 
 ### Fixed
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
