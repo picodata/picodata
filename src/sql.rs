@@ -11,6 +11,7 @@ use crate::schema::{
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::storage::{space_by_name, PropertyName};
+use crate::sync::wait_for_index_everywhere;
 use crate::traft::error::{Error, Unsupported};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
@@ -55,6 +56,7 @@ use ::tarantool::space::{FieldType, Space, SpaceId, SystemSpace};
 use ::tarantool::time::Instant;
 use ::tarantool::tuple::{RawBytes, Tuple};
 use std::ops::{ControlFlow, ControlFlow::Break, ControlFlow::Continue};
+use std::rc::Rc;
 use std::str::FromStr;
 use std::time::Duration;
 use tarantool::session;
@@ -1361,11 +1363,13 @@ pub(crate) fn reenterable_schema_change_request(
 
         let schema_version = storage.properties.next_schema_version()?;
 
+        let mut wait_applied_everywhere = false;
         let op_or_result = match &ir_node {
             IrNode::Acl(acl) => {
                 acl_ir_node_to_op_or_result(acl, current_user, schema_version, node, storage)?
             }
             IrNode::Ddl(ddl) => {
+                wait_applied_everywhere = ddl.wait_applied_everywhere();
                 ddl_ir_node_to_op_or_result(ddl, current_user, schema_version, node, storage)?
             }
             n => unreachable!("function must be called only for ddl or acl nodes, not {n:?}"),
@@ -1387,7 +1391,16 @@ pub(crate) fn reenterable_schema_change_request(
         };
 
         if is_ddl_prepare {
-            wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
+            let commit_index =
+                wait_for_ddl_commit(index, deadline.duration_since(Instant::now_fiber()))?;
+            if wait_applied_everywhere {
+                wait_for_index_everywhere(
+                    &node.storage,
+                    Rc::clone(&node.pool),
+                    commit_index,
+                    deadline,
+                ).map_err(|_| Error::Other("ddl operation committed, but failed to receive acknowledgements from all replicasets".into()))?;
+            }
         }
 
         return Ok(ConsumerResult { row_count: 1 });

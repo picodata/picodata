@@ -3,17 +3,25 @@
 use ::tarantool::tuple::Encode;
 use ::tarantool::vclock::Vclock;
 use ::tarantool::{fiber, proc};
+use futures::stream::FuturesOrdered;
+use futures::{Future, StreamExt};
 use serde::{Deserialize, Serialize};
 
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::Duration;
 
-use crate::tlog;
+use crate::instance::InstanceId;
+use crate::rpc::RequestArgs;
+use crate::storage::{Clusterwide, ToEntryIter};
 use crate::traft::error::Error;
 #[allow(unused_imports)]
 use crate::traft::network::ConnectionPool;
 use crate::traft::RaftIndex;
 use crate::util::duration_from_secs_f64_clamped;
+use crate::{proc_name, tlog};
 use crate::{rpc, traft};
+use tarantool::time::Instant;
 
 ////////////////////////////////////////////////////////////////////////////////
 // proc_get_vclock
@@ -167,8 +175,107 @@ impl rpc::RequestArgs for WaitIndexRpc {
 #[proc]
 fn proc_wait_index(target: RaftIndex, timeout: f64) -> traft::Result<(RaftIndex,)> {
     let node = traft::node::global()?;
+    crate::error_injection!(block "BLOCK_PROC_WAIT_INDEX");
     node.wait_index(target, duration_from_secs_f64_clamped(timeout))
         .map(|index| (index,))
+}
+
+/// Wait the given index to be applied on all replicasets.
+/// Specific waiting errors are reported in the log indicating the instance.
+///
+/// Note: The client must ensure that the term remains unchanged, otherwise, the operation on the
+/// index may be changed. It's safe to wait for an index after committing it.
+pub fn wait_for_index_everywhere(
+    storage: &Clusterwide,
+    pool: Rc<ConnectionPool>,
+    index: RaftIndex,
+    deadline: Instant,
+) -> traft::Result<()> {
+    fn broadcast_wait_index_rpc(
+        pool: &ConnectionPool,
+        targets: &[&&InstanceId],
+        index: &RaftIndex,
+        deadline: &Instant,
+    ) -> traft::Result<
+        FuturesOrdered<
+            impl Future<Output = Result<<WaitIndexRpc as RequestArgs>::Response, Error>>,
+        >,
+    > {
+        let mut fs = FuturesOrdered::new();
+        let timeout = std::cmp::min(
+            // TODO: don't hardcode timeout
+            Duration::from_secs(1),
+            deadline.duration_since(Instant::now_fiber()),
+        );
+        let rpc = crate::sync::WaitIndexRpc {
+            target: *index,
+            timeout: timeout.as_secs_f64(),
+        };
+
+        for instance_id in targets {
+            tlog!(Info, "calling proc_wait_index"; "instance_id" => %instance_id);
+            let resp = pool.call(**instance_id, proc_name!(proc_wait_index), &rpc, timeout)?;
+            fs.push_back(resp);
+        }
+
+        Ok(fs)
+    }
+
+    let replicasets: Vec<_> = storage
+        .replicasets
+        .iter()
+        .expect("storage should never fail")
+        .collect();
+    let replicasets: HashMap<_, _> = replicasets
+        .iter()
+        .map(|rs| (&rs.replicaset_id, rs))
+        .collect();
+    let instances = storage
+        .instances
+        .all_instances()
+        .expect("storage should never fail");
+
+    fiber::block_on(async {
+        let mut confirmed = HashSet::new();
+
+        loop {
+            let masters: HashSet<_> = crate::rpc::replicasets_masters(&replicasets, &instances)
+                .into_iter()
+                .collect();
+            let confirmed_copy = confirmed.clone();
+            let unconfirmed: Vec<_> = masters.difference(&confirmed_copy).collect();
+            if unconfirmed.is_empty() {
+                return Ok(());
+            }
+
+            if Instant::now_fiber() > deadline {
+                for instance in unconfirmed {
+                    tlog!(
+                        Warning,
+                        "{} hasn't confirmed operation commitment within the timeout",
+                        *instance
+                    )
+                }
+                return Err(Error::Timeout);
+            }
+
+            let fs = broadcast_wait_index_rpc(&pool, &unconfirmed, &index, &deadline)?;
+            let mut fs_enumerated = fs.enumerate();
+            while let Some((idx, res)) = &fs_enumerated.next().await {
+                let instance_id = *unconfirmed[*idx];
+                match res {
+                    Ok(_) => {
+                        confirmed.insert(instance_id);
+                    }
+                    Err(err) => {
+                        tlog!(Warning, "failed proc_wait_index: {err}"; "instance_id" => %instance_id);
+                    }
+                }
+            }
+        }
+    })?;
+
+    Ok(())
 }
 
 mod tests {
