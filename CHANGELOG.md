@@ -33,7 +33,7 @@ with the `YY.MINOR.MICRO` scheme.
 [.proc_read_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_read_index
 [.proc_wait_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_wait_index
 
-## [24.5] - 2024-09-04
+## [24.5.1] - 2024-09-04
 
 ### SQL
 
