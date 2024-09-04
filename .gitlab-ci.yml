@@ -108,6 +108,9 @@ build-base-image:
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${PARENT_CI_COMMIT_SHA}
+    - if: $CI_COMMIT_TAG
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
     - <<: *else
       when: never
   variables:
