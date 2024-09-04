@@ -275,3 +275,28 @@ article > p > img {
     margin-left: auto;
     margin-right: auto;
 }
+
+/* Edit <code> style */
+.md-typeset code:not(pre > code)
+{
+    font-size: inherit;
+    background-color: #eeeeee;
+    border-radius: 0.3rem;
+    padding: 0 .4em;
+    /* white-space: nowrap; */
+    /* font-size: .85em;
+    background-color: var(--md-code-bg-color);
+    border-radius: .1rem;
+    padding: 0 .2941176471em; */
+}
+
+/* Unset background color and shrink padding for <code> links */
+/* Rule affects pseudo-classes — :hover, :focus, etc. */
+.md-typeset.md-typeset a > code {
+    background-color: unset;
+    border-radius: initial;
+    padding: 0 .1em;
+    /* background-color: var(--md-code-bg-color);
+       border-radius: .1rem;
+       padding: 0 .2941176471em; */
+}
