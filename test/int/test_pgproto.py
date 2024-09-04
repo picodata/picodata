@@ -429,6 +429,6 @@ def test_interactive_portals(pg_client: PgClient):
     assert len(data["rows"]) == 4
     assert ["""    scan "t\""""] == data["rows"][0]
     assert ["""execution options:"""] == data["rows"][1]
-    assert ["""sql_vdbe_max_steps = 45000"""] == data["rows"][2]
+    assert ["""vdbe_max_steps = 45000"""] == data["rows"][2]
     assert ["""vtable_max_rows = 5000"""] == data["rows"][3]
     assert data["is_finished"] is True

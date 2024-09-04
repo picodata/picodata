@@ -548,7 +548,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
         projection ("t"."x"::integer -> "x", "t"."y"::integer -> "y")
             scan "t"
 execution options:
-sql_vdbe_max_steps = 45000
+vdbe_max_steps = 45000
 vtable_max_rows = 5000"""
     assert "\n".join(lines) == expected_explain
 
@@ -2058,13 +2058,13 @@ def test_sql_limits(cluster: Cluster):
     ):
         i1.sql(
             """
-        select * from "t" where "a" = 1 option(sql_vdbe_max_steps=5)
+        select * from "t" where "a" = 1 option(vdbe_max_steps=5)
     """
         )
 
     dql = i1.sql(
         """
-        select * from "t" where "a" = 1 option(sql_vdbe_max_steps=50)
+        select * from "t" where "a" = 1 option(vdbe_max_steps=50)
     """
     )
     assert dql == [[1, 1]]
@@ -2075,7 +2075,7 @@ def test_sql_limits(cluster: Cluster):
     ):
         i1.sql(
             """
-        select * from "t" option(vtable_max_rows=1, sql_vdbe_max_steps=50)
+        select * from "t" option(vtable_max_rows=1, vdbe_max_steps=50)
     """
         )
 
@@ -3394,7 +3394,7 @@ def test_call_procedure(cluster: Cluster):
     )
     assert data["row_count"] == 1
     data = i1.retriable_sql(
-        """ call "proc2"($1) option(sql_vdbe_max_steps = $1, vtable_max_rows = $1)""",
+        """ call "proc2"($1) option(vdbe_max_steps = $1, vtable_max_rows = $1)""",
         5,
         fatal_predicate=r"Duplicate key exists in unique index",
     )
@@ -4496,7 +4496,7 @@ def test_metadata(instance: Instance):
     # - - projection (1::unsigned -> "col_1")
     #   - '    scan "G"'
     #   - 'execution options:'
-    #   - sql_vdbe_max_steps = 45000
+    #   - vdbe_max_steps = 45000
     #   - vtable_max_rows = 5000
     # ...
     data = instance.sql(""" select 1 from t """, strip_metadata=False)
