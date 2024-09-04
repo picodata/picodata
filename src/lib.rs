@@ -1007,6 +1007,11 @@ fn postjoin(
             fiber::sleep(timeout);
             continue;
         };
+
+        if has_states!(instance, Expelled -> *) {
+            return Err(Error::Expelled);
+        }
+
         let cluster_id = raft_storage
             .cluster_id()
             .expect("storage should never fail");

@@ -1,5 +1,5 @@
 import pytest
-from conftest import Cluster, Instance, Retriable
+from conftest import Cluster, Instance, Retriable, log_crawler
 
 
 @pytest.fixture
@@ -40,6 +40,10 @@ def test_expel_follower(cluster3: Cluster):
     # assert i3.process
     Retriable(timeout=10).call(i3.assert_process_dead)
 
+    lc = log_crawler(i3, "current instance is expelled from the cluster")
+    i3.fail_to_start()
+    assert lc.matched
+
 
 def test_expel_leader(cluster3: Cluster):
     # Scenario: expel a Leader instance by command to itself
@@ -60,6 +64,10 @@ def test_expel_leader(cluster3: Cluster):
 
     # assert i1.process
     Retriable(timeout=10).call(i1.assert_process_dead)
+
+    lc = log_crawler(i1, "current instance is expelled from the cluster")
+    i1.fail_to_start()
+    assert lc.matched
 
 
 def test_expel_by_follower(cluster3: Cluster):

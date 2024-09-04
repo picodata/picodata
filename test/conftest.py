@@ -941,7 +941,7 @@ class Instance:
             ).start()
 
     def fail_to_start(self, timeout: int = 10):
-        assert self.process is None
+        assert self.process is None, "process is already running"
         self.start()
         assert self.process
         try:
@@ -1237,7 +1237,8 @@ class Instance:
             self.check_process_alive()
             assert False
         except ProcessDead:
-            pass
+            # Make it so we can call Instance.start later
+            self.process = None
 
     def wait_online(
         self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None
