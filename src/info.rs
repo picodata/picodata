@@ -2,6 +2,7 @@ use crate::config::PicodataConfig;
 use crate::instance::InstanceId;
 use crate::instance::State;
 use crate::replicaset::ReplicasetId;
+use crate::tlua;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::RaftId;
@@ -217,6 +218,28 @@ pub struct HttpServerInfo {
 
 impl tarantool::tuple::Encode for HttpServerInfo {}
 
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+pub struct SlabInfo {
+    #[allow(dead_code)]
+    pub items_size: u64,
+    #[allow(dead_code)]
+    pub items_used_ratio: String,
+    pub quota_size: u64,
+    #[allow(dead_code)]
+    pub quota_used_ratio: String,
+    #[allow(dead_code)]
+    pub arena_used_ratio: String,
+    #[allow(dead_code)]
+    pub items_used: u64,
+    pub quota_used: u64,
+    #[allow(dead_code)]
+    pub arena_size: u64,
+    #[allow(dead_code)]
+    pub arena_used: u64,
+}
+
+impl tarantool::tuple::Encode for SlabInfo {}
+
 /// Info returned from [`.proc_runtime_info`].
 ///
 /// [`.proc_runtime_info`]: proc_runtime_info
@@ -227,6 +250,7 @@ pub struct RuntimeInfo<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http: Option<HttpServerInfo>,
     pub version_info: VersionInfo<'a>,
+    pub slab_info: SlabInfo,
 }
 
 impl tarantool::tuple::Encode for RuntimeInfo<'_> {}
@@ -246,12 +270,14 @@ impl RuntimeInfo<'static> {
             let port = port.parse::<u16>().map_err(Error::other)?;
             http = Some(HttpServerInfo { host, port });
         }
+        let slab_info = lua.eval("return box.slab.info();")?;
 
         Ok(RuntimeInfo {
             raft: RaftInfo::get(node),
             internal: InternalInfo::get(node),
             http,
             version_info: VersionInfo::current(),
+            slab_info,
         })
     }
 }

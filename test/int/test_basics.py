@@ -634,6 +634,17 @@ def test_proc_runtime_info(instance: Instance):
             host=host,
             port=port,
         ),
+        slab_info=dict(
+            arena_size=33554432,
+            arena_used=2506416,
+            arena_used_ratio="7.5%",
+            items_size=1489040,
+            items_used=196272,
+            items_used_ratio="13.18%",
+            quota_size=67108864,
+            quota_used=33554432,
+            quota_used_ratio="50.00%",
+        ),
         version_info=version_info,
     )
 
