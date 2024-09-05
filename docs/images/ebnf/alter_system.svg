@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="697"
+   height="299"
+   version="1.1"
+   viewBox="0 0 697 299"
+   id="svg34"
+   sodipodi:docname="alter_system.svg"
+   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview34"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.4806313"
+     inkscape:cx="436.97578"
+     inkscape:cy="150.61143"
+     inkscape:window-width="1858"
+     inkscape:window-height="1014"
+     inkscape:window-x="62"
+     inkscape:window-y="29"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg34" />
+  <defs
+     id="defs1">
+    <style
+       type="text/css"
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
+.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #330000; stroke: none; }
+text.terminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #140000;                            font-weight: bold; }
+text.nonterminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1A0000;                            font-weight: normal; }
+text.regexp { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #330000; stroke: #330000; }
+rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }
+rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
+</style>
+  </defs>
+  <polygon
+     points="9 17 1 13 1 21"
+     id="polygon1" />
+  <polygon
+     points="17 17 9 13 9 21"
+     id="polygon2" />
+  <rect
+     x="31"
+     y="3"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect2" />
+  <rect
+     x="29"
+     y="1"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect3" />
+  <text
+     class="terminal"
+     x="39"
+     y="21"
+     id="text3">ALTER</text>
+  <rect
+     x="113"
+     y="3"
+     width="74"
+     height="32"
+     rx="10"
+     id="rect4" />
+  <rect
+     x="111"
+     y="1"
+     width="74"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect5" />
+  <text
+     class="terminal"
+     x="121"
+     y="21"
+     id="text5">SYSTEM</text>
+  <rect
+     x="227"
+     y="3"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect6" />
+  <rect
+     x="225"
+     y="1"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect7" />
+  <text
+     class="terminal"
+     x="235"
+     y="21"
+     id="text7">RESET</text>
+  <rect
+     x="329"
+     y="3"
+     width="44"
+     height="32"
+     rx="10"
+     id="rect8" />
+  <rect
+     x="327"
+     y="1"
+     width="44"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect9" />
+  <text
+     class="terminal"
+     x="337"
+     y="21"
+     id="text9">ALL</text>
+  <a
+     xlink:href="../object"
+     xlink:title="param_name"
+     id="a11">
+    <rect
+       x="329"
+       y="47"
+       width="104"
+       height="32"
+       id="rect10" />
+    <rect
+       x="327"
+       y="45"
+       width="104"
+       height="32"
+       class="nonterminal"
+       id="rect11" />
+    <text
+       class="nonterminal"
+       x="337"
+       y="65"
+       id="text11">param_name</text>
+  </a>
+  <rect
+     x="227"
+     y="91"
+     width="44"
+     height="32"
+     rx="10"
+     id="rect12" />
+  <rect
+     x="225"
+     y="89"
+     width="44"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect13" />
+  <text
+     class="terminal"
+     x="235"
+     y="109"
+     id="text13">SET</text>
+  <a
+     xlink:href="../object"
+     xlink:title="param_name"
+     id="a15">
+    <rect
+       x="291"
+       y="91"
+       width="104"
+       height="32"
+       id="rect14" />
+    <rect
+       x="289"
+       y="89"
+       width="104"
+       height="32"
+       class="nonterminal"
+       id="rect15" />
+    <text
+       class="nonterminal"
+       x="299"
+       y="109"
+       id="text15">param_name</text>
+  </a>
+  <rect
+     x="435"
+     y="91"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect16" />
+  <rect
+     x="433"
+     y="89"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect17" />
+  <text
+     class="terminal"
+     x="443"
+     y="109"
+     id="text17">=</text>
+  <rect
+     x="435"
+     y="135"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect18" />
+  <rect
+     x="433"
+     y="133"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect19" />
+  <text
+     class="terminal"
+     x="443"
+     y="153"
+     id="text19">TO</text>
+  <rect
+     x="533"
+     y="91"
+     width="80"
+     height="32"
+     rx="10"
+     id="rect20" />
+  <rect
+     x="531"
+     y="89"
+     width="80"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect21" />
+  <text
+     class="terminal"
+     x="541"
+     y="109"
+     id="text21">DEFAULT</text>
+  <a
+     xlink:href="../../sql_types#text"
+     xlink:title="param_value"
+     id="a23">
+    <rect
+       x="533"
+       y="135"
+       width="102"
+       height="32"
+       id="rect22" />
+    <rect
+       x="531"
+       y="133"
+       width="102"
+       height="32"
+       class="nonterminal"
+       id="rect23" />
+    <text
+       class="nonterminal"
+       x="541"
+       y="153"
+       id="text23">param_value</text>
+  </a>
+  <rect
+     x="417"
+     y="221"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect24" />
+  <rect
+     x="415"
+     y="219"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect25" />
+  <text
+     class="terminal"
+     x="425"
+     y="239"
+     id="text25">FOR</text>
+  <rect
+     x="505"
+     y="221"
+     width="44"
+     height="32"
+     rx="10"
+     id="rect26" />
+  <rect
+     x="503"
+     y="219"
+     width="44"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect27" />
+  <text
+     class="terminal"
+     x="513"
+     y="239"
+     id="text27">ALL</text>
+  <rect
+     x="569"
+     y="221"
+     width="60"
+     height="32"
+     rx="10"
+     id="rect28" />
+  <rect
+     x="567"
+     y="219"
+     width="60"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect29" />
+  <text
+     class="terminal"
+     x="577"
+     y="239"
+     id="text29">TIERS</text>
+  <rect
+     x="505"
+     y="265"
+     width="52"
+     height="32"
+     rx="10"
+     id="rect30" />
+  <rect
+     x="503"
+     y="263"
+     width="52"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect31" />
+  <text
+     class="terminal"
+     x="513"
+     y="283"
+     id="text31">TIER</text>
+  <a
+     xlink:href="../object"
+     xlink:title="tier"
+     id="a33">
+    <rect
+       x="577"
+       y="265"
+       width="40"
+       height="32"
+       id="rect32" />
+    <rect
+       x="575"
+       y="263"
+       width="40"
+       height="32"
+       class="nonterminal"
+       id="rect33" />
+    <text
+       class="nonterminal"
+       x="585"
+       y="283"
+       id="text33">tier</text>
+  </a>
+  <path
+     class="line"
+     d="m17 17 h2 m0 0 h10 m62 0 h10 m0 0 h10 m74 0 h10 m20 0 h10 m62 0 h10 m20 0 h10 m44 0 h10 m0 0 h60 m-144 0 h20 m124 0 h20 m-164 0 q10 0 10 10 m144 0 q0 -10 10 -10 m-154 10 v24 m144 0 v-24 m-144 24 q0 10 10 10 m124 0 q10 0 10 -10 m-134 10 h10 m104 0 h10 m20 -44 h202 m-468 0 h20 m448 0 h20 m-488 0 q10 0 10 10 m468 0 q0 -10 10 -10 m-478 10 v68 m468 0 v-68 m-468 68 q0 10 10 10 m448 0 q10 0 10 -10 m-458 10 h10 m44 0 h10 m0 0 h10 m104 0 h10 m20 0 h10 m30 0 h10 m0 0 h8 m-78 0 h20 m58 0 h20 m-98 0 q10 0 10 10 m78 0 q0 -10 10 -10 m-88 10 v24 m78 0 v-24 m-78 24 q0 10 10 10 m58 0 q10 0 10 -10 m-68 10 h10 m38 0 h10 m40 -44 h10 m80 0 h10 m0 0 h22 m-142 0 h20 m122 0 h20 m-162 0 q10 0 10 10 m142 0 q0 -10 10 -10 m-152 10 v24 m142 0 v-24 m-142 24 q0 10 10 10 m122 0 q10 0 10 -10 m-132 10 h10 m102 0 h10 m42 -132 l2 0 m2 0 l2 0 m2 0 l2 0 m-322 186 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m0 0 h242 m-272 0 h20 m252 0 h20 m-292 0 q10 0 10 10 m272 0 q0 -10 10 -10 m-282 10 v12 m272 0 v-12 m-272 12 q0 10 10 10 m252 0 q10 0 10 -10 m-262 10 h10 m48 0 h10 m20 0 h10 m44 0 h10 m0 0 h10 m60 0 h10 m-164 0 h20 m144 0 h20 m-184 0 q10 0 10 10 m164 0 q0 -10 10 -10 m-174 10 v24 m164 0 v-24 m-164 24 q0 10 10 10 m144 0 q10 0 10 -10 m-154 10 h10 m52 0 h10 m0 0 h10 m40 0 h10 m0 0 h12 m43 -76 h-3"
+     id="path33" />
+  <polygon
+     points="687 203 695 199 695 207"
+     id="polygon33" />
+  <polygon
+     points="687 203 679 199 679 207"
+     id="polygon34" />
+</svg>

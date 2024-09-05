@@ -64,6 +64,7 @@ nav:
       - reference/legend.md
       - Команды:
         - reference/sql/alter_procedure.md
+        - reference/sql/alter_system.md
         - reference/sql/alter_user.md
         - reference/sql/call.md
         - reference/sql/create_index.md
@@ -98,6 +99,7 @@ nav:
     - reference/cli.md
     - reference/config.md
     - reference/audit_events.md
+    - reference/system_parameters.md
   - Архитектура:
     - architecture/distributed_sql.md
     - architecture/discovery.md

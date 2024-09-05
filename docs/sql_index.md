@@ -14,6 +14,7 @@
 ## Команды {: #commands }
 
 * [ALTER PROCEDURE](reference/sql/alter_procedure.md)
+* [ALTER SYSTEM](reference/sql/alter_system.md)
 * [ALTER USER](reference/sql/alter_user.md)
 * [CALL](reference/sql/call.md)
 * [CREATE INDEX](reference/sql/create_index.md)
