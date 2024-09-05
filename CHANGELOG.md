@@ -17,6 +17,21 @@ with the `YY.MINOR.MICRO` scheme.
   tier a table belongs to.
 -->
 
+### Lua API
+
+- Update `pico.LUA_API_VERSION`: `4.0.0` -> `5.0.0`
+- The following functions removed in favor of SQL commands and RPC API
+  stored procedures:
+* `pico.create_table` -> [CREATE TABLE]
+* `pico.drop_table` -> [DROP TABLE]
+* `pico.raft_read_index` -> [.proc_read_index]
+* `pico.raft_wait_index` -> [.proc_wait_index]
+
+[CREATE TABLE]: https://docs.picodata.io/picodata/devel/reference/sql/create_table/
+[DROP TABLE]: https://docs.picodata.io/picodata/devel/reference/sql/drop_table/
+[.proc_read_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_read_index
+[.proc_wait_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_wait_index
+
 ## [24.5] - 2024-09-04
 
 ### SQL
@@ -50,12 +65,12 @@ with the `YY.MINOR.MICRO` scheme.
   users must specify the expected type of the parameter:
   `SELECT * FROM t WHERE id = $1::INT`.
 
-- Mutual TLS authentication for Pgproto. 
+- Mutual TLS authentication for Pgproto.
 
     1. Set `instance.pg.ssl` configuration parameter to `true`
     1. Put PEM-encoded `ca.crt` file into instance's data directory along with `server.crt` and `server.key`.
 
-  As a result pgproto server will only accept connection if client has presented a certificate 
+  As a result pgproto server will only accept connection if client has presented a certificate
   which was signed by `ca.crt` or it's derivatives.
 
   If `ca.crt` is absent in instance's data directory, then client certificates are not requested and not validated.
@@ -74,7 +89,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Fix error "Read access to space '_raft_state' is denied"
   when executing a DML query on global tables
-  
+
 ### Compatibility
 
 - The current version is NOT compatible with prior releases. It cannot
