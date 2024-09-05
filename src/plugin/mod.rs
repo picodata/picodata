@@ -8,7 +8,7 @@ pub mod topology;
 use once_cell::unsync;
 use picoplugin::background::ServiceId;
 use picoplugin::error_code::ErrorCode;
-use picoplugin::plugin::interface::ServiceBox;
+use picoplugin::plugin::interface::{ServiceBox, ValidatorBox};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -143,6 +143,7 @@ pub struct Service {
     pub version: String,
     pub plugin_name: String,
     pub id: ServiceId,
+    config_validator: ValidatorBox,
     _lib: Rc<LibraryWrapper>,
 }
 

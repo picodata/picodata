@@ -9,6 +9,7 @@ import hashlib
 from pathlib import Path
 from conftest import (
     Cluster,
+    ErrorCode,
     ReturnError,
     Retriable,
     Instance,
@@ -18,9 +19,6 @@ from conftest import (
 )
 from decimal import Decimal
 import requests  # type: ignore
-from conftest import (
-    ErrorCode,
-)
 import signal
 
 _3_SEC = 3
@@ -244,6 +242,11 @@ class PluginReflection:
             cfg_seen = self.get_seen_config(service, i)
             assert cfg_seen == expected_cfg
 
+    def assert_in_table_config(self, service, expected_cfg, *instances):
+        for i in instances:
+            cfg_space = self.get_config(service, i)
+            assert cfg_space == expected_cfg
+
     def assert_route_poisoned(self, poison_instance_id, service, poisoned=True):
         for i in self.instances:
             [[route_poisoned]] = i.sql(
@@ -344,7 +347,9 @@ def test_invalid_manifest_plugin(cluster: Cluster):
         "testservice_2",
         _DEFAULT_TIER,
     )
-    with pytest.raises(ReturnError, match="box error #333: missing field `bar`"):
+    with pytest.raises(
+        ReturnError, match=f"box error #{ErrorCode.PluginError}: missing field `bar`"
+    ):
         i1.call("pico.enable_plugin", plugin, "0.1.0")
     PluginReflection(plugin, "0.1.0", _PLUGIN_SERVICES, [i1, i2]).install(
         True
@@ -686,7 +691,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
         install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
     assert (
         e.value.args[0]
-        == f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance_id:i2] Other: Callback: on_start: box error #333: error at `on_start`"  # noqa: E501
+        == f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance_id:i2] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`"  # noqa: E501
     )
 
     # plugin installed but disabled
@@ -700,7 +705,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     # assert that plugin not loaded and on_stop called on both instances
     with pytest.raises(
         ReturnError,
-        match="] Other: Callback: on_start: box error #333: error at `on_start`",
+        match=f"] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
     ):
         install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exists=True)
 
@@ -1171,6 +1176,7 @@ def test_config_validation(cluster: Cluster):
     plugin_ref = plugin_ref.install(True).enable(True)
     plugin_ref.assert_synced()
 
+    # test custom validator
     plugin_ref.inject_error("testservice_1", "on_config_validate", "test error", i1)
     with pytest.raises(
         ReturnError, match="New configuration validation error:.* test error"
@@ -1180,24 +1186,47 @@ def test_config_validation(cluster: Cluster):
             "'testservice_1', {foo = true, bar = 102, baz = {'a', 'b'}})"
         )
 
+    # test default validator
+    with pytest.raises(
+        ReturnError, match="New configuration validation error:.* invalid type"
+    ):
+        i1.eval(
+            "return pico.update_plugin_config('testplug', '0.1.0', 'testservice_2', {})"
+        )
+
 
 def test_on_config_update(cluster: Cluster):
     i1, i2 = cluster.deploy(instance_count=2)
     plugin_ref = PluginReflection.default(i1, i2)
 
-    install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
-    plugin_ref = plugin_ref.install(True).enable(True)
-    plugin_ref.assert_synced()
+    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
+    plugin_ref.assert_in_table_config("testservice_1", _DEFAULT_CFG, i1, i2)
 
-    plugin_ref.assert_config("testservice_1", _DEFAULT_CFG, i1, i2)
-
+    # change configuration of non-enabled plugin
     i1.eval(
         "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
         "true, bar = 102, baz = {'a', 'b'}})"
     )
     # retrying, cause new service configuration callback call asynchronously
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG, i1, i2)
+        lambda: plugin_ref.assert_in_table_config("testservice_1", _NEW_CFG, i1, i2)
+    )
+
+    # change configuration of enabled plugin
+    i1.call(
+        "pico.service_append_tier",
+        _PLUGIN,
+        _PLUGIN_VERSION_1,
+        "testservice_1",
+        _DEFAULT_TIER,
+    )
+    i1.call("pico.enable_plugin", _PLUGIN, _PLUGIN_VERSION_1)
+    i1.eval(
+        "pico.update_plugin_config('testplug', '0.1.0', 'testservice_1', {foo = "
+        "false, bar = 102, baz = {'a', 'b'}})"
+    )
+    Retriable(timeout=3, rps=5).call(
+        lambda: plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
     )
 
 
@@ -1992,7 +2021,8 @@ def test_set_topology_with_error_on_start(cluster: Cluster):
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
 
     with pytest.raises(
-        ReturnError, match="Callback: on_start: box error #333: error at `on_start`"
+        ReturnError,
+        match=f"Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",
     ):
         i1.call(
             "pico.service_append_tier",

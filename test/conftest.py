@@ -69,6 +69,8 @@ class ErrorCode:
     CasInvalidOpKind = 10010
     NoSuchInstance = 10016
     NoSuchReplicaset = 10017
+    LeaderUnknown = 10018
+    PluginError = 10019
 
 
 def eprint(*args, **kwargs):

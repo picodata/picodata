@@ -174,16 +174,6 @@ struct Service1 {
 impl Service for Service1 {
     type Config = Service1Config;
 
-    fn on_config_validate(&self, _configuration: Self::Config) -> CallbackResult<()> {
-        if let Some(err_text) = ErrInjection::err_at_on_config_validate("testservice_1") {
-            return Err(err_text.into());
-        }
-
-        inc_callback_calls("testservice_1", "on_config_validate");
-
-        Ok(())
-    }
-
     fn on_config_change(
         &mut self,
         ctx: &PicoContext,
@@ -627,6 +617,14 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
     ErrInjection::init(&["testservice_1", "testservice_2"]);
 
     reg.add("testservice_1", "0.1.0", Service1::new);
+    reg.add_config_validator::<Service1>("testservice_1", "0.1.0", |_| {
+        if let Some(err_text) = ErrInjection::err_at_on_config_validate("testservice_1") {
+            return Err(err_text.into());
+        }
+        inc_callback_calls("testservice_1", "on_config_validate");
+        Ok(())
+    });
+
     reg.add("testservice_2", "0.1.0", Service2::new);
     reg.add("testservice_3", "0.1.0", || Service3);
 

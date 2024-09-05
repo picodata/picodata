@@ -1,14 +1,14 @@
-use crate::util::FfiSafeStr;
-use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
-use abi_stable::{sabi_trait, RTuple, StableAbi};
-use std::error::Error;
-use std::fmt::Display;
-
 use crate::background::{InternalGlobalWorkerManager, ServiceId, ServiceWorkerManager};
+use crate::error_code::ErrorCode::PluginError;
 use crate::metrics::{InternalGlobalMetricsCollection, MetricsCollection};
+use crate::util::FfiSafeStr;
 pub use abi_stable;
 use abi_stable::pmr::{RErr, RResult, RSlice};
+use abi_stable::std_types::{RBox, RHashMap, ROk, RString, RVec};
+use abi_stable::{sabi_trait, RTuple, StableAbi};
 use serde::de::DeserializeOwned;
+use std::error::Error;
+use std::fmt::Display;
 use tarantool::error::{BoxError, IntoBoxError};
 
 /// Context of current instance. Produced by picodata.
@@ -121,18 +121,6 @@ pub trait Service {
     /// Use this associated type to define configuration of your service.
     type Config: DeserializeOwned;
 
-    /// Called before new configration is loaded.
-    ///
-    /// Returning an error here will abort configuration change clusterwide.
-    ///
-    /// # Arguments
-    ///
-    /// * `config`: target configuration
-    fn on_config_validate(&self, config: Self::Config) -> CallbackResult<()> {
-        _ = config;
-        Ok(())
-    }
-
     /// Callback to handle service configuration change once instance receives it.
     ///
     /// # Poison
@@ -225,7 +213,6 @@ pub trait Service {
 /// Define interface like [`Service`] trait but using safe types from [`abi_stable`] crate.
 #[sabi_trait]
 pub trait ServiceStable {
-    fn on_config_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_health_check(&self, context: &PicoContext) -> RResult<(), ()>;
     fn on_start(&mut self, context: &PicoContext, configuration: RSlice<u8>) -> RResult<(), ()>;
     fn on_stop(&mut self, context: &PicoContext) -> RResult<(), ()>;
@@ -249,16 +236,13 @@ impl<C: DeserializeOwned> ServiceProxy<C> {
     }
 }
 
-// TODO move to error_code.rs
-const PLUGIN_ERROR_CODE: u32 = 333;
-
 /// Use this function for conversion between user error and picodata internal error.
 /// This conversion forces allocations because using user-error "as-is"
 /// may lead to use-after-free errors.
 /// UAF can happen if user error points into memory allocated by dynamic lib and lives
 /// longer than dynamic lib memory (that was unmapped by system).
 fn error_into_tt_error<T>(source: impl Display) -> RResult<T, ()> {
-    let tt_error = BoxError::new(PLUGIN_ERROR_CODE, source.to_string());
+    let tt_error = BoxError::new(PluginError, source.to_string());
     tt_error.set_last_error();
     RErr(())
 }
@@ -273,15 +257,6 @@ macro_rules! rtry {
 }
 
 impl<C: DeserializeOwned> ServiceStable for ServiceProxy<C> {
-    fn on_config_validate(&self, configuration: RSlice<u8>) -> RResult<(), ()> {
-        let configuration: C = rtry!(rmp_serde::from_slice(configuration.as_slice()));
-        let res = self.service.on_config_validate(configuration);
-        match res {
-            Ok(_) => ROk(()),
-            Err(e) => error_into_tt_error(e),
-        }
-    }
-
     fn on_health_check(&self, context: &PicoContext) -> RResult<(), ()> {
         match self.service.on_health_check(context) {
             Ok(_) => ROk(()),
@@ -360,11 +335,39 @@ impl<S: Service + 'static> Factory for FactoryImpl<S> {
 /// Service name and plugin version pair.
 type ServiceIdent = RTuple!(RString, RString);
 
+/// Config validator stable trait.
+/// The reason for the existence of this trait is that [`abi_stable`] crate doesn't support
+/// closures.
+#[sabi_trait]
+pub trait Validator {
+    fn validate(&self, config: RSlice<u8>) -> RResult<(), ()>;
+}
+
+pub type ValidatorBox = Validator_TO<'static, RBox<()>>;
+
+/// The reason for the existence of this struct is that [`abi_stable`] crate doesn't support
+/// closures.
+struct ValidatorImpl<CONFIG: DeserializeOwned + 'static> {
+    func: fn(config: CONFIG) -> CallbackResult<()>,
+}
+
+impl<C: DeserializeOwned> Validator for ValidatorImpl<C> {
+    fn validate(&self, config: RSlice<u8>) -> RResult<(), ()> {
+        let config: C = rtry!(rmp_serde::from_slice(config.as_slice()));
+        let res = (self.func)(config);
+        match res {
+            Ok(_) => ROk(()),
+            Err(e) => error_into_tt_error(e),
+        }
+    }
+}
+
 /// Registry for services. Used by picodata to create instances of services.
 #[repr(C)]
 #[derive(Default, StableAbi)]
 pub struct ServiceRegistry {
     services: RHashMap<ServiceIdent, RVec<FactoryBox>>,
+    validators: RHashMap<ServiceIdent, ValidatorBox>,
 }
 
 impl ServiceRegistry {
@@ -388,6 +391,17 @@ impl ServiceRegistry {
             FactoryBox::from_value(factory_inner, abi_stable::sabi_trait::TD_Opaque);
 
         let ident = ServiceIdent::from((RString::from(name), RString::from(plugin_version)));
+
+        if self.validators.get(&ident).is_none() {
+            // default validator implementation,
+            // just check that configuration may be deserialized into `S::Config` type
+            let validator = ValidatorImpl {
+                func: |_: S::Config| Ok(()),
+            };
+            let validator_stable = ValidatorBox::from_value(validator, sabi_trait::TD_Opaque);
+            self.validators.insert(ident.clone(), validator_stable);
+        }
+
         let entry = self.services.entry(ident).or_default();
         entry.push(factory_inner);
     }
@@ -416,6 +430,40 @@ impl ServiceRegistry {
             Some(factories) if factories.len() == 1 => Ok(true),
             Some(_) => Err(()),
         }
+    }
+
+    /// Add validator for service configuration. Called before new configration is loaded.
+    /// Returning an error for validator will abort configuration change clusterwide.
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name`: service name which configuration will be validated
+    /// * `plugin_version`: plugin version
+    /// * `validator`: validation function
+    pub fn add_config_validator<S: Service>(
+        &mut self,
+        service_name: &str,
+        plugin_version: &str,
+        validator: fn(S::Config) -> CallbackResult<()>,
+    ) where
+        S::Config: DeserializeOwned + 'static,
+    {
+        let ident =
+            ServiceIdent::from((RString::from(service_name), RString::from(plugin_version)));
+
+        let validator = ValidatorImpl { func: validator };
+        let validator_stable = ValidatorBox::from_value(validator, sabi_trait::TD_Opaque);
+        self.validators.insert(ident, validator_stable);
+    }
+
+    /// Remove config validator for service.
+    pub fn remove_config_validator(
+        &mut self,
+        service_name: &str,
+        version: &str,
+    ) -> Option<ValidatorBox> {
+        let ident = ServiceIdent::from((RString::from(service_name), RString::from(version)));
+        self.validators.remove(&ident).into_option()
     }
 
     /// Return a registered list of (service name, plugin version) pairs.
