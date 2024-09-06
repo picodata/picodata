@@ -30,6 +30,7 @@ def test_webui_basic(instance: Instance):
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
 
     instance_version = instance.eval("return pico.PICODATA_VERSION")
+    instance_slab = instance.call("box.slab.info")
 
     with urlopen(f"http://{http_listen}/") as response:
         assert response.headers.get("content-type") == "text/html"
@@ -57,8 +58,8 @@ def test_webui_basic(instance: Instance):
                         "instanceCount": 1,
                         "capacityUsage": 50,
                         "memory": {
-                            "usable": 67108864,
-                            "used": 33554432,
+                            "usable": instance_slab["quota_size"],
+                            "used": instance_slab["quota_used"],
                         },
                         "uuid": instance.replicaset_uuid(),
                         "id": "r1",

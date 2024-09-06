@@ -10,9 +10,9 @@ use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
-use crate::tlog;
 use crate::traft::network::ConnectionPool;
 use crate::util::Uppercase;
+use crate::{tlog, unwrap_ok_or};
 
 const DEFAULT_TIMEOUT: Option<std::time::Duration> = Some(std::time::Duration::from_secs(60));
 
@@ -185,15 +185,21 @@ fn get_peer_addresses(
 //
 async fn get_instances_data(
     pool: &ConnectionPool,
-    instances: &Vec<Instance>,
+    instances: &[Instance],
 ) -> HashMap<u64, InstanceDataResponse> {
     let mut fs = vec![];
     for instance in instances {
-        let resp = pool.call_raw(
+        let res = pool.call_raw(
             &instance.instance_id,
             ".proc_runtime_info",
             &(),
             DEFAULT_TIMEOUT,
+        );
+        let future = unwrap_ok_or!(res,
+            Err(e) => {
+                tlog!(Error, "webui: error on calling .proc_runtime_info on instance {}: {e}", instance.instance_id);
+                continue;
+            }
         );
         fs.push({
             async move {
@@ -203,18 +209,16 @@ async fn get_instances_data(
                     mem_usable: 0u64,
                     mem_used: 0u64,
                 };
-                if resp.is_ok() {
-                    if let Ok(info) = resp.unwrap().await {
-                        let info: RuntimeInfo = info;
-                        if let Some(http) = info.http {
-                            data.httpd_address.push_str(&http.host);
-                            data.httpd_address.push_str(&String::from(":"));
-                            data.httpd_address.push_str(&http.port.to_string());
-                        }
-                        data.version = info.version_info.picodata_version.to_string();
-                        data.mem_usable = info.slab_info.quota_size;
-                        data.mem_used = info.slab_info.quota_used;
+                if let Ok(info) = future.await {
+                    let info: RuntimeInfo = info;
+                    if let Some(http) = info.http {
+                        data.httpd_address.push_str(&http.host);
+                        data.httpd_address.push_str(&String::from(":"));
+                        data.httpd_address.push_str(&http.port.to_string());
                     }
+                    data.version = info.version_info.picodata_version.to_string();
+                    data.mem_usable = info.slab_info.quota_size;
+                    data.mem_used = info.slab_info.quota_used;
                 }
                 Ok::<(u64, InstanceDataResponse), Box<dyn Error>>((instance.raft_id, data))
             }
@@ -224,7 +228,13 @@ async fn get_instances_data(
         Ok(vec) => vec
             .into_iter()
             .collect::<HashMap<u64, InstanceDataResponse>>(),
-        Err(_) => HashMap::new(),
+        Err(e) => {
+            tlog!(
+                Error,
+                "webui: unexpected error on collect instance data responses: {e}"
+            );
+            HashMap::new()
+        }
     }
 }
 
