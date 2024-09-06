@@ -1,4 +1,3 @@
-pub use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::unwrap_ok_or;
