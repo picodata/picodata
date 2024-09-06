@@ -1,7 +1,9 @@
 # ALTER SYSTEM
 
 [DDL](ddl.md)-команда `ALTER SYSTEM` используется для изменения
-системных параметров кластера.
+[параметров конфигурации СУБД](../../reference/db_config.md). Команда требует
+привилегий [Администратора СУБД](../../tutorial/access_control.md#admin)
+(`admin`).
 
 ## Синтаксис {: #syntax }
 
@@ -35,6 +37,8 @@ ALTER SYSTEM RESET password_enforce_digits;
 ALTER SYSTEM RESET all;
 ```
 
-См. также:
+Получить текущее значение параметра:
 
- — [Параметры конфигурации СУБД](../system_parameters.md)
+```sql
+SELECT * FROM _pico_property WHERE key = 'password_enforce_digits';
+```
