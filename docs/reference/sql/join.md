@@ -262,7 +262,7 @@ vtable_max_rows = 5000
 внешней таблицы, не входящая в ее ключ распределения.
 
 таким примером может служить равенство `items.name` = `orders.item` при
-том, что оеб таблицы распределены только по `id`:
+том, что обе таблицы распределены только по `id`:
 
 ```sql
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
