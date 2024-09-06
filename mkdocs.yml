@@ -99,7 +99,7 @@ nav:
     - reference/cli.md
     - reference/config.md
     - reference/audit_events.md
-    - reference/system_parameters.md
+    - reference/db_config.md
   - Архитектура:
     - architecture/distributed_sql.md
     - architecture/discovery.md
