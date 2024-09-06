@@ -82,7 +82,7 @@ def test_connect_ux(cluster: Cluster):
 
     # hitting enter sends query to the server
     cli.sendline("")
-    cli.expect_exact("rule parsing error")
+    cli.expect_exact("0")
 
 
 def test_admin_ux(cluster: Cluster):
@@ -403,9 +403,9 @@ def test_input_with_custom_delimiter(cluster: Cluster):
 
     # treating ';;;' with delimiter ';' as 3 empty queries
     cli.sendline(";;;")
-    cli.expect_exact("rule parsing error:  --> 1:1")
-    cli.expect_exact("rule parsing error:  --> 1:1")
-    cli.expect_exact("rule parsing error:  --> 1:1")
+    cli.expect_exact("0")
+    cli.expect_exact("0")
+    cli.expect_exact("0")
 
     # reset delimiter works --
     cli.sendline("\\set delimiter default;")

@@ -29,15 +29,25 @@ use sbroad::executor::engine::helpers::{
 use sbroad::executor::protocol::{EncodedRequiredData, RequiredData};
 use sbroad::executor::result::ConsumerResult;
 use sbroad::executor::Query;
-use sbroad::ir::acl::{Acl, AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
-use sbroad::ir::block::Block;
-use sbroad::ir::ddl::{AlterSystemType, Ddl, ParamDef};
-use sbroad::ir::expression::Expression;
-use sbroad::ir::operator::{ConflictStrategy, Relational};
+use sbroad::ir::acl::{AlterOption, GrantRevokeType, Privilege as SqlPrivilege};
+use sbroad::ir::ddl::{AlterSystemType, ParamDef};
+use sbroad::ir::node::acl::AclOwned;
+use sbroad::ir::node::block::Block;
+use sbroad::ir::node::ddl::DdlOwned;
+use sbroad::ir::node::expression::ExprOwned;
+use sbroad::ir::node::relational::Relational;
+use sbroad::ir::node::NodeId;
+use sbroad::ir::node::{
+    AlterSystem, AlterUser, Constant, CreateIndex, CreateProc, CreateRole, CreateTable, CreateUser,
+    Delete, DropIndex, DropProc, DropRole, DropTable, DropUser, GrantPrivilege, Insert,
+    Node as IrNode, NodeOwned, Procedure, RenameRoutine, RevokePrivilege, ScanRelation, SetParam,
+    Update,
+};
+use sbroad::ir::operator::ConflictStrategy;
 use sbroad::ir::relation::Type;
-use sbroad::ir::tree::traversal::{PostOrderWithFilter, REL_CAPACITY};
+use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
-use sbroad::ir::{Node as IrNode, Plan as IrPlan};
+use sbroad::ir::Plan as IrPlan;
 use sbroad::otm::{query_id, query_span};
 use smol_str::{format_smolstr, SmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
@@ -76,7 +86,7 @@ enum Privileges {
 }
 
 fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
-    let filter = |node_id: usize| -> bool {
+    let filter = |node_id: NodeId| -> bool {
         if let Ok(IrNode::Relational(
             Relational::ScanRelation { .. }
             | Relational::Delete { .. }
@@ -104,12 +114,15 @@ fn check_table_privileges(plan: &IrPlan) -> traft::Result<()> {
     // Switch to admin to get space ids. At the moment we don't use space cache in tarantool
     // module and can't get space metadata without _space table read permissions.
     with_su(ADMIN_ID, || -> traft::Result<()> {
-        for (_, node_id) in nodes {
+        for LevelNode(_, node_id) in nodes {
             let rel_node = plan.get_relation_node(node_id)?;
             let (relation, privileges) = match rel_node {
-                Relational::ScanRelation { relation, .. } => (relation, Privileges::Read),
-                Relational::Insert { relation, .. } => (relation, Privileges::Write),
-                Relational::Delete { relation, .. } | Relational::Update { relation, .. } => {
+                Relational::ScanRelation(ScanRelation { relation, .. }) => {
+                    (relation, Privileges::Read)
+                }
+                Relational::Insert(Insert { relation, .. }) => (relation, Privileges::Write),
+                Relational::Delete(Delete { relation, .. })
+                | Relational::Update(Update { relation, .. }) => {
                     // We check write and read privileges for deletes and updates.
                     //
                     // Write: Picodata doesn't support delete and update privileges,
@@ -166,7 +179,7 @@ fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
     // At the moment we don't support nested procedure calls, so we can safely
     // assume that the top node is the only procedure in the plan.
     let top_id = plan.get_top()?;
-    let Ok(Block::Procedure { name, .. }) = plan.get_block_node(top_id) else {
+    let Ok(Block::Procedure(Procedure { name, .. })) = plan.get_block_node(top_id) else {
         // There are no procedures in the plan tree: nothing to check.
         return Ok(());
     };
@@ -188,9 +201,7 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         let top_id = ir_plan.get_top()?;
         let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
 
-        // XXX: add Node::take_node method to simplify the following 2 lines
-        let ir_node = ir_plan_mut.get_mut_node(top_id)?;
-        let ir_node = std::mem::replace(ir_node, IrNode::Parameter(None));
+        let ir_node = ir_plan_mut.replace_with_stub(top_id);
         let node = node::global()?;
         let result = reenterable_schema_change_request(node, ir_node)?;
         let tuple = Tuple::new(&(result,))?;
@@ -199,11 +210,12 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
         check_routine_privileges(query.get_exec_plan().get_ir_plan())?;
         let ir_plan = query.get_mut_exec_plan().get_mut_ir_plan();
         let top_id = ir_plan.get_top()?;
-        let code_block = ir_plan.get_mut_block_node(top_id)?;
-        let code_block = std::mem::take(code_block);
+        let code_block = ir_plan.get_block_node(top_id)?;
         match code_block {
-            Block::Procedure { name, values } => {
-                let routine = routine_by_name(&name)?;
+            Block::Procedure(Procedure { name, values }) => {
+                let values = values.clone();
+                let options = ir_plan.raw_options.clone();
+                let routine = routine_by_name(name)?;
                 // Check that the amount of passed values is correct.
                 if routine.params.len() != values.len() {
                     return Err(Error::Sbroad(SbroadError::Invalid(
@@ -221,10 +233,10 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 let pattern = routine.body;
                 let mut params: Vec<Value> = Vec::with_capacity(values.len());
                 for (pos, value_id) in values.into_iter().enumerate() {
-                    let constant_node = ir_plan.get_mut_node(value_id)?;
-                    let constant_node = std::mem::replace(constant_node, IrNode::Parameter(None));
+                    let ir_plan_mut = query.get_mut_exec_plan().get_mut_ir_plan();
+                    let constant_node = ir_plan_mut.replace_with_stub(value_id);
                     let value = match constant_node {
-                        IrNode::Expression(Expression::Constant { value, .. }) => value,
+                        NodeOwned::Expression(ExprOwned::Constant(Constant { value, .. })) => value,
                         _ => {
                             return Err(Error::Sbroad(SbroadError::Invalid(
                                 Entity::Expression,
@@ -252,7 +264,6 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 let runtime = RouterRuntime::new()?;
                 let mut stmt_query = with_su(ADMIN_ID, || Query::new(&runtime, &pattern, params))??;
                 // Take options from the original query.
-                let options = std::mem::take(&mut ir_plan.raw_options);
                 let stmt_ir_plan = stmt_query.get_mut_exec_plan().get_mut_ir_plan();
                 stmt_ir_plan.raw_options = options;
                 dispatch(stmt_query)
@@ -746,14 +757,14 @@ fn alter_user_ir_node_to_op_or_result(
 }
 
 fn acl_ir_node_to_op_or_result(
-    acl: &Acl,
+    acl: &AclOwned,
     current_user: UserId,
     schema_version: u64,
     node: &TraftNode,
     storage: &Clusterwide,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match acl {
-        Acl::DropRole { name, .. } => {
+        AclOwned::DropRole(DropRole { name, .. }) => {
             let Some(role_def) = storage.users.by_name(name)? else {
                 // Role doesn't exist yet, no op needed
                 return Ok(Break(ConsumerResult { row_count: 0 }));
@@ -771,7 +782,7 @@ fn acl_ir_node_to_op_or_result(
                 schema_version,
             })))
         }
-        Acl::DropUser { name, .. } => {
+        AclOwned::DropUser(DropUser { name, .. }) => {
             let Some(user_def) = storage.users.by_name(name)? else {
                 // User doesn't exist yet, no op needed
                 return Ok(Break(ConsumerResult { row_count: 0 }));
@@ -789,7 +800,7 @@ fn acl_ir_node_to_op_or_result(
                 schema_version,
             })))
         }
-        Acl::CreateRole { name, .. } => {
+        AclOwned::CreateRole(CreateRole { name, .. }) => {
             check_name_emptyness(name)?;
 
             let sys_user = Space::from(SystemSpace::User)
@@ -821,12 +832,12 @@ fn acl_ir_node_to_op_or_result(
             };
             Ok(Continue(Op::Acl(OpAcl::CreateRole { role_def })))
         }
-        Acl::CreateUser {
+        AclOwned::CreateUser(CreateUser {
             name,
             password,
             auth_method,
             ..
-        } => {
+        }) => {
             check_name_emptyness(name)?;
             let method = parse_auth_method(auth_method)?;
             validate_password(password, &method, storage)?;
@@ -865,20 +876,20 @@ fn acl_ir_node_to_op_or_result(
                 }
             }
         }
-        Acl::AlterUser {
+        AclOwned::AlterUser(AlterUser {
             name, alter_option, ..
-        } => alter_user_ir_node_to_op_or_result(
+        }) => alter_user_ir_node_to_op_or_result(
             name,
             alter_option,
             current_user,
             schema_version,
             storage,
         ),
-        Acl::GrantPrivilege {
+        AclOwned::GrantPrivilege(GrantPrivilege {
             grant_type,
             grantee_name,
             ..
-        } => {
+        }) => {
             let grantor_id = current_user;
             let grantee_id = get_grantee_id(storage, grantee_name)?;
             let (object_type, privilege, object_id) = node.object_resolve(grant_type)?;
@@ -905,11 +916,11 @@ fn acl_ir_node_to_op_or_result(
                 .map_err(Error::other)?,
             })))
         }
-        Acl::RevokePrivilege {
+        AclOwned::RevokePrivilege(RevokePrivilege {
             revoke_type,
             grantee_name,
             ..
-        } => {
+        }) => {
             let grantor_id = current_user;
             let grantee_id = get_grantee_id(storage, grantee_name)?;
             let (object_type, privilege, object_id) = node.object_resolve(revoke_type)?;
@@ -1016,19 +1027,21 @@ fn alter_system_ir_node_to_op_or_result(
 }
 
 fn ddl_ir_node_to_op_or_result(
-    ddl: &Ddl,
+    ddl: &DdlOwned,
     current_user: UserId,
     schema_version: u64,
     node: &TraftNode,
     storage: &Clusterwide,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match ddl {
-        Ddl::AlterSystem { ty, tier_name, .. } => alter_system_ir_node_to_op_or_result(
-            ty,
-            tier_name.as_ref().map(|s| s.as_str()),
-            current_user,
-        ),
-        Ddl::CreateTable {
+        DdlOwned::AlterSystem(AlterSystem { ty, tier_name, .. }) => {
+            alter_system_ir_node_to_op_or_result(
+                ty,
+                tier_name.as_ref().map(|s| s.as_str()),
+                current_user,
+            )
+        }
+        DdlOwned::CreateTable(CreateTable {
             name,
             format,
             primary_key,
@@ -1036,7 +1049,7 @@ fn ddl_ir_node_to_op_or_result(
             engine_type,
             tier,
             ..
-        } => {
+        }) => {
             let format = format
                 .iter()
                 .map(|f| Field {
@@ -1087,7 +1100,7 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        Ddl::DropTable { name, .. } => {
+        DdlOwned::DropTable(DropTable { name, .. }) => {
             let Some(space_def) = storage.tables.by_name(name)? else {
                 // Space doesn't exist yet, no op needed
                 return Ok(Break(ConsumerResult { row_count: 0 }));
@@ -1101,13 +1114,13 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        Ddl::CreateProc {
+        DdlOwned::CreateProc(CreateProc {
             name,
             params,
             body,
             language,
             ..
-        } => {
+        }) => {
             let params: RoutineParams = params
                 .iter()
                 .map(|p| {
@@ -1147,7 +1160,7 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        Ddl::DropProc { name, params, .. } => {
+        DdlOwned::DropProc(DropProc { name, params, .. }) => {
             let Some(routine) = &storage.routines.by_name(name)? else {
                 // Procedure doesn't exist yet, no op needed
                 return Ok(Break(ConsumerResult { row_count: 0 }));
@@ -1167,12 +1180,12 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        Ddl::RenameRoutine {
+        DdlOwned::RenameRoutine(RenameRoutine {
             old_name,
             new_name,
             params,
             ..
-        } => {
+        }) => {
             let params = RenameRoutineParams {
                 new_name: new_name.to_string(),
                 old_name: old_name.to_string(),
@@ -1214,7 +1227,7 @@ fn ddl_ir_node_to_op_or_result(
                 schema_version,
             }))
         }
-        Ddl::CreateIndex {
+        DdlOwned::CreateIndex(CreateIndex {
             name,
             table_name,
             columns,
@@ -1229,7 +1242,7 @@ fn ddl_ir_node_to_op_or_result(
             distance,
             hint,
             ..
-        } => {
+        }) => {
             let mut opts: Vec<IndexOption> = Vec::with_capacity(9);
             opts.push(IndexOption::Unique(*unique));
             if let Some(bloom_fpr) = bloom_fpr {
@@ -1286,7 +1299,7 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        Ddl::DropIndex { name, .. } => {
+        DdlOwned::DropIndex(DropIndex { name, .. }) => {
             let Some(index) = storage.indexes.by_name(name)? else {
                 // Index doesn't exist yet, no op needed
                 return Ok(Break(ConsumerResult { row_count: 0 }));
@@ -1301,7 +1314,7 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        Ddl::SetParam { param_value, .. } => {
+        DdlOwned::SetParam(SetParam { param_value, .. }) => {
             tlog!(
                 Warning,
                 "Parameters setting is currently disabled. Skipping update for {}.",
@@ -1309,7 +1322,7 @@ fn ddl_ir_node_to_op_or_result(
             );
             Ok(Break(ConsumerResult { row_count: 0 }))
         }
-        Ddl::SetTransaction { .. } => {
+        DdlOwned::SetTransaction { .. } => {
             tlog!(
                 Warning,
                 "Transaction setting is currently disabled. Skipping."
@@ -1321,15 +1334,15 @@ fn ddl_ir_node_to_op_or_result(
 
 pub(crate) fn reenterable_schema_change_request(
     node: &TraftNode,
-    ir_node: IrNode,
+    ir_node: NodeOwned,
 ) -> traft::Result<ConsumerResult> {
     let storage = &node.storage;
     // Save current user as later user is switched to admin
     let current_user = effective_user_id();
 
     let timeout = match &ir_node {
-        IrNode::Ddl(ddl) => ddl.timeout()?,
-        IrNode::Acl(acl) => acl.timeout()?,
+        NodeOwned::Ddl(ddl) => ddl.timeout()?,
+        NodeOwned::Acl(acl) => acl.timeout()?,
         n => {
             unreachable!("this function should only be called for ddl or acl nodes, not {n:?}")
         }
@@ -1362,10 +1375,10 @@ pub(crate) fn reenterable_schema_change_request(
         let schema_version = storage.properties.next_schema_version()?;
 
         let op_or_result = match &ir_node {
-            IrNode::Acl(acl) => {
+            NodeOwned::Acl(acl) => {
                 acl_ir_node_to_op_or_result(acl, current_user, schema_version, node, storage)?
             }
-            IrNode::Ddl(ddl) => {
+            NodeOwned::Ddl(ddl) => {
                 ddl_ir_node_to_op_or_result(ddl, current_user, schema_version, node, storage)?
             }
             n => unreachable!("function must be called only for ddl or acl nodes, not {n:?}"),
@@ -1486,10 +1499,10 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
         let node = ir.get_relation_node(top)?;
         if matches!(
             node,
-            Relational::Insert {
+            Relational::Insert(Insert {
                 conflict_strategy: ConflictStrategy::DoReplace | ConflictStrategy::DoNothing,
                 ..
-            }
+            })
         ) {
             Err(Error::other("insert on conflict is not supported yet"))?;
         }

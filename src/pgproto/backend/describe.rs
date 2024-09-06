@@ -10,13 +10,13 @@ use postgres_types::{Oid, Type};
 use sbroad::{
     errors::{Entity, SbroadError},
     ir::{
-        acl::{Acl, GrantRevokeType},
-        block::Block,
-        ddl::Ddl,
-        expression::Expression,
-        operator::Relational,
+        acl::GrantRevokeType,
+        node::{
+            acl::Acl, block::Block, ddl::Ddl, expression::Expression, relational::Relational,
+            Alias, GrantPrivilege, Node, RevokePrivilege,
+        },
         relation::Type as SbroadType,
-        Node, Plan,
+        Plan,
     },
 };
 use serde::Serialize;
@@ -134,7 +134,7 @@ impl From<CommandTag> for QueryType {
     }
 }
 
-impl TryFrom<&Node> for CommandTag {
+impl TryFrom<&Node<'_>> for CommandTag {
     type Error = SbroadError;
 
     fn try_from(node: &Node) -> Result<Self, Self::Error> {
@@ -143,11 +143,11 @@ impl TryFrom<&Node> for CommandTag {
                 Acl::DropRole { .. } | Acl::DropUser { .. } => Ok(CommandTag::DropRole),
                 Acl::CreateRole { .. } | Acl::CreateUser { .. } => Ok(CommandTag::CreateRole),
                 Acl::AlterUser { .. } => Ok(CommandTag::AlterRole),
-                Acl::GrantPrivilege { grant_type, .. } => match grant_type {
+                Acl::GrantPrivilege(GrantPrivilege { grant_type, .. }) => match grant_type {
                     GrantRevokeType::RolePass { .. } => Ok(CommandTag::GrantRole),
                     _ => Ok(CommandTag::Grant),
                 },
-                Acl::RevokePrivilege { revoke_type, .. } => match revoke_type {
+                Acl::RevokePrivilege(RevokePrivilege { revoke_type, .. }) => match revoke_type {
                     GrantRevokeType::RolePass { .. } => Ok(CommandTag::RevokeRole),
                     _ => Ok(CommandTag::Revoke),
                 },
@@ -189,12 +189,14 @@ impl TryFrom<&Node> for CommandTag {
                 | Relational::ValuesRow { .. }
                 | Relational::Limit { .. } => Ok(CommandTag::Select),
             },
-            Node::Expression(_) | Node::Parameter(_) => Err(SbroadError::Invalid(
-                Entity::Node,
-                Some(smol_str::format_smolstr!(
-                    "{node:?} can't be converted to CommandTag"
-                )),
-            )),
+            Node::Invalid(_) | Node::Expression(_) | Node::Parameter(_) => {
+                Err(SbroadError::Invalid(
+                    Entity::Node,
+                    Some(smol_str::format_smolstr!(
+                        "{node:?} can't be converted to CommandTag"
+                    )),
+                ))
+            }
         }
     }
 }
@@ -253,7 +255,7 @@ fn dql_output_format(ir: &Plan) -> PgResult<Vec<MetadataColumn>> {
     for col_id in columns {
         let column = ir.get_expression_node(*col_id)?;
         let column_type = column.calculate_type(ir)?;
-        let column_name = if let Expression::Alias { name, .. } = column {
+        let column_name = if let Expression::Alias(Alias { name, .. }) = column {
             name.to_string()
         } else {
             return Err(SbroadError::Invalid(
@@ -330,7 +332,7 @@ impl Describe {
         } else {
             let top = plan.get_top()?;
             let node = plan.get_node(top)?;
-            CommandTag::try_from(node)?
+            CommandTag::try_from(&node)?
         };
         let query_type = command_tag.clone().into();
         match query_type {

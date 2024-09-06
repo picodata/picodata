@@ -13,6 +13,7 @@ use sbroad::executor::engine::{
 use sbroad::executor::ir::ExecutionPlan;
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
+use sbroad::ir::node::NodeId;
 use sbroad::ir::value::{MsgPackValue, Value};
 use sbroad::ir::Plan;
 use sbroad::utils::MutexLike;
@@ -269,16 +270,16 @@ impl Router for RouterRuntime {
     fn materialize_motion(
         &self,
         plan: &mut sbroad::executor::ir::ExecutionPlan,
-        motion_node_id: usize,
+        motion_node_id: &NodeId,
         buckets: &sbroad::executor::bucket::Buckets,
     ) -> Result<sbroad::executor::vtable::VirtualTable, SbroadError> {
-        materialize_motion(self, plan, motion_node_id, buckets)
+        materialize_motion(self, plan, *motion_node_id, buckets)
     }
 
     fn dispatch(
         &self,
         plan: &mut sbroad::executor::ir::ExecutionPlan,
-        top_id: usize,
+        top_id: NodeId,
         buckets: &sbroad::executor::bucket::Buckets,
         return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn std::any::Any>, SbroadError> {
