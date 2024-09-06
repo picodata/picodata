@@ -209,16 +209,23 @@ async fn get_instances_data(
                     mem_usable: 0u64,
                     mem_used: 0u64,
                 };
-                if let Ok(info) = future.await {
-                    let info: RuntimeInfo = info;
-                    if let Some(http) = info.http {
-                        data.httpd_address.push_str(&http.host);
-                        data.httpd_address.push_str(&String::from(":"));
-                        data.httpd_address.push_str(&http.port.to_string());
+                match future.await {
+                    Ok(info) => {
+                        let info: RuntimeInfo = info;
+                        if let Some(http) = info.http {
+                            data.httpd_address = format!("{}:{}", &http.host, &http.port);
+                        }
+                        data.version = info.version_info.picodata_version.to_string();
+                        data.mem_usable = info.slab_info.quota_size;
+                        data.mem_used = info.slab_info.quota_used;
                     }
-                    data.version = info.version_info.picodata_version.to_string();
-                    data.mem_usable = info.slab_info.quota_size;
-                    data.mem_used = info.slab_info.quota_used;
+                    Err(e) => {
+                        tlog!(
+                            Error,
+                            "webui: error on calling .proc_runtime_info on instance {}: {e}",
+                            instance.instance_id,
+                        );
+                    }
                 }
                 Ok::<(u64, InstanceDataResponse), Box<dyn Error>>((instance.raft_id, data))
             }
