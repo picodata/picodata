@@ -110,22 +110,6 @@ pub(super) fn prepare(
         )
         .expect("serialization cannot fail"),
     );
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::CurrentVshardConfigVersion, 0),
-            ADMIN_ID,
-        )
-        .expect("serialization cannot fail"),
-    );
-    ops.push(
-        op::Dml::insert(
-            ClusterwideTable::Property,
-            &(PropertyName::TargetVshardConfigVersion, 0),
-            ADMIN_ID,
-        )
-        .expect("serialization cannot fail"),
-    );
 
     #[rustfmt::skip]
     ops.push(

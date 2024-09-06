@@ -746,7 +746,8 @@ impl NodeImpl {
                 op.space().try_into(),
                 Ok(ClusterwideTable::Property
                     | ClusterwideTable::Replicaset
-                    | ClusterwideTable::Instance)
+                    | ClusterwideTable::Instance
+                    | ClusterwideTable::Tier)
             )
         }
 

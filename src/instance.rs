@@ -181,6 +181,7 @@ mod tests {
                     name: name.into(),
                     replication_factor,
                     can_vote,
+                    ..Default::default()
                 }
         )
     }

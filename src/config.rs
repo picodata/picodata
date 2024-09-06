@@ -916,6 +916,7 @@ impl ClusterConfig {
                     name: DEFAULT_TIER.into(),
                     replication_factor: self.default_replication_factor(),
                     can_vote: true,
+                    ..Default::default()
                 },
             )]);
         };
@@ -930,6 +931,7 @@ impl ClusterConfig {
                 name: name.into(),
                 replication_factor,
                 can_vote: info.can_vote,
+                ..Default::default()
             };
             tier_defs.insert(name.into(), tier_def);
         }

@@ -153,7 +153,11 @@ pub(crate) fn setup() {
         "},
         tlua::Function::new(move || -> traft::Result<_> {
             let node = node::global()?;
-            let config = crate::vshard::VshardConfig::from_storage(&node.storage)?;
+            let tier = node
+                .raft_storage
+                .tier()?
+                .expect("tier for instance should exists");
+            let config = crate::vshard::VshardConfig::from_storage(&node.storage, &tier)?;
             Ok(config)
         }),
     );

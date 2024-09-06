@@ -41,9 +41,6 @@ pub(super) fn action_plan<'i>(
     replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
     tiers: &HashMap<&str, &Tier>,
     my_raft_id: RaftId,
-    current_vshard_config_version: u64,
-    target_vshard_config_version: u64,
-    vshard_bootstrapped: bool,
     has_pending_schema_change: bool,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
@@ -216,17 +213,16 @@ pub(super) fn action_plan<'i>(
             ops.push(bump);
         }
 
-        #[rustfmt::skip]
-        if target_vshard_config_version == current_vshard_config_version {
-            // Only bump the version if it's not already bumped.
-            let bump = Dml::replace(
-                ClusterwideTable::Property,
-                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                ADMIN_ID,
-            )?;
+        let tier_name = &r.tier;
+        let tier = tiers
+            .get(tier_name.as_str())
+            .expect("tier for instance should exists");
+
+        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
+        if let Some(bump) = vshard_config_version_bump {
             ranges.push(cas::Range::for_dml(&bump)?);
             ops.push(bump);
-        };
+        }
 
         return Ok(UpdateCurrentReplicasetMaster {
             old_master_id,
@@ -243,7 +239,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // proposing automatic replicaset state & weight change
     let to_change_weights = get_replicaset_state_change(instances, replicasets, tiers);
-    if let Some((replicaset_id, need_to_update_weight)) = to_change_weights {
+    if let Some((replicaset_id, tier, need_to_update_weight)) = to_change_weights {
         let mut uops = UpdateOps::new();
         if need_to_update_weight {
             uops.assign(column_name!(Replicaset, weight), 1.)?;
@@ -261,17 +257,11 @@ pub(super) fn action_plan<'i>(
         ranges.push(cas::Range::for_dml(&dml)?);
         ops.push(dml);
 
-        #[rustfmt::skip]
-        if target_vshard_config_version == current_vshard_config_version {
-            // Only bump the version if it's not already bumped.
-            let bump = Dml::replace(
-                ClusterwideTable::Property,
-                &(&PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                ADMIN_ID,
-            )?;
+        let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
+        if let Some(bump) = vshard_config_version_bump {
             ranges.push(cas::Range::for_dml(&bump)?);
             ops.push(bump);
-        };
+        }
 
         let op = Op::single_dml_or_batch(ops);
         let predicate = cas::Predicate::new(applied, ranges);
@@ -280,76 +270,101 @@ pub(super) fn action_plan<'i>(
         return Ok(ProposeReplicasetStateChanges { cas }.into());
     }
 
-    ////////////////////////////////////////////////////////////////////////////
-    // update current vshard config
-    let mut first_ready_replicaset = None;
-    if !vshard_bootstrapped {
-        first_ready_replicaset = get_first_ready_replicaset(instances, replicasets);
+    for (&tier_name, &tier) in tiers.iter() {
+        ////////////////////////////////////////////////////////////////////////////
+        // update current vshard config
+        let mut first_ready_replicaset = None;
+        if !tier.vshard_bootstrapped {
+            first_ready_replicaset =
+                get_first_ready_replicaset_in_tier(instances, replicasets, tier_name);
+        }
+
+        // Note: the following is a hack stemming from the fact that we have to work around vshard's weird quirks.
+        // Everything having to deal with bootstrapping vshard should be removed completely once we migrate to our custom sharding solution.
+        //
+        // Vshard will fail if we configure it with all replicaset weights set to 0.
+        // But we don't set a replicaset's weight until it's filled up to the replication factor.
+        // So we wait until at least one replicaset is filled (i.e. `first_ready_replicaset.is_some()`).
+        //
+        // Also if vshard has already been bootstrapped, the user can mess this up by setting all replicasets' weights to 0,
+        // which will break vshard configuration, but this will be the user's fault probably, not sure we can do something about it
+        let ok_to_configure_vshard = tier.vshard_bootstrapped || first_ready_replicaset.is_some();
+
+        if ok_to_configure_vshard
+            && tier.current_vshard_config_version != tier.target_vshard_config_version
+        {
+            let targets = maybe_responding(instances)
+                // Note at this point all the instances should have their replication configured,
+                // so it's ok to configure sharding for them
+                .filter(|instance| has_states!(instance, * -> Online))
+                .map(|instance| &instance.instance_id)
+                .collect();
+            let rpc = rpc::sharding::Request {
+                term,
+                applied,
+                timeout: Loop::SYNC_TIMEOUT,
+            };
+
+            let mut uops = UpdateOps::new();
+            uops.assign(
+                column_name!(Tier, current_vshard_config_version),
+                tier.target_vshard_config_version,
+            )?;
+
+            let bump = Dml::update(ClusterwideTable::Tier, &[tier_name], uops, ADMIN_ID)?;
+
+            let ranges = vec![cas::Range::for_dml(&bump)?];
+            let predicate = cas::Predicate::new(applied, ranges);
+            let cas = cas::Request::new(bump, predicate, ADMIN_ID)?;
+
+            return Ok(UpdateCurrentVshardConfig {
+                targets,
+                rpc,
+                cas,
+                tier_name: tier_name.into(),
+            }
+            .into());
+        }
     }
 
-    // Note: the following is a hack stemming from the fact that we have to work around vshard's weird quirks.
-    // Everything having to deal with bootstrapping vshard should be removed completely once we migrate to our custom sharding solution.
-    //
-    // Vshard will fail if we configure it with all replicaset weights set to 0.
-    // But we don't set a replicaset's weight until it's filled up to the replication factor.
-    // So we wait until at least one replicaset is filled (i.e. `first_ready_replicaset.is_some()`).
-    //
-    // Also if vshard has already been bootstrapped, the user can mess this up by setting all replicasets' weights to 0,
-    // which will break vshard configuration, but this will be the user's fault probably, not sure we can do something about it
-    let ok_to_configure_vshard = vshard_bootstrapped || first_ready_replicaset.is_some();
+    // bootstrap sharding on each tier
+    for (&tier_name, &tier) in tiers.iter() {
+        if tier.vshard_bootstrapped {
+            continue;
+        }
 
-    if ok_to_configure_vshard && current_vshard_config_version != target_vshard_config_version {
-        let targets = maybe_responding(instances)
-            // Note at this point all the instances should have their replication configured,
-            // so it's ok to configure sharding for them
-            .filter(|instance| has_states!(instance, * -> Online))
-            .map(|instance| &instance.instance_id)
-            .collect();
-        let rpc = rpc::sharding::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-            do_reconfigure: true,
+        if let Some(r) = get_first_ready_replicaset_in_tier(instances, replicasets, tier_name) {
+            debug_assert!(
+                !tier.vshard_bootstrapped,
+                "bucket distribution only needs to be bootstrapped once"
+            );
+            let target = &r.current_master_id;
+            let tier_name = &r.tier;
+            let rpc = rpc::sharding::bootstrap::Request {
+                term,
+                applied,
+                timeout: Loop::SYNC_TIMEOUT,
+                tier: tier_name.into(),
+            };
+
+            let mut uops = UpdateOps::new();
+            uops.assign(column_name!(Tier, vshard_bootstrapped), true)?;
+
+            let dml = Dml::update(ClusterwideTable::Tier, &[tier_name], uops, ADMIN_ID)?;
+
+            let ranges = vec![cas::Range::for_dml(&dml)?];
+            let predicate = cas::Predicate::new(applied, ranges);
+            let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+
+            return Ok(ShardingBoot {
+                target,
+                rpc,
+                cas,
+                tier_name: tier_name.into(),
+            }
+            .into());
         };
-
-        #[rustfmt::skip]
-        let bump = Dml::replace(
-            ClusterwideTable::Property,
-            &(&PropertyName::CurrentVshardConfigVersion, target_vshard_config_version),
-            ADMIN_ID,
-        )?;
-
-        let ranges = vec![cas::Range::for_dml(&bump)?];
-        let predicate = cas::Predicate::new(applied, ranges);
-        let cas = cas::Request::new(bump, predicate, ADMIN_ID)?;
-
-        return Ok(UpdateCurrentVshardConfig { targets, rpc, cas }.into());
     }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // bootstrap sharding
-    if let Some(r) = first_ready_replicaset {
-        debug_assert!(
-            !vshard_bootstrapped,
-            "bucket distribution only needs to be bootstrapped once"
-        );
-
-        let target = &r.current_master_id;
-        let rpc = rpc::sharding::bootstrap::Request {
-            term,
-            applied,
-            timeout: Loop::SYNC_TIMEOUT,
-        };
-        let dml = Dml::replace(
-            ClusterwideTable::Property,
-            &(PropertyName::VshardBootstrapped, true),
-            ADMIN_ID,
-        )?;
-        let ranges = vec![cas::Range::for_dml(&dml)?];
-        let predicate = cas::Predicate::new(applied, ranges);
-        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
-        return Ok(ShardingBoot { target, rpc, cas }.into());
-    };
 
     ////////////////////////////////////////////////////////////////////////////
     // expel instance
@@ -730,8 +745,10 @@ pub mod stage {
             pub targets: Vec<&'i InstanceId>,
             /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
-            /// Global DML operation which updates `current_vshard_config_version` in table `_pico_property`.
+            /// Global DML operation which updates `current_vshard_config_version` in corresponding record of table `_pico_tier`.
             pub cas: cas::Request,
+            /// Tier name to which the vshard configuration applies
+            pub tier_name: String,
         }
 
         pub struct TransferLeadership<'i> {
@@ -797,8 +814,10 @@ pub mod stage {
             pub target: &'i InstanceId,
             /// Request to call [`rpc::sharding::bootstrap::proc_sharding_bootstrap`] on `target`.
             pub rpc: rpc::sharding::bootstrap::Request,
-            /// Global DML operation which updates value for `vshard_bootstrapped` to `true` in table `_pico_property`.
+            /// Global DML operation which updates `vshard_bootstrapped` in corresponding record of table `_pico_tier`.
             pub cas: cas::Request,
+            /// Tier name where vshard.bootstrap takes place.
+            pub tier_name: String,
         }
 
         pub struct ProposeReplicasetStateChanges {
@@ -925,10 +944,15 @@ fn get_new_replicaset_master_if_needed<'i>(
 fn get_replicaset_state_change<'i>(
     instances: &'i [Instance],
     replicasets: &HashMap<&ReplicasetId, &Replicaset>,
-    tiers: &HashMap<&str, &Tier>,
-) -> Option<(&'i ReplicasetId, bool)> {
+    tiers: &HashMap<&str, &'i Tier>,
+) -> Option<(&'i ReplicasetId, &'i Tier, bool)> {
     let mut replicaset_sizes = HashMap::new();
-    for Instance { replicaset_id, .. } in maybe_responding(instances) {
+    for Instance {
+        replicaset_id,
+        tier,
+        ..
+    } in maybe_responding(instances)
+    {
         let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
         *replicaset_size += 1;
         let Some(r) = replicasets.get(replicaset_id) else {
@@ -937,29 +961,35 @@ fn get_replicaset_state_change<'i>(
         if r.state != ReplicasetState::NotReady {
             continue;
         }
-        let Some(tier_info) = tiers.get(r.tier.as_str()) else {
-            continue;
-        };
+
+        let tier_info = tiers
+            .get(tier.as_str())
+            .expect("tier for instance should exists");
+
         // TODO: set replicaset.state = NotReady if it was Ready but is no
         // longer full
         if *replicaset_size < tier_info.replication_factor {
             continue;
         }
         let need_to_update_weight = r.weight_origin != WeightOrigin::User;
-        return Some((replicaset_id, need_to_update_weight));
+        return Some((replicaset_id, tier_info, need_to_update_weight));
     }
     None
 }
 
 #[inline(always)]
-fn get_first_ready_replicaset<'r>(
+pub fn get_first_ready_replicaset_in_tier<'r>(
     instances: &[Instance],
     replicasets: &HashMap<&ReplicasetId, &'r Replicaset>,
+    tier_name: &str,
 ) -> Option<&'r Replicaset> {
-    for Instance { replicaset_id, .. } in maybe_responding(instances) {
+    for Instance { replicaset_id, .. } in
+        maybe_responding(instances).filter(|instance| instance.tier == tier_name)
+    {
         let Some(replicaset) = replicasets.get(replicaset_id) else {
             continue;
         };
+
         if replicaset.state == ReplicasetState::Ready && replicaset.weight > 0. {
             return Some(replicaset);
         }

@@ -1,5 +1,12 @@
 use ::tarantool::tlua;
-use tarantool::tuple::Encode;
+use tarantool::{space::UpdateOps, tuple::Encode};
+
+use crate::{
+    column_name,
+    schema::ADMIN_ID,
+    storage::ClusterwideTable,
+    traft::{error::Error, op::Dml},
+};
 
 pub const DEFAULT_TIER: &str = "default";
 
@@ -12,7 +19,11 @@ pub struct Tier {
     pub name: String,
     pub replication_factor: u8,
     pub can_vote: bool,
+    pub current_vshard_config_version: u64,
+    pub target_vshard_config_version: u64,
+    pub vshard_bootstrapped: bool,
 }
+
 impl Encode for Tier {}
 
 impl Tier {
@@ -24,7 +35,27 @@ impl Tier {
             Field::from(("name", FieldType::String)),
             Field::from(("replication_factor", FieldType::Unsigned)),
             Field::from(("can_vote", FieldType::Boolean)),
+            Field::from(("current_vshard_config_version", FieldType::Unsigned)),
+            Field::from(("target_vshard_config_version", FieldType::Unsigned)),
+            Field::from(("vshard_bootstrapped", FieldType::Boolean)),
         ]
+    }
+
+    /// Returns DML for updating `target_vshard_config_version` of corresponding tier record in '_pico_tier'
+    pub fn get_vshard_config_version_bump_op_if_needed(tier: &Tier) -> Result<Option<Dml>, Error> {
+        if tier.current_vshard_config_version == tier.target_vshard_config_version {
+            let mut uops = UpdateOps::new();
+            uops.assign(
+                column_name!(Tier, target_vshard_config_version),
+                tier.target_vshard_config_version + 1,
+            )?;
+
+            let dml = Dml::update(ClusterwideTable::Tier, &[&tier.name], uops, ADMIN_ID)?;
+
+            return Ok(Some(dml));
+        }
+
+        Ok(None)
     }
 }
 
@@ -34,6 +65,9 @@ impl Default for Tier {
             name: DEFAULT_TIER.into(),
             replication_factor: 1,
             can_vote: true,
+            current_vshard_config_version: 0,
+            target_vshard_config_version: 0,
+            vshard_bootstrapped: false,
         }
     }
 }

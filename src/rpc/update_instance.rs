@@ -11,7 +11,7 @@ use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
-use crate::storage::PropertyName;
+use crate::tier::Tier;
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -125,9 +125,6 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
         };
 
-        let target_vshard_config_version = storage.properties.target_vshard_config_version()?;
-        let current_vshard_config_version = storage.properties.current_vshard_config_version()?;
-
         let dml = update_instance(&instance, &req, storage)?;
         let Some((dml, version_bump_needed)) = dml else {
             // No point in proposing an operation which doesn't change anything.
@@ -154,17 +151,17 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             ops.push(replicaset_dml);
         }
 
-        if version_bump_needed &&
-            // Don't bump version if it's already bumped
-            target_vshard_config_version == current_vshard_config_version
-        {
-            #[rustfmt::skip]
-            let vshard_bump = Dml::replace(
-                ClusterwideTable::Property,
-                &(PropertyName::TargetVshardConfigVersion, target_vshard_config_version + 1),
-                ADMIN_ID,
-            )?;
-            ops.push(vshard_bump);
+        let tier = &instance.tier;
+        let tier = storage
+            .tiers
+            .by_name(tier)?
+            .expect("tier for instance should exists");
+
+        if version_bump_needed {
+            let vshard_bump = Tier::get_vshard_config_version_bump_op_if_needed(&tier)?;
+            if let Some(dml) = vshard_bump {
+                ops.push(dml);
+            }
         }
 
         let op = Op::single_dml_or_batch(ops);

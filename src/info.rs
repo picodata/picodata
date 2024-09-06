@@ -311,7 +311,11 @@ pub fn proc_get_config() -> Result<rmpv::Value, Error> {
 #[proc]
 pub fn proc_get_vshard_config() -> Result<RawByteBuf, Error> {
     let node = node::global()?;
-    let config = VshardConfig::from_storage(&node.storage)?;
+    let tier = node
+        .raft_storage
+        .tier()?
+        .expect("tier for instance should exists");
+    let config = VshardConfig::from_storage(&node.storage, &tier)?;
     let data = rmp_serde::to_vec_named(&config).map_err(Error::other)?;
     Ok(RawByteBuf::from(data))
 }

@@ -95,14 +95,6 @@ impl Loop {
             .iter()
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
-        let current_vshard_config_version = storage
-            .properties
-            .current_vshard_config_version()
-            .expect("storage error");
-        let target_vshard_config_version = storage
-            .properties
-            .target_vshard_config_version()
-            .expect("storage error");
 
         let tiers: Vec<_> = storage
             .tiers
@@ -120,10 +112,6 @@ impl Loop {
             .cluster_id()
             .expect("storage should never fail");
         let node = global().expect("must be initialized");
-        let vshard_bootstrapped = storage
-            .properties
-            .vshard_bootstrapped()
-            .expect("storage should never fail");
         let pending_schema_change = storage
             .properties
             .pending_schema_change()
@@ -162,9 +150,6 @@ impl Loop {
             &replicasets,
             &tiers,
             node.raft_id,
-            current_vshard_config_version,
-            target_vshard_config_version,
-            vshard_bootstrapped,
             has_pending_schema_change,
             &plugins,
             &services,
@@ -413,11 +398,17 @@ impl Loop {
                 }
             }
 
-            Plan::ShardingBoot(ShardingBoot { target, rpc, cas }) => {
-                set_status!("bootstrap bucket distribution");
+            Plan::ShardingBoot(ShardingBoot {
+                target,
+                rpc,
+                cas,
+                tier_name,
+            }) => {
+                set_status(governor_status, "bootstrap bucket distribution");
                 governor_step! {
                     "bootstrapping bucket distribution" [
                         "instance_id" => %target,
+                        "tier" => %tier_name,
                     ]
                     async {
                         pool
@@ -760,10 +751,17 @@ impl Loop {
                 }
             }
 
-            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig { targets, rpc, cas }) => {
-                set_status!("update current sharding configuration");
+            Plan::UpdateCurrentVshardConfig(UpdateCurrentVshardConfig {
+                targets,
+                rpc,
+                cas,
+                tier_name,
+            }) => {
+                set_status(governor_status, "update current sharding configuration");
                 governor_step! {
-                    "applying vshard config changes"
+                    "applying vshard config changes" [
+                        "tier" => %tier_name
+                    ]
                     async {
                         let mut fs = vec![];
                         for instance_id in targets {

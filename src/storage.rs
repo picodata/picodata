@@ -1196,8 +1196,6 @@ impl From<ClusterwideTable> for SpaceId {
 ::tarantool::define_str_enum! {
     /// An enumeration of [`ClusterwideTable::Property`] key names.
     pub enum PropertyName {
-        VshardBootstrapped = "vshard_bootstrapped",
-
         /// Pending ddl operation which is to be either committed or aborted.
         ///
         /// Is only present during the time between the last ddl prepare
@@ -1224,17 +1222,6 @@ impl From<ClusterwideTable> for SpaceId {
         /// log no matter if it is committed or aborted.
         /// This guards us from some painfull corner cases.
         NextSchemaVersion = "next_schema_version",
-
-        /// Version number of the vshard configuration which was most recently
-        /// applied to the whole cluster. If this is not equal to the value of
-        /// target_vshard_config_version, then the actual runtime vshard
-        /// configuration may be different on different instances.
-        CurrentVshardConfigVersion = "current_vshard_config_version",
-
-        /// Version number of the vshard configuration which should be applied
-        /// to the whole cluster. If this is equal to the value of
-        /// current_vshard_config_version, then the configuration is up to date.
-        TargetVshardConfigVersion = "target_vshard_config_version",
 
         /// Pending operation on the plugin system.
         ///
@@ -1305,14 +1292,7 @@ impl PropertyName {
     /// being set (or not being unset).
     #[inline(always)]
     fn must_not_delete(&self) -> bool {
-        matches!(
-            self,
-            Self::VshardBootstrapped
-                | Self::GlobalSchemaVersion
-                | Self::NextSchemaVersion
-                | Self::CurrentVshardConfigVersion
-                | Self::TargetVshardConfigVersion
-        )
+        matches!(self, |Self::GlobalSchemaVersion| Self::NextSchemaVersion)
     }
 
     /// Verify type of the property value being inserted (or replaced) in the
@@ -1338,16 +1318,13 @@ impl PropertyName {
             Self::PasswordEnforceUppercase
             | Self::PasswordEnforceLowercase
             | Self::PasswordEnforceDigits
-            | Self::PasswordEnforceSpecialchars
-            | Self::VshardBootstrapped => {
+            | Self::PasswordEnforceSpecialchars => {
                 // Check it's a bool.
                 _ = new.field::<bool>(1)?;
             }
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
             | Self::GlobalSchemaVersion
-            | Self::CurrentVshardConfigVersion
-            | Self::TargetVshardConfigVersion
             | Self::PasswordMinLength
             | Self::MaxLoginAttempts
             | Self::MaxPgPortals
@@ -1565,27 +1542,6 @@ impl Properties {
     #[inline]
     pub fn delete(&self, key: PropertyName) -> tarantool::Result<Option<Tuple>> {
         self.space.delete(&[key])
-    }
-
-    #[inline]
-    pub fn target_vshard_config_version(&self) -> tarantool::Result<u64> {
-        Ok(self
-            .get(PropertyName::TargetVshardConfigVersion)?
-            .expect("should always be persisted"))
-    }
-
-    #[inline]
-    pub fn current_vshard_config_version(&self) -> tarantool::Result<u64> {
-        Ok(self
-            .get(PropertyName::CurrentVshardConfigVersion)?
-            .expect("should always be persisted"))
-    }
-
-    #[inline]
-    pub fn vshard_bootstrapped(&self) -> tarantool::Result<bool> {
-        Ok(self
-            .get(PropertyName::VshardBootstrapped)?
-            .unwrap_or_default())
     }
 
     #[inline]

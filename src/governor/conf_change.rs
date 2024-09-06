@@ -623,11 +623,13 @@ mod tests {
             name: VOTER_TIER_NAME.into(),
             replication_factor: 1,
             can_vote: true,
+            ..Default::default()
         };
         let router_tier = Tier {
             name: FOLLOWER_TIER_NAME.into(),
             replication_factor: 1,
             can_vote: false,
+            ..Default::default()
         };
         tiers.insert(voter_tier.name.as_str(), &voter_tier);
         tiers.insert(router_tier.name.as_str(), &router_tier);

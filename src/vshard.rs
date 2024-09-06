@@ -40,7 +40,7 @@ pub fn get_replicaset_uuid_by_bucket_id(bucket_id: u64) -> Result<String, Error>
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
-    sharding: HashMap<String, ReplicasetSpec>,
+    sharding: HashMap<ReplicasetId, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
 
     /// This field is not stored in the global storage, instead
@@ -55,7 +55,7 @@ pub struct VshardConfig {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 struct ReplicasetSpec {
-    replicas: HashMap<String, ReplicaSpec>,
+    replicas: HashMap<InstanceId, ReplicaSpec>,
     weight: Option<Weight>,
 }
 
@@ -85,7 +85,7 @@ tarantool::define_str_enum! {
 }
 
 impl VshardConfig {
-    pub fn from_storage(storage: &Clusterwide) -> Result<Self, Error> {
+    pub fn from_storage(storage: &Clusterwide, tier_name: &str) -> Result<Self, Error> {
         let instances = storage.instances.all_instances()?;
         let peer_addresses: HashMap<_, _> = storage
             .peer_addresses
@@ -98,7 +98,7 @@ impl VshardConfig {
             .map(|rs| (&rs.replicaset_id, rs))
             .collect();
 
-        let result = Self::new(&instances, &peer_addresses, &replicasets);
+        let result = Self::new(&instances, &peer_addresses, &replicasets, tier_name);
         Ok(result)
     }
 
@@ -106,10 +106,11 @@ impl VshardConfig {
         instances: &[Instance],
         peer_addresses: &HashMap<RaftId, String>,
         replicasets: &HashMap<&ReplicasetId, &Replicaset>,
+        tier_name: &str,
     ) -> Self {
-        let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
+        let mut sharding: HashMap<ReplicasetId, ReplicasetSpec> = HashMap::new();
         for peer in instances {
-            if !peer.may_respond() {
+            if !peer.may_respond() || peer.tier != tier_name {
                 continue;
             }
             let Some(address) = peer_addresses.get(&peer.raft_id) else {
@@ -126,14 +127,14 @@ impl VshardConfig {
             };
 
             let replicaset = sharding
-                .entry(peer.replicaset_uuid.clone())
+                .entry(ReplicasetId(peer.replicaset_uuid.clone()))
                 .or_insert_with(|| ReplicasetSpec {
                     weight: Some(r.weight),
                     ..Default::default()
                 });
 
             replicaset.replicas.insert(
-                peer.instance_uuid.clone(),
+                InstanceId(peer.instance_uuid.clone()),
                 ReplicaSpec {
                     uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
                     master: r.current_master_id == peer.instance_id,
