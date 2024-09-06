@@ -66,52 +66,69 @@ picodata run --data-dir ./data/i2 --listen 127.0.0.1:3302 --peer 127.0.0.1:3301
 
 ## Запуск с помощью Docker Compose {: #run_docker_compose }
 
-Мы поддерживаем запуск Picodata при помощи инструментария Docker Compose
-и поставляем [yaml-файл][docker-compose.yml] для запуска тестового
-кластера из 4-х инстансов. Каждый инстанс работает в отдельном
-контейнере Docker. Этот способ удобен также тем, что позволяет
-попробовать наше ПО в действии без необходимости [установки
-пакетов][available_packages] или [сборки из исходного
-кода][installing_from_sources].
+Picodata поддерживает запуск при помощи инструментария Docker Compose и
+предоставляет пример файла `docker-compose.yml` для запуска тестового
+кластера. Этот способ удобен тем, что позволяет запускать Picodata без
+необходимости [установки пакетов][available_packages] или [сборки из
+исходного кода][installing_from_sources].
 
-[docker-compose.yml]: https://git.picodata.io/picodata/picodata/picodata/-/blob/master/helm/docker-compose.yml?ref_type=heads
 [available_packages]: install.md#available_packages
 [installing_from_sources]: install.md#installing_from_sources
 
-Для развертывания тестового кластера данным способом:
+Для развертывания тестового кластера данным способом выполните следующие шаги.
 
-- убедитесь, что у вас установлены Docker, Docker Compose, а также что
-  системная служба `docker` запущена
-- скачайте файл [docker-compose.yml] и откройте терминал в директории,
-  в которой он находится
-- создайте директорию для рабочих файлов проекта: `mkdir pico`
-- задайте путь к Docker-репозиторию Picodata:
+Убедитесь, что у вас установлены Docker, Docker Compose, а также что
+системная служба `docker` запущена, см [Docker Compose
+overview](https://docs.docker.com/compose/)
+
+Скачайте файл [docker-compose.yml], который описывает тестовый кластер
+из 4-х инстансов:
+
+[docker-compose.yml]: https://git.picodata.io/picodata/picodata/picodata/-/blob/master/helm/docker-compose.yml
+
+```bash
+curl -O https://git.picodata.io/picodata/picodata/picodata/-/raw/master/helm/docker-compose.yml
+```
+
+Создайте директорию для рабочих файлов проекта и
+задайте путь к Docker-репозиторию Picodata:
+
 ```shell
+mkdir pico
 export REGISTRY=docker-public.binary.picodata.io
 ```
-- запустите контейнеры проекта: `docker-compose up -d`
 
-Для подключения к административной консоли тестового кластера
-используйте команду:
+Запустите контейнеры:
 
 ```shell
-picodata connect admin@localhost:13301
+docker-compose up -d
 ```
 
-Пароль администратора можно [посмотреть][pw] в yaml-файле проекта.
+Подключиться к кластеру можно одним из следующих способов.
 
-[pw]: https://git.picodata.io/picodata/picodata/picodata/-/blame/master/helm/docker-compose.yml#L17
-
-Альтернативный вариант — подключение через файл сокета:
+Для подключения к [консоли администратора](../tutorial/connecting.md#admin_console)
+используйте команду:
 
 ```shell
 picodata admin pico/data/picodata-1-1/admin.sock
 ```
 
-См. также:
+Для подключения к [SQL-консоли](../tutorial/connecting.md#sql_console)
+используйте следующую команду. Пароль администратора `T0psecret` задан через
+переменную окружения `PICODATA_ADMIN_PASSWORD`, см. [docker-compose.yml:17]
 
-- [Docker Compose overview](https://docs.docker.com/compose/)
+```shell
+picodata connect admin@localhost:13301
+```
 
+[docker-compose.yml:17]: https://git.picodata.io/picodata/picodata/picodata/-/blame/master/helm/docker-compose.yml#L17
+
+Для подключения по протоколу [Pgproto](../tutorial/connecting.md#pgproto_psql_connect)
+используйте команду:
+
+```shell
+psql postgres://admin@127.0.0.1:55432?sslmode=disable
+```
 
 ## Безопасный запуск {: #secure_run }
 
