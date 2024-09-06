@@ -1,4 +1,5 @@
-use futures::future::try_join_all;
+use futures::future::{join_all, try_join_all};
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error};
 
@@ -227,22 +228,14 @@ async fn get_instances_data(
                         );
                     }
                 }
-                Ok::<(u64, InstanceDataResponse), Box<dyn Error>>((instance.raft_id, data))
+                (instance.raft_id, data)
             }
         })
     }
-    match try_join_all(fs).await {
-        Ok(vec) => vec
-            .into_iter()
-            .collect::<HashMap<u64, InstanceDataResponse>>(),
-        Err(e) => {
-            tlog!(
-                Error,
-                "webui: unexpected error on collect instance data responses: {e}"
-            );
-            HashMap::new()
-        }
-    }
+    join_all(fs)
+        .await
+        .into_iter()
+        .collect::<HashMap<u64, InstanceDataResponse>>()
 }
 
 // Collect detailed information from replicasets and instances
