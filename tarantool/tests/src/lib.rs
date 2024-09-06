@@ -212,7 +212,7 @@ fn run_tests(cfg: TestConfig) -> Result<bool, io::Error> {
                 tlua::lua_tables::get_set,
                 tlua::lua_tables::get_nil,
                 tlua::lua_tables::table_over_table,
-                tlua::lua_tables::metatable,
+                tlua::lua_tables::get_or_create_metatable,
                 tlua::lua_tables::complex_anonymous_table_metatable,
                 tlua::lua_tables::empty_array,
                 tlua::lua_tables::by_value,

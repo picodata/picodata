@@ -6,10 +6,9 @@
 ### Added
 - `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
 - `tlua::LuaRead` trait implementations for `OsString`, `PathBuf`
+- tlua::LuaTable::metatable which is a better alternative to the existing `tlua::LuaTable::get_or_create_metatable`
 
 ### Changed
-- tlua::LuaTable::get_or_create_metatable now borrows the table itself,
-allowing easier usage with anonymous tables.
 
 ### Fixed
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
@@ -20,6 +19,7 @@ allowing easier usage with anonymous tables.
 - Impossible to use procedural macros(like `tarantool::proc`, `tarantool::test`) through reexporting tarantool.
 
 ### Deprecated
+- tlua::LuaTable::get_or_create_metatable is deprecated now in favor of tlua::LuaTable::metatable.
 
 ### Breaking changes
 

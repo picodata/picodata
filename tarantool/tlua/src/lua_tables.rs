@@ -219,6 +219,21 @@ where
         }
     }
 
+    /// Get metatable of this table.
+    /// If it doesn't exist yet, it would be created and mounted as empty table.
+    ///
+    /// In contrast with now deprecated [Self::get_or_create_metatable],
+    /// it borrows current table for both convenience and safety.
+    ///
+    /// To understand how to work with Lua metatables,
+    /// refer to [corresponding PIL chapter](https://www.lua.org/pil/contents.html#13)
+    pub fn metatable(&self) -> LuaTable<PushGuard<&Self>> {
+        unsafe {
+            self.push_metatable();
+            LuaTable::new(PushGuard::new(self, 1), crate::NEGATIVE_ONE)
+        }
+    }
+
     /// Obtains or creates the metatable of the table.
     ///
     /// A metatable is an additional table that can be attached to a table or a userdata. It can
@@ -266,21 +281,34 @@ where
     ///     }));
     /// }
     /// ```
+    #[deprecated = "It consumes current table, prefer using borrowing alternative `Self::metatable`"]
     #[inline]
-    pub fn get_or_create_metatable(&self) -> LuaTable<PushGuard<&Self>> {
+    pub fn get_or_create_metatable(self) -> LuaTable<PushGuard<L>> {
         unsafe {
-            let index = self.as_ref().index().into();
-            // We put the metatable at the top of the stack.
-            if ffi::lua_getmetatable(self.as_lua(), index) == 0 {
-                // No existing metatable ; create one then set it and reload it.
-                ffi::lua_newtable(self.as_lua());
-                ffi::lua_setmetatable(self.as_lua(), index);
-                let r = ffi::lua_getmetatable(self.as_lua(), index);
-                debug_assert!(r != 0);
-            }
-
-            LuaTable::new(PushGuard::new(self, 1), crate::NEGATIVE_ONE)
+            self.push_metatable();
+            LuaTable::new(PushGuard::new(self.into_inner(), 1), crate::NEGATIVE_ONE)
         }
+    }
+
+    /// It pushes metatable of current table to Lua stack.
+    /// If it doesn't exist yet, it would be created.
+    ///
+    /// Exactly one element(table) would be left on stack.
+    ///
+    /// # SAFETY
+    /// Ensure you correctly account for the new element being added on the stack.
+    /// You must RAII-protect it yourself on the caller side.
+    unsafe fn push_metatable(&self) {
+        let index = self.as_ref().index().into();
+        // Try reading existing metatable on the stack.
+        if ffi::lua_getmetatable(self.as_lua(), index) != 0 {
+            return;
+        }
+        // No existing metatable - create one then set it and leave it on stack.
+        ffi::lua_newtable(self.as_lua());
+        ffi::lua_setmetatable(self.as_lua(), index);
+        let r = ffi::lua_getmetatable(self.as_lua(), index);
+        debug_assert!(r != 0);
     }
 
     /// Builds the `LuaTable` that yields access to the registry.
