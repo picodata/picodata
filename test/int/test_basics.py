@@ -397,10 +397,10 @@ Insert(_pico_property, ["max_pg_portals",1024]),
 Insert(_pico_property, ["snapshot_chunk_max_size",16777216]),
 Insert(_pico_property, ["snapshot_read_view_close_timeout",86400.0]))|
 |  0  | 1  |BatchDml(
-Insert(_pico_user, [0,"guest",0,["chap-sha1","vhvewKp0tNyweZQ+cFKAlsyphfg="],1,"user"]),
+Insert(_pico_user, [0,"guest",0,["md5","md5084e0343a0486ff05530df6c705c8bb4"],1,"user"]),
 Insert(_pico_privilege, [1,0,"login","universe",0,0]),
 Insert(_pico_privilege, [1,0,"execute","role",2,0]),
-Insert(_pico_user, [1,"admin",0,["chap-sha1",""],1,"user"]),
+Insert(_pico_user, [1,"admin",0,["md5",""],1,"user"]),
 Insert(_pico_privilege, [1,1,"read","universe",0,0]),
 Insert(_pico_privilege, [1,1,"write","universe",0,0]),
 Insert(_pico_privilege, [1,1,"execute","universe",0,0]),
@@ -420,6 +420,7 @@ Insert(_pico_privilege, [1,32,"execute","role",3,0]),
 Insert(_pico_user, [2,"public",0,null,1,"role"]),
 Insert(_pico_user, [31,"super",0,null,1,"role"]),
 Insert(_pico_user, [3,"replication",0,null,1,"role"]))|
+|  0  | 1  |ChangeAuth(1, 0, 1)|
 |  0  | 1  |BatchDml(
 Insert(_pico_table, [{_pico_table},"_pico_table",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"map","is_nullable":false,"name":"distribution"}},{{"field_type":"array","is_nullable":false,"name":"format"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"string","is_nullable":false,"name":"engine"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,"Stores metadata of all the cluster tables in picodata."]),
 Insert(_pico_index, [{_pico_table},0,"_pico_table_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),

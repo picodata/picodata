@@ -743,8 +743,8 @@ mod tests {
 
     fn dummy_auth_def() -> AuthDef {
         AuthDef::new(
-            AuthMethod::ChapSha1,
-            AuthData::new(&AuthMethod::ChapSha1, "", "").into_string(),
+            AuthMethod::Md5,
+            AuthData::new(&AuthMethod::Md5, "", "").into_string(),
         )
     }
 

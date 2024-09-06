@@ -308,13 +308,13 @@ def test_arrays(postgres: Postgres):
     cur = conn.execute(
         """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"id\" = 0; """, binary=False
     )
-    assert cur.fetchall() == [(["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="],)]
+    assert cur.fetchall() == [(["md5", "md5084e0343a0486ff05530df6c705c8bb4"],)]
 
     # test binary encoding
     cur = conn.execute(
         """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"id\" = 0; """, binary=True
     )
-    assert cur.fetchall() == [(["chap-sha1", "vhvewKp0tNyweZQ+cFKAlsyphfg="],)]
+    assert cur.fetchall() == [(["md5", "md5084e0343a0486ff05530df6c705c8bb4"],)]
 
     # text array parameters should throw an error
     with pytest.raises(
@@ -343,14 +343,14 @@ def test_arrays(postgres: Postgres):
         """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"name\" = 'admin'; """,
         binary=False,
     )
-    assert cur.fetchall() == [(["chap-sha1", ""],)]
+    assert cur.fetchall() == [(["md5", ""],)]
 
     # bin repr case
     cur = conn.execute(
         """ SELECT \"auth\" FROM \"_pico_user\" WHERE \"name\" = 'admin'; """,
         binary=True,
     )
-    assert cur.fetchall() == [(["chap-sha1", ""],)]
+    assert cur.fetchall() == [(["md5", ""],)]
 
 
 def test_map(postgres: Postgres):

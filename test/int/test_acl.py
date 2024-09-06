@@ -93,7 +93,7 @@ def test_acl_basic(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=4, init_replication_factor=2)
 
     user = "Bobby"
-    v = 0
+    v = 1
 
     # Initial state.
     for i in cluster.instances:
@@ -103,7 +103,7 @@ def test_acl_basic(cluster: Cluster):
     #
     #
     # Create user.
-    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}'")
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}' using chap-sha1")
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     v += 1
@@ -209,7 +209,7 @@ def test_acl_basic(cluster: Cluster):
     # Change user's password.
     old_password = VALID_PASSWORD
     new_password = "L0ng$3kr3T"
-    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{new_password}'")
+    i1.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{new_password}' using chap-sha1")
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     v += 1
@@ -263,7 +263,7 @@ def test_acl_roles_basic(cluster: Cluster):
     user = "Steven"
 
     # Create user.
-    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}'")
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}' using chap-sha1")
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
@@ -343,7 +343,7 @@ def test_cas_permissions(cluster: Cluster):
     user = "Steven"
 
     # Create user.
-    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}'")
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{VALID_PASSWORD}' using chap-sha1")
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
 
@@ -561,7 +561,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
 def test_create_table_smoke(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
-    i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
+    i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}' using chap-sha1")
     index = i1.call(".proc_get_index")
     cluster.raft_wait_index(index)
     with pytest.raises(
@@ -755,7 +755,9 @@ def test_submit_sql_after_revoke_login(cluster: Cluster):
 
     password = "Validpa55word"
 
-    acl = i1.sql(f"create user \"alice\" with password '{password}'", sudo=True)
+    acl = i1.sql(
+        f"create user \"alice\" with password '{password}' using chap-sha1", sudo=True
+    )
     assert acl["row_count"] == 1
 
     acl = i1.sql('grant create table to "alice"', sudo=True)
@@ -807,6 +809,7 @@ def test_admin_set_password(cluster: Cluster):
     i1.wait_online()
 
     password = os.getenv("PICODATA_ADMIN_PASSWORD")
+    i1.sql(f"ALTER USER admin WITH PASSWORD '{password}' USING chap-sha1")
     with i1.connect(timeout=5, user="admin", password=password) as conn:
         query = conn.sql(
             'select * from "_pico_user"',

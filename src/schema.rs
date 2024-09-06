@@ -848,10 +848,7 @@ impl UserDef {
             id: 69,
             name: "david".into(),
             schema_version: 421,
-            auth: Some(AuthDef::new(
-                tarantool::auth::AuthMethod::ChapSha1,
-                "".into(),
-            )),
+            auth: Some(AuthDef::new(AuthMethod::Md5, "".into())),
             owner: 42,
             ty: UserMetadataKind::User,
         }
@@ -1236,7 +1233,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
     //
     // User "guest"
     //
-    // equivalent SQL expression: CREATE USER 'guest' WITH PASSWORD '' USING chap-sha1
+    // equivalent SQL expression: CREATE USER 'guest' WITH PASSWORD '' USING md5
     {
         let user_def = UserDef {
             id: GUEST_ID,
@@ -1244,8 +1241,8 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
             auth: Some(AuthDef::new(
-                AuthMethod::ChapSha1,
-                AuthData::new(&AuthMethod::ChapSha1, DEFAULT_USERNAME, "").into_string(),
+                AuthMethod::Md5,
+                AuthData::new(&AuthMethod::Md5, DEFAULT_USERNAME, "").into_string(),
             )),
             owner: initiator,
             ty: UserMetadataKind::User,
@@ -1287,7 +1284,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             // MP_MAP. Here for simplicity given available module api we
             // use ChapSha with invalid password (its impossible to get
             // empty string as output of sha1)
-            auth: Some(AuthDef::new(AuthMethod::ChapSha1, "".into())),
+            auth: Some(AuthDef::new(AuthMethod::Md5, "".into())),
             owner: initiator,
             ty: UserMetadataKind::User,
         };
@@ -1318,7 +1315,7 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
             schema_version: INITIAL_SCHEMA_VERSION,
             auth: Some(AuthDef::new(
                 AuthMethod::ChapSha1,
-                tarantool::auth::AuthData::new(
+                AuthData::new(
                     &AuthMethod::ChapSha1,
                     PICO_SERVICE_USER_NAME,
                     pico_service_password(),
@@ -2553,7 +2550,7 @@ mod tests {
                 id: ADMIN_ID,
                 name: String::from("admin"),
                 schema_version: 0,
-                auth: Some(AuthDef::new(AuthMethod::ChapSha1, String::from(""))),
+                auth: Some(AuthDef::new(AuthMethod::Md5, String::from(""))),
                 owner: ADMIN_ID,
                 ty: UserMetadataKind::User,
             })

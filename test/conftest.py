@@ -835,14 +835,16 @@ class Instance:
         self,
         with_name: str,
         with_password: str,
+        with_auth: str | None = None,
         user: str | None = None,
         password: str | None = None,
         timeout: int | float = 10,
     ):
+        sql = f"CREATE USER\"{with_name}\" WITH PASSWORD '{with_password}'" + (
+            ("USING " + with_auth) if with_auth else ""
+        )
         self.sql(
-            f"""
-            CREATE USER "{with_name}" WITH PASSWORD '{with_password}' USING chap-sha1
-            """,
+            sql=sql,
             user=user,
             password=password,
             timeout=timeout,
@@ -1698,7 +1700,11 @@ class Cluster:
     def remove_data(self):
         shutil.rmtree(self.data_dir)
 
-    def expel(self, target: Instance, peer: Instance | None = None):
+    def expel(
+        self,
+        target: Instance,
+        peer: Instance | None = None,
+    ):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
         assert target.instance_id, "cannot expel without target instance_id"
@@ -1709,6 +1715,7 @@ class Cluster:
             "--peer", f"pico_service@{peer.listen}",
             "--cluster-id", target.cluster_id or "",
             "--password-file", self.service_password_file,
+            "--auth-type", "chap-sha1",
             target.instance_id,
         ]
         # fmt: on
@@ -2347,7 +2354,7 @@ instance:
 
 # Exists for debugging purposes only. When you're debugging a single test it is
 # simpler to configure wireshark (or other tools) for particular port.
-# Shouldnt be used when multiple tests are run (will result in address already in use errors)
+# Shouldn't be used when multiple tests are run (will result in address already in use errors)
 PG_LISTEN = os.getenv("PG_LISTEN")
 
 

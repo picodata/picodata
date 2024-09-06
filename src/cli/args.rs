@@ -369,6 +369,15 @@ pub struct Expel {
     /// Path to a plain-text file with the `admin` password.
     /// If this option isn't provided, the password is prompted from the terminal.
     pub password_file: Option<String>,
+
+    #[clap(
+        short = 'a',
+        long = "auth-type",
+        value_name = "METHOD",
+        default_value = AuthMethod::Md5.as_str(),
+    )]
+    /// The preferred authentication method.
+    pub auth_method: AuthMethod,
 }
 
 impl Expel {
@@ -454,7 +463,7 @@ pub struct Connect {
         short = 'a',
         long = "auth-type",
         value_name = "METHOD",
-        default_value = AuthMethod::ChapSha1.as_str(),
+        default_value = AuthMethod::Md5.as_str(),
     )]
     /// The preferred authentication method.
     pub auth_method: AuthMethod,

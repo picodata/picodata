@@ -24,8 +24,8 @@ _3_SEC = 3
 
 def test_access_global_table(cluster: Cluster):
     (i1,) = cluster.deploy(instance_count=1)
-    i1.sql("""create user "alice" with password 'T0psecret'""")
-    i1.sql("""create user "bob" with password 'T0tallysecret'""")
+    i1.sql("""create user "alice" with password 'T0psecret' using chap-sha1""")
+    i1.sql("""create user "bob" with password 'T0tallysecret' using chap-sha1""")
 
     create_table_friends_of_peppa = """
         create table "friends_of_peppa" (
@@ -87,8 +87,8 @@ def test_access_global_table(cluster: Cluster):
 
 def test_access_sharded_table(cluster: Cluster):
     (i1,) = cluster.deploy(instance_count=1)
-    i1.sql("""create user "alice" with password 'T0psecret'""")
-    i1.sql("""create user "bob" with password 'T0tallysecret'""")
+    i1.sql("""create user "alice" with password 'T0psecret' using chap-sha1""")
+    i1.sql("""create user "bob" with password 'T0tallysecret' using chap-sha1""")
 
     create_table_wonderland = """
         create table "wonderland" (

@@ -18,11 +18,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Order of columns in `_pico_service_route` table has changed.
 
+- Default authorization method changed from chap-sha to md5 both for user creation and in connect CLI.
+
 - Support human numbers to configure memtx.memory
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
-- - Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value
+- Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value
     and everywhere across documentation and examples to reduce ambiguity.
 
 - New rpc entrypoint: `.proc_get_vshard_config` which returns the vshard configuration of tier.

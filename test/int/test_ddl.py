@@ -22,17 +22,17 @@ def test_ddl_abort(cluster: Cluster):
 def test_ddl_create_table_bulky(cluster: Cluster):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4, init_replication_factor=2)
 
-    # At cluster boot schema version is 0
-    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 0
-    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 0
-    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 0
-    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    # At cluster boot schema version is 1
+    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 1
+    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 1
+    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 1
+    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 1
 
-    # And next schema version will be 1
-    assert i1.next_schema_version() == 1
-    assert i2.next_schema_version() == 1
-    assert i3.next_schema_version() == 1
-    assert i4.next_schema_version() == 1
+    # And next schema version will be 2
+    assert i1.next_schema_version() == 2
+    assert i2.next_schema_version() == 2
+    assert i3.next_schema_version() == 2
+    assert i4.next_schema_version() == 2
 
     ############################################################################
     # Propose a space creation which will fail
@@ -66,16 +66,16 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     assert i4.call("box.space._space:get", space_id) is None
 
     # Schema version hasn't changed
-    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 0
-    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 0
-    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 0
-    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 0
+    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 1
+    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 1
+    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 1
+    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 1
 
     # But next schema version did change
-    assert i1.next_schema_version() == 2
-    assert i2.next_schema_version() == 2
-    assert i3.next_schema_version() == 2
-    assert i4.next_schema_version() == 2
+    assert i1.next_schema_version() == 3
+    assert i2.next_schema_version() == 3
+    assert i3.next_schema_version() == 3
+    assert i4.next_schema_version() == 3
 
     ############################################################################
     # Propose a space creation which will succeed
@@ -92,16 +92,16 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     space_id = i1.eval("return box.space.stuff.id")
 
     # This time schema version did change
-    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 2
-    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 2
-    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 2
-    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 2
+    assert i1.call("box.space._pico_property:get", "global_schema_version")[1] == 3
+    assert i2.call("box.space._pico_property:get", "global_schema_version")[1] == 3
+    assert i3.call("box.space._pico_property:get", "global_schema_version")[1] == 3
+    assert i4.call("box.space._pico_property:get", "global_schema_version")[1] == 3
 
     # And so did next schema version obviously
-    assert i1.next_schema_version() == 3
-    assert i2.next_schema_version() == 3
-    assert i3.next_schema_version() == 3
-    assert i4.next_schema_version() == 3
+    assert i1.next_schema_version() == 4
+    assert i2.next_schema_version() == 4
+    assert i3.next_schema_version() == 4
+    assert i4.next_schema_version() == 4
 
     # Space was created and is operable
     initiator_id = PICO_SERVICE_ID
@@ -110,7 +110,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         "stuff",
         {"Global": None},
         [{"field_type": "unsigned", "is_nullable": False, "name": "id"}],
-        2,
+        3,
         True,
         "memtx",
         initiator_id,
@@ -146,7 +146,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
         [dict(unique=True)],
         [["id", "unsigned", None, False, None]],
         True,
-        2,
+        3,
     ]
     assert i1.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i2.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
@@ -171,8 +171,8 @@ def test_ddl_create_table_bulky(cluster: Cluster):
 
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r3")
 
-    assert i5.call("box.space._pico_property:get", "global_schema_version")[1] == 2
-    assert i5.next_schema_version() == 3
+    assert i5.call("box.space._pico_property:get", "global_schema_version")[1] == 3
+    assert i5.next_schema_version() == 4
     assert i5.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i5.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i5.call("box.space._space:get", space_id) == tt_space_def
@@ -181,8 +181,8 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     i6 = cluster.add_instance(wait_online=True, replicaset_id="r3")
 
     # It's schema was updated automatically as well
-    assert i6.call("box.space._pico_property:get", "global_schema_version")[1] == 2
-    assert i6.next_schema_version() == 3
+    assert i6.call("box.space._pico_property:get", "global_schema_version")[1] == 3
+    assert i6.next_schema_version() == 4
     assert i6.call("box.space._pico_table:get", space_id) == pico_space_def
     assert i6.call("box.space._pico_index:get", [space_id, 0]) == pico_pk_def
     assert i6.call("box.space._space:get", space_id) == tt_space_def
@@ -619,14 +619,14 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i3.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
-    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 1
+    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 2
 
     # A replicaset follower boots up from snapshot
     i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
     assert i4.call("box.space._space:get", space_id) == tt_space_def
     assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i4.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
-    assert i4.call("box.space._schema:get", "local_schema_version")[1] == 1
+    assert i4.call("box.space._schema:get", "local_schema_version")[1] == 2
 
 
 ################################################################################
@@ -690,7 +690,7 @@ def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     # A replica catches up by snapshot
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
-    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 1
+    assert i3.call("box.space._schema:get", "local_schema_version")[1] == 2
 
 
 ################################################################################
@@ -1329,7 +1329,7 @@ cluster:
     i2.start()
     i2.wait_online()
 
-    i2.create_user(with_name="andy", with_password="Testpa55")
+    i2.create_user(with_name="andy", with_password="Testpa55", with_auth="chap-sha1")
     i2.sql('GRANT CREATE TABLE TO "andy"', sudo=True)
 
     read_only = i2.eval("return box.cfg.read_only")

@@ -12,7 +12,7 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
         &args.peer_address,
         Some("admin"),
         args.password_file.as_deref(),
-        tarantool::auth::AuthMethod::ChapSha1,
+        args.auth_method,
     )?;
 
     let req = ExpelRequest {

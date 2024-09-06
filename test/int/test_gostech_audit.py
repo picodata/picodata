@@ -319,7 +319,9 @@ def test_gostech_access_denied(
 ) -> None:
     instance, audit = instance_with_gostech_audit
 
-    instance.create_user(with_name="ymir", with_password="T0psecret")
+    instance.create_user(
+        with_name="ymir", with_password="T0psecret", with_auth="chap-sha1"
+    )
 
     expected_error = "Create access to role 'R' is denied for user 'ymir'"
 
@@ -343,7 +345,7 @@ def test_gostech_grant_revoke(
     user = "ymir"
     password = "T0psecret"
 
-    instance.create_user(with_name=user, with_password=password)
+    instance.create_user(with_name=user, with_password=password, with_auth="chap-sha1")
 
     instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
     instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)

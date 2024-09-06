@@ -39,7 +39,12 @@ def test_connect_testuser(i1: Instance):
 def test_connect_user_host_port(i1: Instance):
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=["connect", f"testuser@{i1.host}:{i1.port}", "-u", "overridden"],
+        args=[
+            "connect",
+            f"testuser@{i1.host}:{i1.port}",
+            "-u",
+            "overridden",
+        ],
         encoding="utf-8",
         timeout=1,
     )
@@ -149,7 +154,7 @@ def test_connection_refused(binary_path: str):
 def test_connect_auth_type_ok(i1: Instance):
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "chap-sha1"],
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=1,
     )
@@ -384,6 +389,41 @@ def test_admin_empty_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
+def test_admin_with_password(cluster: Cluster):
+    import os
+
+    os.environ["PICODATA_ADMIN_PASSWORD"] = "#AdminX12345"
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.env.update(os.environ)
+    i1.start()
+    i1.wait_online()
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=[
+            "connect",
+            f"{i1.host}:{i1.port}",
+            "-u",
+            "admin",
+        ],
+        env={"NO_COLOR": "1"},
+        encoding="utf-8",
+        timeout=1,
+    )
+    cli.logfile = sys.stdout
+    cli.expect_exact("Enter password for admin: ")
+
+    password = os.getenv("PICODATA_ADMIN_PASSWORD")
+    cli.sendline(password)
+
+    cli.expect_exact("picodata> ")
+
+    eprint("^D")
+    cli.sendcontrol("d")
+    cli.expect_exact(pexpect.EOF)
+
+
 def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
@@ -499,7 +539,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
 def test_connect_connection_info_and_help(i1: Instance):
     cli = pexpect.spawn(
         command=i1.binary_path,
-        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "chap-sha1"],
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
         timeout=1,
     )

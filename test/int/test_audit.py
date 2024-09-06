@@ -210,7 +210,7 @@ def test_user(instance_with_audit_file: Instance):
     # https://git.picodata.io/picodata/picodata/picodata/-/issues/449
     instance.sql(
         """
-        alter user "ymir" password 'Topsecre1'
+        alter user "ymir" password 'Topsecre1' using chap-sha1
         """,
         sudo=True,
     )
@@ -519,7 +519,9 @@ def test_access_denied(instance_with_audit_file: Instance):
     instance = instance_with_audit_file
     instance.start()
 
-    instance.create_user(with_name="ymir", with_password="T0psecret")
+    instance.create_user(
+        with_name="ymir", with_password="T0psecret", with_auth="chap-sha1"
+    )
 
     audit = AuditFile(instance.audit_flag_value)
     for _ in audit.events():
@@ -553,7 +555,7 @@ def test_grant_revoke(instance_with_audit_file: Instance):
     user = "ymir"
     password = "T0psecret"
 
-    instance.create_user(with_name=user, with_password=password)
+    instance.create_user(with_name=user, with_password=password, with_auth="chap-sha1")
 
     instance.sql(f'GRANT CREATE ROLE TO "{user}"', sudo=True)
 

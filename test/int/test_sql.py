@@ -610,7 +610,7 @@ vtable_max_rows = 5000"""
     # test user with write permession can do global dml
     user = "user"
     password = "PaSSW0RD"
-    acl = i1.sql(f"create user {user} with password '{password}'")
+    acl = i1.sql(f"create user {user} with password '{password}' using chap-sha1")
     assert acl["row_count"] == 1
     # check we can't write yet
     with pytest.raises(
@@ -2402,7 +2402,8 @@ def test_sql_alter_login(cluster: Cluster):
     owner_password = "PA5sWORD"
 
     acl = i1.sql(
-        f"create user {owner_username} with password '{owner_password}'", sudo=True
+        f"create user {owner_username} with password '{owner_password}' using chap-sha1",
+        sudo=True,
     )
     assert acl["row_count"] == 1
 
@@ -2413,7 +2414,7 @@ def test_sql_alter_login(cluster: Cluster):
     password = "PA5sWORD"
     # Create user.
     acl = i1.sql(
-        f"create user {username} with password '{password}'",
+        f"create user {username} with password '{password}' using chap-sha1",
         user=owner_username,
         password=owner_password,
     )
@@ -2456,7 +2457,8 @@ def test_sql_alter_login(cluster: Cluster):
     other_username = "other_user"
     other_password = "PA5sWORD"
     acl = i1.sql(
-        f"create user {other_username} with password '{other_password}'", sudo=True
+        f"create user {other_username} with password '{other_password}' using chap-sha1",
+        sudo=True,
     )
     assert acl["row_count"] == 1
     with pytest.raises(
@@ -2497,9 +2499,11 @@ def test_sql_acl_privileges(cluster: Cluster):
     another_rolename = "another_role"
 
     # Create users.
-    acl = i1.sql(f"create user {username} with password '{password}'")
+    acl = i1.sql(f"create user {username} with password '{password}' using chap-sha1")
     assert acl["row_count"] == 1
-    acl = i1.sql(f"create user {another_username} with password '{password}'")
+    acl = i1.sql(
+        f"create user {another_username} with password '{password}' using chap-sha1 "
+    )
     assert acl["row_count"] == 1
     # Create roles.
     acl = i1.sql(f"create role {rolename}")
@@ -3044,11 +3048,12 @@ def test_user_changes_password(cluster: Cluster):
     old_password = "Passw0rd"
     new_password = "Pa55word"
 
-    i1.create_user(with_name=user_name, with_password=old_password)
-
+    i1.create_user(
+        with_name=user_name, with_password=old_password, with_auth="chap-sha1"
+    )
     i1.sql(
         f"""
-        ALTER USER "{user_name}" PASSWORD '{new_password}'
+        ALTER USER "{user_name}" PASSWORD '{new_password}' USING chap-sha1
         """,
         user=user_name,
         password=old_password,
@@ -3879,8 +3884,8 @@ def test_rename_user(cluster: Cluster):
     boba = "boba"
     password = "Passw0rd"
 
-    i1.create_user(with_name=biba, with_password=password)
-    i1.create_user(with_name=boba, with_password=password)
+    i1.create_user(with_name=biba, with_password=password, with_auth="chap-sha1")
+    i1.create_user(with_name=boba, with_password=password, with_auth="chap-sha1")
 
     with pytest.raises(TarantoolError, match=f"user {boba} does not exist"):
         data = i1.sql(

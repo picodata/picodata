@@ -8,7 +8,7 @@ use crate::config::PicodataConfig;
 use crate::instance::Instance;
 use crate::replicaset::Replicaset;
 use crate::schema;
-use crate::schema::ADMIN_ID;
+use crate::schema::{ADMIN_ID, GUEST_ID};
 use crate::storage;
 use crate::storage::PropertyName;
 use crate::storage::{Clusterwide, ClusterwideTable};
@@ -282,7 +282,7 @@ pub(super) fn prepare(
             ))
         })?;
 
-        let method = AuthMethod::ChapSha1;
+        let method = AuthMethod::Md5;
         let name = "admin";
         validate_password(&password, &method, storage)?;
         let data = AuthData::new(&method, name, &password);
@@ -308,6 +308,28 @@ pub(super) fn prepare(
         );
         tlog!(Info, "Password for user=admin has been set successfully");
     }
+
+    let op_elem = op::Op::Acl(op::Acl::ChangeAuth {
+        user_id: GUEST_ID,
+        auth: AuthDef::new(
+            AuthMethod::Md5,
+            AuthData::new(&AuthMethod::Md5, "guest", "").into_string(),
+        ),
+        initiator: ADMIN_ID,
+        schema_version: 1,
+    });
+
+    let context = traft::EntryContext::Op(op_elem);
+    init_entries.push(
+        traft::Entry {
+            entry_type: raft::EntryType::EntryNormal,
+            index: (init_entries.len() + 1) as _,
+            term: traft::INIT_RAFT_TERM,
+            data: vec![],
+            context,
+        }
+        .into(),
+    );
 
     //
     // Populate "_pico_table" & "_pico_index" with definitions of builtins
