@@ -76,6 +76,15 @@ function pico.update_plugin_config(plugin_name, plugin_version, service_name, ne
     return pico._update_plugin_config(plugin_name, plugin_version, service_name, raw_new_config, opts)
 end
 
+pico.router = {}
+
+local function get_router_for_tier(tier_name)
+    return pico.router[tier_name]
+end
+
+pico.get_router_for_tier = get_router_for_tier
+
+
 function pico._replicaset_priority_list(replicaset_uuid)
     local replicaset = vshard.router.internal.static_router.replicasets[replicaset_uuid]
     if replicaset == nil then
