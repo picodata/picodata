@@ -114,12 +114,14 @@ picodata admin pico/data/picodata-1-1/admin.sock
 ```
 
 Для подключения к [SQL-консоли](../tutorial/connecting.md#sql_console)
-используйте следующую команду. Пароль администратора `T0psecret` задан через
-переменную окружения `PICODATA_ADMIN_PASSWORD`, см. [docker-compose.yml:17]
+используйте команду:
 
 ```shell
 picodata connect admin@localhost:13301
 ```
+
+Пароль администратора `T0psecret` задан через
+переменную окружения `PICODATA_ADMIN_PASSWORD`, см. [docker-compose.yml:17]
 
 [docker-compose.yml:17]: https://git.picodata.io/picodata/picodata/picodata/-/blame/master/helm/docker-compose.yml#L17
 
