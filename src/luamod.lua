@@ -79,14 +79,20 @@ end
 pico.router = {}
 
 local function get_router_for_tier(tier_name)
-    return pico.router[tier_name]
+    local router = pico.router[tier_name]
+    if router == nil then
+        error(string.format("no router found for tier '%s'", tier_name))
+    end
+
+    return router
 end
 
 pico.get_router_for_tier = get_router_for_tier
 
 
-function pico._replicaset_priority_list(replicaset_uuid)
-    local replicaset = vshard.router.internal.static_router.replicasets[replicaset_uuid]
+function pico._replicaset_priority_list(tier, replicaset_uuid)
+    local router = get_router_for_tier(tier)
+    local replicaset = router.replicasets[replicaset_uuid]
     if replicaset == nil then
         error(vshard.error.vshard(vshard.error.code.NO_SUCH_REPLICASET, replicaset_uuid))
     end
@@ -108,8 +114,9 @@ function pico._replicaset_priority_list(replicaset_uuid)
     return result
 end
 
-function pico._replicaset_uuid_by_bucket_id(bucket_id)
-    local replicaset, err = vshard.router.internal.static_router:route(bucket_id)
+function pico._replicaset_uuid_by_bucket_id(tier, bucket_id)
+    local router = get_router_for_tier(tier)
+    local replicaset, err = router:route(bucket_id)
     if replicaset == nil then
         error(err)
     end

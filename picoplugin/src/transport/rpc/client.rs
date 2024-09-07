@@ -39,6 +39,13 @@ impl<'a> RequestBuilder<'a> {
                 bucket_id,
                 to_master,
             },
+            RequestTarget::TierAndBucketId(tier, bucket_id, to_master) => {
+                FfiSafeRpcTargetSpecifier::TierAndBucketId {
+                    tier: tier.into(),
+                    bucket_id,
+                    to_master,
+                }
+            }
             RequestTarget::ReplicasetId(replicaset_id, to_master) => {
                 FfiSafeRpcTargetSpecifier::Replicaset {
                     replicaset_id: replicaset_id.into(),
@@ -187,12 +194,19 @@ pub enum RequestTarget<'a> {
     /// The specific instance with a given instance id.
     InstanceId(&'a str),
 
-    /// An instance in the replicaset which currently stores the bucket with
+    /// An instance in the replicaset in tier of target instance which currently stores the bucket with
     /// the specified id.
     ///
     /// If the boolean parameter is `true`, then send the request to the replicaset master,
     /// otherwise any replica.
     BucketId(u64, bool),
+
+    /// An instance in the replicaset in the tier which currently stores the bucket with
+    /// the specified id.
+    ///
+    /// If the boolean parameter is `true`, then send the request to the replicaset master,
+    /// otherwise any replica.
+    TierAndBucketId(&'a str, u64, bool),
 
     /// An instance in the replicaset determined by the explicit replicaset id.
     ///
@@ -258,6 +272,11 @@ pub enum FfiSafeRpcTargetSpecifier {
         to_master: bool,
     },
     BucketId {
+        bucket_id: u64,
+        to_master: bool,
+    },
+    TierAndBucketId {
+        tier: FfiSafeStr,
         bucket_id: u64,
         to_master: bool,
     },

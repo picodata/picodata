@@ -554,6 +554,7 @@ impl Service for ServiceWithRpcTests {
                     instance_id: Option<String>,
                     replicaset_id: Option<String>,
                     bucket_id: Option<u64>,
+                    tier_and_bucket_id: Option<(String, u64)>,
                     to_master: Option<bool>,
                     #[serde(with = "serde_bytes")]
                     input: Vec<u8>,
@@ -569,9 +570,17 @@ impl Service for ServiceWithRpcTests {
                         replicaset_id,
                         request.to_master.unwrap_or(false),
                     );
-                } else if let Some(bucket_id) = request.bucket_id {
-                    target =
-                        rpc::RequestTarget::BucketId(bucket_id, request.to_master.unwrap_or(false));
+                } else if let Some(bucket_id) = &request.bucket_id {
+                    target = rpc::RequestTarget::BucketId(
+                        *bucket_id,
+                        request.to_master.unwrap_or(false),
+                    );
+                } else if let Some((tier, bucket_id)) = &request.tier_and_bucket_id {
+                    target = rpc::RequestTarget::TierAndBucketId(
+                        tier,
+                        *bucket_id,
+                        request.to_master.unwrap_or(false),
+                    );
                 }
 
                 let mut builder = rpc::RequestBuilder::new(target);

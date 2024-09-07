@@ -2080,10 +2080,20 @@ def test_plugin_rpc_sdk_register_endpoint(cluster: Cluster):
 
 
 def test_plugin_rpc_sdk_send_request(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: plugin_test
+    tier:
+        default:
+        router:
+"""
+    )
     i1 = cluster.add_instance(replicaset_id="r1", wait_online=False)
     i2 = cluster.add_instance(replicaset_id="r1", wait_online=False)
     i3 = cluster.add_instance(replicaset_id="r2", wait_online=False)
     i4 = cluster.add_instance(replicaset_id="r2", wait_online=False)
+    router_instance = cluster.add_instance(wait_online=False, tier="router")
     cluster.wait_online()
 
     def replicaset_master_id(replicaset_id: str) -> str:
@@ -2103,6 +2113,14 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     plugin_name = "testplug_sdk"
     service_name = "service_with_rpc_tests"
     install_and_enable_plugin(i1, plugin_name, [service_name], migrate=True)
+
+    version = "0.1.0"
+    services = [service_name]
+
+    for s in services:
+        router_instance.call(
+            "pico.service_append_tier", plugin_name, version, s, "router"
+        )
 
     # Call simple RPC endpoint, check context is passed correctly
     context = make_context(
@@ -2182,7 +2200,12 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     # Make sure buckets are balanced before routing via bucket_id to eliminate
     # flakiness due to bucket rebalancing
     for i in cluster.instances:
+        if i.get_tier() != _DEFAULT_TIER:
+            continue
+
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+
+    cluster.wait_until_instance_has_this_many_active_buckets(router_instance, 3000)
 
     # Check calling RPC by bucket_id via the plugin SDK
     context = make_context()
@@ -2195,6 +2218,19 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     pong, instance_id, echo = msgpack.loads(output)
     assert pong == "pong"
     assert instance_id == i2.instance_id  # shouldn't call self
+    assert echo == b"bucket_id:any"
+
+    # Check calling RPC by tier and bucket_id via the plugin SDK
+    context = make_context()
+    input = dict(
+        path="/ping",
+        tier_and_bucket_id=("router", any_bucket_id(router_instance)),
+        input="bucket_id:any",
+    )
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_id, echo = msgpack.loads(output)
+    assert pong == "pong"
+    assert instance_id == router_instance.instance_id
     assert echo == b"bucket_id:any"
 
     # Check calling RPC by bucket_id to master via the plugin SDK
@@ -2286,6 +2322,19 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
         input = dict(
             path="/ping",
             bucket_id=9999,
+            input=msgpack.dumps([]),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check requesting RPC to unknown tier
+    with pytest.raises(
+        TarantoolError,
+        match="no router found for tier 'undefined'",
+    ):
+        context = make_context()
+        input = dict(
+            path="/ping",
+            tier_and_bucket_id=("undefined", 9999),
             input=msgpack.dumps([]),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)

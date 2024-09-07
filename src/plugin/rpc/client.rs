@@ -173,6 +173,25 @@ fn encode_request_arguments(
     Ok(())
 }
 
+/// Gets instance id
+fn get_instance_id_of_master_of_replicaset(
+    tier: &str,
+    bucket_id: u64,
+    node: &Node,
+) -> Result<InstanceId, Error> {
+    let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(tier, bucket_id)?;
+    let tuple = node.storage.replicasets.by_uuid_raw(&replicaset_uuid)?;
+    let Some(master_id) = tuple
+        .field(Replicaset::FIELD_TARGET_MASTER_ID)
+        .map_err(IntoBoxError::into_box_error)?
+    else {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_id' field in _pico_replicaset tuple").into());
+    };
+
+    Ok(master_id)
+}
+
 fn resolve_rpc_target(
     ident: &PluginIdentifier,
     service: &str,
@@ -207,15 +226,24 @@ fn resolve_rpc_target(
             bucket_id,
             to_master: true,
         } => {
-            let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(bucket_id)?;
-            let tuple = node.storage.replicasets.by_uuid_raw(&replicaset_uuid)?;
-            let Some(master_id) = tuple
-                .field(Replicaset::FIELD_TARGET_MASTER_ID)
-                .map_err(IntoBoxError::into_box_error)?
-            else {
-                #[rustfmt::skip]
-                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_id' field in _pico_replicaset tuple").into());
-            };
+            let current_instance_tier = node
+                .raft_storage
+                .tier()?
+                .expect("storage for instance should exists");
+
+            let master_id =
+                get_instance_id_of_master_of_replicaset(&current_instance_tier, bucket_id, node)?;
+            instance_id = Some(master_id);
+        }
+
+        &FfiSafeRpcTargetSpecifier::TierAndBucketId {
+            to_master: true,
+            tier,
+            bucket_id,
+        } => {
+            // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
+            let tier = unsafe { tier.as_str() };
+            let master_id = get_instance_id_of_master_of_replicaset(tier, bucket_id, node)?;
             instance_id = Some(master_id);
         }
 
@@ -225,6 +253,9 @@ fn resolve_rpc_target(
         #[rustfmt::skip]
         FfiSafeRpcTargetSpecifier::Replicaset { to_master: false, .. } => {}
         FfiSafeRpcTargetSpecifier::Any => {}
+        FfiSafeRpcTargetSpecifier::TierAndBucketId {
+            to_master: false, ..
+        } => {}
     }
 
     if let Some(instance_id) = instance_id {
@@ -253,11 +284,13 @@ fn resolve_rpc_target(
         }
     };
 
-    let mut replicaset_uuid = None;
+    let mut tier_and_replicaset_uuid = None;
+
     match target {
         #[rustfmt::skip]
         FfiSafeRpcTargetSpecifier::InstanceId { .. }
         | FfiSafeRpcTargetSpecifier::Replicaset { to_master: true, .. }
+        | FfiSafeRpcTargetSpecifier::TierAndBucketId { to_master: true, .. }
         | FfiSafeRpcTargetSpecifier::BucketId { to_master: true, .. } => unreachable!("handled above"),
 
         &FfiSafeRpcTargetSpecifier::Replicaset {
@@ -267,30 +300,57 @@ fn resolve_rpc_target(
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
             let replicaset_id = unsafe { replicaset_id.as_str() };
             let tuple = node.storage.replicasets.get_raw(replicaset_id)?;
-            let Some(res) = tuple
+            let Some(found_replicaset_uuid) = tuple
                 .field(Replicaset::FIELD_REPLICASET_UUID)
                 .map_err(IntoBoxError::into_box_error)?
             else {
                 #[rustfmt::skip]
                 return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'replicaset_uuid' field in _pico_replicaset tuple").into());
             };
-            replicaset_uuid = Some(res);
+
+            let Some(found_tier) = tuple
+                .field::<'_, String>(Replicaset::FIELD_TIER)
+                .map_err(IntoBoxError::into_box_error)?
+            else {
+                #[rustfmt::skip]
+                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'tier' field in _pico_replicaset tuple").into());
+            };
+
+            tier_and_replicaset_uuid = Some((found_tier, found_replicaset_uuid));
         }
 
         &FfiSafeRpcTargetSpecifier::BucketId {
             bucket_id,
             to_master: false,
         } => {
-            replicaset_uuid = Some(vshard::get_replicaset_uuid_by_bucket_id(bucket_id)?);
+            // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
+            let tier = node
+                .raft_storage
+                .tier()?
+                .expect("storage for instance should exists");
+
+            let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(&tier, bucket_id)?;
+            tier_and_replicaset_uuid = Some((tier, replicaset_uuid));
+        }
+
+        &FfiSafeRpcTargetSpecifier::TierAndBucketId {
+            tier,
+            bucket_id,
+            to_master: false,
+        } => {
+            // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
+            let tier = unsafe { tier.as_str().to_string() };
+            let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(&tier, bucket_id)?;
+            tier_and_replicaset_uuid = Some((tier, replicaset_uuid));
         }
 
         &FfiSafeRpcTargetSpecifier::Any => {}
     }
 
-    if let Some(replicaset_uuid) = replicaset_uuid {
+    if let Some((tier, replicaset_uuid)) = tier_and_replicaset_uuid {
         // Need to pick a replica from given replicaset
 
-        let replicas = vshard::get_replicaset_priority_list(&replicaset_uuid)?;
+        let replicas = vshard::get_replicaset_priority_list(&tier, &replicaset_uuid)?;
 
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates

@@ -75,6 +75,9 @@ impl Replicaset {
     /// Index of field "target_master_id" in the table _pico_replicaset format.
     pub const FIELD_TARGET_MASTER_ID: u32 = 3;
 
+    /// Index of field "tier" in the table _pico_replicaset format.
+    pub const FIELD_TIER: u32 = 4;
+
     #[inline]
     pub fn with_one_instance(master: &Instance) -> Replicaset {
         Replicaset {
@@ -194,5 +197,6 @@ mod tests {
             format[Replicaset::FIELD_TARGET_MASTER_ID as usize].name,
             "target_master_id"
         );
+        assert_eq!(format[Replicaset::FIELD_TIER as usize].name, "tier");
     }
 }

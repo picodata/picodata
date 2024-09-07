@@ -578,6 +578,9 @@ class Instance:
             instance_id = self.instance_id
         return self.call(".proc_instance_info", instance_id)["current_state"]
 
+    def get_tier(self):
+        return "default" if self.tier is None else self.tier
+
     def instance_uuid(self):
         return self.eval("return box.info.uuid")
 
