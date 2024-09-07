@@ -380,12 +380,10 @@ def test_raft_log(instance: Instance):
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
 Insert(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
 Insert(_pico_replicaset, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready",0,0,{{}}]))|
-|  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true]))|
+|  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
-Insert(_pico_property, ["current_vshard_config_version",0]),
-Insert(_pico_property, ["target_vshard_config_version",0]),
 Insert(_pico_property, ["password_min_length",8]),
 Insert(_pico_property, ["password_enforce_uppercase",true]),
 Insert(_pico_property, ["password_enforce_lowercase",true]),
@@ -444,7 +442,7 @@ Insert(_pico_index, [{_pico_user},1,"_pico_user_name","tree",[{{"unique":true}}]
 Insert(_pico_table, [{_pico_privilege},"_pico_privilege",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"grantor_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"grantee_id"}},{{"field_type":"string","is_nullable":false,"name":"privilege"}},{{"field_type":"string","is_nullable":false,"name":"object_type"}},{{"field_type":"integer","is_nullable":false,"name":"object_id"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_privilege},0,"_pico_privilege_primary","tree",[{{"unique":true}}],[["grantee_id","unsigned",null,false,null],["object_type","string",null,false,null],["object_id","integer",null,false,null],["privilege","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_privilege},1,"_pico_privilege_object","tree",[{{"unique":false}}],[["object_type","string",null,false,null],["object_id","integer",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_tier},"_pico_tier",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"replication_factor"}},{{"field_type":"boolean","is_nullable":false,"name":"can_vote"}},{{"field_type":"unsigned","is_nullable":false,"name":"current_vshard_config_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"target_vshard_config_version"}},{{"field_type":"boolean","is_nullable":false,"name":"vshard_bootstrapped"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_tier},0,"_pico_tier_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_routine},"_pico_routine",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"kind"}},{{"field_type":"array","is_nullable":false,"name":"params"}},{{"field_type":"array","is_nullable":false,"name":"returns"}},{{"field_type":"string","is_nullable":false,"name":"language"}},{{"field_type":"string","is_nullable":false,"name":"body"}},{{"field_type":"string","is_nullable":false,"name":"security"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_routine},0,"_pico_routine_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),
@@ -465,13 +463,13 @@ Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{
 |  0  | 2  |BatchDml(
 Update(_pico_instance, ["i1"], [["=","target_state",["Online",1]]]),
 Update(_pico_replicaset, ["r1"], [["=","target_config_version",1]]),
-Replace(_pico_property, ["target_vshard_config_version",1])
+Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 )|
 |  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","current_config_version",1]])|
 |  0  | 2  |Update(_pico_replicaset, ["r1"], [["=","weight",1.0], ["=","state","ready"]])|
-|  0  | 2  |Replace(_pico_property, ["current_vshard_config_version",1])|
-|  0  | 2  |Replace(_pico_property, ["vshard_bootstrapped",true])|
-|  0  | 2  |Update(_pico_instance, ["i1"], [["=","current_state",["Online",1]]])|
+|  69 | 2  |Update(_pico_tier, ["default"], [["=","current_vshard_config_version",1]])|
+|  69 | 2  |Update(_pico_tier, ["default"], [["=","vshard_bootstrapped",true]])|
+|  69 | 2  |Update(_pico_instance, ["i1"], [["=","current_state",["Online",1]]])|
 +-----+----+--------+
 """.format(  # noqa: E501
         p=instance.port,
@@ -505,8 +503,8 @@ Replace(_pico_property, ["target_vshard_config_version",1])
 def test_governor_notices_restarts(instance: Instance):
     def check_vshard_configured(instance: Instance):
         assert instance.eval(
-            """
-                local replicasets = vshard.router.info().replicasets
+            f"""
+                local replicasets = _G.pico.router["{instance.get_tier()}"]:info().replicasets
                 local replica_uuid = replicasets[box.info.cluster.uuid].replica.uuid
                 return replica_uuid == box.info.uuid
         """

@@ -10,10 +10,26 @@ from conftest import (
 )
 
 
+def vshard_router_info(instance: Instance):
+    return instance.eval(
+        """
+    local router = pico.router["default"]
+    return router:info()
+            """
+    )
+
+
+def vshard_bootstrapped(instance: Instance):
+    result = instance.sql(
+        """SELECT "vshard_bootstrapped" FROM "_pico_tier" where "name" = 'default' """
+    )
+    return result[0][0]
+
+
 def test_sharding_reinitializes_on_restart(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
-    assert i1.call("vshard.router.info") is not None
+    assert vshard_router_info(i1) is not None
 
     info = i1.call(".proc_instance_info")
     incarnation = info["current_state"]["incarnation"]
@@ -27,13 +43,13 @@ def test_sharding_reinitializes_on_restart(cluster: Cluster):
     i1.wait_online(expected_incarnation=incarnation + 1)
 
     # Vshard is configured even though the configuration didn't change
-    assert i1.call("vshard.router.info") is not None
+    assert vshard_router_info(i1) is not None
 
 
 def test_bucket_discovery_single(instance: Instance):
     @funcy.retry(tries=30, timeout=0.5)
     def wait_buckets_awailable(i: Instance, expected: int):
-        assert i.call("vshard.router.info")["bucket"]["available_rw"] == expected
+        assert vshard_router_info(i)["bucket"]["available_rw"] == expected
 
     wait_buckets_awailable(instance, 3000)
 
@@ -42,16 +58,16 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     i1 = cluster.add_instance(init_replication_factor=2)
     time.sleep(0.5)
     assert i1.eval("return rawget(_G, 'vshard') == nil")
-    assert i1.call("box.space._pico_property:get", "vshard_bootstrapped") is None
+    assert not vshard_bootstrapped(i1)
 
     i2 = cluster.add_instance(replicaset_id="r2")
     time.sleep(0.5)
     assert i2.eval("return rawget(_G, 'vshard') == nil")
-    assert i2.call("box.space._pico_property:get", "vshard_bootstrapped") is None
+    assert not vshard_bootstrapped(i2)
 
     i3 = cluster.add_instance(replicaset_id="r1")
     time.sleep(0.5)
-    assert i3.call("box.space._pico_property:get", "vshard_bootstrapped")[1]
+    assert vshard_bootstrapped(i3)
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 3000)
 
 
@@ -79,11 +95,11 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
     # in the user-facing API which will be implemented as part of this issue:
     # https://git.picodata.io/picodata/picodata/picodata/-/issues/787
     rows = i1.sql(
-        """ SELECT "value" FROM "_pico_property" WHERE "key" = 'current_vshard_config_version' """
+        """ SELECT "current_vshard_config_version" FROM "_pico_tier" WHERE "name" = 'default' """
     )  # noqa: E501
     v = rows[0][0]
     i1.sql(
-        """ UPDATE "_pico_property" SET "value" = ? WHERE "key" = 'target_vshard_config_version' """,  # noqa: E501
+        """ UPDATE "_pico_tier" SET "target_vshard_config_version" = ? WHERE "name" = 'default' """,  # noqa: E501
         v + 1,
     )
 
@@ -101,11 +117,11 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
 
     # FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/787
     rows = i1.sql(
-        """ SELECT "value" FROM "_pico_property" WHERE "key" = 'current_vshard_config_version' """
+        """ SELECT "current_vshard_config_version" FROM "_pico_tier" WHERE "name" = 'default' """
     )  # noqa: E501
     v = rows[0][0]
     i1.sql(
-        """ UPDATE "_pico_property" SET "value" = ? WHERE "key" = 'target_vshard_config_version' """,  # noqa: E501
+        """ UPDATE "_pico_tier" SET "target_vshard_config_version" = ? WHERE "name" = 'default' """,  # noqa: E501
         v + 1,
     )
 
@@ -124,7 +140,12 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to both replicasets
     reached_instances = set()
     for bucket_id in [1, 3000]:
-        info = i1.call("vshard.router.callro", bucket_id, ".proc_instance_info")
+        info = i1.eval(
+            f"""
+        local router = pico.router["default"]
+        return router:callro({bucket_id}, ".proc_instance_info")
+                       """
+        )
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 2
 
@@ -147,7 +168,12 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # check vshard routes requests to all 3 replicasets
     reached_instances = set()
     for bucket_id in [1, 1500, 3000]:
-        info = i1.call("vshard.router.callro", bucket_id, ".proc_instance_info")
+        info = i1.eval(
+            f"""
+        local router = pico.router["default"]
+        return router:callro({bucket_id}, ".proc_instance_info")
+                       """
+        )
         reached_instances.add(info["instance_id"])
     assert len(reached_instances) == 3
 
@@ -156,7 +182,8 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance):
     return i.eval(
         """
             local res = {}
-            for _, r in pairs(vshard.router.static.replicasets) do
+            local router = pico.router["default"]
+            for _, r in pairs(router.replicasets) do
                 res[r.uuid] = r.master.name
             end
             return res
@@ -164,10 +191,10 @@ def get_vshards_opinion_about_replicaset_masters(i: Instance):
     )
 
 
-def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=10):
+def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
     def impl():
         rows = peer.sql(
-            """ SELECT value FROM _pico_property WHERE key = 'current_vshard_config_version' """
+            """ SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """
         )
         new_version = rows[0][0]
         assert new_version != old_version
@@ -191,7 +218,7 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         assert replicaset_masters[r2_uuid] == i3.instance_id
 
     rows = i1.sql(
-        """ SELECT value FROM _pico_property WHERE key = 'current_vshard_config_version' """
+        """ SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """
     )
     old_vshard_config_version = rows[0][0]
 
@@ -233,27 +260,20 @@ def test_vshard_bootstrap_timeout(cluster: Cluster):
     # and triggers the injected error
     lc1.wait_matched()
 
-    # Governor gets stuck because of the injected error
-    vshard_bootstrapped = i1.sql(
-        """ select "value" from "_pico_property" where "key" = 'vshard_bootstrapped' """
-    )
-
-    assert vshard_bootstrapped == []
+    assert not vshard_bootstrapped(i1)
 
     i1.call("pico._inject_error", error_injection, False)
 
     i1.wait_online()
 
-    vshard_bootstrapped = i1.sql(
-        """ select "value" from "_pico_property" where "key" = 'vshard_bootstrapped' """
-    )[0][0]
+    lc1.wait_matched()
 
-    assert vshard_bootstrapped is True
+    assert vshard_bootstrapped(i1)
 
 
 def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Cluster):
     # Need 3 instances for quorum
-    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
+    i1, i2, i3 = cluster.deploy(instance_count=3)
 
     # Wait until buckets are balanced
     for i in cluster.instances:
@@ -288,51 +308,9 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
         cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
 
     def check_available_buckets(i: Instance, count: int):
-        info = i.call("vshard.router.info")
+        info = vshard_router_info(i)
         assert info["bucket"]["available_rw"] == count
 
     # All buckets are eventually available to the whole cluster
     for i in cluster.instances:
         Retriable(timeout=10, rps=4).call(check_available_buckets, i, 3000)
-
-
-@pytest.mark.xfail(reason="Not implemented yet")
-def test_expel_blocked_by_bucket_rebalancing(cluster: Cluster):
-    # Need 3 instances for quorum
-    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
-
-    i1.sql(
-        """ CREATE TABLE somedata (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """
-    )
-
-    original_row_count = 3000
-    values = []
-    for id in range(original_row_count):
-        value = str(id)
-        values.append(f"({id}, '{value}')")
-    values_str = str.join(", ", values)
-    i1.sql(f""" INSERT INTO somedata VALUES {values_str}""")
-
-    # We have 3 replicasets 1 replica each
-    total_row_count = 0
-    for instance in cluster.instances:
-        rows_on_instance = instance.call("box.space.somedata:count")
-        assert rows_on_instance > 0
-        total_row_count += rows_on_instance
-    assert total_row_count == original_row_count
-
-    # Expel one of the instances
-    cluster.expel(i3)
-    Retriable().call(i3.assert_process_dead)
-
-    # We now have 2 replicasets 1 replica each
-    total_row_count = 0
-    for instance in cluster.instances:
-        if instance == i3:
-            continue
-        rows_on_instance = instance.call("box.space.somedata:count")
-        assert rows_on_instance > 0
-        total_row_count += rows_on_instance
-
-    # The buckets must be rebalanced and all of the data still available
-    assert total_row_count == original_row_count
