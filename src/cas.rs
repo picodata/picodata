@@ -12,12 +12,10 @@ use crate::traft::op::{Ddl, Dml, Op};
 use crate::traft::EntryContext;
 use crate::traft::Result;
 use crate::traft::{RaftIndex, RaftTerm};
-
 use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
-
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -282,6 +280,8 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         _ => {}
     }
 
+    let ranges = &req.predicate.ranges;
+
     // It's tempting to just use `raft_log.entries()` here and only
     // write the body of the loop once, but this would mean
     // converting entries from our storage representation to raft-rs
@@ -316,7 +316,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
             assert_eq!(entry.term, status.term);
             let entry_index = entry.index;
             let Some(op) = entry.into_op() else { continue };
-            req.predicate.check_entry(entry_index, &op, storage)?;
+            check_predicate(entry_index, &op, &ranges, storage)?;
         }
     }
 
@@ -335,7 +335,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         let EntryContext::Op(op) = cx else {
             continue;
         };
-        req.predicate.check_entry(entry.index, &op, storage)?;
+        check_predicate(entry.index, &op, &ranges, storage)?;
     }
 
     // Performs preliminary checks on an operation so that it will not fail when applied.
@@ -585,85 +585,86 @@ impl Predicate {
                 .collect::<traft::Result<_>>()?,
         })
     }
+}
 
-    /// Checks if `entry_op` changes anything within the ranges specified in the predicate.
-    pub fn check_entry(
-        &self,
-        entry_index: RaftIndex,
-        entry_op: &Op,
-        storage: &Clusterwide,
-    ) -> std::result::Result<(), Error> {
-        let check_dml =
-            |op: &Dml, space_id: u32, range: &Range| -> std::result::Result<(), Error> {
-                match op {
-                    Dml::Update { key, .. } | Dml::Delete { key, .. } => {
-                        let key = Tuple::new(key)?;
-                        let key_def = storage::cached_key_def_for_key(space_id, 0)?;
-                        if range.contains(&key_def, &key) {
-                            return Err(Error::ConflictFound(entry_index));
-                        }
-                    }
-                    Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => {
-                        let tuple = Tuple::new(tuple)?;
-                        let key_def = storage::cached_key_def(space_id, 0)?;
-                        if range.contains(&key_def, &tuple) {
-                            return Err(Error::ConflictFound(entry_index));
-                        }
-                    }
+/// Checks if `entry_op` changes anything within the `predicate_ranges`.
+///
+/// `entry_index` is only used to report error `ConflictFound`.
+pub fn check_predicate(
+    entry_index: RaftIndex,
+    entry_op: &Op,
+    predicate_ranges: &[Range],
+    storage: &Clusterwide,
+) -> std::result::Result<(), Error> {
+    let check_dml = |op: &Dml, space_id: u32, range: &Range| -> std::result::Result<(), Error> {
+        match op {
+            Dml::Update { key, .. } | Dml::Delete { key, .. } => {
+                let key = Tuple::new(key)?;
+                let key_def = storage::cached_key_def_for_key(space_id, 0)?;
+                if range.contains(&key_def, &key) {
+                    return Err(Error::ConflictFound(entry_index));
                 }
-                Ok(())
-            };
-        for range in &self.ranges {
-            if modifies_operable(entry_op, range.table, storage) {
-                return Err(Error::ConflictFound(entry_index));
             }
+            Dml::Insert { tuple, .. } | Dml::Replace { tuple, .. } => {
+                let tuple = Tuple::new(tuple)?;
+                let key_def = storage::cached_key_def(space_id, 0)?;
+                if range.contains(&key_def, &tuple) {
+                    return Err(Error::ConflictFound(entry_index));
+                }
+            }
+        }
+        Ok(())
+    };
+    for range in predicate_ranges {
+        if modifies_operable(entry_op, range.table, storage) {
+            return Err(Error::ConflictFound(entry_index));
+        }
 
-            // TODO: check operation's space exists
-            match entry_op {
-                Op::BatchDml { ops } => {
-                    // TODO: remove O(n*n) complexity,
-                    // use a hashtable for dml/range lookup?
-                    for dml in ops {
-                        if dml.space() == range.table {
-                            check_dml(dml, dml.space(), range)?;
-                        }
-                    }
-                }
-                Op::Dml(dml) => {
+        // TODO: check operation's space exists
+        match entry_op {
+            Op::BatchDml { ops } => {
+                // TODO: remove O(n*n) complexity,
+                // use a hashtable for dml/range lookup?
+                for dml in ops {
                     if dml.space() == range.table {
-                        check_dml(dml, dml.space(), range)?
+                        check_dml(dml, dml.space(), range)?;
                     }
                 }
-                Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
-                    let space = ClusterwideTable::Property.id();
-                    if space != range.table {
-                        continue;
-                    }
-                    let key_def = storage::cached_key_def_for_key(space, 0)?;
-                    for key in schema_related_property_keys() {
-                        // NOTE: this is just a string comparison
-                        if range.contains(&key_def, key) {
-                            return Err(Error::ConflictFound(entry_index));
-                        }
-                    }
+            }
+            Op::Dml(dml) => {
+                if dml.space() == range.table {
+                    check_dml(dml, dml.space(), range)?
                 }
-                Op::Plugin { .. } => {
-                    let space = ClusterwideTable::Property.id();
-                    if space != range.table {
-                        continue;
-                    }
-                    let key_def = storage::cached_key_def_for_key(space, 0)?;
-                    let key = pending_plugin_operation_key();
+            }
+            Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
+                let space = ClusterwideTable::Property.id();
+                if space != range.table {
+                    continue;
+                }
+                let key_def = storage::cached_key_def_for_key(space, 0)?;
+                for key in schema_related_property_keys() {
                     // NOTE: this is just a string comparison
                     if range.contains(&key_def, key) {
                         return Err(Error::ConflictFound(entry_index));
                     }
                 }
-                Op::Nop => (),
-            };
-        }
-        Ok(())
+            }
+            Op::Plugin { .. } => {
+                let space = ClusterwideTable::Property.id();
+                if space != range.table {
+                    continue;
+                }
+                let key_def = storage::cached_key_def_for_key(space, 0)?;
+                let key = pending_plugin_operation_key();
+                // NOTE: this is just a string comparison
+                if range.contains(&key_def, key) {
+                    return Err(Error::ConflictFound(entry_index));
+                }
+            }
+            Op::Nop => (),
+        };
     }
+    Ok(())
 }
 
 const SCHEMA_RELATED_PROPERTIES: [&str; 4] = [
@@ -1050,12 +1051,7 @@ mod tests {
         let storage = Clusterwide::for_tests();
 
         let t = |op: &Op, range: Range| -> std::result::Result<(), Error> {
-            let predicate = Predicate {
-                index: 1,
-                term: 1,
-                ranges: vec![range],
-            };
-            predicate.check_entry(2, op, &storage)
+            check_predicate(2, op, &[range], &storage)
         };
 
         let builder = DdlBuilder::with_schema_version(1);
@@ -1175,14 +1171,8 @@ mod tests {
         let tuple = (12, "twelve").to_tuple_buffer().unwrap();
         let storage = Clusterwide::for_tests();
 
-        let test = |op: &Dml, range: Range| {
-            let predicate = Predicate {
-                index: 1,
-                term: 1,
-                ranges: vec![range],
-            };
-            predicate.check_entry(2, &Op::Dml(op.clone()), &storage)
-        };
+        let test =
+            |op: &Dml, range: Range| check_predicate(2, &Op::Dml(op.clone()), &[range], &storage);
 
         let table = ClusterwideTable::Table;
         let ops = &[
