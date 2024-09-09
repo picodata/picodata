@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.5.0-350-g0a8f88d2`.
+Описание соответствует версии Picodata `24.6.0-51-ge6d0f4b1`.
 
 ### _pico_table
 
@@ -153,11 +153,11 @@
 
 Поля:
 
+* `grantor_id`: (_unsigned_)
+* `grantee_id`: (_unsigned_)
 * `privilege`: (_string_)
 * `object_type`: (_string_)
 * `object_id`: (_integer_)
-* `grantee_id`: (_unsigned_)
-* `grantor_id`: (_unsigned_)
 * `schema_version`: (_unsigned_)
 
 Индексы:
