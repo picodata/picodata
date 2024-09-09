@@ -3839,7 +3839,7 @@ impl ServiceRouteTable {
     pub fn delete_by_plugin(&self, plugin: &PluginIdentifier) -> tarantool::Result<()> {
         let all_routes = self
             .space
-            .select(IteratorType::All, &(&plugin.name, &plugin.version))?;
+            .select(IteratorType::Eq, &(&plugin.name, &plugin.version))?;
         for tuple in all_routes {
             let item = tuple.decode::<ServiceRouteItem>()?;
             self.space.delete(&(
@@ -3861,7 +3861,7 @@ impl ServiceRouteTable {
         let iter = self.space.select(IteratorType::All, &())?;
         for tuple in iter {
             let item: ServiceRouteItem = tuple.decode()?;
-            if &item.instance_id != i {
+            if item.instance_id != i {
                 continue;
             }
             result.push(item);

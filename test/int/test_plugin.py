@@ -140,11 +140,13 @@ class PluginReflection:
                 actual_routes = neighboring_i.sql(
                     """
                     SELECT * FROM "_pico_service_route"
-                    WHERE "plugin_name" = ? AND "plugin_version" = ? AND "instance_id" = ?
+                    WHERE "plugin_name" = ? AND "plugin_version" = ?
                     """,
                     self.name,
                     self.version,
-                    i.instance_id,
+                )
+                actual_routes = list(
+                    filter(lambda x: x[3] == i.instance_id, actual_routes)
                 )
                 assert actual_routes == expected_routes
 
@@ -1312,7 +1314,9 @@ def test_error_on_leader_change(cluster: Cluster):
     plugin_ref.assert_route_poisoned(i2.instance_id, "testservice_1", poisoned=False)
 
 
-def _test_plugin_install_and_enable_on_catchup(cluster: Cluster, compact_raft_log: bool):
+def _test_plugin_install_and_enable_on_catchup(
+    cluster: Cluster, compact_raft_log: bool
+):
     i1, i2, i3, i4 = cluster.deploy(instance_count=4)
     p1_ref = PluginReflection.default(i1, i2, i3, i4)
     p2_ref = PluginReflection(
