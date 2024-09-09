@@ -4,14 +4,14 @@
 стандарта SQL:2016, а именно ISO/IEC 9075:2016 «Информационные технологии
 — Языки баз данных — SQL».
 
-## Легенда {: #legend }
+## Легенда {: #legend data-search-exclude }
 
 !!! abstract ""
     <span class="full legend-id">E001-01</span><span class="legend-dash">—</span>возможность *полностью* реализована<br>
     <span class="partly legend-id">E001-01</span><span class="legend-dash">—</span>возможность *частично* реализована<br>
     <span class="absent legend-id">E001-01</span><span class="legend-dash">—</span>возможность не реализована
 
-## Обязательные возможности {: #mandatory_features }
+## Обязательные возможности {: #mandatory_features data-search-exclude }
 
 <style>
 .md-typeset .admonition.abstract {
@@ -1047,7 +1047,7 @@ td.td3 ul {
     </tbody>
 </table>
 
-## Необязательные возможности {: #optional_features }
+## Необязательные возможности {: #optional_features data-search-exclude }
 
 <table markdown="span">
     <thead>
@@ -1084,7 +1084,7 @@ td.td3 ul {
     </tbody>
 </table>
 
-## Дополняющие стандарт возможности {: #additional_features }
+## Дополняющие стандарт возможности {: #additional_features data-search-exclude }
 
 <table markdown="span">
     <thead>
