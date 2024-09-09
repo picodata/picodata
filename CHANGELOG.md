@@ -15,6 +15,7 @@ with the `YY.MINOR.MICRO` scheme.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
+- Order of columns in `_pico_service_route` table has changed.
 -->
 
 ### Lua API
