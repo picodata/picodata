@@ -44,6 +44,8 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `LIMIT` clause
 - SQL supports `SUBSTR` function
 - SQL supports postgres [cast notation]: `expr::type`
+- SQL internally uses new protocol for cacheable requests,
+which improves perfomance
 
 ### Pgproto
 

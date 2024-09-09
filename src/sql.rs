@@ -1399,14 +1399,14 @@ const TRACER_KEY: &str = "Tracer";
 /// Executes a query sub-plan on the local node.
 #[proc(packed_args)]
 pub fn proc_sql_execute(raw: &RawBytes) -> traft::Result<Tuple> {
-    let (raw_required, mut raw_optional) = decode_msgpack(raw)?;
+    let (raw_required, optional_bytes, cache_info) = decode_msgpack(raw)?;
 
     let mut required = RequiredData::try_from(EncodedRequiredData::from(raw_required))?;
 
     let tracing_meta = std::mem::take(&mut required.tracing_meta);
-    let mut exec = || {
+    let exec = || {
         let runtime = StorageRuntime::new()?;
-        match runtime.execute_plan(&mut required, &mut raw_optional) {
+        match runtime.execute_plan(&mut required, optional_bytes, cache_info) {
             Ok(mut any_tuple) => {
                 if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
                     debug!(

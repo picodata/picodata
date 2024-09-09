@@ -4,15 +4,14 @@
 
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::vshard::{
-    exec_ir_on_all_buckets, exec_ir_on_some_buckets, get_random_bucket,
-};
+use sbroad::executor::engine::helpers::vshard::{get_random_bucket, impl_exec_ir_on_buckets};
 use sbroad::executor::engine::helpers::{dispatch_impl, explain_format, materialize_motion};
 use sbroad::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
-use sbroad::executor::engine::{get_builtin_functions, QueryCache, Router, Vshard};
-use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
+use sbroad::executor::engine::{
+    get_builtin_functions, DispatchReturnFormat, QueryCache, Router, Vshard,
+};
+use sbroad::executor::ir::ExecutionPlan;
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
-use sbroad::executor::protocol::Binary;
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::ir::value::{MsgPackValue, Value};
 use sbroad::ir::Plan;
@@ -222,8 +221,9 @@ impl Router for RouterRuntime {
         plan: &mut sbroad::executor::ir::ExecutionPlan,
         top_id: usize,
         buckets: &sbroad::executor::bucket::Buckets,
+        return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn std::any::Any>, SbroadError> {
-        dispatch_impl(self, plan, top_id, buckets)
+        dispatch_impl(self, plan, top_id, buckets, return_format)
     }
 
     fn explain_format(&self, explain: SmolStr) -> Result<Box<dyn std::any::Any>, SbroadError> {
@@ -281,22 +281,13 @@ pub(crate) fn calculate_bucket_id(tuple: &[&Value], bucket_count: u64) -> Result
 }
 
 impl Vshard for RouterRuntime {
-    fn exec_ir_on_all(
+    fn exec_ir_on_buckets(
         &self,
-        required: Binary,
-        optional: Binary,
-        query_type: QueryType,
-        conn_type: ConnectionType,
-        vtable_max_rows: u64,
+        sub_plan: ExecutionPlan,
+        buckets: &Buckets,
+        return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        exec_ir_on_all_buckets(
-            &*self.metadata().lock(),
-            required,
-            optional,
-            query_type,
-            conn_type,
-            vtable_max_rows,
-        )
+        impl_exec_ir_on_buckets(self, sub_plan, buckets, return_format)
     }
 
     fn bucket_count(&self) -> u64 {
@@ -311,39 +302,17 @@ impl Vshard for RouterRuntime {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_ir_on_some(
+    fn exec_ir_on_any_node(
         &self,
         sub_plan: ExecutionPlan,
-        buckets: &Buckets,
+        return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        exec_ir_on_some_buckets(self, sub_plan, buckets)
-    }
-
-    fn exec_ir_on_any_node(&self, sub_plan: ExecutionPlan) -> Result<Box<dyn Any>, SbroadError> {
         let runtime = StorageRuntime::new()?;
-        runtime.exec_ir_on_any_node(sub_plan)
+        runtime.exec_ir_on_any_node(sub_plan, return_format)
     }
 }
 
 impl Vshard for &RouterRuntime {
-    fn exec_ir_on_all(
-        &self,
-        required: Binary,
-        optional: Binary,
-        query_type: QueryType,
-        conn_type: ConnectionType,
-        vtable_max_rows: u64,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        exec_ir_on_all_buckets(
-            &*self.metadata().lock(),
-            required,
-            optional,
-            query_type,
-            conn_type,
-            vtable_max_rows,
-        )
-    }
-
     fn bucket_count(&self) -> u64 {
         self.bucket_count
     }
@@ -356,17 +325,22 @@ impl Vshard for &RouterRuntime {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_ir_on_some(
+    fn exec_ir_on_buckets(
         &self,
         sub_plan: ExecutionPlan,
         buckets: &Buckets,
+        return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        exec_ir_on_some_buckets(*self, sub_plan, buckets)
+        impl_exec_ir_on_buckets(*self, sub_plan, buckets, return_format)
     }
 
-    fn exec_ir_on_any_node(&self, sub_plan: ExecutionPlan) -> Result<Box<dyn Any>, SbroadError> {
+    fn exec_ir_on_any_node(
+        &self,
+        sub_plan: ExecutionPlan,
+        return_format: DispatchReturnFormat,
+    ) -> Result<Box<dyn Any>, SbroadError> {
         let runtime = StorageRuntime::new()?;
-        runtime.exec_ir_on_any_node(sub_plan)
+        runtime.exec_ir_on_any_node(sub_plan, return_format)
     }
 }
 

@@ -2,25 +2,34 @@
 //! Implements the `sbroad` crate infrastructure
 //! for execution of the dispatched query plan subtrees.
 
+use sbroad::backend::sql::ir::PatternWithParams;
+use sbroad::backend::sql::space::TableGuard;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::storage::{unprepare, StorageMetadata};
-use sbroad::executor::engine::helpers::vshard::get_random_bucket;
-use sbroad::executor::engine::helpers::{self, read_or_prepare, EncodedQueryInfo, QueryInfo};
-use sbroad::executor::engine::{QueryCache, StorageCache, Vshard};
-use sbroad::executor::ir::{ConnectionType, ExecutionPlan, QueryType};
+use sbroad::executor::engine::helpers::storage::{
+    unprepare, DQLStorageReturnFormat, StorageMetadata,
+};
+use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
+use sbroad::executor::engine::helpers::{
+    self, execute_first_cacheable_request, execute_second_cacheable_request, read_or_prepare,
+    EncodedQueryInfo, OptionalBytes, PlanInfo, RequiredPlanInfo,
+};
+use sbroad::executor::engine::{DispatchReturnFormat, QueryCache, StorageCache, Vshard};
+use sbroad::executor::ir::{ExecutionPlan, QueryType};
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
-use sbroad::executor::protocol::{Binary, OptionalData, RequiredData, SchemaInfo};
+use sbroad::executor::protocol::{EncodedTables, RequiredData, SchemaInfo};
+use sbroad::executor::result::ProducerResult;
 use sbroad::ir::value::Value;
 use tarantool::fiber::Mutex;
 use tarantool::sql::Statement;
+use tarantool::tuple::{Tuple, TupleBuffer};
 
 use crate::sql::router::{get_table_version, VersionMap};
 use crate::traft::node;
-use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxPlan};
+use sbroad::backend::sql::tree::{OrderedSyntaxNodes, SyntaxData, SyntaxPlan};
 use sbroad::ir::tree::Snapshot;
 use sbroad::ir::NodeId;
-use smol_str::{format_smolstr, SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr};
 use std::collections::HashMap;
 use std::{any::Any, cell::RefCell, rc::Rc};
 
@@ -158,21 +167,53 @@ impl QueryCache for StorageRuntime {
     }
 }
 
-impl Vshard for StorageRuntime {
-    fn exec_ir_on_all(
-        &self,
-        _required: Binary,
-        _optional: Binary,
-        _query_type: QueryType,
-        _conn_type: ConnectionType,
-        _vtable_max_rows: u64,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        Err(SbroadError::Unsupported(
-            Entity::Runtime,
-            Some("exec_ir_on_all is not supported on the storage".to_smolstr()),
-        ))
+struct LocalExecutionQueryInfo<'sn> {
+    exec_plan: ExecutionPlan,
+    plan_id: SmolStr,
+    nodes: Vec<&'sn SyntaxData>,
+    params: Vec<Value>,
+    schema_info: SchemaInfo,
+}
+
+impl<'sn> RequiredPlanInfo for LocalExecutionQueryInfo<'sn> {
+    fn id(&self) -> &SmolStr {
+        &self.plan_id
     }
 
+    fn params(&self) -> &Vec<Value> {
+        &self.params
+    }
+
+    fn schema_info(&self) -> &SchemaInfo {
+        &self.schema_info
+    }
+
+    fn extract_data(&mut self) -> EncodedTables {
+        self.exec_plan.encode_vtables()
+    }
+
+    fn vdbe_max_steps(&self) -> u64 {
+        self.exec_plan
+            .get_ir_plan()
+            .options
+            .execute_options
+            .vdbe_max_steps()
+    }
+
+    fn vtable_max_rows(&self) -> u64 {
+        self.exec_plan.get_vtable_max_rows()
+    }
+}
+
+impl PlanInfo for LocalExecutionQueryInfo<'_> {
+    fn extract_query_and_table_guard(
+        &mut self,
+    ) -> Result<(PatternWithParams, Vec<TableGuard>), SbroadError> {
+        self.exec_plan.to_sql(&self.nodes, &self.plan_id, None)
+    }
+}
+
+impl Vshard for StorageRuntime {
     fn bucket_count(&self) -> u64 {
         self.bucket_count
     }
@@ -185,49 +226,72 @@ impl Vshard for StorageRuntime {
         calculate_bucket_id(s, self.bucket_count())
     }
 
-    fn exec_ir_on_some(
-        &self,
-        _sub_plan: ExecutionPlan,
-        _buckets: &Buckets,
-    ) -> Result<Box<dyn Any>, SbroadError> {
-        Err(SbroadError::Unsupported(
-            Entity::Runtime,
-            Some("exec_ir_on_some is not supported on the storage".to_smolstr()),
-        ))
-    }
-
     fn exec_ir_on_any_node(
         &self,
-        mut sub_plan: ExecutionPlan,
+        sub_plan: ExecutionPlan,
+        return_format: DispatchReturnFormat,
     ) -> Result<Box<dyn Any>, SbroadError> {
-        let options = std::mem::take(&mut sub_plan.get_mut_ir_plan().options);
         let plan = sub_plan.get_ir_plan();
         let top_id = plan.get_top()?;
         let plan_id = plan.pattern_id(top_id)?;
         let sp = SyntaxPlan::new(&sub_plan, top_id, Snapshot::Oldest)?;
         let ordered = OrderedSyntaxNodes::try_from(sp)?;
         let nodes = ordered.to_syntax_data()?;
-        let parameters = sub_plan.to_params(&nodes)?;
-        let tables = sub_plan.encode_vtables();
-        let schema_info = SchemaInfo::new(sub_plan.get_ir_plan().version_map.clone());
-        let query_type = sub_plan.query_type()?;
-        assert_eq!(query_type, QueryType::DQL, "Only DQL is supported");
-
-        let mut required = RequiredData {
-            plan_id,
-            parameters,
-            query_type,
-            options,
-            schema_info,
-            tracing_meta: None,
-            tables,
-        };
-        let mut optional = OptionalData {
+        let params = sub_plan.to_params()?;
+        let version_map = sub_plan.get_ir_plan().version_map.clone();
+        let schema_info = SchemaInfo::new(version_map);
+        let mut info = LocalExecutionQueryInfo {
             exec_plan: sub_plan,
-            ordered,
+            plan_id,
+            nodes,
+            params,
+            schema_info,
         };
-        let mut info = QueryInfo::new(&mut optional, &mut required);
-        read_or_prepare(self, &mut info)
+        let mut locked_cache = self.cache().lock();
+        let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
+            &mut locked_cache,
+            &mut info,
+            &DQLStorageReturnFormat::Raw,
+        )?;
+        let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
+            SbroadError::Invalid(
+                Entity::MsgPack,
+                Some(format_smolstr!("expected Tuple as result: {e:?}")),
+            )
+        })?;
+        // TODO: introduce a wrapper type, do not use raw Vec<u8> and
+        // implement convert trait
+        let res: Box<dyn Any> = match return_format {
+            DispatchReturnFormat::Tuple => {
+                let tup_buf = TupleBuffer::try_from_vec(*bytes)
+                    .expect("failed to convert raw dql result to tuple buffer");
+                Box::new(Tuple::from(&tup_buf))
+            }
+            DispatchReturnFormat::Inner => {
+                let mut reader = bytes.as_ref().as_slice();
+                let mut data: Vec<ProducerResult> = rmp_serde::decode::from_read(&mut reader)
+                    .map_err(|e| {
+                        SbroadError::Other(format_smolstr!("decode bytes into inner format: {e:?}"))
+                    })?;
+                let inner = data.get_mut(0).ok_or_else(|| {
+                    SbroadError::NotFound(Entity::ProducerResult, "from the tuple".into())
+                })?;
+                let inner_owned = std::mem::take(inner);
+                Box::new(inner_owned)
+            }
+        };
+        Ok(res)
+    }
+
+    fn exec_ir_on_buckets(
+        &self,
+        _sub_plan: ExecutionPlan,
+        _buckets: &Buckets,
+        _return_format: DispatchReturnFormat,
+    ) -> Result<Box<dyn Any>, SbroadError> {
+        return Err(SbroadError::Other(
+            "storage runtime can't execute vshard queries".into(),
+        ));
     }
 }
 
@@ -253,7 +317,8 @@ impl StorageRuntime {
     pub fn execute_plan(
         &self,
         required: &mut RequiredData,
-        raw_optional: &mut Vec<u8>,
+        mut raw_optional: OptionalBytes,
+        cache_info: CacheInfo,
     ) -> Result<Box<dyn Any>, SbroadError> {
         // Check router schema version hasn't changed.
         for (table, version) in &required.schema_info.router_version_map {
@@ -264,10 +329,17 @@ impl StorageRuntime {
             }
         }
         match required.query_type {
-            QueryType::DML => helpers::execute_dml(self, required, raw_optional),
+            QueryType::DML => helpers::execute_dml(self, required, raw_optional.get_mut()?),
             QueryType::DQL => {
-                let mut info = EncodedQueryInfo::new(std::mem::take(raw_optional), required);
-                read_or_prepare(self, &mut info)
+                let mut info = EncodedQueryInfo::new(raw_optional, required);
+                match cache_info {
+                    CacheInfo::CacheableFirstRequest => {
+                        execute_first_cacheable_request(self, &mut info)
+                    }
+                    CacheInfo::CacheableSecondRequest => {
+                        execute_second_cacheable_request(self, &mut info)
+                    }
+                }
             }
         }
     }
