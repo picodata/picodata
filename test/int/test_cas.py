@@ -96,8 +96,10 @@ def test_cas_errors(instance: Instance):
             [1, 2, 3],
         )
     assert error.value.args[:2] == (
-        "ER_FIELD_TYPE",
-        "Tuple field 1 (key) type does not match one required by operation: expected string, got unsigned",  # noqa: E501
+        # This is sad, the type is now checked when checking the implicit
+        # predicate which results in a stupid error message...
+        "ER_KEY_PART_TYPE",
+        "Supplied key type of part 0 does not match index part type: expected string",  # noqa: E501
     )
 
     # Delete of undeletable property

@@ -116,6 +116,7 @@ pub(super) fn action_plan<'i>(
             ops,
             ADMIN_ID,
         )?;
+        // TODO: add range for Instance current & target master
         let ranges = vec![cas::Range::for_dml(&dml)?];
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;

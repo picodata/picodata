@@ -16,6 +16,7 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
+use std::borrow::Cow;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -280,7 +281,10 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         _ => {}
     }
 
-    let ranges = &req.predicate.ranges;
+    let mut ranges = Cow::Borrowed(&req.predicate.ranges);
+    if ranges.is_empty() {
+        ranges = Cow::Owned(Range::for_op(&req.op)?);
+    }
 
     // It's tempting to just use `raft_log.entries()` here and only
     // write the body of the loop once, but this would mean

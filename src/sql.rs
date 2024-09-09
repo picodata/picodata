@@ -1603,9 +1603,8 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
 
         let ops_count = ops.len();
         let op = crate::traft::op::Op::BatchDml { ops };
-        let ranges = cas::Range::for_op(&op)?;
 
-        let predicate = Predicate::new(raft_index, ranges);
+        let predicate = Predicate::new(raft_index, []);
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
         let res = crate::cas::compare_and_swap_and_wait(&cas_req, deadline)?;
         res.no_retries()?;
