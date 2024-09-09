@@ -230,7 +230,7 @@ impl Loop {
                     "proposing replicaset target master change"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -305,7 +305,7 @@ impl Loop {
                         let predicate = cas::Predicate::new(applied, ranges);
                         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -393,7 +393,7 @@ impl Loop {
                     ]
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&replication_config_version_actualize, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&replication_config_version_actualize, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -416,7 +416,7 @@ impl Loop {
                             .timeout(Self::SYNC_TIMEOUT)
                             .await?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -427,7 +427,7 @@ impl Loop {
                     "proposing replicaset state change"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -519,7 +519,7 @@ impl Loop {
                         let predicate = cas::Predicate::new(applied, ranges);
                         let cas = cas::Request::new(next_op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -580,7 +580,7 @@ impl Loop {
                         let predicate = cas::Predicate::new(applied, ranges);
                         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -655,7 +655,7 @@ impl Loop {
                         let predicate = cas::Predicate::new(applied, ranges);
                         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -746,7 +746,7 @@ impl Loop {
                         let predicate = cas::Predicate::new(applied, ranges);
                         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -785,7 +785,7 @@ impl Loop {
                     "updating current vshard config"
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
-                        cas::compare_and_swap(&cas, true, deadline)?.no_retries()?;
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }

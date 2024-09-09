@@ -174,7 +174,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 
         let predicate = cas::Predicate::with_applied_index(ranges);
         let cas_req = crate::cas::Request::new(op, predicate, ADMIN_ID)?;
-        let res = cas::compare_and_swap(&cas_req, true, deadline)?;
+        let res = cas::compare_and_swap_local(&cas_req, deadline)?;
         if req.dont_retry {
             res.no_retries()?;
         } else if let Some(e) = res.into_retriable_error() {

@@ -55,6 +55,38 @@ pub fn check_dml_prohibited(dml: &Dml) -> traft::Result<()> {
     Ok(())
 }
 
+/// Performs a clusterwide compare and swap operation. Waits until the
+/// resulting entry is applied locally.
+///
+/// May or may not redirect a request to the current raft leader via RPC.
+///
+/// E.g. it checks the `predicate` on leader and if no conflicting entries were found
+/// appends the `op` to the raft log and returns its index and term.
+///
+/// # Errors
+/// See [`Error`] for CaS-specific errors.
+/// It can also return general picodata errors in cases of faulty network or storage.
+#[inline(always)]
+pub fn compare_and_swap_and_wait(request: &Request, deadline: Instant) -> traft::Result<CasResult> {
+    compare_and_swap(request, true, false, deadline)
+}
+
+/// Performs a clusterwide compare and swap operation.
+///
+/// Does not redirect the request to a different instance, returns and error if
+/// the current instance is not the raft leader.
+///
+/// Checks the `predicate` and if no conflicting entries were found
+/// appends the `op` to the raft log and returns its index and term.
+///
+/// # Errors
+/// See [`Error`] for CaS-specific errors.
+/// It can also return general picodata errors in cases of faulty storage.
+#[inline(always)]
+pub fn compare_and_swap_local(request: &Request, deadline: Instant) -> traft::Result<CasResult> {
+    compare_and_swap(request, true, true, deadline)
+}
+
 /// Performs a clusterwide compare and swap operation.
 ///
 /// E.g. it checks the `predicate` on leader and if no conflicting entries were found
@@ -66,6 +98,7 @@ pub fn check_dml_prohibited(dml: &Dml) -> traft::Result<()> {
 pub fn compare_and_swap(
     request: &Request,
     wait_index: bool,
+    force_local: bool,
     deadline: Instant,
 ) -> traft::Result<CasResult> {
     let node = node::global()?;
@@ -87,6 +120,8 @@ pub fn compare_and_swap(
         // cas has to be called locally in cases when listen ports are closed,
         // for example on shutdown
         res = proc_cas_local(request);
+    } else if force_local {
+        return Err(TraftError::NotALeader);
     } else {
         let future = async {
             let timeout = deadline.duration_since(fiber::clock());

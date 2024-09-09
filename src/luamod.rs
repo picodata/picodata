@@ -1129,7 +1129,7 @@ pub(crate) fn setup() {
                 let predicate = cas::Predicate::from_lua_args(predicate.unwrap_or_default())?;
                 let req = crate::cas::Request::new(op, predicate, su.original_user_id)?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
-                let res = cas::compare_and_swap(&req, false, deadline)?;
+                let res = cas::compare_and_swap(&req, false, false, deadline)?;
                 let (index, _) = res.no_retries()?;
                 Ok(index)
             },
@@ -1166,7 +1166,7 @@ pub(crate) fn setup() {
                     su.original_user_id,
                 )?;
                 let deadline = fiber::clock().saturating_add(Duration::from_secs(3));
-                let res = cas::compare_and_swap(&req, false, deadline)?;
+                let res = cas::compare_and_swap(&req, false, false, deadline)?;
                 let (index, _) = res.no_retries()?;
                 Ok(index)
             },

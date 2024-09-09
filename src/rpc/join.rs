@@ -119,9 +119,9 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         ];
         let predicate = cas::Predicate::with_applied_index(ranges);
         let cas_req = crate::cas::Request::new(Op::BatchDml { ops }, predicate, ADMIN_ID)?;
-        let res = cas::compare_and_swap(&cas_req, true, deadline)?;
+        let res = cas::compare_and_swap_and_wait(&cas_req, deadline)?;
         if let Some(e) = res.into_retriable_error() {
-            crate::tlog!(Debug, "local CaS rejected: {e}");
+            crate::tlog!(Debug, "CaS rejected: {e}");
             fiber::sleep(Duration::from_millis(250));
             continue;
         }

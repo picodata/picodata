@@ -2475,7 +2475,7 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
         ];
         let predicate = cas::Predicate::with_applied_index(ranges);
         let req = cas::Request::new(Op::DdlAbort { cause }, predicate, effective_user_id())?;
-        let res = cas::compare_and_swap(&req, true, deadline)?;
+        let res = cas::compare_and_swap_and_wait(&req, deadline)?;
         match res {
             cas::CasResult::RetriableError(_) => continue,
             cas::CasResult::Ok((index, _)) => return Ok(index),

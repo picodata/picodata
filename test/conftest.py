@@ -1689,11 +1689,10 @@ class Cluster:
         ]
         # fmt: on
 
+        print(f"executing: {command}")
         rc = subprocess.call(
             command,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
         )
         assert rc == 0
 

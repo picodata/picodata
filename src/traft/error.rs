@@ -59,15 +59,11 @@ pub enum Error {
         instance_rsid: String,
         requested_rsid: String,
     },
-    // NOTE: this error message is relied on in luamod.lua,
-    // don't forget to update it everywhere if you're changing it.
     #[error("operation request from different term {requested}, current term is {current}")]
     TermMismatch {
         requested: RaftTerm,
         current: RaftTerm,
     },
-    // NOTE: this error message is relied on in luamod.lua,
-    // don't forget to update it everywhere if you're changing it.
     #[error("not a leader")]
     NotALeader,
     #[error("lua error: {0}")]

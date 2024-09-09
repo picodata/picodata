@@ -1410,7 +1410,7 @@ pub(crate) fn reenterable_schema_change_request(
         // TODO: Should look at https://git.picodata.io/picodata/picodata/picodata/-/issues/866.
         let predicate = cas::Predicate::new(index, cas::schema_change_ranges());
         let req = crate::cas::Request::new(op, predicate, current_user)?;
-        let res = cas::compare_and_swap(&req, true, deadline)?;
+        let res = cas::compare_and_swap_and_wait(&req, deadline)?;
         let index = match res {
             cas::CasResult::Ok((index, _)) => index,
             cas::CasResult::RetriableError(_) => continue,
@@ -1607,7 +1607,7 @@ fn do_dml_on_global_tbl(mut query: Query<RouterRuntime>) -> traft::Result<Consum
 
         let predicate = Predicate::new(raft_index, ranges);
         let cas_req = crate::cas::Request::new(op, predicate, current_user)?;
-        let res = crate::cas::compare_and_swap(&cas_req, true, deadline)?;
+        let res = crate::cas::compare_and_swap_and_wait(&cas_req, deadline)?;
         res.no_retries()?;
 
         Ok(ConsumerResult {

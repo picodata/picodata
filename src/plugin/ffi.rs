@@ -219,7 +219,7 @@ extern "C" fn pico_ffi_cas(
     let user_id = effective_user_id();
     let res = (|| -> Result<_, _> {
         let request = cas::Request::new(op, predicate, user_id)?;
-        cas::compare_and_swap(&request, false, deadline)
+        cas::compare_and_swap(&request, false, false, deadline)
     })();
     match res {
         Ok(cas::CasResult::Ok((index, term))) => ROk(RSome(Tuple2(index, term))),
