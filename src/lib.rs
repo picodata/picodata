@@ -16,6 +16,7 @@ use std::path::Path;
 
 use ::raft::prelude as raft;
 use ::tarantool::error::Error as TntError;
+use ::tarantool::error::IntoBoxError;
 use ::tarantool::fiber::r#async::timeout::{self, IntoTimeout};
 use ::tarantool::time::Instant;
 use ::tarantool::tlua;
@@ -28,6 +29,7 @@ use traft::RaftSpaceAccess;
 
 use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
+use crate::error_code::ErrorCode;
 use crate::instance::Instance;
 use crate::instance::State;
 use crate::instance::StateVariant::*;
@@ -979,8 +981,9 @@ fn postjoin(
     // change from leader before this time.
     let activation_deadline = Instant::now_fiber().saturating_add(Duration::from_secs(10));
 
-    // This will be doubled on each retry.
+    // This will be doubled on each retry, until max_retry_timeout is reached.
     let mut retry_timeout = Duration::from_millis(250);
+    let max_retry_timeout = Duration::from_secs(5);
 
     // Activates instance
     loop {
@@ -1035,25 +1038,19 @@ fn postjoin(
             &req,
         )
         .timeout(activation_deadline - now);
+        let error_message;
         match fiber::block_on(fut) {
             Ok(rpc::update_instance::Response {}) => {
                 break;
             }
             Err(timeout::Error::Failed(TntError::Tcp(e))) => {
-                let timeout = retry_timeout.saturating_sub(now.elapsed());
-                retry_timeout *= 2;
-                #[rustfmt::skip]
-                tlog!(Warning, "failed to activate myself: {e}, retrying in {timeout:.02?}...");
-                fiber::sleep(timeout);
-                continue;
+                error_message = e.to_string();
             }
             Err(timeout::Error::Failed(TntError::IO(e))) => {
-                let timeout = retry_timeout.saturating_sub(now.elapsed());
-                retry_timeout *= 2;
-                #[rustfmt::skip]
-                tlog!(Warning, "failed to activate myself: {e}, retrying in {timeout:.02?}...");
-                fiber::sleep(timeout);
-                continue;
+                error_message = e.to_string();
+            }
+            Err(timeout::Error::Failed(e)) if e.error_code() == ErrorCode::NotALeader as u32 => {
+                error_message = e.to_string();
             }
             Err(e) => {
                 return Err(Error::other(format!(
@@ -1061,6 +1058,12 @@ fn postjoin(
                 )));
             }
         }
+
+        let timeout = retry_timeout.saturating_sub(now.elapsed());
+        retry_timeout = max_retry_timeout.max(retry_timeout * 2);
+        #[rustfmt::skip]
+        tlog!(Warning, "failed to activate myself: {error_message}, retrying in {timeout:.02?}...");
+        fiber::sleep(timeout);
     }
 
     // Wait for target state to change to Online, so that sentinel doesn't send
