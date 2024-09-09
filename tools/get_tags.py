@@ -13,6 +13,7 @@ PROJECT_DIR = pathlib.Path(__file__).parent.parent
 
 def run_shell(path, shell=True, executable='/bin/bash', text=True):
     retry = GET_SOURCES_ATTEMPTS
+    limit = 100
     timeout = 3
     while retry > 0:
         try:
@@ -27,13 +28,19 @@ def run_shell(path, shell=True, executable='/bin/bash', text=True):
                     return
 
                 print("fetching tag for", path)
-                subprocess.run(
+                proc = subprocess.run(
                     "git fetch --deepen 50",
                     shell=shell,
                     executable=executable,
                     text=text,
                     cwd="{}/{}".format(PROJECT_DIR, path),
                 )
+                print("stdout={}, stderr={}, code={}".format(
+                    proc.stdout, proc.stderr, proc.returncode))
+                limit -= 1
+                if limit < 0:
+                    print("can't fetch tags")
+                    return 2
         except Exception as e:
             print("can't run: " + str(e))
             retry -= 1
