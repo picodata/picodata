@@ -107,7 +107,8 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // update target replicaset master
     let new_target_master = get_new_replicaset_master_if_needed(instances, replicasets);
-    if let Some(to) = new_target_master {
+    if let Some((to, replicaset)) = new_target_master {
+        debug_assert_eq!(to.replicaset_id, replicaset.replicaset_id);
         let mut ops = UpdateOps::new();
         ops.assign(column_name!(Replicaset, target_master_id), &to.instance_id)?;
         let dml = Dml::update(
@@ -116,8 +117,11 @@ pub(super) fn action_plan<'i>(
             ops,
             ADMIN_ID,
         )?;
-        // TODO: add range for Instance current & target master
-        let ranges = vec![cas::Range::for_dml(&dml)?];
+        let ranges = vec![
+            cas::Range::for_dml(&dml)?,
+            cas::Range::new(ClusterwideTable::Instance).eq([&to.instance_id]),
+            cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.target_master_id]),
+        ];
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
         return Ok(UpdateTargetReplicasetMaster { cas }.into());
@@ -903,10 +907,10 @@ pub mod stage {
 #[inline(always)]
 fn get_new_replicaset_master_if_needed<'i>(
     instances: &'i [Instance],
-    replicasets: &HashMap<&ReplicasetId, &Replicaset>,
-) -> Option<&'i Instance> {
+    replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
+) -> Option<(&'i Instance, &'i Replicaset)> {
     // TODO: construct a map from replicaset id to instance to improve performance
-    for r in replicasets.values() {
+    for &r in replicasets.values() {
         #[rustfmt::skip]
         let Some(master) = instances.iter().find(|i| i.instance_id == r.target_master_id) else {
             #[rustfmt::skip]
@@ -935,7 +939,7 @@ fn get_new_replicaset_master_if_needed<'i>(
             continue;
         };
 
-        return Some(new_master);
+        return Some((new_master, r));
     }
 
     None
