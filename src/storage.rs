@@ -4,6 +4,8 @@ use tarantool::decimal::Decimal;
 use tarantool::error::{BoxError, Error as TntError, TarantoolErrorCode as TntErrorCode};
 use tarantool::fiber;
 use tarantool::index::FieldType as IndexFieldType;
+#[allow(unused_imports)]
+use tarantool::index::Metadata as IndexMetadata;
 use tarantool::index::{Index, IndexId, IndexIterator, IndexType, IteratorType};
 use tarantool::index::{IndexOptions, Part};
 use tarantool::msgpack::{ArrayWriter, ValueIter};
@@ -34,6 +36,7 @@ use crate::schema::{IndexDef, IndexOption, TableDef};
 use crate::schema::{PluginDef, INITIAL_SCHEMA_VERSION};
 use crate::schema::{PrivilegeDef, RoutineDef, UserDef};
 use crate::schema::{ADMIN_ID, PUBLIC_ID, UNIVERSE_ID};
+use crate::tarantool::box_schema_version;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
@@ -1047,54 +1050,97 @@ impl Clusterwide {
 /// Return a `KeyDef` to be used for comparing **tuples** of the corresponding global table.
 ///
 /// The return value is cached for system tables.
+#[inline(always)]
 pub fn cached_key_def(space_id: SpaceId, index_id: IndexId) -> tarantool::Result<Rc<KeyDef>> {
-    static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
-    let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-    if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
-        let key_def = match key_defs.entry((sys_space_id, index_id)) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => {
-                let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-                let key_def = index.meta()?.to_key_def();
-                // System space definition's never change during a single
-                // execution, so it's safe to cache these
-                v.insert(Rc::new(key_def))
-            }
-        };
-        return Ok(key_def.clone());
-    }
-
-    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-    let key_def = index.meta()?.to_key_def();
-    Ok(Rc::new(key_def))
+    cached_key_def_impl(space_id, index_id, KeyDefKind::Regular)
 }
 
 /// Return a `KeyDef` to be used for comparing **keys** of the corresponding global table.
 ///
 /// The return value is cached for system tables.
-pub(crate) fn cached_key_def_for_key(
+#[inline(always)]
+pub fn cached_key_def_for_key(
     space_id: SpaceId,
     index_id: IndexId,
 ) -> tarantool::Result<Rc<KeyDef>> {
-    static mut KEY_DEF: Option<HashMap<(ClusterwideTable, IndexId), Rc<KeyDef>>> = None;
-    let key_defs = unsafe { KEY_DEF.get_or_insert_with(HashMap::new) };
-    if let Ok(sys_space_id) = ClusterwideTable::try_from(space_id) {
-        let key_def = match key_defs.entry((sys_space_id, index_id)) {
-            Entry::Occupied(o) => o.into_mut(),
-            Entry::Vacant(v) => {
-                let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-                let key_def = index.meta()?.to_key_def_for_key();
-                // System space definition's never change during a single
-                // execution, so it's safe to cache these
-                v.insert(Rc::new(key_def))
-            }
-        };
-        return Ok(key_def.clone());
+    cached_key_def_impl(space_id, index_id, KeyDefKind::ForKey)
+}
+
+fn cached_key_def_impl(
+    space_id: SpaceId,
+    index_id: IndexId,
+    kind: KeyDefKind,
+) -> tarantool::Result<Rc<KeyDef>> {
+    // We borrow global variables here. It's only safe as long as we don't yield from here.
+    #[cfg(debug_assertions)]
+    let _guard = crate::util::NoYieldsGuard::new();
+
+    let id = (space_id, index_id, kind);
+
+    static mut SYSTEM_KEY_DEFS: Option<KeyDefCache> = None;
+    // Safety: this is only called from main thread
+    let system_key_defs = unsafe { SYSTEM_KEY_DEFS.get_or_insert_with(HashMap::new) };
+    if ClusterwideTable::try_from(space_id).is_ok() {
+        // System table definition's never change during a single
+        // execution, so it's safe to cache these
+        let key_def = get_or_create_key_def(system_key_defs, id)?;
+        return Ok(key_def);
     }
 
-    let index = unsafe { Index::from_ids_unchecked(space_id, index_id) };
-    let key_def = index.meta()?.to_key_def_for_key();
-    Ok(Rc::new(key_def))
+    static mut USER_KEY_DEFS: Option<(u64, KeyDefCache)> = None;
+    let (schema_version, user_key_defs) =
+        // Safety: this is only called from main thread
+        unsafe { USER_KEY_DEFS.get_or_insert_with(|| (0, HashMap::new())) };
+    let box_schema_version = box_schema_version();
+    if *schema_version != box_schema_version {
+        user_key_defs.clear();
+        *schema_version = box_schema_version;
+    }
+
+    let key_def = get_or_create_key_def(user_key_defs, id)?;
+    Ok(key_def)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum KeyDefKind {
+    /// [`IndexMetadata::to_key_def_for_key`] should be called.
+    ///
+    /// This kind of key def is used for comparing the keys to each other via
+    /// [`KeyDef::compare`], not the tuples, nor keys to the tuples.
+    ///
+    /// The difference is that positions of key parts are different when the
+    /// parts are in a key vs when they're in a tuple.
+    ForKey,
+    /// [`IndexMetadata::to_key_def`] should be called.
+    ///
+    /// This kind of key def is used for comparing the tuples to each other via
+    /// [`KeyDef::compare`], or keys to tuples via [`KeyDef::compare_with_key`].
+    Regular,
+}
+
+type KeyDefCache = HashMap<KeyDefId, Rc<KeyDef>>;
+type KeyDefId = (SpaceId, IndexId, KeyDefKind);
+
+fn get_or_create_key_def(cache: &mut KeyDefCache, id: KeyDefId) -> tarantool::Result<Rc<KeyDef>> {
+    match cache.entry(id) {
+        Entry::Occupied(o) => {
+            let key_def = o.get().clone();
+            Ok(key_def)
+        }
+        Entry::Vacant(v) => {
+            let (table_id, index_id, kind) = id;
+            // Safety: this is always safe actually, we just made this function unsafe for no good reason
+            let index = unsafe { Index::from_ids_unchecked(table_id, index_id) };
+            let index_metadata = index.meta()?;
+            let key_def = match kind {
+                KeyDefKind::ForKey => index_metadata.to_key_def_for_key(),
+                KeyDefKind::Regular => index_metadata.to_key_def(),
+            };
+            let key_def = Rc::new(key_def);
+            v.insert(key_def.clone());
+            Ok(key_def)
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

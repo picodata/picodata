@@ -509,3 +509,14 @@ pub fn rm_tarantool_files(
     }
     Ok(())
 }
+
+pub fn box_schema_version() -> u64 {
+    mod ffi {
+        extern "C" {
+            pub fn box_schema_version() -> u64;
+        }
+    }
+
+    // Safety: always safe
+    unsafe { ffi::box_schema_version() }
+}
