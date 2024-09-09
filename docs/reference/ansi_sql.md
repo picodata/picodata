@@ -4,7 +4,9 @@
 стандарта SQL:2016, а именно ISO/IEC 9075:2016 «Информационные технологии
 — Языки баз данных — SQL».
 
-!!! abstract "Легенда"
+## Легенда {: #legend }
+
+!!! abstract ""
     <span class="full legend-id">E001-01</span><span class="legend-dash">—</span>возможность *полностью* реализована<br>
     <span class="partly legend-id">E001-01</span><span class="legend-dash">—</span>возможность *частично* реализована<br>
     <span class="absent legend-id">E001-01</span><span class="legend-dash">—</span>возможность не реализована
