@@ -2333,6 +2333,38 @@ def test_sql_acl_users_roles(cluster: Cluster):
     acl = i1.sql(f'drop role "{lower_rolename}"')
     assert acl["row_count"] == 1
 
+    # Create user with auth method in lowercase
+    acl = i1.sql("CREATE USER andy WITH PASSWORD 'Passw0rd' USING md5")
+    assert acl["row_count"] == 1
+
+    # Create user with auth method in uppercase
+    acl = i1.sql("CREATE USER randy WITH PASSWORD 'Passw0rd' USING LDAP")
+    assert acl["row_count"] == 1
+
+    # Create user with auth method in mixed case
+    acl = i1.sql("CREATE USER wendy WITH PASSWORD 'Passw0rd' USING CHAP-sha1")
+    assert acl["row_count"] == 1
+
+    # Create the same user with the same password, but auth method is in different case
+    acl = i1.sql("CREATE USER wendy WITH PASSWORD 'Passw0rd' USING CHAP-SHA1")
+    assert acl["row_count"] == 0
+
+    # Alter user with auth method in lowercase
+    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING md5")
+    assert acl["row_count"] == 1
+
+    # Alter user with auth method in uppercase
+    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING CHAP-SHA1")
+    assert acl["row_count"] == 1
+
+    # Alter user with auth method in mixed case
+    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING Ldap")
+    assert acl["row_count"] == 1
+
+    # Alter the same user with the same password, but auth method is in different case
+    acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING ldap")
+    assert acl["row_count"] == 0
+
 
 def test_sql_alter_login(cluster: Cluster):
     cluster.deploy(instance_count=2)

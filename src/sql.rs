@@ -645,6 +645,11 @@ fn check_name_emptyness(name: &str) -> traft::Result<()> {
     Ok(())
 }
 
+fn parse_auth_method(auth_method: &str) -> traft::Result<AuthMethod> {
+    AuthMethod::from_str(&auth_method.to_lowercase())
+        .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))
+}
+
 fn alter_user_ir_node_to_op_or_result(
     name: &SmolStr,
     alter_option: &AlterOption,
@@ -670,8 +675,7 @@ fn alter_user_ir_node_to_op_or_result(
             password,
             auth_method,
         } => {
-            let method = AuthMethod::from_str(auth_method)
-                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            let method = parse_auth_method(auth_method)?;
             validate_password(password, &method, storage)?;
             let data = AuthData::new(&method, name, password);
             let auth = AuthDef::new(method, data.into_string());
@@ -824,8 +828,7 @@ fn acl_ir_node_to_op_or_result(
             ..
         } => {
             check_name_emptyness(name)?;
-            let method = AuthMethod::from_str(auth_method)
-                .map_err(|_| Error::Other(format!("Unknown auth method: {auth_method}").into()))?;
+            let method = parse_auth_method(auth_method)?;
             validate_password(password, &method, storage)?;
             let data = AuthData::new(&method, name, password);
             let auth = AuthDef::new(method, data.into_string());
