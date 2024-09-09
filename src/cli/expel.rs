@@ -1,7 +1,7 @@
 use crate::cli::args;
 use crate::cli::connect::determine_credentials_and_connect;
+use crate::rpc::expel::redirect::proc_expel_redirect;
 use crate::rpc::expel::Request as ExpelRequest;
-use crate::rpc::RequestArgs;
 use crate::tlog;
 use crate::traft::error::Error;
 use tarantool::fiber;
@@ -19,7 +19,7 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
         cluster_id: args.cluster_id,
         instance_id: args.instance_id.clone(),
     };
-    fiber::block_on(client.call(ExpelRequest::PROC_NAME, &req))
+    fiber::block_on(client.call(crate::proc_name!(proc_expel_redirect), &req))
         .map_err(|e| Error::other(format!("Failed to expel instance: {e}")))?;
 
     tlog!(Info, "Instance {} successfully expelled", args.instance_id);
