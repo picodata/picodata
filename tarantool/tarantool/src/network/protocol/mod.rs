@@ -43,10 +43,17 @@ pub enum ProtocolError {
 pub struct SyncIndex(pub(crate) u64);
 
 impl SyncIndex {
+    /// Increments current sync value.
     pub fn next_index(&mut self) -> Self {
         let sync = self.0;
         self.0 += 1;
         Self(sync)
+    }
+
+    /// Returns current sync value.
+    #[inline(always)]
+    pub fn get(&self) -> u64 {
+        self.0
     }
 }
 
