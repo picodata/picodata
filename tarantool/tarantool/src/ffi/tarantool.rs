@@ -1347,9 +1347,17 @@ extern "C" {
     pub fn cbus_process(endpoint: *mut c_void);
 }
 
+// Schema.
+extern "C" {
+    /// Returns the current version of the database schema.
+    pub fn box_schema_version() -> u64;
+}
+
 // Session.
 #[cfg(feature = "picodata")]
 extern "C" {
+    /// Returns the unique identifier (ID) for the current session.
+    pub fn box_session_id() -> u64;
     pub fn box_session_user_id(uid: *mut u32) -> c_int;
     pub fn box_effective_user_id() -> u32;
     pub fn box_session_su(uid: u32) -> c_int;
