@@ -10,7 +10,7 @@
 
 - Подключение к [консоли администратора](#admin_console) (`picodata admin`)
 - Подключение к [SQL-консоли](#sql_console) (`picodata connect`)
-- Подключение [по протоколу PostgreSQL](#pgproto) (`psql` и др.)
+- Подключение по [протоколу PostgreSQL](#pgproto) (`psql` и др.)
 
 См. также:
 
@@ -18,7 +18,7 @@
 
 ## Консоль администратора {: #admin_console }
 
-### Доступ к консоли {: #admin_console_connect }
+### Настройка и подключение  {: #admin_console_connect }
 
 Консоль администратора предоставляет доступ к учетной записи
 [Администратора СУБД](access_control.md#admin) (`admin`). Для запуска
@@ -29,8 +29,8 @@ picodata admin ./admin.sock
 ```
 
 По умолчанию файл unix-сокета расположен в рабочей директории инстанса,
-указанной при запуске в параметре [picodata run --data-dir]. Размещение
-этого файла можно переопределить параметром [picodata run --admin-sock].
+указанной при запуске в параметре [picodata run --data-dir]. Путь
+к этому файлу можно переопределить параметром [picodata run --admin-sock].
 
 [picodata run --data-dir]: ../reference/cli.md#run_data_dir
 [picodata run --admin-sock]: ../reference/cli.md#run_admin_sock
@@ -153,17 +153,17 @@ picodata connect alice@localhost:3301
 
 В соответствии с доступными ему привилегиями, пользователь сможет
 работать в консоли с таблицами. Возможность пользователя подключаться
-может быть ограничена [соответствующей привилегией `LOGIN`].
+может быть ограничена [соответствующей привилегией LOGIN].
 
-[соответствующей привилегией `LOGIN`]: access_control.md#privileges
+[соответствующей привилегией LOGIN]: ../tutorial/access_control.md#privileges
 
 См. также:
 
 - [Работа с данными SQL](sql_examples.md)
 
-## Встроенная справка {: #builtin_help }
+### Встроенная справка {: #builtin_help }
 
-Встроенная справка Picodata доступна как в административной, так и в
+Встроенная справка Picodata доступна в административной и в
 SQL-консоли. Справка содержит информацию о дополнительных командах в
 консоли и поддерживаемых сочетаниях клавиш. Для вызова справки
 введите `\help`.
@@ -195,79 +195,52 @@ SQL-консоли. Справка содержит информацию о до
 
 - [Аргументы командной строки](../reference/cli.md)
 
-## Pgproto {: #pgproto }
+## Протокол PostgreSQL {: #pgproto }
 
-Модуль Pgproto реализует протокол PostgreSQL путем эмуляции сервера
-PostgreSQL. Основная цель Pgproto — предоставить пользователям возможность
-взаимодействовать с Picodata с помощью большого числа хорошо знакомых
-инструментов и библиотек, написанных для PostgreSQL.
+Picodata позволяет пользователям взаимодействовать с кластером при
+помощи большого числа хорошо знакомых инструментов и библиотек,
+написанных для PostgreSQL.
 
-### Настройка Pgproto {: #pgproto_setup }
+### Настройка и подключение {: #setup }
 
-Для запуска сервера Pgproto, принимающего подключения PostgreSQL по адресу
-`localhost:5432`, нужно [запустить](../reference/cli.md#run) инстанс Picodata,
-используя [опцию](../reference/cli.md#run_pg_listen) `--pg-listen`:
+Для включения протокола PostgreSQL укажите параметр [picodata run
+--pg-listen] при запуске инстанса Picodata:
 
 ```bash
-picodata run --pg-listen localhost:5432
+picodata run --pg-listen 127.0.0.1:5432
 ```
 
-Подключаться к серверу Pgproto могут только пользователи с паролем,
-совместимым с PostgreSQL. Для создания пользователя `postgres` с подходящим
-паролем в [консоли администратора](#admin_console) нужно выполнить команду:
+Это позволит инстансу принимать подключения в качестве сервера PostgreSQL.
 
-```sql
-CREATE USER "postgres" WITH PASSWORD 'P@ssw0rd' USING md5
+[picodata run --pg-listen]: ../reference/cli.md#run_pg_listen
+
+Перед подключением убедитесь, что в Picodata создана [пользовательская учетная запись](#user_setup).
+
+Подключитесь к Picodata через [psql] — интерактивный терминал
+PostgreSQL:
+
+```shell
+psql postgres://alice:T0psecret@localhost:5432?sslmode=disable
 ```
 
-!!! note "Примечание"
-    В настоящее время только аутентификация по хешу MD5 совместима
-    с PostgreSQL.
+[psql]: https://www.postgresql.org/docs/current/app-psql.html
 
-Для выдачи разрешения на создание таблиц пользователю `postgres` в
-[консоли администратора](#admin_console) нужно выполнить команду:
+По умолчанию SSL для PostgreSQL-сервера в Picodata отключен, поэтому его также следует отключить
+на стороне `psql`, используя опцию `sslmode`.
 
-```sql
-GRANT CREATE TABLE TO "postgres"
-```
+??? abstract "Включение протокола SSL"
+    Чтобы использовать протокол SSL при подключении к Picodata по
+    протоколу PostgreSQL, необходимо сделать следующее:
 
-Полученное разрешение позволит пользователю `postgres` отправить в Picodata
-запрос CREATE TABLE, пример которого приведен [далее](#examples).
+    1. Задайте в [файле конфигурации](../reference/config.md#instance_pg_ssl)
+       параметр `instance.pg.ssl: true`
 
-### Подключение к Pgproto через psql {: #pgproto_psql_connect }
+    1. Добавьте в [рабочую директорию инстанса](../reference/cli.md#run_data_dir)
+       `<DATA_DIR>` SSL-сертификат и ключ `server.crt`, `server.key`
 
-Подключение к Picodata через Pgproto осуществляется с помощью
-интерактивного терминала PostgreSQL
-[psql](https://www.postgresql.org/docs/current/app-psql.html).
+### Примеры запросов {: #examples }
 
-Команда для подключения к Pgproto через psql:
-
-```bash title="Вариант № 1"
-psql -U postgres -h localhost -p 5432 -W "sslmode=disable"
-```
-
-```bash title="Вариант № 2"
-psql "user=postgres host=localhost port=5432 password=P@ssw0rd sslmode=disable"
-```
-
-По умолчанию SSL отключен в Pgproto, поэтому его также следует отключить
-на стороне psql, используя опцию `sslmode`.
-
-??? abstract "Включение протокола SSL в Pgproto"
-    Чтобы использовать протокол SSL при подключении к Pgproto, необходимо
-    сделать следующее:
-
-    1. Задать параметр `instance.pg.ssl: true`
-    [в файле конфигурации](../reference/config.md#instance_pg_ssl)
-    1. Добавить в [рабочую директорию инстанса](../reference/cli.md#run_data_dir)
-    `<DATA_DIR>` SSL-сертификаты:
-        * `server.crt`
-        * `server.key`
-
-### Примеры {: #examples }
-
-После подключения к Pgproto запросы можно будет отправлять в интерактивной
-сессии psql. Примеры:
+Примеры запросов в интерактивной сессии `psql`:
 
 ```sql title="Запрос CREATE TABLE"
 postgres=> CREATE TABLE WAREHOUSE (
@@ -297,7 +270,7 @@ postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
 (4 rows)
 ```
 
-```sql title="Запрос SELECT с предложением WHERE"
+```sql title="Запрос SELECT с условием WHERE"
 postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
  "W_NAME"
 ----------
@@ -311,13 +284,13 @@ postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
 * [INSERT](../reference/sql/insert.md)
 * [SELECT](../reference/sql/select.md)
 
-### Ограничения Pgproto {: #pgproto_limitations }
+### Ограничения {: #pgproto_limitations }
 
  * Поступающие запросы без изменений передаются в Picodata в текстовом виде,
  поэтому возможно выполнение только поддерживаемых в Picodata запросов
  * [Системные каталоги
  PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html) пока
  не поддерживаются
- * Pgproto работает в режиме
+ * Модуль Pgproto работает в режиме
 [autocommit](https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html),
-т. к. Picodata не поддерживает интерактивные транзакции
+т.к. Picodata не поддерживает интерактивные транзакции

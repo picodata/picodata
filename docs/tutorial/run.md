@@ -125,7 +125,7 @@ picodata connect admin@localhost:13301
 
 [docker-compose.yml:17]: https://git.picodata.io/picodata/picodata/picodata/-/blame/master/helm/docker-compose.yml#L17
 
-Для подключения по протоколу [Pgproto](../tutorial/connecting.md#pgproto_psql_connect)
+Для подключения по протоколу [PostgreSQL](../tutorial/connecting.md#pgproto)
 используйте команду:
 
 ```shell

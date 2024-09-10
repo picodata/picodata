@@ -277,7 +277,8 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 
 ### --pg-listen {: #run_pg_listen }
 
-Адрес сервера [Pgproto](../tutorial/connecting.md#pgproto).
+Адрес сервера для подключения по протоколу
+[PostgreSQL](../tutorial/connecting.md#pgproto).
 
 Аналогичная переменная окружения: `PICODATA_PG_LISTEN`<br>
 Аналогичный параметр файла конфигурации: `instance.pg.listen`

@@ -476,7 +476,8 @@ picodata run -c instance.memtx.checkpoint_interval=7200.0
 
 ### instance.pg.listen {: #instance_pg_listen }
 
-Адрес сервера [Pgproto](../tutorial/connecting.md#pgproto).
+Адрес сервера для подключения по протоколу
+[PostgreSQL](../tutorial/connecting.md#pgproto).
 
 Данные:
 
