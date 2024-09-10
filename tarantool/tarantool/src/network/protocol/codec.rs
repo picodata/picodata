@@ -63,12 +63,19 @@ pub enum IProtoType {
     Replace = 3,
     Update = 4,
     Delete = 5,
-    // LegacyCall = 6,
+    /// Deprecated in Tarantool 1.6 with name `IPROTO_CALL_16`.
+    /// Superseeded by `IPROTO_CALL`, see [`IProtoType::Call`].
+    LegacyCall = 6,
     Auth = 7,
     Eval = 8,
     Upsert = 9,
     Call = 10,
     Execute = 11,
+    Nop = 12,
+    Prepare = 13,
+    Begin = 14,
+    Commit = 15,
+    Rollback = 16,
     // ...
     Ping = 64,
     // ...

@@ -9,6 +9,7 @@
 - tlua::LuaTable::metatable which is a better alternative to the existing `tlua::LuaTable::get_or_create_metatable`
 - `ffi::tarantool::box_schema_version` and `ffi::tarantool::box_session_id` functions
 - `network::protocol::SyncIndex::get` method
+- `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants 
 
 ### Changed
 
