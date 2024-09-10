@@ -306,7 +306,7 @@ impl ConnInner {
             cur.set_position(0);
         }
 
-        let header = protocol::decode_header(&mut cur)?;
+        let header = protocol::Header::decode(&mut cur)?;
         if header.iproto_type == protocol::IProtoType::Error as u32 {
             let error = protocol::decode_error(&mut cur, &header)?;
             return Err(Error::Remote(error));

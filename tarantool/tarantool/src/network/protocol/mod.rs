@@ -253,7 +253,7 @@ impl Protocol {
                 None
             }
             State::Auth => {
-                let header = codec::decode_header(message)?;
+                let header = codec::Header::decode(message)?;
                 if header.iproto_type == IProtoType::Error as u32 {
                     let error = codec::decode_error(message, &header)?;
                     return Err(error::Error::Remote(error));
@@ -262,7 +262,7 @@ impl Protocol {
                 None
             }
             State::Ready => {
-                let header = codec::decode_header(message)?;
+                let header = codec::Header::decode(message)?;
                 let response;
                 if header.iproto_type == IProtoType::Error as u32 {
                     response = Err(codec::decode_error(message, &header)?);

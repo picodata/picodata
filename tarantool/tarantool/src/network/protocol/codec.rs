@@ -84,19 +84,6 @@ pub enum IProtoType {
     Error = 1 << 15,
 }
 
-pub fn encode_header(
-    stream: &mut impl Write,
-    sync: SyncIndex,
-    request_type: IProtoType,
-) -> Result<(), Error> {
-    rmp::encode::write_map_len(stream, 2)?;
-    rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
-    rmp::encode::write_pfix(stream, request_type as u8)?;
-    rmp::encode::write_pfix(stream, SYNC)?;
-    rmp::encode::write_uint(stream, sync.0)?;
-    Ok(())
-}
-
 pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
     // prepare 'chap-sha1' scramble:
     // salt = base64_decode(encoded_salt);
@@ -389,48 +376,72 @@ pub struct Header {
     pub schema_version: u64,
 }
 
+impl Header {
+    pub fn encode(&self, stream: &mut impl Write) -> Result<(), Error> {
+        rmp::encode::write_map_len(stream, 2)?;
+        rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
+        rmp::encode::write_pfix(stream, self.iproto_type as u8)?;
+        rmp::encode::write_pfix(stream, SYNC)?;
+        rmp::encode::write_uint(stream, self.sync.0)?;
+        Ok(())
+    }
+
+    pub fn encode_from_parts(
+        stream: &mut impl Write,
+        sync: SyncIndex,
+        request_type: IProtoType,
+    ) -> Result<(), Error> {
+        rmp::encode::write_map_len(stream, 2)?;
+        rmp::encode::write_pfix(stream, REQUEST_TYPE)?;
+        rmp::encode::write_pfix(stream, request_type as u8)?;
+        rmp::encode::write_pfix(stream, SYNC)?;
+        rmp::encode::write_uint(stream, sync.0)?;
+        Ok(())
+    }
+
+    pub fn decode(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
+        let mut sync: Option<u64> = None;
+        let mut iproto_type: Option<u32> = None;
+        let mut error_code: u32 = 0;
+        let mut schema_version: Option<u64> = None;
+
+        let map_len = rmp::decode::read_map_len(stream)?;
+        for _ in 0..map_len {
+            let key = rmp::decode::read_pfix(stream)?;
+            match key {
+                REQUEST_TYPE => {
+                    let r#type: u32 = rmp::decode::read_int(stream)?;
+
+                    const IPROTO_TYPE_ERROR: u32 = IProtoType::Error as _;
+                    if (r#type & IPROTO_TYPE_ERROR) != 0 {
+                        iproto_type = Some(IPROTO_TYPE_ERROR);
+                        error_code = r#type & !IPROTO_TYPE_ERROR;
+                    } else {
+                        iproto_type = Some(r#type);
+                    }
+                }
+                SYNC => sync = Some(rmp::decode::read_int(stream)?),
+                SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(stream)?),
+                _ => msgpack::skip_value(stream)?,
+            }
+        }
+
+        if sync.is_none() || iproto_type.is_none() || schema_version.is_none() {
+            return Err(io::Error::from(io::ErrorKind::InvalidData).into());
+        }
+
+        Ok(Header {
+            sync: SyncIndex(sync.unwrap()),
+            iproto_type: iproto_type.unwrap(),
+            error_code,
+            schema_version: schema_version.unwrap(),
+        })
+    }
+}
+
 pub struct Response<T> {
     pub header: Header,
     pub payload: T,
-}
-
-pub fn decode_header(stream: &mut (impl Read + Seek)) -> Result<Header, Error> {
-    let mut sync: Option<u64> = None;
-    let mut iproto_type: Option<u32> = None;
-    let mut error_code: u32 = 0;
-    let mut schema_version: Option<u64> = None;
-
-    let map_len = rmp::decode::read_map_len(stream)?;
-    for _ in 0..map_len {
-        let key = rmp::decode::read_pfix(stream)?;
-        match key {
-            REQUEST_TYPE => {
-                let r#type: u32 = rmp::decode::read_int(stream)?;
-
-                const IPROTO_TYPE_ERROR: u32 = IProtoType::Error as _;
-                if (r#type & IPROTO_TYPE_ERROR) != 0 {
-                    iproto_type = Some(IPROTO_TYPE_ERROR);
-                    error_code = r#type & !IPROTO_TYPE_ERROR;
-                } else {
-                    iproto_type = Some(r#type);
-                }
-            }
-            SYNC => sync = Some(rmp::decode::read_int(stream)?),
-            SCHEMA_VERSION => schema_version = Some(rmp::decode::read_int(stream)?),
-            _ => msgpack::skip_value(stream)?,
-        }
-    }
-
-    if sync.is_none() || iproto_type.is_none() || schema_version.is_none() {
-        return Err(io::Error::from(io::ErrorKind::InvalidData).into());
-    }
-
-    Ok(Header {
-        sync: SyncIndex(sync.unwrap()),
-        iproto_type: iproto_type.unwrap(),
-        error_code,
-        schema_version: schema_version.unwrap(),
-    })
 }
 
 ////////////////////////////////////////////////////////////////////////////////

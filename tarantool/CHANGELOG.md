@@ -10,6 +10,7 @@
 - `ffi::tarantool::box_schema_version` and `ffi::tarantool::box_session_id` functions
 - `network::protocol::SyncIndex::get` method
 - `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants 
+- `network::protocol::codec::Header::encode_from_parts` function
 
 ### Changed
 
@@ -25,6 +26,8 @@
 - tlua::LuaTable::get_or_create_metatable is deprecated now in favor of tlua::LuaTable::metatable.
 
 ### Breaking changes
+- Replace `network::protocol::codec::{encode_header, decode_header}` functions
+  with `network::protocol::codec::Header::{encode, decode}` methods.
 
 ### Added (picodata)
 

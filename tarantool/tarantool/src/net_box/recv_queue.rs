@@ -169,7 +169,7 @@ impl RecvQueue {
                 let header = {
                     let mut buffer = self.buffer.borrow_mut();
                     buffer.set_position(start as _);
-                    protocol::decode_header(buffer.by_ref())?
+                    protocol::Header::decode(buffer.by_ref())?
                 };
 
                 let sync = header.sync;

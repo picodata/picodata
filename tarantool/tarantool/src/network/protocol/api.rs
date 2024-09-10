@@ -16,7 +16,7 @@ pub trait Request {
 
     #[inline(always)]
     fn encode_header(&self, out: &mut impl Write, sync: SyncIndex) -> Result<(), Error> {
-        codec::encode_header(out, sync, Self::TYPE)
+        codec::Header::encode_from_parts(out, sync, Self::TYPE)
     }
 
     fn encode_body(&self, out: &mut impl Write) -> Result<(), Error>;
