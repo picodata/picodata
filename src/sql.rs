@@ -76,6 +76,7 @@ pub mod storage;
 use otm::TracerKind;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
+use serde::Serialize;
 
 pub const DEFAULT_BUCKET_COUNT: u64 = 3000;
 
@@ -195,7 +196,23 @@ fn check_routine_privileges(plan: &IrPlan) -> traft::Result<()> {
     Ok(())
 }
 
+fn empty_query_response() -> traft::Result<Tuple> {
+    #[derive(Serialize)]
+    struct EmptyQueryResponse {
+        row_count: usize,
+    }
+
+    let mut buf = vec![];
+    let resp = vec![EmptyQueryResponse { row_count: 0 }];
+    rmp_serde::encode::write_named(&mut buf, &resp).map_err(|e| Error::Other(e.into()))?;
+    Tuple::try_from_slice(&buf).map_err(Into::into)
+}
+
 pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
+    if query.is_empty() {
+        return empty_query_response();
+    }
+
     if query.is_ddl()? || query.is_acl()? {
         let ir_plan = query.get_exec_plan().get_ir_plan();
         let top_id = ir_plan.get_top()?;

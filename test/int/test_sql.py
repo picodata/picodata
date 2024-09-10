@@ -5139,3 +5139,26 @@ def test_global_dml_cas_conflict(cluster: Cluster):
     #
     rows = i1.sql(""" SELECT * FROM test_table """)
     assert rows == [[0, N * K]]
+
+
+def test_empty_queries(instance: Instance):
+    empty = instance.sql("")
+    assert empty["row_count"] == 0
+
+    empty = instance.sql(";")
+    assert empty["row_count"] == 0
+
+    empty = instance.sql("  ")
+    assert empty["row_count"] == 0
+
+    empty = instance.sql("   ;")
+    assert empty["row_count"] == 0
+
+    empty = instance.sql(";   ")
+    assert empty["row_count"] == 0
+
+    empty = instance.sql(";;;;;;")
+    assert empty["row_count"] == 0
+
+    empty = instance.sql("; ; ;")
+    assert empty["row_count"] == 0
