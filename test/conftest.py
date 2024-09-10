@@ -433,7 +433,7 @@ class Retriable:
         timeout: int | float = 10,
         rps: int | float = 4,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
-        ignore_predicate: Callable[[Exception], bool] = lambda x: False,
+        fatal_predicate: Callable[[Exception], bool] = lambda x: False,
     ) -> None:
         """
         Build the retriable call context
@@ -451,7 +451,7 @@ class Retriable:
         self.retry_period = 1 / rps
         self.next_retry = now
         self.fatal = fatal
-        self.ignore_predicate = ignore_predicate
+        self.fatal_predicate = fatal_predicate
 
     def call(self, func, *args, **kwargs):
         """
@@ -464,8 +464,11 @@ class Retriable:
             except self.fatal as e:
                 raise e from e
             except Exception as e:
-                self._suppress(e)
-                continue
+                if self.fatal_predicate(e):
+                    raise e from e
+                now = time.monotonic()
+                if now > self.deadline:
+                    raise e from e
 
     def _next_try(self) -> bool:
         """
@@ -486,15 +489,6 @@ class Retriable:
 
         self.next_retry = now + self.retry_period
         return True
-
-    def _suppress(self, e: Exception) -> None:
-        """
-        Suppress the exception unless timeout expired. Raises
-        the same exception if timout did expire.
-        """
-        now = time.monotonic()
-        if now > self.deadline and not self.ignore_predicate(e):
-            raise e from e
 
 
 OUT_LOCK = threading.Lock()
@@ -783,17 +777,17 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 10,
         fatal: Type[Exception] | Tuple[Exception, ...] = ProcessDead,
-        ignore_filter: Callable[[Exception], bool] | str = lambda x: False,
+        fatal_predicate: Callable[[Exception], bool] | str = lambda x: False,
     ) -> dict:
         """Retry SQL query with constant rate until success or fatal is raised"""
 
-        ignore_predicate: Any = ignore_filter
-        if type(ignore_filter) is str:
+        predicate: Any = fatal_predicate
+        if type(fatal_predicate) is str:
 
-            def ignore_using_match(e: Exception) -> bool:
-                return bool(re.match(ignore_filter, str(e)))
+            def fatal_message(e: Exception) -> bool:
+                return bool(re.search(fatal_predicate, str(e)))
 
-            ignore_predicate = ignore_using_match
+            predicate = fatal_message
 
         attempt = 0
 
@@ -811,7 +805,7 @@ class Instance:
             timeout=retry_timeout,
             rps=rps,
             fatal=fatal,
-            ignore_predicate=ignore_predicate,
+            fatal_predicate=predicate,
         ).call(do_sql)
 
     def create_user(

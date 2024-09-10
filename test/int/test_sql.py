@@ -418,6 +418,13 @@ def test_dml_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
 
+    # after inserting/deleting from sharded table
+    # wait until all buckets are balanced to reduce
+    # flakyness
+    def wait_balanced():
+        for i in [i1, i2]:
+            cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
+
     ddl = i1.sql(
         """
         create table t (x int not null, y int not null, primary key (x))
@@ -440,6 +447,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
 
     data = i2.sql("insert into t values (1, 1), (2, 2), (3, 3), (4, 4), (5, 5)")
     assert data["row_count"] == 5
+    wait_balanced()
 
     data = i2.sql("insert into global_t values (1, 1), (2, 2)")
     assert data["row_count"] == 2
@@ -504,7 +512,7 @@ def test_dml_on_global_tbls(cluster: Cluster):
         set a = y from t
         where id = x
         """,
-        ignore_filter=r"Duplicate key exists in unique index",
+        fatal_predicate=r"Duplicate key exists in unique index",
     )
     assert data["row_count"] == 4
     data = i2.sql("select * from global_t")
@@ -518,10 +526,14 @@ def test_dml_on_global_tbls(cluster: Cluster):
     assert data["row_count"] == 4
 
     # test reading subtree with motion
-    data = i1.retriable_sql(
-        "insert into global_t select count(*), 1 from t",
-        ignore_filter=r"Duplicate key exists in unique index",
-    )
+    try:
+        data = i1.retriable_sql(
+            "insert into global_t select count(*), 1 from t",
+            fatal_predicate=r"Duplicate key exists in unique index",
+        )
+        assert data["row_count"] == 1
+    except TarantoolError as e:
+        assert re.search(r"Duplicate key exists in unique index", str(e))
 
     data = i1.sql("select * from global_t")
     assert data == [[5, 1]]
@@ -553,11 +565,14 @@ vtable_max_rows = 5000"""
     assert data == []
 
     # insert from sharded table
-    data = i2.retriable_sql(
-        "insert into global_t select x, y from t",
-        ignore_filter=r"Duplicate key exists in unique index",
-    )
-    assert data["row_count"] == 5
+    try:
+        data = i2.retriable_sql(
+            "insert into global_t select x, y from t",
+            fatal_predicate=r"Duplicate key exists in unique index",
+        )
+        assert data["row_count"] == 5
+    except TarantoolError as e:
+        assert re.search(r"Duplicate key exists in unique index", str(e))
 
     data = i2.sql("select * from global_t")
     assert data == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]
@@ -568,30 +583,27 @@ vtable_max_rows = 5000"""
     # insert into sharded table from global table
     data = i2.sql("insert into t select id + 5, a + 5 from global_t where id = 1")
     assert data["row_count"] == 1
+    wait_balanced()
     i1.raft_read_index()
-    data = i1.retriable_sql(
-        "select * from t", ignore_filter=r"Duplicate key exists in unique index"
-    )
+    data = i1.retriable_sql("select * from t")
     assert sorted(data) == [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]]
 
     # update sharded table from global table
     data = i2.sql("update t set y = a * a from global_t where id = x")
     assert data["row_count"] == 5
     i1.raft_read_index()
-    data = i1.retriable_sql(
-        "select * from t", ignore_filter=r"Duplicate key exists in unique index"
-    )
+    data = i1.retriable_sql("select * from t")
     assert sorted(data) == [[1, 1], [2, 4], [3, 9], [4, 16], [5, 25], [6, 6]]
 
     # delete sharded table using global table in predicate
     data = i2.sql("delete from t where x in (select id from global_t)")
     assert data["row_count"] == 5
+    wait_balanced()
     i1.raft_read_index()
     data = i1.retriable_sql(
         "select * from t",
         retry_timeout=60,
         timeout=8,
-        ignore_filter=r"Duplicate key exists in unique index",
     )
     assert sorted(data) == [[6, 6]]
 
@@ -1485,11 +1497,14 @@ def test_except_on_global_tbls(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    data = i1.retriable_sql(
-        """insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);""",
-        ignore_filter=r"Duplicate key exists in unique index",
-    )
-    assert data["row_count"] == 5
+    try:
+        data = i1.retriable_sql(
+            """insert into s values (3, 2), (4, 3), (5, 4), (6, 5), (7, 6);""",
+            fatal_predicate=r"Duplicate key exists in unique index",
+        )
+        assert data["row_count"] == 5
+    except TarantoolError as e:
+        assert re.search(r"Duplicate key exists in unique index", str(e))
 
     data = i1.retriable_sql(
         """
@@ -3365,13 +3380,13 @@ def test_call_procedure(cluster: Cluster):
     data = i1.retriable_sql(
         """ call "proc2"(?) """,
         4,
-        ignore_filter=r"Duplicate key exists in unique index",
+        fatal_predicate=r"Duplicate key exists in unique index",
     )
     assert data["row_count"] == 1
     data = i1.retriable_sql(
         """ call "proc2"($1) option(sql_vdbe_max_steps = $1, vtable_max_rows = $1)""",
         5,
-        ignore_filter=r"Duplicate key exists in unique index",
+        fatal_predicate=r"Duplicate key exists in unique index",
     )
     assert data["row_count"] == 1
 
@@ -4752,10 +4767,14 @@ def test_create_role_and_user_with_empty_name(cluster: Cluster):
 def test_limit(cluster: Cluster):
     cluster.deploy(instance_count=3)
     [i1, i2, i3] = cluster.instances
+
     # Make sure buckets are balanced before routing via bucket_id to eliminate
     # flakiness due to bucket rebalancing
-    for i in cluster.instances:
-        cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+    def wait_balanced():
+        for i in cluster.instances:
+            cluster.wait_until_instance_has_this_many_active_buckets(i, 1000)
+
+    wait_balanced()
 
     ###########################
     # Tests with sharded tables
@@ -4774,6 +4793,7 @@ def test_limit(cluster: Cluster):
             VALUES (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7)
         """
     )
+    wait_balanced()
     data = i1.retriable_sql(""" SELECT * FROM "t" """)
     assert len(data) == 7
 
@@ -4859,6 +4879,7 @@ def test_limit(cluster: Cluster):
         """
     )
     i1.sql(""" INSERT INTO "w" VALUES (-1, 1), (-2, 2), (-3, 3), (-4, 4) """)
+    wait_balanced()
 
     # LIMIT + JOIN.
     data = i2.retriable_sql(
@@ -4904,6 +4925,7 @@ def test_limit(cluster: Cluster):
             """,
             n,
         )
+    wait_balanced()
 
     # Read without LIMIT should fail.
     with pytest.raises(TarantoolError, match="Exceeded maximum number of rows"):
@@ -5027,6 +5049,7 @@ def test_limit(cluster: Cluster):
         """
     )
     assert data["row_count"] == 5
+    wait_balanced()
 
     # LIMIT + basic CTE
     data = i1.retriable_sql(
