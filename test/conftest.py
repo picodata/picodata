@@ -309,6 +309,10 @@ def normalize_net_box_result(func):
         if result is None:
             return
 
+        # This is special case for non-SELECT or non-VALUES IPROTO_EXECUTE requests
+        if hasattr(result, "affected_row_count") and result.data is None:
+            return {"row_count": result.affected_row_count}
+
         match result.data:
             case []:
                 return None
@@ -528,6 +532,10 @@ class Connection(tarantool.Connection):  # type: ignore
     @normalize_net_box_result
     def eval(self, expr, *args, on_push=None, on_push_ctx=None):
         return super().eval(expr, *args, on_push=on_push, on_push_ctx=on_push_ctx)
+
+    @normalize_net_box_result
+    def execute(self, query, params=None):
+        return super().execute(query, params)
 
     def sql(self, sql: str, *params, options=None, sudo=False) -> dict[str, list]:
         """Run SQL query and return result"""
