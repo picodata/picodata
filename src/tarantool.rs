@@ -6,17 +6,25 @@ use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::rpc::join;
 use crate::schema::PICO_SERVICE_USER_NAME;
-use crate::traft::error::Error;
+use crate::traft::{self, error::Error};
 use ::tarantool::fiber;
 use ::tarantool::lua_state;
-use ::tarantool::msgpack::ViaMsgpack;
+use ::tarantool::msgpack;
 use ::tarantool::tlua::{self, LuaError, LuaFunction, LuaRead, LuaTable, LuaThread, PushGuard};
 pub use ::tarantool::trigger::on_shutdown;
+use ::tarantool::tuple::Tuple;
 use file_shred::*;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::ffi::CStr;
+use std::io::Cursor;
+use std::mem;
+use std::ops::Range;
 use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
+use std::slice;
+use tarantool::error::IntoBoxError;
+use tarantool::network::protocol::{codec, iproto_key};
 use tlua::CallError;
 
 #[macro_export]
@@ -39,6 +47,18 @@ macro_rules! proc_name {
         const _: unsafe extern "C" fn(FunctionCtx, FunctionArgs) -> c_int = $($func_name)+;
         concat!(".", $crate::stringify_last_token!($($func_name)+))
     }};
+}
+
+macro_rules! unwrap_or_report_and_propagate_err {
+    ($res:expr) => {
+        match $res {
+            Ok(o) => o,
+            Err(e) => {
+                e.set_last_error();
+                return IprotoHandlerStatus::IPROTO_HANDLER_ERROR;
+            }
+        }
+    };
 }
 
 mod ffi {
@@ -80,6 +100,75 @@ mod tests {
         let t: LuaTable<_> = l.eval("return require('tarantool')").unwrap();
         assert_eq!(version(), t.get::<String, _>("version").unwrap());
         assert_eq!(package(), t.get::<String, _>("package").unwrap());
+    }
+
+    #[::tarantool::test]
+    fn test_write_uint() {
+        let mut data: SmallVec<[u8; RESERVED_SIZE]> = SmallVec::new();
+
+        write_uint(0, &mut data);
+        assert_eq!(0u8.to_ne_bytes(), [data[0]]);
+        data.clear();
+
+        write_uint(i8::MAX as u64, &mut data);
+        assert_eq!(i8::MAX.to_ne_bytes(), [data[0]]);
+        data.clear();
+
+        let written = i8::MAX as u64 + 1;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCC];
+        expected.extend_from_slice((written as u8).to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..2]);
+        data.clear();
+
+        let written = u8::MAX as u64;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCC];
+        expected.extend_from_slice((written as u8).to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..2]);
+        data.clear();
+
+        let written = u8::MAX as u64 + 1;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCD];
+        expected.extend_from_slice((written as u16).to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..3]);
+        data.clear();
+
+        let written = u16::MAX as u64;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCD];
+        expected.extend_from_slice((written as u16).to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..3]);
+        data.clear();
+
+        let written = u16::MAX as u64 + 1;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCE];
+        expected.extend_from_slice((written as u32).to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..5]);
+        data.clear();
+
+        let written = u32::MAX as u64;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCE];
+        expected.extend_from_slice((written as u32).to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..5]);
+        data.clear();
+
+        let written = u32::MAX as u64 + 1;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCF];
+        expected.extend_from_slice(written.to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..9]);
+        data.clear();
+
+        let written = u64::MAX;
+        write_uint(written, &mut data);
+        let mut expected = vec![0xCF];
+        expected.extend_from_slice(written.to_ne_bytes().as_ref());
+        assert_eq!(expected, data[..9]);
+        data.clear();
     }
 }
 
@@ -273,7 +362,7 @@ pub fn is_box_configured() -> bool {
 #[track_caller]
 pub fn set_cfg(cfg: &Cfg) -> Result<(), Error> {
     let lua = lua_state();
-    let res = lua.exec_with("return box.cfg(...)", ViaMsgpack(cfg));
+    let res = lua.exec_with("return box.cfg(...)", msgpack::ViaMsgpack(cfg));
     match res {
         Err(CallError::PushError(e)) => {
             crate::tlog!(Error, "failed to push box configuration via msgpack: {e}");
@@ -436,58 +525,6 @@ extern "C" fn xlog_remove_cb(
     };
 }
 
-extern "C" {
-    /// Sets an IPROTO request handler with the provided
-    /// context for the given request type.
-    pub fn box_iproto_override(
-        req_type: u32,
-        handler: Option<iproto_handler_t>,
-        destroy: Option<iproto_handler_destroy_t>,
-        ctx: *mut (),
-    ) -> i32;
-}
-
-/// Callback for overwritten handlers of IPROTO requests.
-/// Sets diagnostic message and returns and error to register it.
-pub extern "C" fn iproto_override_cb(
-    _header: *const u8,
-    _header_end: *const u8,
-    _body: *const u8,
-    _body_end: *const u8,
-    _ctx: *mut (),
-) -> iproto_handler_status {
-    ::tarantool::set_error!(
-        ::tarantool::error::TarantoolErrorCode::Unsupported,
-        "picodata does not support this IPROTO request type, it was disabled"
-    );
-    iproto_handler_status::IPROTO_HANDLER_ERROR
-}
-
-/// Return codes for IPROTO request handlers.
-#[allow(dead_code)]
-#[repr(C)]
-pub enum IprotoHandlerStatus {
-    IPROTO_HANDLER_OK = 0,
-    IPROTO_HANDLER_ERROR = 1,
-    IPROTO_HANDLER_FALLBACK = 2,
-}
-
-/// Status of handlers of IPROTO requests when
-/// request path of handling is overwritten.
-type iproto_handler_status = IprotoHandlerStatus;
-
-/// Type of callback for a IPROTO request handler.
-type iproto_handler_t = extern "C" fn(
-    header: *const u8,
-    header_end: *const u8,
-    body: *const u8,
-    body_end: *const u8,
-    ctx: *mut (),
-) -> iproto_handler_status;
-
-/// Type of destroy callback for a IPROTO request handler.
-type iproto_handler_destroy_t = extern "C" fn(ctx: *mut ());
-
 pub fn rm_tarantool_files(
     data_dir: impl AsRef<std::path::Path>,
 ) -> Result<(), tarantool::error::Error> {
@@ -521,4 +558,363 @@ pub fn box_schema_version() -> u64 {
 
     // Safety: always safe
     unsafe { ffi::box_schema_version() }
+}
+
+/// Return codes for IPROTO request handlers.
+#[derive(Debug)]
+#[repr(C)]
+pub enum IprotoHandlerStatus {
+    IPROTO_HANDLER_OK = 0,
+    IPROTO_HANDLER_ERROR = 1,
+    IPROTO_HANDLER_FALLBACK = 2,
+}
+
+/// Status of handlers of IPROTO requests when
+/// request path of handling is overwritten.
+type iproto_handler_status = IprotoHandlerStatus;
+
+/// Type of callback for a IPROTO request handler.
+type iproto_handler_t = extern "C" fn(
+    header: *const u8,
+    header_end: *const u8,
+    body: *const u8,
+    body_end: *const u8,
+    ctx: *mut (),
+) -> iproto_handler_status;
+
+/// Type of destroy callback for a IPROTO request handler.
+type iproto_handler_destroy_t = extern "C" fn(ctx: *mut ());
+
+extern "C" {
+    /// Sets an IPROTO request handler with the provided
+    /// context for the given request type.
+    pub fn box_iproto_override(
+        req_type: u32,
+        handler: Option<iproto_handler_t>,
+        destroy: Option<iproto_handler_destroy_t>,
+        ctx: *mut (),
+    ) -> i32;
+
+    /// Sends a packaet with the given header and body
+    /// over the IPROTO sessions's socket.
+    /// Returns -1 on error, 0 on success.
+    pub fn box_iproto_send(
+        sid: u64,
+        header: *const u8,
+        header_end: *const u8,
+        body: *const u8,
+        body_end: *const u8,
+    ) -> i32;
+}
+
+/// Callback for overwritten handlers of unsupported IPROTO requests.
+/// Sets diagnostic message and returns an error to register it.
+pub extern "C" fn iproto_override_cb_unsupported_requests(
+    _header: *const u8,
+    _header_end: *const u8,
+    _body: *const u8,
+    _body_end: *const u8,
+    _ctx: *mut (),
+) -> iproto_handler_status {
+    ::tarantool::set_error!(
+        ::tarantool::error::TarantoolErrorCode::Unsupported,
+        "picodata does not support this IPROTO request type, it was disabled"
+    );
+    iproto_handler_status::IPROTO_HANDLER_ERROR
+}
+
+/// Writes an unsigned integer to a `SmallVec` in a most efficient
+/// way according to MessagePack specification. Used in scenarios,
+/// when `RmpWrite` trait from `rmp` crate is not implemented for
+/// used buffer type.
+/// Do not use this function if you need to write MessagePack markers,
+/// because they have to ignore primitive type byte prefix rule.
+#[inline]
+fn write_uint(src: u64, dest: &mut SmallVec<[u8; RESERVED_SIZE]>) {
+    if src <= i8::MAX as u64 {
+        dest.push(src as u8);
+    } else {
+        // pattern matching does not support type casts, so
+        // we use maximums of sized integers in constants
+        match src {
+            0..=0xFF => dest.push(0xCC),
+            0x0100..=0xFFFF => dest.push(0xCD),
+            0x00010000..=0xFFFFFFFF => dest.push(0xCE),
+            0x0000000100000000..=0xFFFFFFFFFFFFFFFF => dest.push(0xCF),
+        }
+        dest.extend_from_slice(&src.to_ne_bytes());
+    }
+}
+
+// TODO(kbezuglyi): see [reduce collision probability for prepared statements](https://git.picodata.io/picodata/tarantool/-/issues/59)
+// INFO: left as future implementation template
+#[allow(unused)]
+/// Handles prepared statement from IPROTO_EXECUTE request body.
+#[inline]
+fn iproto_execute_handle_prepared_statement(mut body: &[u8]) -> traft::Result<Tuple> {
+    let error_message = String::from("IPROTO_EXECUTE on prepared statements");
+    let error_help = String::from("temporarily disabled");
+
+    Err(traft::error::Error::Unsupported(
+        traft::error::Unsupported::new(error_message, Some(error_help)),
+    ))
+}
+
+/// Handles sql query from IPROTO_EXECUTE request body.
+#[inline]
+fn iproto_execute_handle_sql_query(mut body: &[u8]) -> traft::Result<Tuple> {
+    let mut pattern = None;
+    let mut bind = None;
+
+    let cur = &mut Cursor::new(body);
+    let map_len = rmp::decode::read_map_len(cur)
+        .map_err(|err| traft::error::Error::Tarantool(tarantool::error::Error::ValueRead(err)))?;
+    for _ in 0..map_len {
+        let diff_byte = rmp::decode::read_pfix(cur).map_err(|err| {
+            traft::error::Error::Tarantool(tarantool::error::Error::ValueRead(err))
+        })?;
+        match diff_byte {
+            iproto_key::SQL_TEXT => {
+                let old_len = body.len();
+                body = &body[cur.position() as usize..];
+                pattern =
+                    Some(msgpack::decode(body).map_err(tarantool::error::Error::MsgpackDecode)?);
+                let displacement = old_len - body.len();
+                cur.set_position(cur.position() + displacement as u64);
+            }
+            iproto_key::SQL_BIND => {
+                let old_len = cur.get_ref().len();
+                bind = Some(
+                    rmp_serde::decode::from_read::<_, sbroad::executor::result::ExecutorTuple>(
+                        *cur.get_ref(),
+                    )
+                    .map_err(|err| traft::error::Error::Tarantool(err.into()))?,
+                );
+                let displacement = old_len - cur.get_ref().len();
+                cur.set_position(cur.position() + displacement as u64);
+            }
+            _ => msgpack::skip_value(cur)?,
+        }
+    }
+
+    let Some(pattern) = pattern else {
+        return Err(traft::error::Error::Tarantool(
+            ::tarantool::error::Error::MsgpackDecode(msgpack::DecodeError::new::<u8>(
+                "bad msgpack request body, missing sql pattern field",
+            )),
+        ));
+    };
+    let bind = bind.unwrap_or_default();
+
+    crate::sql::sql_dispatch(pattern, bind, None, None)
+}
+
+/// Returns swapped `MP_FIXSTR` representation of keys in [`tarantool::tuple::Tuple`]
+/// with appropriate IPROTO keys specified by IPROTO in a new `Vec<u8>` of
+/// correct MessagePack bytes. It is useful when we want to give back to an old-plain
+/// Tarantool client IPROTO_EXECUTE response in a IPROTO-compatible format. Works
+/// only for `SELECT` and `VALUES` request.
+fn iproto_execute_rewrite_response_keys(
+    tuple: &[u8],
+    into: &mut SmallVec<[u8; RESERVED_SIZE]>,
+) -> Result<(), ::tarantool::error::Error> {
+    // we don't need the MP_FIXMAP byte, because it is always guaranteed
+    let tuple = &tuple[1..];
+    let cur = &mut Cursor::new(tuple);
+
+    // following lines are written with
+    // knowing that order of a key-values in a map
+    // are guaranteed, the same as the map itself:
+    // { "metadata": ..., "rows": ... }
+
+    msgpack::skip_value(cur)?; // skip "metadata" key
+    let metadata_start_pos = cur.position() as usize; // save start position
+    msgpack::skip_value(cur)?; // skip metadata value to calculate offset
+    let metadata_end_pos = cur.position() as usize; // save end position
+    let metadata_bytes = &tuple[metadata_start_pos..metadata_end_pos];
+
+    msgpack::skip_value(cur)?; // skip "rows" key
+    let rows_start_pos = cur.position() as usize; // save start position
+    msgpack::skip_value(cur)?; // skip rows value to calculate offset
+    let rows_end_pos = cur.position() as usize; // save end position
+    let rows_bytes = &tuple[rows_start_pos..rows_end_pos];
+
+    // { IPROTO_METADATA(u8): MP_ARRAY(u32)
+    //   IPROTO_DATA(u8): MP_ARRAY(u32) }
+    // = MP_FIXMAP(u8)
+    into.push(0x82 /* MP_FIXMAP(2) */);
+    write_uint(0x32 /* IPROTO_METADATA */, into);
+    into.extend_from_slice(metadata_bytes);
+    write_uint(iproto_key::DATA as u64, into);
+    into.extend_from_slice(rows_bytes);
+
+    Ok(())
+}
+
+/// Recreates IPROTO-compliant body response from internal tuple request.
+/// Works only for non-`SELECT` and non-`VALUES` requests.
+fn iproto_execute_reformat_response(
+    tuple: &[u8],
+    into: &mut SmallVec<[u8; RESERVED_SIZE]>,
+) -> Result<(), ::tarantool::error::Error> {
+    // we don't need the MP_FIXMAP byte, because it is always guaranteed
+    let tuple = &tuple[1..];
+    let cur = &mut Cursor::new(tuple);
+
+    // following lines are written with
+    // knowing that order of a key-values in a map
+    // are guaranteed, the same as the map itself:
+    // { "row_count": ... }
+
+    msgpack::skip_value(cur)?; // skip "row_count" key
+    let count_start_pos = cur.position() as usize; // save start position
+    msgpack::skip_value(cur)?; // skip row count value to calculate offset
+    let count_end_pos = cur.position() as usize; // save end position
+    let row_count_bytes = &tuple[count_start_pos..count_end_pos];
+
+    // { SQL_INFO(u8): {
+    //   SQL_INFO_ROW_COUNT(u8): MP_UINT(u32) } }
+    // = MP_FIXMAP(u8)
+    into.push(0x81 /* MP_FIXMAP(1) */);
+    write_uint(iproto_key::SQL_INFO as u64, into);
+    into.push(0x81 /* MP_FIXMAP(1) */);
+    write_uint(0x00 /* SQL_INFO_ROW_COUNT */, into);
+    into.extend_from_slice(row_count_bytes);
+
+    Ok(())
+}
+
+const RESERVED_SIZE: usize = 21;
+
+/// Handles valid response from `IPROTO_EXECUTE` request as SQL query or prepared statement.
+fn iproto_execute_handle_valid_internal_response(
+    header: &mut codec::Header,
+    response_tuple: &Tuple,
+) -> IprotoHandlerStatus {
+    // { IPROTO_REQUEST_TYPE(u8): MP_POSFIXINT(u8),
+    //   IPROTO_SYNC(u8): MP_UINT(u64),
+    //   IPROTO_SCHEMA_VERSION(u8): MP_UINT(u64) }
+    // = MP_FIXMAP(u8)
+    let mut response_header: SmallVec<[u8; RESERVED_SIZE]> = SmallVec::new();
+    response_header.push(0x83 /* MP_FIXMAP(3) */);
+    write_uint(iproto_key::REQUEST_TYPE as u64, &mut response_header);
+    write_uint(0x00 /* IPROTO_OK */, &mut response_header);
+    write_uint(iproto_key::SYNC as u64, &mut response_header);
+    write_uint(header.sync.next_index().get(), &mut response_header);
+    write_uint(iproto_key::SCHEMA_VERSION as u64, &mut response_header);
+    write_uint(header.schema_version, &mut response_header);
+
+    let Range {
+        start: response_header_start_ptr,
+        end: response_header_end_ptr,
+    } = response_header.as_ptr_range();
+
+    // we skip first byte (MP_FIXARRAY) because `Tuple` by default
+    // puts value into an array, that we can ignore, because it doesn't matter
+    let response_data = &response_tuple.data()[1..];
+    let mut response_body: SmallVec<[u8; RESERVED_SIZE]> = SmallVec::new();
+    // either `SELECT` or `VALUES` (sub-)expression
+    unwrap_or_report_and_propagate_err!(iproto_execute_rewrite_response_keys(
+        response_data,
+        &mut response_body
+    )
+    // neither `SELECT` nor `VALUES` (sub-)expression
+    .or_else(|_| iproto_execute_reformat_response(response_data, &mut response_body)));
+
+    let Range {
+        start: response_body_start_ptr,
+        end: response_body_end_ptr,
+    } = response_body.as_ptr_range();
+
+    // SAFETY: always safe
+    let session_id = unsafe { tarantool::ffi::tarantool::box_session_id() };
+
+    // SAFETY: function is properly exported, passed
+    // pointers are valid data and aligned properly
+    let res = unsafe {
+        box_iproto_send(
+            session_id,
+            response_header_start_ptr,
+            response_header_end_ptr,
+            response_body_start_ptr,
+            response_body_end_ptr,
+        )
+    };
+
+    match res {
+        -1 => IprotoHandlerStatus::IPROTO_HANDLER_ERROR,
+        0 => IprotoHandlerStatus::IPROTO_HANDLER_OK,
+        _ => unreachable!("Can't be more than 0 or less than -1 due to C FFI signature"),
+    }
+}
+
+/// Returns a single byte as `u8` that represents either [`tarantool::network::protocol::codec::iproto_key::STMT_ID`]
+/// or [`tarantool::network::protocol::codec::iproto_key::SQL_TEXT`] from `tarantool::network::protocol::codec::iproto_key` module.
+pub fn iproto_execute_distinguish_type(body: &[u8]) -> Result<u8, ::tarantool::error::Error> {
+    use rmp::Marker;
+
+    let mut res = None;
+
+    let cur = &mut Cursor::new(body);
+    let map_len = rmp::decode::read_map_len(cur)?;
+    for _ in 0..map_len {
+        match Marker::from_u8(body[cur.position() as usize]) {
+            Marker::FixPos(val) if val == iproto_key::STMT_ID || val == iproto_key::SQL_TEXT => {
+                res = Some(val);
+                break;
+            }
+            _ => msgpack::skip_value(cur)?,
+        }
+    }
+
+    if let Some(res) = res {
+        Ok(res)
+    } else {
+        Err(::tarantool::error::Error::MsgpackDecode(
+            msgpack::DecodeError::new::<u8>("bad msgpack request body, missing request field"),
+        ))
+    }
+}
+
+/// Callback for overwritten handler for `IPROTO_EXECUTE`.
+/// Redirects execute call to sbroad SQL implementation.
+/// Sets diagnostic message on error, and sends a data back
+/// to user on success, at return.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn iproto_override_cb_redirect_execute(
+    header: *const u8,
+    header_end: *const u8,
+    body: *const u8,
+    body_end: *const u8,
+    _ctx: *mut (),
+) -> iproto_handler_status {
+    // SAFETY: pointers are pointing to valid data
+    let header = unsafe {
+        slice::from_raw_parts(
+            header,
+            header_end.offset_from(header) as usize / mem::size_of::<u8>(),
+        )
+    };
+
+    // SAFETY: pointers are pointing to valid data
+    let body = unsafe {
+        slice::from_raw_parts(
+            body,
+            body_end.offset_from(body) as usize / mem::size_of::<u8>(),
+        )
+    };
+
+    let difference_byte =
+        unwrap_or_report_and_propagate_err!(iproto_execute_distinguish_type(body));
+
+    let response_tuple = unwrap_or_report_and_propagate_err!(match difference_byte {
+        iproto_key::STMT_ID => iproto_execute_handle_prepared_statement(body),
+        iproto_key::SQL_TEXT => iproto_execute_handle_sql_query(body),
+        _ => unreachable!("Can't reach that hand because it should error at no difference byte"),
+    });
+
+    let mut header =
+        unwrap_or_report_and_propagate_err!(codec::Header::decode(&mut Cursor::new(header)));
+
+    iproto_execute_handle_valid_internal_response(&mut header, &response_tuple)
 }

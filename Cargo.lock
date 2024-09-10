@@ -2604,6 +2604,7 @@ dependencies = [
  "serde_repr",
  "serde_yaml",
  "slog",
+ "smallvec",
  "smol_str",
  "sqlparser",
  "syn 1.0.109",

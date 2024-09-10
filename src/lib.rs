@@ -326,6 +326,7 @@ fn init_handlers() {
     .expect("pico.cas registration should never fail");
 
     forbid_unsupported_iproto_requests();
+    redirect_iproto_execute_requests();
 }
 
 /// Sets interactive prompt to display `picodata>`.
@@ -1128,6 +1129,7 @@ fn postjoin(
 
 ::tarantool::define_enum_with_introspection! {
     /// IPROTO request types that are forbidden on picodata side
+    #[repr(C)]
     enum ForbiddenIprotoTypes {
         // TODO(kbezuglyi): uncomment when vshard's
         // bucket distribution and discovery stop
@@ -1160,11 +1162,26 @@ fn forbid_unsupported_iproto_requests() {
         let rc = unsafe {
             tarantool::box_iproto_override(
                 *iproto_request as _,
-                Some(tarantool::iproto_override_cb),
+                Some(tarantool::iproto_override_cb_unsupported_requests),
                 None,
                 std::ptr::null_mut(),
             )
         };
         assert_eq!(rc, 0);
     }
+}
+
+/// Redirects all IPROTO_EXECUTE requests
+/// into `sql::sql_dispatch` via FFI
+/// `box_iproto_override` function
+fn redirect_iproto_execute_requests() {
+    let rc = unsafe {
+        tarantool::box_iproto_override(
+            ::tarantool::network::protocol::IProtoType::Execute as _,
+            Some(tarantool::iproto_override_cb_redirect_execute),
+            None,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, 0);
 }
