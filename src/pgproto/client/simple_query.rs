@@ -28,6 +28,9 @@ pub fn process_query_message(
             }
             stream.write_message(messages::command_complete_with_row_count(&tag, row_count))?;
         }
+        ExecuteResult::Empty => {
+            stream.write_message(messages::empty_query_response())?;
+        }
         ExecuteResult::SuspendedDql { .. } => {
             return Err(PgError::InternalError(
                 "portal cannot be suspended in simple query".into(),

@@ -557,6 +557,7 @@ impl Portal {
                     .collect::<PgResult<Vec<Vec<_>>>>()?;
                 PortalState::StreamingRows(pg_rows.into_iter())
             }
+            QueryType::Empty => PortalState::ResultReady(ExecuteResult::Empty),
         };
         Ok(())
     }

@@ -67,4 +67,6 @@ pub enum ExecuteResult {
         /// necessary to cache the number of rows before retrieving them.
         row_count: usize,
     },
+    /// Result of an empty query.
+    Empty,
 }

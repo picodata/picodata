@@ -117,7 +117,7 @@ pub fn bind(
         &ctx,
         statement.query_pattern(),
         || {
-            if !plan.is_ddl()? && !plan.is_acl()? {
+            if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? {
                 plan.bind_params(params)?;
                 plan.apply_options()?;
                 plan.optimize()?;
@@ -207,7 +207,7 @@ pub fn parse(
                 Ok(plan)
             })
             .map_err(|e| PgError::Other(e.into()))??;
-            if !plan.is_ddl()? && !plan.is_acl()? {
+            if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? {
                 cache.put(query.into(), plan.clone())?;
             }
             let statement = Statement::new(id.to_string(), sql, plan, param_oids)?;

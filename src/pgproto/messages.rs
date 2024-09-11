@@ -34,6 +34,10 @@ pub fn command_complete(tag: &CommandTag) -> BeMessage {
     BeMessage::CommandComplete(response::CommandComplete::new(tag.as_str().to_owned()))
 }
 
+pub fn empty_query_response() -> BeMessage {
+    BeMessage::EmptyQueryResponse(response::EmptyQueryResponse::new())
+}
+
 pub fn command_complete_with_row_count(tag: &CommandTag, row_count: usize) -> BeMessage {
     let tag = format!("{} {}", tag.as_str(), row_count);
     BeMessage::CommandComplete(response::CommandComplete::new(tag))

@@ -36,6 +36,7 @@ pub enum QueryType {
     #[default]
     Dql = 3,
     Explain = 4,
+    Empty = 5,
 }
 
 #[derive(Clone, Debug, Default, Deserialize_repr, Serialize_repr)]
@@ -53,6 +54,7 @@ pub enum CommandTag {
     DropTable = 4,
     DropIndex = 19,
     Delete = 5,
+    EmptyQuery = 55,
     Explain = 6,
     Grant = 7,
     GrantRole = 8,
@@ -100,6 +102,9 @@ impl CommandTag {
             Self::CallProcedure => "CALL",
             Self::RenameRoutine => "RENAME ROUTINE",
             Self::SetParam | Self::SetTransaction => "SET",
+            // Response on an empty query is EmptyQueryResponse with no tag.
+            // https://www.postgresql.org/docs/current/protocol-message-formats.html#PROTOCOL-MESSAGE-FORMATS-EMPTYQUERYRESPONSE
+            Self::EmptyQuery => "",
         }
     }
 }
@@ -130,6 +135,7 @@ impl From<CommandTag> for QueryType {
             | CommandTag::CallProcedure => QueryType::Dml,
             CommandTag::Explain => QueryType::Explain,
             CommandTag::Select => QueryType::Dql,
+            CommandTag::EmptyQuery => QueryType::Empty,
         }
     }
 }
@@ -327,7 +333,9 @@ impl Describe {
     }
 
     pub fn new(plan: &Plan) -> PgResult<Self> {
-        let command_tag = if plan.is_explain() {
+        let command_tag = if plan.is_empty() {
+            CommandTag::EmptyQuery
+        } else if plan.is_explain() {
             CommandTag::Explain
         } else {
             let top = plan.get_top()?;
@@ -345,6 +353,7 @@ impl Describe {
             QueryType::Explain => Ok(Describe::default()
                 .with_command_tag(command_tag)
                 .with_metadata(explain_output_format())),
+            QueryType::Empty => Ok(Describe::default().with_command_tag(command_tag)),
         }
     }
 }
@@ -360,7 +369,7 @@ impl Describe {
 
     pub fn row_description(&self) -> Option<RowDescription> {
         match self.query_type() {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml => None,
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let row_description = self
                     .metadata
@@ -439,7 +448,7 @@ impl PortalDescribe {
 impl PortalDescribe {
     pub fn row_description(&self) -> Option<RowDescription> {
         match self.query_type() {
-            QueryType::Acl | QueryType::Ddl | QueryType::Dml => None,
+            QueryType::Acl | QueryType::Ddl | QueryType::Dml | QueryType::Empty => None,
             QueryType::Dql | QueryType::Explain => {
                 let metadata = &self.describe.metadata;
                 let output_format = &self.output_format;

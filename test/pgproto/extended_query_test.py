@@ -261,3 +261,25 @@ def test_params_specified_via_cast(postgres: Postgres):
         p1=-1,
     )
     assert rows == [[-2]]
+
+
+def test_empty_queries(postgres: Postgres):
+    user = "admin"
+    password = "P@ssw0rd"
+    host = postgres.host
+    port = postgres.port
+
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+
+    conn = psycopg.connect(
+        f"user = {user} password={password} host={host} port={port} sslmode=disable"
+    )
+    conn.autocommit = True
+
+    cur = conn.execute("  ", prepare=True)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == cur.ExecStatus.EMPTY_QUERY
+
+    cur = conn.execute(" ; ", prepare=True)
+    assert cur.pgresult is not None
+    assert cur.pgresult.status == cur.ExecStatus.EMPTY_QUERY

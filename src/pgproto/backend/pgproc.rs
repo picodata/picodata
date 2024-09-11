@@ -94,7 +94,7 @@ pub fn proc_pg_execute(
 ) -> PgResult<Tuple> {
     let result = backend::execute(id, name, max_rows, traceable)?;
     let bytes = match &result {
-        ExecuteResult::AclOrDdl { .. } | ExecuteResult::Dml { .. } => {
+        ExecuteResult::AclOrDdl { .. } | ExecuteResult::Dml { .. } | ExecuteResult::Empty => {
             let row_count = if let ExecuteResult::Dml { row_count, .. } = result {
                 Some(row_count)
             } else {
