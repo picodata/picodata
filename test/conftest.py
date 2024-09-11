@@ -1027,9 +1027,10 @@ class Instance:
     # FIXME: this method's parameters are out of sync with Cluster.cas
     def cas(
         self,
-        op_kind: Literal["insert", "replace", "delete"],
+        op_kind: Literal["insert", "replace", "delete", "update"],
         table: str | int,
         tuple: Tuple | List | None = None,
+        ops: List | None = None,
         index: int | None = None,
         term: int | None = None,
         ranges: List[CasRange] | None = None,
@@ -1069,37 +1070,36 @@ class Instance:
             ranges=predicate_ranges,
         )
 
+        dml = dict(
+            kind="dml",
+            op_kind=op_kind,
+            table=table_id,
+        )
         if op_kind in ["insert", "replace"]:
-            op = dict(
-                kind="dml",
-                op_kind=op_kind,
-                table=table_id,
-                tuple=msgpack.packb(tuple),
-            )
+            dml["tuple"] = msgpack.packb(tuple)
         elif op_kind == "delete":
-            op = dict(
-                kind="dml",
-                op_kind=op_kind,
-                table=table_id,
-                key=msgpack.packb(tuple),
-            )
+            dml["key"] = msgpack.packb(tuple)
+        elif op_kind == "update":
+            dml["key"] = msgpack.packb(tuple)
+            assert ops
+            dml["ops"] = [msgpack.packb(op) for op in ops]  # type: ignore
         else:
             raise Exception(f"unsupported {op_kind=}")
 
         # guest has super privs for now by default this should be equal
         # to ADMIN_USER_ID on the rust side
         as_user = user if user is not None else 1
-        op["initiator"] = as_user
+        dml["initiator"] = as_user
 
         eprint(f"CaS:\n  {predicate=}")
-        if len(op.get("tuple") or []) > 512:
-            op_to_display = {k: v for k, v in op.items()}
+        if len(dml.get("tuple") or []) > 512:  # type: ignore
+            op_to_display = {k: v for k, v in dml.items()}
             op_to_display["tuple"] = "<too-big-to-display>"
-            eprint(f"  op={op_to_display}")
+            eprint(f"  dml={op_to_display}")
         else:
-            eprint(f"  {op=}")
+            eprint(f"  {dml=}")
 
-        return self.call(".proc_cas", self.cluster_id, predicate, op, as_user)["index"]
+        return self.call(".proc_cas", self.cluster_id, predicate, dml, as_user)["index"]
 
     def pico_property(self, key: str):
         tup = self.call("box.space._pico_property:get", key)

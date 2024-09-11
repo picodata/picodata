@@ -172,20 +172,58 @@ def test_cas_predicate(instance: Instance):
     read_index = instance.raft_read_index(_3_SEC)
 
     # Successful insert
-    ret = instance.cas("insert", "_pico_property", ["fruit", "apple"], read_index)
+    ret = instance.cas("insert", "_pico_property", ["fruit", "apple"], index=read_index)
     assert ret == read_index + 1
     instance.raft_wait_index(ret, _3_SEC)
     assert instance.raft_read_index(_3_SEC) == ret
     assert instance.pico_property("fruit") == "apple"
 
-    # CaS rejected
+    # CaS rejected via the implicit predicate
+    with pytest.raises(TarantoolError) as e5:
+        instance.cas("insert", "_pico_property", ["fruit", "orange"], index=read_index)
+    assert e5.value.args[:2] == (
+        ErrorCode.CasConflictFound,
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+    )
+
+    # CaS rejected via the implicit predicate, even though there's an explicit one
     with pytest.raises(TarantoolError) as e5:
         instance.cas(
             "insert",
             "_pico_property",
             ["fruit", "orange"],
             index=read_index,
-            ranges=[CasRange(eq="fruit")],
+            ranges=[CasRange(eq="vegetables")],
+        )
+    assert e5.value.args[:2] == (
+        ErrorCode.CasConflictFound,
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+    )
+
+    # CaS rejected via the implicit predicate, different kind of operation
+    with pytest.raises(TarantoolError) as e5:
+        instance.cas("replace", "_pico_property", ["fruit", "orange"], index=read_index)
+    assert e5.value.args[:2] == (
+        ErrorCode.CasConflictFound,
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+    )
+
+    # CaS rejected via the implicit predicate, different kind of operation
+    with pytest.raises(TarantoolError) as e5:
+        instance.cas("delete", "_pico_property", ["fruit"], index=read_index)
+    assert e5.value.args[:2] == (
+        ErrorCode.CasConflictFound,
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+    )
+
+    # CaS rejected via the implicit predicate, different kind of operation
+    with pytest.raises(TarantoolError) as e5:
+        instance.cas(
+            "update",
+            "_pico_property",
+            ["fruit"],
+            ops=[("+", "value", 1)],
+            index=read_index,
         )
     assert e5.value.args[:2] == (
         ErrorCode.CasConflictFound,
@@ -198,7 +236,6 @@ def test_cas_predicate(instance: Instance):
         "_pico_property",
         ["flower", "tulip"],
         index=read_index,
-        ranges=[CasRange(eq="flower")],
     )
     assert ret == read_index + 2
     instance.raft_wait_index(ret, _3_SEC)
