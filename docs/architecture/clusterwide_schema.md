@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Кластерная схема данных в Picodata
 
 Work in progress
