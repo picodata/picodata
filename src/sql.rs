@@ -11,7 +11,7 @@ use crate::schema::{
 use crate::sql::router::RouterRuntime;
 use crate::sql::storage::StorageRuntime;
 use crate::storage::{space_by_name, PropertyName};
-use crate::traft::error::{Error, Unsupported};
+use crate::traft::error::{self, Error, Unsupported};
 use crate::traft::node::Node as TraftNode;
 use crate::traft::op::{Acl as OpAcl, Ddl as OpDdl, Dml, DmlKind, Op};
 use crate::traft::{self, node};
@@ -49,7 +49,7 @@ use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::Plan as IrPlan;
 use sbroad::otm::{query_id, query_span};
-use smol_str::{format_smolstr, SmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
 use tarantool::tuple::ToTupleBuffer;
@@ -693,8 +693,7 @@ fn alter_user_ir_node_to_op_or_result(
                 format!("Role {name} exists. Unable to alter role.").into(),
             ));
         }
-        // User doesn't exists, no op needed.
-        None => return Ok(Break(ConsumerResult { row_count: 0 })),
+        None => return Err(error::DoesNotExist::User(name.clone()).into()),
         Some(user_def) => user_def,
     };
 
@@ -725,9 +724,10 @@ fn alter_user_ir_node_to_op_or_result(
             })))
         }
         AlterOption::Login => {
-            // Note: We do not check if the privilege has already been granted, since a user may
-            // have it on one node but not on another. This grant must be applied globally to
-            // ensure the user has login access across all nodes.
+            // Note: We do not check if login privilege has already been granted, since a user may
+            // have it on one node but not on another due to node local "out of authentication
+            // attempts" automatic ban. This grant must be applied globally to ensure the user
+            // has login access across all nodes.
             let priv_def = PrivilegeDef::login(
                 get_grantee_id(storage, name.as_str())?,
                 current_user,
@@ -752,19 +752,11 @@ fn alter_user_ir_node_to_op_or_result(
             check_name_emptyness(new_name)?;
 
             if &user_def.name == new_name {
-                // Username is already the one given, no op needed.
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::User(user_def.name.to_smolstr()).into());
             }
             let user = storage.users.by_name(new_name)?;
             match user {
-                Some(_) => {
-                    return Err(Error::Other(
-                        format!(
-                            r#"User with name "{new_name}" exists. Unable to rename user "{name}"."#
-                        )
-                        .into(),
-                    ))
-                }
+                Some(_) => return Err(error::AlreadyExists::User(new_name.clone()).into()),
                 None => Ok(Continue(Op::Acl(OpAcl::RenameUser {
                     user_id: user_def.id,
                     name: new_name.to_string(),
@@ -786,8 +778,7 @@ fn acl_ir_node_to_op_or_result(
     match acl {
         AclOwned::DropRole(DropRole { name, .. }) => {
             let Some(role_def) = storage.users.by_name(name)? else {
-                // Role doesn't exist yet, no op needed
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::Role(name.clone()).into());
             };
             if !role_def.is_role() {
                 return Err(Error::Sbroad(SbroadError::Invalid(
@@ -804,8 +795,7 @@ fn acl_ir_node_to_op_or_result(
         }
         AclOwned::DropUser(DropUser { name, .. }) => {
             let Some(user_def) = storage.users.by_name(name)? else {
-                // User doesn't exist yet, no op needed
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::User(name.clone()).into());
             };
             if user_def.is_role() {
                 return Err(Error::Sbroad(SbroadError::Invalid(
@@ -830,14 +820,9 @@ fn acl_ir_node_to_op_or_result(
             if let Some(user) = sys_user {
                 let entry_type: &str = user.get(3).unwrap();
                 if entry_type == "user" {
-                    return Err(Error::Sbroad(SbroadError::Invalid(
-                        Entity::Acl,
-                        Some(format_smolstr!(
-                            "Unable to create role {name}. User with the same name already exists"
-                        )),
-                    )));
+                    return Err(error::AlreadyExists::User(name.clone()).into());
                 } else {
-                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                    return Err(error::AlreadyExists::Role(name.clone()).into());
                 }
             }
             let id = node.get_next_grantee_id()?;
@@ -867,7 +852,7 @@ fn acl_ir_node_to_op_or_result(
             let user_def = storage.users.by_name(name)?;
             match user_def {
                 Some(user_def) if user_def.is_role() => {
-                    return Err(Error::Other(format!("Role {name} already exists").into()));
+                    return Err(error::AlreadyExists::Role(name.clone()).into());
                 }
                 Some(user_def) => {
                     if user_def
@@ -879,8 +864,7 @@ fn acl_ir_node_to_op_or_result(
                             format!("User {name} already exists with different auth method").into(),
                         ));
                     }
-                    // User already exists, no op needed
-                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                    return Err(error::AlreadyExists::User(name.clone()).into());
                 }
                 None => {
                     let id = node.get_next_grantee_id()?;
@@ -1106,8 +1090,7 @@ fn ddl_ir_node_to_op_or_result(
             params.validate()?;
 
             if params.space_exists()? {
-                // Space already exists, no op needed
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::AlreadyExists::Table(params.name.to_smolstr()).into());
             }
 
             params.check_tier_exists(storage)?;
@@ -1122,8 +1105,7 @@ fn ddl_ir_node_to_op_or_result(
         }
         DdlOwned::DropTable(DropTable { name, .. }) => {
             let Some(space_def) = storage.tables.by_name(name)? else {
-                // Space doesn't exist yet, no op needed
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::Table(name.clone()).into());
             };
             let ddl = OpDdl::DropTable {
                 id: space_def.id,
@@ -1162,8 +1144,7 @@ fn ddl_ir_node_to_op_or_result(
             params.validate(storage)?;
 
             if params.func_exists() {
-                // Function already exists, no op needed.
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::AlreadyExists::Procedure(params.name.to_smolstr()).into());
             }
             let id = func_next_reserved_id()?;
             let ddl = OpDdl::CreateProcedure {
@@ -1182,8 +1163,7 @@ fn ddl_ir_node_to_op_or_result(
         }
         DdlOwned::DropProc(DropProc { name, params, .. }) => {
             let Some(routine) = &storage.routines.by_name(name)? else {
-                // Procedure doesn't exist yet, no op needed
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::Procedure(name.clone()).into());
             };
 
             // drop by name if no parameters are specified
@@ -1213,8 +1193,7 @@ fn ddl_ir_node_to_op_or_result(
             };
 
             if !params.func_exists() {
-                // Procedure does not exist, nothing to rename
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::Procedure(params.old_name.to_smolstr()).into());
             }
 
             if params.new_name_occupied() {
@@ -1303,16 +1282,10 @@ fn ddl_ir_node_to_op_or_result(
             };
             params.validate(storage)?;
 
-            if params.index_exists() {
-                // Index already exists, no op needed.
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+            if params.index_exists() || storage.indexes.by_name(&params.name)?.is_some() {
+                return Err(error::AlreadyExists::Index(params.name.to_smolstr()).into());
             }
-            if storage.indexes.by_name(&params.name)?.is_some() {
-                return Err(traft::error::Error::other(format!(
-                    "index {} already exists",
-                    &params.name,
-                )));
-            }
+
             let ddl = params.into_ddl(storage)?;
             Ok(Continue(Op::DdlPrepare {
                 schema_version,
@@ -1321,8 +1294,7 @@ fn ddl_ir_node_to_op_or_result(
         }
         DdlOwned::DropIndex(DropIndex { name, .. }) => {
             let Some(index) = storage.indexes.by_name(name)? else {
-                // Index doesn't exist yet, no op needed
-                return Ok(Break(ConsumerResult { row_count: 0 }));
+                return Err(error::DoesNotExist::Index(name.clone()).into());
             };
             let ddl = OpDdl::DropIndex {
                 space_id: index.table_id,

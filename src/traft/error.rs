@@ -4,6 +4,7 @@ use crate::error_code::ErrorCode;
 use crate::instance::InstanceId;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
+use smol_str::SmolStr;
 use tarantool::error::IntoBoxError;
 use tarantool::error::{BoxError, TarantoolErrorCode};
 use tarantool::fiber::r#async::timeout;
@@ -30,6 +31,34 @@ impl Display for Unsupported {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Error)]
+pub enum AlreadyExists {
+    #[error("table {0} already exists")]
+    Table(SmolStr),
+    #[error("index {0} already exists")]
+    Index(SmolStr),
+    #[error("procedure {0} already exists")]
+    Procedure(SmolStr),
+    #[error("user {0} already exists")]
+    User(SmolStr),
+    #[error("role {0} already exists")]
+    Role(SmolStr),
+}
+
+#[derive(Debug, Error)]
+pub enum DoesNotExist {
+    #[error("table {0} does not exist")]
+    Table(SmolStr),
+    #[error("index {0} does not exist")]
+    Index(SmolStr),
+    #[error("procedure {0} does not exist")]
+    Procedure(SmolStr),
+    #[error("user {0} does not exist")]
+    User(SmolStr),
+    #[error("role {0} does not exist")]
+    Role(SmolStr),
 }
 
 #[derive(Debug, Error)]
@@ -109,6 +138,12 @@ pub enum Error {
 
     #[error("{0}")]
     Unsupported(Unsupported),
+
+    #[error(transparent)]
+    AlreadyExists(#[from] AlreadyExists),
+
+    #[error(transparent)]
+    DoesNotExist(#[from] DoesNotExist),
 
     #[error("{0}")]
     Other(Box<dyn std::error::Error>),

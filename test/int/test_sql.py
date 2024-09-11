@@ -1672,30 +1672,16 @@ def test_create_drop_table(cluster: Cluster):
     assert ddl["row_count"] == 1
     cluster.raft_wait_index(i1.raft_get_index())
 
-    # Already exists -> ok.
-    ddl = i1.sql(
+    # Already exists error.
+    with pytest.raises(TarantoolError, match="table t already exists"):
+        ddl = i1.sql(
+            """
+            create table "t" ("a" integer, "b" int, primary key ("b", "a"))
+            using memtx
+            distributed by ("a", "b")
+            option (timeout = 3)
         """
-        create table "t" ("a" integer, "b" int, primary key ("b", "a"))
-        using memtx
-        distributed by ("a", "b")
-        option (timeout = 3)
-    """
-    )
-    assert ddl["row_count"] == 0
-
-    # FIXME: this should fail
-    # see https://git.picodata.io/picodata/picodata/picodata/-/issues/331
-    # Already exists with different format -> error.
-    ddl = i1.sql(
-        """
-        create table "t" ("key" string, "value" string not null, primary key ("key"))
-        using memtx
-        distributed by ("key")
-        option (timeout = 3)
-    """
-    )
-    assert ddl["row_count"] == 0
-    cluster.raft_wait_index(i1.raft_get_index())
+        )
 
     ddl = i2.sql(
         """
@@ -2132,9 +2118,9 @@ def test_sql_acl_users_roles(cluster: Cluster):
         i1.call("box.space._pico_user.index._pico_user_name:get", username) is not None
     )
 
-    # Dropping user that doesn't exist should return 0.
-    acl = i1.sql(f"drop user {upper_username}")
-    assert acl["row_count"] == 0
+    # Dropping user that doesn't exist should return does not exist error.
+    with pytest.raises(TarantoolError, match="user x does not exist"):
+        i1.sql("drop user x")
 
     # Dropping user that does exist should return 1.
     acl = i1.sql(f'drop user "{username}"')
@@ -2184,13 +2170,15 @@ def test_sql_acl_users_roles(cluster: Cluster):
     acl = i1.sql(f'drop user "{upper_username}"')
     assert acl["row_count"] == 1
 
-    # We can safely retry creating the same user.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
-    acl = i1.sql(f"create user {username} with password '{password}' using md5")
-    assert acl["row_count"] == 0
+    with pytest.raises(TarantoolError, match="user .* already exists"):
+        acl = i1.sql(f"create user {username} with password '{password}' using md5")
+
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
+    with pytest.raises(TarantoolError, match="user .* does not exist"):
+        acl = i1.sql(f"drop user {username}")
 
     # Zero timeout should return timeout error.
     with pytest.raises(TarantoolError, match="timeout"):
@@ -2249,9 +2237,9 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
     another_password = "Qwerty123"
-    # Alter of unexisted user should do nothing.
-    acl = i1.sql(f"alter user \"nobody\" with password '{another_password}'")
-    assert acl["row_count"] == 0
+    # Alter of unexisted user should raise an error.
+    with pytest.raises(TarantoolError, match="user .* does not exist"):
+        acl = i1.sql(f"alter user nobody with password '{another_password}'")
 
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
@@ -2298,14 +2286,15 @@ def test_sql_acl_users_roles(cluster: Cluster):
         f""" create user "{username}" with password 'Validpassw0rd' using md5 """
     )
     assert acl["row_count"] == 1
-    with pytest.raises(TarantoolError, match="User with the same name already exists"):
+
+    with pytest.raises(TarantoolError, match="user .* already exists"):
         i1.sql(f'create role "{username}"')
     acl = i1.sql(f'drop user "{username}"')
     assert acl["row_count"] == 1
 
-    # Dropping role that doesn't exist should return 0.
-    acl = i1.sql(f"drop role {rolename}")
-    assert acl["row_count"] == 0
+    # Dropping role that doesn't exist should return does not exist error.
+    with pytest.raises(TarantoolError, match="role .* does not exist"):
+        acl = i1.sql(f"drop role {rolename}")
 
     # Successive creation of role.
     acl = i1.sql(f'create role "{rolename}"')
@@ -2323,8 +2312,8 @@ def test_sql_acl_users_roles(cluster: Cluster):
         i1.sql(f""" drop user "{rolename}" """)
 
     # Creation of the role that already exists shouldn't do anything.
-    acl = i1.sql(f'create role "{rolename}"')
-    assert acl["row_count"] == 0
+    with pytest.raises(TarantoolError, match="role .* already exists"):
+        acl = i1.sql(f'create role "{rolename}"')
     assert (
         i1.call("box.space._pico_user.index._pico_user_name:get", rolename) is not None
     )
@@ -2361,8 +2350,8 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
     # Create the same user with the same password, but auth method is in different case
-    acl = i1.sql("CREATE USER wendy WITH PASSWORD 'Passw0rd' USING CHAP-SHA1")
-    assert acl["row_count"] == 0
+    with pytest.raises(TarantoolError, match="user .* already exists"):
+        acl = i1.sql("CREATE USER wendy WITH PASSWORD 'Passw0rd' USING CHAP-SHA1")
 
     # Alter user with auth method in lowercase
     acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING md5")
@@ -3077,15 +3066,14 @@ def test_create_drop_procedure(cluster: Cluster):
     )
     assert data == [[next_func_id]]
 
-    # Check that recreation of the same procedure is idempotent.
-    data = i2.sql(
-        """
-        create procedure proc1(int)
-        language SQL
-        as $$insert into t values(?, ?)$$
-        """
-    )
-    assert data["row_count"] == 0
+    with pytest.raises(TarantoolError, match="procedure proc1 already exists"):
+        i2.sql(
+            """
+            create procedure proc1(int)
+            language SQL
+            as $$insert into t values(?, ?)$$
+            """
+        )
 
     # Check that we can't create a procedure with the same name but different
     # signature.
@@ -3144,9 +3132,8 @@ def test_create_drop_procedure(cluster: Cluster):
     data = i2.sql(""" select * from "_pico_routine" where "name" = 'proc1' """)
     assert data == []
 
-    # Check that dropping of the same procedure is idempotent.
-    i1.sql(""" drop procedure proc1 """)
-    i2.sql(""" drop procedure proc1 """)
+    with pytest.raises(TarantoolError, match="procedure proc1 does not exist"):
+        i2.sql(""" drop procedure proc1 """)
     cluster.raft_wait_index(i1.raft_get_index())
 
     # Create proc for dropping.
@@ -3449,14 +3436,13 @@ def test_rename_procedure(cluster: Cluster):
     )
     assert data == [["bar"]]
 
-    # procedure foo doesn't exist
-    data = i1.sql(
-        """
-        alter procedure foo
-        rename to bar
-        """
-    )
-    assert data["row_count"] == 0
+    with pytest.raises(TarantoolError, match="procedure foo does not exist"):
+        i1.sql(
+            """
+            alter procedure foo
+            rename to bar
+            """
+        )
 
     # rename back, use syntax with parameters
     data = i1.sql(
@@ -3873,21 +3859,20 @@ def test_rename_user(cluster: Cluster):
     i1.create_user(with_name=biba, with_password=password)
     i1.create_user(with_name=boba, with_password=password)
 
-    # rename to it's own name, nothing happens
-    data = i1.sql(
-        f"""
-        ALTER USER "{boba}"
-        RENAME TO "{boba}"
-        """,
-        user=boba,
-        password=password,
-    )
-    assert data["row_count"] == 0
+    with pytest.raises(TarantoolError, match=f"user {boba} does not exist"):
+        data = i1.sql(
+            f"""
+            ALTER USER "{boba}"
+            RENAME TO "{boba}"
+            """,
+            user=boba,
+            password=password,
+        )
 
     # Existed name
     with pytest.raises(
         TarantoolError,
-        match=f'User with name "{biba}" exists. Unable to rename user "{boba}"',
+        match=f"user {biba} already exists",
     ):
         data = i1.sql(
             f"""
@@ -4075,8 +4060,8 @@ def test_index(cluster: Cluster):
     assert data == []
 
     # Drop non-existing index.
-    ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
-    assert ddl["row_count"] == 0
+    with pytest.raises(TarantoolError, match="index i0 does not exist"):
+        ddl = i1.sql(""" drop index i0 option (timeout = 3) """)
 
     ddl = i1.sql(""" create index i19 on t (b)""")
     assert ddl["row_count"] == 1
@@ -5162,3 +5147,61 @@ def test_empty_queries(instance: Instance):
 
     empty = instance.sql("; ; ;")
     assert empty["row_count"] == 0
+
+
+def test_already_exists_error(instance: Instance):
+    def do_sql_twice(sql):
+        data = instance.sql(sql)
+        assert data["row_count"] == 1
+
+        # Should raise an error
+        data = instance.sql(sql)
+
+    with pytest.raises(TarantoolError, match="table my_table already exists"):
+        do_sql_twice("CREATE TABLE my_table (id INT PRIMARY KEY)")
+
+    with pytest.raises(TarantoolError, match="procedure my_proc already exists"):
+        do_sql_twice(
+            """
+        CREATE PROCEDURE my_proc(INT)
+        LANGUAGE SQL
+        AS $$INSERT INTO my_table VALUES(?)$$
+    """
+        )
+
+    with pytest.raises(TarantoolError, match="index my_index already exists"):
+        do_sql_twice("CREATE INDEX my_index ON my_table (id)")
+
+    with pytest.raises(TarantoolError, match="user test_user already exists"):
+        do_sql_twice("CREATE USER test_user WITH PASSWORD 'Passw0rd'")
+
+    with pytest.raises(TarantoolError, match="role my_role already exists"):
+        do_sql_twice("CREATE ROLE my_role")
+
+    instance.sql("CREATE USER foo WITH PASSWORD 'Passw0rd'")
+    instance.sql("CREATE USER bar WITH PASSWORD 'Passw0rd'")
+
+    with pytest.raises(TarantoolError, match="user bar already exists"):
+        instance.sql("ALTER USER foo RENAME TO bar")
+
+
+def test_does_not_exist_error(instance: Instance):
+    # Unfortunately, sbroad raises an error when resolving metadata before we can return
+    # "does not exist" error from picodata.
+    with pytest.raises(TarantoolError, match="sbroad: space my_table not found"):
+        instance.sql("DROP TABLE my_table")
+
+    with pytest.raises(TarantoolError, match="procedure my_proc does not exist"):
+        instance.sql("DROP PROCEDURE my_proc")
+
+    with pytest.raises(TarantoolError, match="index my_index does not exist"):
+        instance.sql("DROP INDEX my_index")
+
+    with pytest.raises(TarantoolError, match="user test_user does not exist"):
+        instance.sql("DROP USER test_user")
+
+    with pytest.raises(TarantoolError, match="role my_role does not exist"):
+        instance.sql("DROP ROLE my_role")
+
+    with pytest.raises(TarantoolError, match="user foo does not exist"):
+        instance.sql("ALTER USER foo RENAME TO bar")
