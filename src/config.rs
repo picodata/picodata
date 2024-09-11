@@ -1,6 +1,7 @@
 use crate::address::{HttpAddress, IprotoAddress};
 use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
+use crate::config_parameter_path;
 use crate::failure_domain::FailureDomain;
 use crate::instance::InstanceId;
 use crate::introspection::leaf_field_paths;
@@ -715,24 +716,19 @@ fn init_core_logger_from_args_env_or_config(
     let env = std::env::var(CONFIG_PARAMETERS_ENV);
     if let Ok(env) = &env {
         for (path, value) in parse_picodata_config_parameters_env(env)? {
-            match path {
-                "instance.log.destination" => {
-                    destination_source = ParameterSource::CommandlineOrEnvironment;
-                    destination =
-                        Some(serde_yaml::from_str(value).map_err(Error::invalid_configuration)?)
-                }
-                "instance.log.level" => {
-                    level_source = ParameterSource::CommandlineOrEnvironment;
-                    level = serde_yaml::from_str(value).map_err(Error::invalid_configuration)?
-                }
-                "instance.log.format" => {
-                    format_source = ParameterSource::CommandlineOrEnvironment;
-                    format = serde_yaml::from_str(value).map_err(Error::invalid_configuration)?
-                }
-                _ => {
-                    // Skip for now, it will be checked in `set_from_args_and_env`
-                    // when everything else other than logger configuration is processed.
-                }
+            if path == config_parameter_path!(instance.log.destination) {
+                destination_source = ParameterSource::CommandlineOrEnvironment;
+                destination =
+                    Some(serde_yaml::from_str(value).map_err(Error::invalid_configuration)?)
+            } else if path == config_parameter_path!(instance.log.level) {
+                level_source = ParameterSource::CommandlineOrEnvironment;
+                level = serde_yaml::from_str(value).map_err(Error::invalid_configuration)?
+            } else if path == config_parameter_path!(instance.log.format) {
+                format_source = ParameterSource::CommandlineOrEnvironment;
+                format = serde_yaml::from_str(value).map_err(Error::invalid_configuration)?
+            } else {
+                // Skip for now, it will be checked in `set_from_args_and_env`
+                // when everything else other than logger configuration is processed.
             }
         }
     }
@@ -752,9 +748,14 @@ fn init_core_logger_from_args_env_or_config(
 
     tlog::init_core_logger(destination, level.into(), format);
 
-    sources.insert("instance.log.destination".into(), destination_source);
-    sources.insert("instance.log.level".into(), level_source);
-    sources.insert("instance.log.format".into(), format_source);
+    let path = config_parameter_path!(instance.log.destination);
+    sources.insert(path.into(), destination_source);
+
+    let path = config_parameter_path!(instance.log.level);
+    sources.insert(path.into(), level_source);
+
+    let path = config_parameter_path!(instance.log.format);
+    sources.insert(path.into(), format_source);
 
     Ok(())
 }
@@ -1341,6 +1342,31 @@ tarantool::define_str_enum! {
         Auto = "auto",
         Legacy = "legacy",
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// config_parameter_path!
+////////////////////////////////////////////////////////////////////////////////
+
+/// A helper macro for getting path of a configuration parameter as a
+/// `&'static str` in a type safe fashion. Basically you provide a path to a
+/// sub-field of [`PicodataConfig`] struct and the macro checks that such field
+/// exists and returns a stringified version.
+///
+/// BTW rust-analyzer will also work with this macro, so you can do
+/// go-to-definition and other stuff like that on the path you put into the macro.
+#[macro_export]
+macro_rules! config_parameter_path {
+    ($head:ident $(. $tail:ident)*) => {{
+        /// This computation is only needed to make sure that the provided path
+        /// corresponds to some sub-field of `PicodataConfig` struct.
+        const _: () = unsafe {
+            let dummy = std::mem::MaybeUninit::<$crate::config::PicodataConfig>::uninit();
+            let dummy_ptr = dummy.as_ptr();
+            let _field_ptr = std::ptr::addr_of!((*dummy_ptr).$head $(.$tail)*);
+        };
+        concat!(stringify!($head), $(".", stringify!($tail),)*)
+    }}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

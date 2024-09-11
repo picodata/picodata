@@ -1,6 +1,7 @@
 use crate::config::BootstrapStrategy;
 use crate::config::ElectionMode;
 use crate::config::PicodataConfig;
+use crate::config_parameter_path;
 use crate::instance::Instance;
 use crate::introspection::Introspection;
 use crate::rpc::join;
@@ -239,12 +240,12 @@ impl Cfg {
         #[rustfmt::skip]
         const MAPPING: &[(&str, &str)] = &[
             // Other instance.log.* parameters are set explicitly above
-            ("checkpoint_count",            "instance.memtx.checkpoint_count"),
-            ("checkpoint_interval",         "instance.memtx.checkpoint_interval"),
-            ("log_format",                  "instance.log.format"),
-            ("vinyl_memory",                "instance.vinyl.memory"),
-            ("vinyl_cache",                 "instance.vinyl.cache"),
-            ("net_msg_max",                 "instance.iproto.max_concurrent_messages"),
+            ("checkpoint_count",            config_parameter_path!(instance.memtx.checkpoint_count)),
+            ("checkpoint_interval",         config_parameter_path!(instance.memtx.checkpoint_interval)),
+            ("log_format",                  config_parameter_path!(instance.log.format)),
+            ("vinyl_memory",                config_parameter_path!(instance.vinyl.memory)),
+            ("vinyl_cache",                 config_parameter_path!(instance.vinyl.cache)),
+            ("net_msg_max",                 config_parameter_path!(instance.iproto.max_concurrent_messages)),
         ];
         for (box_field, picodata_field) in MAPPING {
             let value = config
