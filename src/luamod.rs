@@ -12,7 +12,6 @@ use crate::schema::{self, ADMIN_ID};
 use crate::sync;
 #[allow(unused_imports)]
 use crate::tlog;
-use crate::traft::error::Error;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::duration_from_secs_f64_clamped;
@@ -37,14 +36,14 @@ where
 {
     let luamod: tlua::LuaTable<_> = l.get("pico").unwrap();
     luamod.set(name, value);
-    let help_table: tlua::LuaTable<_> = luamod.get_or_create_metatable();
+    let help_table: tlua::LuaTable<_> = luamod.metatable();
     help_table.set(name, help);
 }
 
 #[inline(always)]
 fn luamod_set_help_only(l: &LuaThread, name: &str, help: &str) {
     let luamod: tlua::LuaTable<_> = l.get("pico").unwrap();
-    let help_table: tlua::LuaTable<_> = luamod.get_or_create_metatable();
+    let help_table: tlua::LuaTable<_> = luamod.metatable();
     help_table.set(name, help);
 }
 
