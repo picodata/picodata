@@ -16,7 +16,6 @@ use ::raft::prelude as raft;
 use ::raft::Error as RaftError;
 use ::raft::GetEntriesContext;
 use ::raft::StorageError;
-use std::borrow::Cow;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
@@ -281,10 +280,9 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
         _ => {}
     }
 
-    let mut ranges = Cow::Borrowed(&req.predicate.ranges);
-    if ranges.is_empty() {
-        ranges = Cow::Owned(Range::for_op(&req.op)?);
-    }
+    let mut ranges = req.predicate.ranges.clone();
+    let implicit_ranges = Range::for_op(&req.op)?;
+    ranges.extend_from_slice(&implicit_ranges);
 
     // It's tempting to just use `raft_log.entries()` here and only
     // write the body of the loop once, but this would mean
@@ -748,6 +746,17 @@ pub struct Range {
     pub bounds: Option<RangeBounds>,
 }
 
+impl PartialEq for Range {
+    #[inline(always)]
+    fn eq(&self, other: &Self) -> bool {
+        // Explicitly check the table id first, so that the fast path is
+        // actually fast. The derived implementation of `PartialEq` would
+        // *probably* be the same, but rust doesn't give any guarantees,
+        // so we have to do it explicitly...
+        self.table == other.table && self.bounds == other.bounds
+    }
+}
+
 impl Range {
     pub fn from_lua_args(range: RangeInLua) -> traft::Result<Self> {
         let node = traft::node::global()?;
@@ -811,7 +820,14 @@ impl Range {
                 let range = Self::for_dml(dml)?;
                 Ok(vec![range])
             }
-            Op::BatchDml { ops } => ops.iter().map(Self::for_dml).collect(),
+            Op::BatchDml { ops } => {
+                // FIXME: if there's multiple operations on the same keys of the
+                // same table there'll be duplicate predicates which may significantly
+                // affect the performance as we do multiple O(N*M) checks during
+                // CAS predicate validation. (N being the length of the batch
+                // and M the length of the raft log).
+                ops.iter().map(Self::for_dml).collect()
+            }
             Op::DdlPrepare { .. } | Op::DdlCommit | Op::DdlAbort { .. } | Op::Acl { .. } => {
                 let range = Self::new(ClusterwideTable::Property)
                     .eq([storage::PropertyName::GlobalSchemaVersion]);
@@ -928,7 +944,7 @@ impl Range {
     }
 }
 
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead)]
+#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize, tlua::LuaRead, PartialEq)]
 #[serde(tag = "kind")]
 #[serde(rename_all = "snake_case")]
 pub enum RangeBounds {

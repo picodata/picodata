@@ -29,6 +29,32 @@ pub enum Op {
     /// Should be used to manipulate the cluster-wide configuration.
     Dml(Dml),
     /// Batch cluster-wide data modification operation.
+    // TODO: in case there's a large amount of operations in the batch we will
+    // be duplicating a lot of the data. In particular the initiator fields is
+    // going to be the same in 99.999% of the times, but we'll carry N copies of
+    // it. The table is also likely to be duplicate in the batch. So it would be
+    // better if we refactor the Dml operations somthing like this:
+    // ```
+    // struct DmlBatch {
+    //     initiator: UserId,
+    //     sub_batches: Vec<DmlSubBatch>,
+    // }
+    // struct DmlSubBatch {
+    //     table_id: SpaceId,
+    //     ops: Vec<DmlArgs>,
+    // }
+    // enum DmlArgs {
+    //     Insert { tuple: TupleBuffer },
+    //     Replace { tuple: TupleBuffer },
+    //     Update { key: TupleBuffer, ops: Vec<TupleBuffer> },
+    //     Delete { key: TupleBuffer },
+    // }
+    // ```
+    // This will however reduce the performance in the single dml operation
+    // case, because of the added indirection (the operation is now stored in a
+    // vec inside a vec). To eliminate that inefficiency we could introduce a
+    // `struct NonEmptyVec<T> { head: T, tail: Vec<T> }`, which will make it so
+    // the first operation is always in the same memory chunk as the parent `Op`.
     BatchDml { ops: Vec<Dml> },
     /// Start cluster-wide data schema definition operation.
     /// Should be used to manipulate the cluster-wide schema.
