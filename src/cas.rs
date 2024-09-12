@@ -821,10 +821,10 @@ impl Range {
                 Ok(vec![range])
             }
             Op::BatchDml { ops } => {
-                // FIXME: if there's multiple operations on the same keys of the
-                // same table there'll be duplicate predicates which may significantly
-                // affect the performance as we do multiple O(N*M) checks during
-                // CAS predicate validation. (N being the length of the batch
+                // N.B.: if there's multiple operations on the same keys
+                // of the same table there'll be duplicate predicates.
+                // It may affect performance because predicate checking
+                // takes O(N*M) checks (N being the length of the batch
                 // and M the length of the raft log).
                 ops.iter().map(Self::for_dml).collect()
             }
