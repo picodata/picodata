@@ -2,7 +2,7 @@ use std::str::FromStr;
 use tarantool::tlua;
 
 pub const DEFAULT_USERNAME: &str = "guest";
-pub const DEFAULT_LISTEN_HOST: &str = "localhost";
+pub const DEFAULT_LISTEN_HOST: &str = "127.0.0.1";
 pub const DEFAULT_HTTP_PORT: &str = "8080";
 pub const DEFAULT_IPROTO_PORT: &str = "3301";
 
@@ -227,7 +227,7 @@ mod tests {
             ":1234".parse(),
             Ok(IprotoAddress {
                 user: None,
-                host: "localhost".into(),
+                host: "127.0.0.1".into(),
                 port: "1234".into()
             })
         );
@@ -240,10 +240,10 @@ mod tests {
             })
         );
         assert_eq!(
-            "localhost:1234".parse(),
+            "127.0.0.1:1234".parse(),
             Ok(IprotoAddress {
                 user: None,
-                host: "localhost".into(),
+                host: "127.0.0.1".into(),
                 port: "1234".into()
             })
         );
@@ -277,7 +277,7 @@ mod tests {
             "user@:port".parse(),
             Ok(IprotoAddress {
                 user: Some("user".into()),
-                host: "localhost".into(),
+                host: "127.0.0.1".into(),
                 port: "port".into()
             })
         );

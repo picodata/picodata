@@ -22,6 +22,9 @@ with the `YY.MINOR.MICRO` scheme.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
+- - Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value
+    and everywhere across documentation and examples to reduce ambiguity.
+
 - New rpc entrypoint: `.proc_get_vshard_config` which returns the vshard configuration of tier.
 -->
 

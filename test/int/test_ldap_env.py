@@ -1,7 +1,7 @@
 from conftest import Cluster, Instance
 import pytest
 
-TT_LDAP_URL = "ldap://localhost:1389"
+TT_LDAP_URL = "ldap://127.0.0.1:1389"
 TT_LDAP_DN_FMT = "cn=$USER,ou=users,dc=example,dc=org"
 
 

@@ -100,7 +100,7 @@ pub struct Run {
     )]
     /// Instance network address.
     ///
-    /// By default "localhost:3301" is used.
+    /// By default "127.0.0.1:3301" is used.
     pub listen: Option<IprotoAddress>,
 
     /// Pgproto server address.
@@ -360,7 +360,7 @@ pub struct Expel {
         long = "peer",
         value_name = "[HOST][:PORT]",
         env = "PICODATA_PEER",
-        default_value = "localhost:3301"
+        default_value = "127.0.0.1:3301"
     )]
     /// Address of any picodata instance of the given cluster.
     pub peer_address: IprotoAddress,

@@ -1645,11 +1645,11 @@ instance:
     fn default_http_port() {
         let yaml = r###"
 instance:
-    http_listen: localhost
+    http_listen: 127.0.0.1
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim_start()).unwrap();
         let listen = config.instance.http_listen.unwrap();
-        assert_eq!(listen.host, "localhost");
+        assert_eq!(listen.host, "127.0.0.1");
         assert_eq!(listen.port, "8080");
     }
 
@@ -1713,8 +1713,8 @@ instance:
                 vec![IprotoAddress::default()]
             );
             assert_eq!(config.instance.instance_id(), None);
-            assert_eq!(config.instance.listen().to_host_port(), "localhost:3301");
-            assert_eq!(config.instance.advertise_address().to_host_port(), "localhost:3301");
+            assert_eq!(config.instance.listen().to_host_port(), "127.0.0.1:3301");
+            assert_eq!(config.instance.advertise_address().to_host_port(), "127.0.0.1:3301");
             assert_eq!(config.instance.log_level(), SayLevel::Info);
             assert!(config.instance.failure_domain().data.is_empty());
         }
@@ -1843,7 +1843,7 @@ instance:
                     },
                     IprotoAddress {
                         user: None,
-                        host: "localhost".into(),
+                        host: "127.0.0.1".into(),
                         port: "3".into(),
                     },
                     IprotoAddress {
@@ -2026,59 +2026,59 @@ instance:
         let yaml = r###"
 instance:
     pg:
-        listen: "localhost:5432"
+        listen: "127.0.0.1:5432"
         ssl: true
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
-        assert_eq!(&pg.listen().to_host_port(), "localhost:5432");
+        assert_eq!(&pg.listen().to_host_port(), "127.0.0.1:5432");
         assert!(pg.ssl());
 
         // test defaults
         let yaml = r###"
 instance:
     pg:
-        listen: "localhost:5432"
+        listen: "127.0.0.1:5432"
 "###;
         let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("localhost:5432").unwrap()
+            IprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
         assert!(!pg.ssl());
 
         // test config with -c option
         let config =
-            setup_for_tests(None, &["run", "-c", "instance.pg.listen=localhost:5432"]).unwrap();
+            setup_for_tests(None, &["run", "-c", "instance.pg.listen=127.0.0.1:5432"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("localhost:5432").unwrap()
+            IprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
         assert!(!pg.ssl());
 
         // test config from run args
-        let config = setup_for_tests(None, &["run", "--pg-listen", "localhost:5432"]).unwrap();
+        let config = setup_for_tests(None, &["run", "--pg-listen", "127.0.0.1:5432"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("localhost:5432").unwrap()
+            IprotoAddress::from_str("127.0.0.1:5432").unwrap()
         );
         assert!(!pg.ssl());
 
         // test config from env
-        std::env::set_var("PICODATA_PG_LISTEN", "localhost:1234");
+        std::env::set_var("PICODATA_PG_LISTEN", "127.0.0.1:1234");
         let config = setup_for_tests(None, &["run"]).unwrap();
         let pg = config.instance.pg;
         assert!(pg.enabled());
         assert_eq!(
             pg.listen(),
-            IprotoAddress::from_str("localhost:1234").unwrap()
+            IprotoAddress::from_str("127.0.0.1:1234").unwrap()
         );
         assert!(!pg.ssl());
     }
