@@ -453,7 +453,15 @@ fn set_login_check(storage: Clusterwide) {
 
     let lua = ::tarantool::lua_state();
     lua.exec_with(
-        "box.session.on_auth(...)",
+        "
+        local rust_on_auth = ...
+        local function on_auth(user, status)
+            if box.session.type() ~= 'console' then
+                rust_on_auth(user, status)
+            end
+        end
+
+        box.session.on_auth(on_auth)",
         tlua::function3(move |user: String, status: bool, lua: tlua::LuaState| {
             match compute_auth_verdict(user.clone(), status) {
                 Verdict::AuthOk => {

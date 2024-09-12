@@ -103,6 +103,8 @@ which improves perfomance
 - Fix error "Read access to space '_raft_state' is denied"
   when executing a DML query on global tables
 
+- Fix error "Maximum number of login attempts exceeded" in picodata admin
+
 ### Compatibility
 
 - The current version is NOT compatible with prior releases. It cannot
