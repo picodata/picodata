@@ -1120,38 +1120,38 @@ mod tests {
         let next_schema_version = (PropertyName::NextSchemaVersion.to_string(),);
 
         // create_space
-        assert!(t(&create_space, Range::new(props).eq(&pending_schema_change)).is_err());
-        assert!(t(&create_space, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&create_space, Range::new(props).eq(("another_key",))).is_ok());
+        t(&create_space, Range::new(props).eq(&pending_schema_change)).unwrap_err();
+        t(&create_space, Range::new(props).eq(&pending_schema_version)).unwrap_err();
+        t(&create_space, Range::new(props).eq(("another_key",))).unwrap();
 
-        assert!(t(&create_space, Range::new(69105u32).eq(("any_key",))).is_ok());
-        assert!(t(&create_space, Range::new(space_id).eq(("any_key",))).is_err());
+        t(&create_space, Range::new(69105u32).eq(("any_key",))).unwrap();
+        t(&create_space, Range::new(space_id).eq(("any_key",))).unwrap_err();
 
         // drop_space
         // `DropTable` needs `TableDef` to get space name
         storage.tables.insert(&table_def).unwrap();
-        assert!(t(&drop_space, Range::new(props).eq(&pending_schema_change)).is_err());
-        assert!(t(&drop_space, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&drop_space, Range::new(props).eq(("another_key",))).is_ok());
+        t(&drop_space, Range::new(props).eq(&pending_schema_change)).unwrap_err();
+        t(&drop_space, Range::new(props).eq(&pending_schema_version)).unwrap_err();
+        t(&drop_space, Range::new(props).eq(("another_key",))).unwrap();
 
-        assert!(t(&drop_space, Range::new(69105u32).eq(("any_key",))).is_ok());
-        assert!(t(&drop_space, Range::new(space_id).eq(("any_key",))).is_err());
+        t(&drop_space, Range::new(69105u32).eq(("any_key",))).unwrap();
+        t(&drop_space, Range::new(space_id).eq(("any_key",))).unwrap_err();
 
         // create_index
-        assert!(t(&create_index, Range::new(props).eq(&pending_schema_change)).is_err());
-        assert!(t(&create_index, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&create_index, Range::new(props).eq(("another_key",))).is_ok());
+        t(&create_index, Range::new(props).eq(&pending_schema_change)).unwrap_err();
+        t(&create_index, Range::new(props).eq(&pending_schema_version)).unwrap_err();
+        t(&create_index, Range::new(props).eq(("another_key",))).unwrap();
 
-        assert!(t(&create_index, Range::new(69105u32).eq(("any_key",))).is_ok());
-        assert!(t(&create_index, Range::new(space_id).eq(("any_key",))).is_ok());
+        t(&create_index, Range::new(69105u32).eq(("any_key",))).unwrap();
+        t(&create_index, Range::new(space_id).eq(("any_key",))).unwrap();
 
         // drop_index
-        assert!(t(&drop_index, Range::new(props).eq(&pending_schema_change)).is_err());
-        assert!(t(&drop_index, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&drop_index, Range::new(props).eq(("another_key",))).is_ok());
+        t(&drop_index, Range::new(props).eq(&pending_schema_change)).unwrap_err();
+        t(&drop_index, Range::new(props).eq(&pending_schema_version)).unwrap_err();
+        t(&drop_index, Range::new(props).eq(("another_key",))).unwrap();
 
-        assert!(t(&drop_index, Range::new(69105u32).eq(("any_key",))).is_ok());
-        assert!(t(&drop_index, Range::new(space_id).eq(("any_key",))).is_ok());
+        t(&drop_index, Range::new(69105u32).eq(("any_key",))).unwrap();
+        t(&drop_index, Range::new(space_id).eq(("any_key",))).unwrap();
 
         // Abort and Commit need a pending schema change to get space name
         let Op::DdlPrepare {
@@ -1166,23 +1166,23 @@ mod tests {
             .put(PropertyName::PendingSchemaChange, &create_space_ddl)
             .unwrap();
         // commit
-        assert!(t(&commit, Range::new(props).eq(&pending_schema_change)).is_err());
-        assert!(t(&commit, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&commit, Range::new(props).eq(&global_schema_version)).is_err());
-        assert!(t(&commit, Range::new(props).eq(("another_key",))).is_ok());
+        t(&commit, Range::new(props).eq(&pending_schema_change)).unwrap_err();
+        t(&commit, Range::new(props).eq(&pending_schema_version)).unwrap_err();
+        t(&commit, Range::new(props).eq(&global_schema_version)).unwrap_err();
+        t(&commit, Range::new(props).eq(("another_key",))).unwrap();
 
-        assert!(t(&commit, Range::new(69105u32).eq(("any_key",))).is_ok());
-        assert!(t(&commit, Range::new(space_id).eq(("any_key",))).is_err());
+        t(&commit, Range::new(69105u32).eq(("any_key",))).unwrap();
+        t(&commit, Range::new(space_id).eq(("any_key",))).unwrap_err();
 
         // abort
-        assert!(t(&abort, Range::new(props).eq(&pending_schema_change)).is_err());
-        assert!(t(&abort, Range::new(props).eq(&pending_schema_version)).is_err());
-        assert!(t(&abort, Range::new(props).eq(&global_schema_version)).is_err());
-        assert!(t(&abort, Range::new(props).eq(next_schema_version)).is_err());
-        assert!(t(&abort, Range::new(props).eq(("another_key",))).is_ok());
+        t(&abort, Range::new(props).eq(&pending_schema_change)).unwrap_err();
+        t(&abort, Range::new(props).eq(&pending_schema_version)).unwrap_err();
+        t(&abort, Range::new(props).eq(&global_schema_version)).unwrap_err();
+        t(&abort, Range::new(props).eq(next_schema_version)).unwrap_err();
+        t(&abort, Range::new(props).eq(("another_key",))).unwrap();
 
-        assert!(t(&abort, Range::new(69105u32).eq(("any_key",))).is_ok());
-        assert!(t(&abort, Range::new(space_id).eq(("any_key",))).is_err());
+        t(&abort, Range::new(69105u32).eq(("any_key",))).unwrap();
+        t(&abort, Range::new(space_id).eq(("any_key",))).unwrap_err();
     }
 
     #[::tarantool::test]
@@ -1221,18 +1221,18 @@ mod tests {
 
         let space = ClusterwideTable::Table.id();
         for op in ops {
-            assert!(test(op, Range::new(space)).is_err());
-            assert!(test(op, Range::new(space).le((12,))).is_err());
-            assert!(test(op, Range::new(space).ge((12,))).is_err());
-            assert!(test(op, Range::new(space).eq((12,))).is_err());
+            test(op, Range::new(space)).unwrap_err();
+            test(op, Range::new(space).le((12,))).unwrap_err();
+            test(op, Range::new(space).ge((12,))).unwrap_err();
+            test(op, Range::new(space).eq((12,))).unwrap_err();
 
-            assert!(test(op, Range::new(space).lt((12,))).is_ok());
-            assert!(test(op, Range::new(space).le((11,))).is_ok());
+            test(op, Range::new(space).lt((12,))).unwrap();
+            test(op, Range::new(space).le((11,))).unwrap();
 
-            assert!(test(op, Range::new(space).gt((12,))).is_ok());
-            assert!(test(op, Range::new(space).ge((13,))).is_ok());
+            test(op, Range::new(space).gt((12,))).unwrap();
+            test(op, Range::new(space).ge((13,))).unwrap();
 
-            assert!(test(op, Range::new(69105u32)).is_ok());
+            test(op, Range::new(69105u32)).unwrap();
         }
     }
 }
