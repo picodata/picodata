@@ -5,24 +5,17 @@ use ::tarantool::network::Client;
 use ::tarantool::network::Config;
 use ::tarantool::tuple::{DecodeOwned, Encode};
 
-use crate::has_states;
-use crate::instance::Instance;
-use crate::instance::InstanceId;
 use crate::pico_service::pico_service_password;
-use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetId;
 use crate::schema::PICO_SERVICE_USER_NAME;
-use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::node;
 use crate::traft::Result;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::io;
 
 use serde::de::DeserializeOwned;
-use std::collections::HashSet;
 
 pub mod ddl_apply;
 pub mod disable_service;
@@ -38,35 +31,6 @@ pub mod snapshot;
 pub mod update_instance;
 
 static mut STATIC_PROCS: Option<HashSet<String>> = None;
-
-pub fn replicasets_masters<'a>(
-    replicasets: &HashMap<&ReplicasetId, &'a Replicaset>,
-    instances: &'a [Instance],
-) -> Vec<&'a InstanceId> {
-    let mut masters = Vec::with_capacity(replicasets.len());
-    // TODO: invert this loop to improve performance
-    // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
-    for r in replicasets.values() {
-        #[rustfmt::skip]
-        let Some(master) = instances.iter().find(|i| i.instance_id == r.current_master_id) else {
-            tlog!(
-                Warning,
-                "couldn't find instance with id {}, which is chosen as master of replicaset {}",
-                r.current_master_id,
-                r.replicaset_id,
-            );
-            // Send them a request anyway just to be safe
-            masters.push(&r.current_master_id);
-            continue;
-        };
-        if has_states!(master, Expelled -> *) {
-            continue;
-        }
-        masters.push(&master.instance_id);
-    }
-
-    masters
-}
 
 #[inline(always)]
 pub fn init_static_proc_set() {

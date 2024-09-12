@@ -396,7 +396,28 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // ddl
     if has_pending_schema_change {
-        let targets = rpc::replicasets_masters(replicasets, instances);
+        let mut targets = Vec::with_capacity(replicasets.len());
+        // TODO: invert this loop to improve performance
+        // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
+        for r in replicasets.values() {
+            #[rustfmt::skip]
+            let Some(master) = instances.iter().find(|i| i.instance_id == r.current_master_id) else {
+                tlog!(
+                    Warning,
+                    "couldn't find instance with id {}, which is chosen as master of replicaset {}",
+                    r.current_master_id,
+                    r.replicaset_id,
+                );
+                // Send them a request anyway just to be safe
+                targets.push(&r.current_master_id);
+                continue;
+            };
+            if has_states!(master, Expelled -> *) {
+                continue;
+            }
+            targets.push(&master.instance_id);
+        }
+
         let rpc = rpc::ddl_apply::Request {
             term,
             applied,
