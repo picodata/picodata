@@ -425,14 +425,14 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
     with open(password_file, "wb") as f:
         f.write(b"\x80")
     i1.service_password_file = password_file
-    lc = log_crawler(i1, "ERROR: service password must be encoded as utf-8")
+    lc = log_crawler(i1, "CRITICAL: service password must be encoded as utf-8")
     i1.fail_to_start()
     lc.wait_matched()
 
     with open(password_file, "w") as f:
         pass
     i1.service_password_file = password_file
-    lc = log_crawler(i1, "ERROR: service password cannot be empty")
+    lc = log_crawler(i1, "CRITICAL: service password cannot be empty")
     i1.fail_to_start()
     lc.wait_matched()
 
@@ -440,7 +440,7 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
         print("\n", file=f)
     i1.service_password_file = password_file
     lc = log_crawler(
-        i1, "ERROR: service password cannot start with a newline character"
+        i1, "CRITICAL: service password cannot start with a newline character"
     )
     i1.fail_to_start()
     lc.wait_matched()
@@ -449,7 +449,7 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
         print("\nnothing", file=f)
     i1.service_password_file = password_file
     lc = log_crawler(
-        i1, "ERROR: service password cannot start with a newline character"
+        i1, "CRITICAL: service password cannot start with a newline character"
     )
     i1.fail_to_start()
     lc.wait_matched()
@@ -457,7 +457,9 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
     with open(password_file, "w") as f:
         print("hello\nworld", file=f)
     i1.service_password_file = password_file
-    lc = log_crawler(i1, "ERROR: service password cannot be split into multiple lines")
+    lc = log_crawler(
+        i1, "CRITICAL: service password cannot be split into multiple lines"
+    )
     i1.fail_to_start()
     lc.wait_matched()
 
@@ -465,7 +467,7 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
         print("€", file=f)
     i1.service_password_file = password_file
     lc = log_crawler(
-        i1, "ERROR: service password characters must be within ascii range"
+        i1, "CRITICAL: service password characters must be within ascii range"
     )
     i1.fail_to_start()
     lc.wait_matched()
@@ -475,7 +477,7 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
     i1.service_password_file = password_file
     lc = log_crawler(
         i1,
-        "ERROR: service password characters must be alphanumeric",
+        "CRITICAL: service password characters must be alphanumeric",
     )
     i1.fail_to_start()
     lc.wait_matched()
