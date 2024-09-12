@@ -1,7 +1,12 @@
 import pexpect  # type: ignore
+import os
+import pytest
 import sys
 import subprocess
-from conftest import Cluster
+from conftest import Cluster, log_crawler
+from tarantool.error import (  # type: ignore
+    NetworkError,
+)
 
 
 def test_connect_ux(cluster: Cluster):
@@ -459,3 +464,52 @@ Delimiter changed to ';'
 Bye
 """.encode()
     )
+
+
+def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
+    password_file = f"{cluster.data_dir}/service-password.txt"
+    with open(password_file, "w") as f:
+        print("secret", file=f)
+
+    os.chmod(password_file, 0o600)
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.service_password_file = password_file
+
+    admin_banned_lc = log_crawler(
+        i1, "Maximum number of login attempts exceeded; user blocked"
+    )
+    i1.start()
+    i1.wait_online()
+
+    # auth via pico_service many times
+    for _ in range(100):
+        with pytest.raises(NetworkError):
+            i1.sql("try to auth", user="pico_service", password="wrong_password")
+
+    # pico_service is not banned
+    data = i1.sql(
+        "SELECT name FROM _pico_tier ", user="pico_service", password="secret"
+    )
+
+    assert data[0][0] == "default"
+
+    # auth via admin until ban
+    for _ in range(5):
+        with pytest.raises(NetworkError):
+            i1.sql("try to auth", user="admin", password="wrong_password")
+
+    admin_banned_lc.wait_matched()
+
+    cli = pexpect.spawn(
+        cwd=i1.data_dir,
+        command=i1.binary_path,
+        args=["admin", "./admin.sock"],
+        encoding="utf-8",
+        timeout=1,
+    )
+
+    cli.logfile = sys.stdout
+    cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
