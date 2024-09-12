@@ -2269,6 +2269,25 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert msgpack.loads(output) == ["pong", i2.instance_id, b"how are you?"]
 
+    i1.call("pico._inject_error", "RPC_NETWORK_ERROR", True)
+    context = make_context()
+
+    # check that rpc call to a non-self instance will fail
+    input = dict(
+        path="/ping",
+        instance_id=i2.instance_id,
+        input="how are you?",
+    )
+    with pytest.raises(TarantoolError, match="injected error"):
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # check self-calling RPC (this should not use a network)
+    input["instance_id"] = i1.instance_id
+    output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert msgpack.loads(output) == ["pong", i1.instance_id, b"how are you?"]
+
+    i1.call("pico._inject_error", "RPC_NETWORK_ERROR", False)
+
     # Check calling RPC to ANY instance via the plugin SDK
     context = make_context()
     input = dict(

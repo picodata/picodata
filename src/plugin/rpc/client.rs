@@ -26,6 +26,22 @@ use tarantool::uuid::Uuid;
 // rpc out
 ////////////////////////////////////////////////////////////////////////////////
 
+fn process_rpc_output(mut output: &[u8]) -> Result<&'static [u8], Error> {
+    let output_len = rmp::decode::read_bin_len(&mut output).map_err(|e| {
+        BoxError::new(
+            TarantoolErrorCode::InvalidMsgpack,
+            format!("expected bin: {e}"),
+        )
+    })?;
+    if output.len() != output_len as usize {
+        #[rustfmt::skip]
+        return Err(BoxError::new(TarantoolErrorCode::InvalidMsgpack, format!("this is weird: {output_len} != {}", output.len())).into());
+    }
+
+    let res = copy_to_region(output)?;
+    return Ok(res);
+}
+
 /// Returns data allocated on the region allocator (or statically allocated).
 pub(crate) fn send_rpc_request(
     plugin_identity: &PluginIdentifier,
@@ -41,6 +57,11 @@ pub(crate) fn send_rpc_request(
     let timeout = Duration::from_secs_f64(timeout);
 
     let instance_id = resolve_rpc_target(plugin_identity, service, target, node)?;
+
+    let my_instance_id = node
+        .raft_storage
+        .instance_id()?
+        .expect("should be persisted at this point");
 
     if path.starts_with('.') {
         return call_builtin_stored_proc(pool, path, input, &instance_id, timeout);
@@ -61,6 +82,12 @@ pub(crate) fn send_rpc_request(
     // Safe because buffer contains a msgpack array
     let args = unsafe { TupleBuffer::from_vec_unchecked(buffer) };
 
+    if instance_id == my_instance_id {
+        let output = rpc::server::proc_rpc_dispatch_impl(args.as_ref().into())?;
+        return process_rpc_output(output);
+    };
+
+    crate::error_injection!("RPC_NETWORK_ERROR" => return Err(Error::other("injected error")));
     tlog!(Debug, "sending plugin RPC request";
         "instance_id" => %instance_id,
         "request_id" => %request_id,
@@ -74,21 +101,7 @@ pub(crate) fn send_rpc_request(
     )?;
     // FIXME: remove this extra allocation for RawByteBuf
     let output: RawByteBuf = fiber::block_on(future)?;
-
-    let mut output = &**output;
-    let output_len = rmp::decode::read_bin_len(&mut output).map_err(|e| {
-        BoxError::new(
-            TarantoolErrorCode::InvalidMsgpack,
-            format!("expected bin: {e}"),
-        )
-    })?;
-    if output.len() != output_len as usize {
-        #[rustfmt::skip]
-        return Err(BoxError::new(TarantoolErrorCode::InvalidMsgpack, format!("this is weird: {output_len} != {}", output.len())).into());
-    }
-
-    let res = copy_to_region(output)?;
-    Ok(res)
+    process_rpc_output(&output)
 }
 
 fn call_builtin_stored_proc(

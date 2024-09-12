@@ -17,8 +17,7 @@ use tarantool::unwrap_ok_or;
 // proc_rpc_dispatch
 ////////////////////////////////////////////////////////////////////////////////
 
-#[tarantool::proc(packed_args)]
-pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError> {
+pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntError> {
     let msgpack_args = msgpack_read_array(args)?;
     let [path, mut input, context] = msgpack_args[..] else {
         #[rustfmt::skip]
@@ -91,6 +90,11 @@ pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError>
     let (slice, _) = buffer.into_raw_parts();
 
     Ok(RawBytes::new(slice))
+}
+
+#[tarantool::proc(packed_args)]
+pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError> {
+    proc_rpc_dispatch_impl(args)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
