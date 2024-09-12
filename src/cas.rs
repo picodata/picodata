@@ -1214,7 +1214,7 @@ mod tests {
             },
             Dml::Delete {
                 table: table.into(),
-                key,
+                key: key.clone(),
                 initiator: ADMIN_ID,
             },
         ];
@@ -1233,6 +1233,11 @@ mod tests {
             test(op, Range::new(space).ge((13,))).unwrap();
 
             test(op, Range::new(69105u32)).unwrap();
+
+            assert_eq!(
+                Range::for_dml(op).unwrap(),
+                Range::new(space).eq(key.clone())
+            )
         }
     }
 }
