@@ -230,6 +230,20 @@ def test_cas_predicate(instance: Instance):
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
 
+    # CaS rejected via the explicit predicate, even though implicit range doesn't match
+    with pytest.raises(TarantoolError) as e6:
+        instance.cas(
+            "insert",
+            "_pico_property",
+            ["animal", "chicken"],
+            index=read_index,
+            ranges=[CasRange(eq="fruit")],
+        )
+    assert e6.value.args[:2] == (
+        ErrorCode.CasConflictFound,
+        f"ConflictFound: found a conflicting entry at index {read_index+1}",
+    )
+
     # Stale index, yet successful insert of another key
     ret = instance.cas(
         "insert",
