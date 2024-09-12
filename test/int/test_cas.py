@@ -179,39 +179,39 @@ def test_cas_predicate(instance: Instance):
     assert instance.pico_property("fruit") == "apple"
 
     # CaS rejected via the implicit predicate
-    with pytest.raises(TarantoolError) as e5:
+    with pytest.raises(TarantoolError) as e1:
         instance.cas("insert", "_pico_property", ["fruit", "orange"], index=read_index)
-    assert e5.value.args[:2] == (
+    assert e1.value.args[:2] == (
         ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
 
     # CaS rejected via the implicit predicate, even though there's an explicit one
-    with pytest.raises(TarantoolError) as e5:
+    with pytest.raises(TarantoolError) as e2:
         instance.cas(
             "insert",
             "_pico_property",
             ["fruit", "orange"],
             index=read_index,
-            ranges=[CasRange(eq="vegetables")],
+            ranges=[CasRange(eq="vegetable")],
         )
-    assert e5.value.args[:2] == (
+    assert e2.value.args[:2] == (
         ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
 
     # CaS rejected via the implicit predicate, different kind of operation
-    with pytest.raises(TarantoolError) as e5:
+    with pytest.raises(TarantoolError) as e3:
         instance.cas("replace", "_pico_property", ["fruit", "orange"], index=read_index)
-    assert e5.value.args[:2] == (
+    assert e3.value.args[:2] == (
         ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
 
     # CaS rejected via the implicit predicate, different kind of operation
-    with pytest.raises(TarantoolError) as e5:
+    with pytest.raises(TarantoolError) as e4:
         instance.cas("delete", "_pico_property", ["fruit"], index=read_index)
-    assert e5.value.args[:2] == (
+    assert e4.value.args[:2] == (
         ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
