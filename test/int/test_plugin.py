@@ -2477,6 +2477,36 @@ cluster:
     # TODO: check calling to poisoned service
 
 
+def test_plugin_rpc_sdk_single_instance(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=True, init_replication_factor=1)
+
+    plugin_name = _PLUGIN_W_SDK
+    service_name = SERVICE_W_RPC
+    install_and_enable_plugin(i1, plugin_name, [service_name], migrate=True)
+
+    # Check sending request with `master = false` when there's ony one instance
+    context = make_context()
+    input = dict(
+        service_info=(plugin_name, service_name, _PLUGIN_VERSION_1),
+        path="/ping",
+        input="by-bucket-id",
+        bucket_id=13,
+        to_master=False,
+    )
+    i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check sending request with `master = false` when there's ony one instance
+    context = make_context()
+    input = dict(
+        service_info=(plugin_name, service_name, _PLUGIN_VERSION_1),
+        path="/ping",
+        input="by-replicaset-id",
+        replicaset_id=i1.call(".proc_instance_info")["replicaset_id"],
+        to_master=False,
+    )
+    i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+
 def test_sdk_internal(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 

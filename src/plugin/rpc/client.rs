@@ -389,8 +389,8 @@ fn resolve_rpc_target(
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates
         for instance_id in replicas {
-            if my_instance_id == instance_id {
-                // Don't want to call self
+            if my_instance_id == instance_id && candidates.len() > 1 {
+                // Prefer someone else instead of self
                 continue;
             }
             if candidates.contains(&instance_id) {
@@ -406,8 +406,8 @@ fn resolve_rpc_target(
         // TODO: find a better strategy then just the random one
         let random_index = rand::random::<usize>() % candidates.len();
         let mut instance_id = std::mem::take(&mut candidates[random_index]);
-        if instance_id == my_instance_id {
-            // Don't want to call self
+        if instance_id == my_instance_id && candidates.len() > 1 {
+            // Prefer someone else instead of self
             let index = (random_index + 1) % candidates.len();
             instance_id = std::mem::take(&mut candidates[index]);
         }
