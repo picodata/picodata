@@ -20,6 +20,10 @@ not_in_nav: |
   reference/api.md
   reference/metrics.md
   architecture/clusterwide_schema.md
+  plugins/argus.md
+  plugins/svarog.md
+  plugins/task.md
+  plugins/uroboros.md
 
 # Навигация
 # https://www.mkdocs.org/user-guide/configuration/#nav
