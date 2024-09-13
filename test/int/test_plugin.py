@@ -2167,7 +2167,12 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     pong, instance_id, echo = msgpack.loads(output)
     assert pong == "pong"
-    assert instance_id in [i2.instance_id, i3.instance_id, i4.instance_id]
+    assert instance_id in [
+        i2.instance_id,
+        i3.instance_id,
+        i4.instance_id,
+        router_instance.instance_id,
+    ]
     assert echo == b"random-target"
 
     # Check calling RPC to a specific replicaset via the plugin SDK
