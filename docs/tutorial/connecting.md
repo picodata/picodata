@@ -15,6 +15,7 @@
 См. также:
 
 - [Использование внешних коннекторов к Picodata](../connectors_index.md)
+- [Работа с данными SQL](sql_examples.md)
 
 ## Консоль администратора {: #admin_console }
 
@@ -106,7 +107,7 @@ cat ../setup.sql
 ```
 
 ```sql
-\s d ;
+\set delimiter ;
 ALTER USER "admin" WITH PASSWORD 'T0psecret';
 CREATE USER "alice" WITH PASSWORD 'T0psecret';
 GRANT CREATE TABLE TO "alice";
@@ -157,10 +158,6 @@ picodata connect alice@localhost:3301
 
 [соответствующей привилегией LOGIN]: ../tutorial/access_control.md#privileges
 
-См. также:
-
-- [Работа с данными SQL](sql_examples.md)
-
 ### Встроенная справка {: #builtin_help }
 
 Встроенная справка Picodata доступна в административной и в
@@ -178,10 +175,6 @@ SQL-консоли. Справка содержит информацию о до
 - `\set delimiter default` — сбросить `символ` для разделения строк
   (перенос строки по нажатию ++enter++)
 
-!!! note "Примечание"
-    Поддерживается сокращенная версия
-    `\set delimiter` в виде `\s d`. Пример: `\s d ;`
-
 ### Сочетания клавиш в консоли {: #hotkeys }
 
 В консоли Picodata поддерживаются следующие сочетания клавиш:
@@ -190,10 +183,6 @@ SQL-консоли. Справка содержит информацию о до
 - ++alt+enter++ — переход к новой строке
 - ++ctrl+c++ — отмена ввода
 - ++ctrl+d++ — выход из консоли
-
-См. также:
-
-- [Аргументы командной строки](../reference/cli.md)
 
 ## Протокол PostgreSQL {: #pgproto }
 
@@ -242,7 +231,7 @@ psql postgres://alice:T0psecret@localhost:5432?sslmode=disable
 
 Примеры запросов в интерактивной сессии `psql`:
 
-```sql title="Запрос CREATE TABLE"
+```sql
 postgres=> CREATE TABLE WAREHOUSE (
     W_ID INTEGER NOT NULL,
     W_NAME VARCHAR(10) NOT NULL,
@@ -254,12 +243,12 @@ USING MEMTX DISTRIBUTED BY (W_ID);
 CREATE TABLE
 ```
 
-```sql title="Запрос INSERT"
+```sql
 postgres=> INSERT INTO WAREHOUSE (W_ID, W_NAME) VALUES (1, 'aaaa'), (2, 'aaab'), (3, 'aaac'), (4, 'aaad');
 INSERT 0 4
 ```
 
-```sql title="Запрос SELECT"
+```sql
 postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
  "W_ID" | "W_NAME"
 --------+----------
@@ -270,7 +259,7 @@ postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
 (4 rows)
 ```
 
-```sql title="Запрос SELECT с условием WHERE"
+```sql
 postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
  "W_NAME"
 ----------
@@ -278,19 +267,12 @@ postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
 (1 row)
 ```
 
-См. также:
-
-* [CREATE TABLE](../reference/sql/create_table.md)
-* [INSERT](../reference/sql/insert.md)
-* [SELECT](../reference/sql/select.md)
-
 ### Ограничения {: #pgproto_limitations }
 
- * Поступающие запросы без изменений передаются в Picodata в текстовом виде,
- поэтому возможно выполнение только поддерживаемых в Picodata запросов
- * [Системные каталоги
- PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html) пока
- не поддерживаются
- * Модуль Pgproto работает в режиме
-[autocommit](https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html),
-т.к. Picodata не поддерживает интерактивные транзакции
+* Поступающие запросы без изменений передаются в Picodata в текстовом виде,
+  поэтому возможно выполнение только поддерживаемых в Picodata запросов
+* [Системные каталоги PostgreSQL](https://www.postgresql.org/docs/current/catalogs.html)
+  реализованы частично
+* Подключение по протоколу PostgreSQL работает в режиме
+  [autocommit](https://www.postgresql.org/docs/current/ecpg-sql-set-autocommit.html),
+  т.к. Picodata не поддерживает интерактивные транзакции
