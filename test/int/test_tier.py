@@ -465,12 +465,7 @@ cluster:
             assert table_size(instance, table_name) == 2
 
 
-@pytest.mark.xfail(
-    reason=(
-        "failed reading instance with id `3`: instance with id 3 not found, "
-        "thread 'main' panicked, src/traft/node.rs:1515:17"
-    ),
-)
+@pytest.mark.xfail(reason=("very flaky, will be fixed ASAP"))
 def test_tier_with_several_replicasets(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
