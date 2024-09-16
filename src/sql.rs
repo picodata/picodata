@@ -915,9 +915,15 @@ fn acl_ir_node_to_op_or_result(
     storage: &Clusterwide,
 ) -> traft::Result<ControlFlow<ConsumerResult, Op>> {
     match acl {
-        AclOwned::DropRole(DropRole { name, .. }) => {
+        AclOwned::DropRole(DropRole {
+            name, if_exists, ..
+        }) => {
             let Some(role_def) = storage.users.by_name(name)? else {
-                return Err(error::DoesNotExist::Role(name.clone()).into());
+                if *if_exists {
+                    return Ok(ControlFlow::Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::DoesNotExist::Role(name.clone()).into());
+                }
             };
             if !role_def.is_role() {
                 return Err(Error::Sbroad(SbroadError::Invalid(
@@ -932,9 +938,15 @@ fn acl_ir_node_to_op_or_result(
                 schema_version,
             })))
         }
-        AclOwned::DropUser(DropUser { name, .. }) => {
+        AclOwned::DropUser(DropUser {
+            name, if_exists, ..
+        }) => {
             let Some(user_def) = storage.users.by_name(name)? else {
-                return Err(error::DoesNotExist::User(name.clone()).into());
+                if *if_exists {
+                    return Ok(ControlFlow::Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::DoesNotExist::User(name.clone()).into());
+                }
             };
             if user_def.is_role() {
                 return Err(Error::Sbroad(SbroadError::Invalid(
@@ -949,7 +961,11 @@ fn acl_ir_node_to_op_or_result(
                 schema_version,
             })))
         }
-        AclOwned::CreateRole(CreateRole { name, .. }) => {
+        AclOwned::CreateRole(CreateRole {
+            name,
+            if_not_exists,
+            ..
+        }) => {
             check_name_emptyness(name)?;
 
             let sys_user = Space::from(SystemSpace::User)
@@ -960,9 +976,11 @@ fn acl_ir_node_to_op_or_result(
                 let entry_type: &str = user.get(3).unwrap();
                 if entry_type == "user" {
                     return Err(error::AlreadyExists::User(name.clone()).into());
-                } else {
-                    return Err(error::AlreadyExists::Role(name.clone()).into());
                 }
+                if *if_not_exists {
+                    return Ok(ControlFlow::Break(ConsumerResult { row_count: 0 }));
+                }
+                return Err(error::AlreadyExists::Role(name.clone()).into());
             }
             let id = node.get_next_grantee_id()?;
             let role_def = UserDef {
@@ -980,6 +998,7 @@ fn acl_ir_node_to_op_or_result(
             name,
             password,
             auth_method,
+            if_not_exists,
             ..
         }) => {
             check_name_emptyness(name)?;
@@ -989,35 +1008,26 @@ fn acl_ir_node_to_op_or_result(
             let auth = AuthDef::new(method, data.into_string());
 
             let user_def = storage.users.by_name(name)?;
-            match user_def {
-                Some(user_def) if user_def.is_role() => {
+            if let Some(user_def) = user_def {
+                if user_def.is_role() {
                     return Err(error::AlreadyExists::Role(name.clone()).into());
                 }
-                Some(user_def) => {
-                    if user_def
-                        .auth
-                        .expect("user always should have non empty auth")
-                        != auth
-                    {
-                        return Err(Error::Other(
-                            format!("User {name} already exists with different auth method").into(),
-                        ));
-                    }
-                    return Err(error::AlreadyExists::User(name.clone()).into());
+                if *if_not_exists {
+                    return Ok(ControlFlow::Break(ConsumerResult { row_count: 0 }));
                 }
-                None => {
-                    let id = node.get_next_grantee_id()?;
-                    let user_def = UserDef {
-                        id,
-                        name: name.to_string(),
-                        schema_version,
-                        auth: Some(auth.clone()),
-                        owner: current_user,
-                        ty: UserMetadataKind::User,
-                    };
-                    Ok(Continue(Op::Acl(OpAcl::CreateUser { user_def })))
-                }
+                return Err(error::AlreadyExists::User(name.clone()).into());
             }
+
+            let id = node.get_next_grantee_id()?;
+            let user_def = UserDef {
+                id,
+                name: name.to_string(),
+                schema_version,
+                auth: Some(auth.clone()),
+                owner: current_user,
+                ty: UserMetadataKind::User,
+            };
+            Ok(Continue(Op::Acl(OpAcl::CreateUser { user_def })))
         }
         AclOwned::AlterUser(AlterUser {
             name, alter_option, ..
@@ -1191,6 +1201,7 @@ fn ddl_ir_node_to_op_or_result(
             sharding_key,
             engine_type,
             tier,
+            if_not_exists,
             ..
         }) => {
             let format = format
@@ -1229,7 +1240,11 @@ fn ddl_ir_node_to_op_or_result(
             params.validate()?;
 
             if params.space_exists()? {
-                return Err(error::AlreadyExists::Table(params.name.to_smolstr()).into());
+                if *if_not_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::AlreadyExists::Table(params.name.to_smolstr()).into());
+                }
             }
 
             params.check_tier_exists(storage)?;
@@ -1242,9 +1257,15 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        DdlOwned::DropTable(DropTable { name, .. }) => {
+        DdlOwned::DropTable(DropTable {
+            name, if_exists, ..
+        }) => {
             let Some(space_def) = storage.tables.by_name(name)? else {
-                return Err(error::DoesNotExist::Table(name.clone()).into());
+                if *if_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::DoesNotExist::Table(name.clone()).into());
+                }
             };
             let ddl = OpDdl::DropTable {
                 id: space_def.id,
@@ -1260,6 +1281,7 @@ fn ddl_ir_node_to_op_or_result(
             params,
             body,
             language,
+            if_not_exists,
             ..
         }) => {
             let params: RoutineParams = params
@@ -1280,9 +1302,11 @@ fn ddl_ir_node_to_op_or_result(
                 security,
                 owner: current_user,
             };
-            params.validate(storage)?;
 
-            if params.func_exists() {
+            if params.func_exists() || storage.routines.by_name(&params.name)?.is_some() {
+                if *if_not_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                }
                 return Err(error::AlreadyExists::Procedure(params.name.to_smolstr()).into());
             }
             let id = func_next_reserved_id()?;
@@ -1300,9 +1324,18 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        DdlOwned::DropProc(DropProc { name, params, .. }) => {
+        DdlOwned::DropProc(DropProc {
+            name,
+            params,
+            if_exists,
+            ..
+        }) => {
             let Some(routine) = &storage.routines.by_name(name)? else {
-                return Err(error::DoesNotExist::Procedure(name.clone()).into());
+                if *if_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::DoesNotExist::Procedure(name.clone()).into());
+                }
             };
 
             // drop by name if no parameters are specified
@@ -1379,6 +1412,7 @@ fn ddl_ir_node_to_op_or_result(
             dimension,
             distance,
             hint,
+            if_not_exists,
             ..
         }) => {
             let mut opts: Vec<IndexOption> = Vec::with_capacity(9);
@@ -1422,7 +1456,11 @@ fn ddl_ir_node_to_op_or_result(
             params.validate(storage)?;
 
             if params.index_exists() || storage.indexes.by_name(&params.name)?.is_some() {
-                return Err(error::AlreadyExists::Index(params.name.to_smolstr()).into());
+                if *if_not_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::AlreadyExists::Index(params.name.to_smolstr()).into());
+                }
             }
 
             let ddl = params.into_ddl(storage)?;
@@ -1431,9 +1469,15 @@ fn ddl_ir_node_to_op_or_result(
                 ddl,
             }))
         }
-        DdlOwned::DropIndex(DropIndex { name, .. }) => {
+        DdlOwned::DropIndex(DropIndex {
+            name, if_exists, ..
+        }) => {
             let Some(index) = storage.indexes.by_name(name)? else {
-                return Err(error::DoesNotExist::Index(name.clone()).into());
+                if *if_exists {
+                    return Ok(Break(ConsumerResult { row_count: 0 }));
+                } else {
+                    return Err(error::DoesNotExist::Index(name.clone()).into());
+                }
             };
             let ddl = OpDdl::DropIndex {
                 space_id: index.table_id,

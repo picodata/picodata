@@ -53,6 +53,8 @@ Connection via `Pgproto` no longer requires additional manual step to change the
 - Execute option `sql_vdbe_max_steps` was renamed to
 `vdbe_max_steps`
 - SQL supports `SELECT` statements without scans: `select 1`
+- `CREATE TABLE`, `CREATE INDEX`, `CREATE PROCEDURE`, `CREATE USER` and `CREATE ROLE` support `IF NOT EXISTS` option
+- `DROP TABLE`, `DROP INDEX`, `DROP PROCEDURE`, `DROP USER` and `DROP ROLE` support `IF EXISTS` option
 
 ## [24.5.1] - 2024-09-04
 

@@ -1716,7 +1716,7 @@ def test_create_drop_table(cluster: Cluster):
     cluster.raft_wait_index(i2.raft_get_index())
 
     # already dropped -> error, no such table
-    with pytest.raises(TarantoolError, match="""sbroad: space t not found"""):
+    with pytest.raises(TarantoolError, match="table t does not exist"):
         i2.sql(
             """
             drop table "t"
@@ -2235,16 +2235,12 @@ def test_sql_acl_users_roles(cluster: Cluster):
         i1.sql(f"drop role '{username}'")
 
     # Can't create same user with different auth methods.
-    with pytest.raises(
-        TarantoolError, match="already exists with different auth method"
-    ):
+    with pytest.raises(TarantoolError, match="user .* already exists"):
         i1.sql(f"create user {username} with password '{password}' using md5")
         i1.sql(f"create user {username} with password '{password}' using chap-sha1")
 
     # Can't create same user with different password.
-    with pytest.raises(
-        TarantoolError, match="already exists with different auth method"
-    ):
+    with pytest.raises(TarantoolError, match="user .* already exists"):
         i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
 
     acl = i1.sql(f"drop user {username}")
@@ -3103,11 +3099,8 @@ def test_create_drop_procedure(cluster: Cluster):
             """
         )
 
-    # Check that we can't create a procedure with the same name but different
-    # signature.
-    with pytest.raises(
-        TarantoolError, match="routine proc1 already exists with different parameters"
-    ):
+    # Check that we can't create a procedure with a occupied name.
+    with pytest.raises(TarantoolError, match="procedure proc1 already exists"):
         i2.sql(
             """
             create procedure proc1(int, text)
@@ -3116,9 +3109,7 @@ def test_create_drop_procedure(cluster: Cluster):
             option(timeout=3)
             """
         )
-    with pytest.raises(
-        TarantoolError, match="routine proc1 already exists with a different body"
-    ):
+    with pytest.raises(TarantoolError, match="procedure proc1 already exists"):
         i2.sql(
             """
             create procedure proc1(int)
@@ -4555,7 +4546,7 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
     for table_name, other_table_name in zip(table_names, reversed(table_names)):
         with pytest.raises(
             TarantoolError,
-            match=f"""index {table_name}_bucket_id already exists with a different signature""",
+            match=f"""index {table_name}_bucket_id already exists""",
         ):
             # try to create existing index
             i1.sql(
@@ -5295,6 +5286,9 @@ def test_already_exists_error(instance: Instance):
     with pytest.raises(TarantoolError, match="table my_table already exists"):
         do_sql_twice("CREATE TABLE my_table (id INT PRIMARY KEY)")
 
+    ddl = instance.sql("CREATE TABLE IF NOT EXISTS my_table (id INT PRIMARY KEY)")
+    assert ddl["row_count"] == 0
+
     with pytest.raises(TarantoolError, match="procedure my_proc already exists"):
         do_sql_twice(
             """
@@ -5304,14 +5298,47 @@ def test_already_exists_error(instance: Instance):
     """
         )
 
+    ddl = instance.sql(
+        """
+    CREATE PROCEDURE IF NOT EXISTS my_proc(INT)
+    LANGUAGE SQL
+    AS $$INSERT INTO my_table VALUES(?)$$
+    """
+    )
+    assert ddl["row_count"] == 0
+
+    # With IF NOT EXISTS we can provide a different signature.
+    instance.sql(
+        """
+    CREATE PROCEDURE IF NOT EXISTS my_proc(INT, INT, INT, INT)
+    LANGUAGE SQL
+    AS $$INSERT INTO my_table VALUES(?)$$
+    """
+    )
+
     with pytest.raises(TarantoolError, match="index my_index already exists"):
         do_sql_twice("CREATE INDEX my_index ON my_table (id)")
+
+    ddl = instance.sql("CREATE INDEX IF NOT EXISTS my_index ON my_table (id)")
+    assert ddl["row_count"] == 0
 
     with pytest.raises(TarantoolError, match="user test_user already exists"):
         do_sql_twice("CREATE USER test_user WITH PASSWORD 'Passw0rd'")
 
+    acl = instance.sql("CREATE USER IF NOT EXISTS test_user WITH PASSWORD 'Passw0rd'")
+    assert acl["row_count"] == 0
+
+    # With IF NOT EXISTS we can provide a different password.
+    acl = instance.sql(
+        "CREATE USER IF NOT EXISTS test_user WITH PASSWORD 'AnotherPassw0rd'"
+    )
+    assert acl["row_count"] == 0
+
     with pytest.raises(TarantoolError, match="role my_role already exists"):
         do_sql_twice("CREATE ROLE my_role")
+
+    acl = instance.sql("CREATE ROLE IF NOT EXISTS my_role")
+    assert acl["row_count"] == 0
 
     instance.sql("CREATE USER foo WITH PASSWORD 'Passw0rd'")
     instance.sql("CREATE USER bar WITH PASSWORD 'Passw0rd'")
@@ -5321,25 +5348,76 @@ def test_already_exists_error(instance: Instance):
 
 
 def test_does_not_exist_error(instance: Instance):
-    # Unfortunately, sbroad raises an error when resolving metadata before we can return
-    # "does not exist" error from picodata.
-    with pytest.raises(TarantoolError, match="sbroad: space my_table not found"):
+    with pytest.raises(TarantoolError, match="table my_table does not exist"):
         instance.sql("DROP TABLE my_table")
+
+    ddl = instance.sql("DROP TABLE IF EXISTS t")
+    assert ddl["row_count"] == 0
 
     with pytest.raises(TarantoolError, match="procedure my_proc does not exist"):
         instance.sql("DROP PROCEDURE my_proc")
 
+    ddl = instance.sql("DROP PROCEDURE IF EXISTS my_proc")
+    assert ddl["row_count"] == 0
+
     with pytest.raises(TarantoolError, match="index my_index does not exist"):
         instance.sql("DROP INDEX my_index")
+
+    ddl = instance.sql("DROP INDEX IF EXISTS my_index")
+    assert ddl["row_count"] == 0
 
     with pytest.raises(TarantoolError, match="user test_user does not exist"):
         instance.sql("DROP USER test_user")
 
+    ddl = instance.sql("DROP USER IF EXISTS test_user")
+    assert ddl["row_count"] == 0
+
     with pytest.raises(TarantoolError, match="role my_role does not exist"):
         instance.sql("DROP ROLE my_role")
 
+    ddl = instance.sql("DROP ROLE IF EXISTS my_role")
+    assert ddl["row_count"] == 0
+
     with pytest.raises(TarantoolError, match="user foo does not exist"):
         instance.sql("ALTER USER foo RENAME TO bar")
+
+
+def test_if_exists_no_early_return(instance: Instance):
+    # DROP TABLE IF EXISTS
+    ddl = instance.sql("CREATE TABLE t (id INT PRIMARY KEY)")
+    assert ddl["row_count"] == 1
+    ddl = instance.sql("DROP TABLE t")
+    assert ddl["row_count"] == 1
+
+    # table for indexes and routines
+    ddl = instance.sql("CREATE TABLE t (id INT PRIMARY KEY)")
+    assert ddl["row_count"] == 1
+
+    # DROP INDEX IF EXISTS
+    ddl = instance.sql("CREATE INDEX i ON t (id)")
+    assert ddl["row_count"] == 1
+    ddl = instance.sql("DROP INDEX IF EXISTS i")
+    assert ddl["row_count"] == 1
+
+    # DROP PROCEDURE IF EXISTS
+    ddl = instance.sql(
+        "CREATE PROCEDURE proc(INT) LANGUAGE SQL AS $$INSERT INTO t VALUES(?)$$"
+    )
+    assert ddl["row_count"] == 1
+    ddl = instance.sql("DROP PROCEDURE IF EXISTS proc")
+    assert ddl["row_count"] == 1
+
+    # DROP USER IF EXISTS
+    acl = instance.sql("CREATE USER u WITH PASSWORD 'Passw0rd'")
+    assert acl["row_count"] == 1
+    acl = instance.sql("DROP USER IF EXISTS u")
+    assert acl["row_count"] == 1
+
+    # DROP ROLE IF EXISTS
+    acl = instance.sql("CREATE ROLE r")
+    assert acl["row_count"] == 1
+    acl = instance.sql("DROP ROLE IF EXISTS r")
+    assert acl["row_count"] == 1
 
 
 def test_like(instance: Instance):

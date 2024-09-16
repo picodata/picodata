@@ -1678,8 +1678,6 @@ pub enum DdlError {
     #[error("there is no pending ddl operation")]
     NoPendingDdl,
     #[error("{0}")]
-    CreateRoutine(#[from] CreateRoutineError),
-    #[error("{0}")]
     CreateIndex(#[from] CreateIndexError),
 }
 
@@ -1715,8 +1713,6 @@ impl From<CreateTableError> for Error {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreateIndexError {
-    #[error("index {name} already exists with a different signature")]
-    IndexAlreadyExists { name: String },
     #[error("table {table_name} not found")]
     TableNotFound { table_name: String },
     #[error("table {table_name} is not operable")]
@@ -1744,28 +1740,6 @@ pub enum CreateIndexError {
 impl From<CreateIndexError> for Error {
     fn from(err: CreateIndexError) -> Self {
         DdlError::CreateIndex(err).into()
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum CreateRoutineError {
-    #[error("routine {name} already exists with a different kind")]
-    ExistsWithDifferentKind { name: String },
-    #[error("routine {name} already exists with different parameters")]
-    ExistsWithDifferentParams { name: String },
-    #[error("routine {name} already exists with a different language")]
-    ExistsWithDifferentLanguage { name: String },
-    #[error("routine {name} already exists with a different body")]
-    ExistsWithDifferentBody { name: String },
-    #[error("routine {name} already exists with a different security")]
-    ExistsWithDifferentSecurity { name: String },
-    #[error("routine {name} already exists with a different owner")]
-    ExistsWithDifferentOwner { name: String },
-}
-
-impl From<CreateRoutineError> for Error {
-    fn from(err: CreateRoutineError) -> Self {
-        DdlError::CreateRoutine(err).into()
     }
 }
 
@@ -1839,31 +1813,6 @@ fn func_exists(name: &str) -> bool {
 impl CreateProcParams {
     pub fn func_exists(&self) -> bool {
         func_exists(&self.name)
-    }
-
-    pub fn validate(&self, storage: &Clusterwide) -> traft::Result<()> {
-        let routine = with_su(ADMIN_ID, || storage.routines.by_name(&self.name))??;
-        if let Some(def) = routine {
-            if def.kind != RoutineKind::Procedure {
-                return Err(CreateRoutineError::ExistsWithDifferentKind { name: def.name })?;
-            }
-            if def.params != self.params {
-                return Err(CreateRoutineError::ExistsWithDifferentParams { name: def.name })?;
-            }
-            if def.language != self.language {
-                return Err(CreateRoutineError::ExistsWithDifferentLanguage { name: def.name })?;
-            }
-            if def.body != self.body {
-                return Err(CreateRoutineError::ExistsWithDifferentBody { name: def.name })?;
-            }
-            if def.security != self.security {
-                return Err(CreateRoutineError::ExistsWithDifferentSecurity { name: def.name })?;
-            }
-            if def.owner != self.owner {
-                return Err(CreateRoutineError::ExistsWithDifferentOwner { name: def.name })?;
-            }
-        }
-        Ok(())
     }
 }
 
@@ -1948,13 +1897,6 @@ impl CreateIndexParams {
             parts.push(part);
         }
         Ok(parts)
-    }
-
-    fn is_duplicate(&self, table_id: SpaceId, index: IndexDef) -> bool {
-        table_id == index.table_id
-            && self.name == index.name
-            && self.ty == index.ty
-            && index.opts_equal(self.opts.as_slice())
     }
 
     pub fn into_ddl(&self, storage: &Clusterwide) -> Result<Ddl, Error> {
@@ -2116,15 +2058,6 @@ impl CreateIndexParams {
                 for part in &parts {
                     check_part_type(part, false, &[Some(IndexFieldType::Array)])?;
                 }
-            }
-        }
-
-        let index = with_su(ADMIN_ID, || storage.indexes.by_name(&self.name))??;
-        if let Some(index) = index {
-            if self.is_duplicate(table.id, index) {
-                return Err(CreateIndexError::IndexAlreadyExists {
-                    name: self.name.clone(),
-                })?;
             }
         }
 

@@ -299,12 +299,12 @@ def test_lua_console_sql_error_messages(cluster: Cluster):
         == """---
 - null
 - |+
-  rule parsing error:  --> 1:9
+  rule parsing error:  --> 1:15
     |
   1 |  create table foo
-    |         ^---
+    |               ^---
     |
-    = expected Unique
+    = expected IfNotExists
 
 ...
 """
