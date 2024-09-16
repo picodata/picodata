@@ -74,6 +74,8 @@ pub enum Error {
     NoSuchInstance(Result<RaftId, InstanceId>),
     #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "replicaset_uuid" } else { "replicaset_id" })]
     NoSuchReplicaset { id: String, id_is_uuid: bool },
+    #[error("tier with name \"{0}\" not found")]
+    NoSuchTier(String),
     #[error("address of peer with id {0} not found")]
     AddressUnknownForRaftId(RaftId),
     #[error("address of peer with id \"{0}\" not found")]

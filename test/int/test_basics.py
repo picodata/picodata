@@ -581,6 +581,92 @@ cluster:
     assert 'instance with instance_id "i3" not found' in str(e)
 
 
+def test_proc_get_vshard_config(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tier:
+        storage:
+            replication_factor: 1
+        router:
+            replication_factor: 3
+"""
+    )
+
+    storage_instance = cluster.add_instance(tier="storage")
+    router_instance_1 = cluster.add_instance(tier="router")
+    router_instance_2 = cluster.add_instance(tier="router")
+
+    storage_sharding = {
+        f"{storage_instance.replicaset_uuid()}": {
+            "replicas": {
+                f"{storage_instance.instance_uuid()}": {
+                    "master": True,
+                    "name": "i1",
+                    "uri": f"pico_service@{storage_instance.host}:{storage_instance.port}",
+                }
+            },
+            "weight": 1.0,
+        }
+    }
+
+    router_sharding = {
+        f"{router_instance_1.replicaset_uuid()}": {
+            "replicas": {
+                f"{router_instance_1.instance_uuid()}": {
+                    "master": True,
+                    "name": "i2",
+                    "uri": f"pico_service@{router_instance_1.host}:{router_instance_1.port}",
+                },
+                f"{router_instance_2.instance_uuid()}": {
+                    "master": False,
+                    "name": "i3",
+                    "uri": f"pico_service@{router_instance_2.host}:{router_instance_2.port}",
+                },
+            },
+            "weight": 0.0,
+        }
+    }
+
+    storage_vshard_config_explicit = storage_instance.call(
+        ".proc_get_vshard_config", "storage"
+    )
+    assert storage_vshard_config_explicit == dict(
+        discovery_mode="on",
+        sharding=storage_sharding,
+    )
+
+    storage_vshard_config_implicit = storage_instance.call(
+        ".proc_get_vshard_config", None
+    )
+    assert storage_vshard_config_explicit == storage_vshard_config_implicit
+
+    router_vshard_config_explicit = router_instance_1.call(
+        ".proc_get_vshard_config", "router"
+    )
+    assert router_vshard_config_explicit == dict(
+        discovery_mode="on",
+        sharding=router_sharding,
+    )
+
+    router_vshard_config_implicit = router_instance_1.call(
+        ".proc_get_vshard_config", None
+    )
+    assert router_vshard_config_explicit == router_vshard_config_implicit
+
+    assert router_instance_1.call(
+        ".proc_get_vshard_config", "router"
+    ) == storage_instance.call(".proc_get_vshard_config", "router")
+
+    assert router_instance_1.call(
+        ".proc_get_vshard_config", "storage"
+    ) == storage_instance.call(".proc_get_vshard_config", "storage")
+
+    with pytest.raises(TarantoolError, match='tier with name "default" not found'):
+        router_instance_1.call(".proc_get_vshard_config", "default")
+
+
 def test_proc_raft_info(instance: Instance):
     info = instance.call(".proc_raft_info")
 

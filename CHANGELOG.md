@@ -21,6 +21,8 @@ with the `YY.MINOR.MICRO` scheme.
 - Support human numbers to configure memtx.memory
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
+
+- New rpc entrypoint: `.proc_get_vshard_config` which returns the vshard configuration of tier.
 -->
 
 ### Lua API
