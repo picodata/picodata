@@ -725,6 +725,9 @@ fn alter_user_ir_node_to_op_or_result(
             })))
         }
         AlterOption::Login => {
+            // Note: We do not check if the privilege has already been granted, since a user may
+            // have it on one node but not on another. This grant must be applied globally to
+            // ensure the user has login access across all nodes.
             let priv_def = PrivilegeDef::login(
                 get_grantee_id(storage, name.as_str())?,
                 current_user,

@@ -551,9 +551,9 @@ def test_builtin_users_and_roles(cluster: Cluster):
 
     # granting already granted privilege does not raise an error
     index = i1.call(".proc_get_index")
-    i1.sql('ALTER USER "DAVE" WITH LOGIN')
+    i1.sql('ALTER USER "Dave" WITH LOGIN')
     new_index = i1.call(".proc_get_index")
-    assert index == new_index
+    assert index != new_index
 
     i1.grant_privilege("Dave", "execute", "role", "super")
     new_index = i1.call(".proc_get_index")
@@ -612,25 +612,25 @@ def test_grant_and_revoke_default_users_privileges(cluster: Cluster):
     assert index == new_index
 
     # granting default privilege does not raise an error
-    i1.sql('ALTER USER "DAVE" WITH LOGIN')
+    i1.sql('ALTER USER "Dave" WITH LOGIN')
     new_index = i1.call(".proc_get_index")
-    assert index == new_index
+    assert index != new_index  # AlterUser is always executed trough raft
 
     # granting default privilege does not raise an error
     i1.grant_privilege("Dave", "alter", "user", "Dave")
     new_index = i1.call(".proc_get_index")
-    assert index == new_index
+    assert index != new_index  # AlterUser is always executed trough raft
 
     # revoke default privilege does not raise an error
-    i1.sql('ALTER USER "DAVE" WITH NOLOGIN')
+    i1.sql('ALTER USER "Dave" WITH NOLOGIN')
     new_index = i1.call(".proc_get_index")
-    assert index == new_index
+    assert index != new_index  # AlterUser is always executed trough raft
 
     index = new_index
     # already revoked, so it should be idempotent
-    i1.sql('ALTER USER "DAVE" WITH NOLOGIN')
+    i1.sql('ALTER USER "Dave" WITH NOLOGIN')
     new_index = i1.call(".proc_get_index")
-    assert new_index == index
+    assert index != new_index  # AlterUser is always executed trough raft
 
 
 # it's part of https://git.picodata.io/picodata/picodata/picodata/-/issues/421
