@@ -158,14 +158,14 @@ picodata connect alice@localhost:3301
 
 [соответствующей привилегией LOGIN]: ../tutorial/access_control.md#privileges
 
-### Встроенная справка {: #builtin_help }
+## Встроенная справка в консоли {: #builtin_help }
 
 Встроенная справка Picodata доступна в административной и в
 SQL-консоли. Справка содержит информацию о дополнительных командах в
 консоли и поддерживаемых сочетаниях клавиш. Для вызова справки
 введите `\help`.
 
-### Дополнительные команды консоли {: #backslash_commands }
+### Дополнительные команды {: #backslash_commands }
 
 В консоли Picodata доступны следующие дополнительные команды:
 
@@ -175,7 +175,7 @@ SQL-консоли. Справка содержит информацию о до
 - `\set delimiter default` — сбросить `символ` для разделения строк
   (перенос строки по нажатию ++enter++)
 
-### Сочетания клавиш в консоли {: #hotkeys }
+### Сочетания клавиш {: #hotkeys }
 
 В консоли Picodata поддерживаются следующие сочетания клавиш:
 
@@ -231,7 +231,7 @@ psql postgres://alice:T0psecret@localhost:5432?sslmode=disable
 
 Примеры запросов в интерактивной сессии `psql`:
 
-```sql
+```sql title="Создание таблицы"
 postgres=> CREATE TABLE WAREHOUSE (
     W_ID INTEGER NOT NULL,
     W_NAME VARCHAR(10) NOT NULL,
@@ -243,12 +243,12 @@ USING MEMTX DISTRIBUTED BY (W_ID);
 CREATE TABLE
 ```
 
-```sql
+```sql title="Вставка строк"
 postgres=> INSERT INTO WAREHOUSE (W_ID, W_NAME) VALUES (1, 'aaaa'), (2, 'aaab'), (3, 'aaac'), (4, 'aaad');
 INSERT 0 4
 ```
 
-```sql
+```sql title="Получение колонок"
 postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
  "W_ID" | "W_NAME"
 --------+----------
@@ -259,7 +259,7 @@ postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
 (4 rows)
 ```
 
-```sql
+```sql title="Получение колонок с условием"
 postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
  "W_NAME"
 ----------
