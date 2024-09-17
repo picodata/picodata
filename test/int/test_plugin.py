@@ -2204,7 +2204,7 @@ cluster:
     i3 = cluster.add_instance(replicaset_id="r2", wait_online=False)
     i4 = cluster.add_instance(replicaset_id="r2", wait_online=False)
     router_instance = cluster.add_instance(
-        replicaset_id="r3", wait_online=False, tier="router"
+        wait_online=False, replicaset_id="r3", tier="router"
     )
     cluster.wait_online()
 

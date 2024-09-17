@@ -277,11 +277,6 @@ impl Service for Service2 {
         Ok(())
     }
 
-    fn on_config_validate(&self, _: Self::Config) -> CallbackResult<()> {
-        inc_callback_calls("testservice_2", "on_cfg_validate");
-        Ok(())
-    }
-
     fn on_config_change(
         &mut self,
         _: &PicoContext,
