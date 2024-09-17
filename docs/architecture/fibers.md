@@ -55,8 +55,6 @@ thread`, Picodata является однопоточной СУБД с собс
 меняет свое состояние.
 
 [fiber]: ../overview/glossary.md#fiber
-[cache]: https://en.wikipedia.org/wiki/Translation_lookaside_buffer
-[coroutine]: https://en.wikipedia.org/wiki/Coroutine
 
 ## Состояния файбера {: #fiber_states }
 

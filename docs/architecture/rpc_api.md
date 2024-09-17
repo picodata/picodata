@@ -581,7 +581,7 @@ fn proc_replication_demote() -> Vclock
 ответ текущее значение своего [vclock](../overview/glossary.md#vclock), которое
 дальше используется для синхронизации новой мастер-реплики.
 
-См. [#proc_replication] о том, как в Picodata настраивается репликация.
+См. [.proc_replication](#proc_replication) о том, как в Picodata настраивается репликация.
 
 Параметры:
 
@@ -716,8 +716,6 @@ fn proc_sql_execute(..) -> Result
     - `row_count` (MP_INT), количество измененных строк
 
 Для более высокоуровневого RPC смотрите [.proc_sql_dispatch](#proc_sql_dispatch)
-
-[bincode]: https://github.com/bincode-org/bincode
 
 --------------------------------------------------------------------------------
 ### .proc_update_instance {: #proc_update_instance }
