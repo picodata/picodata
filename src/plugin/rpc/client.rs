@@ -173,13 +173,25 @@ fn encode_request_arguments(
     Ok(())
 }
 
-/// Gets instance id
+fn get_replicaset_uuid_by_bucket_id(
+    tier_name: &str,
+    bucket_id: u64,
+    node: &Node,
+) -> Result<String, Error> {
+    let res = vshard::get_replicaset_uuid_by_bucket_id(tier_name, bucket_id);
+    if res.is_err() && node.storage.tiers.by_name(tier_name)?.is_none() {
+        return Err(Error::NoSuchTier(tier_name.into()));
+    }
+
+    res
+}
+
 fn get_instance_id_of_master_of_replicaset(
-    tier: &str,
+    tier_name: &str,
     bucket_id: u64,
     node: &Node,
 ) -> Result<InstanceId, Error> {
-    let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(tier, bucket_id)?;
+    let replicaset_uuid = get_replicaset_uuid_by_bucket_id(tier_name, bucket_id, node)?;
     let tuple = node.storage.replicasets.by_uuid_raw(&replicaset_uuid)?;
     let Some(master_id) = tuple
         .field(Replicaset::FIELD_TARGET_MASTER_ID)
@@ -329,7 +341,7 @@ fn resolve_rpc_target(
                 .tier()?
                 .expect("storage for instance should exists");
 
-            let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(&tier, bucket_id)?;
+            let replicaset_uuid = get_replicaset_uuid_by_bucket_id(&tier, bucket_id, node)?;
             tier_and_replicaset_uuid = Some((tier, replicaset_uuid));
         }
 
@@ -340,7 +352,7 @@ fn resolve_rpc_target(
         } => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
             let tier = unsafe { tier.as_str().to_string() };
-            let replicaset_uuid = vshard::get_replicaset_uuid_by_bucket_id(&tier, bucket_id)?;
+            let replicaset_uuid = get_replicaset_uuid_by_bucket_id(&tier, bucket_id, node)?;
             tier_and_replicaset_uuid = Some((tier, replicaset_uuid));
         }
 
@@ -350,7 +362,16 @@ fn resolve_rpc_target(
     if let Some((tier, replicaset_uuid)) = tier_and_replicaset_uuid {
         // Need to pick a replica from given replicaset
 
-        let replicas = vshard::get_replicaset_priority_list(&tier, &replicaset_uuid)?;
+        let replicas = match vshard::get_replicaset_priority_list(&tier, &replicaset_uuid) {
+            Ok(replicas) => replicas,
+            Err(err) => {
+                if node.storage.tiers.by_name(&tier)?.is_none() {
+                    return Err(Error::NoSuchTier(tier));
+                }
+
+                return Err(err);
+            }
+        };
 
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates

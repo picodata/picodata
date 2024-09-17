@@ -2334,7 +2334,7 @@ cluster:
     # Check requesting RPC to unknown tier
     with pytest.raises(
         TarantoolError,
-        match="no router found for tier 'undefined'",
+        match='tier with name "undefined" not found',
     ):
         context = make_context()
         input = dict(
