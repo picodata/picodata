@@ -2172,7 +2172,9 @@ cluster:
     i2 = cluster.add_instance(replicaset_id="r1", wait_online=False)
     i3 = cluster.add_instance(replicaset_id="r2", wait_online=False)
     i4 = cluster.add_instance(replicaset_id="r2", wait_online=False)
-    router_instance = cluster.add_instance(wait_online=False, tier="router")
+    router_instance = cluster.add_instance(
+        replicaset_id="r3", wait_online=False, tier="router"
+    )
     cluster.wait_online()
 
     def replicaset_master_id(replicaset_id: str) -> str:
