@@ -10,7 +10,6 @@ import time
 import threading
 from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import random
 
 import yaml as yaml_lib  # type: ignore
 import pytest
@@ -2287,14 +2286,10 @@ class AuditServer:
 @dataclass
 class Postgres:
     cluster: Cluster
-
-    def __init__(self, cluster: Cluster, ssl: bool = False, ssl_verify: bool = False):
-        # use random port in order to avoid "cannot assign requested address" error
-        self.port = random.randint(2000, 30000)
-        self.host = "127.0.0.1"
-        self.cluster = cluster
-        self.ssl = ssl
-        self.ssl_verify = ssl_verify
+    port: int
+    host: str = "127.0.0.1"
+    ssl: bool = False
+    ssl_verify: bool = False
 
     def install(self):
         self.cluster.set_config_file(
@@ -2327,15 +2322,17 @@ instance:
 
 
 @pytest.fixture
-def postgres(cluster: Cluster):
-    return Postgres(cluster).install()
+def postgres(cluster: Cluster, port_distributor: PortDistributor):
+    return Postgres(cluster, port=port_distributor.get()).install()
 
 
 @pytest.fixture
-def postgres_with_tls(cluster: Cluster):
-    return Postgres(cluster, ssl=True).install()
+def postgres_with_tls(cluster: Cluster, port_distributor: PortDistributor):
+    return Postgres(cluster, port=port_distributor.get(), ssl=True).install()
 
 
 @pytest.fixture
-def postgres_with_mtls(cluster: Cluster):
-    return Postgres(cluster, ssl=True, ssl_verify=True).install()
+def postgres_with_mtls(cluster: Cluster, port_distributor: PortDistributor):
+    return Postgres(
+        cluster, port=port_distributor.get(), ssl=True, ssl_verify=True
+    ).install()
