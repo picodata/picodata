@@ -50,39 +50,40 @@ pub mod iproto_key {
 }
 use iproto_key::*;
 
-/// Iproto packet type.
-///
-/// See `enum iproto_type` in \<tarantool>/src/box/iproto_constants.h for source
-/// of truth.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum IProtoType {
-    /// This packet is a response with status success.
-    Ok = 0,
-    Select = 1,
-    Insert = 2,
-    Replace = 3,
-    Update = 4,
-    Delete = 5,
-    /// Deprecated in Tarantool 1.6 with name `IPROTO_CALL_16`.
-    /// Superseeded by `IPROTO_CALL`, see [`IProtoType::Call`].
-    LegacyCall = 6,
-    Auth = 7,
-    Eval = 8,
-    Upsert = 9,
-    Call = 10,
-    Execute = 11,
-    Nop = 12,
-    Prepare = 13,
-    Begin = 14,
-    Commit = 15,
-    Rollback = 16,
-    // ...
-    Ping = 64,
-    // ...
-    /// Error marker. This value will be combined with the error code in the
-    /// actual iproto response: `(IProtoType::Error | error_code)`.
-    Error = 1 << 15,
+crate::define_enum_with_introspection! {
+    /// Iproto packet type.
+    ///
+    /// See `enum iproto_type` in \<tarantool>/src/box/iproto_constants.h for source
+    /// of truth.
+    #[non_exhaustive]
+    pub enum IProtoType {
+        /// This packet is a response with status success.
+        Ok = 0,
+        Select = 1,
+        Insert = 2,
+        Replace = 3,
+        Update = 4,
+        Delete = 5,
+        /// Deprecated in Tarantool 1.6 with name `IPROTO_CALL_16`.
+        /// Superseeded by `IPROTO_CALL`, see [`IProtoType::Call`].
+        LegacyCall = 6,
+        Auth = 7,
+        Eval = 8,
+        Upsert = 9,
+        Call = 10,
+        Execute = 11,
+        Nop = 12,
+        Prepare = 13,
+        Begin = 14,
+        Commit = 15,
+        Rollback = 16,
+        // ...
+        Ping = 64,
+        // ...
+        /// Error marker. This value will be combined with the error code in the
+        /// actual iproto response: `(IProtoType::Error | error_code)`.
+        Error = 1 << 15,
+    }
 }
 
 pub fn chap_sha1_auth_data(password: &str, salt: &[u8]) -> Vec<u8> {
