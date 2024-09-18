@@ -1308,6 +1308,7 @@ impl PropertyName {
         };
 
         match self {
+            #[rustfmt::skip]
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
             | Self::GlobalSchemaVersion => {
