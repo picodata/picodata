@@ -609,16 +609,19 @@ extern "C" {
 
 /// Callback for overwritten handlers of unsupported IPROTO requests.
 /// Sets diagnostic message and returns an error to register it.
-pub extern "C" fn iproto_override_cb_unsupported_requests(
+pub(crate) extern "C" fn iproto_override_cb_unsupported_requests(
     _header: *const u8,
     _header_end: *const u8,
     _body: *const u8,
     _body_end: *const u8,
-    _ctx: *mut (),
+    ctx: *mut (),
 ) -> iproto_handler_status {
+    // SAFETY: see guarantees on a caller side, that is [`tarantool::forbid_unsupported_iproto_requests`]
+    let request_type = unsafe { *(ctx as *const () as *const crate::ForbiddenIprotoTypes) };
     ::tarantool::set_error!(
         ::tarantool::error::TarantoolErrorCode::Unsupported,
-        "picodata does not support this IPROTO request type, it was disabled"
+        "picodata does not support IPROTO_{} request type",
+        request_type.variant_name()
     );
     iproto_handler_status::IPROTO_HANDLER_ERROR
 }

@@ -31,6 +31,11 @@ the timeout for address resolving operation.
 - Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value and everywhere across documentation and examples to reduce ambiguity.
 
 - New rpc entrypoint: `.proc_get_vshard_config` which returns the vshard configuration of tier.
+
+- Unused types of IPROTO requests have been forbidden for the sake of integrity.
+  Here is the list (all start with "IPROTO_" prefix): INSERT, REPLACE,
+  UPDATE, DELETE, CALL_16, UPSERT, NOP, PREPARE, BEGIN, COMMIT, ROLLBACK.
+  In future verisons, SELECT will also be forbidden.
 -->
 
 ### Lua API

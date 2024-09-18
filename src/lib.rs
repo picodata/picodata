@@ -1144,7 +1144,7 @@ fn postjoin(
         // EVAL = 8, - needed
         UPSERT = 9,
         // CALL = 10, - needed
-        EXECUTE = 11,
+        // EXECUTE = 11, - needed, see [`redirect_iproto_execute_requests`]
         NOP = 12,
         PREPARE = 13,
         BEGIN = 14,
@@ -1164,7 +1164,10 @@ fn forbid_unsupported_iproto_requests() {
                 *iproto_request as _,
                 Some(tarantool::iproto_override_cb_unsupported_requests),
                 None,
-                std::ptr::null_mut(),
+                // INFO: as long as we are using constant array to represent forbidden IPROTO request
+                // types, we are allowed to take a pointer to every type and pass to the `box_iproto_override`
+                // as a context so it will not dangle after being passed to a callback
+                iproto_request as *const _ as *const () as _,
             )
         };
         assert_eq!(rc, 0);
@@ -1177,7 +1180,7 @@ fn forbid_unsupported_iproto_requests() {
 fn redirect_iproto_execute_requests() {
     let rc = unsafe {
         tarantool::box_iproto_override(
-            ::tarantool::network::protocol::IProtoType::Execute as _,
+            ::tarantool::network::protocol::codec::IProtoType::Execute as _,
             Some(tarantool::iproto_override_cb_redirect_execute),
             None,
             std::ptr::null_mut(),
