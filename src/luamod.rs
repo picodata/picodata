@@ -684,8 +684,9 @@ pub(crate) fn setup() {
 
             1. code (optional number), default: 0
         "},
-        tlua::function1(|code: Option<i32>| {
-            crate::tarantool::exit(code.unwrap_or(0))
+        #[allow(clippy::unused_unit)] // Needed to suppress dependency_on_unit_never_type_fallback
+        tlua::function1(|code: Option<i32>| -> () {
+            crate::tarantool::exit(code.unwrap_or(0));
         }),
     );
 

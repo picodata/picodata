@@ -294,10 +294,7 @@ impl Backend {
                 self.execute(None, -1)
             };
 
-            simple_query().map_err(|err| {
-                close_unnamed();
-                err
-            })
+            simple_query().inspect_err(|_| close_unnamed())
         };
 
         let result = do_simple_query();
@@ -346,10 +343,7 @@ impl Backend {
             self.execute(None, -1)
         };
 
-        do_execute_query().map_err(|err| {
-            close_unnamed();
-            err
-        })
+        do_execute_query().inspect_err(|_| close_unnamed())
     }
 
     /// Handler for a Describe message.

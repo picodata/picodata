@@ -313,7 +313,7 @@ pub fn proc_get_vshard_config(tier_name: Option<String>) -> Result<RawByteBuf, E
     let node = node::global()?;
     let tier_name = if let Some(tier_name) = tier_name {
         let tier = node.storage.tiers.by_name(&tier_name)?;
-        let Some(tier) = tier else {
+        if tier.is_none() {
             return Err(Error::NoSuchTier(tier_name));
         };
 
