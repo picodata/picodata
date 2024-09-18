@@ -91,8 +91,8 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
         if err:
             log.warning(f"{err}: {link}")
 
-    # Cut inline-style links because they are confused with labels
-    markdown = re.sub(LINKS_INLINE_RE, "<inline-style link stripped>", markdown)
+    # Cut inline links because they are confused with labels
+    markdown = re.sub(LINKS_INLINE_RE, "<inline link stripped>", markdown)
 
     reference_links: dict[str, str] = dict()
     used_labels: set[str] = set()
@@ -101,6 +101,7 @@ def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, files: Fil
     for match in re.finditer(LINKS_REFERENCE_RE, markdown):
         link = match[0].replace("\n", " ")
         label, href = match.groups()
+        assert "\n" not in label  # because it doesn't match the pattern
 
         if label not in reference_links:
             reference_links[label] = link
