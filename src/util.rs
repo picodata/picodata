@@ -840,45 +840,21 @@ pub fn check_msgpack_matches_type(
         Error::other(format!("{e:?}")))?;
     let ok = match expected_type {
         SbroadType::Any => true,
-        SbroadType::Map => {
-            matches!(
-                marker,
-                Marker::FixMap { .. } | Marker::Map16 | Marker::Map32
-            )
-        }
-        SbroadType::Array => {
-            matches!(
-                marker,
-                Marker::FixArray { .. } | Marker::Array16 | Marker::Array32
-            )
-        }
-        SbroadType::Boolean => {
-            matches!(marker, Marker::True | Marker::False)
-        }
-        SbroadType::Datetime => {
-            // FIXME: should check actual extension type
-            is_ext(marker)
-        }
-        SbroadType::Decimal | SbroadType::Number => {
-            // FIXME: should check actual extension type
-            // XXX: Also is this even correct?
-            is_ext(marker) || is_int(marker) || is_float(marker)
-        }
-        SbroadType::Double => is_int(marker) || is_float(marker),
+        SbroadType::Boolean => matches!(marker, Marker::True | Marker::False),
         SbroadType::Integer => is_int(marker),
-        SbroadType::Scalar => {
-            is_ext(marker) || is_int(marker) || is_float(marker) || is_str(marker) || is_bin(marker)
-        }
-        SbroadType::String => {
-            is_str(marker) ||
-                // XXX: is this correct?
-                is_bin(marker)
-        }
-        SbroadType::Uuid => {
-            // FIXME: should check actual extension type
-            is_ext(marker)
-        }
         SbroadType::Unsigned => is_uint(marker),
+        SbroadType::Double => is_int(marker) || is_float(marker),
+        SbroadType::Decimal | SbroadType::Number => {
+            is_ext(msgpack, tarantool::ffi::decimal::MP_DECIMAL)
+                || is_int(marker)
+                || is_float(marker)
+        }
+        SbroadType::String => is_str(marker) || is_bin(marker),
+        SbroadType::Uuid => is_ext(msgpack, tarantool::ffi::uuid::MP_UUID),
+        SbroadType::Datetime => is_ext(msgpack, tarantool::ffi::datetime::MP_DATETIME),
+        SbroadType::Scalar => !is_array(marker) && !is_map(marker),
+        SbroadType::Array => is_array(marker),
+        SbroadType::Map => is_map(marker),
     };
 
     if !ok {
@@ -891,18 +867,27 @@ pub fn check_msgpack_matches_type(
     return Ok(());
 
     #[inline(always)]
-    fn is_ext(marker: Marker) -> bool {
+    fn is_array(marker: Marker) -> bool {
         matches!(
             marker,
-            Marker::FixExt1
-                | Marker::FixExt2
-                | Marker::FixExt4
-                | Marker::FixExt8
-                | Marker::FixExt16
-                | Marker::Ext8
-                | Marker::Ext16
-                | Marker::Ext32
+            Marker::FixArray { .. } | Marker::Array16 | Marker::Array32
         )
+    }
+
+    #[inline(always)]
+    fn is_map(marker: Marker) -> bool {
+        matches!(
+            marker,
+            Marker::FixMap { .. } | Marker::Map16 | Marker::Map32
+        )
+    }
+
+    #[inline(always)]
+    fn is_ext(msgpack: &[u8], typeid: i8) -> bool {
+        let Ok(meta) = rmp::decode::read_ext_meta(&mut &*msgpack) else {
+            return false;
+        };
+        meta.typeid == typeid
     }
 
     #[inline(always)]
