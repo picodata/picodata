@@ -2321,18 +2321,30 @@ instance:
         return self.cluster.instances[0]
 
 
-@pytest.fixture
-def postgres(cluster: Cluster, port_distributor: PortDistributor):
-    return Postgres(cluster, port=port_distributor.get()).install()
+# Exists for debugging purposes only. When you're debugging a single test it is
+# simpler to configure wireshark (or other tools) for particular port.
+# Shouldnt be used when multiple tests are run (will result in address already in use errors)
+PG_LISTEN = os.getenv("PG_LISTEN")
 
 
 @pytest.fixture
-def postgres_with_tls(cluster: Cluster, port_distributor: PortDistributor):
-    return Postgres(cluster, port=port_distributor.get(), ssl=True).install()
+def pg_port(port_distributor: PortDistributor):
+    if PG_LISTEN is not None:
+        return int(PG_LISTEN)
+
+    return port_distributor.get()
 
 
 @pytest.fixture
-def postgres_with_mtls(cluster: Cluster, port_distributor: PortDistributor):
-    return Postgres(
-        cluster, port=port_distributor.get(), ssl=True, ssl_verify=True
-    ).install()
+def postgres(cluster: Cluster, pg_port: int):
+    return Postgres(cluster, port=pg_port).install()
+
+
+@pytest.fixture
+def postgres_with_tls(cluster: Cluster, pg_port: int):
+    return Postgres(cluster, port=pg_port, ssl=True).install()
+
+
+@pytest.fixture
+def postgres_with_mtls(cluster: Cluster, pg_port: int):
+    return Postgres(cluster, port=pg_port, ssl=True, ssl_verify=True).install()
