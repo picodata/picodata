@@ -40,6 +40,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use self::tcp::TcpStream;
 
@@ -182,11 +183,12 @@ impl Client {
     /// # Errors
     /// Error is returned if an attempt to connect failed.
     pub async fn connect(url: &str, port: u16) -> Result<Self, ClientError> {
-        Self::connect_with_config(url, port, Default::default()).await
+        Self::connect_with_config(url, port, Default::default(), None).await
     }
 
     /// Creates a new client and tries to establish connection
-    /// to `url:port`
+    /// to `url:port` with given timeout. When timeout is None
+    /// function behaves as a synchronous.
     ///
     /// Takes explicit `config` in comparison to [`Client::connect`]
     /// where default values are used.
@@ -197,8 +199,10 @@ impl Client {
         url: &str,
         port: u16,
         config: protocol::Config,
+        timeout: Option<Duration>,
     ) -> Result<Self, ClientError> {
-        let stream = TcpStream::connect(url, port)
+        let timeout = timeout.unwrap_or(Duration::MAX);
+        let stream = TcpStream::connect_timeout(url, port, timeout)
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
         let client = Rc::new(NoYieldsRefCell::new(client));
@@ -477,10 +481,24 @@ mod tests {
                 creds: Some(("test_user".into(), "password".into())),
                 ..Default::default()
             },
+            None,
         )
         .timeout(Duration::from_secs(3))
         .await
         .unwrap()
+    }
+
+    #[crate::test(tarantool = "crate")]
+    async fn connect_with_timeout() {
+        // Without timeout, the connection hangs on address like this
+        Client::connect_with_config(
+            "123123",
+            listen_port(),
+            protocol::Config::default(),
+            Some(Duration::from_secs(1)),
+        )
+        .await
+        .unwrap_err();
     }
 
     #[crate::test(tarantool = "crate")]
@@ -742,6 +760,7 @@ mod tests {
                     auth_method: AuthMethod::Md5,
                     ..Default::default()
                 },
+                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -765,6 +784,7 @@ mod tests {
                     auth_method: AuthMethod::Md5,
                     ..Default::default()
                 },
+                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -787,6 +807,7 @@ mod tests {
                     auth_method: AuthMethod::ChapSha1,
                     ..Default::default()
                 },
+                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -837,6 +858,7 @@ mod tests {
                     auth_method: AuthMethod::Ldap,
                     ..Default::default()
                 },
+                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -860,6 +882,7 @@ mod tests {
                     auth_method: AuthMethod::Ldap,
                     ..Default::default()
                 },
+                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -882,6 +905,7 @@ mod tests {
                     auth_method: AuthMethod::ChapSha1,
                     ..Default::default()
                 },
+                None,
             )
             .timeout(Duration::from_secs(3))
             .await

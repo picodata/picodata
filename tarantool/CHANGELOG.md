@@ -12,6 +12,7 @@
 - `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants 
 - `network::protocol::codec::Header::encode_from_parts` function
 - `network::protocol::codec::iproto_key::SQL_INFO` constant
+- Added optional argument timeout to `network::client::Client::connect_with_config`
 
 ### Changed
 
