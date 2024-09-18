@@ -611,7 +611,13 @@ fn init_common(
     config: &PicodataConfig,
     cfg: &tarantool::Cfg,
 ) -> Result<(Clusterwide, RaftSpaceAccess), Error> {
-    std::fs::create_dir_all(config.instance.data_dir()).unwrap();
+    std::fs::create_dir_all(config.instance.data_dir()).map_err(|err| {
+        Error::other(format!(
+            "failed creating data directory {}: {}",
+            config.instance.data_dir().display(),
+            err
+        ))
+    })?;
 
     if let Some(log_config) = &cfg.log {
         tlog!(Info, "switching to log configuration: {}", log_config);
