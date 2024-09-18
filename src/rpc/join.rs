@@ -201,6 +201,12 @@ pub fn build_instance(
         None => choose_replicaset_id(failure_domain, storage, &tier)?,
     };
 
+    if let Some(replicaset) = storage.replicasets.get(&replicaset_id)? {
+        if replicaset.tier != tier.name {
+            return Err(Error::other(format!("tier mismatch: instance {instance_id} is from tier: '{}', but replicaset {replicaset_id} is from tier: '{}'", tier.name, replicaset.tier)));
+        }
+    }
+
     let instance = Instance::new(
         Some(raft_id),
         Some(instance_id),

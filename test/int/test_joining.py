@@ -533,3 +533,32 @@ def test_join_with_duplicate_instance_id(cluster: Cluster):
         except ProcessDead:
             assert lc.matched
     assert sole_survivor
+
+
+def test_tier_mismatch_while_joining_by_the_same_replicaset_id(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    cluster_id: test
+    tier:
+        default:
+        router:
+"""
+    )
+    _ = cluster.add_instance(replicaset_id="r1")
+    _ = cluster.add_instance(replicaset_id="r2")
+
+    instance = cluster.add_instance(
+        replicaset_id="r2", tier="router", wait_online=False
+    )
+    msg = "tier mismatch: instance i3 is from tier: 'router', \
+but replicaset r2 is from tier: 'default'"
+
+    lc = log_crawler(instance, msg)
+    with pytest.raises(
+        ProcessDead,
+    ):
+        instance.start()
+        instance.wait_online()
+
+    lc.wait_matched()
