@@ -491,14 +491,18 @@ mod tests {
     #[crate::test(tarantool = "crate")]
     async fn connect_with_timeout() {
         // Without timeout, the connection hangs on address like this
-        Client::connect_with_config(
-            "123123",
+        let client = Client::connect_with_config(
+            "123123", // Invalid host
             listen_port(),
             protocol::Config::default(),
             Some(Duration::from_secs(1)),
-        )
-        .await
-        .unwrap_err();
+        );
+        let res = client.await.unwrap_err();
+        if cfg!(target_os = "macos") {
+            assert!(res.to_string().contains("No route to host"));
+        } else {
+            assert_eq!(res.to_string(), "connect timeout");
+        }
     }
 
     #[crate::test(tarantool = "crate")]
