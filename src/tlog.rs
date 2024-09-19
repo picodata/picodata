@@ -189,8 +189,10 @@ pub fn log_from_non_tx_thread(level: slog::Level, message: String) {
         return;
     };
 
-    // TODO: check log level and exit early
-    let sender = sender.as_ref().expect("is set at picodata startup");
+    let Some(sender) = sender.as_ref() else {
+        // Thread-safe logger is disabled
+        return;
+    };
 
     let res = sender.send(ThreadSafeLogRequest {
         thread_name: std::thread::current().name().unwrap_or("<unknown>").into(),

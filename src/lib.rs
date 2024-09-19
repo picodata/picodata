@@ -639,6 +639,10 @@ fn init_common(
     }
 
     cbus::init_cbus_endpoint();
+    // There's a problem with cbus channels at the moment, they introduce too
+    // much performance penalty when polling them if they're empty,
+    // so we only enable the thread-safe logger in debug builds for now
+    #[cfg(debug_assertions)]
     tlog::init_thread_safe_logger();
 
     if config.instance.shredding() {
