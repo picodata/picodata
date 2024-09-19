@@ -1,5 +1,4 @@
 use super::conf_change::raft_conf_change;
-use super::Loop;
 use crate::cas;
 use crate::column_name;
 use crate::has_states;
@@ -45,6 +44,7 @@ pub(super) fn action_plan<'i>(
     plugins: &HashMap<PluginIdentifier, PluginDef>,
     services: &HashMap<PluginIdentifier, Vec<&'i ServiceDef>>,
     plugin_op: Option<&'i PluginOp>,
+    sync_timeout: std::time::Duration,
 ) -> Result<Plan<'i>> {
     // This function is specifically extracted, to separate the task
     // construction from any IO and/or other yielding operations.
@@ -307,7 +307,7 @@ pub(super) fn action_plan<'i>(
             let rpc = rpc::sharding::Request {
                 term,
                 applied,
-                timeout: Loop::SYNC_TIMEOUT,
+                timeout: sync_timeout,
             };
 
             let mut uops = UpdateOps::new();
@@ -348,7 +348,7 @@ pub(super) fn action_plan<'i>(
             let rpc = rpc::sharding::bootstrap::Request {
                 term,
                 applied,
-                timeout: Loop::SYNC_TIMEOUT,
+                timeout: sync_timeout,
                 tier: tier_name.into(),
             };
 
@@ -400,7 +400,7 @@ pub(super) fn action_plan<'i>(
         let plugin_rpc = rpc::enable_all_plugins::Request {
             term,
             applied,
-            timeout: Loop::SYNC_TIMEOUT,
+            timeout: sync_timeout,
         };
         debug_assert_eq!(target_state.variant, StateVariant::Online);
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
@@ -420,7 +420,7 @@ pub(super) fn action_plan<'i>(
         let rpc = rpc::ddl_apply::Request {
             term,
             applied,
-            timeout: Loop::SYNC_TIMEOUT,
+            timeout: sync_timeout,
         };
         return Ok(ApplySchemaChange { rpc, targets }.into());
     }
@@ -447,7 +447,7 @@ pub(super) fn action_plan<'i>(
         let rpc = rpc::load_plugin_dry_run::Request {
             term,
             applied,
-            timeout: Loop::SYNC_TIMEOUT,
+            timeout: sync_timeout,
         };
 
         let plugin_def = manifest.plugin_def();
@@ -514,7 +514,7 @@ pub(super) fn action_plan<'i>(
         let rpc = rpc::enable_plugin::Request {
             term,
             applied,
-            timeout: Loop::SYNC_TIMEOUT,
+            timeout: sync_timeout,
         };
 
         let mut ranges = vec![];
@@ -660,12 +660,12 @@ pub(super) fn action_plan<'i>(
         let enable_rpc = rpc::enable_service::Request {
             term,
             applied,
-            timeout: Loop::SYNC_TIMEOUT,
+            timeout: sync_timeout,
         };
         let disable_rpc = rpc::disable_service::Request {
             term,
             applied,
-            timeout: Loop::SYNC_TIMEOUT,
+            timeout: sync_timeout,
         };
 
         return Ok(AlterServiceTiers {
