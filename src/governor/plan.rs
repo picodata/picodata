@@ -964,7 +964,7 @@ fn get_new_replicaset_master_if_needed<'i>(
             #[rustfmt::skip]
             tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
                   master.name, master.replicaset_name, r.name);
-        } else if !master.may_respond() {
+        } else if has_states!(master, * -> not Online) {
             #[rustfmt::skip]
             tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
                   master.name, master.replicaset_name);
