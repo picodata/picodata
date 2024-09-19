@@ -618,7 +618,7 @@ fn proc_runtime_info() -> RuntimeInfo
 ### .proc_sharding {: #proc_sharding }
 
 ```rust
-fn proc_sharding(raft_term, raft_index, timeout, do_reconfigure)
+fn proc_sharding(raft_term, raft_index, timeout)
 ```
 
 Дожидается применения raft записи с заданным индексом и термом перед тем как
@@ -635,25 +635,16 @@ fn proc_sharding(raft_term, raft_index, timeout, do_reconfigure)
 
  - [Governor — централизованное управление кластером](./topology_management.md#governor)
 
-<!-- **ОСТОРОЖНО:** детали реализации и параметры запроса с большой вероятностью
-скоро устареют. -->
-
-Конфигурация распределения [бакетов](../overview/glossary.md#bucket)
-хранится в системной таблице
-[_pico_property](./system_tables.md#_pico_property) по ключу
-`target_vshard_config`.
-
-Параметр `do_reconfigure` указывает, нужно ли обновлять конфигурацию в случае
-если она уже применена на текущем инстансе, о чем говорит наличие Lua-переменной
-`pico._vshard_is_configured`.
+В системной таблице [_pico_tier](system_tables.md#_pico_tier) хранятся две версии конфигурации
+распределения [бакетов](../overview/glossary.md#bucket): текущая и
+целевая (target). Этим версиям соответствуют колонки
+`current_vshard_config_version` и `target_vshard_config_version`.
 
 Параметры:
 
 - `raft_term`: (MP_INT)
 - `raft_index`: (MP_INT)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
-- `do_reconfigure` (MP_BOOL)
-
 
 --------------------------------------------------------------------------------
 ### .proc_sharding_bootstrap {: #proc_sharding_bootstrap }

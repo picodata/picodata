@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.6.0-51-ge6d0f4b1`.
+Описание соответствует версии Picodata `24.6.0-106-g9d52b582`.
 
 ### _pico_table
 
@@ -128,6 +128,9 @@
 * `name`: (_string_)
 * `replication_factor`: (_unsigned_)
 * `can_vote`: (_boolean_)
+* `current_vshard_config_version`: (_unsigned_)
+* `target_vshard_config_version`: (_unsigned_)
+* `vshard_bootstrapped`: (_boolean_)
 
 Индексы:
 
@@ -198,15 +201,15 @@
 
 Поля:
 
-* `instance_id`: (_string_)
 * `plugin_name`: (_string_)
 * `plugin_version`: (_string_)
 * `service_name`: (_string_)
+* `instance_id`: (_string_)
 * `poison`: (_boolean_)
 
 Индексы:
 
-* `_pico_service_routing_key` (unique), parts: `[instance_id, plugin_name, plugin_version, service_name]`
+* `_pico_service_routing_key` (unique), parts: `[plugin_name, plugin_version, service_name, instance_id]`
 
 ### _pico_plugin_migration
 
