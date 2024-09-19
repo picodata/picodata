@@ -86,12 +86,15 @@ impl Instance {
     }
 
     /// Instance has a state that implies it may cooperate.
-    /// Currently this means that target_state is neither Offline nor Expelled.
-    #[inline]
-    #[allow(clippy::nonminimal_bool)]
+    /// Currently this means that
+    /// - current_state is not Expelled
+    /// - target_state is not Offline
+    #[inline(always)]
     pub fn may_respond(&self) -> bool {
-        // TODO: add when/if we add this state has_states!(self, * -> GracefulShutdown)
-        has_states!(self, * -> Online)
+        // If instance is going offline ugracefully it will likely not respond
+        has_states!(self, * -> not Offline) &&
+        // If instance has already been expelled it will definitely not respond
+        has_states!(self, not Expelled -> *)
     }
 
     #[inline]
