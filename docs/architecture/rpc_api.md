@@ -316,6 +316,19 @@ fn proc_get_vclock() -> Vclock
 Возвращаемое значение: MP_MAP `Vclock`
 
 --------------------------------------------------------------------------------
+### .proc_get_vshard_config {: #proc_get_vshard_config }
+
+```rust
+fn proc_get_vshard_config(tier_name: Option<String>) -> Result
+```
+
+Возвращает Vshard-конфигурацию тира, переданного в качестве аргумента.
+Если тир не указан, возвращается Vshard-конфигурация тира текущего
+инстанса.
+
+Возвращаемое значение: MP_MAP `VshardConfig`
+
+--------------------------------------------------------------------------------
 ### .proc_instance_info {: #proc_instance_info }
 
 ```rust
