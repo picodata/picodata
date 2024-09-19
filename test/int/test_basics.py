@@ -418,7 +418,8 @@ Insert(_pico_privilege, [1,32,"drop","universe",0,0]),
 Insert(_pico_privilege, [1,32,"alter","universe",0,0]),
 Insert(_pico_privilege, [1,32,"execute","role",3,0]),
 Insert(_pico_user, [2,"public",0,null,1,"role"]),
-Insert(_pico_user, [31,"super",0,null,1,"role"]))|
+Insert(_pico_user, [31,"super",0,null,1,"role"]),
+Insert(_pico_user, [3,"replication",0,null,1,"role"]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_table, [{_pico_table},"_pico_table",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"map","is_nullable":false,"name":"distribution"}},{{"field_type":"array","is_nullable":false,"name":"format"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"boolean","is_nullable":false,"name":"operable"}},{{"field_type":"string","is_nullable":false,"name":"engine"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,"Stores metadata of all the cluster tables in picodata."]),
 Insert(_pico_index, [{_pico_table},0,"_pico_table_id","tree",[{{"unique":true}}],[["id","unsigned",null,false,null]],true,0]),

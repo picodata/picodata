@@ -47,11 +47,11 @@ use tarantool::transaction::{transaction, TransactionError};
 use tarantool::tuple::Encode;
 use tarantool::util::{NumOrStr, Value};
 
-/// The initial local schema version. Immediately after the cluster is bootted
+/// The initial local schema version. Immediately after the cluster is booted
 /// it has this schema version.
 ///
 /// If a schema definition is marked with this version, it means the schema
-/// defintion is builtin and is applied by default on all instances.
+/// definition is builtin and is applied by default on all instances.
 pub const INITIAL_SCHEMA_VERSION: u64 = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -872,7 +872,7 @@ pub const GUEST_ID: UserId = 0;
 /// User id of the builtin user "admin".
 ///
 /// Note: Admin user id is used when we need to elevate privileges
-/// because current user doesnt have access to system spaces
+/// because current user doesn't have access to system spaces
 ///
 /// See also <https://www.tarantool.io/en/doc/latest/reference/reference_lua/box_space/_user/#box-space-user>
 pub const ADMIN_ID: UserId = 1;
@@ -890,7 +890,7 @@ pub const PUBLIC_ID: UserId = 2;
 /// Role "replication" has the following grants:
 /// - Read access to the "universe"
 /// - Write access to the space "_cluster"
-pub const ROLE_REPLICATION_ID: i64 = 3;
+pub const ROLE_REPLICATION_ID: UserId = 3;
 
 /// User id of the builtin role "super".
 ///
@@ -1205,22 +1205,22 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
         };
         let priv_defs = vec![
             PrivilegeDef {
+                grantor_id: initiator,
                 grantee_id: user_def.id,
                 privilege: PrivilegeType::Login,
                 object_type: SchemaObjectType::Universe,
                 object_id: UNIVERSE_ID,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
-                grantor_id: initiator,
             },
             PrivilegeDef {
+                grantor_id: initiator,
                 grantee_id: user_def.id,
                 privilege: PrivilegeType::Execute,
                 object_type: SchemaObjectType::Role,
                 object_id: PUBLIC_ID as _,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
-                grantor_id: initiator,
             },
         ];
         result.push((user_def, priv_defs));
@@ -1248,13 +1248,13 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
         // Grant all privileges on "universe" to "admin".
         for &privilege in PrivilegeType::VARIANTS {
             priv_defs.push(PrivilegeDef {
+                grantor_id: initiator,
                 grantee_id: user_def.id,
                 privilege,
                 object_type: SchemaObjectType::Universe,
                 object_id: UNIVERSE_ID,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
-                grantor_id: initiator,
             });
         }
         result.push((user_def, priv_defs));
@@ -1285,24 +1285,24 @@ pub fn system_user_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
         // Grant all privileges on "universe" to "pico_service".
         for &privilege in PrivilegeType::VARIANTS {
             priv_defs.push(PrivilegeDef {
+                grantor_id: initiator,
                 grantee_id: user_def.id,
                 privilege,
                 object_type: SchemaObjectType::Universe,
                 object_id: UNIVERSE_ID,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
-                grantor_id: initiator,
             });
         }
         // Role "replication" is needed explicitly
         priv_defs.push(PrivilegeDef {
+            grantor_id: initiator,
             grantee_id: user_def.id,
             privilege: PrivilegeType::Execute,
             object_type: SchemaObjectType::Role,
-            object_id: ROLE_REPLICATION_ID,
+            object_id: ROLE_REPLICATION_ID as i64,
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
-            grantor_id: initiator,
         });
         result.push((user_def, priv_defs));
     }
@@ -1346,7 +1346,17 @@ pub fn system_role_definitions() -> Vec<(UserDef, Vec<PrivilegeDef>)> {
     ];
     result.push((super_def, super_privs));
 
-    // There's also a "replication" builtin role, but we don't care about it?
+    let replication_def = UserDef {
+        id: ROLE_REPLICATION_ID,
+        name: "replication".into(),
+        // This means the local schema is already up to date and main loop doesn't need to do anything
+        schema_version: INITIAL_SCHEMA_VERSION,
+        owner: ADMIN_ID,
+        auth: None,
+        ty: UserMetadataKind::Role,
+    };
+    let replication_privs = vec![];
+    result.push((replication_def, replication_privs));
 
     result
 }

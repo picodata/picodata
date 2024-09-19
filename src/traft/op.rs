@@ -1,7 +1,7 @@
 use crate::plugin::PluginIdentifier;
 use crate::schema::{
     Distribution, IndexOption, PrivilegeDef, RoutineLanguage, RoutineParams, RoutineSecurity,
-    UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, SUPER_ID,
+    UserDef, ADMIN_ID, GUEST_ID, PUBLIC_ID, ROLE_REPLICATION_ID, SUPER_ID,
 };
 use crate::storage::Clusterwide;
 use crate::storage::{space_by_name, RoutineId};
@@ -846,7 +846,8 @@ impl Acl {
 
             Self::DropRole { role_id, .. } => {
                 // See https://git.picodata.io/picodata/tarantool/-/blob/da5ad0fa3ab8940f524cfa9bf3d582347c01fc4a/src/box/alter.cc#L3080
-                if *role_id == PUBLIC_ID || *role_id == SUPER_ID {
+                if *role_id == PUBLIC_ID || *role_id == SUPER_ID || *role_id == ROLE_REPLICATION_ID
+                {
                     return Err(TRaftError::other("dropping system role is not allowed"));
                 }
             }

@@ -694,6 +694,40 @@ def test_circular_grants_for_role(cluster: Cluster):
     throws_on_grant("Son", "Son")
 
 
+def test_alter_system_roles(cluster: Cluster):
+    i1, *_ = cluster.deploy(instance_count=1)
+
+    with pytest.raises(
+        TarantoolError,
+        match="role replication already exists",
+    ):
+        i1.sql("create user replication with password '111!aaaA'")
+
+    with pytest.raises(
+        TarantoolError,
+        match="role replication already exists",
+    ):
+        i1.sql('create role "replication"')
+
+    with pytest.raises(
+        TarantoolError,
+        match="dropping system role is not allowed",
+    ):
+        i1.sql('drop role "replication"')
+
+    with pytest.raises(
+        TarantoolError,
+        match="dropping system role is not allowed",
+    ):
+        i1.sql('drop role "super"')
+
+    with pytest.raises(
+        TarantoolError,
+        match="dropping system role is not allowed",
+    ):
+        i1.sql('drop role "public"')
+
+
 def test_alter_system_user(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
@@ -711,9 +745,9 @@ def test_alter_system_user(cluster: Cluster):
 
     with pytest.raises(
         TarantoolError,
-        match="dropping system role is not allowed",
+        match="dropping system user is not allowed",
     ):
-        i1.sql('drop role "public"')
+        i1.sql('drop user "admin"')
 
 
 def test_submit_sql_after_revoke_login(cluster: Cluster):
