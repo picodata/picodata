@@ -642,11 +642,8 @@ class Instance:
     ):
         if user is None:
             user = "pico_service"
-            if password is None and self.service_password_file is not None:
-                with open(self.service_password_file, "r") as f:
-                    password = f.readline()
-                    if password.endswith("\n"):
-                        password = password[:-1]
+            if password is None:
+                password = self.service_password
 
         try:
             c = Connection(
@@ -1463,7 +1460,7 @@ class Instance:
         self.wait_online()
 
     @property
-    def password(self) -> Optional[str]:
+    def service_password(self) -> Optional[str]:
         if self.service_password_file is None:
             return None
         with open(self.service_password_file, "r") as f:
@@ -1519,10 +1516,7 @@ class Cluster:
         if not service_password:
             service_password = "password"
 
-        self.service_password_file = self.data_dir + "/password.txt"
-        with open(self.service_password_file, "w") as f:
-            print(service_password, file=f)
-        os.chmod(self.service_password_file, 0o600)
+        self.set_service_password(service_password)
 
         for _ in range(instance_count):
             self.add_instance(
@@ -1556,6 +1550,12 @@ class Cluster:
         assert yaml
         with open(self.config_path, "w") as yaml_file:
             yaml_file.write(yaml)
+
+    def set_service_password(self, service_password: str):
+        self.service_password_file = self.data_dir + "/password.txt"
+        with open(self.service_password_file, "w") as f:
+            print(service_password, file=f)
+        os.chmod(self.service_password_file, 0o600)
 
     def add_instance(
         self,
@@ -2100,18 +2100,13 @@ def unstarted_instance(
     cluster: Cluster, port_distributor: PortDistributor, pytestconfig
 ) -> Generator[Instance, None, None]:
     """Returns a deployed instance forming a single-node cluster."""
+    cluster.set_service_password("s3cr3t")
     instance = cluster.add_instance(wait_online=False)
 
     has_webui = bool(pytestconfig.getoption("--with-webui"))
     if has_webui:
         listen = f"{cluster.base_host}:{port_distributor.get()}"
         instance.env["PICODATA_HTTP_LISTEN"] = listen
-
-    password_file = f"{cluster.data_dir}/password.txt"
-    with open(password_file, "w") as f:
-        print("s3cr3t", file=f)
-    os.chmod(password_file, 0o600)
-    instance.service_password_file = password_file
 
     yield instance
 
