@@ -56,6 +56,7 @@ crate::define_enum_with_introspection! {
     /// See `enum iproto_type` in \<tarantool>/src/box/iproto_constants.h for source
     /// of truth.
     #[non_exhaustive]
+    #[repr(C)]
     pub enum IProtoType {
         /// This packet is a response with status success.
         Ok = 0,

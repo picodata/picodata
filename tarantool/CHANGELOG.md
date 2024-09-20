@@ -15,6 +15,7 @@
 - Added optional argument timeout to `network::client::Client::connect_with_config`
 
 ### Changed
+- `network::protocol::codec::IProtoType` uses C language representation
 
 ### Fixed
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
