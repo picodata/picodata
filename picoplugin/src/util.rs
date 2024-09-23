@@ -28,8 +28,8 @@ impl FfiSafeBytes {
     }
 
     #[inline(always)]
-    pub unsafe fn into_raw_parts(mut self) -> (*mut u8, usize) {
-        (&mut *self.pointer.as_mut(), self.len)
+    pub fn into_raw_parts(self) -> (*mut u8, usize) {
+        (self.pointer.as_ptr(), self.len)
     }
 
     /// Converts `self` back to a borrowed string `&[u8]`.
@@ -100,6 +100,11 @@ impl FfiSafeStr {
     #[inline(always)]
     pub unsafe fn from_raw_parts(pointer: NonNull<u8>, len: usize) -> Self {
         Self { pointer, len }
+    }
+
+    #[inline(always)]
+    pub fn into_raw_parts(self) -> (*mut u8, usize) {
+        (self.pointer.as_ptr(), self.len)
     }
 
     /// Converts `self` back to a borrowed string `&str`.
