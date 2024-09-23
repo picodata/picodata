@@ -254,7 +254,7 @@ impl FfiRpcHandler {
     {
         // This is safe. To verify see `register_rpc_handler` above.
         let closure_pointer: *mut F = unsafe { (*handler).closure_pointer.cast::<F>() };
-        let mut closure = unsafe { Box::from_raw(closure_pointer) };
+        let closure = unsafe { &*closure_pointer };
         let input = unsafe { input.as_bytes() };
         let context = unsafe { &*context };
         let mut context = Context::new(context);
@@ -284,6 +284,11 @@ impl FfiRpcHandler {
             let closure_pointer: *mut F = (*handler).closure_pointer.cast::<F>();
             let closure = Box::from_raw(closure_pointer);
             drop(closure);
+
+            if cfg!(debug_assertions) {
+                // Overwrite the pointer with garbage so that we fail loudly is case of a bug
+                (*handler).closure_pointer = 0xcccccccccccccccc_u64 as _;
+            }
 
             let (pointer, capacity) = (*handler).string_storage.into_raw_parts();
             // Note: we pretend the original Vec was filled to capacity which
