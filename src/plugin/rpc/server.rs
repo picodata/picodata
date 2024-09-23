@@ -68,17 +68,17 @@ pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntE
     // SAFETY: safe because it doesn't outlive `args`
     let v_requestor = unsafe { context.plugin_version.as_str() };
 
-    if handler.version() != v_requestor {
+    let v_handler = handler.identifier.version();
+    if v_handler != v_requestor {
         return Err(BoxError::new(ErrorCode::WrongPluginVersion, format!("RPC request to an endpoint `{plugin}.{service}{path}` with incompatible version (requestor: {v_requestor}, handler: {v_handler})",
             plugin=key.plugin,
             service=key.service,
-            v_handler=handler.version(),
         )).into());
     }
 
     // TODO: check service is not poisoned
 
-    fiber::set_name(handler.route_repr());
+    fiber::set_name(handler.identifier.route_repr());
     let output = handler
         .call(input, &context)
         .map_err(|()| BoxError::last())?;
@@ -126,33 +126,34 @@ unsafe fn handlers_mut() -> &'static mut RpcHandlerMap {
 }
 
 pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
-    if handler.path().is_empty() {
+    let identifier = &handler.identifier;
+    if identifier.path().is_empty() {
         #[rustfmt::skip]
         return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "RPC route path cannot be empty"));
-    } else if !handler.path().starts_with('/') {
+    } else if !identifier.path().starts_with('/') {
         #[rustfmt::skip]
-        return Err(BoxError::new(TarantoolErrorCode::IllegalParams, format!("RPC route path must start with '/', got '{}'", handler.path())));
+        return Err(BoxError::new(TarantoolErrorCode::IllegalParams, format!("RPC route path must start with '/', got '{}'", identifier.path())));
     }
 
-    if handler.plugin().is_empty() {
+    if identifier.plugin().is_empty() {
         #[rustfmt::skip]
         return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "RPC route plugin name cannot be empty"));
     }
 
-    if handler.service().is_empty() {
+    if identifier.service().is_empty() {
         #[rustfmt::skip]
         return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "RPC route service name cannot be empty"));
     }
 
-    if handler.version().is_empty() {
+    if identifier.version().is_empty() {
         #[rustfmt::skip]
         return Err(BoxError::new(TarantoolErrorCode::IllegalParams, "RPC route service version cannot be empty"));
     }
 
     let key = RpcHandlerKey {
-        plugin: handler.plugin(),
-        service: handler.service(),
-        path: handler.path(),
+        plugin: identifier.plugin(),
+        service: identifier.service(),
+        path: identifier.path(),
     };
 
     // SAFETY: this is safe as long as we never let users touch `RpcHandlerKey`,
@@ -168,35 +169,23 @@ pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
             let key = e.key();
             let old_handler = e.get();
 
+            let v_old = old_handler.identifier.version();
+            let v_new = handler.identifier.version();
             #[rustfmt::skip]
-            if old_handler.version() != handler.version() {
-                let message = format!("RPC endpoint `{plugin}.{service}{path}` is already registered with a different version (old: {old_version}, new: {new_version})", plugin=key.plugin, service=key.service, path=key.path, old_version=old_handler.version(), new_version=handler.version());
+            if v_old != v_new {
+                let message = format!("RPC endpoint `{plugin}.{service}{path}` is already registered with a different version (old: {v_old}, new: {v_new})", plugin=key.plugin, service=key.service, path=key.path);
                 return Err(BoxError::new(TarantoolErrorCode::FunctionExists, message));
             } else if old_handler.identity() != handler.identity() {
-                let message = format!("RPC endpoint `{plugin}.{service}:v{version}{path}` is already registered with a different handler", plugin = key.plugin, service = key.service, version = old_handler.version(), path = key.path);
+                let message = format!("RPC endpoint `{}` is already registered with a different handler", old_handler.identifier);
                 return Err(BoxError::new(TarantoolErrorCode::FunctionExists, message));
             } else {
-                tlog!(
-                    Info,
-                    "RPC endpoint `{plugin}.{service}:v{version}{path}` is already registered",
-                    plugin = handler.plugin(),
-                    service = handler.service(),
-                    version = handler.version(),
-                    path = handler.path(),
-                );
+                tlog!(Info, "RPC endpoint `{}` is already registered", handler.identifier);
                 return Ok(());
             };
         }
     };
 
-    tlog!(
-        Info,
-        "registered RPC endpoint `{}.{}:v{}{}`",
-        handler.plugin(),
-        handler.service(),
-        handler.version(),
-        handler.path(),
-    );
+    tlog!(Info, "registered RPC endpoint `{}`", handler.identifier);
     entry.insert(Rc::new(handler));
     Ok(())
 }
@@ -205,18 +194,11 @@ pub fn unregister_all_rpc_handlers(plugin_name: &str, service_name: &str, plugin
     // SAFETY: safe because we don't leak any references to the stored data
     let handlers = unsafe { handlers_mut() };
     handlers.retain(|_, handler| {
-        let matches = handler.plugin() == plugin_name
-            && handler.service() == service_name
-            && handler.version() == plugin_version;
+        let matches = handler.identifier.plugin() == plugin_name
+            && handler.identifier.service() == service_name
+            && handler.identifier.version() == plugin_version;
         if matches {
-            tlog!(
-                Info,
-                "unregistered RPC endpoint `{}.{}-v{}{}`",
-                handler.plugin(),
-                handler.service(),
-                handler.version(),
-                handler.path(),
-            );
+            tlog!(Info, "unregistered RPC endpoint `{}`", handler.identifier);
             // Don't retain
             false
         } else {
