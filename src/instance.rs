@@ -176,22 +176,29 @@ mod tests {
     }
 
     fn add_tier(storage: &Clusterwide, name: &str, replication_factor: u8, can_vote: bool) -> tarantool::Result<()> {
-        storage.tiers.put(
-                &Tier {
-                    name: name.into(),
-                    replication_factor,
-                    can_vote,
-                    ..Default::default()
-                }
-        )
+        let tier = Tier {
+            name: name.into(),
+            replication_factor,
+            can_vote,
+            ..Default::default()
+        };
+        storage.tiers.put(&tier)
     }
 
-    fn setup_storage(storage: &Clusterwide, instances: Vec<Instance>, replication_factor: u8) {
-        for instance in instances {
-            storage.instances.put(&instance).unwrap();
-        }
-
-        add_tier(storage, DEFAULT_TIER, replication_factor, true).unwrap();
+    fn add_instance(storage: &Clusterwide, raft_id: RaftId, instance_id: &str, replicaset_id: &str, state: &State) -> tarantool::Result<Instance> {
+        let instance = Instance {
+            raft_id,
+            instance_id: instance_id.into(),
+            instance_uuid: format!("{instance_id}-uuid"),
+            replicaset_id: replicaset_id.into(),
+            replicaset_uuid: format!("{replicaset_id}-uuid"),
+            current_state: *state,
+            target_state: *state,
+            failure_domain: FailureDomain::default(),
+            tier: DEFAULT_TIER.into(),
+        };
+        storage.instances.put(&instance)?;
+        Ok(instance)
     }
 
     fn replication_ids(replicaset_id: &ReplicasetId, storage: &Clusterwide) -> HashSet<RaftId> {
@@ -205,45 +212,43 @@ mod tests {
     #[::tarantool::test]
     fn test_simple() {
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![], 1);
+        add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
 
-        let instance = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i1.raft_id, 1);
+        assert_eq!(i1.instance_id, "i1");
+        assert_eq!(i1.replicaset_id, "r1");
+        assert_eq!(i1.current_state, State::new(Offline, 0));
+        assert_eq!(i1.target_state, State::new(Offline, 0));
+        assert_eq!(i1.failure_domain, FailureDomain::default());
+        assert_eq!(i1.tier, DEFAULT_TIER);
+        storage.instances.put(&i1).unwrap();
 
-        let instance = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(2), Some("i2"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i2 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i2.raft_id, 2);
+        assert_eq!(i2.instance_id, "i2");
+        assert_eq!(i2.replicaset_id, "r2");
+        storage.instances.put(&i2).unwrap();
 
-        let instance = build_instance(None, Some(&ReplicasetId::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(3), Some("i3"), Some("R3"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i3 = build_instance(None, Some(&ReplicasetId::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i3.raft_id, 3);
+        assert_eq!(i3.instance_id, "i3");
+        assert_eq!(i3.replicaset_id, "R3");
+        storage.instances.put(&i3).unwrap();
 
-        let instance = build_instance(Some(&InstanceId::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(4), Some("I4"), Some("r3"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i4 = build_instance(Some(&InstanceId::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i4.raft_id, 4);
+        assert_eq!(i4.instance_id, "I4");
+        assert_eq!(i4.replicaset_id, "r3");
+        storage.instances.put(&i4).unwrap();
     }
 
     #[::tarantool::test]
     fn test_override() {
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(2), Some("i2"), Some("r2-original"), State::new(Expelled, 0), State::new(Expelled, 0), FailureDomain::default(), DEFAULT_TIER),
-        ],
-        2);
+        add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
+        add_instance(&storage, 1, "i1", "r1", &State::new(Online, 1)).unwrap();
+        add_instance(&storage, 2, "i2", "r2-original", &State::new(Expelled, 0)).unwrap();
 
         // join::Request with a given instance_id online.
         // - It must be an impostor, return an error.
@@ -263,13 +268,12 @@ mod tests {
         //      not, if replication_factor / failure_domain were edited.
         // - Even if it's an impostor, rely on auto-expel policy.
         //   Disruption isn't destructive if auto-expel allows (TODO).
-        assert_eq!(
-            build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap(),
-            (Instance::new(Some(3), Some("i2"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER)),
-            // Attention: generated replicaset_id differs from the
-            // original one, as well as raft_id.
-            // That's a desired behavior.
-        );
+        let instance = build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(instance.raft_id, 3);
+        assert_eq!(instance.instance_id, "i2");
+        // Attention: generated replicaset_id differs from the original
+        // one, as well as raft_id. That's a desired behavior.
+        assert_eq!(instance.replicaset_id, "r1");
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([1]));
 
         // TODO
@@ -288,57 +292,51 @@ mod tests {
     #[::tarantool::test]
     fn test_instance_id_collision() {
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![
-            Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(2), Some("i3"), Some("r3"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            // Attention: i3 has raft_id=2
-        ], 2);
+        add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
+        add_instance(&storage, 1, "i1", "r1", &State::new(Online, 1)).unwrap();
+        add_instance(&storage, 2, "i3", "r3", &State::new(Online, 1)).unwrap();
+        // Attention: i3 has raft_id=2
 
-        assert_eq!(
-            build_instance(None, Some(&ReplicasetId::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap(),
-            Instance::new(Some(3), Some("i3-2"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
+        let instance = build_instance(None, Some(&ReplicasetId::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(instance.raft_id, 3);
+        assert_eq!(instance.instance_id, "i3-2");
+        assert_eq!(instance.replicaset_id, "r2");
     }
 
     #[::tarantool::test]
     fn test_replication_factor() {
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![
-            Instance::new(Some(9), Some("i9"), Some("r9"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-            Instance::new(Some(10), Some("i10"), Some("r9"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER),
-        ],
-        2);
+        add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
+        add_instance(&storage, 9, "i9", "r9", &State::new(Online, 1)).unwrap();
+        add_instance(&storage, 10, "i10", "r9", &State::new(Online, 1)).unwrap();
 
-        let instance = build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(11), Some("i1"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i1 = build_instance(Some(&InstanceId::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i1.raft_id, 11);
+        assert_eq!(i1.instance_id, "i1");
+        assert_eq!(i1.replicaset_id, "r1");
+        storage.instances.put(&i1).unwrap();
+
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11]));
 
-        let instance = build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(12), Some("i2"), Some("r1"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i2 = build_instance(Some(&InstanceId::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i2.raft_id, 12);
+        assert_eq!(i2.instance_id, "i2");
+        assert_eq!(i2.replicaset_id, "r1");
+        storage.instances.put(&i2).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11, 12]));
 
-        let instance = build_instance(Some(&InstanceId::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(13), Some("i3"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i3 = build_instance(Some(&InstanceId::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i3.raft_id, 13);
+        assert_eq!(i3.instance_id, "i3");
+        assert_eq!(i3.replicaset_id, "r2");
+        storage.instances.put(&i3).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13]));
 
-        let instance = build_instance(Some(&InstanceId::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(
-            instance,
-            Instance::new(Some(14), Some("i4"), Some("r2"), State::new(Offline, 0), State::new(Offline, 0), FailureDomain::default(), DEFAULT_TIER),
-        );
-        storage.instances.put(&instance).unwrap();
+        let i4 = build_instance(Some(&InstanceId::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i4.raft_id, 14);
+        assert_eq!(i4.instance_id, "i4");
+        assert_eq!(i4.replicaset_id, "r2");
+        storage.instances.put(&i4).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13, 14]));
     }
 
@@ -355,8 +353,8 @@ mod tests {
     #[::tarantool::test]
     fn test_update_state() {
         let storage = Clusterwide::for_tests();
-        let instance = Instance::new(Some(1), Some("i1"), Some("r1"), State::new(Online, 1), State::new(Online, 1), FailureDomain::default(), DEFAULT_TIER);
-        setup_storage(&storage, vec![instance.clone()], 1);
+        add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
+        let instance = add_instance(&storage, 1, "i1", "r1", &State::new(Online, 1)).unwrap();
 
         //
         // Current state incarnation is allowed to go down,
@@ -469,7 +467,7 @@ mod tests {
     #[::tarantool::test]
     fn failure_domain() {
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![], 3);
+        add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
 
         let instance =
             build_instance(None, None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER)
@@ -529,7 +527,7 @@ mod tests {
     #[::tarantool::test]
     fn reconfigure_failure_domain() {
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![], 3);
+        add_tier(&storage, DEFAULT_TIER, 3, true).unwrap();
 
         //
         // first instance
@@ -624,8 +622,6 @@ mod tests {
         let third_tier = "trash";
 
         let storage = Clusterwide::for_tests();
-        setup_storage(&storage, vec![], 1);
-
         add_tier(&storage, first_tier, 3, true).unwrap();
         add_tier(&storage, second_tier, 2, true).unwrap();
         add_tier(&storage, third_tier, 2, true).unwrap();
