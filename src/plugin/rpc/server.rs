@@ -6,6 +6,7 @@ use picoplugin::transport::rpc::server::FfiRpcHandler;
 use picoplugin::util::RegionBuffer;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::rc::Rc;
 use tarantool::error::BoxError;
 use tarantool::error::Error as TntError;
 use tarantool::error::TarantoolErrorCode;
@@ -54,8 +55,11 @@ pub fn proc_rpc_dispatch_impl(args: &RawBytes) -> Result<&'static RawBytes, TntE
         }
     };
 
-    // SAFETY: safe because keys don't leak
-    let maybe_handler = unsafe { handlers_mut().get(&key) };
+    // SAFETY: safe because
+    // - keys don't leak
+    // - we don't hold on to a reference to the global data, and other fibers
+    //   may safely mutate the HANDLERS hashmap.
+    let maybe_handler = unsafe { handlers_mut().get(&key).cloned() };
 
     let Some(handler) = maybe_handler else {
         #[rustfmt::skip]
@@ -103,7 +107,7 @@ pub fn proc_rpc_dispatch(args: &RawBytes) -> Result<&'static RawBytes, TntError>
 
 static mut HANDLERS: Option<RpcHandlerMap> = None;
 
-type RpcHandlerMap = HashMap<RpcHandlerKey<'static>, FfiRpcHandler>;
+type RpcHandlerMap = HashMap<RpcHandlerKey<'static>, Rc<FfiRpcHandler>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RpcHandlerKey<'a> {
@@ -194,7 +198,7 @@ pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
         handler.version(),
         handler.path(),
     );
-    entry.insert(handler);
+    entry.insert(Rc::new(handler));
     Ok(())
 }
 
