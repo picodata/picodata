@@ -50,7 +50,7 @@ with the `YY.MINOR.MICRO` scheme.
 - SQL supports `lower` and `upper` string functions
 - Execute option `sql_vdbe_max_steps` was renamed to
 `vdbe_max_steps`
-
+- SQL supports `SELECT` statements without scans: `select 1`
 
 ## [24.5.1] - 2024-09-04
 

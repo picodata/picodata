@@ -5319,3 +5319,83 @@ def test_like(instance: Instance):
         r"""select '%UU_' ilike '\%uu\_' escape '\' from (values (1))"""
     )
     assert data[0] == [True]
+
+
+def test_select_without_scan(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    ddl = i1.sql("create table t (a int primary key)")
+    assert ddl["row_count"] == 1
+
+    data = i1.sql("select 1", strip_metadata=False)
+    assert data["metadata"] == [
+        {"name": "col_1", "type": "unsigned"},
+    ]
+    assert data["rows"] == [[1]]
+
+    data = i1.sql("select 1 + 3 as foo", strip_metadata=False)
+    assert data["metadata"] == [
+        {"name": "foo", "type": "unsigned"},
+    ]
+    assert data["rows"] == [[4]]
+
+    # check subquery with global table
+    data = i1.sql("select (select name from _pico_table where name = 't') as foo")
+    assert data == [["t"]]
+
+    # check subquery with sharded table
+    dml = i2.sql("insert into t values (1), (2), (3), (4)")
+    assert dml["row_count"] == 4
+
+    data = i1.sql("select (select * from t where a = 3) as bar", strip_metadata=False)
+    assert data["metadata"] == [
+        {"name": "bar", "type": "integer"},
+    ]
+    assert data["rows"] == [[3]]
+
+    # check values
+    data = i1.sql("select (values (1))")
+    assert data == [[1]]
+
+    # check recursive
+    data = i1.sql("select (select 1)")
+    assert data == [[1]]
+
+    # check usage as a subquery
+    data = i1.sql("select a from t where a = (select 1)")
+    assert data == [[1]]
+
+    data = i1.sql(
+        "select (select 1 as foo) from t where a = (select 1)", strip_metadata=False
+    )
+    assert data["metadata"] == [
+        {"name": "col_1", "type": "unsigned"},
+    ]
+    assert data["rows"] == [[1]]
+
+    # check usage with union/except
+    data = i1.sql("select 1 union all select 1")
+    assert data == [[1], [1]]
+    data = i1.sql("select 1 union select 1")
+    assert data == [[1]]
+    data = i1.sql("select a from t where a = 1 union select 1")
+    assert data == [[1]]
+    data = i1.sql("select 1 except select 2")
+    assert data == [[1]]
+    data = i1.sql("select a from t where a = 1 except select 1")
+    assert data == []
+
+    # check usage with join
+    data = i1.sql("select * from t join (select 1) on a = col_1")
+    assert data == [[1, 1]]
+
+    data = i1.sql("select * from (select 1) join t on a = col_1")
+    assert data == [[1, 1]]
+
+    # check usage with limit
+    data = i1.sql("select 1 limit 1")
+    assert data == [[1]]

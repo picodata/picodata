@@ -227,6 +227,7 @@ impl TryFrom<&Node<'_>> for CommandTag {
                 | Relational::UnionAll { .. }
                 | Relational::Values { .. }
                 | Relational::ValuesRow { .. }
+                | Relational::SelectWithoutScan { .. }
                 | Relational::Limit { .. } => Ok(CommandTag::Select),
             },
             Node::Invalid(_) | Node::Expression(_) | Node::Parameter(_) => {

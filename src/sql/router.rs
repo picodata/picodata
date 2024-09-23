@@ -266,14 +266,6 @@ impl Router for RouterRuntime {
     type MetadataProvider = RouterMetadata;
     type VshardImplementor = Tier;
 
-    fn materialize_values(
-        &self,
-        exec_plan: &mut ExecutionPlan,
-        values_id: NodeId,
-    ) -> Result<VirtualTable, SbroadError> {
-        materialize_values(self, exec_plan, values_id)
-    }
-
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider> {
         &self.metadata
     }
@@ -328,6 +320,14 @@ impl Router for RouterRuntime {
         let current_instance_tier_name = SmolStr::from(get_current_tier_name()?);
         let tier_name = tier_name.unwrap_or(&current_instance_tier_name);
         get_tier_info(tier_name)
+    }
+
+    fn materialize_values(
+        &self,
+        exec_plan: &mut ExecutionPlan,
+        values_id: NodeId,
+    ) -> Result<VirtualTable, SbroadError> {
+        materialize_values(self, exec_plan, values_id)
     }
 }
 
