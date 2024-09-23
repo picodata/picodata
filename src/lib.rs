@@ -231,10 +231,10 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
 
     lua.exec_with(
         r#"
-        local user_metrics = ... 
-        pico.httpd:route({method = 'GET', path = 'metrics' }, function() 
-        local resp = require('metrics.plugins.prometheus').collect_http() 
-        resp.body = resp.body .. user_metrics() 
+        local user_metrics = ...
+        pico.httpd:route({method = 'GET', path = 'metrics' }, function()
+        local resp = require('metrics.plugins.prometheus').collect_http()
+        resp.body = resp.body .. user_metrics()
         return resp
         end)"#,
         tlua::Function::new(|| -> _ {
