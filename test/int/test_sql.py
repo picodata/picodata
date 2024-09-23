@@ -1943,7 +1943,7 @@ def test_insert(cluster: Cluster):
     # Wrong parameters number.
     with pytest.raises(
         TarantoolError,
-        match="invalid node: parameter node does not refer to an expression",
+        match="Expected at least 1 values for parameters. Got 0",
     ):
         i1.sql(
             """

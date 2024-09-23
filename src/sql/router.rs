@@ -5,13 +5,16 @@
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, impl_exec_ir_on_buckets};
-use sbroad::executor::engine::helpers::{dispatch_impl, explain_format, materialize_motion};
+use sbroad::executor::engine::helpers::{
+    dispatch_impl, explain_format, materialize_motion, materialize_values,
+};
 use sbroad::executor::engine::helpers::{sharding_key_from_map, sharding_key_from_tuple};
 use sbroad::executor::engine::{
     get_builtin_functions, DispatchReturnFormat, QueryCache, Router, Vshard,
 };
 use sbroad::executor::ir::ExecutionPlan;
 use sbroad::executor::lru::{Cache, EvictFn, LRUCache, DEFAULT_CAPACITY};
+use sbroad::executor::vtable::VirtualTable;
 use sbroad::frontend::sql::ast::AbstractSyntaxTree;
 use sbroad::ir::node::NodeId;
 use sbroad::ir::value::{MsgPackValue, Value};
@@ -262,6 +265,14 @@ impl Router for RouterRuntime {
     type ParseTree = AbstractSyntaxTree;
     type MetadataProvider = RouterMetadata;
     type VshardImplementor = Tier;
+
+    fn materialize_values(
+        &self,
+        exec_plan: &mut ExecutionPlan,
+        values_id: NodeId,
+    ) -> Result<VirtualTable, SbroadError> {
+        materialize_values(self, exec_plan, values_id)
+    }
 
     fn metadata(&self) -> &impl MutexLike<Self::MetadataProvider> {
         &self.metadata
