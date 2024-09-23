@@ -141,6 +141,13 @@ enum ResponseImpl {
     Owned(Box<[u8]>),
 }
 
+impl Default for Response {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 impl Response {
     /// This method is for **internal use only**.
     ///
@@ -217,6 +224,17 @@ impl Response {
         Ok(Self {
             inner: ResponseImpl::RegionSlice(region_slice),
         })
+    }
+
+    /// Constructs an empty response to the RPC request.
+    ///
+    /// Use this or even [`Default::default`] when your RPC handler doesn't
+    /// need to return anything.
+    ///
+    /// This method should be used on the **server side** of the RPC request.
+    #[inline(always)]
+    pub fn empty() -> Self {
+        Self::from_static(b"")
     }
 
     /// Constructs a response to the RPC request from provided raw bytes.

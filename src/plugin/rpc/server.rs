@@ -1,5 +1,4 @@
 use crate::error_code::ErrorCode;
-use crate::plugin::Service;
 use crate::tlog;
 use picoplugin::transport::context::FfiSafeContext;
 use picoplugin::transport::rpc::server::FfiRpcHandler;
@@ -202,13 +201,13 @@ pub fn register_rpc_handler(handler: FfiRpcHandler) -> Result<(), BoxError> {
     Ok(())
 }
 
-pub fn unregister_all_rpc_handlers(service: &Service) {
+pub fn unregister_all_rpc_handlers(plugin_name: &str, service_name: &str, plugin_version: &str) {
     // SAFETY: safe because we don't leak any references to the stored data
     let handlers = unsafe { handlers_mut() };
     handlers.retain(|_, handler| {
-        let matches = handler.plugin() == service.plugin_name
-            && handler.service() == service.name
-            && handler.version() == service.version;
+        let matches = handler.plugin() == plugin_name
+            && handler.service() == service_name
+            && handler.version() == plugin_version;
         if matches {
             tlog!(
                 Info,
@@ -245,4 +244,114 @@ fn msgpack_read_array(data: &[u8]) -> Result<Vec<&[u8]>, TntError> {
     }
 
     Ok(result)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// tests
+////////////////////////////////////////////////////////////////////////////////
+
+// #[cfg(feature = "internal_test")]
+mod test {
+    use super::*;
+    use picoplugin::transport::rpc;
+    use std::cell::Cell;
+    use tarantool::fiber;
+
+    #[derive(Clone, Default)]
+    struct DropCheck(Rc<Cell<bool>>);
+    impl Drop for DropCheck {
+        fn drop(&mut self) {
+            self.0.set(true)
+        }
+    }
+
+    fn call_rpc_local(
+        plugin: &str,
+        service: &str,
+        version: &str,
+        path: &str,
+        input: &[u8],
+    ) -> Result<&'static RawBytes, TntError> {
+        let mut buffer = vec![];
+        let request_id = tarantool::uuid::Uuid::random();
+        crate::plugin::rpc::client::encode_request_arguments(
+            &mut buffer,
+            path,
+            input,
+            &request_id,
+            plugin,
+            service,
+            version,
+        )
+        .unwrap();
+        proc_rpc_dispatch_impl(buffer.as_slice().into())
+    }
+
+    #[tarantool::test]
+    fn rpc_handler_no_use_after_free() {
+        init_handlers();
+
+        let plugin_name = "plugin";
+        let service_name = "service";
+        let plugin_version = "3.14.78-rc37.2";
+
+        let cond_tx = Rc::new(fiber::Cond::new());
+        let cond_rx = cond_tx.clone();
+        let drop_check_rx = DropCheck::default();
+        let drop_check_tx = drop_check_rx.clone();
+        let n_simultaneous_fibers_rx = Rc::new(Cell::new(0));
+        let n_simultaneous_fibers_tx = n_simultaneous_fibers_rx.clone();
+
+        let builder = unsafe {
+            rpc::RouteBuilder::from_service_info(plugin_name, service_name, plugin_version)
+        };
+        builder
+            .path("/test-path")
+            .register(move |request, context| {
+                _ = request;
+                _ = context;
+
+                _ = &drop_check_tx;
+
+                let was = n_simultaneous_fibers_tx.get();
+                n_simultaneous_fibers_tx.set(was + 1);
+
+                cond_rx.wait();
+
+                Ok(Default::default())
+            })
+            .unwrap();
+
+        // Control checks:
+        // - the closure isn't dropped yet (obviously)
+        assert_eq!(drop_check_rx.0.get(), false);
+        // - no fibers have entered the closure yet
+        assert_eq!(n_simultaneous_fibers_rx.get(), 0);
+
+        let jh1 = fiber::start(|| {
+            call_rpc_local(plugin_name, service_name, plugin_version, "/test-path", b"").unwrap()
+        });
+        let jh2 = fiber::start(|| {
+            call_rpc_local(plugin_name, service_name, plugin_version, "/test-path", b"").unwrap()
+        });
+
+        // - no reason for the closure to be dropped yet
+        assert_eq!(drop_check_rx.0.get(), false);
+        // - both fibers have entered the closure
+        assert_eq!(n_simultaneous_fibers_rx.get(), 2);
+
+        // Unregister the handler. Now the closure should be dropped ASAP
+        unregister_all_rpc_handlers(plugin_name, service_name, plugin_version);
+
+        // - The closure has still not been dropped, because the fiber's a keeping it alive (holding strong references)
+        assert_eq!(drop_check_rx.0.get(), false);
+
+        // Wake up and join the fibers.
+        cond_tx.broadcast();
+        jh1.join();
+        jh2.join();
+
+        // - Finally all strong references to the closure have been dropped, and so was the closure
+        assert_eq!(drop_check_rx.0.get(), true);
+    }
 }

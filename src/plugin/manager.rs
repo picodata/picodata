@@ -875,7 +875,7 @@ fn stop_service(service: &mut Service, context: &PicoContext) {
         );
     }
 
-    rpc::server::unregister_all_rpc_handlers(service);
+    rpc::server::unregister_all_rpc_handlers(&service.plugin_name, &service.name, &service.version);
 }
 
 /// Plugin manager inner loop, using for handle async events (must be run in a separate fiber).

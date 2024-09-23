@@ -126,7 +126,7 @@ fn call_builtin_stored_proc(
     copy_to_region(&output).map_err(Into::into)
 }
 
-fn encode_request_arguments(
+pub(crate) fn encode_request_arguments(
     buffer: &mut Vec<u8>,
     path: &str,
     input: &[u8],
