@@ -31,7 +31,6 @@ use crate::access_control::user_by_id;
 use crate::address::HttpAddress;
 use crate::error_code::ErrorCode;
 use crate::instance::Instance;
-use crate::instance::State;
 use crate::instance::StateVariant::*;
 use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
@@ -760,17 +759,23 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         )));
     };
 
-    let instance = Instance::new(
-        None,
-        config.instance.instance_id.clone(),
-        config.instance.replicaset_id.clone(),
-        State::new(Offline, 0),
-        State::new(Offline, 0),
-        config.instance.failure_domain(),
-        my_tier_name,
-    );
-    let raft_id = instance.raft_id;
-    let instance_id = instance.instance_id.clone();
+    let raft_id = 1;
+    let instance_id = config.instance.instance_id();
+    let instance_id = instance_id.unwrap_or_else(|| instance::InstanceId::from("i1"));
+    let replicaset_id = config.instance.replicaset_id();
+    let replicaset_id = replicaset_id.unwrap_or_else(|| replicaset::ReplicasetId::from("r1"));
+
+    let instance = Instance {
+        raft_id,
+        instance_id: instance_id.clone(),
+        instance_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
+        replicaset_id,
+        replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
+        current_state: instance::State::new(Offline, 0),
+        target_state: instance::State::new(Offline, 0),
+        failure_domain: config.instance.failure_domain(),
+        tier: my_tier_name.into(),
+    };
 
     if !tier.can_vote {
         return Err(Error::invalid_configuration(format!(

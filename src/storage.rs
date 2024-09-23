@@ -1796,6 +1796,12 @@ impl Replicasets {
         ]
     }
 
+    #[inline]
+    pub fn put(&self, replicaset: &Replicaset) -> tarantool::Result<()> {
+        self.space.replace(replicaset)?;
+        Ok(())
+    }
+
     #[allow(unused)]
     #[inline]
     pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {

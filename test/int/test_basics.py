@@ -378,8 +378,8 @@ def test_raft_log(instance: Instance):
 +-----+----+--------+
 |  0  | 1  |BatchDml(
 Replace(_pico_peer_address, [1,"127.0.0.1:{p}"]),
-Insert(_pico_instance, ["i1","68d4a766-4144-3248-aeb4-e212356716e4",1,"r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07",["Offline",0],["Offline",0],{b},"default"]),
-Insert(_pico_replicaset, ["r1","e0df68c5-e7f9-395f-86b3-30ad9e1b7b07","i1","i1","default",0.0,"auto","not-ready",0,0,{{}}]))|
+Insert(_pico_instance, ["i1","{i1_uuid}",1,"r1","{r1_uuid}",["Offline",0],["Offline",0],{b},"default"]),
+Insert(_pico_replicaset, ["r1","{r1_uuid}","i1","i1","default",0.0,"auto","not-ready",0,0,{{}}]))|
 |  0  | 1  |BatchDml(Insert(_pico_tier, ["default",1,true,0,0,false]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
@@ -474,6 +474,8 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
 """.format(  # noqa: E501
         p=instance.port,
         b="{}",
+        i1_uuid=instance.instance_uuid(),
+        r1_uuid=instance.replicaset_uuid(),
         _pico_peer_address=space_id("_pico_peer_address"),
         _pico_property=space_id("_pico_property"),
         _pico_replicaset=space_id("_pico_replicaset"),

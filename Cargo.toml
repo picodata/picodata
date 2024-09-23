@@ -42,7 +42,7 @@ sqlparser = { version = "0.40.0", features = ["visitor"] }
 tempfile = "3.8"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
 thiserror = "1.0"
-uuid = { version = "0.8", features = ["v3", "v4"] } # TODO: update to 1.0
+uuid = { version = "0.8", features = ["v4"] } # TODO: update to 1.0
 va_list = ">=0.1.4"
 rust_decimal = { version = "1.35.0", features = ["db-postgres"] }
 md5 = "0.7.0"

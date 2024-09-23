@@ -201,23 +201,28 @@ pub fn build_instance(
         None => choose_replicaset_id(failure_domain, storage, &tier)?,
     };
 
+    let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+    let replicaset_uuid;
     if let Some(replicaset) = storage.replicasets.get(&replicaset_id)? {
         if replicaset.tier != tier.name {
             return Err(Error::other(format!("tier mismatch: instance {instance_id} is from tier: '{}', but replicaset {replicaset_id} is from tier: '{}'", tier.name, replicaset.tier)));
         }
+        replicaset_uuid = replicaset.replicaset_uuid;
+    } else {
+        replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
     }
 
-    let instance = Instance::new(
-        Some(raft_id),
-        Some(instance_id),
-        Some(replicaset_id),
-        State::new(Offline, 0),
-        State::new(Offline, 0),
-        failure_domain.clone(),
-        &tier.name,
-    );
-
-    Ok(instance)
+    Ok(Instance {
+        raft_id,
+        instance_id,
+        instance_uuid,
+        replicaset_id,
+        replicaset_uuid,
+        current_state: State::new(Offline, 0),
+        target_state: State::new(Offline, 0),
+        failure_domain: failure_domain.clone(),
+        tier: tier.name.clone(),
+    })
 }
 
 // TODO: choose instance id based on tier name instead

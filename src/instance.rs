@@ -1,12 +1,11 @@
 use super::failure_domain::FailureDomain;
 use super::replicaset::ReplicasetId;
 use crate::has_states;
-use crate::traft::{instance_uuid, replicaset_uuid, RaftId};
+use crate::traft::RaftId;
 use crate::util::Transition;
 use ::serde::{Deserialize, Serialize};
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
-use state::StateVariant::*;
 
 pub mod state;
 pub use state::State;
@@ -26,7 +25,7 @@ crate::define_string_newtype! {
 pub struct Instance {
     /// Instances are identified by name.
     pub instance_id: InstanceId,
-    pub instance_uuid: String,
+    pub instance_uuid: String, // TODO turn it into uuid
 
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
@@ -86,40 +85,6 @@ impl Instance {
         ]
     }
 
-    /// Construct an instance.
-    pub fn new(
-        raft_id: Option<RaftId>,
-        instance_id: Option<impl Into<InstanceId>>,
-        replicaset_id: Option<impl Into<ReplicasetId>>,
-        current_state: State,
-        target_state: State,
-        failure_domain: FailureDomain,
-        tier: &str,
-    ) -> Self {
-        debug_assert!(
-            matches!(target_state.variant, Online | Offline | Expelled),
-            "target state can only be Online, Offline or Expelled"
-        );
-        let instance_id = instance_id.map(Into::into).unwrap_or_else(|| "i1".into());
-        let replicaset_id = replicaset_id
-            .map(Into::into)
-            .unwrap_or_else(|| ReplicasetId::from("r1"));
-        let raft_id = raft_id.unwrap_or(1);
-        let instance_uuid = instance_uuid(&instance_id);
-        let replicaset_uuid = replicaset_uuid(&replicaset_id);
-        Self {
-            instance_id,
-            raft_id,
-            replicaset_id,
-            current_state,
-            target_state,
-            failure_domain,
-            instance_uuid,
-            replicaset_uuid,
-            tier: tier.into(),
-        }
-    }
-
     /// Instance has a state that implies it may cooperate.
     /// Currently this means that target_state is neither Offline nor Expelled.
     #[inline]
@@ -158,6 +123,7 @@ mod tests {
     use crate::failure_domain::FailureDomain;
     use crate::instance::state::State;
     use crate::instance::state::StateVariant::*;
+    use crate::replicaset::Replicaset;
     use crate::replicaset::ReplicasetId;
     use crate::rpc::join::build_instance;
     use crate::storage::Clusterwide;
@@ -304,6 +270,18 @@ mod tests {
     }
 
     #[::tarantool::test]
+    fn test_uuid_randomness() {
+        let storage = Clusterwide::for_tests();
+        add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
+        let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
+        assert_eq!(i1a.instance_id, "i1");
+        assert_eq!(i1b.instance_id, "i1");
+        // Attention: not equal
+        assert_ne!(i1a.instance_uuid, i1b.instance_uuid);
+    }
+
+    #[::tarantool::test]
     fn test_replication_factor() {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 2, true).unwrap();
@@ -315,6 +293,7 @@ mod tests {
         assert_eq!(i1.instance_id, "i1");
         assert_eq!(i1.replicaset_id, "r1");
         storage.instances.put(&i1).unwrap();
+        storage.replicasets.put(&Replicaset::with_one_instance(&i1)).unwrap();
 
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11]));
 
@@ -322,6 +301,7 @@ mod tests {
         assert_eq!(i2.raft_id, 12);
         assert_eq!(i2.instance_id, "i2");
         assert_eq!(i2.replicaset_id, "r1");
+        assert_eq!(i2.replicaset_uuid, i1.replicaset_uuid);
         storage.instances.put(&i2).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r1"), &storage), HashSet::from([11, 12]));
 
@@ -330,12 +310,14 @@ mod tests {
         assert_eq!(i3.instance_id, "i3");
         assert_eq!(i3.replicaset_id, "r2");
         storage.instances.put(&i3).unwrap();
+        storage.replicasets.put(&Replicaset::with_one_instance(&i3)).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13]));
 
         let i4 = build_instance(Some(&InstanceId::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i4.raft_id, 14);
         assert_eq!(i4.instance_id, "i4");
         assert_eq!(i4.replicaset_id, "r2");
+        assert_eq!(i4.replicaset_uuid, i3.replicaset_uuid);
         storage.instances.put(&i4).unwrap();
         assert_eq!(replication_ids(&ReplicasetId::from("r2"), &storage), HashSet::from([13, 14]));
     }

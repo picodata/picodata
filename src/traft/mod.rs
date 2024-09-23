@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt::Debug;
 use std::result::Result as StdResult;
-use uuid::Uuid;
 
 use protobuf::Message as _;
 
@@ -407,29 +406,6 @@ impl TryFrom<self::MessagePb> for raft::Message {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-
-/// Generate UUID for an instance from `instance_id` (String).
-/// Use Version-3 (MD5) UUID.
-pub fn instance_uuid(instance_id: &str) -> String {
-    static mut NAMESPACE_INSTANCE_UUID: Option<Uuid> = None;
-    let ns = unsafe { NAMESPACE_INSTANCE_UUID.get_or_insert_with(|| uuid_v3("INSTANCE_UUID")) };
-    let uuid = Uuid::new_v3(ns, instance_id.as_bytes());
-    uuid.to_hyphenated().to_string()
-}
-
-/// Generate UUID for a replicaset from `replicaset_id` (String).
-/// Use Version-3 (MD5) UUID.
-pub fn replicaset_uuid(replicaset_id: &str) -> String {
-    static mut NAMESPACE_REPLICASET_UUID: Option<Uuid> = None;
-    let ns = unsafe { NAMESPACE_REPLICASET_UUID.get_or_insert_with(|| uuid_v3("REPLICASET_UUID")) };
-    let uuid = Uuid::new_v3(ns, replicaset_id.as_bytes());
-    uuid.to_hyphenated().to_string()
-}
-
-#[inline(always)]
-fn uuid_v3(name: &str) -> Uuid {
-    Uuid::new_v3(&Uuid::nil(), name.as_bytes())
-}
 
 #[cfg(test)]
 mod test {
