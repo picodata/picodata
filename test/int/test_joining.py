@@ -239,32 +239,42 @@ def test_rebootstrap_follower(cluster3: Cluster):
 
 def test_separate_clusters(cluster: Cluster):
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/680
+    #
+    # Despite two instances are added to the same cluster, we
+    # intentionally clear peers so that `picodata run` is called without
+    # `--peer` option specified. As a result two instances form their
+    # own clusters and don't interact at all.
+    #
+    i1a = cluster.add_instance(instance_id="i1", replicaset_id="r1", wait_online=False)
+    i1b = cluster.add_instance(instance_id="i1", replicaset_id="r1", wait_online=False)
 
-    i1 = cluster.add_instance(wait_online=False)
-    i2 = cluster.add_instance(wait_online=False)
+    i1a.peers.clear()
+    i1b.peers.clear()
 
-    # Clear peers explicitly so that picodata run is called
-    # without --peer option specified
-    i1.peers.clear()
-    i2.peers.clear()
+    i1a.start()
+    i1b.start()
 
-    i1.start()
-    i2.start()
+    i1a.wait_online()
+    i1b.wait_online()
 
-    i1.wait_online()
-    i2.wait_online()
-
-    get_ids = """
-        return {
-            cluster_id = box.space._raft_state:get('cluster_id').value,
-            raft_id = box.space._raft_state:get('raft_id').value,
-        }
-    """
+    i1a_info = i1a.call(".proc_instance_info")
+    i1b_info = i1b.call(".proc_instance_info")
 
     # We expect both instances to have raft_id 1, that means they form
     # separate clusters
-    assert i1.eval(get_ids) == {"cluster_id": cluster.id, "raft_id": 1}
-    assert i2.eval(get_ids) == {"cluster_id": cluster.id, "raft_id": 1}
+    assert i1a_info["raft_id"] == 1
+    assert i1b_info["raft_id"] == 1
+
+    # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
+    # Despite instance_id and replicaset_id are the same, their uuids differ
+
+    assert i1a_info["instance_id"] == "i1"
+    assert i1b_info["instance_id"] == "i1"
+    assert i1a_info["instance_uuid"] != i1b_info["instance_uuid"]
+
+    assert i1a_info["replicaset_id"] == "r1"
+    assert i1b_info["replicaset_id"] == "r1"
+    assert i1a_info["replicaset_uuid"] != i1b_info["replicaset_uuid"]
 
 
 def test_join_without_explicit_instance_id(cluster: Cluster):
