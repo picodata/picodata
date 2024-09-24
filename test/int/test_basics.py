@@ -9,6 +9,7 @@ from conftest import (
     Retriable,
     TarantoolError,
     ReturnError,
+    ErrorCode,
     MalformedAPI,
     log_crawler,
 )
@@ -561,10 +562,7 @@ cluster:
         tier="storage",
     )
 
-    info = i1.call(".proc_instance_info", "i1")
-    assert i1_info == info
-
-    i2_info = i1.call(".proc_instance_info", "i2")
+    i2_info = i2.call(".proc_instance_info")
     assert i2_info == dict(
         raft_id=2,
         advertise_address=f"{i2.host}:{i2.port}",
@@ -578,9 +576,26 @@ cluster:
         tier="router",
     )
 
+    assert i1.call(".proc_instance_info", "i1") == i1_info
+    assert i2.call(".proc_instance_info", "i1") == i1_info
+
+    assert i1.call(".proc_instance_info", "i2") == i2_info
+    assert i2.call(".proc_instance_info", "i2") == i2_info
+
     with pytest.raises(TarantoolError) as e:
         i1.call(".proc_instance_info", "i3")
-    assert 'instance with instance_id "i3" not found' in str(e)
+    assert e.value.args[:2] == (
+        ErrorCode.NoSuchInstance,
+        'instance with instance_id "i3" not found',
+    )
+
+    # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
+    # Instances of the same replicaset should have the same replicaset_uuid
+    i3 = cluster.add_instance(tier="storage")
+    i3_info = i3.call(".proc_instance_info")
+    assert i3_info["instance_id"] == "i3"
+    assert i3_info["replicaset_id"] == "r1"
+    assert i3_info["replicaset_uuid"] == i1_info["replicaset_uuid"]
 
 
 def test_proc_get_vshard_config(cluster: Cluster):
