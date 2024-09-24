@@ -1022,13 +1022,14 @@ class Instance:
             case _:
                 raise TypeError("space must be str or int")
 
-    # FIXME: this method's parameters are out of sync with Cluster.cas
     def cas(
         self,
         op_kind: Literal["insert", "replace", "delete", "update"],
         table: str | int,
         tuple: Tuple | List | None = None,
-        ops: List | None = None,
+        *,
+        key: Tuple | List | None = None,
+        ops: Tuple | List | None = None,
         index: int | None = None,
         term: int | None = None,
         ranges: List[CasRange] | None = None,
@@ -1056,8 +1057,8 @@ class Instance:
         if ranges is not None:
             for range in ranges:
                 assert range.key_min == range.key_max, "we don't use other ranges ever"
-                key = range.key_min["key"]
-                key_packed = msgpack.packb(key)
+                range_key = range.key_min["key"]
+                key_packed = msgpack.packb(range_key)
                 bounds = dict(kind="eq", key=key_packed)
                 range_packed = dict(table=table_id, bounds=bounds)
                 predicate_ranges.append(range_packed)
@@ -1074,11 +1075,14 @@ class Instance:
             table=table_id,
         )
         if op_kind in ["insert", "replace"]:
+            assert tuple
             dml["tuple"] = msgpack.packb(tuple)
         elif op_kind == "delete":
-            dml["key"] = msgpack.packb(tuple)
+            assert key
+            dml["key"] = msgpack.packb(key)
         elif op_kind == "update":
-            dml["key"] = msgpack.packb(tuple)
+            assert key
+            dml["key"] = msgpack.packb(key)
             assert ops
             dml["ops"] = [msgpack.packb(op) for op in ops]  # type: ignore
         else:
@@ -1768,7 +1772,7 @@ class Cluster:
 
     def cas(
         self,
-        dml_kind: Literal["insert", "replace", "delete", "update"],
+        op_kind: Literal["insert", "replace", "delete", "update"],
         table: str,
         tuple: Tuple | List | None = None,
         *,
@@ -1777,10 +1781,9 @@ class Cluster:
         index: int | None = None,
         term: int | None = None,
         ranges: List[CasRange] | None = None,
-        # If specified send CaS through this instance
+        # If specified find leader via this instance
         instance: Instance | None = None,
         user: str | None = None,
-        password: str | None = None,
     ) -> int:
         """
         Performs a clusterwide compare and swap operation.
@@ -1793,35 +1796,42 @@ class Cluster:
         if instance is None:
             instance = self.instances[0]
 
-        predicate_ranges = []
-        if ranges is not None:
-            for range in ranges:
-                predicate_ranges.append(
-                    dict(
-                        table=table,
-                        key_min=range.key_min,
-                        key_max=range.key_max,
-                    )
-                )
+        raft_info = instance.call(".proc_raft_info")
+        leader_id = raft_info["leader_id"]
+        [[leader_address]] = instance.sql(
+            """ SELECT address FROM _pico_peer_address WHERE raft_id = ? """, leader_id
+        )
 
-        predicate = dict(
+        # ADMIN by default
+        user_id = 1
+        if user:
+            [[user_id]] = instance.sql(
+                """ SELECT id FROM _pico_user WHERE name = ? """, user
+            )
+            user_id = int(user_id)
+
+        leader = self.get_instance_by_address(leader_address)
+        return leader.cas(
+            op_kind,
+            table,
+            tuple,
+            key=key,
+            ops=ops,
             index=index,
             term=term,
-            ranges=predicate_ranges,
+            ranges=ranges,
+            user=user_id,
         )
-        if dml_kind in ["insert", "replace", "delete", "update"]:
-            dml = dict(
-                table=table,
-                kind=dml_kind,
-                tuple=tuple,
-                key=key,
-                ops=ops,
-            )
-        else:
-            raise Exception(f"unsupported {dml_kind=}")
 
-        eprint(f"CaS:\n  {predicate=}\n  {dml=}")
-        return instance.call("pico.cas", dml, predicate, user=user, password=password)
+    def get_instance_by_address(self, address: str) -> Instance:
+        host, port = address.split(":", maxsplit=1)
+        port = int(port)  # type: ignore
+
+        for instance in self.instances:
+            if instance.host == host and instance.port == port:
+                return instance
+
+        raise RuntimeError(f"no instance listenning on {host}:{port}")
 
     def wait_until_instance_has_this_many_active_buckets(
         self,

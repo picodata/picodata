@@ -36,7 +36,7 @@ def test_catchup_by_snapshot(cluster: Cluster):
     assert i3.raft_first_index() == 1
     i3.terminate()
 
-    i1.cas("delete", "_pico_property", ["animal"])
+    i1.cas("delete", "_pico_property", key=["animal"])
     ret = i1.cas("insert", "_pico_property", ["tree", "birch"])
 
     for i in [i1, i2]:

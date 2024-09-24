@@ -55,7 +55,7 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     # More DML
     index = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
     i1.raft_wait_index(index, 3)
-    index = i1.cas("delete", "candy", [1])
+    index = i1.cas("delete", "candy", key=[1])
     i1.raft_wait_index(index, 3)
     index = i1.cas("insert", "candy", [3, "ice cream", 0.3])
     i1.raft_wait_index(index, 3)
@@ -144,7 +144,7 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # More DML
     index = i1.cas("replace", "candy", [2, "dark chocolate", 13.37])
     i1.raft_wait_index(index, 3)
-    index = i1.cas("delete", "candy", [1])
+    index = i1.cas("delete", "candy", key=[1])
     i1.raft_wait_index(index, 3)
     index = i1.cas("insert", "candy", [3, "ice cream", 0.3])
     i1.raft_wait_index(index, 3)

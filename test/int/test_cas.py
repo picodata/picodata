@@ -107,7 +107,7 @@ def test_cas_errors(instance: Instance):
         instance.cas(
             "delete",
             "_pico_property",
-            ["next_schema_version"],
+            key=["next_schema_version"],
         )
     assert error.value.args[:2] == (
         "ER_PROC_LUA",
@@ -210,7 +210,7 @@ def test_cas_predicate(instance: Instance):
 
     # CaS rejected via the implicit predicate, different kind of operation
     with pytest.raises(TarantoolError) as e4:
-        instance.cas("delete", "_pico_property", ["fruit"], index=read_index)
+        instance.cas("delete", "_pico_property", key=["fruit"], index=read_index)
     assert e4.value.args[:2] == (
         ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
@@ -221,7 +221,7 @@ def test_cas_predicate(instance: Instance):
         instance.cas(
             "update",
             "_pico_property",
-            ["fruit"],
+            key=["fruit"],
             ops=[("+", "value", 1)],
             index=read_index,
         )
@@ -417,7 +417,7 @@ def test_cas_lua_api(cluster: Cluster):
     assert value("fruit") == "apple"
 
     # CaS rejected
-    with pytest.raises(ReturnError) as e5:
+    with pytest.raises(TarantoolError) as e:
         cluster.cas(
             "insert",
             "some_space",
@@ -425,7 +425,8 @@ def test_cas_lua_api(cluster: Cluster):
             index=read_index,
             ranges=[CasRange(eq="fruit")],
         )
-    assert e5.value.args[:2] == (
+    assert e.value.args[:2] == (
+        ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
     pass

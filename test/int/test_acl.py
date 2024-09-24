@@ -356,7 +356,6 @@ def test_cas_permissions(cluster: Cluster):
             "_pico_property",
             ["foo", 128],
             user=user,
-            password=VALID_PASSWORD,
         )
 
     i1.grant_privilege(user, "write", "table", "_pico_property")
@@ -372,7 +371,6 @@ def test_cas_permissions(cluster: Cluster):
             "_pico_property",
             ["foo", 128],
             user=user,
-            password=VALID_PASSWORD,
         )
 
 

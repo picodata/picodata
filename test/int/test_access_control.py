@@ -1,7 +1,7 @@
 import pytest
 from typing import TypedDict
 
-from conftest import Cluster, TarantoolError, ReturnError
+from conftest import Cluster, TarantoolError
 
 
 class AsUser(TypedDict):
@@ -49,9 +49,9 @@ def test_access_global_table(cluster: Cluster):
     assert i1.sql(create_table_friends_of_peppa, **as_alice) == {"row_count": 1}
 
     # Alice can write it
-    _ = cluster.cas("insert", "friends_of_peppa", ["Rebecca", "Rabbit"], **as_alice)
-    _ = cluster.cas("insert", "friends_of_peppa", ["Zoe", "Zebra"], **as_alice)
-    ret = cluster.cas("insert", "friends_of_peppa", ["Suzy", "Sheep"], **as_alice)
+    _ = cluster.cas("insert", "friends_of_peppa", ["Rebecca", "Rabbit"], user="alice")
+    _ = cluster.cas("insert", "friends_of_peppa", ["Zoe", "Zebra"], user="alice")
+    ret = cluster.cas("insert", "friends_of_peppa", ["Suzy", "Sheep"], user="alice")
     i1.raft_wait_index(ret, _3_SEC)
 
     # Alice can read it
@@ -79,11 +79,12 @@ def test_access_global_table(cluster: Cluster):
     ) == [["Zoe", "Zebra"]]
 
     # But Bob still can't write it
-    with pytest.raises(
-        ReturnError,
-        match="Write access to space 'friends_of_peppa' is denied for user 'bob'",
-    ):
-        cluster.cas("delete", "friends_of_peppa", key=["Rebecca"], **as_bob)
+    with pytest.raises(TarantoolError) as e:
+        cluster.cas("delete", "friends_of_peppa", key=["Rebecca"], user="bob")
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Write access to space 'friends_of_peppa' is denied for user 'bob'",
+    )
 
 
 def test_access_sharded_table(cluster: Cluster):
