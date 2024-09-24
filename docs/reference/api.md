@@ -154,12 +154,12 @@ function cas(dml[, predicate])
 ```lua
 pico.cas({
     kind = 'insert',
-    table = 'WAREHOUSE',
-    tuple = {11, 99, 'chunks', 'light'},
+    table = 'warehouse',
+    tuple = {6, 99, 'chunks', 'light'},
 })
 ```
 
-Здесь, `11` — значение первой колонки (`id`), `99` — значение `bucket_id`.
+Здесь, `6` — значение первой колонки (`id`), `99` — значение `bucket_id`.
 
 Пример с указанием предиката (проверка, что никакие другие записи не
 были добавлены ранее):
@@ -167,11 +167,11 @@ pico.cas({
 ```lua
 pico.cas({
     kind = 'replace',
-    table = 'WAREHOUSE',
-    tuple = {11, 99, 'chunks', 'light'},
+    table = 'warehouse',
+    tuple = {6, 99, 'chunks', 'light'},
 }, {
     ranges = {{
-        table = 'WAREHOUSE',
+        table = 'warehouse',
         key_min = { kind = 'excluded', key = {1,} },
         key_max = { kind = 'unbounded' },
     }},
@@ -219,7 +219,7 @@ function create_table(opts)
 
 ```lua
 pico.create_table({
-    name = 'WAREHOUSE',
+    name = 'warehouse',
     format = {
         {name = 'ID', type = 'unsigned', is_nullable = false},
         {name = 'ITEM', type = 'string', is_nullable = false},
@@ -236,7 +236,7 @@ pico.create_table({
 ```lua
 pico.cas({
     kind = 'insert',
-    table = 'WAREHOUSE',
+    table = 'warehouse',
     tuple = {1, 'bricks', 'heavy'},
 })
 ```
@@ -795,14 +795,14 @@ local including_1 = { kind = 'included', key = {1,} }
 local excluding_3 = { kind = 'excluded', key = {3,} }
 
 local range_a = {
-    table = 'WAREHOUSE',
+    table = 'warehouse',
     key_min = unbounded,
     key_max = unbounded,
 }
 
 -- [1, 3)
 local range_a = {
-    table = 'WAREHOUSE',
+    table = 'warehouse',
     key_min = including_1,
     key_max = excluding_3,
 }
