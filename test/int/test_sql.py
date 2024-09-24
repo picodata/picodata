@@ -1465,6 +1465,29 @@ def test_substr(instance: Instance):
     assert data[0] == [""]
 
 
+def test_lower_upper(instance: Instance):
+    instance.sql(
+        """
+        create table t (id int primary key, s string)
+        using memtx
+        """
+    )
+
+    instance.sql(""" insert into t values (1, 'AbbA') """)
+
+    data = instance.sql(""" select lower(s) from t """)
+    assert data[0] == ["abba"]
+
+    data = instance.sql(""" select upper(s) from t """)
+    assert data[0] == ["ABBA"]
+
+    data = instance.sql(""" select lower(upper(s)) from t """)
+    assert data[0] == ["abba"]
+
+    data = instance.sql(""" select upper(lower(s)) from t """)
+    assert data[0] == ["ABBA"]
+
+
 def test_except_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]

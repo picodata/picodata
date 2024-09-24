@@ -45,6 +45,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 ### SQL
 - SQL supports `LIKE` operator
+- SQL supports `lower` and `upper` string functions
 
 ## [24.5.1] - 2024-09-04
 
