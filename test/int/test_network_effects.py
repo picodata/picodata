@@ -1,7 +1,7 @@
 import pytest
 import time
 
-from conftest import Cluster, Instance, TarantoolError, Retriable
+from conftest import Cluster, Instance, TarantoolError, Retriable, ErrorCode
 
 
 @pytest.fixture
@@ -65,12 +65,32 @@ def test_log_rollback(cluster3: Cluster):
 
     key = 0
 
-    def propose_state_change(srv: Instance, value):
+    def propose_state_change(srv: Instance, value, timeout=10):
+        deadline = time.time() + timeout
         nonlocal key
-        index = cluster3.cas(
-            "insert", "_pico_property", (f"check{key}", value), instance=srv
-        )
-        srv.raft_wait_index(index)
+        while True:
+            try:
+                index = cluster3.cas(
+                    "insert",
+                    "_pico_property",
+                    (f"check{key}", value),
+                    instance=srv,
+                )
+                srv.raft_wait_index(index)
+                break
+            except TarantoolError as e:
+                print(f"\x1b[33m### CaS error: {e}", end="")
+                if time.time() > deadline:
+                    print(", timeout\x1b[0m")
+                    raise
+
+                if ErrorCode.is_retriable_for_cas(e.args[0]):
+                    print(", retrying...\x1b[0m")
+                    time.sleep(0.1)
+                    continue
+
+                print(", failure!\x1b[0m")
+                raise
         key += 1
 
     propose_state_change(i1, "i1 is a leader")

@@ -58,6 +58,8 @@ PICO_SERVICE_ID = 32
 class ErrorCode:
     Loading = 116
     Other = 10000
+    NotALeader = 10001
+    StorageCorrupted = 10002
     TermMismatch = 10003
     RaftLogUnavailable = 10004
     RaftLogCompacted = 10005
@@ -70,6 +72,23 @@ class ErrorCode:
     NoSuchReplicaset = 10017
     LeaderUnknown = 10018
     PluginError = 10019
+
+    # Make sure this matches this list in picoplugin::error_code::ErrorCode::is_retriable_for_cas
+    retriable_for_cas = set(
+        [
+            LeaderUnknown,
+            NotALeader,
+            TermMismatch,
+            RaftLogCompacted,
+            RaftLogUnavailable,
+            CasEntryTermMismatch,
+            CasConflictFound,
+        ]
+    )
+
+    @classmethod
+    def is_retriable_for_cas(cls, code):
+        return code in cls.retriable_for_cas
 
 
 def eprint(*args, **kwargs):
