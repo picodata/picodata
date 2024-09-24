@@ -37,8 +37,6 @@ picodata> pico.help("help")
 | [pico.PICODATA_VERSION](#pico_picodata_version) | Версия Picodata.
 | [pico.abort_ddl](#pico_abort_ddl) | Отмена ожидающей операции по изменению схемы данных.
 | [pico.cas()](#pico_cas) | Запрос на изменение параметров методом [Compare and Swap](../overview/glossary.md#cas).
-| [pico.create_table()](#pico_create_table) | Создание таблицы.
-| [pico.drop_table()](#pico_drop_table) | Удаление таблицы.
 | [pico.exit()](#pico_exit) | Корректное завершение работы указанного инстанса.
 | [pico.expel()](#pico_expel) | [Контролируемый вывод](cli.md#expel) инстанса из кластера.
 | [pico.help()](#pico_help) | Доступ к встроенной справочной системе.
@@ -119,10 +117,9 @@ function abort_ddl(timeout)
 - номера терма (`term`);
 - диапазона значений самого проверяемого параметра (`ranges`).
 
-Если предикат не указан, он будет автоматически сгенерирован на
-основе текущих `index` и `term` и пустого диапазона `ranges`. Запрос без
-диапазонов `ranges` означает "запись вслепую" и поэтому не
-рекомендуется к использованию.
+Если предикат не указан, он будет автоматически сгенерирован на основе
+текущих `index` и `term`, а также диапазона `ranges`, применимого к
+текущей операции.
 
 Функция возвращает индекс сделанной записи в raft-журнале.
 
@@ -178,144 +175,9 @@ pico.cas({
 })
 ```
 
-### pico.create_table {: #pico_create_table }
-
-Создает таблицу. Функция завершается после того, как таблица создана
-глобально и доступна с текущего инстанса. Функция возвращает индекс
-соответствующей записи `Op::DdlCommit` в raft-журнале, который
-необходим для синхронизации с остальными инстансами. Если такая
-таблица уже существует, то запрос игнорируется.
-
-```lua
-function create_table(opts)
-```
-
-Параметры:
-
-- `opts`: (_table_):
-    - `name` (_string_)
-    - `format` (_table_ {_table_ TableField,...}), см. [table TableField](#tablefield_table)
-    - `primary_key `(_table_ {_string_,...}) с именами полей
-    - `id` (optional _number_), по умолчанию генерируется автоматически
-    - `distribution` (_string_), варианты: `'global'` | `'sharded'`
-        при использовании `sharded` также нужно использовать параметр `by_field`
-        или связку параметров `sharding_key`+`sharding_fn`.
-    - `by_field` (optional _string_), обычно используется `bucket_id`
-    - `sharding_key `(optional _table_ {string,...}) с именами полей
-    - `sharding_fn` (optional _string_), поддерживается пока только функция `murmur3`
-    - `engine` (optional _string_), движок хранения данных в БД;
-      варианты: `'memtx'` | `'vinyl'`. По умолчанию используется
-      `'memtx'`. См [подробнее](../overview/glossary.md#db_engine).
-    - `timeout` (optional _number_), число в секундах. По умолчанию
-      используется бесконечное значение.
-
-Возвращаемое значение:
-
-(_number_) или <br>(_nil_, _string_) в случае ошибки
-
-Примеры:
-
-Создание глобальной таблицы с двумя полями:
-
-```lua
-pico.create_table({
-    name = 'warehouse',
-    format = {
-        {name = 'ID', type = 'unsigned', is_nullable = false},
-        {name = 'ITEM', type = 'string', is_nullable = false},
-        {name = 'TYPE', type = 'string', is_nullable = false}
-    },
-    primary_key = {'ID'},
-    distribution = 'global',
-    timeout = 3,
-})
-```
-
-Запись в глобальную таблицу происходит посредством функции [`pico.cas`](#pico_cas):
-
-```lua
-pico.cas({
-    kind = 'insert',
-    table = 'warehouse',
-    tuple = {1, 'bricks', 'heavy'},
-})
-```
-
-Для чтения из глобальной таблицы используется box-API Tarantool:
-
-```
-box.space.WAREHOUSE:fselect()
-```
-
-Создание шардированной таблицы с двумя полями:
-
-```lua
-pico.create_table({
-    name = 'DELIVERIES',
-    format = {
-        {name = 'nmbr', type = 'unsigned', is_nullable = false},
-        {name = 'product', type = 'string', is_nullable = true},
-        {name = 'quantity', type = 'unsigned', is_nullable = true},
-    },
-    primary_key = {'product'},
-    distribution = 'sharded',
-    sharding_key = {'product'},
-    timeout = 3,
-})
-```
-
-Вычисление совместимого с SQL хеша для параметра `bucket_id`:
-
-```lua
-local key = require('key_def').new({{fieldno = 2, type = 'string'}})
-local tuple = box.tuple.new({'metalware'})
-local bucket_id = key:hash(tuple) % vshard.router.bucket_count()
-```
-
-Добавление данных в шардированную таблицу происходит с помощью [VShard API](https://www.tarantool.io/en/doc/latest/reference/reference_rock/vshard/vshard_router/):
-
-```lua
-local bucket_id = vshard.router.bucket_id_mpcrc32('metalware')
-vshard.router.callrw(bucket_id, 'box.space.DELIVERIES:insert', {{1, 'metalware', 2000}})
-```
-
-!!! note "Примечание"
-    Данная функция требует обновления состояния на всех
-    инстансах кластера и ожидает от них ответа. Возможна ситуация, когда
-    запрос возвратит ошибку таймаута, так как за отведенное время успеют
-    ответить не все инстансы. При этом запрос НЕ отменится и изменение
-    может быть применено некоторое время спустя. По этой причине повторные
-    вызовы функции с теми же аргументами всегда безопасны.
-
-### pico.drop_table {: #pico_drop_table }
-
-Удаляет таблицу (пространство для хранения данных) на всех инстансах
-кластера. Функция ожидает глобального удаления таблицы. Если ожидание
-превышает таймаут, функция возвращает ошибку. Если таблицы не
-существует, то запрос игнорируется.
-
-```lua
-function drop_table(table, [opts])
-```
-
-Параметры:
-
-- `table` (_number_ | _string_), id или имя таблицы
-- `opts`: (optional _table_), таблица:
-    - `timeout` (optional _number_), число в секундах. По умолчанию
-      используется бесконечное значение.
-
-Возвращаемое значение:
-
-(_number_) с номером raft-индекса или <br>(_nil_, _error_ (ошибка в виде Lua-объекта)) в случае ошибки.
-
-!!! note "Примечание"
-    Данная функция требует обновления состояния на всех
-    инстансах кластера и ожидает от них ответа. Возможна ситуация, когда
-    запрос возвратит ошибку таймаута, так как за отведенное время успеют
-    ответить не все инстансы. При этом запрос НЕ отменится и изменение
-    может быть применено некоторое время спустя. По этой причине повторные
-    вызовы функции с теми же аргументами всегда безопасны.
+Если пользователь явно указывает `ranges`, они добавляются к тем,
+которые неявно проверяются в любом случае (в примере выше — это диапазон
+по таблице 'warehouse' и первичному ключа добавляемого кортежа)
 
 ### pico.exit {: #pico_exit }
 
@@ -827,7 +689,7 @@ Lua-таблица, содержащая количество измененны
 
 ### table TableField {: #tablefield_table }
 
-Lua-таблица, описывающая поле в составе таблицы (см. [pico.create_table](#pico_create_table)).
+Lua-таблица, описывающая поле в составе таблицы.
 
 Поля:
 
