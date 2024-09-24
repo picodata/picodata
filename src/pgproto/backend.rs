@@ -117,7 +117,7 @@ pub fn bind(
         &ctx,
         statement.query_pattern(),
         || {
-            if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? {
+            if !plan.is_empty() && !plan.is_ddl()? && !plan.is_acl()? && !plan.is_plugin()? {
                 plan.bind_params(params)?;
                 plan.apply_options()?;
                 plan.optimize()?;
