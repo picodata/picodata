@@ -1,0 +1,900 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="1191"
+   height="471"
+   version="1.1"
+   viewBox="0 0 1191 471"
+   id="svg82"
+   sodipodi:docname="alter_plugin.svg"
+   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview82"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.1209216"
+     inkscape:cx="467.02642"
+     inkscape:cy="204.29618"
+     inkscape:window-width="1858"
+     inkscape:window-height="1014"
+     inkscape:window-x="62"
+     inkscape:window-y="29"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg82" />
+  <defs
+     id="defs1">
+    <style
+       type="text/css"
+       id="style1">@namespace &quot;http://www.w3.org/2000/svg&quot;;.line { fill: none; stroke: #330000; stroke-width: 1; }
+.bold-line { stroke: #140000; shape-rendering: crispEdges; stroke-width: 2; }
+.thin-line { stroke: #1F0000; shape-rendering: crispEdges }
+.filled { fill: #330000; stroke: none; }
+text.terminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #140000;                            font-weight: bold; }
+text.nonterminal { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1A0000;                            font-weight: normal; }
+text.regexp { font-family: Verdana, Sans-serif;                            font-size: 12px;                            fill: #1F0000;                            font-weight: normal; }
+rect, circle, polygon { fill: #330000; stroke: #330000; }
+rect.terminal { fill: #FF4D4D; stroke: #330000; stroke-width: 1; }
+rect.nonterminal { fill: #FF9E9E; stroke: #330000; stroke-width: 1; }
+rect.text { fill: none; stroke: none; }
+polygon.regexp { fill: #FFC7C7; stroke: #330000; stroke-width: 1; }
+</style>
+  </defs>
+  <polygon
+     points="11 17 3 13 3 21"
+     id="polygon1" />
+  <polygon
+     points="19 17 11 13 11 21"
+     id="polygon2" />
+  <rect
+     x="33"
+     y="3"
+     width="62"
+     height="32"
+     rx="10"
+     id="rect2" />
+  <rect
+     x="31"
+     y="1"
+     width="62"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect3" />
+  <text
+     class="terminal"
+     x="41"
+     y="21"
+     id="text3">ALTER</text>
+  <rect
+     x="115"
+     y="3"
+     width="72"
+     height="32"
+     rx="10"
+     id="rect4" />
+  <rect
+     x="113"
+     y="1"
+     width="72"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect5" />
+  <text
+     class="terminal"
+     x="123"
+     y="21"
+     id="text5">PLUGIN</text>
+  <a
+     xlink:href="../object"
+     xlink:title="plugin"
+     id="a7">
+    <rect
+       x="207"
+       y="3"
+       width="58"
+       height="32"
+       id="rect6" />
+    <rect
+       x="205"
+       y="1"
+       width="58"
+       height="32"
+       class="nonterminal"
+       id="rect7" />
+    <text
+       class="nonterminal"
+       x="215"
+       y="21"
+       id="text7">plugin</text>
+  </a>
+  <a
+     xlink:href=""
+     xlink:title="version"
+     id="a9">
+    <rect
+       x="45"
+       y="69"
+       width="66"
+       height="32"
+       id="rect8" />
+    <rect
+       x="43"
+       y="67"
+       width="66"
+       height="32"
+       class="nonterminal"
+       id="rect9" />
+    <text
+       class="nonterminal"
+       x="53"
+       y="87"
+       id="text9">version</text>
+  </a>
+  <rect
+     x="151"
+     y="69"
+     width="72"
+     height="32"
+     rx="10"
+     id="rect10" />
+  <rect
+     x="149"
+     y="67"
+     width="72"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect11" />
+  <text
+     class="terminal"
+     x="159"
+     y="87"
+     id="text11">ENABLE</text>
+  <rect
+     x="151"
+     y="113"
+     width="80"
+     height="32"
+     rx="10"
+     id="rect12" />
+  <rect
+     x="149"
+     y="111"
+     width="80"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect13" />
+  <text
+     class="terminal"
+     x="159"
+     y="131"
+     id="text13">DISABLE</text>
+  <rect
+     x="171"
+     y="157"
+     width="48"
+     height="32"
+     rx="10"
+     id="rect14" />
+  <rect
+     x="169"
+     y="155"
+     width="48"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect15" />
+  <text
+     class="terminal"
+     x="179"
+     y="175"
+     id="text15">ADD</text>
+  <rect
+     x="239"
+     y="157"
+     width="78"
+     height="32"
+     rx="10"
+     id="rect16" />
+  <rect
+     x="237"
+     y="155"
+     width="78"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect17" />
+  <text
+     class="terminal"
+     x="247"
+     y="175"
+     id="text17">SERVICE</text>
+  <a
+     xlink:href="../object"
+     xlink:title="service"
+     id="a19">
+    <rect
+       x="337"
+       y="157"
+       width="64"
+       height="32"
+       id="rect18" />
+    <rect
+       x="335"
+       y="155"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect19" />
+    <text
+       class="nonterminal"
+       x="345"
+       y="175"
+       id="text19">service</text>
+  </a>
+  <rect
+     x="421"
+     y="157"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect20" />
+  <rect
+     x="419"
+     y="155"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect21" />
+  <text
+     class="terminal"
+     x="429"
+     y="175"
+     id="text21">TO</text>
+  <rect
+     x="171"
+     y="201"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect22" />
+  <rect
+     x="169"
+     y="199"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect23" />
+  <text
+     class="terminal"
+     x="179"
+     y="219"
+     id="text23">REMOVE</text>
+  <rect
+     x="267"
+     y="201"
+     width="78"
+     height="32"
+     rx="10"
+     id="rect24" />
+  <rect
+     x="265"
+     y="199"
+     width="78"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect25" />
+  <text
+     class="terminal"
+     x="275"
+     y="219"
+     id="text25">SERVICE</text>
+  <a
+     xlink:href="../object"
+     xlink:title="service"
+     id="a27">
+    <rect
+       x="365"
+       y="201"
+       width="64"
+       height="32"
+       id="rect26" />
+    <rect
+       x="363"
+       y="199"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect27" />
+    <text
+       class="nonterminal"
+       x="373"
+       y="219"
+       id="text27">service</text>
+  </a>
+  <rect
+     x="449"
+     y="201"
+     width="60"
+     height="32"
+     rx="10"
+     id="rect28" />
+  <rect
+     x="447"
+     y="199"
+     width="60"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect29" />
+  <text
+     class="terminal"
+     x="457"
+     y="219"
+     id="text29">FROM</text>
+  <rect
+     x="549"
+     y="157"
+     width="52"
+     height="32"
+     rx="10"
+     id="rect30" />
+  <rect
+     x="547"
+     y="155"
+     width="52"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect31" />
+  <text
+     class="terminal"
+     x="557"
+     y="175"
+     id="text31">TIER</text>
+  <a
+     xlink:href="../object"
+     xlink:title="tier"
+     id="a33">
+    <rect
+       x="621"
+       y="157"
+       width="40"
+       height="32"
+       id="rect32" />
+    <rect
+       x="619"
+       y="155"
+       width="40"
+       height="32"
+       class="nonterminal"
+       id="rect33" />
+    <text
+       class="nonterminal"
+       x="629"
+       y="175"
+       id="text33">tier</text>
+  </a>
+  <rect
+     x="151"
+     y="289"
+     width="44"
+     height="32"
+     rx="10"
+     id="rect34" />
+  <rect
+     x="149"
+     y="287"
+     width="44"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect35" />
+  <text
+     class="terminal"
+     x="159"
+     y="307"
+     id="text35">SET</text>
+  <a
+     xlink:href="../object"
+     xlink:title="service"
+     id="a37">
+    <rect
+       x="235"
+       y="289"
+       width="64"
+       height="32"
+       id="rect36" />
+    <rect
+       x="233"
+       y="287"
+       width="64"
+       height="32"
+       class="nonterminal"
+       id="rect37" />
+    <text
+       class="nonterminal"
+       x="243"
+       y="307"
+       id="text37">service</text>
+  </a>
+  <rect
+     x="319"
+     y="289"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect38" />
+  <rect
+     x="317"
+     y="287"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect39" />
+  <text
+     class="terminal"
+     x="327"
+     y="307"
+     id="text39">.</text>
+  <a
+     xlink:href="../object"
+     xlink:title="key"
+     id="a41">
+    <rect
+       x="363"
+       y="289"
+       width="42"
+       height="32"
+       id="rect40" />
+    <rect
+       x="361"
+       y="287"
+       width="42"
+       height="32"
+       class="nonterminal"
+       id="rect41" />
+    <text
+       class="nonterminal"
+       x="371"
+       y="307"
+       id="text41">key</text>
+  </a>
+  <rect
+     x="425"
+     y="289"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect42" />
+  <rect
+     x="423"
+     y="287"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect43" />
+  <text
+     class="terminal"
+     x="433"
+     y="307"
+     id="text43">=</text>
+  <a
+     xlink:href="../../sql_types#text"
+     xlink:title="text"
+     id="a45">
+    <rect
+       x="475"
+       y="289"
+       width="44"
+       height="32"
+       id="rect44" />
+    <rect
+       x="473"
+       y="287"
+       width="44"
+       height="32"
+       class="nonterminal"
+       id="rect45" />
+    <text
+       class="nonterminal"
+       x="483"
+       y="307"
+       id="text45">text</text>
+  </a>
+  <rect
+     x="235"
+     y="245"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect46" />
+  <rect
+     x="233"
+     y="243"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect47" />
+  <text
+     class="terminal"
+     x="243"
+     y="263"
+     id="text47">,</text>
+  <rect
+     x="721"
+     y="101"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect48" />
+  <rect
+     x="719"
+     y="99"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect49" />
+  <text
+     class="terminal"
+     x="729"
+     y="119"
+     id="text49">OPTION</text>
+  <rect
+     x="817"
+     y="101"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect50" />
+  <rect
+     x="815"
+     y="99"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect51" />
+  <text
+     class="terminal"
+     x="825"
+     y="119"
+     id="text51">(</text>
+  <rect
+     x="863"
+     y="101"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect52" />
+  <rect
+     x="861"
+     y="99"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect53" />
+  <text
+     class="terminal"
+     x="871"
+     y="119"
+     id="text53">TIMEOUT</text>
+  <rect
+     x="965"
+     y="101"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect54" />
+  <rect
+     x="963"
+     y="99"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect55" />
+  <text
+     class="terminal"
+     x="973"
+     y="119"
+     id="text55">=</text>
+  <a
+     xlink:href="../../sql_types#double"
+     xlink:title="double"
+     id="a57">
+    <rect
+       x="1015"
+       y="101"
+       width="62"
+       height="32"
+       id="rect56" />
+    <rect
+       x="1013"
+       y="99"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect57" />
+    <text
+       class="nonterminal"
+       x="1023"
+       y="119"
+       id="text57">double</text>
+  </a>
+  <rect
+     x="1097"
+     y="101"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect58" />
+  <rect
+     x="1095"
+     y="99"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect59" />
+  <text
+     class="terminal"
+     x="1105"
+     y="119"
+     id="text59">)</text>
+  <rect
+     x="45"
+     y="377"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect60" />
+  <rect
+     x="43"
+     y="375"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect61" />
+  <text
+     class="terminal"
+     x="53"
+     y="395"
+     id="text61">MIGRATE</text>
+  <rect
+     x="147"
+     y="377"
+     width="38"
+     height="32"
+     rx="10"
+     id="rect62" />
+  <rect
+     x="145"
+     y="375"
+     width="38"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect63" />
+  <text
+     class="terminal"
+     x="155"
+     y="395"
+     id="text63">TO</text>
+  <a
+     xlink:href=""
+     xlink:title="version"
+     id="a65">
+    <rect
+       x="205"
+       y="377"
+       width="66"
+       height="32"
+       id="rect64" />
+    <rect
+       x="203"
+       y="375"
+       width="66"
+       height="32"
+       class="nonterminal"
+       id="rect65" />
+    <text
+       class="nonterminal"
+       x="213"
+       y="395"
+       id="text65">version</text>
+  </a>
+  <rect
+     x="311"
+     y="377"
+     width="76"
+     height="32"
+     rx="10"
+     id="rect66" />
+  <rect
+     x="309"
+     y="375"
+     width="76"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect67" />
+  <text
+     class="terminal"
+     x="319"
+     y="395"
+     id="text67">OPTION</text>
+  <rect
+     x="407"
+     y="377"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect68" />
+  <rect
+     x="405"
+     y="375"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect69" />
+  <text
+     class="terminal"
+     x="415"
+     y="395"
+     id="text69">(</text>
+  <rect
+     x="493"
+     y="377"
+     width="82"
+     height="32"
+     rx="10"
+     id="rect70" />
+  <rect
+     x="491"
+     y="375"
+     width="82"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect71" />
+  <text
+     class="terminal"
+     x="501"
+     y="395"
+     id="text71">TIMEOUT</text>
+  <rect
+     x="493"
+     y="421"
+     width="164"
+     height="32"
+     rx="10"
+     id="rect72" />
+  <rect
+     x="491"
+     y="419"
+     width="164"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect73" />
+  <text
+     class="terminal"
+     x="501"
+     y="439"
+     id="text73">ROLLBACK_TIMEOUT</text>
+  <rect
+     x="697"
+     y="377"
+     width="30"
+     height="32"
+     rx="10"
+     id="rect74" />
+  <rect
+     x="695"
+     y="375"
+     width="30"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect75" />
+  <text
+     class="terminal"
+     x="705"
+     y="395"
+     id="text75">=</text>
+  <a
+     xlink:href="../../sql_types#double"
+     xlink:title="double"
+     id="a77">
+    <rect
+       x="747"
+       y="377"
+       width="62"
+       height="32"
+       id="rect76" />
+    <rect
+       x="745"
+       y="375"
+       width="62"
+       height="32"
+       class="nonterminal"
+       id="rect77" />
+    <text
+       class="nonterminal"
+       x="755"
+       y="395"
+       id="text77">double</text>
+  </a>
+  <rect
+     x="473"
+     y="333"
+     width="24"
+     height="32"
+     rx="10"
+     id="rect78" />
+  <rect
+     x="471"
+     y="331"
+     width="24"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect79" />
+  <text
+     class="terminal"
+     x="481"
+     y="351"
+     id="text79">,</text>
+  <rect
+     x="849"
+     y="377"
+     width="26"
+     height="32"
+     rx="10"
+     id="rect80" />
+  <rect
+     x="847"
+     y="375"
+     width="26"
+     height="32"
+     class="terminal"
+     rx="10"
+     id="rect81" />
+  <text
+     class="terminal"
+     x="857"
+     y="395"
+     id="text81">)</text>
+  <path
+     class="line"
+     d="m19 17 h2 m0 0 h10 m62 0 h10 m0 0 h10 m72 0 h10 m0 0 h10 m58 0 h10 m2 0 l2 0 m2 0 l2 0 m2 0 l2 0 m-284 66 l2 0 m2 0 l2 0 m2 0 l2 0 m22 0 h10 m66 0 h10 m20 0 h10 m72 0 h10 m0 0 h438 m-550 0 h20 m530 0 h20 m-570 0 q10 0 10 10 m550 0 q0 -10 10 -10 m-560 10 v24 m550 0 v-24 m-550 24 q0 10 10 10 m530 0 q10 0 10 -10 m-540 10 h10 m80 0 h10 m0 0 h430 m-540 -10 v20 m550 0 v-20 m-550 20 v24 m550 0 v-24 m-550 24 q0 10 10 10 m530 0 q10 0 10 -10 m-520 10 h10 m48 0 h10 m0 0 h10 m78 0 h10 m0 0 h10 m64 0 h10 m0 0 h10 m38 0 h10 m0 0 h50 m-378 0 h20 m358 0 h20 m-398 0 q10 0 10 10 m378 0 q0 -10 10 -10 m-388 10 v24 m378 0 v-24 m-378 24 q0 10 10 10 m358 0 q10 0 10 -10 m-368 10 h10 m76 0 h10 m0 0 h10 m78 0 h10 m0 0 h10 m64 0 h10 m0 0 h10 m60 0 h10 m20 -44 h10 m52 0 h10 m0 0 h10 m40 0 h10 m-540 -10 v20 m550 0 v-20 m-550 20 v112 m550 0 v-112 m-550 112 q0 10 10 10 m530 0 q10 0 10 -10 m-540 10 h10 m44 0 h10 m20 0 h10 m64 0 h10 m0 0 h10 m24 0 h10 m0 0 h10 m42 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m44 0 h10 m-324 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m304 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-304 0 h10 m24 0 h10 m0 0 h260 m20 44 h122 m40 -220 h10 m0 0 h412 m-442 0 h20 m422 0 h20 m-462 0 q10 0 10 10 m442 0 q0 -10 10 -10 m-452 10 v12 m442 0 v-12 m-442 12 q0 10 10 10 m422 0 q10 0 10 -10 m-432 10 h10 m76 0 h10 m0 0 h10 m26 0 h10 m0 0 h10 m82 0 h10 m0 0 h10 m30 0 h10 m0 0 h10 m62 0 h10 m0 0 h10 m26 0 h10 m-1118 -32 h20 m1118 0 h20 m-1158 0 q10 0 10 10 m1138 0 q0 -10 10 -10 m-1148 10 v288 m1138 0 v-288 m-1138 288 q0 10 10 10 m1118 0 q10 0 10 -10 m-1128 10 h10 m82 0 h10 m0 0 h10 m38 0 h10 m0 0 h10 m66 0 h10 m20 0 h10 m76 0 h10 m0 0 h10 m26 0 h10 m40 0 h10 m82 0 h10 m0 0 h82 m-204 0 h20 m184 0 h20 m-224 0 q10 0 10 10 m204 0 q0 -10 10 -10 m-214 10 v24 m204 0 v-24 m-204 24 q0 10 10 10 m184 0 q10 0 10 -10 m-194 10 h10 m164 0 h10 m20 -44 h10 m30 0 h10 m0 0 h10 m62 0 h10 m-376 0 l20 0 m-1 0 q-9 0 -9 -10 l0 -24 q0 -10 10 -10 m356 44 l20 0 m-20 0 q10 0 10 -10 l0 -24 q0 -10 -10 -10 m-356 0 h10 m24 0 h10 m0 0 h312 m20 44 h10 m26 0 h10 m-604 0 h20 m584 0 h20 m-624 0 q10 0 10 10 m604 0 q0 -10 10 -10 m-614 10 v58 m604 0 v-58 m-604 58 q0 10 10 10 m584 0 q10 0 10 -10 m-594 10 h10 m0 0 h574 m20 -78 h248 m23 -308 h-3"
+     id="path81" />
+  <polygon
+     points="1181 83 1189 79 1189 87"
+     id="polygon81" />
+  <polygon
+     points="1181 83 1173 79 1173 87"
+     id="polygon82" />
+</svg>

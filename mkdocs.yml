@@ -51,9 +51,11 @@ nav:
       - tutorial/ldap.md
       - tutorial/audit_log.md
     - Разработка приложений:
-      - Оглавление: connectors_index.md
-      - tutorial/connectors/java.md
-      - tutorial/connectors/jdbc.md
+      - tutorial/plugins.md
+      - Внешние коннекторы:
+        - Оглавление: connectors_index.md
+        - tutorial/connectors/java.md
+        - tutorial/connectors/jdbc.md
   - Справочные материалы:
     - Язык SQL:
       - Оглавление: sql_index.md
