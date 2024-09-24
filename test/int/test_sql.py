@@ -5240,6 +5240,7 @@ def test_like(instance: Instance):
     )
 
     instance.sql(""" insert into t values (1, 'abacaba'), (2, 'AbaC'), (3, '%__%')""")
+    # test LIKE operator
 
     data = instance.sql(r" select '_' like '\_' and '%' like '\%' from (values (1))")
     assert data == [[True]]
@@ -5301,3 +5302,21 @@ def test_like(instance: Instance):
         match="ESCAPE expression must be a single character",
     ):
         instance.sql(r"""select s like '%' escape 'a' || 'a' from t""")
+
+    # test ILIKE operator
+    data = instance.sql("select 'AbA' ilike 'aba' from (values (1))")
+    assert data[0] == [True]
+
+    data = instance.sql("select 'aba' ilike 'aBa' from (values (1))")
+    assert data[0] == [True]
+
+    data = instance.sql("select 'ABA' ilike '%b%' from (values (1))")
+    assert data[0] == [True]
+
+    data = instance.sql("select 'ABA' ilike '_b%' from (values (1))")
+    assert data[0] == [True]
+
+    data = instance.sql(
+        r"""select '%UU_' ilike '\%uu\_' escape '\' from (values (1))"""
+    )
+    assert data[0] == [True]

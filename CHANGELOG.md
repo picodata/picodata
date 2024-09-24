@@ -44,7 +44,9 @@ with the `YY.MINOR.MICRO` scheme.
 [.proc_wait_index]: https://docs.picodata.io/picodata/devel/architecture/rpc_api/#proc_wait_index
 
 ### SQL
+
 - SQL supports `LIKE` operator
+- SQL supports `ILIKE` operator
 - SQL supports `lower` and `upper` string functions
 
 ## [24.5.1] - 2024-09-04
