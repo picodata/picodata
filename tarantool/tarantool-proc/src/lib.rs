@@ -876,17 +876,16 @@ mod msgpack {
                             Fields::Unit => {
                                 quote! {
                                     // https://doc.rust-lang.org/beta/unstable-book/language-features/try-blocks.html (2016 -_-)
-                                    let mut r_copied = r.clone();
+                                    let mut r_try = *r;
                                     let mut try_unit = || -> Result<(), #tarantool_crate::msgpack::DecodeError> {
-                                        let () = #tarantool_crate::msgpack::Decode::decode(r, context)
+                                        let () = #tarantool_crate::msgpack::Decode::decode(&mut r_try, context)
                                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                         checker = Some(Self::#variant_ident);
                                         Ok(())
                                     };
 
                                     if try_unit().is_ok() {
-                                        let diff_len = r.len() - r_copied.len();
-                                        *r = &r[diff_len..];
+                                        *r = r_try;
                                         return Result::<Self, #tarantool_crate::msgpack::DecodeError>::Ok(checker.unwrap());
                                     }
                                 }
@@ -904,7 +903,7 @@ mod msgpack {
                                         let var_type = &field.ty;
 
                                         let out = quote_spanned! {field.span()=>
-                                            let #var_name: #var_type = #tarantool_crate::msgpack::Decode::decode(r_copied, context)
+                                            let #var_name: #var_type = #tarantool_crate::msgpack::Decode::decode(&mut r_try, context)
                                                 .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", #index)))?;
                                         };
 
@@ -914,9 +913,9 @@ mod msgpack {
                                     .collect();
                                 quote! {
                                     // https://doc.rust-lang.org/beta/unstable-book/language-features/try-blocks.html (2016 -_-)
-                                    let mut r_copied = &mut r.clone();
+                                    let mut r_try = *r;
                                     let mut try_unnamed = || -> Result<(), #tarantool_crate::msgpack::DecodeError> {
-                                        let amount = #tarantool_crate::msgpack::rmp::decode::read_array_len(r_copied)
+                                        let amount = #tarantool_crate::msgpack::rmp::decode::read_array_len(&mut r_try)
                                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                         if amount as usize != #fields_amount {
                                             Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("non-equal amount of type fields"))?;
@@ -929,8 +928,7 @@ mod msgpack {
                                     };
 
                                     if try_unnamed().is_ok() {
-                                        let diff_len = r.len() - r_copied.len();
-                                        *r = &r[diff_len..];
+                                        *r = r_try;
                                         return Result::<Self, #tarantool_crate::msgpack::DecodeError>::Ok(checker.unwrap());
                                     }
                                 }
@@ -948,7 +946,7 @@ mod msgpack {
                                         let var_type = &field.ty;
 
                                         let out = quote_spanned! {field.span()=>
-                                            let #var_name: #var_type = #tarantool_crate::msgpack::Decode::decode(r_copied, context)
+                                            let #var_name: #var_type = #tarantool_crate::msgpack::Decode::decode(&mut r_try, context)
                                                 .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err).with_part(format!("field {}", stringify!(#field_ident))))?;
                                         };
 
@@ -958,9 +956,9 @@ mod msgpack {
                                     .collect();
                                 quote! {
                                     // https://doc.rust-lang.org/beta/unstable-book/language-features/try-blocks.html (2016 -_-)
-                                    let mut r_copied = &mut r.clone();
+                                    let mut r_try = *r;
                                     let mut try_named = || -> Result<(), #tarantool_crate::msgpack::DecodeError> {
-                                        let amount = #tarantool_crate::msgpack::rmp::decode::read_array_len(r_copied)
+                                        let amount = #tarantool_crate::msgpack::rmp::decode::read_array_len(&mut r_try)
                                             .map_err(|err| #tarantool_crate::msgpack::DecodeError::new::<Self>(err))?;
                                         if amount as usize != #fields_amount {
                                             Err(#tarantool_crate::msgpack::DecodeError::new::<Self>("non-equal amount of type fields"))?;
@@ -973,8 +971,7 @@ mod msgpack {
                                     };
 
                                     if try_named().is_ok() {
-                                        let diff_len = r.len() - r_copied.len();
-                                        *r = &r[diff_len..];
+                                        *r = r_try;
                                         return Result::<Self, #tarantool_crate::msgpack::DecodeError>::Ok(checker.unwrap());
                                     }
                                 }
