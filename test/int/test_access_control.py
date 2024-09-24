@@ -20,8 +20,6 @@ as_bob: AsUser = {
 }
 
 _3_SEC = 3
-as_alice = dict(user="alice", password="T0psecret")
-as_bob = dict(user="bob", password="T0tallysecret")
 
 
 def test_access_global_table(cluster: Cluster):
