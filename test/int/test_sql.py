@@ -2170,7 +2170,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
-    # * Username without parentheses should be downcasted.
+    # * Username without parentheses should be downcast.
     acl = i1.sql(
         f"""
         create user {upper_username} with password '{password}'
@@ -2196,12 +2196,12 @@ def test_sql_acl_users_roles(cluster: Cluster):
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
     assert acl["row_count"] == 1
     with pytest.raises(TarantoolError, match="user .* already exists"):
-        acl = i1.sql(f"create user {username} with password '{password}' using md5")
+        i1.sql(f"create user {username} with password '{password}' using md5")
 
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
     with pytest.raises(TarantoolError, match="user .* does not exist"):
-        acl = i1.sql(f"drop user {username}")
+        i1.sql(f"drop user {username}")
 
     # Zero timeout should return timeout error.
     with pytest.raises(TarantoolError, match="timeout"):
@@ -2230,7 +2230,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
         i1.sql(f"create user '{username}' with password '{password}'")
     with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(f"alter user '{username}' with password '{password}'")
-    # Rolename in single quotes is unsupported.
+    # Role name in single quotes is unsupported.
     with pytest.raises(TarantoolError, match="rule parsing error"):
         i1.sql(f"drop role '{username}'")
 
@@ -2246,7 +2246,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
         TarantoolError, match="already exists with different auth method"
     ):
         i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
-        i1.sql(f"create user {username} with password 'Badpa5SS' using md5")
+
     acl = i1.sql(f"drop user {username}")
     assert acl["row_count"] == 1
 
@@ -2260,9 +2260,9 @@ def test_sql_acl_users_roles(cluster: Cluster):
     assert acl["row_count"] == 1
 
     another_password = "Qwerty123"
-    # Alter of unexisted user should raise an error.
+    # Alter of non-existent user should raise an error.
     with pytest.raises(TarantoolError, match="user .* does not exist"):
-        acl = i1.sql(f"alter user nobody with password '{another_password}'")
+        i1.sql(f"alter user nobody with password '{another_password}'")
 
     # Check altering works.
     acl = i1.sql(f"create user {username} with password '{password}' using md5")
@@ -2317,7 +2317,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Dropping role that doesn't exist should return does not exist error.
     with pytest.raises(TarantoolError, match="role .* does not exist"):
-        acl = i1.sql(f"drop role {rolename}")
+        i1.sql(f"drop role {rolename}")
 
     # Successive creation of role.
     acl = i1.sql(f'create role "{rolename}"')
@@ -2336,7 +2336,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Creation of the role that already exists shouldn't do anything.
     with pytest.raises(TarantoolError, match="role .* already exists"):
-        acl = i1.sql(f'create role "{rolename}"')
+        i1.sql(f'create role "{rolename}"')
     assert (
         i1.call("box.space._pico_user.index._pico_user_name:get", rolename) is not None
     )
@@ -2374,7 +2374,7 @@ def test_sql_acl_users_roles(cluster: Cluster):
 
     # Create the same user with the same password, but auth method is in different case
     with pytest.raises(TarantoolError, match="user .* already exists"):
-        acl = i1.sql("CREATE USER wendy WITH PASSWORD 'Passw0rd' USING CHAP-SHA1")
+        i1.sql("CREATE USER wendy WITH PASSWORD 'Passw0rd' USING CHAP-SHA1")
 
     # Alter user with auth method in lowercase
     acl = i1.sql("ALTER USER wendy WITH PASSWORD 'Passw0rd2' USING md5")

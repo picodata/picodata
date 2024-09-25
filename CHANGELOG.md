@@ -18,14 +18,14 @@ with the `YY.MINOR.MICRO` scheme.
 
 - Order of columns in `_pico_service_route` table has changed.
 
-- Default authorization method changed from chap-sha to md5 both for user creation and in connect CLI.
+- Default authentication method changed from `CHAP-SHA1` to `MD5` both for user creation and in connect CLI. This change affects new user creation and all system users (except the `pico_service` user), as a command-line interface of `picodata connect` and `picodata expel`. Also, default schema version at cluster boot is now `1`, not `0` as it was previously.
+Connection via `Pgproto` no longer requires additional manual step to change the authentication method. However if you use `iproto` the admin will have to manually change the authentication type.
 
-- Support human numbers to configure memtx.memory
+- Support human numbers to configure memtx.memory.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
-- Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value
-    and everywhere across documentation and examples to reduce ambiguity.
+- Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value and everywhere across documentation and examples to reduce ambiguity.
 
 - New rpc entrypoint: `.proc_get_vshard_config` which returns the vshard configuration of tier.
 -->
