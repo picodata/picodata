@@ -53,7 +53,7 @@ impl WellKnownQuery {
 ///                     'm',
 ///                     'f',
 ///                     'p')
-///   AND (c.relname) LIKE 't%'
+///   AND (c.relname) LIKE '%'
 ///   AND pg_catalog.pg_table_is_visible(c.oid)
 ///   AND c.relnamespace <>
 ///     (SELECT oid
