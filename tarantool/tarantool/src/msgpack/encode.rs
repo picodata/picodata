@@ -1862,6 +1862,75 @@ mod tests {
     }
 
     #[test]
+    fn encode_enum_untagged() {
+        #[derive(Clone, Encode, Decode, PartialEq, Debug)]
+        #[encode(tarantool = "crate", untagged)]
+        enum Foo {
+            BarUnit,
+            BarTuple1(bool),
+            BarStruct2 { bar1: bool, bar2: String },
+            BarTupleN(usize, [u8; 3], Box<Foo>),
+        }
+
+        // unit variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarUnit;
+        let bytes = encode(&original);
+        assert_value(&bytes, Value::Nil);
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // single field unnamed variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarTuple1(true);
+        let bytes = encode(&original);
+        assert_value(&bytes, Value::Array(vec![Value::from(true)]));
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // multi field named variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarStruct2 {
+            bar1: false,
+            bar2: "welcome".to_owned(),
+        };
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![Value::from(false), Value::from("welcome")]),
+        );
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // complex self-referencing multi field variant - encode (ok), decode as array (ok), decode as map (ok)
+        let original = Foo::BarTupleN(52, [37, 13, 42], Box::new(Foo::BarTuple1(true)));
+        let bytes = encode(&original);
+        assert_value(
+            &bytes,
+            Value::Array(vec![
+                Value::from(52),
+                Value::Array(vec![Value::from(37), Value::from(13), Value::from(42)]),
+                Value::Array(vec![Value::from(true)]),
+            ]),
+        );
+        let decoded_arr = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap();
+        assert_eq!(decoded_arr, original);
+        let decoded_map = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap();
+        assert_eq!(decoded_map, original);
+
+        // variant mismatch from valid msgpack bytes - decode as array (err), decode as map (err)
+        let mut bytes = Vec::new();
+        rmp::encode::write_str(&mut bytes, "0xDEADBEEF").unwrap();
+        let err = Foo::decode(&mut bytes.as_slice(), ARR_CTX).unwrap_err();
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_enum_untagged::Foo: received stream didn't match any enum variant");
+        let err = Foo::decode(&mut bytes.as_slice(), MAP_CTX).unwrap_err();
+        assert_eq!(err.to_string(), "failed decoding tarantool::msgpack::encode::tests::encode_enum_untagged::Foo: received stream didn't match any enum variant");
+    }
+
+    #[test]
     fn encode_named_with_raw_ident() {
         #[derive(Clone, Encode, Decode, PartialEq, Debug)]
         #[encode(tarantool = "crate", as_map)]
