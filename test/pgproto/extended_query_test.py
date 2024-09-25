@@ -13,6 +13,7 @@ from pg8000.exceptions import DatabaseError  # type: ignore
 # And we can't use TEXT everywhere, because we'll get a type mismatch error
 # if we try to bind a string when, for example, an integer is expected.
 import psycopg
+from psycopg.pq import ExecStatus
 
 
 def test_extended_query(postgres: Postgres):
@@ -278,8 +279,8 @@ def test_empty_queries(postgres: Postgres):
 
     cur = conn.execute("  ", prepare=True)
     assert cur.pgresult is not None
-    assert cur.pgresult.status == cur.ExecStatus.EMPTY_QUERY
+    assert cur.pgresult.status == ExecStatus.EMPTY_QUERY
 
     cur = conn.execute(" ; ", prepare=True)
     assert cur.pgresult is not None
-    assert cur.pgresult.status == cur.ExecStatus.EMPTY_QUERY
+    assert cur.pgresult.status == ExecStatus.EMPTY_QUERY

@@ -4,6 +4,7 @@ import os
 from conftest import Postgres
 from decimal import Decimal
 import psycopg
+from psycopg.pq import ExecStatus
 
 
 def test_simple_query_flow_errors(postgres: Postgres):
@@ -218,8 +219,8 @@ def test_empty_queries(postgres: Postgres):
 
     cur = conn.execute("  ", prepare=False)
     assert cur.pgresult is not None
-    assert cur.pgresult.status == cur.ExecStatus.EMPTY_QUERY
+    assert cur.pgresult.status == ExecStatus.EMPTY_QUERY
 
     cur = conn.execute(" ; ", prepare=False)
     assert cur.pgresult is not None
-    assert cur.pgresult.status == cur.ExecStatus.EMPTY_QUERY
+    assert cur.pgresult.status == ExecStatus.EMPTY_QUERY
