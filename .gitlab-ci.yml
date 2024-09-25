@@ -439,10 +439,11 @@ build-vm-image:
   inherit:
     variables: false
   variables:
-    BRANCH: $CI_COMMIT_BRANCH
+    # Not CI_COMMIT_BRANCH because CI_COMMIT_BRANCH is not available for tags
+    BRANCH: $CI_COMMIT_REF_NAME
   trigger:
     project: picodata/picodata/picodata-fstek-vmbuilder
-    branch: main
+    branch: "24.3"
     strategy: depend
 
 pack-on-tag:
