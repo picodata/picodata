@@ -667,15 +667,22 @@ pub(super) fn access_check_op(
             Ok(())
         }
         Op::Plugin { .. } => {
-            if !is_superuser(as_user) {
-                let sys_user = user_by_id(as_user)?;
-                #[rustfmt::skip]
-                return Err(BoxError::new(AccessDenied, format!("Plugin system access is denied for user '{}'", sys_user.name)).into());
-            }
+            access_check_plugin_system(as_user)?;
             Ok(())
         }
         Op::Acl(acl) => access_check_acl(storage, acl, as_user),
     }
+}
+
+/// This function is also called from [`crate::sql::dispatch`] for client-side
+/// permission checking. See comments next to it for details.
+pub(crate) fn access_check_plugin_system(as_user: UserId) -> tarantool::Result<()> {
+    if !is_superuser(as_user) {
+        let sys_user = user_by_id(as_user)?;
+        #[rustfmt::skip]
+        return Err(BoxError::new(AccessDenied, format!("Plugin system access is denied for user '{}'", sys_user.name)).into());
+    }
+    Ok(())
 }
 
 // TODO: use this function everywhere we check `id != ADMIN_ID`

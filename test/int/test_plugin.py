@@ -2735,3 +2735,56 @@ def test_sql_interface_inheritance(cluster: Cluster):
     plugin_ref.assert_synced()
     cfg_space = plugin_ref.get_config("testservice_1", i1)
     assert cfg_space == {"foo": True, "bar": 101, "baz": ["one", "two", "three"]}
+
+
+def test_plugin_sql_permission_denied(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"CREATE PLUGIN {_PLUGIN} 0.1.0", user="guest")
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Plugin system access is denied for user 'guest'",
+    )
+
+    # Access is checked before plugin name validation
+    with pytest.raises(TarantoolError) as e:
+        i1.sql("CREATE PLUGIN no_such_plugin 0.1.0", user="guest")
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Plugin system access is denied for user 'guest'",
+    )
+
+    # Create as superuser to check the rest of commands
+    i1.sql(f"CREATE PLUGIN {_PLUGIN} 0.1.0")
+
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(
+            f'ALTER PLUGIN {_PLUGIN} 0.1.0 ADD SERVICE no_such_service TO TIER "{_DEFAULT_TIER}"',
+            user="guest",
+        )
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Plugin system access is denied for user 'guest'",
+    )
+
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE", user="guest")
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Plugin system access is denied for user 'guest'",
+    )
+
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 DISABLE", user="guest")
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Plugin system access is denied for user 'guest'",
+    )
+
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"DROP PLUGIN {_PLUGIN} 0.1.0", user="guest")
+    assert e.value.args[:2] == (
+        "ER_ACCESS_DENIED",
+        "Plugin system access is denied for user 'guest'",
+    )

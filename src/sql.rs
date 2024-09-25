@@ -1,5 +1,6 @@
 //! Clusterwide SQL query execution.
 
+use crate::access_control::access_check_plugin_system;
 use crate::access_control::{validate_password, UserMetadataKind};
 use crate::cas::Predicate;
 use crate::schema::{
@@ -241,6 +242,15 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 .map_err(|e| Error::Other(e.into()))?;
             Ok(duration_from_secs_f64_clamped(secs))
         };
+
+        // NOTE: this is different from how access checks are done for DDL, because:
+        // 1) We do not plan on allowing non-superusers to do plugin operations in the near future.
+        // 2) Preparing a plugin operation involves accessing a number of
+        //    internal tables and potentially even running plugin code for
+        //    validation purposes, so we exit early in case of denied access.
+        // See also <https://git.picodata.io/picodata/picodata/picodata/-/issues/965>
+        let as_user = effective_user_id();
+        with_su(ADMIN_ID, || access_check_plugin_system(as_user))??;
 
         match plugin {
             Plugin::Create(CreatePlugin {
