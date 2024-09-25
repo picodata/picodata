@@ -2,28 +2,37 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Please, keep the packages sorted. Thank you.
 RUN set -e; \
     apt update -y && \
     apt install -y \
+        autoconf \
         build-essential \
-        git unzip wget curl tzdata \
-        libtool autoconf cmake make \
-        pkg-config \
+        cmake \
+        curl \
+        git \
         libcurl4-openssl-dev \
         libicu-dev \
         libldap2-dev \
         libreadline-dev \
         libsasl2-dev \
         libssl-dev \
+        libtool \
         libunwind-dev \
         libyaml-dev \
         libzstd-dev \
+        make \
         ncurses-dev \
+        pkg-config \
+        postgresql-client \
         python3 \
         python3-gevent \
         python3-pip \
         python3-six \
         python3-yaml \
+        tzdata \
+        unzip \
+        wget \
         && apt-get clean all
 
 RUN set -e; \
