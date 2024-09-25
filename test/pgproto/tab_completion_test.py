@@ -2,12 +2,27 @@ import shutil
 import sys
 import pexpect  # type: ignore
 import pytest
+import subprocess
+import re
 from conftest import Postgres
+from packaging.version import Version  # type: ignore
 
 
-def test_tabcompletion(postgres: Postgres):
+def psql_version() -> Version:
+    cmd = ["psql", "--version"]
+    output = subprocess.check_output(cmd).decode("utf-8")
+    raw_version = re.sub(r"\([^)]*\)", "", output).strip()
+    version = raw_version.rpartition(" ")[-1]
+    return Version(version)
+
+
+def test_tab_completion(postgres: Postgres):
     if not shutil.which("psql"):
-        pytest.skip("couldn't find psql")
+        pytest.skip("cannot find psql")
+
+    version = psql_version()
+    if version < Version("15"):
+        pytest.skip(f"unsupported psql {version}")
 
     user = "postgres"
     password = "Passw0rd"
