@@ -4,24 +4,25 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pytest-xdist = "*"
-pytest = "*"
-flake8 = "*"
 black = "*"
-tarantool = "*"
+flake8 = "*"
 funcy = "*"
-mypy = "*"
-pytest-clarity = "*"
-prettytable = "*"
-pytest_harvest = "*"
-pytest-repeat = "*"
 msgpack = "*"
+mypy = "*"
+packaging = "*"
 pexpect = "*"
-pyyaml = "*"
-tomli = {version = ">=1.1.0", markers = "python_version < '3.11'"}
-requests = "*"
 pg8000 = "*"
+prettytable = "*"
 psycopg = {extras = ["binary"], version = "*"}
+pytest = "*"
+pytest-clarity = "*"
+pytest-repeat = "*"
+pytest-xdist = "*"
+pytest_harvest = "*"
+pyyaml = "*"
+requests = "*"
+tarantool = "*"
+tomli = {version = ">=1.1.0", markers = "python_version < '3.11'"}
 
 [requires]
 python_version = "3.10"
