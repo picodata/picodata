@@ -138,8 +138,8 @@ build-base-image:
     # the build scripts. Without them the job fails.
     - &fetch-tags |
       ci-log-section start "fetch-submodule-tags" Fetching tags for submodules
-      ./tools/get_tags.py . tarantool-sys tarantool-sys/third_party/luajit      
-      ci-log-section end "fetch-submodule-tags"    
+      ./tools/get_tags.py . tarantool-sys tarantool-sys/third_party/luajit
+      ci-log-section end "fetch-submodule-tags"
 
 
 .parallel:
@@ -447,7 +447,8 @@ build-vm-image:
   inherit:
     variables: false
   variables:
-    BRANCH: $CI_COMMIT_BRANCH
+    # Not CI_COMMIT_BRANCH because CI_COMMIT_BRANCH is not available for tags
+    BRANCH: $CI_COMMIT_REF_NAME
   trigger:
     project: picodata/picodata/picodata-fstek-vmbuilder
     branch: main
