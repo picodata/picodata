@@ -10,7 +10,7 @@ from psycopg.pq import ExecStatus
 def test_simple_query_flow_errors(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(
@@ -37,7 +37,7 @@ def test_simple_query_flow_errors(postgres: Postgres):
 def test_simple_flow_session(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(
@@ -90,7 +90,7 @@ def test_simple_flow_session(postgres: Postgres):
 def test_explain(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(
@@ -153,7 +153,7 @@ def test_explain(postgres: Postgres):
 def test_aggregates(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(
@@ -210,7 +210,7 @@ def test_empty_queries(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"

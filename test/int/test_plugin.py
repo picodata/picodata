@@ -2740,19 +2740,23 @@ def test_sql_interface_inheritance(cluster: Cluster):
 def test_plugin_sql_permission_denied(cluster: Cluster):
     [i1] = cluster.deploy(instance_count=1)
 
+    user = "alex"
+    password = "L0ng enough"
+
+    i1.sql(f"""CREATE USER "{user}" WITH PASSWORD '{password}' using chap-sha1""")
     with pytest.raises(TarantoolError) as e:
-        i1.sql(f"CREATE PLUGIN {_PLUGIN} 0.1.0", user="guest")
+        i1.sql(f"CREATE PLUGIN {_PLUGIN} 0.1.0", user=user, password=password)
     assert e.value.args[:2] == (
         "ER_ACCESS_DENIED",
-        "Plugin system access is denied for user 'guest'",
+        "Plugin system access is denied for user 'alex'",
     )
 
     # Access is checked before plugin name validation
     with pytest.raises(TarantoolError) as e:
-        i1.sql("CREATE PLUGIN no_such_plugin 0.1.0", user="guest")
+        i1.sql("CREATE PLUGIN no_such_plugin 0.1.0", user=user, password=password)
     assert e.value.args[:2] == (
         "ER_ACCESS_DENIED",
-        "Plugin system access is denied for user 'guest'",
+        "Plugin system access is denied for user 'alex'",
     )
 
     # Create as superuser to check the rest of commands
@@ -2761,30 +2765,31 @@ def test_plugin_sql_permission_denied(cluster: Cluster):
     with pytest.raises(TarantoolError) as e:
         i1.sql(
             f'ALTER PLUGIN {_PLUGIN} 0.1.0 ADD SERVICE no_such_service TO TIER "{_DEFAULT_TIER}"',
-            user="guest",
+            user=user,
+            password=password,
         )
     assert e.value.args[:2] == (
         "ER_ACCESS_DENIED",
-        "Plugin system access is denied for user 'guest'",
+        "Plugin system access is denied for user 'alex'",
     )
 
     with pytest.raises(TarantoolError) as e:
-        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE", user="guest")
+        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE", user=user, password=password)
     assert e.value.args[:2] == (
         "ER_ACCESS_DENIED",
-        "Plugin system access is denied for user 'guest'",
+        "Plugin system access is denied for user 'alex'",
     )
 
     with pytest.raises(TarantoolError) as e:
-        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 DISABLE", user="guest")
+        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 DISABLE", user=user, password=password)
     assert e.value.args[:2] == (
         "ER_ACCESS_DENIED",
-        "Plugin system access is denied for user 'guest'",
+        "Plugin system access is denied for user 'alex'",
     )
 
     with pytest.raises(TarantoolError) as e:
-        i1.sql(f"DROP PLUGIN {_PLUGIN} 0.1.0", user="guest")
+        i1.sql(f"DROP PLUGIN {_PLUGIN} 0.1.0", user=user, password=password)
     assert e.value.args[:2] == (
         "ER_ACCESS_DENIED",
-        "Plugin system access is denied for user 'guest'",
+        "Plugin system access is denied for user 'alex'",
     )

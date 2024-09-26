@@ -32,9 +32,7 @@ def test_tab_completion(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
 
     # create a table
     postgres.instance.sql(""" create table "T" ("s" int primary key) """)
@@ -90,7 +88,7 @@ def test_completion_query_15_plus(postgres: Postgres):
 
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = psycopg.connect(
@@ -124,7 +122,7 @@ def test_completion_query_picodata(postgres: Postgres):
 
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = psycopg.connect(

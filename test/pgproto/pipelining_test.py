@@ -9,9 +9,7 @@ def test_pipelined_messages(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"
@@ -46,9 +44,7 @@ def test_pipelined_messages_with_error(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"
@@ -86,9 +82,7 @@ def test_pipeline_restores_after_error(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"

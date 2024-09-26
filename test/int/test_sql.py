@@ -3961,11 +3961,11 @@ def test_drop_user(cluster: Cluster):
     password = "Passw0rd"
 
     # Create and drop the created user
-    i1.sql(f""" create user "{user}" with password '{password}' """)
+    i1.sql(f""" create user "{user}" with password '{password}' using chap-sha1""")
     i1.sql(f""" drop user "{user}" """)
 
     # Create user with privileges
-    i1.sql(f""" create user "{user}" with password '{password}' """)
+    i1.sql(f""" create user "{user}" with password '{password}' using chap-sha1""")
     i1.sql(f""" grant create table to "{user}" """, sudo=True)
     i1.sql(f""" grant create procedure to "{user}" """, sudo=True)
 
@@ -3973,7 +3973,7 @@ def test_drop_user(cluster: Cluster):
     i1.sql(f""" drop user "{user}" """)
 
     # Create user with privileges
-    i1.sql(f""" create user "{user}" with password '{password}' """)
+    i1.sql(f""" create user "{user}" with password '{password}' using chap-sha1""")
     i1.sql(f""" grant create table to "{user}" """, sudo=True)
     i1.sql(f""" grant create procedure to "{user}" """, sudo=True)
 

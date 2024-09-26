@@ -28,7 +28,7 @@ def test_create_plugin(postgres: Postgres):
 
     postgres.instance.sql(
         f"""
-        ALTER USER "{admin}" WITH PASSWORD '{password}' USING md5
+        ALTER USER "{admin}" WITH PASSWORD '{password}'
         """
     )
     cur = cursor(postgres, admin, password)
@@ -60,7 +60,7 @@ def test_drop_plugin(postgres: Postgres):
 
     postgres.instance.sql(
         f"""
-        ALTER USER "{admin}" WITH PASSWORD '{password}' USING md5
+        ALTER USER "{admin}" WITH PASSWORD '{password}'
         """
     )
     cur = cursor(postgres, admin, password)
@@ -94,7 +94,7 @@ def test_alter_plugin(postgres: Postgres):
 
     postgres.instance.sql(
         f"""
-        ALTER USER "{admin}" WITH PASSWORD '{password}' USING md5
+        ALTER USER "{admin}" WITH PASSWORD '{password}'
         """
     )
     cur = cursor(postgres, admin, password)

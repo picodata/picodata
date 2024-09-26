@@ -12,9 +12,7 @@ def setup_psycopg_test_env(postgres: Postgres):
     port = postgres.port
 
     # Create a Postgres user with a compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # Allow the user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
@@ -41,9 +39,7 @@ def setup_pg8000_test_env(postgres: Postgres):
     password = "P@ssw0rd"
 
     # Create a Postgres user with a compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # Allow the user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 

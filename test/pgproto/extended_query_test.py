@@ -19,7 +19,7 @@ from psycopg.pq import ExecStatus
 def test_extended_query(postgres: Postgres):
     user = "admin"
     password = "P@ssw0rd"
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     os.environ["PGSSLMODE"] = "disable"
     conn = pg.Connection(
@@ -101,7 +101,7 @@ def test_parameterized_queries(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"
@@ -173,9 +173,7 @@ def test_params_specified_via_cast(postgres: Postgres):
     user = "postgres"
     password = "P@ssw0rd"
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     conn = pg.Connection(
@@ -270,7 +268,7 @@ def test_empty_queries(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    postgres.instance.sql(f"ALTER USER \"{user}\" WITH PASSWORD '{password}'")
 
     conn = psycopg.connect(
         f"user = {user} password={password} host={host} port={port} sslmode=disable"

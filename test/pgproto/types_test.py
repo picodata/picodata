@@ -15,9 +15,7 @@ def test_decimal(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # allow user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
@@ -95,9 +93,7 @@ def test_number(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # allow user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
@@ -143,9 +139,7 @@ def test_uuid(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # allow user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
@@ -188,9 +182,7 @@ def test_text_and_varchar(postgres: Postgres):
     user = "postgres"
     password = "P@ssw0rd"
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     conn = pg8000.Connection(
@@ -227,9 +219,7 @@ def test_unsigned(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # allow user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
@@ -293,9 +283,7 @@ def test_arrays(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
 
     postgres.instance.sql(f'GRANT READ ON TABLE "_pico_user" TO "{user}"', sudo=True)
 
@@ -359,9 +347,7 @@ def test_map(postgres: Postgres):
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
 
     postgres.instance.sql(f'GRANT READ ON TABLE "_pico_table" TO "{user}"', sudo=True)
 
@@ -429,9 +415,7 @@ def test_datetime(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # allow user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
@@ -478,9 +462,7 @@ def test_select_from_system_tables(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # grant read on tables
     postgres.instance.sql(f'GRANT READ TABLE TO "{user}"', sudo=True)
 

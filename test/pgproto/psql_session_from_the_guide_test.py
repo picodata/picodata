@@ -9,9 +9,7 @@ def test_psql_session_from_the_guide(postgres: Postgres):
     port = postgres.port
 
     # create a postgres user using a postgres compatible password
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     # allow user to create tables
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 

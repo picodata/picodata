@@ -10,9 +10,7 @@ def setup_pg8000_env(postgres: Postgres) -> pg8000.Connection:
     host = postgres.host
     port = postgres.port
 
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
     postgres.instance.sql(f'GRANT CREATE TABLE TO "{user}"', sudo=True)
 
     os.environ["PGSSLMODE"] = "disable"

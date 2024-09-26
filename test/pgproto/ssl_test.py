@@ -9,9 +9,7 @@ import psycopg
 def test_ssl_refuse(postgres: Postgres):
     user = "user"
     password = "P@ssw0rd"
-    postgres.instance.sql(
-        f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5"
-    )
+    postgres.instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
 
     # disable: only try a non-SSL connection
     os.environ["PGSSLMODE"] = "disable"
@@ -85,7 +83,7 @@ def prepare_with_tls(pg: Postgres, client_tls_pair_name: str):
             port={port} \
             sslmode=require"
 
-    instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    instance.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
 
     if client_tls_pair_name != "":
         ssl_dir = Path(os.path.realpath(__file__)).parent.parent / "ssl_certs"

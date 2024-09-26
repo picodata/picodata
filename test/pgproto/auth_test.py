@@ -8,7 +8,7 @@ def test_auth(postgres: Postgres):
 
     user = "user"
     password = "P@ssw0rd"
-    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}' USING md5")
+    i1.sql(f"CREATE USER \"{user}\" WITH PASSWORD '{password}'")
 
     # test successful authentication
     conn = pg.Connection(
@@ -34,7 +34,7 @@ def test_auth(postgres: Postgres):
 
     sha_user = "chap-sha-enjoyer"
     password = "P@ssw0rd"
-    i1.sql(f"CREATE USER \"{sha_user}\" WITH PASSWORD '{password}' USING md5")
+    i1.sql(f"CREATE USER \"{sha_user}\" WITH PASSWORD '{password}'")
 
     # test authentication with an unsupported method
     with pytest.raises(
@@ -56,7 +56,7 @@ def test_admin_auth(cluster: Cluster):
             default:
     instance:
         pg:
-            listen: "127.0.0.1:5432"
+            listen: "127.0.0.1:5442"
             ssl: False
     """
     )
@@ -72,7 +72,7 @@ def test_admin_auth(cluster: Cluster):
     with pytest.raises(
         pg.DatabaseError, match=f"authentication failed for user '{user}'"
     ):
-        pg.Connection(user, password="wrong password", host="127.0.0.1", port=5432)
+        pg.Connection(user, password="wrong password", host="127.0.0.1", port=5442)
 
-    conn = pg.Connection(user=user, password=password, host="127.0.0.1", port=5432)
+    conn = pg.Connection(user=user, password=password, host="127.0.0.1", port=5442)
     conn.close()
