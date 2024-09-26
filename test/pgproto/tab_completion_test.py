@@ -37,15 +37,7 @@ def test_tab_completion(postgres: Postgres):
     )
 
     # create a table
-    postgres.instance.sql(
-        """
-        CREATE TABLE T (
-            S TEXT NOT NULL,
-            PRIMARY KEY (S)
-        )
-        USING MEMTX DISTRIBUTED BY (S);
-        """
-    )
+    postgres.instance.sql(""" create table "T" ("s" int primary key) """)
 
     # connect using psql
     psql = pexpect.spawn(
