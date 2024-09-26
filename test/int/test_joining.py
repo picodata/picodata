@@ -541,7 +541,7 @@ def test_join_with_duplicate_instance_id(cluster: Cluster):
             assert sole_survivor is None
             sole_survivor = i
         except ProcessDead:
-            assert lc.matched
+            lc.wait_matched()
     assert sole_survivor
 
 
