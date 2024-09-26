@@ -22,7 +22,6 @@ use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::SyncAndPromoteRequest;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
-use crate::rpc::update_instance::handle_update_instance_request_and_wait;
 use crate::schema::ADMIN_ID;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
@@ -78,6 +77,10 @@ impl Loop {
             .instances
             .all_instances()
             .expect("storage should never fail");
+        let existing_fds = storage
+            .instances
+            .failure_domain_names()
+            .expect("storage ain't bouta fail");
         let peer_addresses: HashMap<_, _> = storage
             .peer_addresses
             .iter()
@@ -144,6 +147,7 @@ impl Loop {
             applied,
             cluster_id,
             &instances,
+            &existing_fds,
             &peer_addresses,
             &voters,
             &learners,
@@ -307,19 +311,22 @@ impl Loop {
                 }
             }
 
-            Plan::Downgrade(Downgrade { req }) => {
+            Plan::Downgrade(Downgrade {
+                instance_id,
+                new_current_state,
+                cas,
+            }) => {
                 set_status!("update instance state to offline");
-                tlog!(Info, "downgrading instance {}", req.instance_id);
+                tlog!(Info, "downgrading instance {instance_id}");
 
-                let instance_id = req.instance_id.clone();
-                let current_state = req.current_state.expect("must be set");
                 governor_step! {
                     "handling instance state change" [
                         "instance_id" => %instance_id,
-                        "current_state" => %current_state,
+                        "current_state" => %new_current_state,
                     ]
                     async {
-                        handle_update_instance_request_and_wait(req, raft_op_timeout)?
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }
@@ -427,8 +434,9 @@ impl Loop {
 
             Plan::ToOnline(ToOnline {
                 target,
+                new_current_state,
                 plugin_rpc,
-                req,
+                cas,
             }) => {
                 set_status!("update instance state to online");
                 governor_step! {
@@ -440,14 +448,14 @@ impl Loop {
                     }
                 }
 
-                let current_state = req.current_state.expect("must be set");
                 governor_step! {
                     "handling instance state change" [
                         "instance_id" => %target,
-                        "current_state" => %current_state,
+                        "current_state" => %new_current_state,
                     ]
                     async {
-                        handle_update_instance_request_and_wait(req, raft_op_timeout)?
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
                     }
                 }
             }

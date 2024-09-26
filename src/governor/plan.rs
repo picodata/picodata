@@ -11,6 +11,7 @@ use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::rpc;
+use crate::rpc::update_instance::prepare_update_instance_cas_request;
 use crate::schema::{
     PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID,
 };
@@ -23,9 +24,11 @@ use crate::traft::op::Op;
 use crate::traft::op::PluginRaftOp;
 use crate::traft::Result;
 use crate::traft::{RaftId, RaftIndex, RaftTerm};
+use crate::util::Uppercase;
 use crate::warn_or_panic;
 use ::tarantool::space::UpdateOps;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use tarantool::vclock::Vclock;
 
 #[allow(clippy::too_many_arguments)]
@@ -34,6 +37,7 @@ pub(super) fn action_plan<'i>(
     applied: RaftIndex,
     cluster_id: String,
     instances: &'i [Instance],
+    existing_fds: &HashSet<Uppercase>,
     peer_addresses: &'i HashMap<RaftId, String>,
     voters: &[RaftId],
     learners: &[RaftId],
@@ -62,18 +66,21 @@ pub(super) fn action_plan<'i>(
     let to_downgrade = instances
         .iter()
         .find(|instance| has_states!(instance, not Offline -> Offline));
-    if let Some(Instance {
-        raft_id,
-        instance_id,
-        target_state,
-        ..
-    }) = to_downgrade
-    {
+    if let Some(instance) = to_downgrade {
+        let instance_id = &instance.instance_id;
+        let new_current_state = instance.target_state.variant.as_str();
+
+        let replicaset = *replicasets
+            .get(&instance.replicaset_id)
+            .expect("replicaset info is always present");
+        let tier = *tiers
+            .get(&*instance.tier)
+            .expect("tier info is always present");
+
         ////////////////////////////////////////////////////////////////////////
         // transfer leadership, if we're the one who goes offline
-        if *raft_id == my_raft_id {
-            let new_leader =
-                maybe_responding(instances).find(|instance| voters.contains(&instance.raft_id));
+        if instance.raft_id == my_raft_id {
+            let new_leader = maybe_responding(instances).find(|i| voters.contains(&i.raft_id));
             if let Some(new_leader) = new_leader {
                 return Ok(TransferLeadership { to: new_leader }.into());
             } else {
@@ -99,9 +106,19 @@ pub(super) fn action_plan<'i>(
         ////////////////////////////////////////////////////////////////////////
         // update instance's current state
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_state(*target_state);
+            .with_current_state(instance.target_state);
+        let cas_parameters =
+            prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
 
-        return Ok(Downgrade { req }.into());
+        let (op, ranges) = cas_parameters.expect("already check current state is different");
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+        return Ok(Downgrade {
+            instance_id,
+            new_current_state,
+            cas,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -376,13 +393,31 @@ pub(super) fn action_plan<'i>(
     let target = instances
         .iter()
         .find(|instance| has_states!(instance, not Expelled -> Expelled));
-    if let Some(to_expel) = target {
-        let instance_id = &to_expel.instance_id;
-        let target_state = &to_expel.target_state;
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_state(*target_state);
+    if let Some(instance) = target {
+        let instance_id = &instance.instance_id;
+        let new_current_state = instance.target_state.variant.as_str();
 
-        return Ok(Downgrade { req }.into());
+        let replicaset = *replicasets
+            .get(&instance.replicaset_id)
+            .expect("replicaset info is always present");
+        let tier = *tiers
+            .get(&*instance.tier)
+            .expect("tier info is always present");
+
+        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
+            .with_current_state(instance.target_state);
+        let cas_parameters =
+            prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
+
+        let (op, ranges) = cas_parameters.expect("already check current state is different");
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+        return Ok(Downgrade {
+            instance_id,
+            new_current_state,
+            cas,
+        }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -390,25 +425,38 @@ pub(super) fn action_plan<'i>(
     let to_online = instances
         .iter()
         .find(|instance| has_states!(instance, not Online -> Online) || instance.is_reincarnated());
-    if let Some(Instance {
-        instance_id,
-        target_state,
-        ..
-    }) = to_online
-    {
-        let target = instance_id;
+    if let Some(instance) = to_online {
+        let instance_id = &instance.instance_id;
+        let target_state = instance.target_state;
+        debug_assert_eq!(target_state.variant, StateVariant::Online);
+        let new_current_state = target_state.variant.as_str();
+
+        let replicaset = *replicasets
+            .get(&instance.replicaset_id)
+            .expect("replicaset info is always present");
+        let tier = *tiers
+            .get(&*instance.tier)
+            .expect("tier info is always present");
+
         let plugin_rpc = rpc::enable_all_plugins::Request {
             term,
             applied,
             timeout: sync_timeout,
         };
-        debug_assert_eq!(target_state.variant, StateVariant::Online);
+
         let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
-            .with_current_state(*target_state);
+            .with_current_state(target_state);
+        let cas_parameters =
+            prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
+
+        let (op, ranges) = cas_parameters.expect("already check current state is different");
+        let predicate = cas::Predicate::new(applied, ranges);
+        let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(ToOnline {
-            target,
+            target: instance_id,
+            new_current_state,
             plugin_rpc,
-            req,
+            cas,
         }
         .into());
     }
@@ -776,10 +824,13 @@ pub mod stage {
         }
 
         // TODO: rename, after we renamed `grade` -> `state` this step's name makes no sense at all
-        pub struct Downgrade {
-            /// Update instance request which translates into a global DML operation
-            /// which updates `current_state` to `Offline` in table `_pico_instance` for a given instance.
-            pub req: rpc::update_instance::Request,
+        pub struct Downgrade<'i> {
+            /// This instance is being downgraded. The id is only used for logging.
+            pub instance_id: &'i InstanceId,
+            /// The state which is going to be set as target's new current state. Is only used for loggin.
+            pub new_current_state: &'i str,
+            /// Global DML which updates `current_state` to `Offline` in `_pico_instance` for a given instance.
+            pub cas: cas::Request,
         }
 
         pub struct ConfigureReplication<'i> {
@@ -820,13 +871,16 @@ pub mod stage {
         }
 
         pub struct ToOnline<'i> {
+            /// This instance's is becomming online. Id is only used for logging.
             pub target: &'i InstanceId,
+            /// This is going to be the new current state of the instnace. Only used for logging.
+            pub new_current_state: &'i str,
             /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
             /// It is not optional, although it probably should be.
             pub plugin_rpc: rpc::enable_all_plugins::Request,
             /// Update instance request which translates into a global DML operation
             /// which updates `current_state` to `Online` in table `_pico_instance` for a given instance.
-            pub req: rpc::update_instance::Request,
+            pub cas: cas::Request,
         }
 
         pub struct ApplySchemaChange<'i> {
