@@ -16,12 +16,14 @@ impl WellKnownQuery {
             WellKnownQuery::ListOfTables(..) => {
                 // TODO: filter _pico names like PostgreSQL filters pg_ names
                 r#"
-                    select
-                        "name" as "relname",
-                        NULL::text as "text"
-                    from "_pico_table"
-                    where substr("name", 1, $1::int) = $2::text
-                    order by "relname"
+                    select * from (
+                        select
+                            name as relname,
+                            NULL::text as "text"
+                        from _pico_table
+                        where name like $1::text || '%'
+                    ) q
+                    order by q.relname
                 "#
                 .into()
             }
@@ -31,10 +33,7 @@ impl WellKnownQuery {
     pub fn parameters(&self) -> Vec<SbroadValue> {
         match self {
             WellKnownQuery::ListOfTables(pattern) => {
-                vec![
-                    SbroadValue::from(pattern.len() as u64),
-                    SbroadValue::from(pattern.to_string()),
-                ]
+                vec![SbroadValue::from(pattern.to_string())]
             }
         }
     }
