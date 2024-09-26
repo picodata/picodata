@@ -171,6 +171,10 @@ macro_rules! define_string_newtype {
 ////////////////////////////////////////////////////////////////////////////////
 /// A wrapper around `String` that garantees the string is uppercase by
 /// converting it to uppercase (if needed) on construction.
+// TODO: this is too much boilerplate for such a simple feature. We should
+// simplify and get rid of this struct, just use `String`, make sure it's
+// uppercase after we get it from the user (arguments, config, env, etc.)
+// and sprinkle `debug_assert` in places where it matters (when comparing values)
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, serde::Serialize)]
 pub struct Uppercase(String);
 

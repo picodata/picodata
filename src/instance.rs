@@ -337,6 +337,7 @@ mod tests {
         let storage = Clusterwide::for_tests();
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let instance = add_instance(&storage, 1, "i1", "r1", &State::new(Online, 1)).unwrap();
+        let existing_fds = HashSet::new();
 
         //
         // Current state incarnation is allowed to go down,
@@ -344,7 +345,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Offline, 0)).unwrap();
@@ -359,7 +360,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
-        let dml = update_instance(&instance, &req, &storage).unwrap();
+        let dml = update_instance(&instance, &req, &existing_fds).unwrap();
         assert_eq!(dml, None);
 
         //
@@ -367,7 +368,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Offline);
-        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Offline, 0)).unwrap();
@@ -382,7 +383,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 1)).unwrap();
@@ -397,7 +398,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Online, 2)).unwrap();
@@ -412,7 +413,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Expelled);
-        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("target_state", State::new(Expelled, 0)).unwrap();
@@ -427,7 +428,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_current_state(State::new(Expelled, 69));
-        let (dml, do_bump) = update_instance(&instance, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("current_state", State::new(Expelled, 69)).unwrap();
@@ -442,7 +443,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance.instance_id.clone(), "".into())
             .with_target_state(Online);
-        let e = update_instance(&instance, &req, &storage).unwrap_err();
+        let e = update_instance(&instance, &req, &existing_fds).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
     }
 
@@ -516,6 +517,7 @@ mod tests {
         //
         let instance1 = build_instance(Some(&InstanceId::from("i1")), None, &faildoms! {planet: Earth}, &storage, DEFAULT_TIER).unwrap();
         storage.instances.put(&instance1).unwrap();
+        let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance1.failure_domain, faildoms! {planet: Earth});
         assert_eq!(instance1.replicaset_id, "r1");
 
@@ -524,7 +526,7 @@ mod tests {
         //
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
             .with_failure_domain(faildoms! {owner: Ivan});
-        let e = update_instance(&instance1, &req, &storage).unwrap_err();
+        let e = update_instance(&instance1, &req, &existing_fds).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
 
         //
@@ -533,7 +535,7 @@ mod tests {
         let fd = faildoms! {planet: Mars, owner: Ivan};
         let req = rpc::update_instance::Request::new(instance1.instance_id.clone(), "".into())
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance1, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance1, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();
@@ -556,6 +558,7 @@ mod tests {
         #[rustfmt::skip]
         let instance2 = build_instance(Some(&InstanceId::from("i2")), None, &fd, &storage, DEFAULT_TIER).unwrap();
         storage.instances.put(&instance2).unwrap();
+        let existing_fds = storage.instances.failure_domain_names().unwrap();
         assert_eq!(instance2.failure_domain, fd);
         // doesn't fit into r1
         assert_eq!(instance2.replicaset_id, "r2");
@@ -566,7 +569,7 @@ mod tests {
         let fd = faildoms! {planet: Earth, owner: Mike};
         let req = rpc::update_instance::Request::new(instance2.instance_id.clone(), "".into())
             .with_failure_domain(fd.clone());
-        let (dml, do_bump) = update_instance(&instance2, &req, &storage).unwrap().unwrap();
+        let (dml, do_bump) = update_instance(&instance2, &req, &existing_fds).unwrap().unwrap();
 
         let mut ops = UpdateOps::new();
         ops.assign("failure_domain", fd).unwrap();

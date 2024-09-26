@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::cas;
 use crate::column_name;
 use crate::failure_domain::FailureDomain;
@@ -9,12 +7,14 @@ use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceId};
 use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
-use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
 use crate::tier::Tier;
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
+use crate::util::Uppercase;
+use std::collections::HashSet;
+use std::time::Duration;
 use tarantool::fiber;
 use tarantool::space::UpdateOps;
 
@@ -125,7 +125,9 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
             return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
         };
 
-        let dml = update_instance(&instance, &req, storage)?;
+        let existing_fds = storage.instances.failure_domain_names()?;
+
+        let dml = update_instance(&instance, &req, &existing_fds)?;
         let Some((dml, version_bump_needed)) = dml else {
             // No point in proposing an operation which doesn't change anything.
             // Note: if the request tried setting target state Online while it
@@ -196,7 +198,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 pub fn update_instance(
     instance: &Instance,
     req: &Request,
-    storage: &Clusterwide,
+    existing_fds: &HashSet<Uppercase>,
 ) -> Result<Option<(Dml, bool)>> {
     if instance.current_state.variant == Expelled
         && !matches!(
@@ -215,11 +217,7 @@ pub fn update_instance(
 
     let mut ops = UpdateOps::new();
     if let Some(fd) = req.failure_domain.as_ref() {
-        let existing_fds = storage
-            .instances
-            .failure_domain_names()
-            .expect("storage should not fail");
-        fd.check(&existing_fds)?;
+        fd.check(existing_fds)?;
         if fd != &instance.failure_domain {
             ops.assign(column_name!(Instance, failure_domain), fd)?;
         }
