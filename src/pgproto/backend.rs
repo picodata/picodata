@@ -304,7 +304,7 @@ impl Backend {
             // from PostgreSQL that our SQL doesn't support. Recognizing these common queries
             // allows us to offer useful features like tab-completion.
             if let Some(query) = well_known_queries::parse(sql) {
-                tlog!(Info, "recognized well known query: {query:?}");
+                tlog!(Debug, "recognized well known query: {query:?}");
                 // sudo helps to avoid read access to system tables is denied error.
                 if let Ok(Ok(result)) = with_su(ADMIN_ID, || {
                     self.execute_query(&query.sql(), query.parameters())
