@@ -7,7 +7,7 @@
 
 Драйвер предоставляет [JDBC API][jdbc_api] для работы с
 Picodata и служит коннектором к СУБД Picodata из приложений,
-поддерживающих JDBC-подключения. 
+поддерживающих JDBC-подключения.
 
 [picodata-jdbc]: https://git.picodata.io/picodata/picodata/picodata-jdbc
 [jdbc_api]: https://docs.picodata.io/apidocs/jdbc/latest/
@@ -85,7 +85,7 @@ docker-compose up -d
 3.&nbsp;Создайте отдельного пользователя для подключения по JDBC и выдайте ему права на создание таблиц:
 
 ```shell
-docker-compose exec picodata-1 bash -c "echo -ne \"\\set language sql\nCREATE USER \\\"sqluser\\\" WITH PASSWORD 'P@ssw0rd' USING md5;\nGRANT CREATE TABLE TO \\\"sqluser\\\";\" | picodata admin /home/picouser/picodata-1/admin.sock"
+docker-compose exec picodata-1 bash -c "echo -ne \"CREATE USER \\\"sqluser\\\" WITH PASSWORD 'P@ssw0rd' USING md5;\nGRANT CREATE TABLE TO \\\"sqluser\\\";\" | picodata admin /home/picouser/picodata-1/admin.sock"
 ```
 
 4.&nbsp;Вернитесь в исходную директорию `picodata-jdbc-example` и
