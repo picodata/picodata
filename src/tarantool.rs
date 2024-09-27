@@ -234,8 +234,11 @@ impl Cfg {
         self.vinyl_dir = config.instance.data_dir();
 
         // FIXME: make the loop below work with default values
-        self.other_fields
-            .insert("memtx_memory".into(), config.instance.memtx_memory().into());
+        self.other_fields.extend([
+            ("memtx_memory".into(), config.instance.memtx_memory().into()),
+            ("vinyl_memory".into(), config.instance.vinyl_memory().into()),
+            ("vinyl_cache".into(), config.instance.vinyl_cache().into()),
+        ]);
 
         #[rustfmt::skip]
         const MAPPING: &[(&str, &str)] = &[
@@ -243,10 +246,9 @@ impl Cfg {
             ("checkpoint_count",            config_parameter_path!(instance.memtx.checkpoint_count)),
             ("checkpoint_interval",         config_parameter_path!(instance.memtx.checkpoint_interval)),
             ("log_format",                  config_parameter_path!(instance.log.format)),
-            ("vinyl_memory",                config_parameter_path!(instance.vinyl.memory)),
-            ("vinyl_cache",                 config_parameter_path!(instance.vinyl.cache)),
             ("net_msg_max",                 config_parameter_path!(instance.iproto.max_concurrent_messages)),
         ];
+
         for (box_field, picodata_field) in MAPPING {
             let value = config
                 .get_field_as_rmpv(picodata_field)

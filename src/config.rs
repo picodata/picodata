@@ -1119,7 +1119,25 @@ impl InstanceConfig {
     pub fn memtx_memory(&self) -> u64 {
         self.memtx
             .memory
-            .clone()
+            .as_ref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+            .into()
+    }
+
+    #[inline]
+    pub fn vinyl_memory(&self) -> u64 {
+        self.vinyl
+            .memory
+            .as_ref()
+            .expect("is set in PicodataConfig::set_defaults_explicitly")
+            .into()
+    }
+
+    #[inline]
+    pub fn vinyl_cache(&self) -> u64 {
+        self.vinyl
+            .cache
+            .as_ref()
             .expect("is set in PicodataConfig::set_defaults_explicitly")
             .into()
     }
@@ -1202,8 +1220,8 @@ impl FromStr for ByteSize {
     }
 }
 
-impl From<ByteSize> for u64 {
-    fn from(memory: ByteSize) -> Self {
+impl From<&ByteSize> for u64 {
+    fn from(memory: &ByteSize) -> Self {
         memory.as_u64().expect("should be valid ByteSize")
     }
 }
@@ -1280,14 +1298,14 @@ pub struct VinylSection {
     /// The maximum number of in-memory bytes that vinyl uses.
     ///
     /// Corresponds to `box.cfg.vinyl_memory`
-    #[introspection(config_default = 128 * 1024 * 1024)]
-    pub memory: Option<u64>,
+    #[introspection(config_default = "128M")]
+    pub memory: Option<ByteSize>,
 
     /// The cache size for the vinyl storage engine.
     ///
     /// Corresponds to `box.cfg.vinyl_cache`
-    #[introspection(config_default = 128 * 1024 * 1024)]
-    pub cache: Option<u64>,
+    #[introspection(config_default = "128M")]
+    pub cache: Option<ByteSize>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2087,28 +2105,28 @@ instance:
     fn test_bytesize_from_str() {
         let res = |s| ByteSize::from_str(s).unwrap();
         assert_eq!(res("1024").to_string(), "1024B");
-        assert_eq!(u64::from(res("1024")), 1024);
+        assert_eq!(res("1024").as_u64().unwrap(), 1024);
 
         assert_eq!(res("256B").to_string(), "256B");
-        assert_eq!(u64::from(res("256B")), 256);
+        assert_eq!(res("256B").as_u64().unwrap(), 256);
 
         assert_eq!(res("64K").to_string(), "64K");
-        assert_eq!(u64::from(res("64K")), 65_536);
+        assert_eq!(res("64K").as_u64().unwrap(), 65_536);
 
         assert_eq!(res("949M").to_string(), "949M");
-        assert_eq!(u64::from(res("949M")), 995_098_624);
+        assert_eq!(res("949M").as_u64().unwrap(), 995_098_624);
 
         assert_eq!(res("1G").to_string(), "1G");
-        assert_eq!(u64::from(res("1G")), 1_073_741_824);
+        assert_eq!(res("1G").as_u64().unwrap(), 1_073_741_824);
 
         assert_eq!(res("10T").to_string(), "10T");
-        assert_eq!(u64::from(res("10T")), 10_995_116_277_760);
+        assert_eq!(res("10T").as_u64().unwrap(), 10_995_116_277_760);
 
         assert_eq!(res("0M").to_string(), "0M");
-        assert_eq!(u64::from(res("0M")), 0);
+        assert_eq!(res("0M").as_u64().unwrap(), 0);
 
         assert_eq!(res("185T").to_string(), "185T");
-        assert_eq!(u64::from(res("185T")), 203_409_651_138_560);
+        assert_eq!(res("185T").as_u64().unwrap(), 203_409_651_138_560);
 
         let e = |s| ByteSize::from_str(s).unwrap_err();
         assert_eq!(e(""), "cannot parse integer from empty string");

@@ -24,7 +24,7 @@ Connection via `Pgproto` no longer requires additional manual step to change the
 - New `picodata connect` and `picodata expel` argument `--timeout` for specifying
 the timeout for address resolving operation.
 
-- Support human numbers to configure memtx.memory.
+- Support human numbers to configure memtx.memory, vinyl.memory and vinyl.cache parameters.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 

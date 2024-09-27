@@ -109,8 +109,8 @@ instance:
                 checkpoint_interval=dict(value=3600, source="default"),
             ),
             vinyl=dict(
-                memory=dict(value=128 * 1024 * 1024, source="default"),
-                cache=dict(value=128 * 1024 * 1024, source="default"),
+                memory=dict(value="128M", source="default"),
+                cache=dict(value="128M", source="default"),
             ),
             iproto=dict(
                 max_concurrent_messages=dict(value=768, source="default"),
@@ -303,8 +303,8 @@ cluster:
     assert box_cfg["checkpoint_count"] == 2
     assert box_cfg["checkpoint_interval"] == 3600
 
-    assert box_cfg["vinyl_memory"] == 128 * 1024 * 1024
-    assert box_cfg["vinyl_cache"] == 128 * 1024 * 1024
+    assert box_cfg["vinyl_memory"] == 134217728
+    assert box_cfg["vinyl_cache"] == 134217728
     assert box_cfg["vinyl_read_threads"] == 1
     assert box_cfg["vinyl_write_threads"] == 4
     assert box_cfg["vinyl_defer_deletes"] == False  # noqa: E712
@@ -341,8 +341,8 @@ instance:
         checkpoint_interval: 1800
 
     vinyl:
-        memory: 0x8888888
-        cache: 0x4444444
+        memory: 600M
+        cache: 300M
 
     iproto:
         max_concurrent_messages: 0x600
@@ -384,8 +384,8 @@ instance:
     assert box_cfg["checkpoint_count"] == 8
     assert box_cfg["checkpoint_interval"] == 1800
 
-    assert box_cfg["vinyl_memory"] == 0x8888888
-    assert box_cfg["vinyl_cache"] == 0x4444444
+    assert box_cfg["vinyl_memory"] == 629145600
+    assert box_cfg["vinyl_cache"] == 314572800
 
     assert box_cfg["net_msg_max"] == 0x600
 
