@@ -2082,6 +2082,18 @@ def get_test_dir():
     return test_dir
 
 
+def target() -> str:
+    # get target triple like x86_64-unknown-linux-gnu
+    rustc_version = subprocess.check_output(["rustc", "-vV"]).decode()
+    for line in rustc_version.splitlines():
+        if line.startswith("host:"):
+            return line.split()[1]
+
+    raise Exception(
+        f"cannot deduce target using rustc, version output: {rustc_version}"
+    )
+
+
 @pytest.fixture(scope="session")
 def binary_path_fixt(cargo_build_fixt: None) -> str:
     return binary_path()
@@ -2090,18 +2102,30 @@ def binary_path_fixt(cargo_build_fixt: None) -> str:
 def binary_path() -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
-    target = json.loads(metadata)["target_directory"]
+    target_dir = json.loads(metadata)["target_directory"]
     # This file is huge, hide it from pytest output in case there's an exception
     # somewhere in this function.
     del metadata
 
     profile = build_profile()
+
+    # XXX: this is a hack for sanitizer-enabled builds (ASan etc).
+    # In order to disable that kind of instrumentation for build.rs,
+    # we have to pass --target=... or set CARGO_BUILD_TARGET,
+    # which will affect the binary path.
+    cargo_build_target = os.environ.get("CARGO_BUILD_TARGET")
+    if cargo_build_target is None and profile == "asan":
+        cargo_build_target = target()
+
+    if cargo_build_target:
+        target_dir = os.path.join(target_dir, cargo_build_target)
+
     # Note: rust names the debug profile `dev`, but puts the binaries into the
     # `debug` directory.
     if profile == "dev":
         profile = "debug"
 
-    binary_path = os.path.realpath(os.path.join(target, f"{profile}/picodata"))
+    binary_path = os.path.realpath(os.path.join(target_dir, f"{profile}/picodata"))
 
     ext = None
     match sys.platform:
