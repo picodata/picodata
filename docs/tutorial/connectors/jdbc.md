@@ -25,6 +25,8 @@ Picodata и служит коннектором к СУБД Picodata из при
 </dependency>
 ```
 
+Вместо `LATEST` можно также указать и конкретную версию коннектора.
+
 Также в `pom.xml` вашего приложения или в глобальные настройки Maven
 необходимо будет добавить репозиторий Picodata:
 
@@ -39,10 +41,11 @@ Picodata и служит коннектором к СУБД Picodata из при
 
 ## Поддерживаемые возможности {: #features }
 
-Функциональность JDBC-драйвера для Picodata соответствует возможностям
-[PgJDBC](https://jdbc.postgresql.org/documentation/). Реализован драйвер
-`java.sql.Driver` с классом `io.picodata.Driver`. В качестве адреса для
-подключения следует использовать формат `jdbc:postgresql:*`.
+JDBC-драйвер для Picodata поддерживает настройки подключения
+[PgJDBC](https://jdbc.postgresql.org/documentation/use/#system-properties).
+Реализован драйвер `java.sql.Driver` с классом `io.picodata.Driver`. В
+качестве адреса для подключения следует использовать формат
+`jdbc:picodata://host:port/?user=sqluser,password=P@ssw0rd`.
 
 ## Проверка работы {: #testing }
 
@@ -50,7 +53,7 @@ Picodata и служит коннектором к СУБД Picodata из при
 заполняет таблицу в Picodata посредством коннектора [picodata-jdbc].
 
 Для проверки работы тестового приложения потребуются JDK (например,
-[OpenJDK](https://openjdk.org)) версии 1.8 или новее, и Docker.
+[OpenJDK](https://openjdk.org)) версии 1.11 или новее, и Docker.
 
 !!! note "Примечание"
     Проверить наличие необходимой версии JDK можно командой `./mvnw
