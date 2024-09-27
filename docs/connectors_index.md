@@ -5,6 +5,7 @@
 Доступные коннекторы:
 
 - [picodata-java](tutorial/connectors/java.md)
+- [picodata-jdbc](tutorial/connectors/jdbc.md)
 
 См. также:
 
