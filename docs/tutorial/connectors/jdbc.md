@@ -41,7 +41,7 @@ Picodata и служит коннектором к СУБД Picodata из при
 
 ## Поддерживаемые возможности {: #features }
 
-JDBC-драйвер для Picodata поддерживает настройки подключения
+JDBC-драйвер для Picodata использует протокол PGPROTO и поддерживает некоторые настройки подключения драйвера
 [PgJDBC](https://jdbc.postgresql.org/documentation/use/#system-properties).
 Реализован класс `io.picodata.Driver`, имплементирующий `java.sql.Driver`. В
 качестве адреса для подключения следует использовать формат
