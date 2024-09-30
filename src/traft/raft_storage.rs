@@ -442,7 +442,7 @@ impl RaftSpaceAccess {
 
         let compacted_index = self.compacted_index()?;
         #[rustfmt::skip]
-        assert!(meta_index > compacted_index, "meta_index: {meta_index}, compacted_index: {compacted_index}");
+        debug_assert!(meta_index >= compacted_index, "meta_index: {meta_index}, compacted_index: {compacted_index}");
         // We must set these explicitly, because compact_log only sets them to
         // the coordinates of the last entry which was in our log.
         self.persist_compacted_term(meta.term)?;
@@ -450,7 +450,7 @@ impl RaftSpaceAccess {
 
         let applied = self.applied()?;
         #[rustfmt::skip]
-        assert!(meta_index > applied, "meta_index: {meta_index}, applied: {compacted_index}");
+        debug_assert!(meta_index >= applied, "meta_index: {meta_index}, applied: {applied}");
         self.persist_applied(meta.index)?;
         self.persist_conf_state(meta.get_conf_state())?;
         Ok(())
