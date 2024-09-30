@@ -223,14 +223,16 @@ fn resolve_rpc_target(
     target: &FfiSafeRpcTargetSpecifier,
     node: &Node,
 ) -> Result<InstanceName, Error> {
+    use FfiSafeRpcTargetSpecifier as Target;
+
     let mut instance_name = None;
     match target {
-        FfiSafeRpcTargetSpecifier::InstanceName(iid) => {
+        Target::InstanceName(iid) => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
             instance_name = Some(InstanceName::from(unsafe { iid.as_str() }));
         }
 
-        &FfiSafeRpcTargetSpecifier::Replicaset {
+        &Target::Replicaset {
             replicaset_name,
             to_master: true,
         } => {
@@ -247,7 +249,7 @@ fn resolve_rpc_target(
             instance_name = Some(master_name);
         }
 
-        &FfiSafeRpcTargetSpecifier::BucketId {
+        &Target::BucketId {
             bucket_id,
             to_master: true,
         } => {
@@ -261,7 +263,7 @@ fn resolve_rpc_target(
             instance_name = Some(master_name);
         }
 
-        &FfiSafeRpcTargetSpecifier::TierAndBucketId {
+        &Target::TierAndBucketId {
             to_master: true,
             tier,
             bucket_id,
@@ -274,13 +276,10 @@ fn resolve_rpc_target(
 
         // These cases are handled below
         #[rustfmt::skip]
-        FfiSafeRpcTargetSpecifier::BucketId { to_master: false, .. } => {}
-        #[rustfmt::skip]
-        FfiSafeRpcTargetSpecifier::Replicaset { to_master: false, .. } => {}
-        FfiSafeRpcTargetSpecifier::Any => {}
-        FfiSafeRpcTargetSpecifier::TierAndBucketId {
-            to_master: false, ..
-        } => {}
+        Target::BucketId { to_master: false, .. }
+        | Target::TierAndBucketId { to_master: false, .. }
+        | Target::Replicaset { to_master: false, .. }
+        | Target::Any => {}
     }
 
     if let Some(instance_name) = instance_name {
@@ -313,12 +312,12 @@ fn resolve_rpc_target(
 
     match target {
         #[rustfmt::skip]
-        FfiSafeRpcTargetSpecifier::InstanceName { .. }
-        | FfiSafeRpcTargetSpecifier::Replicaset { to_master: true, .. }
-        | FfiSafeRpcTargetSpecifier::TierAndBucketId { to_master: true, .. }
-        | FfiSafeRpcTargetSpecifier::BucketId { to_master: true, .. } => unreachable!("handled above"),
+        Target::InstanceName { .. }
+        | Target::Replicaset { to_master: true, .. }
+        | Target::TierAndBucketId { to_master: true, .. }
+        | Target::BucketId { to_master: true, .. } => unreachable!("handled above"),
 
-        &FfiSafeRpcTargetSpecifier::Replicaset {
+        &Target::Replicaset {
             replicaset_name,
             to_master: false,
         } => {
@@ -344,7 +343,7 @@ fn resolve_rpc_target(
             tier_and_replicaset_uuid = Some((found_tier, found_replicaset_uuid));
         }
 
-        &FfiSafeRpcTargetSpecifier::BucketId {
+        &Target::BucketId {
             bucket_id,
             to_master: false,
         } => {
@@ -358,7 +357,7 @@ fn resolve_rpc_target(
             tier_and_replicaset_uuid = Some((tier, replicaset_uuid));
         }
 
-        &FfiSafeRpcTargetSpecifier::TierAndBucketId {
+        &Target::TierAndBucketId {
             tier,
             bucket_id,
             to_master: false,
@@ -369,7 +368,7 @@ fn resolve_rpc_target(
             tier_and_replicaset_uuid = Some((tier, replicaset_uuid));
         }
 
-        &FfiSafeRpcTargetSpecifier::Any => {}
+        &Target::Any => {}
     }
 
     if let Some((tier, replicaset_uuid)) = tier_and_replicaset_uuid {
