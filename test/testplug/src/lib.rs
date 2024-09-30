@@ -472,7 +472,7 @@ fn ping(input: rpc::Request, context: &mut Context) -> Result<rpc::Response, Box
         DisplayAsHexBytes(raw_input)
     );
 
-    let info = internal::instance_info().unwrap();
+    let info = internal::instance_info()?;
     let instance_name = info.name();
 
     let response = PingResponse {
