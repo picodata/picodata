@@ -2210,15 +2210,24 @@ impl NodeImpl {
                     #[rustfmt::skip]
                     debug_assert!(entries_to_persist.is_empty(), "can't have both the snapshot & log entries");
 
-                    // Persist snapshot metadata and compact the raft log if it wasn't empty.
                     let meta = snapshot.get_metadata();
+                    let applied_index = self.raft_storage.applied()?;
+                    // Persist snapshot metadata and compact raft log if it wasn't empty.
                     self.raft_storage.handle_snapshot_metadata(meta)?;
-                    new_applied = Some(meta.index);
 
-                    // Persist the contents of the global tables from the snapshot data.
-                    let is_master = !self.is_readonly();
-                    self.storage
-                        .apply_snapshot_data(&snapshot_data, is_master)?;
+                    if applied_index == meta.index {
+                        // Skip snapshot with the same index, though we still compact the log.
+                        tlog!(
+                            Warning,
+                            "skipping snapshot with the same index: {applied_index}"
+                        )
+                    } else {
+                        // Persist the contents of the global tables from the snapshot data.
+                        let is_master = !self.is_readonly();
+                        self.storage
+                            .apply_snapshot_data(&snapshot_data, is_master)?;
+                        new_applied = Some(meta.index);
+                    }
 
                     // TODO: As long as the snapshot was sent to us in response to
                     // a rejected MsgAppend (which is the only possible case
