@@ -294,3 +294,55 @@ def test_gitlab_763_no_missing_buckets_after_proc_sharding_failure(cluster: Clus
     # All buckets are eventually available to the whole cluster
     for i in cluster.instances:
         Retriable(timeout=10, rps=4).call(check_available_buckets, i, 3000)
+
+
+def get_table_size(instance: Instance, table_name: str):
+    table_size = instance.eval(f"return box.space.{table_name}:count()")
+    return table_size
+
+
+def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
+    i1 = cluster.add_instance()
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
+
+    ddl = i1.sql(
+        """
+        CREATE TABLE "sharded_table" ( "id" INTEGER NOT NULL, PRIMARY KEY ("id") )
+        DISTRIBUTED BY ("id")
+        """
+    )
+    assert ddl["row_count"] == 1
+
+    table_size = 100000
+    batch_size = 1000
+    for start in range(1, table_size, batch_size):
+        response = i1.sql(
+            "INSERT INTO sharded_table VALUES "
+            + (", ".join([f"({i})" for i in range(start, start + batch_size)]))
+        )
+        assert response["row_count"] == batch_size
+
+    assert get_table_size(i1, "sharded_table") == table_size
+
+    bucket_id_index_in_format = 1
+    format = i1.eval("return box.space.sharded_table:format()")
+    assert format[bucket_id_index_in_format]["name"] == "bucket_id"
+
+    data = i1.eval("return box.space.sharded_table:select()")
+    bucket_ids_of_table = set([tuple[bucket_id_index_in_format] for tuple in data])
+
+    # in picodata amount of buckets fixed and equal to 3000
+    all_bucket_ids = set([i + 1 for i in range(3000)])
+    assert len(all_bucket_ids - bucket_ids_of_table) == 0
+
+    for _ in range(9):
+        cluster.add_instance()
+
+    others = cluster.instances[1:]
+
+    # wait until vshard rebalancing done
+    for instance in others:
+        cluster.wait_until_instance_has_this_many_active_buckets(instance, 300)
+
+    for instance in others:
+        assert get_table_size(instance, "sharded_table") > 0

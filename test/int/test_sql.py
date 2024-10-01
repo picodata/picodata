@@ -4386,29 +4386,30 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
     for table_name, other_table_name in zip(table_names, reversed(table_names)):
         with pytest.raises(
             TarantoolError,
-            match=f"""index {table_name}_bucket_id already exists with a different signature""",
+            match="index bucket_id already exists",
         ):
             # try to create existing index
             i1.sql(
-                f""" create index "{table_name}_bucket_id"
+                f""" create index "bucket_id"
                 on "{table_name}" (a) option (timeout = 3) """
             )
 
         with pytest.raises(
             TarantoolError,
-            match=f"""index {other_table_name}_bucket_id already exists""",
+            match="index bucket_id already exists",
         ):
             # try to create non existing index with existing name
             i1.sql(
-                f""" create index "{other_table_name}_bucket_id"
-                on "{table_name}" (a) option (timeout = 3) """
+                f""" create index "bucket_id"
+                on "{other_table_name}" (a) option (timeout = 3) """
             )
 
-        # ensure that index on field bucket_id of sharded table exists
-        data = i1.sql(
-            f""" select * from "_pico_index" where "name" = '{table_name}_bucket_id' """
+        # ensure that index on field bucket_id of sharded table exists in space _index
+        assert i1.eval(f"""return box.space.{table_name}.index.bucket_id""") is not None
+        assert (
+            i1.eval(f"""return box.space.{other_table_name}.index.bucket_id""")
+            is not None
         )
-        assert data != []
 
 
 def test_tier_part(cluster: Cluster):

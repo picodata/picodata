@@ -779,7 +779,7 @@ impl Clusterwide {
             old_priv_versions.insert(def, schema_version);
         }
 
-        // There can be mutliple space dumps for a given space in SnapshotData,
+        // There can be multiple space dumps for a given space in SnapshotData,
         // because snapshots arrive in chunks. So when restoring space dumps we
         // shouldn't truncate spaces which previously already restored chunk of
         // space dump. The simplest way to solve this problem I found is to just
@@ -815,7 +815,7 @@ impl Clusterwide {
         }
         tlog!(
             Debug,
-            "restoring global schema defintions took {:?} [{} tuples]",
+            "restoring global schema definitions took {:?} [{} tuples]",
             t0.elapsed(),
             tuples_count
         );
@@ -2903,7 +2903,7 @@ pub fn ddl_drop_function_on_master(func_id: u32) -> traft::Result<Option<TntErro
 /// * `Err(e)` in case of retryable errors.
 ///
 // FIXME: this function returns 2 kinds of errors: retryable and non-retryable.
-// Currently this is impelemnted by returning one kind of errors as Err(e) and
+// Currently this is implemented by returning one kind of errors as Err(e) and
 // the other as Ok(Some(e)). This was the simplest solution at the time this
 // function was implemented, as it requires the least amount of boilerplate and
 // error forwarding code. But this signature is not intuitive, so maybe there's
@@ -2931,13 +2931,24 @@ pub fn ddl_create_space_on_master(
     })?;
     let tt_pk_def = pico_pk_def.to_index_metadata(&pico_space_def);
 
-    // For now we just assume that during space creation index with id 1
-    // exists if and only if it is a bucket_id index.
-    let mut tt_bucket_id_def = None;
-    let pico_bucket_id_def = storage.indexes.get(space_id, 1)?;
-    if let Some(def) = &pico_bucket_id_def {
-        tt_bucket_id_def = Some(def.to_index_metadata(&pico_space_def));
-    }
+    let bucket_id_def = match &pico_space_def.distribution {
+        Distribution::ShardedImplicitly { .. } => {
+            let index = IndexDef {
+                table_id: pico_space_def.id,
+                id: 1,
+                name: "bucket_id".into(),
+                ty: IndexType::Tree,
+                opts: vec![IndexOption::Unique(false)],
+                parts: vec![Part::field("bucket_id")
+                    .field_type(IndexFieldType::Unsigned)
+                    .is_nullable(false)],
+                operable: false,
+                schema_version: pico_space_def.schema_version,
+            };
+            Some(index)
+        }
+        _ => None,
+    };
 
     let res = (|| -> tarantool::Result<()> {
         if tt_pk_def.parts.is_empty() {
@@ -2952,8 +2963,8 @@ pub fn ddl_create_space_on_master(
         }
         sys_space.insert(&tt_space_def)?;
         sys_index.insert(&tt_pk_def)?;
-        if let Some(def) = tt_bucket_id_def {
-            sys_index.insert(&def)?;
+        if let Some(def) = bucket_id_def {
+            sys_index.insert(&def.to_index_metadata(&pico_space_def))?;
         }
 
         Ok(())

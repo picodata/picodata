@@ -60,8 +60,7 @@ use ::tarantool::fiber::r#async::timeout::Error as TimeoutError;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::{oneshot, watch};
 use ::tarantool::fiber::Mutex;
-use ::tarantool::index::FieldType as IFT;
-use ::tarantool::index::{IndexType, Part};
+use ::tarantool::index::IndexType;
 use ::tarantool::proc;
 use ::tarantool::space::FieldType as SFT;
 use ::tarantool::time::Instant;
@@ -1622,28 +1621,6 @@ impl NodeImpl {
                         // indexes, so somebody should do that at some point.
                         let bucket_id_index = last_pk_part_index + 1;
                         format.insert(bucket_id_index as _, ("bucket_id", SFT::Unsigned).into());
-
-                        let bucket_id_def = IndexDef {
-                            table_id: id,
-                            id: 1,
-                            name: format!("{}_bucket_id", name),
-                            ty: IndexType::Tree,
-                            opts: vec![IndexOption::Unique(false)],
-                            parts: vec![Part::field("bucket_id")
-                                .field_type(IFT::Unsigned)
-                                .is_nullable(false)],
-                            operable: false,
-                            schema_version,
-                        };
-                        let res = self.storage.indexes.insert(&bucket_id_def);
-                        if let Err(e) = res {
-                            // Ignore the error for now, let governor deal with it.
-                            tlog!(
-                                Warning,
-                                "failed creating index '{}': {e}",
-                                bucket_id_def.name
-                            );
-                        }
                     }
                 }
 

@@ -193,7 +193,7 @@ pub fn fields_to_format(
 pub enum Distribution {
     /// Tuples will be replicated to each instance.
     Global,
-    /// Tuples will be implicitely sharded. E.g. sent to the corresponding bucket
+    /// Tuples will be implicitly sharded. E.g. sent to the corresponding bucket
     /// which will be determined by a hash of the provided `sharding_key`.
     ShardedImplicitly {
         sharding_key: Vec<String>,
@@ -201,7 +201,7 @@ pub enum Distribution {
         sharding_fn: ShardingFn,
         tier: String,
     },
-    /// Tuples will be explicitely sharded. E.g. sent to the bucket
+    /// Tuples will be explicitly sharded. E.g. sent to the bucket
     /// which id is provided by field that is specified here.
     ///
     /// Default field name: "bucket_id"
