@@ -201,7 +201,11 @@ pub fn build_instance(
         .cloned()
         .unwrap_or_else(|| choose_instance_name(raft_id, storage));
     let replicaset_name = match replicaset_name {
-        Some(replicaset_name) => replicaset_name.clone(),
+        Some(replicaset_name) =>
+        // FIXME: must make sure the replicaset is not Expelled or ToBeExpelled
+        {
+            replicaset_name.clone()
+        }
         None => choose_replicaset_name(failure_domain, storage, &tier)?,
     };
 
@@ -253,6 +257,9 @@ fn choose_instance_name(raft_id: RaftId, storage: &Clusterwide) -> InstanceName 
 }
 
 /// Choose a [`ReplicasetName`] for a new instance given its `failure_domain` and `tier`.
+/// FIXME: a couple of problems:
+/// - expelled instances are errouneosly counted towards replication factor
+/// - must ignore replicasets with state ToBeExpelled & Expelled
 fn choose_replicaset_name(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,

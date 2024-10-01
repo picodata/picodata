@@ -1894,6 +1894,8 @@ class Cluster:
         previous_active = None
         while True:
             for j in self.instances:
+                if not j.process:
+                    continue
                 j.eval(
                     """
                     if vshard.storage.internal.rebalancer_fiber ~= nil then

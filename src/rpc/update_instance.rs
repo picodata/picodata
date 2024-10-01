@@ -133,7 +133,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 
         let existing_fds = storage.instances.failure_domain_names()?;
 
-        let Some((op, ranges)) = prepare_update_instance_cas_request(
+        let Some((ops, ranges)) = prepare_update_instance_cas_request(
             &req,
             &instance,
             &replicaset,
@@ -145,6 +145,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         };
 
         let predicate = cas::Predicate::with_applied_index(ranges);
+        let op = Op::single_dml_or_batch(ops);
         let cas = crate::cas::Request::new(op, predicate, ADMIN_ID)?;
         let res = cas::compare_and_swap_local(&cas, deadline)?;
         if req.dont_retry {
@@ -167,7 +168,7 @@ pub fn prepare_update_instance_cas_request(
     replicaset: &Replicaset,
     tier: &Tier,
     existing_fds: &HashSet<Uppercase>,
-) -> Result<Option<(Op, Vec<cas::Range>)>> {
+) -> Result<Option<(Vec<Dml>, Vec<cas::Range>)>> {
     debug_assert_eq!(instance.replicaset_name, replicaset.name);
     debug_assert_eq!(instance.tier, replicaset.tier);
     debug_assert_eq!(instance.tier, tier.name);
@@ -205,14 +206,12 @@ pub fn prepare_update_instance_cas_request(
         }
     }
 
-    let op = Op::single_dml_or_batch(ops);
-
     let ranges = vec![
         cas::Range::new(ClusterwideTable::Instance),
         cas::Range::new(ClusterwideTable::Address),
         cas::Range::new(ClusterwideTable::Tier),
     ];
-    Ok(Some((op, ranges)))
+    Ok(Some((ops, ranges)))
 }
 
 /// Returns a pair:

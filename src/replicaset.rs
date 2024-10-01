@@ -169,11 +169,28 @@ impl std::fmt::Display for Replicaset {
     #[derive(Default)]
     pub enum ReplicasetState {
         /// Replicaset is not filled up to the replication factor yet.
+        ///
+        /// Instances cannot store any sharded data.
         #[default]
         NotReady = "not-ready",
 
         /// Replicaset is fully operable.
         Ready = "ready",
+
+        /// Replicaset is in the process of being expelled.
+        ///
+        /// This means that governor is currently waiting until all buckets are
+        /// transferred away from this replicaset.
+        ///
+        /// No more instances can join this replicaset.
+        ToBeExpelled = "to-be-expelled",
+
+        /// Replicaset has been expelled.
+        ///
+        /// All instances from this replicaset have been expelled.
+        ///
+        /// No more instances can join this replicaset.
+        Expelled = "expelled",
     }
 }
 
