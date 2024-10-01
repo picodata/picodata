@@ -22,3 +22,4 @@ pub fn init_cbus_endpoint() {
         .start_non_joinable()
         .expect("starting a fiber shouldn't fail");
 }
+
