@@ -1,4 +1,6 @@
 import pytest
+import sys
+import pexpect  # type: ignore
 from conftest import Cluster, Instance, Retriable, log_crawler
 
 
@@ -108,3 +110,31 @@ def test_raft_id_after_expel(cluster: Cluster):
 
     i4 = cluster.add_instance()
     assert i4.raft_id == 4
+
+
+def test_expel_timeout(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    [i1] = cluster.instances
+    timeout = 1
+
+    # If the peer is not resolving, by default we hang on
+    # for 5 seconds. We can change it by specifying `timeout`.
+    cli = pexpect.spawn(
+        cwd=i1.data_dir,
+        command=i1.binary_path,
+        args=[
+            "expel",
+            "random_instance_id",
+            f"--timeout={timeout}",
+            "--peer=10001",
+        ],
+        encoding="utf-8",
+        timeout=10,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for admin:")
+    cli.sendline("wrong_password")
+
+    cli.expect_exact("CRITICAL: connect timeout")
+    cli.expect_exact(pexpect.EOF)

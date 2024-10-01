@@ -378,6 +378,16 @@ pub struct Expel {
     )]
     /// The preferred authentication method.
     pub auth_method: AuthMethod,
+
+    #[clap(
+        short = 't',
+        long = "timeout",
+        value_name = "TIMEOUT",
+        default_value = "5",
+        env = "PICODATA_CONNECT_TIMEOUT"
+    )]
+    /// Connection timeout in seconds.
+    pub timeout: u64,
 }
 
 impl Expel {

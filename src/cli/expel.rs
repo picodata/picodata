@@ -13,6 +13,7 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
         Some("admin"),
         args.password_file.as_deref(),
         args.auth_method,
+        args.timeout,
     )?;
 
     let req = ExpelRequest {
