@@ -1,14 +1,15 @@
-use ::tarantool::tlua;
-
 use crate::governor::plan::get_first_ready_replicaset_in_tier;
 use crate::storage::ToEntryIter;
+use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::Result;
 use crate::traft::{node, RaftIndex, RaftTerm};
 use crate::vshard::VshardConfig;
-
 use std::collections::HashMap;
 use std::time::Duration;
+use tarantool::fiber;
+use tarantool::space::Space;
+use tarantool::tlua;
 
 crate::define_rpc_request! {
     /// (Re)configures sharding. Sets up the vshard storage and vshard router
@@ -187,4 +188,51 @@ pub mod bootstrap {
         /// [`sharding::bootstrap::Request`]: Request
         pub struct Response {}
     }
+}
+
+crate::define_rpc_request! {
+    /// Waits until there's no buckets on this replicaset.
+    fn proc_wait_bucket_count(req: WaitBucketCountRequest) -> Result<WaitBucketCountResponse> {
+        let deadline = fiber::clock().saturating_add(req.timeout);
+        let node = node::global()?;
+        node.wait_index(req.applied, req.timeout)?;
+        node.status().check_term(req.term)?;
+
+        let Some(space_bucket) = Space::find("_bucket") else {
+            return Err(Error::other("vshard is not yet initialized"));
+        };
+
+        loop {
+            let bucket_count = space_bucket.len()?;
+            if bucket_count == req.expected_bucket_count as usize {
+                #[rustfmt::skip]
+                tlog!(Debug, "done waiting for bucket count 0");
+                break;
+            }
+
+            if fiber::clock() < deadline {
+                fiber::sleep(crate::traft::node::MainLoop::TICK);
+            } else {
+                #[rustfmt::skip]
+                tlog!(Debug, "failed waiting for bucket count 0, current is {bucket_count}");
+                return Err(Error::Timeout);
+            }
+        }
+
+        Ok(WaitBucketCountResponse {})
+    }
+
+    /// Request to configure vshard.
+    #[derive(Default)]
+    pub struct WaitBucketCountRequest {
+        /// Current term of the sender.
+        pub term: RaftTerm,
+        /// Current applied index of the sender.
+        pub applied: RaftIndex,
+        pub timeout: Duration,
+        pub expected_bucket_count: u32,
+    }
+
+    /// Response to [`WaitBucketCountRequest`].
+    pub struct WaitBucketCountResponse {}
 }

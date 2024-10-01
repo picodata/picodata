@@ -43,7 +43,7 @@ pub(super) fn action_plan<'i>(
     voters: &[RaftId],
     learners: &[RaftId],
     replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
-    tiers: &HashMap<&str, &Tier>,
+    tiers: &HashMap<&str, &'i Tier>,
     my_raft_id: RaftId,
     has_pending_schema_change: bool,
     plugins: &HashMap<PluginIdentifier, PluginDef>,
@@ -129,8 +129,9 @@ pub(super) fn action_plan<'i>(
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
 
-        let (op, ranges) = cas_parameters.expect("already check current state is different");
+        let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
+        let op = Op::single_dml_or_batch(ops);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(Downgrade {
             instance_name,
@@ -154,7 +155,6 @@ pub(super) fn action_plan<'i>(
             ADMIN_ID,
         )?;
         let ranges = vec![
-            cas::Range::for_dml(&dml)?,
             cas::Range::new(ClusterwideTable::Instance).eq([&to.name]),
             cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.target_master_name]),
         ];
@@ -370,10 +370,9 @@ pub(super) fn action_plan<'i>(
         if ok_to_configure_vshard
             && tier.current_vshard_config_version != tier.target_vshard_config_version
         {
+            // Note at this point all the instances should have their replication configured,
+            // so it's ok to configure sharding for them
             let targets = maybe_responding(instances)
-                // Note at this point all the instances should have their replication configured,
-                // so it's ok to configure sharding for them
-                .filter(|instance| has_states!(instance, * -> Online))
                 .map(|instance| &instance.name)
                 .collect();
             let rpc = rpc::sharding::Request {
@@ -404,6 +403,7 @@ pub(super) fn action_plan<'i>(
         }
     }
 
+    ////////////////////////////////////////////////////////////////////////////
     // bootstrap sharding on each tier
     for (&tier_name, &tier) in tiers.iter() {
         if tier.vshard_bootstrapped {
@@ -444,6 +444,102 @@ pub(super) fn action_plan<'i>(
     }
 
     ////////////////////////////////////////////////////////////////////////////
+    // expel replicaset
+    if let Some((master, replicaset, tier)) =
+        get_replicaset_being_expelled(instances, replicasets, tiers)
+    {
+        #[rustfmt::skip]
+        debug_assert!(has_states!(master, not Expelled -> Expelled), "{} -> {}", master.current_state, master.target_state);
+
+        let master_name = &master.name;
+        let target = &replicaset.current_master_name;
+        debug_assert_eq!(master_name, target);
+
+        let replicaset_name = replicaset.name.clone();
+
+        let rpc = rpc::sharding::WaitBucketCountRequest {
+            term,
+            applied,
+            timeout: sync_timeout,
+            expected_bucket_count: 0,
+        };
+
+        // Mark last instance as expelled
+        let req = rpc::update_instance::Request::new(master_name.clone(), cluster_name)
+            .with_current_state(master.target_state);
+        let update_instance =
+            prepare_update_instance_cas_request(&req, master, replicaset, tier, existing_fds)?;
+        let (mut ops, ranges) = update_instance.expect("already checked target state != current");
+
+        // Mark replicaset as expelled
+        let mut update_ops = UpdateOps::new();
+        update_ops.assign(column_name!(Replicaset, state), ReplicasetState::Expelled)?;
+        let dml = Dml::update(
+            ClusterwideTable::Replicaset,
+            &[&replicaset_name],
+            update_ops,
+            ADMIN_ID,
+        )?;
+        ops.push(dml);
+
+        let predicate = cas::Predicate::new(applied, ranges);
+        let dml = Op::BatchDml { ops };
+        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+        return Ok(ExpelReplicaset {
+            replicaset_name,
+            target,
+            rpc,
+            cas,
+        }
+        .into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // prepare a replicaset for expel
+    if let Some((tier, replicaset)) = get_replicaset_to_expel(instances, replicasets, tiers) {
+        // Master switchover happens on a governor step with higher priority
+        debug_assert_eq!(
+            replicaset.current_master_name,
+            replicaset.target_master_name
+        );
+        let replicaset_name = replicaset.name.clone();
+
+        let mut update_ops = UpdateOps::new();
+        update_ops.assign(column_name!(Replicaset, weight), 0.0)?;
+        #[rustfmt::skip]
+        update_ops.assign(column_name!(Replicaset, state), ReplicasetState::ToBeExpelled)?;
+
+        let mut ops = vec![];
+        let dml = Dml::update(
+            ClusterwideTable::Replicaset,
+            &[&replicaset_name],
+            update_ops,
+            ADMIN_ID,
+        )?;
+        ops.push(dml);
+
+        if let Some(bump) = Tier::get_vshard_config_version_bump_op_if_needed(tier)? {
+            ops.push(bump);
+        }
+
+        let ranges = vec![
+            // Decision was made based on this instance's state so we must make sure it was up to date.
+            cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.current_master_name]),
+            // The rest of the ranges are implicit.
+        ];
+
+        let predicate = cas::Predicate::new(applied, ranges);
+        let dml = Op::BatchDml { ops };
+        let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
+        let replicaset_name = replicaset.name.clone();
+        return Ok(PrepareReplicasetForExpel {
+            replicaset_name,
+            cas,
+        }
+        .into());
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     // expel instance
     let target = instances
         .iter()
@@ -465,8 +561,9 @@ pub(super) fn action_plan<'i>(
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
 
-        let (op, ranges) = cas_parameters.expect("already check current state is different");
+        let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
+        let op = Op::single_dml_or_batch(ops);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(Downgrade {
             instance_name,
@@ -506,8 +603,9 @@ pub(super) fn action_plan<'i>(
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
 
-        let (op, ranges) = cas_parameters.expect("already check current state is different");
+        let (ops, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
+        let op = Op::single_dml_or_batch(ops);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
 
         return Ok(ToOnline {
@@ -965,6 +1063,32 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
+        pub struct PrepareReplicasetForExpel {
+            /// This replicaset is being prepared for expel. Id is only used for logging.
+            pub replicaset_name: ReplicasetName,
+            /// Global batch DML to do the following:
+            /// - update replicaset record:
+            ///     - set `weight` to 0
+            ///     - set `state` to ToBeExpelled
+            /// - bump the corresponding tier's vhsard config version
+            pub cas: cas::Request,
+        }
+
+        pub struct ExpelReplicaset<'i> {
+            /// This replicaset is being expelled. Id is only used for logging.
+            pub replicaset_name: ReplicasetName,
+            /// This is the master and the last instance in the replicaset being expelled.
+            pub target: &'i InstanceName,
+            /// Request to call [`rpc::sharding::proc_wait_bucket_count`] on `target`.
+            pub rpc: rpc::sharding::WaitBucketCountRequest,
+            /// Global batch DML to do the following:
+            /// - update replicaset record:
+            ///     - set `state` to Expelled
+            /// - update master's instance record:
+            ///     - set `current_state` to Expelled
+            pub cas: cas::Request,
+        }
+
         pub struct ToOnline<'i> {
             /// This instance's is becomming online. Name is only used for logging.
             pub target: &'i InstanceName,
@@ -1046,6 +1170,10 @@ fn get_new_replicaset_master_if_needed<'i>(
 ) -> Option<(&'i Instance, &'i Replicaset)> {
     // TODO: construct a map from replicaset name to instance to improve performance
     for &r in replicasets.values() {
+        if r.state == ReplicasetState::ToBeExpelled || r.state == ReplicasetState::Expelled {
+            continue;
+        }
+
         #[rustfmt::skip]
         let Some(master) = instances.iter().find(|i| i.name == r.target_master_name) else {
             #[rustfmt::skip]
@@ -1060,8 +1188,8 @@ fn get_new_replicaset_master_if_needed<'i>(
                   master.name, master.replicaset_name, r.name);
         } else if has_states!(master, * -> not Online) {
             #[rustfmt::skip]
-            tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
-                  master.name, master.replicaset_name);
+            tlog!(Info, "target master {} of replicaset {} is going {}: trying to choose a new one",
+                  master.name, master.replicaset_name, master.target_state.variant);
         } else {
             continue;
         }
@@ -1104,15 +1232,16 @@ fn get_replicaset_state_change<'i>(
     tiers: &HashMap<&str, &'i Tier>,
 ) -> Option<(&'i ReplicasetName, &'i Tier, bool)> {
     let mut replicaset_sizes = HashMap::new();
-    for Instance {
-        replicaset_name,
-        tier,
-        ..
-    } in maybe_responding(instances)
-    {
+    for instance in maybe_responding(instances) {
+        let instance_name = &instance.name;
+        let replicaset_name = &instance.replicaset_name;
+        let tier = &instance.tier;
+
         let replicaset_size = replicaset_sizes.entry(replicaset_name).or_insert(0);
         *replicaset_size += 1;
         let Some(r) = replicasets.get(replicaset_name) else {
+            #[rustfmt::skip]
+            warn_or_panic!("replicaset info not found for replicaset '{replicaset_name}', set as replicaset of instance '{instance_name}'");
             continue;
         };
         if r.state != ReplicasetState::NotReady {
@@ -1134,7 +1263,6 @@ fn get_replicaset_state_change<'i>(
     None
 }
 
-#[inline(always)]
 pub fn get_first_ready_replicaset_in_tier<'r>(
     instances: &[Instance],
     replicasets: &HashMap<&ReplicasetName, &'r Replicaset>,
@@ -1185,6 +1313,106 @@ fn get_replicaset_config_version_bump_op_if_needed(
     )
     .expect("can't fail");
     Some(dml)
+}
+
+pub fn get_replicaset_to_expel<'r>(
+    instances: &[Instance],
+    replicasets: &HashMap<&ReplicasetName, &'r Replicaset>,
+    tiers: &HashMap<&str, &'r Tier>,
+) -> Option<(&'r Tier, &'r Replicaset)> {
+    for instance in instances {
+        if !has_states!(instance, not Expelled -> Expelled) {
+            continue;
+        }
+        let instance_name = &instance.name;
+        let replicaset_name = &instance.replicaset_name;
+        let tier_id = &*instance.tier;
+
+        let Some(replicaset) = replicasets.get(replicaset_name) else {
+            #[rustfmt::skip]
+            warn_or_panic!("replicaset info not found for replicaset '{replicaset_name}', set as replicaset of instance '{instance_name}'");
+            continue;
+        };
+
+        if replicaset.state == ReplicasetState::ToBeExpelled {
+            // Replicaset is already is the process of being expelled.
+            continue;
+        }
+
+        // If replicaset is expelled, all of it's instances must already be expelled as well.
+        debug_assert_ne!(replicaset.state, ReplicasetState::Expelled);
+
+        if replicaset.current_master_name != instance_name {
+            // Expelled instance is not a master, nothing else to do
+            continue;
+        } else {
+            // Master of the replicaset is being expelled. This means that this
+            // is the last instance in the replicaset....
+            debug_assert_eq!(
+                instances
+                    .iter()
+                    .filter(|i| i.replicaset_name == replicaset_name)
+                    .filter(|i| has_states!(i, not Expelled -> *))
+                    .count(),
+                1
+            );
+        }
+
+        let Some(tier) = tiers.get(tier_id) else {
+            #[rustfmt::skip]
+            warn_or_panic!("tier info not found for tier '{tier_id}', set as tier of instance '{instance_name}'");
+            continue;
+        };
+
+        return Some((tier, replicaset));
+    }
+
+    None
+}
+
+pub fn get_replicaset_being_expelled<'r>(
+    instances: &'r [Instance],
+    replicasets: &HashMap<&ReplicasetName, &'r Replicaset>,
+    tiers: &HashMap<&str, &'r Tier>,
+) -> Option<(&'r Instance, &'r Replicaset, &'r Tier)> {
+    for replicaset in replicasets.values() {
+        let tier_id = &replicaset.tier;
+        debug_assert_eq!(
+            replicaset.current_master_name,
+            replicaset.target_master_name
+        );
+        let master_name = &replicaset.current_master_name;
+        let replicaset_name = &replicaset.name;
+
+        if replicaset.state != ReplicasetState::ToBeExpelled {
+            continue;
+        }
+
+        let master = instances.iter().find(|i| i.name == master_name);
+        let Some(master) = master else {
+            #[rustfmt::skip]
+            warn_or_panic!("instance info not found for instance named '{master_name}', which is chosen as master of replicaset '{replicaset_name}'");
+            continue;
+        };
+
+        if has_states!(master, * -> not Expelled) {
+            let master_state = master.target_state.variant;
+            tlog!(Warning, "replicaset '{replicaset_name}' was going to be expelled, but it's master '{master_name}' is no longer going to be expelled (target state = {master_state})");
+            continue;
+        }
+
+        let Some(tier) = tiers.get(&**tier_id) else {
+            #[rustfmt::skip]
+            warn_or_panic!("tier info not found for tier '{tier_id}', set as tier of replicaset '{replicaset_name}'");
+            continue;
+        };
+
+        debug_assert_eq!(&master.tier, tier_id);
+
+        return Some((master, *replicaset, *tier));
+    }
+
+    None
 }
 
 #[inline(always)]

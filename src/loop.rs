@@ -16,6 +16,7 @@ macro_rules! loop_start {
                     }
                 })
             })
+            // FIXME: use defer_non_joinable instead
             .defer()
             .unwrap()
             .into()

@@ -25,6 +25,7 @@ use crate::rpc::replication::proc_replication_demote;
 use crate::rpc::replication::proc_replication_sync;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
+use crate::rpc::sharding::proc_wait_bucket_count;
 use crate::schema::ADMIN_ID;
 use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
@@ -495,6 +496,49 @@ impl Loop {
                 set_status!("update replicaset state");
                 governor_step! {
                     "proposing replicaset state change"
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::PrepareReplicasetForExpel(PrepareReplicasetForExpel {
+                replicaset_name,
+                cas,
+            }) => {
+                set_status!("prepare replicaset for expel");
+                governor_step! {
+                    "preparing replicaset for expel" [
+                        "replicaset_name" => %replicaset_name,
+                    ]
+                    async {
+                        let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                        cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::ExpelReplicaset(ExpelReplicaset {
+                replicaset_name,
+                target,
+                rpc,
+                cas,
+            }) => {
+                set_status!("transfer buckets from replicaset");
+                governor_step! {
+                    "waiting for replicaset to transfer all buckets" [
+                        "replicaset_name" => %replicaset_name,
+                    ]
+                    async {
+                        pool.call(target, proc_name!(proc_wait_bucket_count), &rpc, rpc_timeout)?.await?;
+                    }
+                }
+
+                governor_step! {
+                    "finalizing replicaset expel" [
+                        "replicaset_name" => %replicaset_name,
+                    ]
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
