@@ -313,3 +313,4 @@ hooks:
   - ./hooks/check_sorting.py
   - ./hooks/validate_system_tables.py
   - ./hooks/inline_svg.py
+  - ./hooks/export_to_pdf.py

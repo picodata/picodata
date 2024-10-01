@@ -1,0 +1,58 @@
+@media print {
+    .pd-break-before-page {
+        break-before: page;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+        break-after: avoid;
+    }
+
+    div.highlight {
+        break-before: avoid-page;
+        break-inside: avoid;
+    }
+
+    article.md-typeset:not(.pd-toc) {
+        zoom: 0.8;
+    }
+
+    p > svg {
+        max-height: 700px;
+        width: auto;
+    }
+}
+
+article.pd-cover {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+
+    .wrapper {
+        flex: auto;
+        text-align: center;
+        align-content: center;
+    }
+
+    img {
+        width: 96px;
+        margin-bottom: 0.5em;
+    }
+  }
+
+article.pd-toc.pd-toc {
+    h1 {
+        text-align: center;
+    }
+
+    ul {
+        list-style-type: none;
+    }
+
+    ul li {
+        margin-left: 0;
+    }
+
+    a {
+        color: var(--md-typeset-color);
+    }
+}

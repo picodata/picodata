@@ -1,5 +1,7 @@
 FROM python:3.12
 
+RUN apt-get update && apt-get install -y chromium
+
 ARG IMAGE_DIR=/builds
 WORKDIR $IMAGE_DIR
 

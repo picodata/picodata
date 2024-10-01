@@ -87,6 +87,10 @@ pack-doc:
     - echo "GIT_DESCRIBE=$(git describe --always)" | tee -a .env
     - pipenv run mkdocs build -sd build
     - pushd build
+    - >
+      chromium --headless --disable-gpu --no-sandbox --no-zygote
+      --disable-software-rasterizer --disable-dev-shm-usage --no-pdf-header-footer
+      --print-to-pdf=picodata_docs.pdf picodata_docs.html
     - tar -cvzf ../$FNAME .
     - popd
     - echo "Picodata doc successfully packed."

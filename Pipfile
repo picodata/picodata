@@ -8,12 +8,14 @@ mkdocs = "==1.6.1"
 mkdocs-material = "==9.6.8"
 mkdocs-open-in-new-tab = "==1.0.8"
 pygments = "==2.19.1"
+beautifulsoup4 = "==4.13.3"
 
 [dev-packages]
 flake8 = "*"
 black = "*"
 mypy = "*"
 types-markdown = "*"
+types-beautifulsoup4 = "*"
 
 [requires]
 python_version = "3"
