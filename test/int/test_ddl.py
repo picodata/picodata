@@ -280,23 +280,10 @@ def test_ddl_create_sharded_space(cluster: Cluster):
 
     ############################################################################
     # This time bucket id was also created
-    pico_bucket_id_def = [
-        space_id,
-        1,
-        "stuff_bucket_id",
-        "tree",
-        [dict(unique=False)],
-        [["bucket_id", "unsigned", None, False, None]],
-        True,
-        schema_version,
-    ]
-    assert i1.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def
-    assert i2.call("box.space._pico_index:get", [space_id, 1]) == pico_bucket_id_def
-
     tt_bucket_id_def = [
         space_id,
         1,
-        "stuff_bucket_id",
+        "bucket_id",
         "tree",
         dict(unique=False),
         [[1, "unsigned", None, False, None]],
@@ -418,15 +405,9 @@ def test_ddl_create_table_abort(cluster: Cluster):
         )
 
     assert i1.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i1, space_id) == [
-        f"{space_name}_pkey",
-        f"{space_name}_bucket_id",
-    ]
+    assert get_index_names(i1, space_id) == [f"{space_name}_pkey"]
     assert i2.call("box.space._space:get", space_id) is not None
-    assert get_index_names(i2, space_id) == [
-        f"{space_name}_pkey",
-        f"{space_name}_bucket_id",
-    ]
+    assert get_index_names(i2, space_id) == [f"{space_name}_pkey"]
 
     # Wake the instance so that governor finds out there's a conflict
     # and aborts the ddl op.
@@ -602,7 +583,7 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     tt_bucket_id_def = [
         space_id,
         1,
-        "stuff_bucket_id",
+        "bucket_id",
         "tree",
         dict(unique=False),
         [[1, "unsigned", None, False, None]],
