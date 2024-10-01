@@ -84,6 +84,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("buckets = [1-3000]")
 
     # hitting enter sends query to the server
     cli.sendline("")
@@ -251,6 +252,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("buckets = unknown")
 
     cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010""")
 
@@ -264,6 +266,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("buckets = [1-3000]")
 
     cli.sendline(
         """EXPLAIN UPDATE "characters" SET "name" = 'Etch', "year" = 2010 WHERE "id" = 2;"""
@@ -282,6 +285,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact("execution options:")
     cli.expect_exact("vdbe_max_steps = 45000")
     cli.expect_exact("vtable_max_rows = 5000")
+    cli.expect_exact("buckets = [1410]")
 
 
 def test_lua_console_sql_error_messages(cluster: Cluster):

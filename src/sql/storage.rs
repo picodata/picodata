@@ -193,11 +193,7 @@ impl<'sn> RequiredPlanInfo for LocalExecutionQueryInfo<'sn> {
     }
 
     fn vdbe_max_steps(&self) -> u64 {
-        self.exec_plan
-            .get_ir_plan()
-            .options
-            .execute_options
-            .vdbe_max_steps()
+        self.exec_plan.get_ir_plan().options.vdbe_max_steps
     }
 
     fn vtable_max_rows(&self) -> u64 {

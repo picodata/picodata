@@ -570,7 +570,8 @@ def test_dml_on_global_tbls(cluster: Cluster):
             scan "t"
 execution options:
     vdbe_max_steps = 45000
-    vtable_max_rows = 5000"""
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
     assert "\n".join(lines) == expected_explain
 
     # empty delete
@@ -5665,3 +5666,184 @@ def test_sql_stat_tables(cluster: Cluster):
 
     # Disable injection
     i1.call("pico._inject_error", "SQL_STATISTICS_CAPACITY_ONE", False)
+
+
+def test_explain(cluster: Cluster):
+    cluster.deploy(instance_count=2)
+    i1, i2 = cluster.instances
+
+    cluster.wait_until_instance_has_this_many_active_buckets(i1, 1500)
+    cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
+
+    ddl = i1.sql("create table t (a int primary key, b int)")
+    assert ddl["row_count"] == 1
+
+    # ---------------------- DQL ----------------------
+    # Reading from all buckets
+    lines = i1.sql("explain select a from t")
+    expected_explain = """projection ("t"."a"::integer -> "a")
+    scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    # Reading from a single bucket => single node
+    lines = i1.sql("explain select a from t where a = 1")
+    expected_explain = """projection ("t"."a"::integer -> "a")
+    selection ROW("t"."a"::integer) = ROW(1::unsigned)
+        scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1934]"""
+    assert "\n".join(lines) == expected_explain
+
+    lines = i1.sql("explain select a from t where a = 1 and a = 2")
+    expected_explain = """projection ("t"."a"::integer -> "a")
+    selection ROW("t"."a"::integer) = ROW(1::unsigned) and ROW("t"."a"::integer) = ROW(2::unsigned)
+        scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = []"""
+    assert "\n".join(lines) == expected_explain
+
+    # When query has motions, we estimate buckets for whole
+    # plan by buckets of leaf subtrees
+    lines = i1.sql("explain select t.a from t join t as t2 on t.a = t2.b")
+    expected_explain = """projection ("t"."a"::integer -> "a")
+    join on ROW("t"."a"::integer) = ROW("t2"."b"::integer)
+        scan "t"
+            projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
+                scan "t"
+        motion [policy: segment([ref("b")])]
+            scan "t2"
+                projection ("t2"."a"::integer -> "a", "t2"."b"::integer -> "b")
+                    scan "t" -> "t2"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = unknown"""
+    assert "\n".join(lines) == expected_explain
+
+    # Reading from global table
+    lines = i1.sql("explain select id from _pico_table")
+    expected_explain = """projection ("_pico_table"."id"::unsigned -> "id")
+    scan "_pico_table"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = any"""
+    assert "\n".join(lines) == expected_explain
+
+    # Special case: motion node at the top
+    lines = i1.sql("explain select id from _pico_table union select a from t")
+    expected_explain = """motion [policy: full]
+    union
+        motion [policy: local]
+            projection ("_pico_table"."id"::unsigned -> "id")
+                scan "_pico_table"
+        projection ("t"."a"::integer -> "a")
+            scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    # ---------------------- DML ----------------------
+    # For non-local motion child of DML we can't estimate
+    # buckets.
+    lines = i1.sql("explain insert into t values (1, 2)")
+    expected_explain = """insert "t" on conflict: fail
+    motion [policy: segment([ref("COLUMN_1")])]
+        values
+            value row (data=ROW(1::unsigned, 2::unsigned))
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = unknown"""
+    assert "\n".join(lines) == expected_explain
+
+    # For local motion: we can
+    lines = i1.sql("explain insert into t select a, b from t")
+    expected_explain = """insert "t" on conflict: fail
+    motion [policy: local segment([ref("a")])]
+        projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
+            scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    # Update: update non-sharding column
+    lines = i1.sql("explain update t set b = 1 where b = 3")
+    expected_explain = """update "t"
+"b" = "col_0"
+    motion [policy: local]
+        projection (1::unsigned -> "col_0", "t"."a"::integer -> "col_1")
+            selection ROW("t"."b"::integer) = ROW(3::unsigned)
+                scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    # Update sharding column
+    ddl = i1.sql("create table t2 (c int primary key, d int) distributed by (d)")
+    assert ddl["row_count"] == 1
+    lines = i1.sql("explain update t2 set d = 1 where d = 2 or d = 2002")
+    print("\n".join(lines))
+    expected_explain = """update "t2"
+"c" = "col_0"
+"d" = "col_1"
+    motion [policy: segment([])]
+        projection ("t2"."c"::integer -> "col_0", 1::unsigned -> "col_1", "t2"."d"::integer -> "col_2")
+            selection ROW("t2"."d"::integer) = ROW(2::unsigned) or ROW("t2"."d"::integer) = ROW(2002::unsigned)
+                scan "t2"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = unknown"""  # noqa: E501
+    assert "\n".join(lines) == expected_explain
+
+    # Delete
+    lines = i1.sql("explain delete from t")
+    expected_explain = """delete "t"
+    motion [policy: local]
+        projection ("t"."a"::integer -> "pk_col_0")
+            scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    # Dml on global table
+    ddl = i1.sql("create table g (u int primary key, v int) distributed globally")
+    assert ddl["row_count"] == 1
+    lines = i1.sql("explain insert into g select a, b from t")
+    expected_explain = """insert "g" on conflict: fail
+    motion [policy: full]
+        projection ("t"."a"::integer -> "a", "t"."b"::integer -> "b")
+            scan "t"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]"""
+    assert "\n".join(lines) == expected_explain
+
+    lines = i1.sql("explain insert into g select u, v from g")
+    expected_explain = """insert "g" on conflict: fail
+    motion [policy: full]
+        projection ("g"."u"::integer -> "u", "g"."v"::integer -> "v")
+            scan "g"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = any"""
+    assert "\n".join(lines) == expected_explain

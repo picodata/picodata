@@ -66,6 +66,7 @@ the timeout for address resolving operation.
 - `CREATE TABLE`, `CREATE INDEX`, `CREATE PROCEDURE`, `DROP TABLE`, `DROP INDEX` and `DROP PROCEDURE`
   support WAIT APPLIED (GLOBALLY | LOCALLY) options, allowing users to wait for operations to be
   committed across all replicasets or only on the current one
+- EXPLAIN estimates query buckets
 
 ## [24.5.1] - 2024-09-04
 
