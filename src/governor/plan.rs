@@ -154,6 +154,7 @@ pub(super) fn action_plan<'i>(
         let replicaset_name = &replicaset.name;
         let mut targets = Vec::new();
         let mut replicaset_peers = Vec::new();
+        let mut master_is_added = false;
         for instance in instances {
             if instance.replicaset_name != replicaset_name {
                 continue;
@@ -165,12 +166,25 @@ pub(super) fn action_plan<'i>(
             }
             if instance.may_respond() {
                 targets.push(&instance.name);
+                master_is_added |= instance.name == replicaset.current_master_name;
             }
         }
 
         let mut master_name = None;
         if replicaset.current_master_name == replicaset.target_master_name {
             master_name = Some(&replicaset.current_master_name);
+
+            // If master is already chosen (current == target) but is not Online
+            // we send it an RPC request to the master anyway, otherwise an old
+            // master being expelled while other replicas are offline would lead
+            // to loss of data.
+            // NOTE that this is a hack stemming from the fact that we switch
+            // current replicaset master before it is synchronized with the old
+            // master, as result at the moment it synchronizes there's no
+            // information about who it synchronizes with in the global state.
+            if !master_is_added {
+                targets.push(&replicaset.current_master_name);
+            }
         }
 
         let mut ops = UpdateOps::new();
@@ -229,13 +243,11 @@ pub(super) fn action_plan<'i>(
             demote = Some(rpc::replication::DemoteRequest {});
         }
 
-        let mut ranges = vec![];
         let mut ops = vec![];
 
         if let Some(bump) =
             get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_name)
         {
-            ranges.push(cas::Range::for_dml(&bump)?);
             ops.push(bump);
         }
 
@@ -246,7 +258,6 @@ pub(super) fn action_plan<'i>(
 
         let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
         if let Some(bump) = vshard_config_version_bump {
-            ranges.push(cas::Range::for_dml(&bump)?);
             ops.push(bump);
         }
 
@@ -256,7 +267,8 @@ pub(super) fn action_plan<'i>(
             new_master_name,
             replicaset_name,
             update_ops,
-            bump_ranges: ranges,
+            // Implicit ranges are sufficient
+            bump_ranges: vec![],
             bump_ops: ops,
         }
         .into());
@@ -972,14 +984,32 @@ fn get_new_replicaset_master_if_needed<'i>(
             continue;
         }
 
-        let Some(new_master) = maybe_responding(instances).find(|i| i.replicaset_name == r.name)
-        else {
-            #[rustfmt::skip]
-            tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.name);
-            continue;
-        };
+        let mut offline_replica = None;
+        for instance in instances {
+            if instance.replicaset_name != r.name {
+                continue;
+            }
 
-        return Some((new_master, r));
+            if has_states!(instance, * -> Online) {
+                // Found a replacement for new replicaset master
+                return Some((instance, r));
+            }
+
+            if offline_replica.is_none() && has_states!(instance, * -> Offline) {
+                offline_replica = Some(instance);
+            }
+        }
+
+        if has_states!(master, * -> Expelled) {
+            // If current master is going Expelled and there's no Online
+            // replicas, the new master will be the Offline instance.
+            if let Some(new_master) = offline_replica {
+                return Some((new_master, r));
+            }
+        }
+
+        #[rustfmt::skip]
+        tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.replicaset_id);
     }
 
     None

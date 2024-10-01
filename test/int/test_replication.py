@@ -254,7 +254,9 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     assert i5.eval("return box.info.ro") is False
 
 
-def test_expel_blocked_by_replicaset_master_switchover(cluster: Cluster):
+def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
+    cluster: Cluster,
+):
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3)
     # These are being tested.
@@ -297,6 +299,66 @@ def test_expel_blocked_by_replicaset_master_switchover(cluster: Cluster):
 
     # Wait until governor finishes with all the needed changes.
     i1.wait_governor_status("idle")
+
+    # Only now the instance gets expelled and shuts down
+    i4.assert_process_dead()
+    info = i1.call(".proc_instance_info", i4.name)
+    assert info["current_state"]["variant"] == "Expelled"
+
+    # i5 is the master
+    assert i5.eval("return box.info.ro") is False
+    # i5 is also synchronized
+    rows = i5.sql(""" SELECT * FROM mytable ORDER BY id """)
+    assert rows == [[0, "foo"], [1, "bar"], [2, "baz"]]
+
+
+def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
+    cluster: Cluster,
+):
+    # These guys are for quorum.
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
+    # These are being tested.
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+
+    # i4 is the replicaset master because it was added first
+    [[master_name]] = i4.sql(
+        """ SELECT current_master_name FROM _pico_replicaset WHERE name = ? """,
+        i4.replicaset_name,
+    )
+    assert master_name == i4.name
+
+    # Shutdown i5 so it's offline and can't become replicaset master.
+    i5.terminate()
+
+    # Do some storage modifications, which will need to be replicated.
+    i4.sql(
+        """ CREATE TABLE mytable (id UNSIGNED PRIMARY KEY, value STRING) DISTRIBUTED BY (id) """
+    )
+    i4.sql(""" INSERT INTO mytable VALUES (0, 'foo'), (1, 'bar'), (2, 'baz') """)
+
+    # Make sure i1 is leader.
+    i1.promote_or_fail()
+
+    # Initiate master switchover by expelling i4.
+    cluster.expel(i4)
+
+    # Wait until governor switches the replicaset master from i4 to i5
+    # and tries to reconfigure replication between them which will require i5 to synchronize first.
+    # This will block until i5 synchronizes with old master, which it won't
+    # because it's currently offline.
+    i1.wait_governor_status("configure replication")
+
+    # i4 does not become expelled until the switchover if finalized
+    info = i4.call(".proc_instance_info")
+    assert info["current_state"]["variant"] == "Online"
+    assert info["target_state"]["variant"] == "Expelled"
+
+    # Restart i5 so it's able to become the new master.
+    i5.start()
+
+    # Wait until governor finishes with all the needed changes.
+    i1.wait_governor_status("idle", timeout=30)
 
     # Only now the instance gets expelled and shuts down
     i4.assert_process_dead()
