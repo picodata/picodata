@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display};
+use std::time::Duration;
 
 use tarantool::auth::AuthMethod;
 use tarantool::network::{AsClient, Client, Config};
@@ -147,6 +148,7 @@ pub fn determine_credentials_and_connect(
     user: Option<&str>,
     password_file: Option<&str>,
     auth_method: AuthMethod,
+    timeout: u64,
 ) -> Result<(Client, String), Error> {
     let user = if let Some(user) = &address.user {
         user
@@ -180,8 +182,13 @@ pub fn determine_credentials_and_connect(
         }
     };
 
-    let client =
-        ::tarantool::fiber::block_on(Client::connect_with_config(&address.host, port, config))?;
+    let timeout = Some(Duration::from_secs(timeout));
+    let client = ::tarantool::fiber::block_on(Client::connect_with_config(
+        &address.host,
+        port,
+        config,
+        timeout,
+    ))?;
 
     Ok((client, user.into()))
 }
@@ -192,6 +199,7 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
         Some(&args.user),
         args.password_file.as_deref(),
         args.auth_method,
+        args.timeout,
     )
     .map_err(|err| ReplError::Other(format!("Connection Error. Try to reconnect: {}", err)))?;
 

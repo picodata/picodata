@@ -631,3 +631,42 @@ def test_connect_with_incorrect_url(cluster: Cluster):
         "Error while parsing instance port '-1': invalid digit found in string"
     )
     cli.expect_exact(pexpect.EOF)
+
+
+def test_connect_timeout(cluster: Cluster):
+    i1 = cluster.add_instance()
+
+    def connect_to(address, timeout=None):
+        cli = pexpect.spawn(
+            cwd=i1.data_dir,
+            command=i1.binary_path,
+            args=[
+                "connect",
+                address,
+                *([f"--timeout={timeout}"] if timeout is not None else []),
+            ],
+            encoding="utf-8",
+            timeout=10,
+        )
+        cli.logfile = sys.stdout
+        return cli
+
+    cli = connect_to("100")
+    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("192.168.0.1")
+    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("1000010002")
+    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("1000010002", timeout=1)
+    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact(pexpect.EOF)
+
+    cli = connect_to("192.168.0.1", timeout=0)
+    cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
+    cli.expect_exact(pexpect.EOF)

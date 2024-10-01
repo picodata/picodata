@@ -477,6 +477,16 @@ pub struct Connect {
     /// Path to a plain-text file with a password.
     /// If this option isn't provided, the password is prompted from the terminal.
     pub password_file: Option<String>,
+
+    #[clap(
+        short = 't',
+        long = "timeout",
+        value_name = "TIMEOUT",
+        default_value = "5",
+        env = "PICODATA_CONNECT_TIMEOUT"
+    )]
+    /// Connection timeout in seconds.
+    pub timeout: u64,
 }
 
 impl Connect {
