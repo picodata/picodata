@@ -548,8 +548,8 @@ def test_dml_on_global_tbls(cluster: Cluster):
         projection ("t"."x"::integer -> "x", "t"."y"::integer -> "y")
             scan "t"
 execution options:
-vdbe_max_steps = 45000
-vtable_max_rows = 5000"""
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000"""
     assert "\n".join(lines) == expected_explain
 
     # empty delete
@@ -4608,8 +4608,8 @@ def test_metadata(instance: Instance):
     # - - projection (1::unsigned -> "col_1")
     #   - '    scan "G"'
     #   - 'execution options:'
-    #   - vdbe_max_steps = 45000
-    #   - vtable_max_rows = 5000
+    #   -     vdbe_max_steps = 45000
+    #   -     vtable_max_rows = 5000
     # ...
     data = instance.sql(""" select 1 from t """, strip_metadata=False)
     assert data["metadata"] == [{"name": "col_1", "type": "unsigned"}]
