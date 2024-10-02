@@ -14,7 +14,7 @@ use crate::traft::network::ConnectionPool;
 use crate::util::Uppercase;
 use crate::{tlog, unwrap_ok_or};
 
-const DEFAULT_TIMEOUT: Option<std::time::Duration> = Some(std::time::Duration::from_secs(60));
+const DEFAULT_TIMEOUT: Option<std::time::Duration> = Some(std::time::Duration::from_secs(1));
 
 /// Response from instances:
 /// - `raft_id`: instance raft_id to find Instance to store data
