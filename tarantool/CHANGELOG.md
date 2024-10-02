@@ -14,6 +14,7 @@
 - `network::protocol::codec::iproto_key::SQL_INFO` constant
 - Added optional argument timeout to `network::client::Client::connect_with_config`
 - Untagged enum represention as in serde with `#[encode(untagged)]` attribute
+- `tlua::Nil` now supports (de)serialization via serde
 
 ### Changed
 - `network::protocol::codec::IProtoType` uses C language representation
