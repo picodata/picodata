@@ -18,13 +18,8 @@ use tarantool::cbus;
 use tarantool::fiber;
 use tarantool::time::Instant;
 
-const MIGRATION_FILE_EXT: &'static str = "db";
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("File `{0}` invalid extension, `.db` expected")]
-    Extension(String),
-
     #[error("Error while open migration file `{0}`: {1}")]
     File(String, io::Error),
 
@@ -503,15 +498,6 @@ pub fn apply_up_migrations(
     let mut migration_files = vec![];
     for file in migrations {
         let migration = MigrationInfo::new_unparsed(plugin_ident, file.clone());
-
-        if migration
-            .path()
-            .extension()
-            .and_then(|os_str| os_str.to_str())
-            != Some(MIGRATION_FILE_EXT)
-        {
-            return Err(Error::Extension(file.to_string()).into());
-        }
 
         if !migration.path().exists() {
             return Err(Error::File(

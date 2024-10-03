@@ -882,41 +882,6 @@ def test_migration_for_changed_migration(cluster: Cluster):
         i1.call("pico.migration_up", _PLUGIN_WITH_MIGRATION, "0.2.0_broken")
 
 
-def test_migration_file_invalid_ext(cluster: Cluster):
-    plugin_name = "plugin_for_test_migration_file_invalid_ext"
-
-    #
-    # Prepare plugin
-    #
-    cluster.plugin_dir = cluster.data_dir
-    plugin_dir = Path(cluster.plugin_dir) / plugin_name / "0.1.0"
-    os.makedirs(plugin_dir)
-    with open(plugin_dir / "manifest.yaml", "w") as f:
-        print(
-            f"""
-description: plugin for test purposes
-name: {plugin_name}
-version: 0.1.0
-services:
-migration:
-  - invalid.extension
-""",
-            file=f,
-        )
-
-    #
-    # Start instance and check
-    #
-    [i1] = cluster.deploy(instance_count=1)
-
-    i1.call("pico.install_plugin", plugin_name, "0.1.0", timeout=5)
-    with pytest.raises(ReturnError) as e:
-        i1.call("pico.migration_up", plugin_name, "0.1.0", timeout=5)
-    assert (
-        e.value.args[0] == "File `invalid.extension` invalid extension, `.db` expected"
-    )
-
-
 def test_migration_apply_err(cluster: Cluster):
     plugin_name = "plugin_for_test_migration_apply_err"
 
