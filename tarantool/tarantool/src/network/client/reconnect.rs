@@ -52,13 +52,9 @@ impl Client {
             self.reconnect_count.fetch_add(1, Ordering::Relaxed);
         }
 
-        let res = super::Client::connect_with_config(
-            &self.url,
-            self.port,
-            self.protocol_config.clone(),
-            None,
-        )
-        .await;
+        let res =
+            super::Client::connect_with_config(&self.url, self.port, self.protocol_config.clone())
+                .await;
         match res {
             Ok(new_client) => {
                 *client = Some(Ok(new_client.clone()));

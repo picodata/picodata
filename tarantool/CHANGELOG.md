@@ -9,10 +9,12 @@
 - tlua::LuaTable::metatable which is a better alternative to the existing `tlua::LuaTable::get_or_create_metatable`
 - `ffi::tarantool::box_schema_version` and `ffi::tarantool::box_session_id` functions
 - `network::protocol::SyncIndex::get` method
-- `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants 
+- `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants
 - `network::protocol::codec::Header::encode_from_parts` function
 - `network::protocol::codec::iproto_key::SQL_INFO` constant
-- Added optional argument timeout to `network::client::Client::connect_with_config`
+- Added optional field `timeout` to `network::protocol::Config`.
+Used in `network::client::Client::connect_with_config` for
+restricting time for resolving address.
 - Untagged enum represention as in serde with `#[encode(untagged)]` attribute
 - `tlua::Nil` now supports (de)serialization via serde
 
@@ -111,7 +113,7 @@
 - `tarantool::set_error!` macro will now use the caller's location, so if it's
   called from a function marked `#[track_caller]`, the log message will contain
   that function's call site, instead of the location of the macro call itself.
-- `Decimal` type is now backed by builtin tarantool decimal implementation. 
+- `Decimal` type is now backed by builtin tarantool decimal implementation.
   The only expected difference is slight change in formatting (lack of
   scientific notation).
 - datetime `from_ffi_dt` and `as_ffi_dt` functions now public

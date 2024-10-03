@@ -16,6 +16,7 @@ use crate::error;
 use crate::error::TarantoolError;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek};
+use std::time::Duration;
 
 #[deprecated = "use `ProtocolError` instead"]
 pub type Error = ProtocolError;
@@ -78,6 +79,7 @@ pub struct Config {
     pub creds: Option<(String, String)>,
     /// Authentication method. Only useful in picodata.
     pub auth_method: AuthMethod,
+    pub timeout: Option<Duration>,
     // TODO: add buffer limits here
 }
 

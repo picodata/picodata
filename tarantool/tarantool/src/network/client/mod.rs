@@ -183,7 +183,7 @@ impl Client {
     /// # Errors
     /// Error is returned if an attempt to connect failed.
     pub async fn connect(url: &str, port: u16) -> Result<Self, ClientError> {
-        Self::connect_with_config(url, port, Default::default(), None).await
+        Self::connect_with_config(url, port, Default::default()).await
     }
 
     /// Creates a new client and tries to establish connection
@@ -199,9 +199,8 @@ impl Client {
         url: &str,
         port: u16,
         config: protocol::Config,
-        timeout: Option<Duration>,
     ) -> Result<Self, ClientError> {
-        let timeout = timeout.unwrap_or(Duration::MAX);
+        let timeout = config.timeout.unwrap_or(Duration::MAX);
         let stream = TcpStream::connect_timeout(url, port, timeout)
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
@@ -481,7 +480,6 @@ mod tests {
                 creds: Some(("test_user".into(), "password".into())),
                 ..Default::default()
             },
-            None,
         )
         .timeout(Duration::from_secs(3))
         .await
@@ -494,8 +492,10 @@ mod tests {
         let client = Client::connect_with_config(
             "123123", // Invalid host
             listen_port(),
-            protocol::Config::default(),
-            Some(Duration::from_secs(1)),
+            protocol::Config {
+                timeout: Some(Duration::from_secs(1)),
+                ..Default::default()
+            },
         );
         let res = client.await.unwrap_err();
         if cfg!(target_os = "macos") {
@@ -764,7 +764,6 @@ mod tests {
                     auth_method: AuthMethod::Md5,
                     ..Default::default()
                 },
-                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -788,7 +787,6 @@ mod tests {
                     auth_method: AuthMethod::Md5,
                     ..Default::default()
                 },
-                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -811,7 +809,6 @@ mod tests {
                     auth_method: AuthMethod::ChapSha1,
                     ..Default::default()
                 },
-                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -862,7 +859,6 @@ mod tests {
                     auth_method: AuthMethod::Ldap,
                     ..Default::default()
                 },
-                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -886,7 +882,6 @@ mod tests {
                     auth_method: AuthMethod::Ldap,
                     ..Default::default()
                 },
-                None,
             )
             .timeout(Duration::from_secs(3))
             .await
@@ -909,7 +904,6 @@ mod tests {
                     auth_method: AuthMethod::ChapSha1,
                     ..Default::default()
                 },
-                None,
             )
             .timeout(Duration::from_secs(3))
             .await
