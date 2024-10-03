@@ -4,85 +4,123 @@
 из нескольких инстансов, запущенных на разных серверах посредством роли
 [picodata-ansible](https://git.picodata.io/picodata/picodata/picodata-ansible).
 
-## Кластер на нескольких серверах {: #distributed_cluster }
 
-Разворачивание кластера на нескольких серверах отражает сценарии
-полноценного использования Picodata в распределенной среде.
-
-Предположим, что таких серверов два: `192.168.0.1` и
-`192.168.0.2`. Порядок действий будет следующим:
-
-### Установка роли {: #install_role }
+## Установка роли {: #install_role }
 
 Установите роль из репозитория через `ansible-galaxy`:
 
 ```shell
-ansible-galaxy install git+https://git.picodata.io/picodata/picodata/picodata-ansible.git
+ansible-galaxy install -f git+https://git.picodata.io/picodata/picodata/picodata-ansible.git
 ```
 
-### Создание каталогов {: #make_dirs }
+## Создание директорий {: #make_dirs }
 
-В текущем каталоге создайте подкаталоги — это нужно для отделения
+В текущей директории создайте поддиректории — это нужно для отделения
 инвентарных файлов от сценариев (плэйбуков):
 
 ```shell
 mkdir {hosts,playbooks}
 ```
 
-### Создание файла инвентаря {: #create_inventory_file }
+## Создание инвентарного файла {: #create_inventory_file }
 
-Создайте инвентарный файл `hosts/demo.yml` следующего содержания:
+Рассмотрим два сценария: простой кластер с единственным тиром и кластер
+из нескольких тиров. Пусть в распоряжении есть два сервера: `192.168.0.1` и
+`192.168.0.2`.
 
-```yaml
-all:
-  vars:
-    ansible_user: vagrant                            # пользователь для ssh-доступа к серверам
-    install_packages: true                           # для установки пакета picodata из репозитория
-    cluster_id: demo                                 # имя кластера
-    first_bin_port: 13301                            # начальный бинарный порт для первого инстанса (он же main_peer)
-    first_http_port: 18001                           # начальный http-порт для первого инстанса для веб-интерфейса
+Создайте инвентарный файл `hosts/cluster.yml` и наполните его
+в зависимости от нужного сценария содержанием ниже.
 
-    tiers:                                           # описание тиров (тиры пока нигде не используются, поэтому нет смсыла сосздавать дополнительные тиры)
-      default:                                       # имя тира default
-        instances_per_server: 2                      # сколько инстансов запустить на каждом сервере
+### Простой кластер на нескольких серверах {: #simple_cluster }
 
-DC1:                                                 # Имя датацентра (используется для failure_domain)
-  hosts:                                             # далее перечисляем серверы в датацентре
-    server-1:                                        # имя сервера в инвентарном файле (используется для failure_domain)
-      ansible_host: 192.168.0.1                      # IP адрес или fqdn если не совпадает с предыдущей строкой
-    server-2:                                        # имя сервера в инвентарном файле (используется для failure_domain)
-      ansible_host: 192.168.0.2                      # IP адрес или fqdn если не совпадает с предыдущей строкой
-```
+???+ example "cluster.yml"
+    ```yaml
+    all:
+      vars:
+        install_packages: true                           # для установки пакета picodata из репозитория
+        cluster_id: simple_cluster                       # имя кластера
+        first_bin_port: 13301                            # начальный бинарный порт для первого инстанса (он же main_peer)
+        first_http_port: 18001                           # начальный http-порт для первого инстанса для веб-интерфейса
 
-### Создание плейбука {: #create_playbook }
+        tiers:                                           # описание тиров
+          default:                                       # имя тира default
+            instances_per_server: 2                      # сколько инстансов запустить на каждом сервере
 
-Создайте плэйбук `playbooks/cluster_up.yml`, который подключает роль
-следующего содержания:
+    DC1:                                                 # Имя датацентра (используется для failure_domain)
+      hosts:                                             # далее перечисляем серверы в датацентре
+        server-1:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.1                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+        server-2:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.2                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+    ```
 
-```yaml
----
-- name: Deploy picodata cluster
-  hosts: all
-  become: true
+### Кластер из двух тиров на нескольких серверах {: #multi_tier_cluster }
 
-  tasks:
+???+ example "cluster.yml"
+    ```yaml
+    all:
+      vars:
+        install_packages: true                           # для установки пакета picodata из репозитория
+        cluster_id: multi_tier_cluster                                 # имя кластера
+        first_bin_port: 13301                            # начальный бинарный порт для первого инстанса (он же main_peer)
+        first_http_port: 18001                           # начальный http-порт для первого инстанса для веб-интерфейса
 
-  - name: Import picodata-ansible role
-    ansible.builtin.import_role:
-      name: picodata-ansible
-```
+        tiers:                                           # описание тиров
+          compute:
+            instances_per_server: 1
+            replication_factor: 1
+            host_groups:
+              - computes
 
-### Установка кластера {: #install_cluster }
+          storage:
+            instances_per_server: 1
+            replication_factor: 2
+            host_groups:
+              - storages
+
+    DC1:                                                 # Имя датацентра (используется для failure_domain)
+      hosts:                                             # далее перечисляем серверы в датацентре
+        server-1:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.1                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'storages'
+        server-2:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.2                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'storages'
+        server-3:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.3                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+          host_group: 'computes'
+    ```
+
+## Создание плейбука {: #create_playbook }
+
+Для подключения роли создайте плэйбук `playbooks/picodata.yml`,
+добавив в него следующее содержание:
+
+???+ example "picodata.yml"
+    ```yaml
+    ---
+    - name: Deploy picodata cluster
+      hosts: all
+      become: true
+
+      tasks:
+
+      - name: Import picodata-ansible role
+        ansible.builtin.import_role:
+          name: picodata-ansible
+    ```
+
+## Установка кластера {: #install_cluster }
 
 Выполните установку кластера командой:
 
 ```shell
-ansible-playbook -i hosts/demo.yml playbooks/cluster_up.yml
+ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 ```
 
-Более подробно о доступным переменных в инвентарном файле можно узнать в
+Более подробно о доступных переменных в инвентарном файле можно узнать в
 [git-репозитории
-роли](https://git.picodata.io/picodata/picodata/picodata-ansible).
+роли](https://git.picodata.io/picodata/picodata/picodata-ansible/-/blob/main/docs/variables.md?ref_type=heads).
 
 См. также:
 
