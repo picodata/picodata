@@ -20,7 +20,8 @@ CREATE TABLE warehouse (
 			id INTEGER NOT NULL,
 			item TEXT NOT NULL,
 			PRIMARY KEY (id))
-USING memtx DISTRIBUTED BY (id) IN TIER default
+USING memtx DISTRIBUTED BY (id)
+IN TIER default
 OPTION (TIMEOUT = 3.0);
 ```
 
