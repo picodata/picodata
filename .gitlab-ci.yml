@@ -1,6 +1,6 @@
 default:
   tags:
-    - docker
+    - docker-picodata
   retry:
     max: 1
     when:
@@ -77,12 +77,15 @@ variables:
 
   - &else {}
 
+  
 .base_cache: &base_cache
   paths:
     - .cargo/
+    - target/$TARGET/
   key:
     files:
       - Cargo.lock
+    prefix: "base_cache_$TARGET"
 
 .base_node: &base_node
   paths:
@@ -90,6 +93,7 @@ variables:
   key:
     files:
       - webui/yarn.lock
+    prefix: "base_node_"
 
 .py_cache: &py_cache
   paths:
@@ -97,6 +101,7 @@ variables:
   key:
     files:
       - Pipfile.lock
+    prefix: "py_cache_"
 
 build-base-image:
   interruptible: true
@@ -145,7 +150,10 @@ build-base-image:
 .parallel:
   parallel:
     matrix:
-      - BUILD_PROFILE: [release, dev]
+      - BUILD_PROFILE: release
+        TARGET: release
+      - BUILD_PROFILE: dev
+        TARGET: debug
 
 .pipenv-install:
     &pipenv-install |
@@ -162,19 +170,25 @@ test-linux:
     - <<: *if-build-base-changes-on-master-branch
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+        CACHE_POLICY: pull-push
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+        CACHE_POLICY: pull
     - <<: *else
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+        CACHE_POLICY: pull
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
   cache:
     - <<: *py_cache
+      policy: $CACHE_POLICY
     - <<: *base_cache
+      policy: $CACHE_POLICY
     - <<: *base_node
+      policy: $CACHE_POLICY
   script:
     - |
       # Check rust version consistency
@@ -244,6 +258,7 @@ lint:
     pull_policy: if-not-present
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    TARGET: debug
   cache:
     - <<: *py_cache
       policy: pull
