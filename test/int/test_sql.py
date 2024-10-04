@@ -5589,3 +5589,36 @@ def test_select_without_scan(cluster: Cluster):
     # check usage with limit
     data = i1.sql("select 1 limit 1")
     assert data == [[1]]
+
+
+def test_sql_stat_tables(cluster: Cluster):
+    cluster.deploy(instance_count=1)
+    i1 = cluster.instances[0]
+
+    def sql_options(query_id, traceable):
+        return {"query_id": query_id, "traceable": traceable}
+
+    def check_sql_stat_tables(query_id):
+        data = i1.call("box.execute", """ select "query_id" from "_sql_query" """)
+        assert data["rows"] == [[query_id]]
+        data = i1.call(
+            "box.execute", """ select distinct "query_id" from "_sql_stat" """
+        )
+        assert data["rows"] == [[query_id]]
+
+    # Set SQL statistics LRU capacity to 1
+    i1.call("pico._inject_error", "SQL_STATISTICS_CAPACITY_ONE", True)
+
+    # The first query is stored in the statistics tables.
+    data = i1.sql("values (1)", options=sql_options("query_1", True))
+    assert data == [[1]]
+    check_sql_stat_tables("query_1")
+
+    # Previous query was evicted from the statistics tables
+    # as LRU capacity is 1.
+    data = i1.sql("values (2)", options=sql_options("query_2", True))
+    assert data == [[2]]
+    check_sql_stat_tables("query_2")
+
+    # Disable injection
+    i1.call("pico._inject_error", "SQL_STATISTICS_CAPACITY_ONE", False)

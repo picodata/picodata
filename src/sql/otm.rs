@@ -268,9 +268,17 @@ impl TrackedQueries {
     /// # Panics
     /// - If the `STATISTICS_CAPACITY` is less than 1 (impossible at the moment).
     #[must_use]
+    #[allow(unused_mut)]
     pub fn new() -> Self {
+        let mut capacity = STATISTICS_CAPACITY;
+        #[cfg(feature = "error_injection")]
+        {
+            if crate::error_injection::is_enabled("SQL_STATISTICS_CAPACITY_ONE") {
+                capacity = 1;
+            }
+        }
         Self {
-            queries: LRUCache::new(STATISTICS_CAPACITY, Some(Box::new(remove_query))).unwrap(),
+            queries: LRUCache::new(capacity, Some(Box::new(remove_query))).unwrap(),
         }
     }
 
@@ -315,13 +323,13 @@ impl SqlStatTables {
     }
 
     pub fn delete_query(&self, query_id: &str) {
-        if self.queries.unref_or_delete(query_id).is_some() {
-            self.stats.delete_query(query_id)
-        } else {
-            tlog!(
+        match self.queries.unref_or_delete(query_id) {
+            SpaceOp::Delete => self.stats.delete_query(query_id),
+            SpaceOp::None | SpaceOp::Update => {}
+            SpaceOp::Error => tlog!(
                 Error,
                 "failed to delete query with id: {query_id}: more than 1 ref"
-            );
+            ),
         }
     }
 }
@@ -481,6 +489,14 @@ impl SqlStatDef {
 // SqlQueries
 ////////////////////////////////////////////////////////////////////////////////
 
+#[derive(PartialEq)]
+enum SpaceOp {
+    Delete,
+    Error,
+    None,
+    Update,
+}
+
 pub struct SqlQueries {
     space: Space,
     index: Index,
@@ -530,33 +546,34 @@ impl SqlQueries {
         }
     }
 
-    fn unref_or_delete(&self, query_id: &str) -> Option<SqlQueryDef> {
+    fn unref_or_delete(&self, query_id: &str) -> SpaceOp {
         fn unref_or_delete_impl(
             queries: &SqlQueries,
             query_id: &str,
-        ) -> tarantool::Result<Option<SqlQueryDef>> {
-            let Some(tuple) = queries.index.get(&[query_id])? else {
-                return Ok(None);
+        ) -> tarantool::Result<SpaceOp> {
+            let Some(old_tuple) = queries.index.get(&[query_id])? else {
+                return Ok(SpaceOp::None);
             };
 
+            // If the reference counter is 1 before decrementing,
+            // we should delete the query.
+            let old_query_def = old_tuple.decode::<SqlQueryDef>()?;
+            if old_query_def.ref_counter == 1 {
+                queries.space.delete(&[query_id])?;
+                return Ok(SpaceOp::Delete);
+            }
+            // Update the tuple in the space.
             queries
                 .space
-                .upsert(&tuple, [("-", SqlQueryDef::FIELD_REF_COUNTER, 1)])?;
-
-            let query_def = tuple.decode::<SqlQueryDef>()?;
-            if query_def.ref_counter == 0 {
-                queries.space.delete(&[query_id])?;
-                return Ok(None);
-            }
-
-            Ok(Some(query_def))
+                .upsert(&old_tuple, [("-", SqlQueryDef::FIELD_REF_COUNTER, 1)])?;
+            Ok(SpaceOp::Update)
         }
 
         match unref_or_delete_impl(self, query_id) {
-            Ok(res) => res,
+            Ok(op) => op,
             Err(e) => {
                 tlog!(Error, "{}: unref error: {e}", Self::TABLE_NAME);
-                None
+                SpaceOp::Error
             }
         }
     }
