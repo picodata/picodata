@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, error::Error};
 
 use ::tarantool::fiber;
+use tarantool::fiber::r#async::timeout::IntoTimeout;
 
 use crate::info::{RuntimeInfo, VersionInfo};
 use crate::instance::{Instance, InstanceId, StateVariant};
@@ -14,7 +15,7 @@ use crate::traft::network::ConnectionPool;
 use crate::util::Uppercase;
 use crate::{tlog, unwrap_ok_or};
 
-const DEFAULT_TIMEOUT: Option<std::time::Duration> = Some(std::time::Duration::from_secs(1));
+const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Response from instances:
 /// - `raft_id`: instance raft_id to find Instance to store data
@@ -200,7 +201,11 @@ async fn get_instances_data(
                 tlog!(Error, "webui: error on calling .proc_runtime_info on instance {}: {e}", instance.instance_id);
                 continue;
             }
-        );
+        // we have to add timeout directly to future due
+        // to the bug in connection pool that does not consider
+        // timeout when establishing TCP connection
+        // See https://git.picodata.io/picodata/picodata/picodata/-/issues/943 
+        ).timeout(DEFAULT_TIMEOUT);
         fs.push({
             async move {
                 let mut data = InstanceDataResponse {
