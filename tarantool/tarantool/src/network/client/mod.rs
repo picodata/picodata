@@ -200,7 +200,7 @@ impl Client {
         port: u16,
         config: protocol::Config,
     ) -> Result<Self, ClientError> {
-        let timeout = config.timeout.unwrap_or(Duration::MAX);
+        let timeout = config.connect_timeout.unwrap_or(Duration::MAX);
         let stream = TcpStream::connect_timeout(url, port, timeout)
             .map_err(|e| ClientError::ConnectionClosed(Arc::new(e.into())))?;
         let client = ClientInner::new(config, stream.clone());
@@ -493,7 +493,7 @@ mod tests {
             "123123", // Invalid host
             listen_port(),
             protocol::Config {
-                timeout: Some(Duration::from_secs(1)),
+                connect_timeout: Some(Duration::from_secs(1)),
                 ..Default::default()
             },
         );

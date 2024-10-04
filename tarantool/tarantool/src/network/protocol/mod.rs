@@ -79,7 +79,8 @@ pub struct Config {
     pub creds: Option<(String, String)>,
     /// Authentication method. Only useful in picodata.
     pub auth_method: AuthMethod,
-    pub timeout: Option<Duration>,
+    /// Connection establishment timeout.
+    pub connect_timeout: Option<Duration>,
     // TODO: add buffer limits here
 }
 

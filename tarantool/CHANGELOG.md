@@ -12,9 +12,9 @@
 - `network::protocol::codec::{LegacyCall, Nop, Prepare, Begin, Commit, Rollback}` variants
 - `network::protocol::codec::Header::encode_from_parts` function
 - `network::protocol::codec::iproto_key::SQL_INFO` constant
-- Added optional field `timeout` to `network::protocol::Config`.
+- Added optional field `connect_timeout` to `network::protocol::Config`.
 Used in `network::client::Client::connect_with_config` for
-restricting time for resolving address.
+restricting time connection establishment.
 - Untagged enum represention as in serde with `#[encode(untagged)]` attribute
 - `tlua::Nil` now supports (de)serialization via serde
 
