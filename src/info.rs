@@ -65,11 +65,11 @@ pub fn proc_version_info() -> VersionInfo<'static> {
 pub struct InstanceInfo {
     pub raft_id: RaftId,
     pub advertise_address: String,
-    pub instance_name: InstanceName,
+    pub name: InstanceName,
     pub instance_uuid: String,
     pub replicaset_id: ReplicasetId,
     pub replicaset_uuid: String,
-    pub cluster_id: String,
+    pub cluster_name: String,
     pub current_state: State,
     pub target_state: State,
     pub tier: String,
@@ -98,16 +98,16 @@ impl InstanceInfo {
             .get(instance.raft_id)?
             .unwrap_or_else(|| "<unknown>".into());
 
-        let cluster_id = node.raft_storage.cluster_id()?;
+        let cluster_name = node.raft_storage.cluster_name()?;
 
         Ok(InstanceInfo {
             raft_id: instance.raft_id,
             advertise_address: peer_address,
-            instance_name: instance.instance_name,
+            name: instance.name,
             instance_uuid: instance.instance_uuid,
             replicaset_id: instance.replicaset_id,
             replicaset_uuid: instance.replicaset_uuid,
-            cluster_id,
+            cluster_name,
             current_state: instance.current_state,
             target_state: instance.target_state,
             tier: instance.tier,

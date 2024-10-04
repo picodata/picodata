@@ -58,11 +58,11 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
     ROk(types::InstanceInfo::new(
         info.raft_id,
         info.advertise_address,
-        info.instance_name.0,
+        info.name.0,
         info.instance_uuid,
         info.replicaset_id.0,
         info.replicaset_uuid,
-        info.cluster_id,
+        info.cluster_name,
         types::State::new(
             info.current_state.variant.into(),
             info.current_state.incarnation,

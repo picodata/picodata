@@ -24,7 +24,7 @@ crate::define_string_newtype! {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Instance {
     /// Instances are identified by name.
-    pub instance_name: InstanceName,
+    pub name: InstanceName,
     pub instance_uuid: String, // TODO turn it into uuid
 
     /// Used for identifying raft nodes.
@@ -53,7 +53,7 @@ pub struct Instance {
 impl Encode for Instance {}
 
 impl Instance {
-    /// Index of field "instance_name" in the space _pico_instance format.
+    /// Index of field "name" in the space _pico_instance format.
     ///
     /// Index of first field is 0.
     pub const FIELD_INSTANCE_NAME: u32 = 0;
@@ -73,7 +73,7 @@ impl Instance {
     pub fn format() -> Vec<tarantool::space::Field> {
         use tarantool::space::{Field, FieldType};
         vec![
-            Field::from(("instance_name", FieldType::String)),
+            Field::from(("name", FieldType::String)),
             Field::from(("instance_uuid", FieldType::String)),
             Field::from(("raft_id", FieldType::Unsigned)),
             Field::from(("replicaset_id", FieldType::String)),
@@ -105,7 +105,7 @@ impl std::fmt::Display for Instance {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f,
             "({}, {}, {}, {}, {}, {})",
-            self.instance_name,
+            self.name,
             self.raft_id,
             self.replicaset_id,
             Transition { from: self.current_state, to: self.target_state },
@@ -154,7 +154,7 @@ mod tests {
     fn add_instance(storage: &Clusterwide, raft_id: RaftId, instance_name: &str, replicaset_id: &str, state: &State) -> tarantool::Result<Instance> {
         let instance = Instance {
             raft_id,
-            instance_name: instance_name.into(),
+            name: instance_name.into(),
             instance_uuid: format!("{instance_name}-uuid"),
             replicaset_id: replicaset_id.into(),
             replicaset_uuid: format!("{replicaset_id}-uuid"),
@@ -182,7 +182,7 @@ mod tests {
 
         let i1 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i1.raft_id, 1);
-        assert_eq!(i1.instance_name, "i1");
+        assert_eq!(i1.name, "i1");
         assert_eq!(i1.replicaset_id, "r1");
         assert_eq!(i1.current_state, State::new(Offline, 0));
         assert_eq!(i1.target_state, State::new(Offline, 0));
@@ -192,19 +192,19 @@ mod tests {
 
         let i2 = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i2.raft_id, 2);
-        assert_eq!(i2.instance_name, "i2");
+        assert_eq!(i2.name, "i2");
         assert_eq!(i2.replicaset_id, "r2");
         storage.instances.put(&i2).unwrap();
 
         let i3 = build_instance(None, Some(&ReplicasetId::from("R3")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i3.raft_id, 3);
-        assert_eq!(i3.instance_name, "i3");
+        assert_eq!(i3.name, "i3");
         assert_eq!(i3.replicaset_id, "R3");
         storage.instances.put(&i3).unwrap();
 
         let i4 = build_instance(Some(&InstanceName::from("I4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i4.raft_id, 4);
-        assert_eq!(i4.instance_name, "I4");
+        assert_eq!(i4.name, "I4");
         assert_eq!(i4.replicaset_id, "r3");
         storage.instances.put(&i4).unwrap();
     }
@@ -236,7 +236,7 @@ mod tests {
         //   Disruption isn't destructive if auto-expel allows (TODO).
         let instance = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(instance.raft_id, 3);
-        assert_eq!(instance.instance_name, "i2");
+        assert_eq!(instance.name, "i2");
         // Attention: generated replicaset_id differs from the original
         // one, as well as raft_id. That's a desired behavior.
         assert_eq!(instance.replicaset_id, "r1");
@@ -265,7 +265,7 @@ mod tests {
 
         let instance = build_instance(None, Some(&ReplicasetId::from("r2")), &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(instance.raft_id, 3);
-        assert_eq!(instance.instance_name, "i3-2");
+        assert_eq!(instance.name, "i3-2");
         assert_eq!(instance.replicaset_id, "r2");
     }
 
@@ -275,8 +275,8 @@ mod tests {
         add_tier(&storage, DEFAULT_TIER, 1, true).unwrap();
         let i1a = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         let i1b = build_instance(None, None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
-        assert_eq!(i1a.instance_name, "i1");
-        assert_eq!(i1b.instance_name, "i1");
+        assert_eq!(i1a.name, "i1");
+        assert_eq!(i1b.name, "i1");
         // Attention: not equal
         assert_ne!(i1a.instance_uuid, i1b.instance_uuid);
     }
@@ -290,7 +290,7 @@ mod tests {
 
         let i1 = build_instance(Some(&InstanceName::from("i1")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i1.raft_id, 11);
-        assert_eq!(i1.instance_name, "i1");
+        assert_eq!(i1.name, "i1");
         assert_eq!(i1.replicaset_id, "r1");
         storage.instances.put(&i1).unwrap();
         storage.replicasets.put(&Replicaset::with_one_instance(&i1)).unwrap();
@@ -299,7 +299,7 @@ mod tests {
 
         let i2 = build_instance(Some(&InstanceName::from("i2")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i2.raft_id, 12);
-        assert_eq!(i2.instance_name, "i2");
+        assert_eq!(i2.name, "i2");
         assert_eq!(i2.replicaset_id, "r1");
         assert_eq!(i2.replicaset_uuid, i1.replicaset_uuid);
         storage.instances.put(&i2).unwrap();
@@ -307,7 +307,7 @@ mod tests {
 
         let i3 = build_instance(Some(&InstanceName::from("i3")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i3.raft_id, 13);
-        assert_eq!(i3.instance_name, "i3");
+        assert_eq!(i3.name, "i3");
         assert_eq!(i3.replicaset_id, "r2");
         storage.instances.put(&i3).unwrap();
         storage.replicasets.put(&Replicaset::with_one_instance(&i3)).unwrap();
@@ -315,7 +315,7 @@ mod tests {
 
         let i4 = build_instance(Some(&InstanceName::from("i4")), None, &FailureDomain::default(), &storage, DEFAULT_TIER).unwrap();
         assert_eq!(i4.raft_id, 14);
-        assert_eq!(i4.instance_name, "i4");
+        assert_eq!(i4.name, "i4");
         assert_eq!(i4.replicaset_id, "r2");
         assert_eq!(i4.replicaset_uuid, i3.replicaset_uuid);
         storage.instances.put(&i4).unwrap();
@@ -343,7 +343,7 @@ mod tests {
         // Current state incarnation is allowed to go down,
         // governor has the authority over it
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
@@ -358,7 +358,7 @@ mod tests {
         //
         // idempotency
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_current_state(State::new(Offline, 0));
         let dml = update_instance(&instance, &req, &existing_fds).unwrap();
         assert_eq!(dml, None);
@@ -366,7 +366,7 @@ mod tests {
         //
         // Offline takes incarnation from current state
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Offline);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
@@ -381,7 +381,7 @@ mod tests {
         //
         // Online increases incarnation
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Online);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
@@ -396,7 +396,7 @@ mod tests {
         //
         // No idempotency, incarnation goes up
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Online);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
@@ -411,7 +411,7 @@ mod tests {
         //
         // State::Expelled takes incarnation from current state
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Expelled);
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
@@ -426,7 +426,7 @@ mod tests {
         //
         // Instance gets expelled
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_current_state(State::new(Expelled, 69));
         let (dml, do_bump) = update_instance(&instance, &req, &existing_fds).unwrap().unwrap();
 
@@ -441,7 +441,7 @@ mod tests {
         //
         // Updating expelled instances isn't allowed
         //
-        let req = rpc::update_instance::Request::new(instance.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance.name.clone(), "".into())
             .with_target_state(Online);
         let e = update_instance(&instance, &req, &existing_fds).unwrap_err();
         assert_eq!(e.to_string(), "cannot update expelled instance \"i1\"");
@@ -524,7 +524,7 @@ mod tests {
         //
         // reconfigure single instance, fail
         //
-        let req = rpc::update_instance::Request::new(instance1.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into())
             .with_failure_domain(faildoms! {owner: Ivan});
         let e = update_instance(&instance1, &req, &existing_fds).unwrap_err();
         assert_eq!(e.to_string(), "missing failure domain names: PLANET");
@@ -533,7 +533,7 @@ mod tests {
         // reconfigure single instance, success
         //
         let fd = faildoms! {planet: Mars, owner: Ivan};
-        let req = rpc::update_instance::Request::new(instance1.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance1.name.clone(), "".into())
             .with_failure_domain(fd.clone());
         let (dml, do_bump) = update_instance(&instance1, &req, &existing_fds).unwrap().unwrap();
 
@@ -567,7 +567,7 @@ mod tests {
         // reconfigure second instance, success
         //
         let fd = faildoms! {planet: Earth, owner: Mike};
-        let req = rpc::update_instance::Request::new(instance2.instance_name.clone(), "".into())
+        let req = rpc::update_instance::Request::new(instance2.name.clone(), "".into())
             .with_failure_domain(fd.clone());
         let (dml, do_bump) = update_instance(&instance2, &req, &existing_fds).unwrap().unwrap();
 
@@ -663,7 +663,7 @@ mod test {
         let format = Instance::format();
         crate::util::check_tuple_matches_format(tuple_data.as_ref(), &format, "Instance::format");
 
-        assert_eq!(format[Instance::FIELD_INSTANCE_NAME as usize].name, "instance_name");
+        assert_eq!(format[Instance::FIELD_INSTANCE_NAME as usize].name, "name");
         assert_eq!(format[Instance::FIELD_RAFT_ID as usize].name, "raft_id");
         assert_eq!(format[Instance::FIELD_FAILURE_DOMAIN as usize].name, "failure_domain");
     }

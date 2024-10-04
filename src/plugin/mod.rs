@@ -462,10 +462,8 @@ pub fn replace_routes(items: &[ServiceRouteItem], timeout: Duration) -> traft::R
     // assert that instances update only self-owned information
     debug_assert!({
         let node = node::global()?;
-        let i = InstanceInfo::try_get(node, None)?;
-        items
-            .iter()
-            .all(|route| route.instance_name == i.instance_name)
+        let info = InstanceInfo::try_get(node, None)?;
+        items.iter().all(|route| route.instance_name == info.name)
     });
     // use empty ranges cause all instances update only self-owned information
     let ranges = vec![];
@@ -491,8 +489,8 @@ pub fn remove_routes(keys: &[ServiceRouteKey], timeout: Duration) -> traft::Resu
     // assert that instances update only self-owned information
     debug_assert!({
         let node = node::global()?;
-        let i = InstanceInfo::try_get(node, None)?;
-        keys.iter().all(|key| key.instance_name == &i.instance_name)
+        let info = InstanceInfo::try_get(node, None)?;
+        keys.iter().all(|key| key.instance_name == &info.name)
     });
     // use empty ranges cause all instances update only self-owned information
     let ranges = vec![];

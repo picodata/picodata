@@ -26,7 +26,7 @@ def cluster3(cluster: Cluster):
 
 def raft_join(
     instance: Instance,
-    cluster_id: str,
+    cluster_name: str,
     instance_name: str,
     timeout_seconds: float | int,
     failure_domain: dict[str, str] = dict(),
@@ -38,7 +38,7 @@ def raft_join(
     address = f"nowhere/{instance_name}"
     return instance.call(
         ".proc_raft_join",
-        cluster_id,
+        cluster_name,
         instance_name,
         replicaset_id,
         address,
@@ -50,7 +50,7 @@ def raft_join(
 
 def replicaset_id(instance: Instance):
     return instance.eval(
-        "return box.space._pico_instance:get(...).replicaset_id", instance.instance_name
+        "return box.space._pico_instance:get(...).replicaset_id", instance.name
     )
 
 
@@ -59,7 +59,7 @@ def test_request_follower(cluster2: Cluster):
     i2.assert_raft_status("Follower")
 
     actual = raft_join(
-        instance=i2, cluster_id=cluster2.id, instance_name="fake-0", timeout_seconds=1
+        instance=i2, cluster_name=cluster2.id, instance_name="fake-0", timeout_seconds=1
     )
     # Even though a follower is called new instance is joined successfully
     assert actual["instance"]["raft_id"] == 3
@@ -137,12 +137,12 @@ def test_replication(cluster: Cluster):
 
     for instance in cluster.instances:
         raft_instance = instance.eval(
-            "return box.space._pico_instance:get(...):tomap()", instance.instance_name
+            "return box.space._pico_instance:get(...):tomap()", instance.name
         )
         space_cluster = instance.call("box.space._cluster:select")
 
         expected = {
-            "instance_name": instance.instance_name,
+            "name": instance.name,
             "instance_uuid": instance.eval("return box.info.uuid"),
             "raft_id": instance.raft_id,
             "replicaset_id": "r1",
@@ -195,21 +195,21 @@ def test_tier_replication_factor(cluster: Cluster):
     assert set(replicaset_ids) == {"r1", "r2"}
 
 
-def test_cluster_id_mismatch(instance: Instance):
-    wrong_cluster_id = "wrong-cluster-id"
+def test_cluster_name_mismatch(instance: Instance):
+    wrong_cluster_name = "wrong-cluster-name"
 
-    assert instance.cluster_id != wrong_cluster_id
+    assert instance.cluster_name != wrong_cluster_name
 
     with pytest.raises(TarantoolError) as e:
         raft_join(
             instance=instance,
-            cluster_id=wrong_cluster_id,
+            cluster_name=wrong_cluster_name,
             instance_name="whatever",
             timeout_seconds=1,
         )
     assert e.value.args[:2] == (
         ER_OTHER,
-        f'cluster_id mismatch: cluster_id of the instance = "wrong-cluster-id", cluster_id of the cluster = "{instance.cluster_id}"',  # noqa: E501
+        f'cluster_name mismatch: cluster_name of the instance = "wrong-cluster-name", cluster_name of the cluster = "{instance.cluster_name}"',  # noqa: E501
     )
 
 
@@ -272,8 +272,8 @@ def test_separate_clusters(cluster: Cluster):
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
     # Despite instance_name and replicaset_id are the same, their uuids differ
 
-    assert i1a_info["instance_name"] == "i1"
-    assert i1b_info["instance_name"] == "i1"
+    assert i1a_info["name"] == "i1"
+    assert i1b_info["name"] == "i1"
     assert i1a_info["instance_uuid"] != i1b_info["instance_uuid"]
 
     assert i1a_info["replicaset_id"] == "r1"
@@ -294,9 +294,9 @@ def test_join_without_explicit_instance_name(cluster: Cluster):
     i2 = cluster.add_instance(instance_name=False)
 
     i1.assert_raft_status("Leader")
-    assert i1.instance_name == "i1"
+    assert i1.name == "i1"
     i2.assert_raft_status("Follower")
-    assert i2.instance_name == "i2"
+    assert i2.name == "i2"
 
 
 def test_failure_domains(cluster: Cluster):
@@ -306,11 +306,11 @@ def test_failure_domains(cluster: Cluster):
     i1.assert_raft_status("Leader")
     assert replicaset_id(i1) == "r1"
 
-    assert i1.cluster_id
+    assert i1.cluster_name
     with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
         raft_join(
             instance=i1,
-            cluster_id=i1.cluster_id,
+            cluster_name=i1.cluster_name,
             instance_name="x1",
             failure_domain=dict(os="Arch"),
             timeout_seconds=1,
@@ -323,7 +323,7 @@ def test_failure_domains(cluster: Cluster):
     with pytest.raises(TarantoolError, match="missing failure domain names: OS"):
         raft_join(
             instance=i1,
-            cluster_id=i1.cluster_id,
+            cluster_name=i1.cluster_name,
             instance_name="x1",
             failure_domain=dict(planet="Venus"),
             timeout_seconds=1,
@@ -376,26 +376,26 @@ def test_fail_to_join(cluster: Cluster):
     # An instance with the given instance_name is already present in the cluster
     # so this instance cannot join
     # and therefore exits with failure
-    assert i1.instance_name is not None
+    assert i1.name is not None
     cluster.fail_to_add_instance(
-        instance_name=i1.instance_name, failure_domain=dict(owner="Jim")
+        instance_name=i1.name, failure_domain=dict(owner="Jim")
     )
 
     # Tiers in cluster: storage
     # instance with unexisting tier cannot join and therefore exits with failure
-    assert i1.instance_name is not None
+    assert i1.name is not None
     cluster.fail_to_add_instance(tier="noexistent_tier")
 
     joined_instances = i1.eval(
         """
         return box.space._pico_instance:pairs()
             :map(function(instance)
-                return { instance.instance_name, instance.raft_id }
+                return { instance.name, instance.raft_id }
             end)
             :totable()
     """
     )
-    assert {tuple(i) for i in joined_instances} == {(i1.instance_name, i1.raft_id)}
+    assert {tuple(i) for i in joined_instances} == {(i1.name, i1.raft_id)}
 
 
 def test_pico_service_invalid_existing_password(cluster: Cluster):
@@ -553,7 +553,7 @@ def test_tier_mismatch_while_joining_by_the_same_replicaset_id(cluster: Cluster)
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
         router:

@@ -45,7 +45,7 @@ crate::define_rpc_request! {
     #[derive(Default)]
     pub struct Request {
         pub instance_name: InstanceName,
-        pub cluster_id: String,
+        pub cluster_name: String,
         /// Only allowed to be set by leader
         pub current_state: Option<State>,
         /// Can be set by instance
@@ -60,10 +60,10 @@ crate::define_rpc_request! {
 
 impl Request {
     #[inline]
-    pub fn new(instance_name: InstanceName, cluster_id: String) -> Self {
+    pub fn new(instance_name: InstanceName, cluster_name: String) -> Self {
         Self {
             instance_name,
-            cluster_id,
+            cluster_name,
             dont_retry: false,
             ..Request::default()
         }
@@ -103,14 +103,14 @@ impl Request {
 #[inline(always)]
 pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) -> Result<()> {
     let node = node::global()?;
-    let cluster_id = node.raft_storage.cluster_id()?;
+    let cluster_name = node.raft_storage.cluster_name()?;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 
-    if req.cluster_id != cluster_id {
+    if req.cluster_name != cluster_name {
         return Err(Error::ClusterIdMismatch {
-            instance_cluster_id: req.cluster_id,
-            cluster_cluster_id: cluster_id,
+            instance_cluster_name: req.cluster_name,
+            cluster_cluster_name: cluster_name,
         });
     }
 
@@ -121,7 +121,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
         let replicaset_id = &instance.replicaset_id;
         #[rustfmt::skip]
         let Some(replicaset) = storage.replicasets.get(replicaset_id)? else {
-            crate::warn_or_panic!("replicaset info for replicaset_id: `{replicaset_id}` has disappeared, needed for instance {}", instance.instance_name);
+            crate::warn_or_panic!("replicaset info for replicaset_id: `{replicaset_id}` has disappeared, needed for instance {}", instance.name);
             return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
         };
 
@@ -236,7 +236,7 @@ pub fn update_instance(
         )
     {
         #[rustfmt::skip]
-        return Err(Error::other(format!("cannot update expelled instance \"{}\"", instance.instance_name)));
+        return Err(Error::other(format!("cannot update expelled instance \"{}\"", instance.name)));
     }
 
     let mut ops = UpdateOps::new();
@@ -270,12 +270,7 @@ pub fn update_instance(
         return Ok(None);
     }
 
-    let instance_dml = Dml::update(
-        ClusterwideTable::Instance,
-        &[&instance.instance_name],
-        ops,
-        ADMIN_ID,
-    )?;
+    let instance_dml = Dml::update(ClusterwideTable::Instance, &[&instance.name], ops, ADMIN_ID)?;
 
     Ok(Some((instance_dml, replication_config_version_bump_needed)))
 }

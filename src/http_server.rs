@@ -172,7 +172,7 @@ fn get_peer_addresses(
             !only_leaders
                 || replicasets
                     .get(&item.replicaset_id)
-                    .is_some_and(|r| r.current_master_name == item.instance_name)
+                    .is_some_and(|r| r.current_master_name == item.name)
         })
         .map(|item| (item.raft_id, true))
         .collect();
@@ -190,15 +190,10 @@ async fn get_instances_data(
 ) -> HashMap<u64, InstanceDataResponse> {
     let mut fs = vec![];
     for instance in instances {
-        let res = pool.call_raw(
-            &instance.instance_name,
-            ".proc_runtime_info",
-            &(),
-            DEFAULT_TIMEOUT,
-        );
+        let res = pool.call_raw(&instance.name, ".proc_runtime_info", &(), DEFAULT_TIMEOUT);
         let future = unwrap_ok_or!(res,
             Err(e) => {
-                tlog!(Error, "webui: error on calling .proc_runtime_info on instance {}: {e}", instance.instance_name);
+                tlog!(Error, "webui: error on calling .proc_runtime_info on instance {}: {e}", instance.name);
                 continue;
             }
         // we have to add timeout directly to future due
@@ -228,7 +223,7 @@ async fn get_instances_data(
                         tlog!(
                             Error,
                             "webui: error on calling .proc_runtime_info on instance {}: {e}",
-                            instance.instance_name,
+                            instance.name,
                         );
                     }
                 }
@@ -267,7 +262,7 @@ fn get_replicasets_info(
         let mut replicaset_uuid = String::new();
         let mut tier = instance.tier.clone();
         if let Some(replicaset) = replicasets.get(&replicaset_id) {
-            is_leader = replicaset.current_master_name == instance.instance_name;
+            is_leader = replicaset.current_master_name == instance.name;
             replicaset_uuid.clone_from(&replicaset.replicaset_uuid);
             debug_assert_eq!(replicaset.tier, instance.tier);
             tier.clone_from(&replicaset.tier);
@@ -291,7 +286,7 @@ fn get_replicasets_info(
             is_leader,
             current_state: instance.current_state.variant,
             target_state: instance.target_state.variant,
-            name: instance.instance_name.clone(),
+            name: instance.name.clone(),
             binary_address: address,
         };
 

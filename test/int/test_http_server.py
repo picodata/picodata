@@ -91,7 +91,7 @@ def test_webui_basic(instance: Instance):
 def test_webui_with_plugin(cluster: Cluster):
     cluster_cfg = """
     cluster:
-        cluster_id: test
+        cluster_name: test
         tier:
             red:
                 replication_factor: 1

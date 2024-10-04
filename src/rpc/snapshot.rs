@@ -17,7 +17,7 @@ crate::define_rpc_request! {
     /// Request to get the next chunk of the raft snapshot data.
     pub struct Request {
         // TODO:
-        // pub cluster_id: String,
+        // pub cluster_name: String,
         /// Entry id from the snapshot metadata received from raft.
         pub entry_id: RaftEntryId,
 

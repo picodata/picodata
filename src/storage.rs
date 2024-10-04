@@ -1822,7 +1822,7 @@ impl Instances {
         let index_instance_name = space_instances
             .index_builder("_pico_instance_name")
             .unique(true)
-            .part("instance_name")
+            .part("name")
             .if_not_exists(true)
             .create()?;
 
@@ -1863,9 +1863,7 @@ impl Instances {
                 name: "_pico_instance_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![
-                    Part::from(("instance_name", IndexFieldType::String)).is_nullable(false)
-                ],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -4878,14 +4876,14 @@ mod tests {
 
         let instance = storage.instances.all_instances().unwrap();
         assert_eq!(
-            instance.iter().map(|p| &p.instance_name).collect::<Vec<_>>(),
+            instance.iter().map(|p| &p.name).collect::<Vec<_>>(),
             vec!["i1", "i2", "i3", "i4", "i5"]
         );
 
         assert_err!(
             storage.instances.put(&Instance {
                 raft_id: 1,
-                instance_name: "i99".into(),
+                name: "i99".into(),
                 tier: DEFAULT_TIER.into(),
                 ..Instance::default()
             }),
@@ -4916,16 +4914,16 @@ mod tests {
 
         {
             // Check accessing instances by 'raft_id'
-            assert_eq!(storage.instances.get(&1).unwrap().instance_name, "i1");
-            assert_eq!(storage.instances.get(&2).unwrap().instance_name, "i2");
-            assert_eq!(storage.instances.get(&3).unwrap().instance_name, "i3");
-            assert_eq!(storage.instances.get(&4).unwrap().instance_name, "i4");
-            assert_eq!(storage.instances.get(&5).unwrap().instance_name, "i5");
+            assert_eq!(storage.instances.get(&1).unwrap().name, "i1");
+            assert_eq!(storage.instances.get(&2).unwrap().name, "i2");
+            assert_eq!(storage.instances.get(&3).unwrap().name, "i3");
+            assert_eq!(storage.instances.get(&4).unwrap().name, "i4");
+            assert_eq!(storage.instances.get(&5).unwrap().name, "i5");
             assert_err!(storage.instances.get(&6), "instance with raft_id 6 not found");
         }
 
         {
-            // Check accessing instances by 'instance_name'
+            // Check accessing instances by 'instance name'
             assert_eq!(storage.instances.get(&InstanceName::from("i1")).unwrap().raft_id, 1);
             assert_eq!(storage.instances.get(&InstanceName::from("i2")).unwrap().raft_id, 2);
             assert_eq!(storage.instances.get(&InstanceName::from("i3")).unwrap().raft_id, 3);
@@ -4933,7 +4931,7 @@ mod tests {
             assert_eq!(storage.instances.get(&InstanceName::from("i5")).unwrap().raft_id, 5);
             assert_err!(
                 storage.instances.get(&InstanceName::from("i6")),
-                "instance with instance_name \"i6\" not found"
+                "instance with name \"i6\" not found"
             );
         }
 
@@ -4982,7 +4980,7 @@ mod tests {
 
         let inst = |raft_id, instance_name: &str| Instance {
             raft_id,
-            instance_name: instance_name.into(),
+            name: instance_name.into(),
             ..Instance::default()
         };
         storage.instances.put(&inst(1, "bob")).unwrap();
@@ -4990,7 +4988,7 @@ mod tests {
         let t = storage.instances.index_raft_id.get(&[1]).unwrap().unwrap();
         let i: Instance = t.decode().unwrap();
         assert_eq!(i.raft_id, 1);
-        assert_eq!(i.instance_name, "bob");
+        assert_eq!(i.name, "bob");
     }
 
     #[::tarantool::test]
@@ -4999,7 +4997,7 @@ mod tests {
 
         let i = Instance {
             raft_id: 1,
-            instance_name: "i".into(),
+            name: "i".into(),
             ..Instance::default()
         };
         storage.instances.put(&i).unwrap();
@@ -5077,7 +5075,7 @@ mod tests {
 
         let i = Instance {
             raft_id: 1,
-            instance_name: "i".into(),
+            name: "i".into(),
             ..Instance::default()
         };
         let tuples = [&i].to_tuple_buffer().unwrap();

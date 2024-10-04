@@ -83,8 +83,8 @@ impl Replicaset {
         Replicaset {
             replicaset_id: master.replicaset_id.clone(),
             replicaset_uuid: master.replicaset_uuid.clone(),
-            current_master_name: master.instance_name.clone(),
-            target_master_name: master.instance_name.clone(),
+            current_master_name: master.name.clone(),
+            target_master_name: master.name.clone(),
             tier: master.tier.clone(),
             weight: 0.,
             weight_origin: WeightOrigin::Auto,

@@ -76,11 +76,11 @@ pub enum Error {
         expected: &'static str,
         actual: &'static str,
     },
-    /// cluster_id of the joining instance mismatches the cluster_id of the cluster
-    #[error("cluster_id mismatch: cluster_id of the instance = {instance_cluster_id:?}, cluster_id of the cluster = {cluster_cluster_id:?}")]
+    /// cluster_name of the joining instance mismatches the cluster_name of the cluster
+    #[error("cluster_name mismatch: cluster_name of the instance = {instance_cluster_name:?}, cluster_name of the cluster = {cluster_cluster_name:?}")]
     ClusterIdMismatch {
-        instance_cluster_id: String,
-        cluster_cluster_id: String,
+        instance_cluster_name: String,
+        cluster_cluster_name: String,
     },
     /// Instance was requested to configure replication with different replicaset.
     #[error("cannot replicate with different replicaset: expected {instance_rsid:?}, requested {requested_rsid:?}")]
@@ -155,7 +155,7 @@ impl std::fmt::Display for DisplayIdOfInstance<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self.0 {
             Ok(raft_id) => write!(f, "raft_id {raft_id}"),
-            Err(instance_name) => write!(f, "instance_name \"{instance_name}\""),
+            Err(instance_name) => write!(f, "name \"{instance_name}\""),
         }
     }
 }
@@ -319,7 +319,7 @@ impl ErrorInfo {
 
 impl std::fmt::Display for ErrorInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "[instance_name:{}] ", self.instance_name)?;
+        write!(f, "[instance name:{}] ", self.instance_name)?;
         if let Some(c) = ErrorCode::from_i64(self.error_code as _) {
             write!(f, "{c:?}")?;
         } else if let Some(c) = TarantoolErrorCode::from_i64(self.error_code as _) {

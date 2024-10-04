@@ -57,7 +57,7 @@ def test_couple_leader_first(cluster2: Cluster):
     assert not c1.matched
 
     i2.assert_raft_status("Leader")
-    i1_info = i2.call(".proc_instance_info", i1.instance_name)
+    i1_info = i2.call(".proc_instance_info", i1.name)
     assert i1_info["target_state"]["variant"] == "Offline"
     assert i1_info["current_state"]["variant"] == "Offline"
 
@@ -77,7 +77,7 @@ def test_couple_follower_first(cluster2: Cluster):
     i2.terminate()
     assert not c2.matched
 
-    i2_info = i1.call(".proc_instance_info", i2.instance_name)
+    i2_info = i1.call(".proc_instance_info", i2.name)
     assert i2_info["target_state"]["variant"] == "Offline"
     assert i2_info["current_state"]["variant"] == "Offline"
 
@@ -115,7 +115,7 @@ cluster:
             replication_factor: 1
             can_vote: false
 instance:
-    cluster_id: my-cluster
+    cluster_name: my-cluster
     tier: storage
     log:
         level: verbose
@@ -156,7 +156,7 @@ cluster:
             replication_factor: 1
             can_vote: false
 instance:
-    cluster_id: my-cluster
+    cluster_name: my-cluster
     tier: storage
     log:
         level: verbose

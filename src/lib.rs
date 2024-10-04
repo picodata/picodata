@@ -758,14 +758,14 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     };
 
     let raft_id = 1;
-    let instance_name = config.instance.instance_name();
+    let instance_name = config.instance.name();
     let instance_name = instance_name.unwrap_or_else(|| instance::InstanceName::from("i1"));
     let replicaset_id = config.instance.replicaset_id();
     let replicaset_id = replicaset_id.unwrap_or_else(|| replicaset::ReplicasetId::from("r1"));
 
     let instance = Instance {
         raft_id,
-        instance_name: instance_name.clone(),
+        name: instance_name.clone(),
         instance_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
         replicaset_id,
         replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
@@ -806,7 +806,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
         raft_storage.persist_instance_name(&instance_name).unwrap();
         raft_storage.persist_tier(my_tier_name).unwrap();
         raft_storage
-            .persist_cluster_id(config.cluster_id())
+            .persist_cluster_name(config.cluster_name())
             .unwrap();
         raft_storage.persist_entries(&bootstrap_entries).unwrap();
         raft_storage.persist_conf_state(&cs).unwrap();
@@ -833,8 +833,8 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     tlog!(Info, "joining cluster, peer address: {instance_address}");
 
     let req = rpc::join::Request {
-        cluster_id: config.cluster_id().into(),
-        instance_name: config.instance.instance_name().map(From::from),
+        cluster_name: config.cluster_name().into(),
+        instance_name: config.instance.name().map(From::from),
         replicaset_id: config.instance.replicaset_id().map(From::from),
         advertise_address: config.instance.advertise_address().to_host_port(),
         failure_domain: config.instance.failure_domain(),
@@ -891,17 +891,17 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         }
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage
-            .persist_instance_name(&resp.instance.instance_name)
+            .persist_instance_name(&resp.instance.name)
             .unwrap();
         raft_storage
-            .persist_cluster_id(config.cluster_id())
+            .persist_cluster_name(config.cluster_name())
             .unwrap();
         raft_storage.persist_tier(config.instance.tier()).unwrap();
         Ok(())
     })
     .unwrap();
 
-    let instance_name = resp.instance.instance_name;
+    let instance_name = resp.instance.name;
     postjoin(config, storage, raft_storage)?;
     crate::audit!(
         message: "local database created on `{instance_name}`",
@@ -1028,8 +1028,8 @@ fn postjoin(
             return Err(Error::Expelled);
         }
 
-        let cluster_id = raft_storage
-            .cluster_id()
+        let cluster_name = raft_storage
+            .cluster_name()
             .expect("storage should never fail");
         // Doesn't have to be leader - can be any online peer
         let leader_id = node.status().leader_id;
@@ -1045,12 +1045,8 @@ fn postjoin(
             continue;
         };
 
-        tlog!(
-            Info,
-            "initiating self-activation of {}",
-            instance.instance_name
-        );
-        let req = rpc::update_instance::Request::new(instance.instance_name, cluster_id)
+        tlog!(Info, "initiating self-activation of {}", instance.name);
+        let req = rpc::update_instance::Request::new(instance.name, cluster_name)
             .with_target_state(Online)
             .with_failure_domain(config.instance.failure_domain());
         let fut = rpc::network_call(

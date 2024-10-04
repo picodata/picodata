@@ -35,7 +35,7 @@ use tarantool::vclock::Vclock;
 pub(super) fn action_plan<'i>(
     term: RaftTerm,
     applied: RaftIndex,
-    cluster_id: String,
+    cluster_name: String,
     instances: &'i [Instance],
     existing_fds: &HashSet<Uppercase>,
     peer_addresses: &'i HashMap<RaftId, String>,
@@ -66,7 +66,7 @@ pub(super) fn action_plan<'i>(
     let to_downgrade = instances
         .iter()
         .find(|instance| has_states!(instance, not Offline -> Offline));
-    
+
     if let Some(instance) = to_downgrade {
         let instance_name = &instance.name;
         let new_current_state = instance.target_state.variant.as_str();
@@ -106,7 +106,7 @@ pub(super) fn action_plan<'i>(
 
         ////////////////////////////////////////////////////////////////////////
         // update instance's current state
-        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(instance.target_state);
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
@@ -128,10 +128,7 @@ pub(super) fn action_plan<'i>(
     if let Some((to, replicaset)) = new_target_master {
         debug_assert_eq!(to.replicaset_id, replicaset.replicaset_id);
         let mut ops = UpdateOps::new();
-        ops.assign(
-            column_name!(Replicaset, target_master_name),
-            &to.instance_name,
-        )?;
+        ops.assign(column_name!(Replicaset, target_master_name), &to.name)?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[&to.replicaset_id],
@@ -140,7 +137,7 @@ pub(super) fn action_plan<'i>(
         )?;
         let ranges = vec![
             cas::Range::for_dml(&dml)?,
-            cas::Range::new(ClusterwideTable::Instance).eq([&to.instance_name]),
+            cas::Range::new(ClusterwideTable::Instance).eq([&to.name]),
             cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.target_master_name]),
         ];
         let predicate = cas::Predicate::new(applied, ranges);
@@ -164,10 +161,10 @@ pub(super) fn action_plan<'i>(
             if let Some(address) = peer_addresses.get(&instance.raft_id) {
                 replicaset_peers.push(address.clone());
             } else {
-                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_id}`", instance.instance_name);
+                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_id}`", instance.name);
             }
             if instance.may_respond() {
-                targets.push(&instance.instance_name);
+                targets.push(&instance.name);
             }
         }
 
@@ -226,7 +223,7 @@ pub(super) fn action_plan<'i>(
         let mut demote = None;
         let old_master_may_respond = instances
             .iter()
-            .find(|i| i.instance_name == old_master_name)
+            .find(|i| i.name == old_master_name)
             .map(|i| i.may_respond());
         if let Some(true) = old_master_may_respond {
             demote = Some(rpc::replication::DemoteRequest {});
@@ -326,7 +323,7 @@ pub(super) fn action_plan<'i>(
                 // Note at this point all the instances should have their replication configured,
                 // so it's ok to configure sharding for them
                 .filter(|instance| has_states!(instance, * -> Online))
-                .map(|instance| &instance.instance_name)
+                .map(|instance| &instance.name)
                 .collect();
             let rpc = rpc::sharding::Request {
                 term,
@@ -400,7 +397,7 @@ pub(super) fn action_plan<'i>(
     let target = instances
         .iter()
         .find(|instance| has_states!(instance, not Expelled -> Expelled));
-    
+
     if let Some(instance) = target {
         let instance_name = &instance.name;
         let new_current_state = instance.target_state.variant.as_str();
@@ -412,7 +409,7 @@ pub(super) fn action_plan<'i>(
             .get(&*instance.tier)
             .expect("tier info is always present");
 
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(instance.target_state);
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
@@ -433,9 +430,9 @@ pub(super) fn action_plan<'i>(
     let to_online = instances
         .iter()
         .find(|instance| has_states!(instance, not Online -> Online) || instance.is_reincarnated());
-    
+
     if let Some(instance) = to_online {
-        let instance_name = &instance.instance_name;
+        let instance_name = &instance.name;
         let target_state = instance.target_state;
         debug_assert_eq!(target_state.variant, StateVariant::Online);
         let new_current_state = target_state.variant.as_str();
@@ -453,7 +450,7 @@ pub(super) fn action_plan<'i>(
             timeout: sync_timeout,
         };
 
-        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(target_state);
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
@@ -499,7 +496,7 @@ pub(super) fn action_plan<'i>(
 
         let mut targets = Vec::with_capacity(instances.len());
         for i in maybe_responding(instances) {
-            targets.push(&i.instance_name);
+            targets.push(&i.name);
         }
 
         let rpc = rpc::load_plugin_dry_run::Request {
@@ -565,9 +562,7 @@ pub(super) fn action_plan<'i>(
     {
         let service_defs = services.get(plugin).map(|v| &**v).unwrap_or(&[]);
 
-        let targets = maybe_responding(instances)
-            .map(|i| &i.instance_name)
-            .collect();
+        let targets = maybe_responding(instances).map(|i| &i.name).collect();
 
         let rpc = rpc::enable_plugin::Request {
             term,
@@ -595,7 +590,7 @@ pub(super) fn action_plan<'i>(
                 }
                 let dml = Dml::replace(
                     ClusterwideTable::ServiceRouteTable,
-                    &ServiceRouteItem::new_healthy(i.instance_name.clone(), plugin, &svc.name),
+                    &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &svc.name),
                     ADMIN_ID,
                 )?;
                 ranges.push(cas::Range::for_dml(&dml)?);
@@ -671,14 +666,10 @@ pub(super) fn action_plan<'i>(
                 }
 
                 if new_tiers.contains(&i.tier) {
-                    enable_targets.push(&i.instance_name);
+                    enable_targets.push(&i.name);
                     let dml = Dml::replace(
                         ClusterwideTable::ServiceRouteTable,
-                        &ServiceRouteItem::new_healthy(
-                            i.instance_name.clone(),
-                            plugin,
-                            &service_def.name,
-                        ),
+                        &ServiceRouteItem::new_healthy(i.name.clone(), plugin, &service_def.name),
                         ADMIN_ID,
                     )?;
                     ranges.push(cas::Range::for_dml(&dml)?);
@@ -686,9 +677,9 @@ pub(super) fn action_plan<'i>(
                 }
 
                 if old_tiers.contains(&i.tier) {
-                    disable_targets.push(&i.instance_name);
+                    disable_targets.push(&i.name);
                     let key = ServiceRouteKey {
-                        instance_name: &i.instance_name,
+                        instance_name: &i.name,
                         plugin_name: &plugin.name,
                         plugin_version: &plugin.version,
                         service_name: &service_def.name,
@@ -835,8 +826,8 @@ pub mod stage {
 
         // TODO: rename, after we renamed `grade` -> `state` this step's name makes no sense at all
         pub struct Downgrade<'i> {
-            /// This instance is being downgraded. The id is only used for logging.
-            pub instance_id: &'i InstanceId,
+            /// This instance is being downgraded. The name is only used for logging.
+            pub instance_name: &'i InstanceName,
             /// The state which is going to be set as target's new current state. Is only used for loggin.
             pub new_current_state: &'i str,
             /// Global DML which updates `current_state` to `Offline` in `_pico_instance` for a given instance.
@@ -962,7 +953,7 @@ fn get_new_replicaset_master_if_needed<'i>(
     // TODO: construct a map from replicaset id to instance to improve performance
     for &r in replicasets.values() {
         #[rustfmt::skip]
-        let Some(master) = instances.iter().find(|i| i.instance_name == r.target_master_name) else {
+        let Some(master) = instances.iter().find(|i| i.name == r.target_master_name) else {
             #[rustfmt::skip]
             warn_or_panic!("couldn't find instance with name {}, which is chosen as next master of replicaset {}",
                            r.target_master_name, r.replicaset_id);
@@ -972,11 +963,11 @@ fn get_new_replicaset_master_if_needed<'i>(
         if master.replicaset_id != r.replicaset_id {
             #[rustfmt::skip]
             tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
-                  master.instance_name, master.replicaset_id, r.replicaset_id);
+                  master.name, master.replicaset_id, r.replicaset_id);
         } else if !master.may_respond() {
             #[rustfmt::skip]
             tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
-                  master.instance_name, master.replicaset_id);
+                  master.name, master.replicaset_id);
         } else {
             continue;
         }

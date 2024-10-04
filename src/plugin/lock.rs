@@ -34,10 +34,7 @@ impl PicoPropertyLock {
 
 impl From<InstanceInfo> for PicoPropertyLock {
     fn from(instance_info: InstanceInfo) -> Self {
-        PicoPropertyLock::new(
-            instance_info.instance_name,
-            instance_info.current_state.incarnation,
-        )
+        PicoPropertyLock::new(instance_info.name, instance_info.current_state.incarnation)
     }
 }
 

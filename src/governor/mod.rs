@@ -122,8 +122,8 @@ impl Loop {
 
         let term = raft_status.get().term;
         let applied = raft_storage.applied().expect("storage should never fail");
-        let cluster_id = raft_storage
-            .cluster_id()
+        let cluster_name = raft_storage
+            .cluster_name()
             .expect("storage should never fail");
         let node = global().expect("must be initialized");
         let pending_schema_change = storage
@@ -156,7 +156,7 @@ impl Loop {
         let plan = action_plan(
             term,
             applied,
-            cluster_id,
+            cluster_name,
             &instances,
             &existing_fds,
             &peer_addresses,
@@ -235,7 +235,7 @@ impl Loop {
 
             Plan::TransferLeadership(TransferLeadership { to }) => {
                 set_status!("transfer raft leader");
-                tlog!(Info, "transferring leadership to {}", to.instance_name);
+                tlog!(Info, "transferring leadership to {}", to.name);
                 node.transfer_leadership_and_yield(to.raft_id);
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
             }
@@ -286,7 +286,7 @@ impl Loop {
                         ]
                         async {
                             let rpc = GetVclockRpc {};
-                            let vclock = pool.call(new_master_id, proc_name!(proc_get_vclock), &rpc, rpc_timeout)?.await?;
+                            let vclock = pool.call(new_master_name, proc_name!(proc_get_vclock), &rpc, rpc_timeout)?.await?;
                             promotion_vclock = Some(vclock);
                         }
                     }
@@ -727,7 +727,7 @@ impl Loop {
 
                         let mut fs = vec![];
                         for instance_name in disable_targets {
-                            tlog!(Info, "calling proc_disable_service"; "instance_id" => %instance_name);
+                            tlog!(Info, "calling proc_disable_service"; "instance_name" => %instance_name);
                             let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                             fs.push(resp);
                         }

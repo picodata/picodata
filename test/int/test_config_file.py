@@ -11,8 +11,8 @@ cluster:
     tier:
         default:
 instance:
-    cluster_id: test
-    instance_name: from-config
+    cluster_name: test
+    name: from-config
     replicaset_id: with-love
 
     memtx:
@@ -24,7 +24,7 @@ instance:
     instance.wait_online()
 
     info = instance.call(".proc_instance_info")
-    assert info["instance_name"] == "from-config"
+    assert info["name"] == "from-config"
     assert info["replicaset_id"] == "with-love"
 
     assert instance.eval("return box.cfg.memtx_memory") == 42069
@@ -45,8 +45,8 @@ instance:
     listen: {listen}
     peer:
         - {listen}
-    cluster_id: my-cluster
-    instance_name: my-instance
+    cluster_name: my-cluster
+    name: my-instance
     replicaset_id: my-replicaset
     tier: deluxe
     log:
@@ -86,8 +86,8 @@ instance:
             advertise_address=dict(value=f"{host}:{port}", source="default"),
             failure_domain=dict(value=dict(), source="default"),
             shredding=dict(value=False, source="default"),
-            cluster_id=dict(value="my-cluster", source="config_file"),
-            instance_name=dict(value="my-instance", source="config_file"),
+            cluster_name=dict(value="my-cluster", source="config_file"),
+            name=dict(value="my-instance", source="config_file"),
             replicaset_id=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
             audit=dict(
@@ -133,7 +133,7 @@ def test_default_path_to_config_file(cluster: Cluster):
         f.write(
             """
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
 instance:
@@ -153,7 +153,7 @@ instance:
         f.write(
             """
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
 instance:
@@ -237,13 +237,13 @@ def test_config_file_with_garbage(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
     replication_topology: mobius
 
 instance:
-    instance-name: i1
+    instance_id: i1
 
 super-cluster:
     - foo
@@ -252,7 +252,7 @@ super-cluster:
     )
     i1 = cluster.add_instance(wait_online=False)
     err = """\
-invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), `cluster.replication_topology`, `instance.instance-name` (did you mean `instance_name`?)\
+invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), `cluster.replication_topology`, `instance.instance_id` (did you mean `name`?)\
 """  # noqa: E501
     crawler = log_crawler(i1, err)
 
@@ -284,7 +284,7 @@ def test_config_file_box_cfg_parameters(cluster: Cluster):
         yaml="""
 # just the required part
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
 """
@@ -325,7 +325,7 @@ cluster:
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
 
@@ -430,7 +430,7 @@ def test_default_tier_is_not_created_with_configuration_file(cluster: Cluster):
         yaml="""
 cluster:
     default_replication_factor: 3
-    cluster_id: test
+    cluster_name: test
     tier:
         not_default:
 """
@@ -452,21 +452,21 @@ def test_output_config_parameters(cluster: Cluster):
         tier:
             default:
     instance:
-        cluster_id: test
-        instance_name: from-config
+        cluster_name: test
+        name: from-config
         replicaset_id: with-love
         memtx:
             memory: 42069B
     """
     )
 
-    output_params = """'cluster.cluster_id':
+    output_params = """'cluster.cluster_name':
         'cluster.tier':
         'cluster.default_replication_factor':
         'instance.data_dir':
         'instance.config_file':
-        'instance.cluster_id':
-        'instance.instance_name': "i1"
+        'instance.cluster_name':
+        'instance.name': "i1"
         'instance.replicaset_id': "with-love"
         'instance.tier': "default"
         'instance.failure_domain': {}
@@ -507,7 +507,7 @@ cluster:
     tier:
         default:
 instance:
-    cluster_id: test
+    cluster_name: test
     log:
         destination: {log_file}
 """

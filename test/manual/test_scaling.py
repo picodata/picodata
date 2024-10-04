@@ -62,7 +62,7 @@ def test_chunked(cluster: Cluster):
 
 
 # `PORT_RANGE` needs to be increased to run this test
-def test_cas_conflicts(binary_path, tmpdir_factory, cluster_ids, port_range):
+def test_cas_conflicts(binary_path, tmpdir_factory, cluster_names, port_range):
     """
     Deploys clusters with increasing number of instances,
     and counts the number of CaS conflicts on join.
@@ -81,7 +81,7 @@ def test_cas_conflicts(binary_path, tmpdir_factory, cluster_ids, port_range):
         cas_conflicts = 0
         cluster = Cluster(
             binary_path=binary_path,
-            id=next(cluster_ids),
+            id=next(cluster_names),
             data_dir=tmpdir_factory.mktemp(f"cluster{size}"),
             base_host=BASE_HOST,
             base_port=base_port,

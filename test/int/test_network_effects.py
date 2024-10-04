@@ -185,21 +185,21 @@ def test_instance_automatic_offline_detection(cluster: Cluster):
     index = cluster.cas("replace", "_pico_property", ["auto_offline_timeout", 0.5])
     cluster.raft_wait_index(index, 3)
 
-    assert get_instance_states(i1, i3.instance_name) == ("Online", "Online")
+    assert get_instance_states(i1, i3.name) == ("Online", "Online")
 
     i3.kill()
 
     # Give the sentinel some time to detect the problem and act accordingly.
     time.sleep(2)
 
-    assert get_instance_states(i1, i3.instance_name) == ("Offline", "Offline")
+    assert get_instance_states(i1, i3.name) == ("Offline", "Offline")
 
     i3.start()
 
     def assert_online(peer, instance_name):
         assert get_instance_states(peer, instance_name) == ("Online", "Online")
 
-    Retriable(timeout=10, rps=5).call(lambda: assert_online(i1, i3.instance_name))
+    Retriable(timeout=10, rps=5).call(lambda: assert_online(i1, i3.name))
 
 
 def test_governor_timeout_when_proposing_raft_op(cluster: Cluster):

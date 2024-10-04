@@ -34,12 +34,12 @@ pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
 #[derive(Debug, Parser, PartialEq)]
 #[clap(about = "Run the picodata instance")]
 pub struct Run {
-    #[clap(long, value_name = "NAME", env = "PICODATA_CLUSTER_ID")]
+    #[clap(long, value_name = "NAME", env = "PICODATA_CLUSTER_NAME")]
     /// Name of the cluster. The instance will refuse
     /// to join a cluster with a different name.
     ///
     /// By default this will be "demo".
-    pub cluster_id: Option<String>,
+    pub cluster_name: Option<String>,
 
     #[clap(long, value_name = "PATH", env = "PICODATA_DATA_DIR")]
     /// Here the instance persists all of its data.
@@ -347,11 +347,11 @@ pub struct Expel {
     #[clap(
         long,
         value_name = "NAME",
-        env = "PICODATA_CLUSTER_ID",
+        env = "PICODATA_CLUSTER_NAME",
         default_value = "demo"
     )]
     /// Name of the cluster from instance should be expelled.
-    pub cluster_id: String,
+    pub cluster_name: String,
 
     #[clap(value_name = "INSTANCE_NAME")]
     /// Name of the instance to expel.

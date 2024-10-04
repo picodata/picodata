@@ -193,12 +193,12 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     let node = node::global()?;
     let raft_storage = &node.raft_storage;
     let storage = &node.storage;
-    let cluster_id = raft_storage.cluster_id()?;
+    let cluster_name = raft_storage.cluster_name()?;
 
-    if req.cluster_id != cluster_id {
+    if req.cluster_name != cluster_name {
         return Err(TraftError::ClusterIdMismatch {
-            instance_cluster_id: req.cluster_id.clone(),
-            cluster_cluster_id: cluster_id,
+            instance_cluster_name: req.cluster_name.clone(),
+            cluster_cluster_name: cluster_name,
         });
     }
 
@@ -404,9 +404,9 @@ crate::define_rpc_request! {
     /// Returns errors in the following cases:
     /// 1. Raft node on a receiving instance is not yet initialized
     /// 2. Storage failure
-    /// 3. Cluster id mismatch
+    /// 3. Cluster name mismatch
     /// 4. Request has an incorrect term - leader changed
-    /// 5. Receiveing instance is not a raft-leader
+    /// 5. Receiving instance is not a raft-leader
     /// 6. [Compare and swap error](Error)
     // TODO Result<Either<Response, Error>>
     fn proc_cas(req: Request) -> Result<Response> {
@@ -414,7 +414,7 @@ crate::define_rpc_request! {
     }
 
     pub struct Request {
-        pub cluster_id: String,
+        pub cluster_name: String,
         pub predicate: Predicate,
         pub op: Op,
         pub as_user: UserId,
@@ -431,7 +431,7 @@ impl Request {
     pub fn new(op: impl Into<Op>, predicate: Predicate, as_user: UserId) -> traft::Result<Self> {
         let node = node::global()?;
         Ok(Request {
-            cluster_id: node.raft_storage.cluster_id()?,
+            cluster_name: node.raft_storage.cluster_name()?,
             predicate,
             op: op.into(),
             as_user,

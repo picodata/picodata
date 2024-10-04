@@ -124,7 +124,7 @@ pub(crate) fn setup() {
             picodata> pico.config()
             ---
             - cluster:
-                cluster_id: demo
+                cluster_name: demo
             - instance:
                 log_level: info
                 listen: 127.0.0.1:3301
@@ -179,7 +179,7 @@ pub(crate) fn setup() {
         Fields:
 
             - raft_id (number)
-            - cluster_id (string)
+            - cluster_name (string)
             - instance_name (string)
             - tier (string)
 
@@ -188,7 +188,7 @@ pub(crate) fn setup() {
             picodata> pico.whoami()
             ---
             - raft_id: 1
-              cluster_id: demo
+              cluster_name: demo
               instance_name: i1
               tier: storage
             ...
@@ -199,8 +199,8 @@ pub(crate) fn setup() {
 
             Ok(tlua::AsTable((
                 ("raft_id", info.raft_id),
-                ("cluster_id", info.cluster_id),
-                ("instance_name", info.instance_name),
+                ("cluster_name", info.cluster_name),
+                ("instance_name", info.name),
                 ("tier", info.tier),
             )))
         }),
@@ -267,7 +267,7 @@ pub(crate) fn setup() {
             Ok(tlua::AsTable((
                 ("raft_id", info.raft_id),
                 ("advertise_address", info.advertise_address),
-                ("instance_name", info.instance_name.0),
+                ("instance_name", info.name.0),
                 ("instance_uuid", info.instance_uuid),
                 ("replicaset_id", info.replicaset_id),
                 ("replicaset_uuid", info.replicaset_uuid),
@@ -714,12 +714,12 @@ pub(crate) fn setup() {
         "},
         tlua::function1(|instance_name: InstanceName| -> traft::Result<bool> {
             let raft_storage = &traft::node::global()?.raft_storage;
-            let cluster_id = raft_storage.cluster_id()?;
+            let cluster_name = raft_storage.cluster_name()?;
             fiber::block_on(rpc::network_call_to_leader(
                 crate::proc_name!(rpc::expel::proc_expel),
                 &rpc::expel::Request {
                     instance_name,
-                    cluster_id,
+                    cluster_name,
                 },
             ))?;
             Ok(true)

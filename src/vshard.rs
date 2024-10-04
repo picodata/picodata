@@ -124,7 +124,7 @@ impl VshardConfig {
             };
             let Some(r) = replicasets.get(&peer.replicaset_id) else {
                 crate::tlog!(Debug, "skipping instance: replicaset not initialized yet";
-                    "instance_name" => %peer.instance_name,
+                    "instance_name" => %peer.name,
                 );
                 continue;
             };
@@ -140,8 +140,8 @@ impl VshardConfig {
                 InstanceName(peer.instance_uuid.clone()),
                 ReplicaSpec {
                     uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
-                    master: r.current_master_name == peer.instance_name,
-                    name: peer.instance_name.to_string(),
+                    master: r.current_master_name == peer.name,
+                    name: peer.name.to_string(),
                 },
             );
         }

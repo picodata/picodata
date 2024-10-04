@@ -836,7 +836,7 @@ impl NodeImpl {
                 // as it preemptively puts itself into `_pico_instance` table.
                 // Locally it's logged in src/lib.rs.
                 if old.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
-                    let instance_name = &new.instance_name;
+                    let instance_name = &new.name;
                     crate::audit!(
                         message: "a new instance `{instance_name}` joined the cluster",
                         title: "join_instance",
@@ -856,7 +856,7 @@ impl NodeImpl {
                 }
 
                 if old.as_ref().map(|x| x.current_state) != Some(new.current_state) {
-                    let instance_name = &new.instance_name;
+                    let instance_name = &new.name;
                     let state = &new.current_state;
                     crate::audit!(
                         message: "current state of instance `{instance_name}` changed to {state}",
@@ -870,7 +870,7 @@ impl NodeImpl {
                 }
 
                 if old.as_ref().map(|x| x.target_state) != Some(new.target_state) {
-                    let instance_name = &new.instance_name;
+                    let instance_name = &new.name;
                     let state = &new.target_state;
                     crate::audit!(
                         message: "target state of instance `{instance_name}` changed to {state}",
@@ -884,7 +884,7 @@ impl NodeImpl {
                 }
 
                 if has_states!(new, Expelled -> *) {
-                    let instance_name = &new.instance_name;
+                    let instance_name = &new.name;
                     crate::audit!(
                         message: "instance `{instance_name}` was expelled from the cluster",
                         title: "expel_instance",

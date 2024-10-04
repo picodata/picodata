@@ -48,7 +48,7 @@ pub fn replicasets_masters<'a>(
     // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
     for r in replicasets.values() {
         #[rustfmt::skip]
-        let Some(master) = instances.iter().find(|i| i.instance_name == r.current_master_name) else {
+        let Some(master) = instances.iter().find(|i| i.name == r.current_master_name) else {
             tlog!(
                 Warning,
                 "couldn't find instance with name {}, which is chosen as master of replicaset {}",
@@ -62,7 +62,7 @@ pub fn replicasets_masters<'a>(
         if has_states!(master, Expelled -> *) {
             continue;
         }
-        masters.push(&master.instance_name);
+        masters.push(&master.name);
     }
 
     masters

@@ -25,16 +25,16 @@ crate::define_rpc_request! {
     fn proc_expel(req: Request) -> Result<Response> {
         let node = node::global()?;
         let raft_storage = &node.raft_storage;
-        let cluster_id = raft_storage.cluster_id()?;
+        let cluster_name = raft_storage.cluster_name()?;
 
-        if req.cluster_id != cluster_id {
+        if req.cluster_name != cluster_name {
             return Err(Error::ClusterIdMismatch {
-                instance_cluster_id: req.cluster_id,
-                cluster_cluster_id: cluster_id,
+                instance_cluster_name: req.cluster_name,
+                cluster_cluster_name: cluster_name,
             });
         }
 
-        let req = rpc::update_instance::Request::new(req.instance_name, req.cluster_id)
+        let req = rpc::update_instance::Request::new(req.instance_name, req.cluster_name)
             .with_target_state(Expelled);
         handle_update_instance_request_and_wait(req, TIMEOUT)?;
 
@@ -45,7 +45,7 @@ crate::define_rpc_request! {
     ///
     /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
-        pub cluster_id: String,
+        pub cluster_name: String,
         pub instance_name: InstanceName,
     }
 

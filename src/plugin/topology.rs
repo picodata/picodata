@@ -18,7 +18,7 @@ impl TopologyContext {
             .map_err(|e| PluginError::TopologyError(e.to_string()))?;
 
         Ok(Self {
-            instance_name: current_instance_info.instance_name,
+            instance_name: current_instance_info.name,
             instance_tier: current_instance_info.tier,
         })
     }
@@ -26,7 +26,7 @@ impl TopologyContext {
     /// Return topology context for instance.
     pub fn for_instance(instance: &Instance) -> Self {
         Self {
-            instance_name: instance.instance_name.clone(),
+            instance_name: instance.name.clone(),
             instance_tier: instance.tier.clone(),
         }
     }

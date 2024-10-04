@@ -8,22 +8,22 @@ STEP_DELAY = 500  # ms
 
 def create(c: Cluster, istate):
     i = c.add_instance(wait_online=False)
-    istate[i.instance_name] = {"instance": i, "started": False}
+    istate[i.name] = {"instance": i, "started": False}
     return i, istate
 
 
 def stop(_: Cluster, i: Instance, istate):
-    istate[i.instance_name]["started"] = False
+    istate[i.name]["started"] = False
     return i.terminate(), istate
 
 
 def start(_: Cluster, i: Instance, istate):
-    istate[i.instance_name]["started"] = True
+    istate[i.name]["started"] = True
     return i.start(), istate
 
 
 def expel(c: Cluster, i: Instance, istate):
-    istate[i.instance_name]["started"] = False
+    istate[i.name]["started"] = False
     return c.expel(i)
 
 
@@ -62,10 +62,10 @@ def possible_actions(c: Cluster, istate):
     actions.append([ADD, None])
     stopping_allowed = stop_allowed(istate)
     for i in c.instances:
-        if istate[i.instance_name]["started"] and i.process is not None:
+        if istate[i.name]["started"] and i.process is not None:
             if stopping_allowed:
                 actions.append([STOP, i])  # type: ignore
-        elif not istate[i.instance_name]["started"] and i.process is None:
+        elif not istate[i.name]["started"] and i.process is None:
             actions.append([START, i])  # type: ignore
     return actions
 
@@ -83,14 +83,14 @@ def choose_action(c: Cluster, istate):
 
 
 def step_msg(step: int, action, i: Instance):
-    msg = action["repr_fn"](i.instance_name if i and i.instance_name else None)
+    msg = action["repr_fn"](i.name if i and i.name else None)
     return f"Step {step}: {msg}"
 
 
 def initial_istate(cluster: Cluster):
     istate = {}
     for i in cluster.instances:
-        istate[i.instance_name] = {"instance": i, "started": True}
+        istate[i.name] = {"instance": i, "started": True}
     return istate
 
 

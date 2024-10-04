@@ -573,7 +573,7 @@ class Instance:
     color: Callable[[str], str]
 
     plugin_dir: str | None = None
-    cluster_id: str | None = None
+    cluster_name: str | None = None
     _data_dir: str | None = None
     peers: list[str] = field(default_factory=list)
     host: str | None = None
@@ -583,7 +583,7 @@ class Instance:
     tier: str | None = None
     init_replication_factor: int | None = None
     config_path: str | None = None
-    instance_name: str | None = None
+    name: str | None = None
     replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     service_password_file: str | None = None
@@ -605,7 +605,7 @@ class Instance:
 
     def current_state(self, instance_name=None):
         if instance_name is None:
-            instance_name = self.instance_name
+            instance_name = self.name
         return self.call(".proc_instance_info", instance_name)["current_state"]
 
     def get_tier(self):
@@ -639,8 +639,8 @@ class Instance:
         # fmt: off
         return [
             self.binary_path, "run",
-            *([f"--cluster-id={self.cluster_id}"] if self.cluster_id else []),
-            *([f"--instance-name={self.instance_name}"] if self.instance_name else []),
+            *([f"--cluster-name={self.cluster_name}"] if self.cluster_name else []),
+            *([f"--instance-name={self.name}"] if self.name else []),
             *([f"--replicaset-id={self.replicaset_id}"] if self.replicaset_id else []),
             *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
             *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
@@ -658,12 +658,12 @@ class Instance:
 
     def __repr__(self):
         if self.process:
-            return f"Instance({self.instance_name}, listen={self.listen} cluster={self.cluster_id}, process.pid={self.process.pid})"  # noqa: E501
+            return f"Instance({self.name}, listen={self.listen} cluster={self.cluster_name}, process.pid={self.process.pid})"  # noqa: E501
         else:
-            return f"Instance({self.instance_name}, listen={self.listen} cluster={self.cluster_id})"  # noqa: E501
+            return f"Instance({self.name}, listen={self.listen} cluster={self.cluster_name})"  # noqa: E501
 
     def __hash__(self):
-        return hash((self.cluster_id, self.instance_name))
+        return hash((self.cluster_name, self.name))
 
     @contextmanager
     def connect(
@@ -766,7 +766,7 @@ class Instance:
                 end
                 return info.current_master_name
                 """,  # noqa: E501
-                self.instance_name,
+                self.name,
             )
             assert current_master_name
             return current_master_name
@@ -880,7 +880,7 @@ class Instance:
             self.kill()
 
     def _process_output(self, src, out: io.TextIOWrapper):
-        id = self.instance_name or f":{self.port}"
+        id = self.name or f":{self.port}"
         prefix = f"{id:<3} | "
 
         if sys.stdout.isatty():
@@ -1132,7 +1132,9 @@ class Instance:
         else:
             eprint(f"  {dml=}")
 
-        return self.call(".proc_cas", self.cluster_id, predicate, dml, as_user)["index"]
+        return self.call(".proc_cas", self.cluster_name, predicate, dml, as_user)[
+            "index"
+        ]
 
     def pico_property(self, key: str):
         tup = self.call("box.space._pico_property:get", key)
@@ -1301,8 +1303,8 @@ class Instance:
             assert isinstance(myself["raft_id"], int)
             self.raft_id = myself["raft_id"]
 
-            assert isinstance(myself["instance_name"], str)
-            self.instance_name = myself["instance_name"]
+            assert isinstance(myself["name"], str)
+            self.name = myself["name"]
 
             assert isinstance(myself["current_state"], dict)
             return (
@@ -1644,8 +1646,8 @@ class Cluster:
         instance = Instance(
             binary_path=self.binary_path,
             cwd=self.data_dir,
-            cluster_id=self.id,
-            instance_name=generated_instance_name,
+            cluster_name=self.id,
+            name=generated_instance_name,
             replicaset_id=replicaset_id,
             _data_dir=f"{self.data_dir}/i{i}",
             plugin_dir=self.plugin_dir,
@@ -1717,16 +1719,16 @@ class Cluster:
     ):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
-        assert target.instance_name, "cannot expel without target instance_name"
+        assert target.name, "cannot expel without target instance name"
 
         # fmt: off
         command: list[str] = [
             self.binary_path, "expel",
             "--peer", f"pico_service@{peer.listen}",
-            "--cluster-id", target.cluster_id or "",
+            "--cluster-name", target.cluster_name or "",
             "--password-file", self.service_password_file,
             "--auth-type", "chap-sha1",
-            target.instance_name,
+            target.name,
         ]
         # fmt: on
 
@@ -2121,14 +2123,14 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
 
 
 @pytest.fixture(scope="session")
-def cluster_ids(xdist_worker_number) -> Iterator[str]:
-    """Unique `clister_id` generator."""
+def cluster_names(xdist_worker_number) -> Iterator[str]:
+    """Unique `cluster_name` generator."""
     return (f"cluster-{xdist_worker_number}-{i}" for i in count())
 
 
 @pytest.fixture
 def cluster(
-    binary_path, tmpdir, cluster_ids, port_distributor
+    binary_path, tmpdir, cluster_names, port_distributor
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
@@ -2136,7 +2138,7 @@ def cluster(
     plugin_dir = os.getcwd() + "/test/testplug"
     cluster = Cluster(
         binary_path=binary_path,
-        id=next(cluster_ids),
+        id=next(cluster_names),
         data_dir=tmpdir,
         plugin_dir=plugin_dir,
         base_host=BASE_HOST,
@@ -2341,7 +2343,7 @@ class Postgres:
         self.cluster.set_config_file(
             yaml=f"""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
 instance:

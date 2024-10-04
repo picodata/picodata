@@ -133,7 +133,7 @@ class PluginReflection:
             expected_routes = []
             for service in self.topology[i]:
                 expected_routes.append(
-                    [self.name, self.version, service, i.instance_name, False]
+                    [self.name, self.version, service, i.name, False]
                 )
 
             for neighboring_i in self.topology:
@@ -145,9 +145,7 @@ class PluginReflection:
                     self.name,
                     self.version,
                 )
-                actual_routes = list(
-                    filter(lambda x: x[3] == i.instance_name, actual_routes)
-                )
+                actual_routes = list(filter(lambda x: x[3] == i.name, actual_routes))
                 assert actual_routes == expected_routes
 
     def assert_data_synced(self):
@@ -691,7 +689,7 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
         install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
     assert (
         e.value.args[0]
-        == f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance_name:i2] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`"  # noqa: E501
+        == f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:i2] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`"  # noqa: E501
     )
 
     # plugin installed but disabled
@@ -1106,7 +1104,7 @@ def test_migration_lock(cluster: Cluster):
         assert instance_info["target_state"]["variant"] == "Offline"
 
     # sentinel has noticed that i2 is offline and changed it's state
-    Retriable(timeout=10).call(check_instance_is_offline, i1, i2.instance_name)
+    Retriable(timeout=10).call(check_instance_is_offline, i1, i2.name)
 
     #
     # i3 can now apply the migrations, because the lock holder is not online
@@ -1270,11 +1268,11 @@ def test_error_on_config_update(cluster: Cluster):
     # and the second instance is not poisoned
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_route_poisoned(i1.instance_name, "testservice_1")
+        lambda: plugin_ref.assert_route_poisoned(i1.name, "testservice_1")
     )
     Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_route_poisoned(
-            i2.instance_name, "testservice_1", poisoned=False
+            i2.name, "testservice_1", poisoned=False
         )
     )
 
@@ -1298,7 +1296,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     # assert that the first instance now has a poison service
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(
-        lambda: plugin_ref.assert_route_poisoned(i1.instance_name, "testservice_1")
+        lambda: plugin_ref.assert_route_poisoned(i1.name, "testservice_1")
     )
 
     plugin_ref.remove_error("testservice_1", "on_config_change", i1)
@@ -1311,7 +1309,7 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
     # retrying, cause routing table update asynchronously
     Retriable(timeout=3, rps=5).call(
         lambda: plugin_ref.assert_route_poisoned(
-            i1.instance_name, "testservice_1", poisoned=False
+            i1.name, "testservice_1", poisoned=False
         )
     )
     plugin_ref.assert_config("testservice_1", _NEW_CFG_2, i1, i2)
@@ -1341,10 +1339,10 @@ def test_on_leader_change(cluster: Cluster):
         "update",
         "_pico_replicaset",
         key=["r1"],
-        ops=[("=", "target_master_name", i2.instance_name)],
+        ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
-    assert i1.replicaset_master_name() == i2.instance_name
+    assert i1.replicaset_master_name() == i2.name
 
     # on_leader_change called at i1 and i2
     # because this is previous and new leader, and not called at i3
@@ -1375,17 +1373,17 @@ def test_error_on_leader_change(cluster: Cluster):
         "update",
         "_pico_replicaset",
         key=["r1"],
-        ops=[("=", "target_master_name", i2.instance_name)],
+        ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
-    assert i1.replicaset_master_name() == i2.instance_name
+    assert i1.replicaset_master_name() == i2.name
 
     plugin_ref.assert_last_seen_ctx("testservice_1", {"is_master": True}, i2)
 
     # assert that the first instance now has a poison service
     # and the second instance is not poisoned
-    plugin_ref.assert_route_poisoned(i1.instance_name, "testservice_1")
-    plugin_ref.assert_route_poisoned(i2.instance_name, "testservice_1", poisoned=False)
+    plugin_ref.assert_route_poisoned(i1.name, "testservice_1")
+    plugin_ref.assert_route_poisoned(i2.name, "testservice_1", poisoned=False)
 
 
 def _test_plugin_install_and_enable_on_catchup(
@@ -1530,7 +1528,7 @@ def test_set_topology(cluster: Cluster):
 
 cluster_cfg = """
     cluster:
-        cluster_id: test
+        cluster_name: test
         tier:
             red:
                 replication_factor: 1
@@ -2158,7 +2156,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: plugin_test
+    cluster_name: plugin_test
     tier:
         default:
         router:
@@ -2230,11 +2228,11 @@ cluster:
     context = make_context()
     input = dict(
         path="/ping",
-        instance_name=i2.instance_name,
+        instance_name=i2.name,
         input="how are you?",
     )
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
-    assert msgpack.loads(output) == ["pong", i2.instance_name, b"how are you?"]
+    assert msgpack.loads(output) == ["pong", i2.name, b"how are you?"]
 
     i1.call("pico._inject_error", "RPC_NETWORK_ERROR", True)
     context = make_context()
@@ -2242,16 +2240,16 @@ cluster:
     # check that rpc call to a non-self instance will fail
     input = dict(
         path="/ping",
-        instance_name=i2.instance_name,
+        instance_name=i2.name,
         input="how are you?",
     )
     with pytest.raises(TarantoolError, match="injected error"):
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
 
     # check self-calling RPC (this should not use a network)
-    input["instance_name"] = i1.instance_name
+    input["instance_name"] = i1.name
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
-    assert msgpack.loads(output) == ["pong", i1.instance_name, b"how are you?"]
+    assert msgpack.loads(output) == ["pong", i1.name, b"how are you?"]
 
     i1.call("pico._inject_error", "RPC_NETWORK_ERROR", False)
 
@@ -2265,10 +2263,10 @@ cluster:
     pong, instance_name, echo = msgpack.loads(output)
     assert pong == "pong"
     assert instance_name in [
-        i2.instance_name,
-        i3.instance_name,
-        i4.instance_name,
-        router_instance.instance_name,
+        i2.name,
+        i3.name,
+        i4.name,
+        router_instance.name,
     ]
     assert echo == b"random-target"
 
@@ -2282,7 +2280,7 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     pong, instance_name, echo = msgpack.loads(output)
     assert pong == "pong"
-    assert instance_name in [i3.instance_name, i4.instance_name]
+    assert instance_name in [i3.name, i4.name]
     assert echo == b"replicaset:any"
 
     # Check calling RPC to a master of a specific replicaset via the plugin SDK
@@ -2319,7 +2317,7 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     pong, instance_name, echo = msgpack.loads(output)
     assert pong == "pong"
-    assert instance_name == i2.instance_name  # shouldn't call self
+    assert instance_name == i2.name  # shouldn't call self
     assert echo == b"bucket_id:any"
 
     # Check calling RPC by tier and bucket_id via the plugin SDK
@@ -2332,7 +2330,7 @@ cluster:
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     pong, instance_name, echo = msgpack.loads(output)
     assert pong == "pong"
-    assert instance_name == router_instance.instance_name
+    assert instance_name == router_instance.name
     assert echo == b"bucket_id:any"
 
     # Check calling RPC by bucket_id to master via the plugin SDK
@@ -2483,11 +2481,11 @@ def test_sdk_internal(cluster: Cluster):
     PluginReflection.assert_data_eq(i1, "version", version_info["picodata_version"])
     PluginReflection.assert_data_eq(i1, "rpc_version", version_info["rpc_api_version"])
 
-    PluginReflection.assert_data_eq(i1, "instance_name", i1.instance_name)
+    PluginReflection.assert_data_eq(i1, "name", i1.name)
     PluginReflection.assert_data_eq(i1, "instance_uuid", i1.instance_uuid())
     PluginReflection.assert_data_eq(i1, "replicaset_id", "r1")
     PluginReflection.assert_data_eq(i1, "replicaset_uuid", i1.replicaset_uuid())
-    PluginReflection.assert_data_eq(i1, "cluster_id", i1.cluster_id)
+    PluginReflection.assert_data_eq(i1, "cluster_name", i1.cluster_name)
     PluginReflection.assert_data_eq(i1, "tier", _DEFAULT_TIER)
     PluginReflection.assert_data_eq(i1, "raft_id", "1")
     PluginReflection.assert_int_data_le(

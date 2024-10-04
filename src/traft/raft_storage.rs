@@ -112,9 +112,9 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
-    pub fn cluster_id(&self) -> tarantool::Result<String> {
-        let res = self.try_get_raft_state("cluster_id")?;
-        let res = res.expect("cluster_id should always be set");
+    pub fn cluster_name(&self) -> tarantool::Result<String> {
+        let res = self.try_get_raft_state("cluster_name")?;
+        let res = res.expect("cluster_name should always be set");
         Ok(res)
     }
 
@@ -299,8 +299,9 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
-    pub fn persist_cluster_id(&self, cluster_id: &str) -> tarantool::Result<()> {
-        self.space_raft_state.insert(&("cluster_id", cluster_id))?;
+    pub fn persist_cluster_name(&self, cluster_name: &str) -> tarantool::Result<()> {
+        self.space_raft_state
+            .insert(&("cluster_name", cluster_name))?;
         Ok(())
     }
 
@@ -1042,9 +1043,9 @@ mod tests {
         let storage = RaftSpaceAccess::new().unwrap();
         let raft_state = Space::find(RaftSpaceAccess::SPACE_RAFT_STATE).unwrap();
 
-        storage.persist_cluster_id("test_cluster").unwrap();
-        storage.persist_cluster_id("test_cluster_2").unwrap_err();
-        assert_eq!(storage.cluster_id().unwrap(), "test_cluster".to_string());
+        storage.persist_cluster_name("test_cluster").unwrap();
+        storage.persist_cluster_name("test_cluster_2").unwrap_err();
+        assert_eq!(storage.cluster_name().unwrap(), "test_cluster".to_string());
 
         raft_state.delete(&("id",)).unwrap();
         assert_eq!(storage.raft_id().unwrap(), None);

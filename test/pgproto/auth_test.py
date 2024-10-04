@@ -51,7 +51,7 @@ def test_admin_auth(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
     cluster:
-        cluster_id: test
+        cluster_name: test
         tier:
             default:
     instance:

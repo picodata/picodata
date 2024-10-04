@@ -11,7 +11,7 @@ def cluster3(cluster: Cluster):
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
-    info = instance.call(".proc_instance_info", expelled_instance.instance_name)
+    info = instance.call(".proc_instance_info", expelled_instance.name)
     states = (info["current_state"]["variant"], info["target_state"]["variant"])
     assert states == ("Expelled", "Expelled")
 

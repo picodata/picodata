@@ -456,7 +456,7 @@ impl PluginManager {
                 let current_instance_poisoned = storage
                     .service_route_table
                     .get(&ServiceRouteKey {
-                        instance_name: &instance_info.instance_name,
+                        instance_name: &instance_info.name,
                         plugin_name: &plugin_name,
                         plugin_version: &plugin_identity.version,
                         service_name: &service_name,
@@ -466,7 +466,7 @@ impl PluginManager {
                 if current_instance_poisoned == Some(true) {
                     // now the route is healthy
                     let route = ServiceRouteItem::new_healthy(
-                        instance_info.instance_name,
+                        instance_info.name,
                         plugin_identity,
                         service_name,
                     );
@@ -481,11 +481,8 @@ impl PluginManager {
                     "service poisoned, `on_config_change` error: {error}"
                 );
                 // now the route is poison
-                let route = ServiceRouteItem::new_poison(
-                    instance_info.instance_name,
-                    plugin_identity,
-                    service_name,
-                );
+                let route =
+                    ServiceRouteItem::new_poison(instance_info.name, plugin_identity, service_name);
                 // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
                 replace_routes(&[route], Duration::from_secs(10))?;
             }
@@ -533,7 +530,7 @@ impl PluginManager {
                         let current_instance_poisoned = storage
                             .service_route_table
                             .get(&ServiceRouteKey {
-                                instance_name: &instance_info.instance_name,
+                                instance_name: &instance_info.name,
                                 plugin_name: &plugin_identity.name,
                                 plugin_version: &plugin_identity.version,
                                 service_name: &service_name,
@@ -543,7 +540,7 @@ impl PluginManager {
                         if current_instance_poisoned == Some(true) {
                             // now the route is healthy
                             routes_to_replace.push(ServiceRouteItem::new_healthy(
-                                instance_info.instance_name.clone(),
+                                instance_info.name.clone(),
                                 &plugin_identity,
                                 service_name,
                             ));
@@ -557,7 +554,7 @@ impl PluginManager {
                         );
                         // now the route is poison
                         routes_to_replace.push(ServiceRouteItem::new_poison(
-                            instance_info.instance_name.clone(),
+                            instance_info.name.clone(),
                             &plugin_identity,
                             service_name,
                         ));

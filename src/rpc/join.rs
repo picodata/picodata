@@ -40,7 +40,7 @@ crate::define_rpc_request! {
 
     /// Request to join the cluster.
     pub struct Request {
-        pub cluster_id: String,
+        pub cluster_name: String,
         pub instance_name: Option<InstanceName>,
         pub replicaset_id: Option<ReplicasetId>,
         pub advertise_address: String,
@@ -68,14 +68,14 @@ crate::define_rpc_request! {
 // wait_* fns also need to be async.
 pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<Response> {
     let node = node::global()?;
-    let cluster_id = node.raft_storage.cluster_id()?;
+    let cluster_name = node.raft_storage.cluster_name()?;
     let storage = &node.storage;
     let guard = node.instances_update.lock();
 
-    if req.cluster_id != cluster_id {
+    if req.cluster_name != cluster_name {
         return Err(Error::ClusterIdMismatch {
-            instance_cluster_id: req.cluster_id,
-            cluster_cluster_id: cluster_id,
+            instance_cluster_name: req.cluster_name,
+            cluster_cluster_name: cluster_name,
         });
     }
 
@@ -214,7 +214,7 @@ pub fn build_instance(
 
     Ok(Instance {
         raft_id,
-        instance_name,
+        name: instance_name,
         instance_uuid,
         replicaset_id,
         replicaset_uuid,

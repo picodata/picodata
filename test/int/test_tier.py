@@ -7,7 +7,7 @@ def test_single_tier_query(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         default:
         router:
@@ -195,7 +195,7 @@ def test_executing_query_on_instances_from_different_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         storage:
             replication_factor: 1
@@ -296,7 +296,7 @@ def test_vshard_configuration_on_different_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         storage:
             replication_factor: 2
@@ -375,7 +375,7 @@ cluster:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(
             router_instance, "storage"
         )
-        assert replicaset_masters[r2_uuid] == storage_instance_2.instance_name
+        assert replicaset_masters[r2_uuid] == storage_instance_2.name
 
     Retriable(timeout=10, rps=5).call(wait_until_governor_deliver_vshard_configuration)
 
@@ -393,7 +393,7 @@ def test_multiple_tier_and_global_tables(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         storage:
             replication_factor: 1
@@ -470,7 +470,7 @@ def test_tier_with_several_replicasets(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_id: test
+    cluster_name: test
     tier:
         router:
             replication_factor: 1
@@ -546,7 +546,7 @@ cluster:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(
             router_instance, "storage"
         )
-        assert replicaset_masters[r_uuid] == instance.instance_name
+        assert replicaset_masters[r_uuid] == instance.name
 
     Retriable(timeout=10, rps=5).call(
         wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid

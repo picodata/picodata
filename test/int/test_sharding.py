@@ -146,7 +146,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
         return router:callro({bucket_id}, ".proc_instance_info")
                        """
         )
-        reached_instances.add(info["instance_name"])
+        reached_instances.add(info["name"])
     assert len(reached_instances) == 2
 
     # add an instance to a new replicaset
@@ -155,7 +155,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
     # buckets do not start rebalancing until new replicaset is full
     cluster.wait_until_instance_has_this_many_active_buckets(i5, 0)
     for i in cluster.instances:
-        if i.instance_name != i5.instance_name:
+        if i.name != i5.name:
             cluster.wait_until_instance_has_this_many_active_buckets(i, 1500)
 
     # add another instance to new replicaset, it's now full
@@ -174,7 +174,7 @@ def test_bucket_rebalancing_respects_replication_factor(cluster: Cluster):
         return router:callro({bucket_id}, ".proc_instance_info")
                        """
         )
-        reached_instances.add(info["instance_name"])
+        reached_instances.add(info["name"])
     assert len(reached_instances) == 3
 
 
@@ -214,8 +214,8 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
     for i in cluster.instances:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)
         # The first instance in the replicaset becomes it's master
-        assert replicaset_masters[r1_uuid] == i1.instance_name
-        assert replicaset_masters[r2_uuid] == i3.instance_name
+        assert replicaset_masters[r1_uuid] == i1.name
+        assert replicaset_masters[r2_uuid] == i3.name
 
     rows = i1.sql(
         """ SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """
@@ -226,13 +226,13 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         "update",
         "_pico_replicaset",
         key=["r1"],
-        ops=[("=", "target_master_name", i2.instance_name)],
+        ops=[("=", "target_master_name", i2.name)],
     )
     index = cluster.cas(
         "update",
         "_pico_replicaset",
         key=["r2"],
-        ops=[("=", "target_master_name", i4.instance_name)],
+        ops=[("=", "target_master_name", i4.name)],
     )
     cluster.raft_wait_index(index)
 
@@ -242,8 +242,8 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
     for i in cluster.instances:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)
         # Now the chosen instances are replicaset masters
-        assert replicaset_masters[r1_uuid] == i2.instance_name
-        assert replicaset_masters[r2_uuid] == i4.instance_name
+        assert replicaset_masters[r1_uuid] == i2.name
+        assert replicaset_masters[r2_uuid] == i4.name
 
 
 def test_vshard_bootstrap_timeout(cluster: Cluster):
