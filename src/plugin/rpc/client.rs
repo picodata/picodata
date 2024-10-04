@@ -1,5 +1,5 @@
 use crate::error_code::ErrorCode;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::plugin::{rpc, PluginIdentifier};
 use crate::replicaset::Replicaset;
 use crate::schema::ServiceRouteItem;
@@ -56,15 +56,15 @@ pub(crate) fn send_rpc_request(
 
     let timeout = Duration::from_secs_f64(timeout);
 
-    let instance_id = resolve_rpc_target(plugin_identity, service, target, node)?;
+    let instance_name = resolve_rpc_target(plugin_identity, service, target, node)?;
 
-    let my_instance_id = node
+    let my_instance_name = node
         .raft_storage
-        .instance_id()?
+        .instance_name()?
         .expect("should be persisted at this point");
 
     if path.starts_with('.') {
-        return call_builtin_stored_proc(pool, path, input, &instance_id, timeout);
+        return call_builtin_stored_proc(pool, path, input, &instance_name, timeout);
     }
 
     let mut buffer = Vec::new();
@@ -82,19 +82,19 @@ pub(crate) fn send_rpc_request(
     // Safe because buffer contains a msgpack array
     let args = unsafe { TupleBuffer::from_vec_unchecked(buffer) };
 
-    if instance_id == my_instance_id {
+    if instance_name == my_instance_name {
         let output = rpc::server::proc_rpc_dispatch_impl(args.as_ref().into())?;
         return process_rpc_output(output);
     };
 
     crate::error_injection!("RPC_NETWORK_ERROR" => return Err(Error::other("injected error")));
     tlog!(Debug, "sending plugin RPC request";
-        "instance_id" => %instance_id,
+        "instance_name" => %instance_name,
         "request_id" => %request_id,
         "path" => path,
     );
     let future = pool.call_raw(
-        &instance_id,
+        &instance_name,
         crate::proc_name!(rpc::server::proc_rpc_dispatch),
         &args,
         Some(timeout),
@@ -108,7 +108,7 @@ fn call_builtin_stored_proc(
     pool: &ConnectionPool,
     proc: &str,
     input: &[u8],
-    instance_id: &InstanceId,
+    instance_name: &InstanceName,
     timeout: Duration,
 ) -> Result<&'static [u8], Error> {
     // Call a builtin picodata stored procedure
@@ -119,7 +119,7 @@ fn call_builtin_stored_proc(
 
     let args = RawBytes::new(input);
 
-    let future = pool.call_raw(instance_id, proc, args, Some(timeout))?;
+    let future = pool.call_raw(instance_name, proc, args, Some(timeout))?;
     // FIXME: remove this extra allocation for RawByteBuf
     let output: RawByteBuf = fiber::block_on(future)?;
 
@@ -199,22 +199,22 @@ fn get_replicaset_uuid_by_bucket_id(
     res
 }
 
-fn get_instance_id_of_master_of_replicaset(
+fn get_instance_name_of_master_of_replicaset(
     tier_name: &str,
     bucket_id: u64,
     node: &Node,
-) -> Result<InstanceId, Error> {
+) -> Result<InstanceName, Error> {
     let replicaset_uuid = get_replicaset_uuid_by_bucket_id(tier_name, bucket_id, node)?;
     let tuple = node.storage.replicasets.by_uuid_raw(&replicaset_uuid)?;
-    let Some(master_id) = tuple
-        .field(Replicaset::FIELD_TARGET_MASTER_ID)
+    let Some(master_name) = tuple
+        .field(Replicaset::FIELD_TARGET_MASTER_NAME)
         .map_err(IntoBoxError::into_box_error)?
     else {
         #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_id' field in _pico_replicaset tuple").into());
+        return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_name' field in _pico_replicaset tuple").into());
     };
 
-    Ok(master_id)
+    Ok(master_name)
 }
 
 fn resolve_rpc_target(
@@ -222,12 +222,12 @@ fn resolve_rpc_target(
     service: &str,
     target: &FfiSafeRpcTargetSpecifier,
     node: &Node,
-) -> Result<InstanceId, Error> {
-    let mut instance_id = None;
+) -> Result<InstanceName, Error> {
+    let mut instance_name = None;
     match target {
-        FfiSafeRpcTargetSpecifier::InstanceId(iid) => {
+        FfiSafeRpcTargetSpecifier::InstanceName(iid) => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
-            instance_id = Some(InstanceId::from(unsafe { iid.as_str() }));
+            instance_name = Some(InstanceName::from(unsafe { iid.as_str() }));
         }
 
         &FfiSafeRpcTargetSpecifier::Replicaset {
@@ -237,14 +237,14 @@ fn resolve_rpc_target(
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
             let replicaset_id = unsafe { replicaset_id.as_str() };
             let tuple = node.storage.replicasets.get_raw(replicaset_id)?;
-            let Some(master_id) = tuple
-                .field(Replicaset::FIELD_TARGET_MASTER_ID)
+            let Some(master_name) = tuple
+                .field(Replicaset::FIELD_TARGET_MASTER_NAME)
                 .map_err(IntoBoxError::into_box_error)?
             else {
                 #[rustfmt::skip]
-                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_id' field in _pico_replicaset tuple").into());
+                return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_name' field in _pico_replicaset tuple").into());
             };
-            instance_id = Some(master_id);
+            instance_name = Some(master_name);
         }
 
         &FfiSafeRpcTargetSpecifier::BucketId {
@@ -256,9 +256,9 @@ fn resolve_rpc_target(
                 .tier()?
                 .expect("storage for instance should exists");
 
-            let master_id =
-                get_instance_id_of_master_of_replicaset(&current_instance_tier, bucket_id, node)?;
-            instance_id = Some(master_id);
+            let master_name =
+                get_instance_name_of_master_of_replicaset(&current_instance_tier, bucket_id, node)?;
+            instance_name = Some(master_name);
         }
 
         &FfiSafeRpcTargetSpecifier::TierAndBucketId {
@@ -268,8 +268,8 @@ fn resolve_rpc_target(
         } => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
             let tier = unsafe { tier.as_str() };
-            let master_id = get_instance_id_of_master_of_replicaset(tier, bucket_id, node)?;
-            instance_id = Some(master_id);
+            let master_name = get_instance_name_of_master_of_replicaset(tier, bucket_id, node)?;
+            instance_name = Some(master_name);
         }
 
         // These cases are handled below
@@ -283,17 +283,17 @@ fn resolve_rpc_target(
         } => {}
     }
 
-    if let Some(instance_id) = instance_id {
+    if let Some(instance_name) = instance_name {
         // A single instance was chosen
-        check_route_to_instance(node, ident, service, &instance_id)?;
-        return Ok(instance_id);
+        check_route_to_instance(node, ident, service, &instance_name)?;
+        return Ok(instance_name);
     } else {
         // Need to pick an instance from a group, fallthrough
     }
 
-    let my_instance_id = node
+    let my_instance_name = node
         .raft_storage
-        .instance_id()?
+        .instance_name()?
         .expect("should be persisted at this point");
 
     let mut candidates = node
@@ -313,7 +313,7 @@ fn resolve_rpc_target(
 
     match target {
         #[rustfmt::skip]
-        FfiSafeRpcTargetSpecifier::InstanceId { .. }
+        FfiSafeRpcTargetSpecifier::InstanceName { .. }
         | FfiSafeRpcTargetSpecifier::Replicaset { to_master: true, .. }
         | FfiSafeRpcTargetSpecifier::TierAndBucketId { to_master: true, .. }
         | FfiSafeRpcTargetSpecifier::BucketId { to_master: true, .. } => unreachable!("handled above"),
@@ -388,13 +388,13 @@ fn resolve_rpc_target(
 
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates
-        for instance_id in replicas {
-            if my_instance_id == instance_id && candidates.len() > 1 {
+        for instance_name in replicas {
+            if my_instance_name == instance_name && candidates.len() > 1 {
                 // Prefer someone else instead of self
                 continue;
             }
-            if candidates.contains(&instance_id) {
-                return Ok(instance_id);
+            if candidates.contains(&instance_name) {
+                return Ok(instance_name);
             }
         }
 
@@ -405,13 +405,13 @@ fn resolve_rpc_target(
 
         // TODO: find a better strategy then just the random one
         let random_index = rand::random::<usize>() % candidates.len();
-        let mut instance_id = std::mem::take(&mut candidates[random_index]);
-        if instance_id == my_instance_id && candidates.len() > 1 {
+        let mut instance_name = std::mem::take(&mut candidates[random_index]);
+        if instance_name == my_instance_name && candidates.len() > 1 {
             // Prefer someone else instead of self
             let index = (random_index + 1) % candidates.len();
-            instance_id = std::mem::take(&mut candidates[index]);
+            instance_name = std::mem::take(&mut candidates[index]);
         }
-        return Ok(instance_id);
+        return Ok(instance_name);
     }
 }
 
@@ -419,20 +419,20 @@ fn check_route_to_instance(
     node: &Node,
     ident: &PluginIdentifier,
     service: &str,
-    instance_id: &InstanceId,
+    instance_name: &InstanceName,
 ) -> Result<(), Error> {
     let res = node.storage.service_route_table.get_raw(&ServiceRouteKey {
-        instance_id,
+        instance_name,
         plugin_name: &ident.name,
         plugin_version: &ident.version,
         service_name: service,
     })?;
     #[rustfmt::skip]
     let Some(tuple) = res else {
-        if node.storage.instances.get_raw(instance_id).is_ok() {
-            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_id}")).into());
+        if node.storage.instances.get_raw(instance_name).is_ok() {
+            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_name}")).into());
         } else {
-            return Err(BoxError::new(ErrorCode::NoSuchInstance, format!("instance with instance_id \"{instance_id}\" not found")).into());
+            return Err(BoxError::new(ErrorCode::NoSuchInstance, format!("instance with instance_name \"{instance_name}\" not found")).into());
         }
     };
     let res = tuple
@@ -444,7 +444,7 @@ fn check_route_to_instance(
     };
     if is_poisoned {
         #[rustfmt::skip]
-        return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{ident}.{service}' is poisoned on {instance_id}")).into());
+        return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{ident}.{service}' is poisoned on {instance_name}")).into());
     }
     Ok(())
 }

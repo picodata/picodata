@@ -451,8 +451,8 @@ which improves perfomance
 
 ### Compatibility
 
-- System table `_pico_replicaset` now has a different format: the field `master_id`
-  is replaced with 2 fields `current_master_id` and `target_master_id`.
+- System table `_pico_replicaset` now has a different format: the field `master_name`
+  is replaced with 2 fields `current_master_name` and `target_master_name`.
 
 - All `.proc_*` stored procedures changed their return values. An extra top level
   array of 1 element is removed.

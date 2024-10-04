@@ -32,8 +32,8 @@ impl<'a> RequestBuilder<'a> {
     pub fn new(target: RequestTarget<'a>) -> Self {
         let target = match target {
             RequestTarget::Any => FfiSafeRpcTargetSpecifier::Any,
-            RequestTarget::InstanceId(instance_id) => {
-                FfiSafeRpcTargetSpecifier::InstanceId(instance_id.into())
+            RequestTarget::InstanceName(instance_name) => {
+                FfiSafeRpcTargetSpecifier::InstanceName(instance_name.into())
             }
             RequestTarget::BucketId(bucket_id, to_master) => FfiSafeRpcTargetSpecifier::BucketId {
                 bucket_id,
@@ -191,8 +191,8 @@ pub enum RequestTarget<'a> {
     #[default]
     Any,
 
-    /// The specific instance with a given instance id.
-    InstanceId(&'a str),
+    /// The specific instance with a given instance name.
+    InstanceName(&'a str),
 
     /// An instance in the replicaset in tier of target instance which currently stores the bucket with
     /// the specified id.
@@ -266,7 +266,7 @@ pub struct FfiSafeRpcRequestArguments<'a> {
 #[repr(C)]
 pub enum FfiSafeRpcTargetSpecifier {
     Any,
-    InstanceId(FfiSafeStr),
+    InstanceName(FfiSafeStr),
     Replicaset {
         replicaset_id: FfiSafeStr,
         to_master: bool,

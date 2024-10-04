@@ -6,7 +6,7 @@ use ::tarantool::fiber;
 use tarantool::fiber::r#async::timeout::IntoTimeout;
 
 use crate::info::{RuntimeInfo, VersionInfo};
-use crate::instance::{Instance, InstanceId, StateVariant};
+use crate::instance::{Instance, InstanceName, StateVariant};
 use crate::replicaset::{Replicaset, ReplicasetId};
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
@@ -63,7 +63,7 @@ struct InstanceInfo {
     is_leader: bool,
     current_state: StateVariant,
     target_state: StateVariant,
-    name: InstanceId,
+    name: InstanceName,
     binary_address: String,
 }
 
@@ -172,7 +172,7 @@ fn get_peer_addresses(
             !only_leaders
                 || replicasets
                     .get(&item.replicaset_id)
-                    .is_some_and(|r| r.current_master_id == item.instance_id)
+                    .is_some_and(|r| r.current_master_name == item.instance_name)
         })
         .map(|item| (item.raft_id, true))
         .collect();
@@ -191,14 +191,14 @@ async fn get_instances_data(
     let mut fs = vec![];
     for instance in instances {
         let res = pool.call_raw(
-            &instance.instance_id,
+            &instance.instance_name,
             ".proc_runtime_info",
             &(),
             DEFAULT_TIMEOUT,
         );
         let future = unwrap_ok_or!(res,
             Err(e) => {
-                tlog!(Error, "webui: error on calling .proc_runtime_info on instance {}: {e}", instance.instance_id);
+                tlog!(Error, "webui: error on calling .proc_runtime_info on instance {}: {e}", instance.instance_name);
                 continue;
             }
         // we have to add timeout directly to future due
@@ -228,7 +228,7 @@ async fn get_instances_data(
                         tlog!(
                             Error,
                             "webui: error on calling .proc_runtime_info on instance {}: {e}",
-                            instance.instance_id,
+                            instance.instance_name,
                         );
                     }
                 }
@@ -267,7 +267,7 @@ fn get_replicasets_info(
         let mut replicaset_uuid = String::new();
         let mut tier = instance.tier.clone();
         if let Some(replicaset) = replicasets.get(&replicaset_id) {
-            is_leader = replicaset.current_master_id == instance.instance_id;
+            is_leader = replicaset.current_master_name == instance.instance_name;
             replicaset_uuid.clone_from(&replicaset.replicaset_uuid);
             debug_assert_eq!(replicaset.tier, instance.tier);
             tier.clone_from(&replicaset.tier);
@@ -291,7 +291,7 @@ fn get_replicasets_info(
             is_leader,
             current_state: instance.current_state.variant,
             target_state: instance.target_state.variant,
-            name: instance.instance_id.clone(),
+            name: instance.instance_name.clone(),
             binary_address: address,
         };
 

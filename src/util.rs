@@ -985,7 +985,7 @@ pub fn check_msgpack_matches_type(
 /// # Examples
 /// ```rust
 /// # use picodata::util::edit_distance;
-/// assert_eq!(edit_distance("instance-id", "instance_id"), 1);
+/// assert_eq!(edit_distance("instance-name", "instance_name"), 1);
 /// assert_eq!(edit_distance("foo", "bar"), 3);
 /// assert_eq!(edit_distance("care", "scar"), 2);
 /// ```
@@ -1100,7 +1100,7 @@ mod tests {
         assert_eq!(edit_distance("", "a"), 1);
         assert_eq!(edit_distance("aba", ""), 3);
         assert_eq!(edit_distance("abba", "baba"), 2);
-        assert_eq!(edit_distance("instance-id", "instance_id"), 1);
+        assert_eq!(edit_distance("instance-name", "instance_name"), 1);
         assert_eq!(edit_distance("буква-w", "буква-ю"), 1);
         assert_eq!(edit_distance("thouroughness", "abandonment"), 11);
         assert_eq!(edit_distance("lonesome", "somebody"), 5);

@@ -256,7 +256,7 @@ def test_gostech_join_expel_instance(
     cluster.deploy(instance_count=1, audit=audit_server.cmd(cluster.binary_path))
 
     i2 = cluster.add_instance(
-        instance_id="i2", audit=audit_server.cmd(cluster.binary_path)
+        instance_name="i2", audit=audit_server.cmd(cluster.binary_path)
     )
     cluster.expel(i2)
     cluster.terminate()

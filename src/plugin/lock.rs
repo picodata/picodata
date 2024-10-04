@@ -1,6 +1,6 @@
 use crate::cas::Range;
 use crate::info::InstanceInfo;
-use crate::instance::{InstanceId, StateVariant};
+use crate::instance::{InstanceName, StateVariant};
 use crate::plugin::migration::Error;
 use crate::plugin::{
     reenterable_plugin_cas_request, PluginError, PluginOp, PreconditionCheckResult,
@@ -9,14 +9,14 @@ use crate::storage::{ClusterwideTable, PropertyName};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::effective_user_id;
-use crate::{instance, tlog, traft};
+use crate::{tlog, traft};
 use serde::{Deserialize, Serialize};
 use tarantool::time::Instant;
 
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct PicoPropertyLock {
     /// The lock is considered to be acquired by this instance.
-    instance_id: instance::InstanceId,
+    instance_name: InstanceName,
     /// State incarnation of the instance at the moment it acquired the lock.
     ///
     /// This is used to determine if the instance has terminated while holding the lock.
@@ -24,9 +24,9 @@ pub struct PicoPropertyLock {
 }
 
 impl PicoPropertyLock {
-    pub fn new(instance_id: InstanceId, incarnation: u64) -> Self {
+    pub fn new(instance_name: InstanceName, incarnation: u64) -> Self {
         Self {
-            instance_id,
+            instance_name,
             incarnation,
         }
     }
@@ -35,7 +35,7 @@ impl PicoPropertyLock {
 impl From<InstanceInfo> for PicoPropertyLock {
     fn from(instance_info: InstanceInfo) -> Self {
         PicoPropertyLock::new(
-            instance_info.instance_id,
+            instance_info.instance_name,
             instance_info.current_state.incarnation,
         )
     }
@@ -56,7 +56,7 @@ pub fn try_acquire(deadline: Instant) -> crate::plugin::Result<()> {
                 return Err(PluginError::LockAlreadyAcquired.into());
             };
 
-            let info = InstanceInfo::try_get(node, Some(&existed_lock.instance_id)).ok();
+            let info = InstanceInfo::try_get(node, Some(&existed_lock.instance_name)).ok();
             match info {
                 None => {
                     tlog!(

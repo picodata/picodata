@@ -352,7 +352,7 @@ define_clusterwide_tables! {
             pub struct Instances {
                 space: Space,
                 #[primary]
-                index_instance_id:   Index => "_pico_instance_id",
+                index_instance_name:   Index => "_pico_instance_name",
                 index_raft_id:       Index => "_pico_instance_raft_id",
                 index_replicaset_id: Index => "_pico_instance_replicaset_id",
             }
@@ -1819,10 +1819,10 @@ impl Instances {
             .if_not_exists(true)
             .create()?;
 
-        let index_instance_id = space_instances
-            .index_builder("_pico_instance_id")
+        let index_instance_name = space_instances
+            .index_builder("_pico_instance_name")
             .unique(true)
-            .part("instance_id")
+            .part("instance_name")
             .if_not_exists(true)
             .create()?;
 
@@ -1842,7 +1842,7 @@ impl Instances {
 
         Ok(Self {
             space: space_instances,
-            index_instance_id,
+            index_instance_name,
             index_raft_id,
             index_replicaset_id,
         })
@@ -1860,10 +1860,12 @@ impl Instances {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "_pico_instance_id".into(),
+                name: "_pico_instance_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![Part::from(("instance_id", IndexFieldType::String)).is_nullable(false)],
+                parts: vec![
+                    Part::from(("instance_name", IndexFieldType::String)).is_nullable(false)
+                ],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -1903,25 +1905,25 @@ impl Instances {
 
     #[allow(dead_code)]
     #[inline]
-    pub fn delete(&self, instance_id: &str) -> tarantool::Result<()> {
-        self.space.delete(&[instance_id])?;
+    pub fn delete(&self, instance_name: &str) -> tarantool::Result<()> {
+        self.space.delete(&[instance_name])?;
         Ok(())
     }
 
-    /// Finds an instance by `id` (see trait [`InstanceId`]).
+    /// Finds an instance by `name` (see trait [`InstanceName`]).
     #[inline(always)]
-    pub fn get(&self, id: &impl InstanceId) -> Result<Instance> {
-        let res = id
+    pub fn get(&self, name: &impl InstanceName) -> Result<Instance> {
+        let res = name
             .find_in(self)?
             .decode()
             .expect("failed to decode instance");
         Ok(res)
     }
 
-    /// Finds an instance by `id` (see trait [`InstanceId`]).
+    /// Finds an instance by `name` (see trait [`InstanceName`]).
     #[inline(always)]
-    pub fn try_get(&self, id: &impl InstanceId) -> Result<Option<Instance>> {
-        let res = id.find_in(self);
+    pub fn try_get(&self, name: &impl InstanceName) -> Result<Option<Instance>> {
+        let res = name.find_in(self);
         let tuple = match res {
             Ok(tuple) => tuple,
             Err(Error::NoSuchInstance { .. }) => return Ok(None),
@@ -1934,15 +1936,15 @@ impl Instances {
 
     /// Returns the tuple without deserializing.
     #[inline(always)]
-    pub fn get_raw(&self, id: &impl InstanceId) -> Result<Tuple> {
-        let res = id.find_in(self)?;
+    pub fn get_raw(&self, name: &impl InstanceName) -> Result<Tuple> {
+        let res = name.find_in(self)?;
         Ok(res)
     }
 
-    /// Checks if an instance with `id` (see trait [`InstanceId`]) is present.
+    /// Checks if an instance with `name` (see trait [`InstanceName`]) is present.
     #[inline]
-    pub fn contains(&self, id: &impl InstanceId) -> Result<bool> {
-        match id.find_in(self) {
+    pub fn contains(&self, name: &impl InstanceName) -> Result<bool> {
+        match name.find_in(self) {
             Ok(_) => Ok(true),
             Err(Error::NoSuchInstance { .. }) => Ok(false),
             Err(err) => Err(err),
@@ -2008,16 +2010,15 @@ impl ToEntryIter<MP_SERDE> for Instances {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// InstanceId
+// InstanceName
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Types implementing this trait can be used to identify a `Instance` when
-/// accessing storage.
-pub trait InstanceId: serde::Serialize {
+/// Types implementing this trait can be used to identify a `Instance` when accessing storage.
+pub trait InstanceName: serde::Serialize {
     fn find_in(&self, instances: &Instances) -> Result<Tuple>;
 }
 
-impl InstanceId for RaftId {
+impl InstanceName for RaftId {
     #[inline(always)]
     fn find_in(&self, instances: &Instances) -> Result<Tuple> {
         instances
@@ -2027,11 +2028,11 @@ impl InstanceId for RaftId {
     }
 }
 
-impl InstanceId for instance::InstanceId {
+impl InstanceName for instance::InstanceName {
     #[inline(always)]
     fn find_in(&self, instances: &Instances) -> Result<Tuple> {
         instances
-            .index_instance_id
+            .index_instance_name
             .get(&[self])?
             .ok_or_else(|| Error::NoSuchInstance(Err(self.clone())))
     }
@@ -3755,7 +3756,7 @@ impl ServiceRouteTable {
             .part("plugin_name")
             .part("plugin_version")
             .part("service_name")
-            .part("instance_id")
+            .part("instance_name")
             .if_not_exists(true)
             .create()?;
 
@@ -3779,7 +3780,7 @@ impl ServiceRouteTable {
                 Part::from(("plugin_name", IndexFieldType::String)).is_nullable(false),
                 Part::from(("plugin_version", IndexFieldType::String)).is_nullable(false),
                 Part::from(("service_name", IndexFieldType::String)).is_nullable(false),
-                Part::from(("instance_id", IndexFieldType::String)).is_nullable(false),
+                Part::from(("instance_name", IndexFieldType::String)).is_nullable(false),
             ],
             // This means the local schema is already up to date and main loop doesn't need to do anything
             schema_version: INITIAL_SCHEMA_VERSION,
@@ -3815,7 +3816,7 @@ impl ServiceRouteTable {
                 item.plugin_name,
                 item.plugin_version,
                 item.service_name,
-                item.instance_id,
+                item.instance_name,
             ))?;
         }
         Ok(())
@@ -3823,14 +3824,14 @@ impl ServiceRouteTable {
 
     pub fn get_by_instance(
         &self,
-        i: &instance::InstanceId,
+        i: &instance::InstanceName,
     ) -> tarantool::Result<Vec<ServiceRouteItem>> {
         let mut result = vec![];
 
         let iter = self.space.select(IteratorType::All, &())?;
         for tuple in iter {
             let item: ServiceRouteItem = tuple.decode()?;
-            if item.instance_id != i {
+            if item.instance_name != i {
                 continue;
             }
             result.push(item);
@@ -3843,7 +3844,7 @@ impl ServiceRouteTable {
         &self,
         plugin: &PluginIdentifier,
         service: &str,
-    ) -> tarantool::Result<Vec<instance::InstanceId>> {
+    ) -> tarantool::Result<Vec<instance::InstanceName>> {
         let mut result = vec![];
 
         let iter = self
@@ -3854,7 +3855,7 @@ impl ServiceRouteTable {
             if item.poison {
                 continue;
             }
-            result.push(item.instance_id);
+            result.push(item.instance_name);
         }
         Ok(result)
     }
@@ -4851,7 +4852,7 @@ mod tests {
     #[::tarantool::test]
     fn test_storage_instances() {
         use crate::instance::StateVariant::*;
-        use crate::instance::InstanceId;
+        use crate::instance::InstanceName;
         use crate::failure_domain::FailureDomain;
 
         let storage = Clusterwide::for_tests();
@@ -4877,14 +4878,14 @@ mod tests {
 
         let instance = storage.instances.all_instances().unwrap();
         assert_eq!(
-            instance.iter().map(|p| &p.instance_id).collect::<Vec<_>>(),
+            instance.iter().map(|p| &p.instance_name).collect::<Vec<_>>(),
             vec!["i1", "i2", "i3", "i4", "i5"]
         );
 
         assert_err!(
             storage.instances.put(&Instance {
                 raft_id: 1,
-                instance_id: "i99".into(),
+                instance_name: "i99".into(),
                 tier: DEFAULT_TIER.into(),
                 ..Instance::default()
             }),
@@ -4915,24 +4916,24 @@ mod tests {
 
         {
             // Check accessing instances by 'raft_id'
-            assert_eq!(storage.instances.get(&1).unwrap().instance_id, "i1");
-            assert_eq!(storage.instances.get(&2).unwrap().instance_id, "i2");
-            assert_eq!(storage.instances.get(&3).unwrap().instance_id, "i3");
-            assert_eq!(storage.instances.get(&4).unwrap().instance_id, "i4");
-            assert_eq!(storage.instances.get(&5).unwrap().instance_id, "i5");
+            assert_eq!(storage.instances.get(&1).unwrap().instance_name, "i1");
+            assert_eq!(storage.instances.get(&2).unwrap().instance_name, "i2");
+            assert_eq!(storage.instances.get(&3).unwrap().instance_name, "i3");
+            assert_eq!(storage.instances.get(&4).unwrap().instance_name, "i4");
+            assert_eq!(storage.instances.get(&5).unwrap().instance_name, "i5");
             assert_err!(storage.instances.get(&6), "instance with raft_id 6 not found");
         }
 
         {
-            // Check accessing instances by 'instance_id'
-            assert_eq!(storage.instances.get(&InstanceId::from("i1")).unwrap().raft_id, 1);
-            assert_eq!(storage.instances.get(&InstanceId::from("i2")).unwrap().raft_id, 2);
-            assert_eq!(storage.instances.get(&InstanceId::from("i3")).unwrap().raft_id, 3);
-            assert_eq!(storage.instances.get(&InstanceId::from("i4")).unwrap().raft_id, 4);
-            assert_eq!(storage.instances.get(&InstanceId::from("i5")).unwrap().raft_id, 5);
+            // Check accessing instances by 'instance_name'
+            assert_eq!(storage.instances.get(&InstanceName::from("i1")).unwrap().raft_id, 1);
+            assert_eq!(storage.instances.get(&InstanceName::from("i2")).unwrap().raft_id, 2);
+            assert_eq!(storage.instances.get(&InstanceName::from("i3")).unwrap().raft_id, 3);
+            assert_eq!(storage.instances.get(&InstanceName::from("i4")).unwrap().raft_id, 4);
+            assert_eq!(storage.instances.get(&InstanceName::from("i5")).unwrap().raft_id, 5);
             assert_err!(
-                storage.instances.get(&InstanceId::from("i6")),
-                "instance with instance_id \"i6\" not found"
+                storage.instances.get(&InstanceName::from("i6")),
+                "instance with instance_name \"i6\" not found"
             );
         }
 
@@ -4979,9 +4980,9 @@ mod tests {
         assert_eq!(storage.peer_addresses.get(1).unwrap().unwrap(), "foo");
         assert_eq!(storage.peer_addresses.get(2).unwrap().unwrap(), "bar");
 
-        let inst = |raft_id, instance_id: &str| Instance {
+        let inst = |raft_id, instance_name: &str| Instance {
             raft_id,
-            instance_id: instance_id.into(),
+            instance_name: instance_name.into(),
             ..Instance::default()
         };
         storage.instances.put(&inst(1, "bob")).unwrap();
@@ -4989,7 +4990,7 @@ mod tests {
         let t = storage.instances.index_raft_id.get(&[1]).unwrap().unwrap();
         let i: Instance = t.decode().unwrap();
         assert_eq!(i.raft_id, 1);
-        assert_eq!(i.instance_id, "bob");
+        assert_eq!(i.instance_name, "bob");
     }
 
     #[::tarantool::test]
@@ -4998,7 +4999,7 @@ mod tests {
 
         let i = Instance {
             raft_id: 1,
-            instance_id: "i".into(),
+            instance_name: "i".into(),
             ..Instance::default()
         };
         storage.instances.put(&i).unwrap();
@@ -5076,7 +5077,7 @@ mod tests {
 
         let i = Instance {
             raft_id: 1,
-            instance_id: "i".into(),
+            instance_name: "i".into(),
             ..Instance::default()
         };
         let tuples = [&i].to_tuple_buffer().unwrap();

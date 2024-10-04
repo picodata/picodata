@@ -12,19 +12,19 @@ cluster:
         default:
 instance:
     cluster_id: test
-    instance_id: from-config
+    instance_name: from-config
     replicaset_id: with-love
 
     memtx:
         memory: 42069
 """
     )
-    instance = cluster.add_instance(instance_id=False, wait_online=False)
+    instance = cluster.add_instance(instance_name=False, wait_online=False)
     instance.start()
     instance.wait_online()
 
     info = instance.call(".proc_instance_info")
-    assert info["instance_id"] == "from-config"
+    assert info["instance_name"] == "from-config"
     assert info["replicaset_id"] == "with-love"
 
     assert instance.eval("return box.cfg.memtx_memory") == 42069
@@ -46,7 +46,7 @@ instance:
     peer:
         - {listen}
     cluster_id: my-cluster
-    instance_id: my-instance
+    instance_name: my-instance
     replicaset_id: my-replicaset
     tier: deluxe
     log:
@@ -87,7 +87,7 @@ instance:
             failure_domain=dict(value=dict(), source="default"),
             shredding=dict(value=False, source="default"),
             cluster_id=dict(value="my-cluster", source="config_file"),
-            instance_id=dict(value="my-instance", source="config_file"),
+            instance_name=dict(value="my-instance", source="config_file"),
             replicaset_id=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
             audit=dict(
@@ -124,7 +124,7 @@ instance:
 
 
 def test_default_path_to_config_file(cluster: Cluster):
-    instance = cluster.add_instance(instance_id=False, wait_online=False)
+    instance = cluster.add_instance(instance_name=False, wait_online=False)
 
     # By default ./config.yaml will be used in the instance's current working directory
     work_dir = cluster.data_dir + "/work-dir"
@@ -243,7 +243,7 @@ cluster:
     replication_topology: mobius
 
 instance:
-    instance-id: i1
+    instance-name: i1
 
 super-cluster:
     - foo
@@ -252,7 +252,7 @@ super-cluster:
     )
     i1 = cluster.add_instance(wait_online=False)
     err = """\
-invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), `cluster.replication_topology`, `instance.instance-id` (did you mean `instance_id`?)\
+invalid configuration: unknown parameters: `super-cluster` (did you mean `cluster`?), `cluster.replication_topology`, `instance.instance-name` (did you mean `instance_name`?)\
 """  # noqa: E501
     crawler = log_crawler(i1, err)
 
@@ -453,7 +453,7 @@ def test_output_config_parameters(cluster: Cluster):
             default:
     instance:
         cluster_id: test
-        instance_id: from-config
+        instance_name: from-config
         replicaset_id: with-love
         memtx:
             memory: 42069B
@@ -466,7 +466,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.data_dir':
         'instance.config_file':
         'instance.cluster_id':
-        'instance.instance_id': "i1"
+        'instance.instance_name': "i1"
         'instance.replicaset_id': "with-love"
         'instance.tier': "default"
         'instance.failure_domain': {}

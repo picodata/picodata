@@ -1,5 +1,5 @@
 use crate::instance::Instance;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::mailbox::Mailbox;
 use crate::pico_service::pico_service_password;
 use crate::reachability::InstanceReachabilityManagerRef;
@@ -105,12 +105,12 @@ enum OnRequestResult {
 type Queue = Mailbox<Request>;
 
 pub struct PoolWorker {
-    // Despite instances are usually identified by `instance_id` in
+    // Despite instances are usually identified by `instance_name` in
     // picodata, raft commutication relies on `raft_id`, so it is
     // primary for worker.
     raft_id: RaftId,
-    // Store instance_id for the debugging purposes only.
-    instance_id: Option<InstanceId>,
+    // Store instance_name for the debugging purposes only.
+    instance_name: Option<InstanceName>,
     inbox: Queue,
     fiber: fiber::JoinHandle<'static, ()>,
     inbox_ready: watch::Sender<()>,
@@ -128,7 +128,7 @@ impl PoolWorker {
     #[inline]
     pub fn run(
         raft_id: RaftId,
-        instance_id: impl Into<Option<InstanceId>>,
+        instance_name: impl Into<Option<InstanceName>>,
         storage: PeerAddresses,
         opts: WorkerOptions,
         instance_reachability: InstanceReachabilityManagerRef,
@@ -136,7 +136,7 @@ impl PoolWorker {
         let inbox = Mailbox::new();
         let (stop_sender, stop_receiver) = oneshot::channel();
         let (inbox_ready_sender, inbox_ready_receiver) = watch::channel(());
-        let instance_id = instance_id.into();
+        let instance_name = instance_name.into();
         let full_address = storage.try_get(raft_id)?;
         let (address, port) = full_address
             .rsplit_once(':')
@@ -147,9 +147,9 @@ impl PoolWorker {
             .map_err(|_| Error::AddressParseFailure(full_address.clone()))?;
         let fiber = fiber::Builder::new()
             .name(
-                instance_id
+                instance_name
                     .as_ref()
-                    .map(|instance_id| format!("to:{instance_id}"))
+                    .map(|instance_name| format!("to:{instance_name}"))
                     .unwrap_or_else(|| format!("to:raft:{raft_id}")),
             )
             .func_async({
@@ -175,7 +175,7 @@ impl PoolWorker {
 
         Ok(Self {
             raft_id,
-            instance_id,
+            instance_name,
             fiber,
             inbox,
             inbox_ready: inbox_ready_sender,
@@ -392,7 +392,7 @@ impl std::fmt::Debug for PoolWorker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PoolWorker")
             .field("raft_id", &self.raft_id)
-            .field("instance_id", &self.instance_id)
+            .field("instance_name", &self.instance_name)
             .finish()
     }
 }
@@ -406,7 +406,7 @@ impl std::fmt::Debug for PoolWorker {
 pub struct ConnectionPool {
     worker_options: WorkerOptions,
     workers: UnsafeCell<HashMap<RaftId, PoolWorker>>,
-    raft_ids: UnsafeCell<HashMap<InstanceId, RaftId>>,
+    raft_ids: UnsafeCell<HashMap<InstanceName, RaftId>>,
     peer_addresses: PeerAddresses,
     instances: Instances,
     pub(crate) instance_reachability: InstanceReachabilityManagerRef,
@@ -448,9 +448,9 @@ impl ConnectionPool {
             }
         }
 
-        let mut instance_id: Option<InstanceId> = None;
+        let mut instance_name: Option<InstanceName> = None;
         if let Ok(tuple) = self.instances.get_raw(&raft_id) {
-            instance_id = tuple.field(Instance::FIELD_INSTANCE_ID)?;
+            instance_name = tuple.field(Instance::FIELD_INSTANCE_NAME)?;
         }
         // Check if address of this peer is known.
         // No need to store the result,
@@ -458,7 +458,7 @@ impl ConnectionPool {
         let _ = self.peer_addresses.try_get(raft_id)?;
         let worker = PoolWorker::run(
             raft_id,
-            instance_id.clone(),
+            instance_name.clone(),
             self.peer_addresses.clone(),
             self.worker_options.clone(),
             self.instance_reachability.clone(),
@@ -470,9 +470,9 @@ impl ConnectionPool {
             #[cfg(debug_assertions)]
             let _guard = NoYieldsGuard::new();
 
-            if let Some(instance_id) = instance_id {
+            if let Some(instance_name) = instance_name {
                 let raft_ids = unsafe { &mut *self.raft_ids.get() };
-                raft_ids.insert(instance_id, raft_id);
+                raft_ids.insert(instance_name, raft_id);
             }
 
             let workers = unsafe { &mut *self.workers.get() };
@@ -480,27 +480,27 @@ impl ConnectionPool {
         }
     }
 
-    fn get_or_create_by_instance_id(&self, instance_id: &str) -> Result<&PoolWorker> {
+    fn get_or_create_by_instance_name(&self, instance_name: &str) -> Result<&PoolWorker> {
         // SAFETY: shared state mutations in this function are guarded by no yield guards
         // which makes them safe in context of tx thread.
         {
             // We're mutating shared state here which may lead to errors
-            // if we yield in an inapropriate moment.
+            // if we yield in an inappropriate moment.
             #[cfg(debug_assertions)]
             let _guard = NoYieldsGuard::new();
 
             let raft_ids = unsafe { &*self.raft_ids.get() };
-            if let Some(raft_id) = raft_ids.get(instance_id) {
+            if let Some(raft_id) = raft_ids.get(instance_name) {
                 let workers = unsafe { &*self.workers.get() };
                 let worker = workers
                     .get(raft_id)
-                    .expect("instance_id is present, but the worker isn't");
+                    .expect("instance_name is present, but the worker isn't");
                 return Ok(worker);
             }
         }
 
-        let instance_id = InstanceId::from(instance_id);
-        let tuple = self.instances.get_raw(&instance_id)?;
+        let instance_name = InstanceName::from(instance_name);
+        let tuple = self.instances.get_raw(&instance_name)?;
         let Some(raft_id) = tuple.field(Instance::FIELD_RAFT_ID)? else {
             #[rustfmt::skip]
             return Err(Error::other("storage corrupted: couldn't decode instance's raft id"));
@@ -508,7 +508,7 @@ impl ConnectionPool {
         self.get_or_create_by_raft_id(raft_id)
     }
 
-    /// Send a message to `msg.to` asynchronously. If the massage can't
+    /// Send a message to `msg.to` asynchronously. If the message can't
     /// be sent, it's a responsibility of the raft node to re-send it
     /// later.
     ///
@@ -623,10 +623,10 @@ impl IdOfInstance for RaftId {
     }
 }
 
-impl IdOfInstance for InstanceId {
+impl IdOfInstance for InstanceName {
     #[inline(always)]
     fn get_or_create_in<'p>(&self, pool: &'p ConnectionPool) -> Result<&'p PoolWorker> {
-        pool.get_or_create_by_instance_id(self)
+        pool.get_or_create_by_instance_name(self)
     }
 }
 
@@ -747,7 +747,7 @@ mod tests {
             Ok((raft::MessageType::MsgHeartbeat, 1337u64, 1u64))
         );
 
-        // Assert unknown recepient error
+        // Assert unknown recipient error
         assert_eq!(
             pool.send(heartbeat_to_from(9999, 3))
                 .unwrap_err()

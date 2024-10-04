@@ -314,9 +314,9 @@ impl PluginManager {
     fn handle_instance_online(&self) -> Result<()> {
         let node = node::global().expect("node must be already initialized");
 
-        let instance_id = node
+        let instance_name = node
             .raft_storage
-            .instance_id()
+            .instance_name()
             .expect("storage should never fail")
             .expect("should be persisted before Node is initialized");
 
@@ -324,7 +324,7 @@ impl PluginManager {
         let instance_routes = node
             .storage
             .service_route_table
-            .get_by_instance(&instance_id)
+            .get_by_instance(&instance_name)
             .expect("storage should not fail");
         let routing_keys: Vec<_> = instance_routes.iter().map(|r| r.key()).collect();
         // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
@@ -345,7 +345,7 @@ impl PluginManager {
                 .services
                 .iter()
                 .map(|svc| {
-                    ServiceRouteItem::new_healthy(instance_id.clone(), &ident, &svc.lock().name)
+                    ServiceRouteItem::new_healthy(instance_name.clone(), &ident, &svc.lock().name)
                 })
                 .collect();
             // FIXME: this is wrong, use reenterable_plugin_cas_request with correct cas predicate
@@ -456,7 +456,7 @@ impl PluginManager {
                 let current_instance_poisoned = storage
                     .service_route_table
                     .get(&ServiceRouteKey {
-                        instance_id: &instance_info.instance_id,
+                        instance_name: &instance_info.instance_name,
                         plugin_name: &plugin_name,
                         plugin_version: &plugin_identity.version,
                         service_name: &service_name,
@@ -466,7 +466,7 @@ impl PluginManager {
                 if current_instance_poisoned == Some(true) {
                     // now the route is healthy
                     let route = ServiceRouteItem::new_healthy(
-                        instance_info.instance_id,
+                        instance_info.instance_name,
                         plugin_identity,
                         service_name,
                     );
@@ -482,7 +482,7 @@ impl PluginManager {
                 );
                 // now the route is poison
                 let route = ServiceRouteItem::new_poison(
-                    instance_info.instance_id,
+                    instance_info.instance_name,
                     plugin_identity,
                     service_name,
                 );
@@ -533,7 +533,7 @@ impl PluginManager {
                         let current_instance_poisoned = storage
                             .service_route_table
                             .get(&ServiceRouteKey {
-                                instance_id: &instance_info.instance_id,
+                                instance_name: &instance_info.instance_name,
                                 plugin_name: &plugin_identity.name,
                                 plugin_version: &plugin_identity.version,
                                 service_name: &service_name,
@@ -543,7 +543,7 @@ impl PluginManager {
                         if current_instance_poisoned == Some(true) {
                             // now the route is healthy
                             routes_to_replace.push(ServiceRouteItem::new_healthy(
-                                instance_info.instance_id.clone(),
+                                instance_info.instance_name.clone(),
                                 &plugin_identity,
                                 service_name,
                             ));
@@ -557,7 +557,7 @@ impl PluginManager {
                         );
                         // now the route is poison
                         routes_to_replace.push(ServiceRouteItem::new_poison(
-                            instance_info.instance_id.clone(),
+                            instance_info.instance_name.clone(),
                             &plugin_identity,
                             service_name,
                         ));

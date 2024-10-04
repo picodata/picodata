@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::error_code::ErrorCode;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::plugin::PluginError;
 use crate::traft::{RaftId, RaftTerm};
 use smol_str::SmolStr;
@@ -100,7 +100,7 @@ pub enum Error {
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
     #[error("instance with {} not found", DisplayIdOfInstance(.0))]
-    NoSuchInstance(Result<RaftId, InstanceId>),
+    NoSuchInstance(Result<RaftId, InstanceName>),
     #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "replicaset_uuid" } else { "replicaset_id" })]
     NoSuchReplicaset { id: String, id_is_uuid: bool },
     #[error("tier with name \"{0}\" not found")]
@@ -108,7 +108,7 @@ pub enum Error {
     #[error("address of peer with id {0} not found")]
     AddressUnknownForRaftId(RaftId),
     #[error("address of peer with id \"{0}\" not found")]
-    AddressUnknownForInstanceId(InstanceId),
+    AddressUnknownForInstanceName(InstanceName),
     #[error("address of peer is incorrectly formatted: {0}")]
     AddressParseFailure(String),
     #[error("leader is unknown yet")]
@@ -149,13 +149,13 @@ pub enum Error {
     Other(Box<dyn std::error::Error>),
 }
 
-struct DisplayIdOfInstance<'a>(pub &'a Result<RaftId, InstanceId>);
+struct DisplayIdOfInstance<'a>(pub &'a Result<RaftId, InstanceName>);
 impl std::fmt::Display for DisplayIdOfInstance<'_> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self.0 {
             Ok(raft_id) => write!(f, "raft_id {raft_id}"),
-            Err(instance_id) => write!(f, "instance_id \"{instance_id}\""),
+            Err(instance_name) => write!(f, "instance_name \"{instance_name}\""),
         }
     }
 }
@@ -284,26 +284,26 @@ impl IntoBoxError for Error {
 pub struct ErrorInfo {
     pub error_code: u32,
     pub message: String,
-    pub instance_id: InstanceId,
+    pub instance_name: InstanceName,
 }
 
 impl ErrorInfo {
     #[inline(always)]
-    pub fn timeout(instance_id: impl Into<InstanceId>, message: impl Into<String>) -> Self {
+    pub fn timeout(instance_name: impl Into<InstanceName>, message: impl Into<String>) -> Self {
         Self {
             error_code: TarantoolErrorCode::Timeout as _,
             message: message.into(),
-            instance_id: instance_id.into(),
+            instance_name: instance_name.into(),
         }
     }
 
     #[inline(always)]
-    pub fn new(instance_id: impl Into<InstanceId>, error: impl IntoBoxError) -> Self {
+    pub fn new(instance_name: impl Into<InstanceName>, error: impl IntoBoxError) -> Self {
         let box_error = error.into_box_error();
         Self {
             error_code: box_error.error_code(),
             message: box_error.message().into(),
-            instance_id: instance_id.into(),
+            instance_name: instance_name.into(),
         }
     }
 
@@ -312,14 +312,14 @@ impl ErrorInfo {
         Self {
             error_code: ErrorCode::Other as _,
             message: "there's a snake in my boot".into(),
-            instance_id: InstanceId::from("i3378"),
+            instance_name: InstanceName::from("i3378"),
         }
     }
 }
 
 impl std::fmt::Display for ErrorInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "[instance_id:{}] ", self.instance_id)?;
+        write!(f, "[instance_name:{}] ", self.instance_name)?;
         if let Some(c) = ErrorCode::from_i64(self.error_code as _) {
             write!(f, "{c:?}")?;
         } else if let Some(c) = TarantoolErrorCode::from_i64(self.error_code as _) {

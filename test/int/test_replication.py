@@ -28,13 +28,13 @@ def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
 def test_2_of_3_writable(cluster3: Cluster):
     i1, i2, i3 = cluster3.instances
 
-    master_id = i1.replicaset_master_id()
-    assert i2.replicaset_master_id() == master_id
-    assert i3.replicaset_master_id() == master_id
+    master_name = i1.replicaset_master_name()
+    assert i2.replicaset_master_name() == master_name
+    assert i3.replicaset_master_name() == master_name
 
     master, i2, i3 = sorted(
         [i1, i2, i3],
-        key=lambda i: master_id == i.instance_id,
+        key=lambda i: master_name == i.instance_name,
         reverse=True
     )
 
@@ -60,20 +60,20 @@ def test_2_of_3_writable(cluster3: Cluster):
 
     master.terminate()
 
-    old_master_id = master_id
+    old_master_name = master_name
 
     def check_master_changed():
-        nonlocal master_id
-        master_id = i2.replicaset_master_id()
-        assert master_id != old_master_id
+        nonlocal master_name
+        master_name = i2.replicaset_master_name()
+        assert master_name != old_master_name
 
     Retriable(timeout=6, rps=4).call(check_master_changed)
-    assert i3.replicaset_master_id() == master_id
+    assert i3.replicaset_master_name() == master_name
 
     old_leader = master
     master, i3 = sorted(
         [i2, i3],
-        key=lambda i: i.eval("return box.info.id") == master_id,
+        key=lambda i: i.eval("return box.info.id") == master_name,
         reverse=True
     )
 
@@ -95,7 +95,7 @@ def test_2_of_3_writable(cluster3: Cluster):
     print(f"{old_leader=}")
     old_leader.start()
     old_leader.wait_online()
-    assert old_leader.replicaset_master_id() == master_id
+    assert old_leader.replicaset_master_name() == master_name
     wait_vclock(old_leader, rl_vclock)
     assert old_leader.eval("return box.space.test_space:select()") == [[1], [2]]
 # fmt: on
@@ -126,14 +126,14 @@ def test_master_auto_switchover(cluster: Cluster):
     i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
 
     # i4 is master as the first member of the replicaset.
-    assert i4.replicaset_master_id() == i4.instance_id
-    assert i5.replicaset_master_id() == i4.instance_id
+    assert i4.replicaset_master_name() == i4.instance_name
+    assert i5.replicaset_master_name() == i4.instance_name
     assert not i4.eval("return box.info.ro")
     assert i5.eval("return box.info.ro")
 
     # Terminate master to force switchover.
     i4.terminate()
-    assert i5.replicaset_master_id() == i5.instance_id
+    assert i5.replicaset_master_name() == i5.instance_name
     assert not i5.eval("return box.info.ro")
 
     # Terminate the last remaining replica, switchover is impossible.
@@ -141,14 +141,14 @@ def test_master_auto_switchover(cluster: Cluster):
     # FIXME: wait until governor handles all pending events
     time.sleep(0.5)
     assert (
-        i1.eval("return box.space._pico_replicaset:get(...).current_master_id", "r99")
-        == i5.instance_id
+        i1.eval("return box.space._pico_replicaset:get(...).current_master_name", "r99")
+        == i5.instance_name
     )
 
     # Wake the master back up, check it's not read only.
     i5.start()
     i5.wait_online()
-    assert i5.replicaset_master_id() == i5.instance_id
+    assert i5.replicaset_master_name() == i5.instance_name
     assert not i5.eval("return box.info.ro")
 
     # Terminate it again, to check switchover at catch-up.
@@ -157,13 +157,13 @@ def test_master_auto_switchover(cluster: Cluster):
     i4.wait_online()
 
     # i4 is master again.
-    assert i4.replicaset_master_id() == i4.instance_id
+    assert i4.replicaset_master_name() == i4.instance_name
     assert not i4.eval("return box.info.ro")
 
     i5.start()
     i5.wait_online()
     # i5 is still read only.
-    assert i5.replicaset_master_id() == i4.instance_id
+    assert i5.replicaset_master_name() == i4.instance_name
     assert i5.eval("return box.info.ro")
 
     # Manually change master back to i5
@@ -171,13 +171,13 @@ def test_master_auto_switchover(cluster: Cluster):
         "update",
         "_pico_replicaset",
         key=["r99"],
-        ops=[("=", "target_master_id", i5.instance_id)],
+        ops=[("=", "target_master_name", i5.instance_name)],
     )
     cluster.raft_wait_index(index)
 
-    assert i4.replicaset_master_id() == i5.instance_id
+    assert i4.replicaset_master_name() == i5.instance_name
     assert i4.eval("return box.info.ro")
-    assert i5.replicaset_master_id() == i5.instance_id
+    assert i5.replicaset_master_name() == i5.instance_name
     assert not i5.eval("return box.info.ro")
 
 
@@ -223,7 +223,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
         "update",
         "_pico_replicaset",
         key=["r99"],
-        ops=[("=", "target_master_id", i5.instance_id)],
+        ops=[("=", "target_master_name", i5.instance_name)],
     )
     cluster.raft_wait_index(index)
 
@@ -300,7 +300,7 @@ def test_expel_blocked_by_replicaset_master_switchover(cluster: Cluster):
 
     # Only now the instance gets expelled and shuts down
     i4.assert_process_dead()
-    info = i1.call(".proc_instance_info", i4.instance_id)
+    info = i1.call(".proc_instance_info", i4.instance_name)
     assert info["current_state"]["variant"] == "Expelled"
 
     # i5 is the master

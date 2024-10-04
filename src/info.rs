@@ -1,5 +1,5 @@
 use crate::config::PicodataConfig;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::instance::State;
 use crate::replicaset::ReplicasetId;
 use crate::tlua;
@@ -65,7 +65,7 @@ pub fn proc_version_info() -> VersionInfo<'static> {
 pub struct InstanceInfo {
     pub raft_id: RaftId,
     pub advertise_address: String,
-    pub instance_id: InstanceId,
+    pub instance_name: InstanceName,
     pub instance_uuid: String,
     pub replicaset_id: ReplicasetId,
     pub replicaset_uuid: String,
@@ -78,17 +78,17 @@ pub struct InstanceInfo {
 impl tarantool::tuple::Encode for InstanceInfo {}
 
 impl InstanceInfo {
-    pub fn try_get(node: &node::Node, instance_id: Option<&InstanceId>) -> Result<Self, Error> {
+    pub fn try_get(node: &node::Node, instance_name: Option<&InstanceName>) -> Result<Self, Error> {
         let instance;
-        match instance_id {
+        match instance_name {
             None => {
-                let instance_id = node.raft_storage.instance_id()?;
-                let instance_id =
-                    instance_id.expect("should be persisted before Node is initialized");
-                instance = node.storage.instances.get(&instance_id)?;
+                let instance_name = node.raft_storage.instance_name()?;
+                let instance_name =
+                    instance_name.expect("should be persisted before Node is initialized");
+                instance = node.storage.instances.get(&instance_name)?;
             }
-            Some(instance_id) => {
-                instance = node.storage.instances.get(instance_id)?;
+            Some(instance_name) => {
+                instance = node.storage.instances.get(instance_name)?;
             }
         }
 
@@ -103,7 +103,7 @@ impl InstanceInfo {
         Ok(InstanceInfo {
             raft_id: instance.raft_id,
             advertise_address: peer_address,
-            instance_id: instance.instance_id,
+            instance_name: instance.instance_name,
             instance_uuid: instance.instance_uuid,
             replicaset_id: instance.replicaset_id,
             replicaset_uuid: instance.replicaset_uuid,
@@ -123,11 +123,11 @@ impl InstanceInfo {
 pub fn proc_instance_info(request: InstanceInfoRequest) -> Result<InstanceInfo, Error> {
     let node = node::global()?;
 
-    let instance_id = match &request {
+    let instance_name = match &request {
         InstanceInfoRequest::CurrentInstance(_) => None,
-        InstanceInfoRequest::ByInstanceId([instance_id]) => Some(instance_id),
+        InstanceInfoRequest::ByInstanceName([instance_name]) => Some(instance_name),
     };
-    InstanceInfo::try_get(node, instance_id)
+    InstanceInfo::try_get(node, instance_name)
 }
 
 #[derive(Debug, ::serde::Deserialize, ::serde::Serialize)]
@@ -137,7 +137,7 @@ enum InstanceInfoRequest {
     // parameter to the stored procedure. We should probably do something about
     // it in our custom `Encode`/`Decode` traits.
     CurrentInstance([(); 0]),
-    ByInstanceId([InstanceId; 1]),
+    ByInstanceName([InstanceName; 1]),
 }
 
 impl ::tarantool::tuple::Encode for InstanceInfoRequest {}

@@ -1,7 +1,7 @@
 use crate::address::{HttpAddress, IprotoAddress};
 use crate::config::{ByteSize, DEFAULT_USERNAME};
 use crate::info::PICODATA_VERSION;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
@@ -72,10 +72,10 @@ pub struct Run {
     /// Can also be provided via PICODATA_CONFIG_PARAMETERS environment variable.
     pub config_parameter: Vec<String>,
 
-    #[clap(long, value_name = "NAME", env = "PICODATA_INSTANCE_ID")]
+    #[clap(long, value_name = "NAME", env = "PICODATA_INSTANCE_NAME")]
     /// Name of the instance.
     /// If not defined, it'll be generated automatically.
-    pub instance_id: Option<String>,
+    pub instance_name: Option<String>,
 
     #[clap(
         long = "advertise",
@@ -353,9 +353,9 @@ pub struct Expel {
     /// Name of the cluster from instance should be expelled.
     pub cluster_id: String,
 
-    #[clap(value_name = "INSTANCE_ID")]
+    #[clap(value_name = "INSTANCE_NAME")]
     /// Name of the instance to expel.
-    pub instance_id: InstanceId,
+    pub instance_name: InstanceName,
 
     #[clap(
         long = "peer",

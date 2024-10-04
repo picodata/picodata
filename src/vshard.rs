@@ -1,5 +1,5 @@
 use crate::instance::Instance;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
@@ -15,11 +15,11 @@ use tarantool::tlua;
 pub fn get_replicaset_priority_list(
     tier: &str,
     replicaset_uuid: &str,
-) -> Result<Vec<InstanceId>, Error> {
+) -> Result<Vec<InstanceName>, Error> {
     let lua = tarantool::lua_state();
     let pico: tlua::LuaTable<_> = lua
         .get("pico")
-        .ok_or_else(|| Error::other("pico lua module disapeared"))?;
+        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_priority_list")?;
     func.call_with_args((tier, replicaset_uuid))
@@ -32,7 +32,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
     let lua = tarantool::lua_state();
     let pico: tlua::LuaTable<_> = lua
         .get("pico")
-        .ok_or_else(|| Error::other("pico lua module disapeared"))?;
+        .ok_or_else(|| Error::other("pico lua module disappeared"))?;
 
     let func: tlua::LuaFunction<_> = pico.try_get("_replicaset_uuid_by_bucket_id")?;
     func.call_with_args((tier, bucket_id))
@@ -58,7 +58,7 @@ pub struct VshardConfig {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 struct ReplicasetSpec {
-    replicas: HashMap<InstanceId, ReplicaSpec>,
+    replicas: HashMap<InstanceName, ReplicaSpec>,
     weight: Option<Weight>,
 }
 
@@ -124,7 +124,7 @@ impl VshardConfig {
             };
             let Some(r) = replicasets.get(&peer.replicaset_id) else {
                 crate::tlog!(Debug, "skipping instance: replicaset not initialized yet";
-                    "instance_id" => %peer.instance_id,
+                    "instance_name" => %peer.instance_name,
                 );
                 continue;
             };
@@ -137,11 +137,11 @@ impl VshardConfig {
                 });
 
             replicaset.replicas.insert(
-                InstanceId(peer.instance_uuid.clone()),
+                InstanceName(peer.instance_uuid.clone()),
                 ReplicaSpec {
                     uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
-                    master: r.current_master_id == peer.instance_id,
-                    name: peer.instance_id.to_string(),
+                    master: r.current_master_name == peer.instance_name,
+                    name: peer.instance_name.to_string(),
                 },
             );
         }

@@ -1,7 +1,7 @@
 use crate::access_control::UserMetadataKind;
 use crate::cas;
 use crate::config::DEFAULT_USERNAME;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::plugin::PluginIdentifier;
 use crate::storage::{self, RoutineId, ToEntryIter};
@@ -579,8 +579,8 @@ pub struct ServiceRouteItem {
     pub plugin_version: String,
     /// Service name.
     pub service_name: String,
-    /// Instance id.
-    pub instance_id: InstanceId,
+    /// Instance name.
+    pub instance_name: InstanceName,
     /// `true` if route is poisoned, `false` otherwise.
     pub poison: bool,
 }
@@ -594,7 +594,7 @@ impl ServiceRouteItem {
     pub const FIELD_POISON: u32 = 4;
 
     pub fn new_healthy(
-        instance_id: InstanceId,
+        instance_name: InstanceName,
         plugin_ident: &PluginIdentifier,
         service_name: impl ToString,
     ) -> Self {
@@ -602,13 +602,13 @@ impl ServiceRouteItem {
             plugin_name: plugin_ident.name.clone(),
             plugin_version: plugin_ident.version.to_string(),
             service_name: service_name.to_string(),
-            instance_id,
+            instance_name,
             poison: false,
         }
     }
 
     pub fn new_poison(
-        instance_id: InstanceId,
+        instance_name: InstanceName,
         plugin_ident: &PluginIdentifier,
         service_name: impl ToString,
     ) -> Self {
@@ -616,7 +616,7 @@ impl ServiceRouteItem {
             plugin_name: plugin_ident.name.clone(),
             plugin_version: plugin_ident.version.to_string(),
             service_name: service_name.to_string(),
-            instance_id,
+            instance_name,
             poison: true,
         }
     }
@@ -629,7 +629,7 @@ impl ServiceRouteItem {
             Field::from(("plugin_name", FieldType::String)).is_nullable(false),
             Field::from(("plugin_version", FieldType::String)).is_nullable(false),
             Field::from(("service_name", FieldType::String)).is_nullable(false),
-            Field::from(("instance_id", FieldType::String)).is_nullable(false),
+            Field::from(("instance_name", FieldType::String)).is_nullable(false),
             Field::from(("poison", FieldType::Boolean)).is_nullable(false),
         ]
     }
@@ -640,7 +640,7 @@ impl ServiceRouteItem {
             plugin_name: "plugin".to_string(),
             plugin_version: "version".to_string(),
             service_name: "service".to_string(),
-            instance_id: InstanceId("i1".to_string()),
+            instance_name: InstanceName("i1".to_string()),
             poison: false,
         }
     }
@@ -650,7 +650,7 @@ impl ServiceRouteItem {
             plugin_name: &self.plugin_name,
             plugin_version: &self.plugin_version,
             service_name: &self.service_name,
-            instance_id: &self.instance_id,
+            instance_name: &self.instance_name,
         }
     }
 }
@@ -663,8 +663,8 @@ pub struct ServiceRouteKey<'a> {
     pub plugin_version: &'a str,
     /// Service name.
     pub service_name: &'a str,
-    /// Instance id.
-    pub instance_id: &'a InstanceId,
+    /// Instance name.
+    pub instance_name: &'a InstanceName,
 }
 
 impl<'a> Encode for ServiceRouteKey<'a> {}
@@ -2444,14 +2444,14 @@ pub fn abort_ddl(deadline: Instant) -> traft::Result<RaftIndex> {
             return Err(DdlError::NoPendingDdl.into());
         }
 
-        let instance_id = node
+        let instance_name = node
             .raft_storage
-            .instance_id()?
+            .instance_name()?
             .expect("is persisted at boot");
         let cause = ErrorInfo {
             error_code: ErrorCode::Other as _,
             message: "explicit abort by user".into(),
-            instance_id,
+            instance_name,
         };
 
         #[rustfmt::skip]

@@ -7,7 +7,7 @@ use ::tarantool::tuple::{DecodeOwned, Encode};
 
 use crate::has_states;
 use crate::instance::Instance;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
@@ -42,27 +42,27 @@ static mut STATIC_PROCS: Option<HashSet<String>> = None;
 pub fn replicasets_masters<'a>(
     replicasets: &HashMap<&ReplicasetId, &'a Replicaset>,
     instances: &'a [Instance],
-) -> Vec<&'a InstanceId> {
+) -> Vec<&'a InstanceName> {
     let mut masters = Vec::with_capacity(replicasets.len());
     // TODO: invert this loop to improve performance
     // `for instances { replicasets.get() }` instead of `for replicasets { instances.find() }`
     for r in replicasets.values() {
         #[rustfmt::skip]
-        let Some(master) = instances.iter().find(|i| i.instance_id == r.current_master_id) else {
+        let Some(master) = instances.iter().find(|i| i.instance_name == r.current_master_name) else {
             tlog!(
                 Warning,
-                "couldn't find instance with id {}, which is chosen as master of replicaset {}",
-                r.current_master_id,
+                "couldn't find instance with name {}, which is chosen as master of replicaset {}",
+                r.current_master_name,
                 r.replicaset_id,
             );
             // Send them a request anyway just to be safe
-            masters.push(&r.current_master_id);
+            masters.push(&r.current_master_name);
             continue;
         };
         if has_states!(master, Expelled -> *) {
             continue;
         }
-        masters.push(&master.instance_id);
+        masters.push(&master.instance_name);
     }
 
     masters

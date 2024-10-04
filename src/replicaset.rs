@@ -1,4 +1,4 @@
-use super::instance::InstanceId;
+use super::instance::InstanceName;
 use crate::instance::Instance;
 use ::tarantool::tlua;
 use ::tarantool::tuple::Encode;
@@ -25,11 +25,11 @@ pub struct Replicaset {
     /// UUID used to identify replicasets by tarantool's subsystems.
     pub replicaset_uuid: String,
 
-    /// Instance id of the current replication leader.
-    pub current_master_id: InstanceId,
+    /// Instance name of the current replication leader.
+    pub current_master_name: InstanceName,
 
-    /// Id of instance which should become the replication leader.
-    pub target_master_id: InstanceId,
+    /// Name of instance which should become the replication leader.
+    pub target_master_name: InstanceName,
 
     /// Name of the tier the replicaset belongs to.
     pub tier: String,
@@ -72,8 +72,8 @@ impl Replicaset {
     /// Index of first field is 0.
     pub const FIELD_REPLICASET_UUID: u32 = 1;
 
-    /// Index of field "target_master_id" in the table _pico_replicaset format.
-    pub const FIELD_TARGET_MASTER_ID: u32 = 3;
+    /// Index of field "target_master_name" in the table _pico_replicaset format.
+    pub const FIELD_TARGET_MASTER_NAME: u32 = 3;
 
     /// Index of field "tier" in the table _pico_replicaset format.
     pub const FIELD_TIER: u32 = 4;
@@ -83,8 +83,8 @@ impl Replicaset {
         Replicaset {
             replicaset_id: master.replicaset_id.clone(),
             replicaset_uuid: master.replicaset_uuid.clone(),
-            current_master_id: master.instance_id.clone(),
-            target_master_id: master.instance_id.clone(),
+            current_master_name: master.instance_name.clone(),
+            target_master_name: master.instance_name.clone(),
             tier: master.tier.clone(),
             weight: 0.,
             weight_origin: WeightOrigin::Auto,
@@ -102,8 +102,8 @@ impl Replicaset {
         vec![
             Field::from(("replicaset_id", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
-            Field::from(("current_master_id", FieldType::String)),
-            Field::from(("target_master_id", FieldType::String)),
+            Field::from(("current_master_name", FieldType::String)),
+            Field::from(("target_master_name", FieldType::String)),
             Field::from(("tier", FieldType::String)),
             Field::from(("weight", FieldType::Double)),
             Field::from(("weight_origin", FieldType::String)),
@@ -120,8 +120,8 @@ impl Replicaset {
         Self {
             replicaset_id: "r1".into(),
             replicaset_uuid: "r1-uuid".into(),
-            current_master_id: "i".into(),
-            target_master_id: "j".into(),
+            current_master_name: "i".into(),
+            target_master_name: "j".into(),
             tier: "storage".into(),
             weight: 13.37,
             weight_origin: WeightOrigin::Auto,
@@ -140,8 +140,8 @@ impl std::fmt::Display for Replicaset {
             "({}, master: {}, tier: {}, weight: {}, weight_origin: {}, state: {})",
             self.replicaset_id,
             crate::util::Transition {
-                from: &self.current_master_id,
-                to: &self.target_master_id,
+                from: &self.current_master_name,
+                to: &self.target_master_name,
             },
             self.tier,
             self.weight,
@@ -194,8 +194,8 @@ mod tests {
             "replicaset_uuid"
         );
         assert_eq!(
-            format[Replicaset::FIELD_TARGET_MASTER_ID as usize].name,
-            "target_master_id"
+            format[Replicaset::FIELD_TARGET_MASTER_NAME as usize].name,
+            "target_master_name"
         );
         assert_eq!(format[Replicaset::FIELD_TIER as usize].name, "tier");
     }

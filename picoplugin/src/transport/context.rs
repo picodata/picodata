@@ -18,7 +18,7 @@ use tarantool::uuid::Uuid;
 // Context
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Context stores request metadata. This includes some builin fields, for example:
+/// Context stores request metadata. This includes some builtin fields, for example:
 /// - [`Context::request_id`],
 /// - [`Context::path`],
 /// - [`Context::plugin_name`],

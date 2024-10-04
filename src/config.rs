@@ -3,7 +3,7 @@ use crate::cli::args;
 use crate::cli::args::CONFIG_PARAMETERS_ENV;
 use crate::config_parameter_path;
 use crate::failure_domain::FailureDomain;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::introspection::leaf_field_paths;
 use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
@@ -262,8 +262,8 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.cluster_id = Some(cluster_id);
         }
 
-        if let Some(instance_id) = args.instance_id {
-            config_from_args.instance.instance_id = Some(instance_id);
+        if let Some(instance_name) = args.instance_name {
+            config_from_args.instance.instance_name = Some(instance_name);
         }
 
         if let Some(replicaset_id) = args.replicaset_id {
@@ -524,22 +524,22 @@ Using configuration file '{args_path}'.");
         }
 
         // Instance id
-        let mut instance_id = None;
-        match (raft_storage.instance_id()?, &self.instance.instance_id) {
+        let mut instance_name = None;
+        match (raft_storage.instance_name()?, &self.instance.instance_name) {
             (Some(from_storage), Some(from_config)) if from_storage != from_config => {
                 return Err(Error::InvalidConfiguration(format!(
-                    "instance restarted with a different `instance_id`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                    "instance restarted with a different `instance_name`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
                 )));
             }
             (Some(from_storage), _) => {
-                instance_id = Some(from_storage);
+                instance_name = Some(from_storage);
             }
             _ => {}
         }
 
         // Replicaset id
-        if let Some(instance_id) = &instance_id {
-            if let Ok(instance_info) = storage.instances.get(instance_id) {
+        if let Some(instance_name) = &instance_name {
+            if let Ok(instance_info) = storage.instances.get(instance_name) {
                 match (&instance_info.replicaset_id, &self.instance.replicaset_id) {
                     (from_storage, Some(from_config)) if from_storage != from_config => {
                         return Err(Error::InvalidConfiguration(format!(
@@ -974,7 +974,7 @@ pub struct InstanceConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cluster_id: Option<String>,
 
-    pub instance_id: Option<String>,
+    pub instance_name: Option<String>,
     pub replicaset_id: Option<String>,
 
     #[introspection(config_default = "default")]
@@ -1056,8 +1056,8 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn instance_id(&self) -> Option<InstanceId> {
-        self.instance_id.as_deref().map(InstanceId::from)
+    pub fn instance_name(&self) -> Option<InstanceName> {
+        self.instance_name.as_deref().map(InstanceName::from)
     }
 
     #[inline]
@@ -1776,7 +1776,7 @@ cluster:
             can_vote: false
 
 instance:
-    instance_id: voter1
+    instance_name: voter1
 
 goo-goo: ga-ga
 "###;
@@ -1976,7 +1976,7 @@ instance:
                 config.instance.peers(),
                 vec![IprotoAddress::default()]
             );
-            assert_eq!(config.instance.instance_id(), None);
+            assert_eq!(config.instance.instance_name(), None);
             assert_eq!(config.instance.listen().to_host_port(), "127.0.0.1:3301");
             assert_eq!(config.instance.advertise_address().to_host_port(), "127.0.0.1:3301");
             assert_eq!(config.instance.log_level(), SayLevel::Info);
@@ -1989,35 +1989,35 @@ instance:
         {
             let yaml = r###"
 instance:
-    instance_id: I-CONFIG
+    instance_name: I-CONFIG
 "###;
 
             // only config
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
-            assert_eq!(config.instance.instance_id().unwrap(), "I-CONFIG");
+            assert_eq!(config.instance.instance_name().unwrap(), "I-CONFIG");
 
             // PICODATA_CONFIG_PARAMETERS > config
-            std::env::set_var("PICODATA_CONFIG_PARAMETERS", "instance.instance_id=I-ENV-CONF-PARAM");
+            std::env::set_var("PICODATA_CONFIG_PARAMETERS", "instance.instance_name=I-ENV-CONF-PARAM");
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
-            assert_eq!(config.instance.instance_id().unwrap(), "I-ENV-CONF-PARAM");
+            assert_eq!(config.instance.instance_name().unwrap(), "I-ENV-CONF-PARAM");
 
             // other env > PICODATA_CONFIG_PARAMETERS
-            std::env::set_var("PICODATA_INSTANCE_ID", "I-ENVIRON");
+            std::env::set_var("PICODATA_INSTANCE_NAME", "I-ENVIRON");
             let config = setup_for_tests(Some(yaml), &["run"]).unwrap();
 
-            assert_eq!(config.instance.instance_id().unwrap(), "I-ENVIRON");
+            assert_eq!(config.instance.instance_name().unwrap(), "I-ENVIRON");
 
             // command line > env
-            let config = setup_for_tests(Some(yaml), &["run", "--instance-id=I-COMMANDLINE"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "--instance-name=I-COMMANDLINE"]).unwrap();
 
-            assert_eq!(config.instance.instance_id().unwrap(), "I-COMMANDLINE");
+            assert_eq!(config.instance.instance_name().unwrap(), "I-COMMANDLINE");
 
             // -c PARAMETER=VALUE > other command line
-            let config = setup_for_tests(Some(yaml), &["run", "-c", "instance.instance_id=I-CLI-CONF-PARAM", "--instance-id=I-COMMANDLINE"]).unwrap();
+            let config = setup_for_tests(Some(yaml), &["run", "-c", "instance.instance_name=I-CLI-CONF-PARAM", "--instance-name=I-COMMANDLINE"]).unwrap();
 
-            assert_eq!(config.instance.instance_id().unwrap(), "I-CLI-CONF-PARAM");
+            assert_eq!(config.instance.instance_name().unwrap(), "I-CLI-CONF-PARAM");
         }
 
         //

@@ -329,7 +329,7 @@ impl Service for Service3 {
 
                 // get some instance info
                 let i_info = internal::instance_info().unwrap();
-                save_in_lua("testservice_3", "instance_id", i_info.instance_id());
+                save_in_lua("testservice_3", "instance_name", i_info.instance_name());
                 save_in_lua("testservice_3", "instance_uuid", i_info.instance_uuid());
                 save_in_lua("testservice_3", "replicaset_id", i_info.replicaset_id());
                 save_in_lua("testservice_3", "replicaset_uuid", i_info.replicaset_uuid());
@@ -473,11 +473,11 @@ fn ping(input: rpc::Request, context: &mut Context) -> Result<rpc::Response, Box
     );
 
     let info = internal::instance_info().unwrap();
-    let instance_id = info.instance_id();
+    let instance_name = info.instance_name();
 
     let response = PingResponse {
         pong: "pong".into(),
-        instance_id: instance_id.into(),
+        instance_name: instance_name.into(),
         raw_input: serde_bytes::ByteBuf::from(raw_input),
     };
     rpc::Response::encode_rmp_unnamed(&response)
@@ -486,7 +486,7 @@ fn ping(input: rpc::Request, context: &mut Context) -> Result<rpc::Response, Box
 #[derive(serde::Serialize, serde::Deserialize)]
 struct PingResponse {
     pong: String,
-    instance_id: String,
+    instance_name: String,
     raw_input: serde_bytes::ByteBuf,
 }
 
@@ -576,7 +576,7 @@ impl Service for ServiceWithRpcTests {
                 struct Request {
                     path: String,
                     service_info: Option<(String, String, String)>,
-                    instance_id: Option<String>,
+                    instance_name: Option<String>,
                     replicaset_id: Option<String>,
                     bucket_id: Option<u64>,
                     tier_and_bucket_id: Option<(String, u64)>,
@@ -588,8 +588,8 @@ impl Service for ServiceWithRpcTests {
                 let request: Request = input.decode_rmp()?;
 
                 let mut target = rpc::RequestTarget::Any;
-                if let Some(instance_id) = &request.instance_id {
-                    target = rpc::RequestTarget::InstanceId(instance_id);
+                if let Some(instance_name) = &request.instance_name {
+                    target = rpc::RequestTarget::InstanceName(instance_name);
                 } else if let Some(replicaset_id) = &request.replicaset_id {
                     target = rpc::RequestTarget::ReplicasetId(
                         replicaset_id,

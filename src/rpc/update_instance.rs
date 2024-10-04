@@ -4,7 +4,7 @@ use crate::failure_domain::FailureDomain;
 use crate::instance::State;
 use crate::instance::StateVariant;
 use crate::instance::StateVariant::*;
-use crate::instance::{Instance, InstanceId};
+use crate::instance::{Instance, InstanceName};
 use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
@@ -44,7 +44,7 @@ crate::define_rpc_request! {
     /// Request to update the instance in the storage.
     #[derive(Default)]
     pub struct Request {
-        pub instance_id: InstanceId,
+        pub instance_name: InstanceName,
         pub cluster_id: String,
         /// Only allowed to be set by leader
         pub current_state: Option<State>,
@@ -60,9 +60,9 @@ crate::define_rpc_request! {
 
 impl Request {
     #[inline]
-    pub fn new(instance_id: InstanceId, cluster_id: String) -> Self {
+    pub fn new(instance_name: InstanceName, cluster_id: String) -> Self {
         Self {
-            instance_id,
+            instance_name,
             cluster_id,
             dont_retry: false,
             ..Request::default()
@@ -116,12 +116,12 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
 
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
-        let instance = storage.instances.get(&req.instance_id)?;
+        let instance = storage.instances.get(&req.instance_name)?;
 
         let replicaset_id = &instance.replicaset_id;
         #[rustfmt::skip]
         let Some(replicaset) = storage.replicasets.get(replicaset_id)? else {
-            crate::warn_or_panic!("replicaset info for replicaset_id: `{replicaset_id}` has disappeared, needed for instance {}", instance.instance_id);
+            crate::warn_or_panic!("replicaset info for replicaset_id: `{replicaset_id}` has disappeared, needed for instance {}", instance.instance_name);
             return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
         };
 
@@ -236,7 +236,7 @@ pub fn update_instance(
         )
     {
         #[rustfmt::skip]
-        return Err(Error::other(format!("cannot update expelled instance \"{}\"", instance.instance_id)));
+        return Err(Error::other(format!("cannot update expelled instance \"{}\"", instance.instance_name)));
     }
 
     let mut ops = UpdateOps::new();
@@ -272,7 +272,7 @@ pub fn update_instance(
 
     let instance_dml = Dml::update(
         ClusterwideTable::Instance,
-        &[&instance.instance_id],
+        &[&instance.instance_name],
         ops,
         ADMIN_ID,
     )?;

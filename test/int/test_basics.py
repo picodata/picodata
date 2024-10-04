@@ -181,18 +181,18 @@ invalid configuration: instance restarted with a different `cluster_id`, which i
     instance.cluster_id = was
 
     #
-    # Change instance_id
+    # Change instance_name
     #
-    was = instance.instance_id  # type: ignore
-    instance.instance_id = "new-instance-id"
-    assert instance.instance_id != was
+    was = instance.instance_name  # type: ignore
+    instance.instance_name = "new-instance-name"
+    assert instance.instance_name != was
     err = f"""\
-invalid configuration: instance restarted with a different `instance_id`, which is not allowed, was: '{was}' became: 'new-instance-id'
+invalid configuration: instance restarted with a different `instance_name`, which is not allowed, was: '{was}' became: 'new-instance-name'
 """  # noqa: E501
     crawler = log_crawler(instance, err)
     instance.fail_to_start()
     assert crawler.matched
-    instance.instance_id = was
+    instance.instance_name = was
 
     #
     # Change tier
@@ -240,7 +240,7 @@ invalid configuration: instance restarted with a different `advertise_address`, 
 def test_whoami(instance: Instance):
     assert instance.call("pico.whoami") == {
         "raft_id": 1,
-        "instance_id": "i1",
+        "instance_name": "i1",
         "cluster_id": instance.cluster_id,
         "tier": "default",
     }
@@ -265,14 +265,14 @@ cluster:
 
     assert i1.call("pico.whoami") == {
         "raft_id": 1,
-        "instance_id": "i1",
+        "instance_name": "i1",
         "cluster_id": i1.cluster_id,
         "tier": "storage",
     }
 
     assert i2.call("pico.whoami") == {
         "raft_id": 2,
-        "instance_id": "i2",
+        "instance_name": "i2",
         "cluster_id": i2.cluster_id,
         "tier": "router",
     }
@@ -285,12 +285,12 @@ def test_pico_instance_info(instance: Instance):
     # Don't compare entire structure, a couple of fields is enough
     myself = instance_info("i1")
     assert myself["raft_id"] == 1
-    assert myself["instance_id"] == "i1"
+    assert myself["instance_name"] == "i1"
     assert myself["replicaset_id"] == "r1"
 
     with pytest.raises(ReturnError) as e:
         instance_info("i2")
-    assert e.value.args[:2] == ('instance with instance_id "i2" not found',)
+    assert e.value.args[:2] == ('instance with instance_name "i2" not found',)
 
     assert instance_info() == myself
 
@@ -316,7 +316,7 @@ def test_raft_log(instance: Instance):
             # above) or "|", but in our expected string we may add linebreaks
             # for readability. Here we join these artificially broken up lines.
             # Notice how "\n" is replaced with " ", so keep this in mind when
-            # editting the expected string.
+            # editing the expected string.
             while tail and not line.endswith("|"):
                 next_piece, tail = tail.split("\n", 1)
                 line += " " + next_piece
@@ -337,7 +337,7 @@ def test_raft_log(instance: Instance):
             # own line.
             # That way when you run pytest with `-vv` option the diff
             # is understandable enough.
-            # By the way you probaly want to also add `--no-showlocals` flag
+            # By the way you probably want to also add `--no-showlocals` flag
             # when running this test.
             contents = columns[3]
             if contents.startswith("BatchDml("):
@@ -435,13 +435,13 @@ Insert(_pico_index, [{_pico_index},0,"_pico_index_id","tree",[{{"unique":true}}]
 Insert(_pico_index, [{_pico_index},1,"_pico_index_name","tree",[{{"unique":true}}],[["name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_peer_address},"_pico_peer_address",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"address"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_peer_address},0,"_pico_peer_address_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"string","is_nullable":false,"name":"instance_uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
-Insert(_pico_index, [{_pico_instance},0,"_pico_instance_id","tree",[{{"unique":true}}],[["instance_id","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_instance},"_pico_instance",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"instance_name"}},{{"field_type":"string","is_nullable":false,"name":"instance_uuid"}},{{"field_type":"unsigned","is_nullable":false,"name":"raft_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"array","is_nullable":false,"name":"current_state"}},{{"field_type":"array","is_nullable":false,"name":"target_state"}},{{"field_type":"map","is_nullable":false,"name":"failure_domain"}},{{"field_type":"string","is_nullable":false,"name":"tier"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_instance},0,"_pico_instance_name","tree",[{{"unique":true}}],[["instance_name","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},1,"_pico_instance_raft_id","tree",[{{"unique":true}}],[["raft_id","unsigned",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_instance},2,"_pico_instance_replicaset_id","tree",[{{"unique":false}}],[["replicaset_id","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_property},"_pico_property",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":false,"name":"value"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_property},0,"_pico_property_key","tree",[{{"unique":true}}],[["key","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_replicaset},"_pico_replicaset",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"string","is_nullable":false,"name":"current_master_id"}},{{"field_type":"string","is_nullable":false,"name":"target_master_id"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"double","is_nullable":false,"name":"weight"}},{{"field_type":"string","is_nullable":false,"name":"weight_origin"}},{{"field_type":"string","is_nullable":false,"name":"state"}},{{"field_type":"unsigned","is_nullable":false,"name":"current_config_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"target_config_version"}},{{"field_type":"map","is_nullable":false,"name":"promotion_vclock"}}],0,true,"memtx",1,""]),
+Insert(_pico_table, [{_pico_replicaset},"_pico_replicaset",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"replicaset_id"}},{{"field_type":"string","is_nullable":false,"name":"replicaset_uuid"}},{{"field_type":"string","is_nullable":false,"name":"current_master_name"}},{{"field_type":"string","is_nullable":false,"name":"target_master_name"}},{{"field_type":"string","is_nullable":false,"name":"tier"}},{{"field_type":"double","is_nullable":false,"name":"weight"}},{{"field_type":"string","is_nullable":false,"name":"weight_origin"}},{{"field_type":"string","is_nullable":false,"name":"state"}},{{"field_type":"unsigned","is_nullable":false,"name":"current_config_version"}},{{"field_type":"unsigned","is_nullable":false,"name":"target_config_version"}},{{"field_type":"map","is_nullable":false,"name":"promotion_vclock"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_replicaset},0,"_pico_replicaset_id","tree",[{{"unique":true}}],[["replicaset_id","string",null,false,null]],true,0]),
 Insert(_pico_index, [{_pico_replicaset},1,"_pico_replicaset_uuid","tree",[{{"unique":true}}],[["replicaset_uuid","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_user},"_pico_user",{{"Global":null}},[{{"field_type":"unsigned","is_nullable":false,"name":"id"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"unsigned","is_nullable":false,"name":"schema_version"}},{{"field_type":"array","is_nullable":true,"name":"auth"}},{{"field_type":"unsigned","is_nullable":false,"name":"owner"}},{{"field_type":"string","is_nullable":false,"name":"type"}}],0,true,"memtx",1,""]),
@@ -461,8 +461,8 @@ Insert(_pico_table, [{_pico_plugin},"_pico_plugin",{{"Global":null}},[{{"field_t
 Insert(_pico_index, [{_pico_plugin},0,"_pico_plugin_name","tree",[{{"unique":true}}],[["name","string",null,false,null],["version","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_service},"_pico_service",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"name"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"array","is_nullable":false,"name":"tiers"}},{{"field_type":"string","is_nullable":false,"name":"description"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_service},0,"_pico_service_name","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["name","string",null,false,null],["version","string",null,false,null]],true,0]),
-Insert(_pico_table, [{_pico_service_route},"_pico_service_route",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"plugin_version"}},{{"field_type":"string","is_nullable":false,"name":"service_name"}},{{"field_type":"string","is_nullable":false,"name":"instance_id"}},{{"field_type":"boolean","is_nullable":false,"name":"poison"}}],0,true,"memtx",1,""]),
-Insert(_pico_index, [{_pico_service_route},0,"_pico_service_routing_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["plugin_version","string",null,false,null],["service_name","string",null,false,null],["instance_id","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_service_route},"_pico_service_route",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"plugin_version"}},{{"field_type":"string","is_nullable":false,"name":"service_name"}},{{"field_type":"string","is_nullable":false,"name":"instance_name"}},{{"field_type":"boolean","is_nullable":false,"name":"poison"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_service_route},0,"_pico_service_routing_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["plugin_version","string",null,false,null],["service_name","string",null,false,null],["instance_name","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}},{{"field_type":"string","is_nullable":false,"name":"hash"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_plugin_config},"_pico_plugin_config",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"string","is_nullable":false,"name":"entity"}},{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":true,"name":"value"}}],0,true,"memtx",1,""]),
@@ -561,7 +561,7 @@ cluster:
     assert i1_info == dict(
         raft_id=1,
         advertise_address=f"{i1.host}:{i1.port}",
-        instance_id="i1",
+        instance_name="i1",
         instance_uuid=i1.instance_uuid(),
         replicaset_id="r1",
         replicaset_uuid=i1.replicaset_uuid(),
@@ -575,7 +575,7 @@ cluster:
     assert i2_info == dict(
         raft_id=2,
         advertise_address=f"{i2.host}:{i2.port}",
-        instance_id="i2",
+        instance_name="i2",
         instance_uuid=i2.instance_uuid(),
         replicaset_id="r2",
         replicaset_uuid=i2.replicaset_uuid(),
@@ -595,14 +595,14 @@ cluster:
         i1.call(".proc_instance_info", "i3")
     assert e.value.args[:2] == (
         ErrorCode.NoSuchInstance,
-        'instance with instance_id "i3" not found',
+        'instance with instance_name "i3" not found',
     )
 
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
     # Instances of the same replicaset should have the same replicaset_uuid
     i3 = cluster.add_instance(tier="storage")
     i3_info = i3.call(".proc_instance_info")
-    assert i3_info["instance_id"] == "i3"
+    assert i3_info["instance_name"] == "i3"
     assert i3_info["replicaset_id"] == "r1"
     assert i3_info["replicaset_uuid"] == i1_info["replicaset_uuid"]
 

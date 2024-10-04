@@ -8,7 +8,7 @@ use ::tarantool::tuple::ToTupleBuffer;
 use std::cmp::Ordering;
 use std::convert::TryFrom as _;
 
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::tlog;
 use crate::traft;
 use crate::traft::RaftEntryId;
@@ -95,13 +95,13 @@ impl RaftSpaceAccess {
         Ok(res)
     }
 
-    /// Returns the persisted `InstanceId` of the current instance.
+    /// Returns the persisted `InstanceName` of the current instance.
     /// This should be persisted before the global [`Node`] is initialized.
     ///
     /// [`Node`]: crate::traft::node::Node
     #[inline(always)]
-    pub fn instance_id(&self) -> tarantool::Result<Option<InstanceId>> {
-        let res = self.try_get_raft_state("instance_id")?;
+    pub fn instance_name(&self) -> tarantool::Result<Option<InstanceName>> {
+        let res = self.try_get_raft_state("instance_name")?;
         Ok(res)
     }
 
@@ -286,9 +286,9 @@ impl RaftSpaceAccess {
     }
 
     #[inline(always)]
-    pub fn persist_instance_id(&self, instance_id: &InstanceId) -> tarantool::Result<()> {
+    pub fn persist_instance_name(&self, instance_name: &InstanceName) -> tarantool::Result<()> {
         self.space_raft_state
-            .insert(&("instance_id", instance_id))?;
+            .insert(&("instance_name", instance_name))?;
         Ok(())
     }
 

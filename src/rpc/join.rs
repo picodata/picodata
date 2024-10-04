@@ -6,7 +6,7 @@ use crate::failure_domain::FailureDomain;
 use crate::has_states;
 use crate::instance::State;
 use crate::instance::StateVariant::*;
-use crate::instance::{Instance, InstanceId};
+use crate::instance::{Instance, InstanceName};
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetId;
 use crate::schema::ADMIN_ID;
@@ -41,7 +41,7 @@ crate::define_rpc_request! {
     /// Request to join the cluster.
     pub struct Request {
         pub cluster_id: String,
-        pub instance_id: Option<InstanceId>,
+        pub instance_name: Option<InstanceName>,
         pub replicaset_id: Option<ReplicasetId>,
         pub advertise_address: String,
         pub failure_domain: FailureDomain,
@@ -82,7 +82,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
     let deadline = fiber::clock().saturating_add(timeout);
     loop {
         let instance = build_instance(
-            req.instance_id.as_ref(),
+            req.instance_name.as_ref(),
             req.replicaset_id.as_ref(),
             &req.failure_domain,
             storage,
@@ -150,13 +150,13 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 }
 
 pub fn build_instance(
-    instance_id: Option<&InstanceId>,
+    instance_name: Option<&InstanceName>,
     replicaset_id: Option<&ReplicasetId>,
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
     tier: &str,
 ) -> Result<Instance> {
-    if let Some(id) = instance_id {
+    if let Some(id) = instance_name {
         if let Ok(existing_instance) = storage.instances.get(id) {
             let is_expelled = has_states!(existing_instance, Expelled -> *);
             if is_expelled {
@@ -193,9 +193,9 @@ pub fn build_instance(
         .max_raft_id()
         .expect("storage should not fail")
         + 1;
-    let instance_id = instance_id
+    let instance_name = instance_name
         .cloned()
-        .unwrap_or_else(|| choose_instance_id(raft_id, storage));
+        .unwrap_or_else(|| choose_instance_name(raft_id, storage));
     let replicaset_id = match replicaset_id {
         Some(replicaset_id) => replicaset_id.clone(),
         None => choose_replicaset_id(failure_domain, storage, &tier)?,
@@ -205,7 +205,7 @@ pub fn build_instance(
     let replicaset_uuid;
     if let Some(replicaset) = storage.replicasets.get(&replicaset_id)? {
         if replicaset.tier != tier.name {
-            return Err(Error::other(format!("tier mismatch: instance {instance_id} is from tier: '{}', but replicaset {replicaset_id} is from tier: '{}'", tier.name, replicaset.tier)));
+            return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {replicaset_id} is from tier: '{}'", tier.name, replicaset.tier)));
         }
         replicaset_uuid = replicaset.replicaset_uuid;
     } else {
@@ -214,7 +214,7 @@ pub fn build_instance(
 
     Ok(Instance {
         raft_id,
-        instance_id,
+        instance_name,
         instance_uuid,
         replicaset_id,
         replicaset_uuid,
@@ -225,9 +225,9 @@ pub fn build_instance(
     })
 }
 
-// TODO: choose instance id based on tier name instead
-/// Choose [`InstanceId`] based on `raft_id`.
-fn choose_instance_id(raft_id: RaftId, storage: &Clusterwide) -> InstanceId {
+// TODO: choose instance name based on tier name instead
+/// Choose [`InstanceName`] based on `raft_id`.
+fn choose_instance_name(raft_id: RaftId, storage: &Clusterwide) -> InstanceName {
     let mut suffix: Option<u64> = None;
     loop {
         let ret = match suffix {

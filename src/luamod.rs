@@ -3,7 +3,7 @@
 
 use crate::cas;
 use crate::config::PicodataConfig;
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::plugin;
 use crate::plugin::InheritOpts;
 use crate::plugin::PluginIdentifier;
@@ -180,7 +180,7 @@ pub(crate) fn setup() {
 
             - raft_id (number)
             - cluster_id (string)
-            - instance_id (string)
+            - instance_name (string)
             - tier (string)
 
         Example:
@@ -189,7 +189,7 @@ pub(crate) fn setup() {
             ---
             - raft_id: 1
               cluster_id: demo
-              instance_id: i1
+              instance_name: i1
               tier: storage
             ...
         "},
@@ -200,7 +200,7 @@ pub(crate) fn setup() {
             Ok(tlua::AsTable((
                 ("raft_id", info.raft_id),
                 ("cluster_id", info.cluster_id),
-                ("instance_id", info.instance_id),
+                ("instance_name", info.instance_name),
                 ("tier", info.tier),
             )))
         }),
@@ -210,14 +210,14 @@ pub(crate) fn setup() {
         &l,
         "instance_info",
         indoc! {"
-        pico.instance_info([instance_id])
+        pico.instance_info([instance_name])
         =================================
 
         Provides general information for the given instance.
 
         Params:
 
-            1. instance_id (optional string), default: id of the current instance
+            1. instance_name (optional string), default: id of the current instance
 
         Returns:
 
@@ -229,7 +229,7 @@ pub(crate) fn setup() {
 
             - raft_id (number)
             - advertise_address (string)
-            - instance_id (string)
+            - instance_name (string)
             - instance_uuid (string)
             - replicaset_id (string)
             - replicaset_uuid (string)
@@ -247,7 +247,7 @@ pub(crate) fn setup() {
             ---
             - raft_id: 1
               advertise_address: 127.0.0.1:3301
-              instance_id: i1
+              instance_name: i1
               instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
               tier: storage
               replicaset_id: r1
@@ -260,14 +260,14 @@ pub(crate) fn setup() {
                 incarnation: 26
             ...
         "},
-        tlua::function1(|iid: Option<InstanceId>| -> traft::Result<_> {
+        tlua::function1(|iid: Option<InstanceName>| -> traft::Result<_> {
             let node = traft::node::global()?;
             let info = crate::info::InstanceInfo::try_get(node, iid.as_ref())?;
 
             Ok(tlua::AsTable((
                 ("raft_id", info.raft_id),
                 ("advertise_address", info.advertise_address),
-                ("instance_id", info.instance_id.0),
+                ("instance_name", info.instance_name.0),
                 ("instance_uuid", info.instance_uuid),
                 ("replicaset_id", info.replicaset_id),
                 ("replicaset_uuid", info.replicaset_uuid),
@@ -696,15 +696,15 @@ pub(crate) fn setup() {
         &l,
         "expel",
         indoc! {"
-        pico.expel(instance_id)
+        pico.expel(instance_name)
         ======================
 
-        Expels an instance with instance_id from the cluster. The instance will
+        Expels an instance with instance_name from the cluster. The instance will
         keep on running though. If restarted, it will not join the cluster.
 
         Params:
 
-            1. instance_id (string)
+            1. instance_name (string)
 
         Returns:
 
@@ -712,13 +712,13 @@ pub(crate) fn setup() {
             or
             (nil, string) in case of an error
         "},
-        tlua::function1(|instance_id: InstanceId| -> traft::Result<bool> {
+        tlua::function1(|instance_name: InstanceName| -> traft::Result<bool> {
             let raft_storage = &traft::node::global()?.raft_storage;
             let cluster_id = raft_storage.cluster_id()?;
             fiber::block_on(rpc::network_call_to_leader(
                 crate::proc_name!(rpc::expel::proc_expel),
                 &rpc::expel::Request {
-                    instance_id,
+                    instance_name,
                     cluster_id,
                 },
             ))?;

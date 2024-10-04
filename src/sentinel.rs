@@ -63,7 +63,7 @@ impl Loop {
                 return ControlFlow::Break(());
             }
 
-            let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
+            let req = rpc::update_instance::Request::new(instance.instance_name, cluster_id)
                 .with_target_state(Offline);
 
             tlog!(Info, "setting own target state Offline");
@@ -112,13 +112,14 @@ impl Loop {
                 return ControlFlow::Continue(());
             };
 
-            tlog!(Info, "setting target state Offline"; "instance_id" => %instance.instance_id);
-            let req = rpc::update_instance::Request::new(instance.instance_id.clone(), cluster_id)
-                // We only try setting the state once and if a CaS conflict
-                // happens we should reassess the situation, because somebody
-                // else could have changed this particular instance's target state.
-                .with_dont_retry(true)
-                .with_target_state(Offline);
+            tlog!(Info, "setting target state Offline"; "instance_name" => %instance.instance_name);
+            let req =
+                rpc::update_instance::Request::new(instance.instance_name.clone(), cluster_id)
+                    // We only try setting the state once and if a CaS conflict
+                    // happens we should reassess the situation, because somebody
+                    // else could have changed this particular instance's target state.
+                    .with_dont_retry(true)
+                    .with_target_state(Offline);
             let res = rpc::update_instance::handle_update_instance_request_and_wait(
                 req,
                 Self::UPDATE_INSTANCE_TIMEOUT,
@@ -126,7 +127,7 @@ impl Loop {
             if let Err(e) = res {
                 tlog!(Warning,
                     "failed setting target state Offline: {e}";
-                    "instance_id" => %instance.instance_id,
+                    "instance_name" => %instance.instance_name,
                 );
             }
 
@@ -148,12 +149,13 @@ impl Loop {
 
         if has_states!(instance, * -> Offline) {
             tlog!(Info, "setting own target state Online");
-            let req = rpc::update_instance::Request::new(instance.instance_id.clone(), cluster_id)
-                // We only try setting the state once and if a CaS conflict
-                // happens we should reassess the situation, because somebody
-                // else could have changed this particular instance's target state.
-                .with_dont_retry(true)
-                .with_target_state(Online);
+            let req =
+                rpc::update_instance::Request::new(instance.instance_name.clone(), cluster_id)
+                    // We only try setting the state once and if a CaS conflict
+                    // happens we should reassess the situation, because somebody
+                    // else could have changed this particular instance's target state.
+                    .with_dont_retry(true)
+                    .with_target_state(Online);
             let res = async {
                 let Some(leader_id) = raft_status.get().leader_id else {
                     return Err(Error::LeaderUnknown);

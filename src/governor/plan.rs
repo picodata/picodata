@@ -3,7 +3,7 @@ use crate::cas;
 use crate::column_name;
 use crate::has_states;
 use crate::instance::state::StateVariant;
-use crate::instance::{Instance, InstanceId};
+use crate::instance::{Instance, InstanceName};
 use crate::plugin::PluginIdentifier;
 use crate::plugin::PluginOp;
 use crate::plugin::TopologyUpdateOpKind;
@@ -66,8 +66,9 @@ pub(super) fn action_plan<'i>(
     let to_downgrade = instances
         .iter()
         .find(|instance| has_states!(instance, not Offline -> Offline));
+    
     if let Some(instance) = to_downgrade {
-        let instance_id = &instance.instance_id;
+        let instance_name = &instance.name;
         let new_current_state = instance.target_state.variant.as_str();
 
         let replicaset = *replicasets
@@ -105,7 +106,7 @@ pub(super) fn action_plan<'i>(
 
         ////////////////////////////////////////////////////////////////////////
         // update instance's current state
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_id)
             .with_current_state(instance.target_state);
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
@@ -114,7 +115,7 @@ pub(super) fn action_plan<'i>(
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(Downgrade {
-            instance_id,
+            instance_name,
             new_current_state,
             cas,
         }
@@ -127,7 +128,10 @@ pub(super) fn action_plan<'i>(
     if let Some((to, replicaset)) = new_target_master {
         debug_assert_eq!(to.replicaset_id, replicaset.replicaset_id);
         let mut ops = UpdateOps::new();
-        ops.assign(column_name!(Replicaset, target_master_id), &to.instance_id)?;
+        ops.assign(
+            column_name!(Replicaset, target_master_name),
+            &to.instance_name,
+        )?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
             &[&to.replicaset_id],
@@ -136,8 +140,8 @@ pub(super) fn action_plan<'i>(
         )?;
         let ranges = vec![
             cas::Range::for_dml(&dml)?,
-            cas::Range::new(ClusterwideTable::Instance).eq([&to.instance_id]),
-            cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.target_master_id]),
+            cas::Range::new(ClusterwideTable::Instance).eq([&to.instance_name]),
+            cas::Range::new(ClusterwideTable::Instance).eq([&replicaset.target_master_name]),
         ];
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
@@ -160,16 +164,16 @@ pub(super) fn action_plan<'i>(
             if let Some(address) = peer_addresses.get(&instance.raft_id) {
                 replicaset_peers.push(address.clone());
             } else {
-                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_id}`", instance.instance_id);
+                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_id}`", instance.instance_name);
             }
             if instance.may_respond() {
-                targets.push(&instance.instance_id);
+                targets.push(&instance.instance_name);
             }
         }
 
-        let mut master_id = None;
-        if replicaset.current_master_id == replicaset.target_master_id {
-            master_id = Some(&replicaset.current_master_id);
+        let mut master_name = None;
+        if replicaset.current_master_name == replicaset.target_master_name {
+            master_name = Some(&replicaset.current_master_name);
         }
 
         let mut ops = UpdateOps::new();
@@ -192,7 +196,7 @@ pub(super) fn action_plan<'i>(
         return Ok(ConfigureReplication {
             replicaset_id,
             targets,
-            master_id,
+            master_name,
             replicaset_peers,
             promotion_vclock,
             replication_config_version_actualize,
@@ -207,19 +211,22 @@ pub(super) fn action_plan<'i>(
     // because master switchover requires synchronizing via tarantool replication.
     let new_current_master = replicasets
         .values()
-        .find(|r| r.current_master_id != r.target_master_id);
+        .find(|r| r.current_master_name != r.target_master_name);
     if let Some(r) = new_current_master {
         let replicaset_id = &r.replicaset_id;
-        let old_master_id = &r.current_master_id;
-        let new_master_id = &r.target_master_id;
+        let old_master_name = &r.current_master_name;
+        let new_master_name = &r.target_master_name;
 
         let mut update_ops = UpdateOps::new();
-        update_ops.assign(column_name!(Replicaset, current_master_id), new_master_id)?;
+        update_ops.assign(
+            column_name!(Replicaset, current_master_name),
+            new_master_name,
+        )?;
 
         let mut demote = None;
         let old_master_may_respond = instances
             .iter()
-            .find(|i| i.instance_id == old_master_id)
+            .find(|i| i.instance_name == old_master_name)
             .map(|i| i.may_respond());
         if let Some(true) = old_master_may_respond {
             demote = Some(rpc::replication::DemoteRequest {});
@@ -247,9 +254,9 @@ pub(super) fn action_plan<'i>(
         }
 
         return Ok(UpdateCurrentReplicasetMaster {
-            old_master_id,
+            old_master_name,
             demote,
-            new_master_id,
+            new_master_name,
             replicaset_id,
             update_ops,
             bump_ranges: ranges,
@@ -319,7 +326,7 @@ pub(super) fn action_plan<'i>(
                 // Note at this point all the instances should have their replication configured,
                 // so it's ok to configure sharding for them
                 .filter(|instance| has_states!(instance, * -> Online))
-                .map(|instance| &instance.instance_id)
+                .map(|instance| &instance.instance_name)
                 .collect();
             let rpc = rpc::sharding::Request {
                 term,
@@ -360,7 +367,7 @@ pub(super) fn action_plan<'i>(
                 !tier.vshard_bootstrapped,
                 "bucket distribution only needs to be bootstrapped once"
             );
-            let target = &r.current_master_id;
+            let target = &r.current_master_name;
             let tier_name = &r.tier;
             let rpc = rpc::sharding::bootstrap::Request {
                 term,
@@ -393,8 +400,9 @@ pub(super) fn action_plan<'i>(
     let target = instances
         .iter()
         .find(|instance| has_states!(instance, not Expelled -> Expelled));
+    
     if let Some(instance) = target {
-        let instance_id = &instance.instance_id;
+        let instance_name = &instance.name;
         let new_current_state = instance.target_state.variant.as_str();
 
         let replicaset = *replicasets
@@ -413,7 +421,7 @@ pub(super) fn action_plan<'i>(
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
         return Ok(Downgrade {
-            instance_id,
+            instance_name,
             new_current_state,
             cas,
         }
@@ -425,8 +433,9 @@ pub(super) fn action_plan<'i>(
     let to_online = instances
         .iter()
         .find(|instance| has_states!(instance, not Online -> Online) || instance.is_reincarnated());
+    
     if let Some(instance) = to_online {
-        let instance_id = &instance.instance_id;
+        let instance_name = &instance.instance_name;
         let target_state = instance.target_state;
         debug_assert_eq!(target_state.variant, StateVariant::Online);
         let new_current_state = target_state.variant.as_str();
@@ -444,7 +453,7 @@ pub(super) fn action_plan<'i>(
             timeout: sync_timeout,
         };
 
-        let req = rpc::update_instance::Request::new(instance_id.clone(), cluster_id)
+        let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_id)
             .with_current_state(target_state);
         let cas_parameters =
             prepare_update_instance_cas_request(&req, instance, replicaset, tier, existing_fds)?;
@@ -452,8 +461,9 @@ pub(super) fn action_plan<'i>(
         let (op, ranges) = cas_parameters.expect("already check current state is different");
         let predicate = cas::Predicate::new(applied, ranges);
         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+
         return Ok(ToOnline {
-            target: instance_id,
+            target: instance_name,
             new_current_state,
             plugin_rpc,
             cas,
@@ -489,7 +499,7 @@ pub(super) fn action_plan<'i>(
 
         let mut targets = Vec::with_capacity(instances.len());
         for i in maybe_responding(instances) {
-            targets.push(&i.instance_id);
+            targets.push(&i.instance_name);
         }
 
         let rpc = rpc::load_plugin_dry_run::Request {
@@ -556,7 +566,7 @@ pub(super) fn action_plan<'i>(
         let service_defs = services.get(plugin).map(|v| &**v).unwrap_or(&[]);
 
         let targets = maybe_responding(instances)
-            .map(|i| &i.instance_id)
+            .map(|i| &i.instance_name)
             .collect();
 
         let rpc = rpc::enable_plugin::Request {
@@ -585,7 +595,7 @@ pub(super) fn action_plan<'i>(
                 }
                 let dml = Dml::replace(
                     ClusterwideTable::ServiceRouteTable,
-                    &ServiceRouteItem::new_healthy(i.instance_id.clone(), plugin, &svc.name),
+                    &ServiceRouteItem::new_healthy(i.instance_name.clone(), plugin, &svc.name),
                     ADMIN_ID,
                 )?;
                 ranges.push(cas::Range::for_dml(&dml)?);
@@ -661,11 +671,11 @@ pub(super) fn action_plan<'i>(
                 }
 
                 if new_tiers.contains(&i.tier) {
-                    enable_targets.push(&i.instance_id);
+                    enable_targets.push(&i.instance_name);
                     let dml = Dml::replace(
                         ClusterwideTable::ServiceRouteTable,
                         &ServiceRouteItem::new_healthy(
-                            i.instance_id.clone(),
+                            i.instance_name.clone(),
                             plugin,
                             &service_def.name,
                         ),
@@ -676,9 +686,9 @@ pub(super) fn action_plan<'i>(
                 }
 
                 if old_tiers.contains(&i.tier) {
-                    disable_targets.push(&i.instance_id);
+                    disable_targets.push(&i.instance_name);
                     let key = ServiceRouteKey {
-                        instance_id: &i.instance_id,
+                        instance_name: &i.instance_name,
                         plugin_name: &plugin.name,
                         plugin_version: &plugin.version,
                         service_name: &service_def.name,
@@ -781,7 +791,7 @@ pub mod stage {
 
         pub struct UpdateCurrentVshardConfig<'i> {
             /// Instances to send the `rpc` request to.
-            pub targets: Vec<&'i InstanceId>,
+            pub targets: Vec<&'i InstanceName>,
             /// Request to call [`rpc::sharding::proc_sharding`] on `targets`.
             pub rpc: rpc::sharding::Request,
             /// Global DML operation which updates `current_vshard_config_version` in corresponding record of table `_pico_tier`.
@@ -796,7 +806,7 @@ pub mod stage {
         }
 
         pub struct UpdateTargetReplicasetMaster {
-            /// Global DML operation which updates `target_master_id` in table `_pico_replicaset`.
+            /// Global DML operation which updates `target_master_name` in table `_pico_replicaset`.
             pub cas: cas::Request,
         }
 
@@ -804,7 +814,7 @@ pub mod stage {
             /// This replicaset is changing it's master.
             pub replicaset_id: &'i ReplicasetId,
             /// This instance will be demoted.
-            pub old_master_id: &'i InstanceId,
+            pub old_master_name: &'i InstanceName,
             /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
             /// It is optional because we don't try demoting the old master if it's already offline.
             pub demote: Option<rpc::replication::DemoteRequest>,
@@ -812,9 +822,9 @@ pub mod stage {
             /// promotion vclock in case the old master is not available.
             ///
             /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
-            pub new_master_id: &'i InstanceId,
+            pub new_master_name: &'i InstanceName,
             /// Part of the global DML operation which updates a `_pico_replicaset` record
-            /// with the new values for `current_master_id` & `promotion_vclock`.
+            /// with the new values for `current_master_name` & `promotion_vclock`.
             /// Note: it is only the part of the operation, because we don't know the promotion_vclock yet.
             pub update_ops: UpdateOps,
             /// Cas ranges for the `bump_ops` operations.
@@ -838,10 +848,10 @@ pub mod stage {
             pub replicaset_id: &'i ReplicasetId,
             /// These instances belong to one replicaset and will be sent a
             /// request to call [`rpc::replication::proc_replication`].
-            pub targets: Vec<&'i InstanceId>,
+            pub targets: Vec<&'i InstanceName>,
             /// This instance will also become the replicaset master.
-            /// This will be `None` if replicaset's current_master_id != target_master_id.
-            pub master_id: Option<&'i InstanceId>,
+            /// This will be `None` if replicaset's current_master_name != target_master_name.
+            pub master_name: Option<&'i InstanceName>,
             /// This is an explicit list of peer addresses.
             pub replicaset_peers: Vec<String>,
             /// The value of `promotion_vclock` column of the given replicaset.
@@ -853,7 +863,7 @@ pub mod stage {
 
         pub struct ShardingBoot<'i> {
             /// This instance will be initializing the bucket distribution.
-            pub target: &'i InstanceId,
+            pub target: &'i InstanceName,
             /// Request to call [`rpc::sharding::bootstrap::proc_sharding_bootstrap`] on `target`.
             pub rpc: rpc::sharding::bootstrap::Request,
             /// Global DML operation which updates `vshard_bootstrapped` in corresponding record of table `_pico_tier`.
@@ -871,9 +881,9 @@ pub mod stage {
         }
 
         pub struct ToOnline<'i> {
-            /// This instance's is becomming online. Id is only used for logging.
-            pub target: &'i InstanceId,
-            /// This is going to be the new current state of the instnace. Only used for logging.
+            /// This instance's is becomming online. Name is only used for logging.
+            pub target: &'i InstanceName,
+            /// This is going to be the new current state of the instance. Only used for logging.
             pub new_current_state: &'i str,
             /// Request to call [`rpc::enable_all_plugins::proc_enable_all_plugins`] on `target`.
             /// It is not optional, although it probably should be.
@@ -885,14 +895,14 @@ pub mod stage {
 
         pub struct ApplySchemaChange<'i> {
             /// These are masters of all the replicasets in the cluster.
-            pub targets: Vec<&'i InstanceId>,
+            pub targets: Vec<&'i InstanceName>,
             /// Request to call [`rpc::ddl_apply::proc_apply_schema_change`] on `targets`.
             pub rpc: rpc::ddl_apply::Request,
         }
 
         pub struct CreatePlugin<'i> {
             /// This is every instance which is currently online.
-            pub targets: Vec<&'i InstanceId>,
+            pub targets: Vec<&'i InstanceName>,
             /// Request to call [`rpc::load_plugin_dry_run::proc_load_plugin_dry_run`] on `targets`.
             pub rpc: rpc::load_plugin_dry_run::Request,
             /// Global batch DML operation which creates records in `_pico_plugin`, `_pico_service`, `_pico_plugin_config`
@@ -905,10 +915,10 @@ pub mod stage {
 
         pub struct EnablePlugin<'i> {
             /// This is every instance which is currently online.
-            pub targets: Vec<&'i InstanceId>,
+            pub targets: Vec<&'i InstanceName>,
             /// Request to call [`rpc::enable_plugin::proc_enable_plugin`] on `targets`.
             pub rpc: rpc::enable_plugin::Request,
-            /// Rpc response must arive within this timeout. Otherwise the operation is rolled back.
+            /// Rpc response must arrive within this timeout. Otherwise the operation is rolled back.
             pub on_start_timeout: Duration,
             /// Identifier of the plugin. This will be used to construct a [`PluginRaftOp::DisablePlugin`]
             /// raft operation if the RPC fails on some of the targets.
@@ -923,9 +933,9 @@ pub mod stage {
 
         pub struct AlterServiceTiers<'i> {
             /// This is the list of instances on which we want to enable the service.
-            pub enable_targets: Vec<&'i InstanceId>,
+            pub enable_targets: Vec<&'i InstanceName>,
             /// This is the list of instances on which we want to disable the service.
-            pub disable_targets: Vec<&'i InstanceId>,
+            pub disable_targets: Vec<&'i InstanceName>,
             /// Request to call [`rpc::enable_service::proc_enable_service`] on `enable_targets`.
             pub enable_rpc: rpc::enable_service::Request,
             /// Request to call [`rpc::disable_service::proc_disable_service`] on `disable_targets`.
@@ -952,21 +962,21 @@ fn get_new_replicaset_master_if_needed<'i>(
     // TODO: construct a map from replicaset id to instance to improve performance
     for &r in replicasets.values() {
         #[rustfmt::skip]
-        let Some(master) = instances.iter().find(|i| i.instance_id == r.target_master_id) else {
+        let Some(master) = instances.iter().find(|i| i.instance_name == r.target_master_name) else {
             #[rustfmt::skip]
-            warn_or_panic!("couldn't find instance with id {}, which is chosen as next master of replicaset {}",
-                           r.target_master_id, r.replicaset_id);
+            warn_or_panic!("couldn't find instance with name {}, which is chosen as next master of replicaset {}",
+                           r.target_master_name, r.replicaset_id);
             continue;
         };
 
         if master.replicaset_id != r.replicaset_id {
             #[rustfmt::skip]
             tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
-                  master.instance_id, master.replicaset_id, r.replicaset_id);
+                  master.instance_name, master.replicaset_id, r.replicaset_id);
         } else if !master.may_respond() {
             #[rustfmt::skip]
             tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
-                  master.instance_id, master.replicaset_id);
+                  master.instance_name, master.replicaset_id);
         } else {
             continue;
         }

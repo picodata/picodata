@@ -11,7 +11,7 @@ def cluster3(cluster: Cluster):
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
-    info = instance.call(".proc_instance_info", expelled_instance.instance_id)
+    info = instance.call(".proc_instance_info", expelled_instance.instance_name)
     states = (info["current_state"]["variant"], info["target_state"]["variant"])
     assert states == ("Expelled", "Expelled")
 
@@ -123,7 +123,7 @@ def test_expel_timeout(cluster: Cluster):
         command=i1.binary_path,
         args=[
             "expel",
-            "random_instance_id",
+            "random_instance_name",
             f"--timeout={CLI_TIMEOUT}",
             "--peer=10001",
         ],

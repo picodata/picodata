@@ -375,7 +375,7 @@ cluster:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(
             router_instance, "storage"
         )
-        assert replicaset_masters[r2_uuid] == storage_instance_2.instance_id
+        assert replicaset_masters[r2_uuid] == storage_instance_2.instance_name
 
     Retriable(timeout=10, rps=5).call(wait_until_governor_deliver_vshard_configuration)
 
@@ -546,7 +546,7 @@ cluster:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(
             router_instance, "storage"
         )
-        assert replicaset_masters[r_uuid] == instance.instance_id
+        assert replicaset_masters[r_uuid] == instance.instance_name
 
     Retriable(timeout=10, rps=5).call(
         wait_until_governor_deliver_vshard_configuration, replicaset_1_i2, r2_uuid

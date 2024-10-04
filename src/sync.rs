@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::rpc::RequestArgs;
 use crate::storage::{Clusterwide, ToEntryIter};
 use crate::traft::error::Error;
@@ -193,7 +193,7 @@ pub fn wait_for_index_globally(
 ) -> traft::Result<()> {
     fn broadcast_wait_index_rpc(
         pool: &ConnectionPool,
-        targets: &[&&InstanceId],
+        targets: &[&&InstanceName],
         index: &RaftIndex,
         deadline: &Instant,
     ) -> traft::Result<
@@ -212,9 +212,9 @@ pub fn wait_for_index_globally(
             timeout: timeout.as_secs_f64(),
         };
 
-        for instance_id in targets {
-            tlog!(Info, "calling proc_wait_index"; "instance_id" => %instance_id);
-            let resp = pool.call(**instance_id, proc_name!(proc_wait_index), &rpc, timeout)?;
+        for instance_name in targets {
+            tlog!(Info, "calling proc_wait_index"; "instance_name" => %instance_name);
+            let resp = pool.call(**instance_name, proc_name!(proc_wait_index), &rpc, timeout)?;
             fs.push_back(resp);
         }
 
@@ -262,13 +262,13 @@ pub fn wait_for_index_globally(
             let fs = broadcast_wait_index_rpc(&pool, &unconfirmed, &index, &deadline)?;
             let mut fs_enumerated = fs.enumerate();
             while let Some((idx, res)) = &fs_enumerated.next().await {
-                let instance_id = *unconfirmed[*idx];
+                let instance_name = *unconfirmed[*idx];
                 match res {
                     Ok(_) => {
-                        confirmed.insert(instance_id);
+                        confirmed.insert(instance_name);
                     }
                     Err(err) => {
-                        tlog!(Warning, "failed proc_wait_index: {err}"; "instance_id" => %instance_id);
+                        tlog!(Warning, "failed proc_wait_index: {err}"; "instance_name" => %instance_name);
                     }
                 }
             }

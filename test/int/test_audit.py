@@ -66,18 +66,18 @@ def test_startup(instance_with_audit_file: Instance):
 
     event = take_until_title(iter(events), "join_instance")
     assert event is not None
-    assert event["instance_id"] == "i1"
+    assert event["instance_name"] == "i1"
     assert event["raft_id"] == "1"
     assert event["initiator"] == "admin"
 
     event = take_until_title(iter(events), "change_target_state")
     assert event is not None
     assert event["new_state"] == "Offline(0)"
-    assert event["instance_id"] == "i1"
+    assert event["instance_name"] == "i1"
     assert event["raft_id"] == "1"
     assert (
         event["message"]
-        == f"target state of instance `{event['instance_id']}` changed to {event['new_state']}"
+        == f"target state of instance `{event['instance_name']}` changed to {event['new_state']}"
     )
     assert event["severity"] == "low"
     assert event["initiator"] == "admin"
@@ -85,11 +85,11 @@ def test_startup(instance_with_audit_file: Instance):
     event = take_until_title(iter(events), "change_current_state")
     assert event is not None
     assert event["new_state"] == "Offline(0)"
-    assert event["instance_id"] == "i1"
+    assert event["instance_name"] == "i1"
     assert event["raft_id"] == "1"
     assert (
         event["message"]
-        == f"current state of instance `{event['instance_id']}` changed to {event['new_state']}"
+        == f"current state of instance `{event['instance_name']}` changed to {event['new_state']}"
     )
     assert event["severity"] == "medium"
     assert event["initiator"] == "admin"
@@ -97,13 +97,13 @@ def test_startup(instance_with_audit_file: Instance):
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
     assert create_db["initiator"] == "admin"
-    assert create_db["instance_id"] == "i1"
+    assert create_db["instance_name"] == "i1"
     assert create_db["raft_id"] == "1"
 
     event = take_until_title(events, "connect_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
-    assert event["instance_id"] == "i1"
+    assert event["instance_name"] == "i1"
     assert event["raft_id"] == "1"
 
 
@@ -148,20 +148,20 @@ def test_recover_database(instance_with_audit_file: Instance):
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
     assert create_db["initiator"] == "admin"
-    assert create_db["instance_id"] == "i1"
+    assert create_db["instance_name"] == "i1"
     assert create_db["raft_id"] == "1"
 
     # On restart instance recovers it's local data
     event = take_until_title(iter(events), "recover_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
-    assert event["instance_id"] == "i1"
+    assert event["instance_name"] == "i1"
     assert event["raft_id"] == "1"
 
     event = take_until_title(events, "connect_local_db")
     assert event is not None
     assert event["initiator"] == "admin"
-    assert event["instance_id"] == "i1"
+    assert event["instance_name"] == "i1"
     assert event["raft_id"] == "1"
 
 
@@ -365,7 +365,7 @@ def test_index(instance_with_audit_file: Instance):
 
 
 def assert_instance_expelled(expelled_instance: Instance, instance: Instance):
-    info = instance.call(".proc_instance_info", expelled_instance.instance_id)
+    info = instance.call(".proc_instance_info", expelled_instance.instance_name)
     states = (info["current_state"]["variant"], info["target_state"]["variant"])
     assert states == ("Expelled", "Expelled")
 
@@ -381,11 +381,11 @@ def test_join_expel_instance(cluster: Cluster):
     events = audit_i1.events()
 
     audit = os.path.join(cluster.data_dir, "i2", "audit.log")
-    i2 = cluster.add_instance(instance_id="i2", audit=audit)
+    i2 = cluster.add_instance(instance_name="i2", audit=audit)
 
     join_instance = take_until_title(events, "join_instance")
     assert join_instance is not None
-    assert join_instance["instance_id"] == "i2"
+    assert join_instance["instance_name"] == "i2"
     assert join_instance["raft_id"] == str(i2.raft_id)
     assert join_instance["severity"] == "low"
     assert join_instance["initiator"] == "admin"
@@ -393,7 +393,7 @@ def test_join_expel_instance(cluster: Cluster):
     # Joining of a new instance is treated as creation of a local database on it
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
-    assert create_db["instance_id"] == "i2"
+    assert create_db["instance_name"] == "i2"
     assert create_db["raft_id"] == str(i2.raft_id)
     assert create_db["severity"] == "low"
     assert create_db["initiator"] == "admin"
@@ -403,7 +403,7 @@ def test_join_expel_instance(cluster: Cluster):
 
     expel_instance = take_until_title(events, "expel_instance")
     assert expel_instance is not None
-    assert expel_instance["instance_id"] == "i2"
+    assert expel_instance["instance_name"] == "i2"
     assert expel_instance["raft_id"] == str(i2.raft_id)
     assert expel_instance["severity"] == "low"
     assert expel_instance["initiator"] == "admin"
@@ -411,7 +411,7 @@ def test_join_expel_instance(cluster: Cluster):
     # Expelling an instance is treated as removal of a local database on it
     drop_db = take_until_title(events, "drop_local_db")
     assert drop_db is not None
-    assert drop_db["instance_id"] == "i2"
+    assert drop_db["instance_name"] == "i2"
     assert drop_db["raft_id"] == str(i2.raft_id)
     assert drop_db["severity"] == "low"
     assert drop_db["initiator"] == "admin"
@@ -423,21 +423,21 @@ def test_join_connect_instance(cluster: Cluster):
     i1 = cluster.add_instance(audit=audit)
 
     audit = os.path.join(cluster.data_dir, "i2", "audit.log")
-    i2 = cluster.add_instance(instance_id="i2", audit=audit)
+    i2 = cluster.add_instance(instance_name="i2", audit=audit)
     i2.terminate()
 
     events = AuditFile(i2.audit_flag_value).events()
 
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
-    assert create_db["instance_id"] == "i1"
+    assert create_db["instance_name"] == "i1"
     assert create_db["raft_id"] == str(i1.raft_id)
     assert create_db["severity"] == "low"
     assert create_db["initiator"] == "admin"
 
     create_db = take_until_title(events, "create_local_db")
     assert create_db is not None
-    assert create_db["instance_id"] == "i2"
+    assert create_db["instance_name"] == "i2"
     assert create_db["raft_id"] == str(i2.raft_id)
     assert create_db["severity"] == "low"
     assert create_db["initiator"] == "admin"
@@ -447,7 +447,7 @@ def test_join_connect_instance(cluster: Cluster):
     # in contrast to create_local_db
     connect_db = take_until_title(events, "connect_local_db")
     assert connect_db is not None
-    assert connect_db["instance_id"] == "i2"
+    assert connect_db["instance_name"] == "i2"
     assert connect_db["raft_id"] == str(i2.raft_id)
     assert connect_db["severity"] == "low"
     assert connect_db["initiator"] == "admin"

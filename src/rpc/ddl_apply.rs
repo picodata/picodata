@@ -79,11 +79,11 @@ crate::define_rpc_request! {
             Err(TransactionError::RolledBack(Error::Aborted(err))) => {
                 tlog!(Warning, "schema change aborted: {err}");
 
-                let instance_id = node.raft_storage.instance_id()?.expect("should be persisted before procs are defined");
+                let instance_name = node.raft_storage.instance_name()?.expect("should be persisted before procs are defined");
                 let cause = ErrorInfo {
                     error_code: err.error_code(),
                     message: err.to_string(),
-                    instance_id,
+                    instance_name,
                 };
                 Ok(Response::Abort { cause })
             }

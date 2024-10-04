@@ -1,5 +1,5 @@
 use crate::info::InstanceInfo;
-use crate::instance::{Instance, InstanceId};
+use crate::instance::{Instance, InstanceName};
 use crate::plugin;
 use crate::plugin::PluginError;
 use crate::schema::ServiceDef;
@@ -7,7 +7,7 @@ use crate::traft::node;
 
 pub struct TopologyContext {
     instance_tier: String,
-    instance_id: InstanceId,
+    instance_name: InstanceName,
 }
 
 impl TopologyContext {
@@ -18,7 +18,7 @@ impl TopologyContext {
             .map_err(|e| PluginError::TopologyError(e.to_string()))?;
 
         Ok(Self {
-            instance_id: current_instance_info.instance_id,
+            instance_name: current_instance_info.instance_name,
             instance_tier: current_instance_info.tier,
         })
     }
@@ -26,13 +26,13 @@ impl TopologyContext {
     /// Return topology context for instance.
     pub fn for_instance(instance: &Instance) -> Self {
         Self {
-            instance_id: instance.instance_id.clone(),
+            instance_name: instance.instance_name.clone(),
             instance_tier: instance.tier.clone(),
         }
     }
 
-    pub fn instance_id(&self) -> &InstanceId {
-        &self.instance_id
+    pub fn instance_name(&self) -> &InstanceName {
+        &self.instance_name
     }
 }
 

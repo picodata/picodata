@@ -27,7 +27,7 @@ def cluster3(cluster: Cluster):
 def raft_join(
     instance: Instance,
     cluster_id: str,
-    instance_id: str,
+    instance_name: str,
     timeout_seconds: float | int,
     failure_domain: dict[str, str] = dict(),
 ):
@@ -35,11 +35,11 @@ def raft_join(
     # Workaround slow address resolving. Intentionally use
     # invalid address format to eliminate blocking DNS requests.
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
-    address = f"nowhere/{instance_id}"
+    address = f"nowhere/{instance_name}"
     return instance.call(
         ".proc_raft_join",
         cluster_id,
-        instance_id,
+        instance_name,
         replicaset_id,
         address,
         failure_domain,
@@ -50,7 +50,7 @@ def raft_join(
 
 def replicaset_id(instance: Instance):
     return instance.eval(
-        "return box.space._pico_instance:get(...).replicaset_id", instance.instance_id
+        "return box.space._pico_instance:get(...).replicaset_id", instance.instance_name
     )
 
 
@@ -59,7 +59,7 @@ def test_request_follower(cluster2: Cluster):
     i2.assert_raft_status("Follower")
 
     actual = raft_join(
-        instance=i2, cluster_id=cluster2.id, instance_id="fake-0", timeout_seconds=1
+        instance=i2, cluster_id=cluster2.id, instance_name="fake-0", timeout_seconds=1
     )
     # Even though a follower is called new instance is joined successfully
     assert actual["instance"]["raft_id"] == 3
@@ -137,12 +137,12 @@ def test_replication(cluster: Cluster):
 
     for instance in cluster.instances:
         raft_instance = instance.eval(
-            "return box.space._pico_instance:get(...):tomap()", instance.instance_id
+            "return box.space._pico_instance:get(...):tomap()", instance.instance_name
         )
         space_cluster = instance.call("box.space._cluster:select")
 
         expected = {
-            "instance_id": instance.instance_id,
+            "instance_name": instance.instance_name,
             "instance_uuid": instance.eval("return box.info.uuid"),
             "raft_id": instance.raft_id,
             "replicaset_id": "r1",
@@ -204,7 +204,7 @@ def test_cluster_id_mismatch(instance: Instance):
         raft_join(
             instance=instance,
             cluster_id=wrong_cluster_id,
-            instance_id="whatever",
+            instance_name="whatever",
             timeout_seconds=1,
         )
     assert e.value.args[:2] == (
@@ -245,8 +245,12 @@ def test_separate_clusters(cluster: Cluster):
     # `--peer` option specified. As a result two instances form their
     # own clusters and don't interact at all.
     #
-    i1a = cluster.add_instance(instance_id="i1", replicaset_id="r1", wait_online=False)
-    i1b = cluster.add_instance(instance_id="i1", replicaset_id="r1", wait_online=False)
+    i1a = cluster.add_instance(
+        instance_name="i1", replicaset_id="r1", wait_online=False
+    )
+    i1b = cluster.add_instance(
+        instance_name="i1", replicaset_id="r1", wait_online=False
+    )
 
     i1a.peers.clear()
     i1b.peers.clear()
@@ -266,10 +270,10 @@ def test_separate_clusters(cluster: Cluster):
     assert i1b_info["raft_id"] == 1
 
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
-    # Despite instance_id and replicaset_id are the same, their uuids differ
+    # Despite instance_name and replicaset_id are the same, their uuids differ
 
-    assert i1a_info["instance_id"] == "i1"
-    assert i1b_info["instance_id"] == "i1"
+    assert i1a_info["instance_name"] == "i1"
+    assert i1b_info["instance_name"] == "i1"
     assert i1a_info["instance_uuid"] != i1b_info["instance_uuid"]
 
     assert i1a_info["replicaset_id"] == "r1"
@@ -277,22 +281,22 @@ def test_separate_clusters(cluster: Cluster):
     assert i1a_info["replicaset_uuid"] != i1b_info["replicaset_uuid"]
 
 
-def test_join_without_explicit_instance_id(cluster: Cluster):
-    # Scenario: bootstrap single instance without explicitly given instance id
+def test_join_without_explicit_instance_name(cluster: Cluster):
+    # Scenario: bootstrap single instance without explicitly given instance name
     #   Given no instances started
-    #   When two instances starts without instance_id given
-    #   Then the one of the instances became Leader with instance_id=1
-    #   And the second one of the became Follower with instance_id 2
+    #   When two instances starts without instance_name given
+    #   Then the one of the instances became Leader with instance_name=1
+    #   And the second one of the became Follower with instance_name 2
 
-    # don't generate instance_ids so that the Leader
+    # don't generate instance_names so that the Leader
     # chooses ones for them when they join
-    i1 = cluster.add_instance(instance_id=False)
-    i2 = cluster.add_instance(instance_id=False)
+    i1 = cluster.add_instance(instance_name=False)
+    i2 = cluster.add_instance(instance_name=False)
 
     i1.assert_raft_status("Leader")
-    assert i1.instance_id == "i1"
+    assert i1.instance_name == "i1"
     i2.assert_raft_status("Follower")
-    assert i2.instance_id == "i2"
+    assert i2.instance_name == "i2"
 
 
 def test_failure_domains(cluster: Cluster):
@@ -307,7 +311,7 @@ def test_failure_domains(cluster: Cluster):
         raft_join(
             instance=i1,
             cluster_id=i1.cluster_id,
-            instance_id="x1",
+            instance_name="x1",
             failure_domain=dict(os="Arch"),
             timeout_seconds=1,
         )
@@ -320,7 +324,7 @@ def test_failure_domains(cluster: Cluster):
         raft_join(
             instance=i1,
             cluster_id=i1.cluster_id,
-            instance_id="x1",
+            instance_name="x1",
             failure_domain=dict(planet="Venus"),
             timeout_seconds=1,
         )
@@ -369,29 +373,29 @@ def test_fail_to_join(cluster: Cluster):
     # and therefore exits with failure
     cluster.fail_to_add_instance(failure_domain=dict())
 
-    # An instance with the given instance_id is already present in the cluster
+    # An instance with the given instance_name is already present in the cluster
     # so this instance cannot join
     # and therefore exits with failure
-    assert i1.instance_id is not None
+    assert i1.instance_name is not None
     cluster.fail_to_add_instance(
-        instance_id=i1.instance_id, failure_domain=dict(owner="Jim")
+        instance_name=i1.instance_name, failure_domain=dict(owner="Jim")
     )
 
     # Tiers in cluster: storage
     # instance with unexisting tier cannot join and therefore exits with failure
-    assert i1.instance_id is not None
+    assert i1.instance_name is not None
     cluster.fail_to_add_instance(tier="noexistent_tier")
 
     joined_instances = i1.eval(
         """
         return box.space._pico_instance:pairs()
             :map(function(instance)
-                return { instance.instance_id, instance.raft_id }
+                return { instance.instance_name, instance.raft_id }
             end)
             :totable()
     """
     )
-    assert {tuple(i) for i in joined_instances} == {(i1.instance_id, i1.raft_id)}
+    assert {tuple(i) for i in joined_instances} == {(i1.instance_name, i1.raft_id)}
 
 
 def test_pico_service_invalid_existing_password(cluster: Cluster):
@@ -493,13 +497,13 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
     lc.wait_matched()
 
 
-def test_join_with_duplicate_instance_id(cluster: Cluster):
+def test_join_with_duplicate_instance_name(cluster: Cluster):
     [leader, quorum_helper] = cluster.deploy(instance_count=2)
 
     namesakes = []
     log_crawlers = []
     for _ in range(5):
-        i = cluster.add_instance(wait_online=False, instance_id="original-name")
+        i = cluster.add_instance(wait_online=False, instance_name="original-name")
         lc = log_crawler(i, "`original-name` is already joined")
         log_crawlers.append(lc)
         namesakes.append(i)
@@ -526,7 +530,7 @@ def test_join_with_duplicate_instance_id(cluster: Cluster):
     namesakes = []
     log_crawlers = []
     for _ in range(5):
-        i = cluster.add_instance(wait_online=False, instance_id="original-name")
+        i = cluster.add_instance(wait_online=False, instance_name="original-name")
         lc = log_crawler(i, "`original-name` is already joined")
         log_crawlers.append(lc)
         namesakes.append(i)

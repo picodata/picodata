@@ -519,7 +519,7 @@ class Retriable:
 
 OUT_LOCK = threading.Lock()
 
-POSITION_IN_SPACE_INSTANCE_ID = 3
+POSITION_IN_SPACE_INSTANCE_NAME = 3
 
 
 class Connection(tarantool.Connection):  # type: ignore
@@ -583,7 +583,7 @@ class Instance:
     tier: str | None = None
     init_replication_factor: int | None = None
     config_path: str | None = None
-    instance_id: str | None = None
+    instance_name: str | None = None
     replicaset_id: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     service_password_file: str | None = None
@@ -603,10 +603,10 @@ class Instance:
             return None
         return f"{self.host}:{self.port}"
 
-    def current_state(self, instance_id=None):
-        if instance_id is None:
-            instance_id = self.instance_id
-        return self.call(".proc_instance_info", instance_id)["current_state"]
+    def current_state(self, instance_name=None):
+        if instance_name is None:
+            instance_name = self.instance_name
+        return self.call(".proc_instance_info", instance_name)["current_state"]
 
     def get_tier(self):
         return "default" if self.tier is None else self.tier
@@ -640,7 +640,7 @@ class Instance:
         return [
             self.binary_path, "run",
             *([f"--cluster-id={self.cluster_id}"] if self.cluster_id else []),
-            *([f"--instance-id={self.instance_id}"] if self.instance_id else []),
+            *([f"--instance-name={self.instance_name}"] if self.instance_name else []),
             *([f"--replicaset-id={self.replicaset_id}"] if self.replicaset_id else []),
             *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
             *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
@@ -658,12 +658,12 @@ class Instance:
 
     def __repr__(self):
         if self.process:
-            return f"Instance({self.instance_id}, listen={self.listen} cluster={self.cluster_id}, process.pid={self.process.pid})"  # noqa: E501
+            return f"Instance({self.instance_name}, listen={self.listen} cluster={self.cluster_id}, process.pid={self.process.pid})"  # noqa: E501
         else:
-            return f"Instance({self.instance_id}, listen={self.listen} cluster={self.cluster_id})"
+            return f"Instance({self.instance_name}, listen={self.listen} cluster={self.cluster_id})"  # noqa: E501
 
     def __hash__(self):
-        return hash((self.cluster_id, self.instance_id))
+        return hash((self.cluster_id, self.instance_name))
 
     @contextmanager
     def connect(
@@ -749,27 +749,27 @@ class Instance:
         )
         return self.eval(lua)
 
-    def replicaset_master_id(self, timeout: int | float = 10) -> str:
+    def replicaset_master_name(self, timeout: int | float = 10) -> str:
         """
-        Returns `current_master_id` of this instance's replicaset.
-        Waits until `current_master_id` == `target_master_id` if there's a
+        Returns `current_master_name` of this instance's replicaset.
+        Waits until `current_master_name` == `target_master_name` if there's a
         master switchover in process.
         """
 
         def make_attempt():
-            current_master_id = self.eval(
+            current_master_name = self.eval(
                 """
                 local replicaset_id = pico.instance_info(...).replicaset_id
                 local info = box.space._pico_replicaset:get(replicaset_id)
-                if info.target_master_id ~= info.current_master_id then
-                    error(string.format('master is transitioning from %s to %s', info.current_master_id, info.target_master_id))
+                if info.target_master_name ~= info.current_master_name then
+                    error(string.format('master is transitioning from %s to %s', info.current_master_name, info.target_master_name))
                 end
-                return info.current_master_id
+                return info.current_master_name
                 """,  # noqa: E501
-                self.instance_id,
+                self.instance_name,
             )
-            assert current_master_id
-            return current_master_id
+            assert current_master_name
+            return current_master_name
 
         return Retriable(timeout=timeout, rps=4).call(make_attempt)  # type: ignore
 
@@ -880,7 +880,7 @@ class Instance:
             self.kill()
 
     def _process_output(self, src, out: io.TextIOWrapper):
-        id = self.instance_id or f":{self.port}"
+        id = self.instance_name or f":{self.port}"
         prefix = f"{id:<3} | "
 
         if sys.stdout.isatty():
@@ -1301,8 +1301,8 @@ class Instance:
             assert isinstance(myself["raft_id"], int)
             self.raft_id = myself["raft_id"]
 
-            assert isinstance(myself["instance_id"], str)
-            self.instance_id = myself["instance_id"]
+            assert isinstance(myself["instance_name"], str)
+            self.instance_name = myself["instance_name"]
 
             assert isinstance(myself["current_state"], dict)
             return (
@@ -1596,7 +1596,7 @@ class Cluster:
         self,
         wait_online=True,
         peers: list[str] | None = None,
-        instance_id: str | bool = True,
+        instance_name: str | bool = True,
         replicaset_id: str | None = None,
         failure_domain=dict(),
         init_replication_factor: int | None = None,
@@ -1607,30 +1607,30 @@ class Cluster:
         """Add an `Instance` into the list of instances of the cluster and wait
         for it to attain Online grade unless `wait_online` is `False`.
 
-        `instance_id` specifies how the instance's id is generated in the
+        `instance_name` specifies how the instance's name is generated in the
         following way:
 
-        - if `instance_id` is a string, it will be used as a value for the
-          `--instance-id` command-line option.
+        - if `instance_name` is a string, it will be used as a value for the
+          `--instance-name` command-line option.
 
-        - If `instance_id` is `True` (default), the `--instance-id` command-line
+        - If `instance_name` is `True` (default), the `--instance-name` command-line
           option will be generated by the pytest according to the instances
           sequence number in cluster.
 
-        - If `instance_id` is `False`, the instance will be started
-          without the `--instance-id` command-line option and the particular value
+        - If `instance_name` is `False`, the instance will be started
+          without the `--instance-name` command-line option and the particular value
           will be generated by the cluster.
         """
         i = 1 + len(self.instances)
 
-        generated_instance_id: str | None
-        match instance_id:
+        generated_instance_name: str | None
+        match instance_name:
             case str() as iid:
-                generated_instance_id = iid
+                generated_instance_name = iid
             case True:
-                generated_instance_id = f"i{i}"
+                generated_instance_name = f"i{i}"
             case False:
-                generated_instance_id = None
+                generated_instance_name = None
             case _:
                 raise Exception("unreachable")
 
@@ -1645,7 +1645,7 @@ class Cluster:
             binary_path=self.binary_path,
             cwd=self.data_dir,
             cluster_id=self.id,
-            instance_id=generated_instance_id,
+            instance_name=generated_instance_name,
             replicaset_id=replicaset_id,
             _data_dir=f"{self.data_dir}/i{i}",
             plugin_dir=self.plugin_dir,
@@ -1677,7 +1677,7 @@ class Cluster:
     def fail_to_add_instance(
         self,
         peers=None,
-        instance_id: str | bool = True,
+        instance_name: str | bool = True,
         failure_domain=dict(),
         init_replication_factor: int | None = None,
         tier: str = "storage",
@@ -1685,7 +1685,7 @@ class Cluster:
         instance = self.add_instance(
             wait_online=False,
             peers=peers,
-            instance_id=instance_id,
+            instance_name=instance_name,
             failure_domain=failure_domain,
             init_replication_factor=init_replication_factor,
             tier=tier,
@@ -1717,7 +1717,7 @@ class Cluster:
     ):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
-        assert target.instance_id, "cannot expel without target instance_id"
+        assert target.instance_name, "cannot expel without target instance_name"
 
         # fmt: off
         command: list[str] = [
@@ -1726,7 +1726,7 @@ class Cluster:
             "--cluster-id", target.cluster_id or "",
             "--password-file", self.service_password_file,
             "--auth-type", "chap-sha1",
-            target.instance_id,
+            target.instance_name,
         ]
         # fmt: on
 

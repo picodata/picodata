@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::instance::InstanceId;
+use crate::instance::InstanceName;
 use crate::instance::StateVariant::*;
 use crate::rpc;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
@@ -34,7 +34,7 @@ crate::define_rpc_request! {
             });
         }
 
-        let req = rpc::update_instance::Request::new(req.instance_id, req.cluster_id)
+        let req = rpc::update_instance::Request::new(req.instance_name, req.cluster_id)
             .with_target_state(Expelled);
         handle_update_instance_request_and_wait(req, TIMEOUT)?;
 
@@ -43,11 +43,10 @@ crate::define_rpc_request! {
 
     /// A request to expel an instance.
     ///
-    /// Use [`redirect::Request`] for automatic redirection from any instance to
-    /// leader.
+    /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
         pub cluster_id: String,
-        pub instance_id: InstanceId,
+        pub instance_name: InstanceName,
     }
 
     pub struct Response {}

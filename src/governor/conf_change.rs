@@ -137,8 +137,8 @@ pub(crate) fn raft_conf_change(
         if !tier_can_vote(instance) {
             // case when bootstrap leader from tier with `can_vote = false`
             #[rustfmt::skip]
-            tlog!(Warning, "instance with instance_id '{}' from tier '{}' with 'can_vote' = false is in raft configuration as voter, making it follower",
-                  instance.instance_id, instance.tier);
+            tlog!(Warning, "instance with instance_name '{}' from tier '{}' with 'can_vote' = false is in raft configuration as voter, making it follower",
+                  instance.instance_name, instance.tier);
             let ccs = raft_conf.change_single(RemoveNode, *voter_id);
             changes.push(ccs);
             continue;

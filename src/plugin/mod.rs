@@ -463,7 +463,9 @@ pub fn replace_routes(items: &[ServiceRouteItem], timeout: Duration) -> traft::R
     debug_assert!({
         let node = node::global()?;
         let i = InstanceInfo::try_get(node, None)?;
-        items.iter().all(|route| route.instance_id == i.instance_id)
+        items
+            .iter()
+            .all(|route| route.instance_name == i.instance_name)
     });
     // use empty ranges cause all instances update only self-owned information
     let ranges = vec![];
@@ -490,7 +492,7 @@ pub fn remove_routes(keys: &[ServiceRouteKey], timeout: Duration) -> traft::Resu
     debug_assert!({
         let node = node::global()?;
         let i = InstanceInfo::try_get(node, None)?;
-        keys.iter().all(|key| key.instance_id == &i.instance_id)
+        keys.iter().all(|key| key.instance_name == &i.instance_name)
     });
     // use empty ranges cause all instances update only self-owned information
     let ranges = vec![];

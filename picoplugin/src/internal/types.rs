@@ -233,7 +233,7 @@ impl State {
 pub struct InstanceInfo {
     raft_id: u64,
     advertise_address: RString,
-    instance_id: RString,
+    instance_name: RString,
     instance_uuid: RString,
     replicaset_id: RString,
     replicaset_uuid: RString,
@@ -248,7 +248,7 @@ impl InstanceInfo {
     pub fn new(
         raft_id: u64,
         advertise_address: String,
-        instance_id: String,
+        instance_name: String,
         instance_uuid: String,
         replicaset_id: String,
         replicaset_uuid: String,
@@ -260,7 +260,7 @@ impl InstanceInfo {
         Self {
             raft_id,
             advertise_address: RString::from(advertise_address),
-            instance_id: RString::from(instance_id),
+            instance_name: RString::from(instance_name),
             instance_uuid: RString::from(instance_uuid),
             replicaset_id: RString::from(replicaset_id),
             replicaset_uuid: RString::from(replicaset_uuid),
@@ -281,9 +281,9 @@ impl InstanceInfo {
         self.advertise_address.as_str()
     }
 
-    /// Returns the persisted `InstanceId` of the current instance.
-    pub fn instance_id(&self) -> &str {
-        self.instance_id.as_str()
+    /// Returns the persisted `InstanceName` of the current instance.
+    pub fn instance_name(&self) -> &str {
+        self.instance_name.as_str()
     }
 
     /// Return current instance UUID.

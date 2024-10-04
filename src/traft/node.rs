@@ -836,33 +836,33 @@ impl NodeImpl {
                 // as it preemptively puts itself into `_pico_instance` table.
                 // Locally it's logged in src/lib.rs.
                 if old.as_ref().map(|x| x.raft_id) != Some(new.raft_id) {
-                    let instance_id = &new.instance_id;
+                    let instance_name = &new.instance_name;
                     crate::audit!(
-                        message: "a new instance `{instance_id}` joined the cluster",
+                        message: "a new instance `{instance_name}` joined the cluster",
                         title: "join_instance",
                         severity: Low,
-                        instance_id: %instance_id,
+                        instance_name: %instance_name,
                         raft_id: %new.raft_id,
                         initiator: &initiator_def.name,
                     );
                     crate::audit!(
-                        message: "local database created on `{instance_id}`",
+                        message: "local database created on `{instance_name}`",
                         title: "create_local_db",
                         severity: Low,
-                        instance_id: %instance_id,
+                        instance_name: %instance_name,
                         raft_id: %new.raft_id,
                         initiator: &initiator_def.name,
                     );
                 }
 
                 if old.as_ref().map(|x| x.current_state) != Some(new.current_state) {
-                    let instance_id = &new.instance_id;
+                    let instance_name = &new.instance_name;
                     let state = &new.current_state;
                     crate::audit!(
-                        message: "current state of instance `{instance_id}` changed to {state}",
+                        message: "current state of instance `{instance_name}` changed to {state}",
                         title: "change_current_state",
                         severity: Medium,
-                        instance_id: %instance_id,
+                        instance_name: %instance_name,
                         raft_id: %new.raft_id,
                         new_state: %state,
                         initiator: &initiator_def.name,
@@ -870,13 +870,13 @@ impl NodeImpl {
                 }
 
                 if old.as_ref().map(|x| x.target_state) != Some(new.target_state) {
-                    let instance_id = &new.instance_id;
+                    let instance_name = &new.instance_name;
                     let state = &new.target_state;
                     crate::audit!(
-                        message: "target state of instance `{instance_id}` changed to {state}",
+                        message: "target state of instance `{instance_name}` changed to {state}",
                         title: "change_target_state",
                         severity: Low,
-                        instance_id: %instance_id,
+                        instance_name: %instance_name,
                         raft_id: %new.raft_id,
                         new_state: %state,
                         initiator: &initiator_def.name,
@@ -884,20 +884,20 @@ impl NodeImpl {
                 }
 
                 if has_states!(new, Expelled -> *) {
-                    let instance_id = &new.instance_id;
+                    let instance_name = &new.instance_name;
                     crate::audit!(
-                        message: "instance `{instance_id}` was expelled from the cluster",
+                        message: "instance `{instance_name}` was expelled from the cluster",
                         title: "expel_instance",
                         severity: Low,
-                        instance_id: %instance_id,
+                        instance_name: %instance_name,
                         raft_id: %new.raft_id,
                         initiator: &initiator_def.name,
                     );
                     crate::audit!(
-                        message: "local database dropped on `{instance_id}`",
+                        message: "local database dropped on `{instance_name}`",
                         title: "drop_local_db",
                         severity: Low,
-                        instance_id: %instance_id,
+                        instance_name: %instance_name,
                         raft_id: %new.raft_id,
                         initiator: &initiator_def.name,
                     );
@@ -2332,7 +2332,7 @@ impl NodeImpl {
     /// definition or if it should instead synchronize with a master.
     ///
     /// Note: it would be a little more reliable to check if the replica is
-    /// chosen to be a master by checking master_id in _pico_replicaset, but
+    /// chosen to be a master by checking master_name in _pico_replicaset, but
     /// currently we cannot do that, because tarantool replication is being
     /// done asynchronously with raft log replication. Basically instance needs
     /// to know it's a replicaset master before it can access the replicaset

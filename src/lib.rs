@@ -705,23 +705,23 @@ fn start_discover(
     if let Some(raft_id) = raft_storage.raft_id()? {
         // This is a restart, go to postjoin immediately.
         tarantool::set_cfg_field("read_only", true)?;
-        let instance_id = raft_storage
-            .instance_id()?
-            .expect("instance_id should be already set");
+        let instance_name = raft_storage
+            .instance_name()?
+            .expect("instance_name should be already set");
         postjoin(config, storage, raft_storage)?;
         crate::audit!(
-            message: "local database recovered on `{instance_id}`",
+            message: "local database recovered on `{instance_name}`",
             title: "recover_local_db",
             severity: Low,
-            instance_id: %instance_id,
+            instance_name: %instance_name,
             raft_id: %raft_id,
             initiator: "admin",
         );
         crate::audit!(
-            message: "local database connected on `{instance_id}`",
+            message: "local database connected on `{instance_name}`",
             title: "connect_local_db",
             severity: Low,
-            instance_id: %instance_id,
+            instance_name: %instance_name,
             raft_id: %raft_id,
             initiator: "admin",
         );
@@ -758,14 +758,14 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     };
 
     let raft_id = 1;
-    let instance_id = config.instance.instance_id();
-    let instance_id = instance_id.unwrap_or_else(|| instance::InstanceId::from("i1"));
+    let instance_name = config.instance.instance_name();
+    let instance_name = instance_name.unwrap_or_else(|| instance::InstanceName::from("i1"));
     let replicaset_id = config.instance.replicaset_id();
     let replicaset_id = replicaset_id.unwrap_or_else(|| replicaset::ReplicasetId::from("r1"));
 
     let instance = Instance {
         raft_id,
-        instance_id: instance_id.clone(),
+        instance_name: instance_name.clone(),
         instance_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
         replicaset_id,
         replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
@@ -777,7 +777,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 
     if !tier.can_vote {
         return Err(Error::invalid_configuration(format!(
-            "instance with instance_id '{instance_id}' from tier '{my_tier_name}' with `can_vote = false` \
+            "instance with instance_name '{instance_name}' from tier '{my_tier_name}' with `can_vote = false` \
              cannot be a bootstrap leader"
         )));
     }
@@ -803,7 +803,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
 
     transaction(|| -> Result<(), TntError> {
         raft_storage.persist_raft_id(raft_id).unwrap();
-        raft_storage.persist_instance_id(&instance_id).unwrap();
+        raft_storage.persist_instance_name(&instance_name).unwrap();
         raft_storage.persist_tier(my_tier_name).unwrap();
         raft_storage
             .persist_cluster_id(config.cluster_id())
@@ -818,10 +818,10 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     postjoin(config, storage, raft_storage)?;
     // In this case `create_local_db` is logged in postjoin
     crate::audit!(
-        message: "local database connected on `{instance_id}`",
+        message: "local database connected on `{instance_name}`",
         title: "connect_local_db",
         severity: Low,
-        instance_id: %instance_id,
+        instance_name: %instance_name,
         raft_id: %raft_id,
         initiator: "admin",
     );
@@ -834,7 +834,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
 
     let req = rpc::join::Request {
         cluster_id: config.cluster_id().into(),
-        instance_id: config.instance.instance_id().map(From::from),
+        instance_name: config.instance.instance_name().map(From::from),
         replicaset_id: config.instance.replicaset_id().map(From::from),
         advertise_address: config.instance.advertise_address().to_host_port(),
         failure_domain: config.instance.failure_domain(),
@@ -844,7 +844,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     // Arch memo.
     // - There must be no timeouts. Retrying may lead to flooding the
     //   topology with phantom instances. No worry, specifying a
-    //   particular `instance_id` for every instance protects from that
+    //   particular `instance_name` for every instance protects from that
     //   flood.
     // - It's fine to retry "connection refused" errors.
     let resp: rpc::join::Response = loop {
@@ -891,7 +891,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
         }
         raft_storage.persist_raft_id(raft_id).unwrap();
         raft_storage
-            .persist_instance_id(&resp.instance.instance_id)
+            .persist_instance_name(&resp.instance.instance_name)
             .unwrap();
         raft_storage
             .persist_cluster_id(config.cluster_id())
@@ -901,21 +901,21 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     })
     .unwrap();
 
-    let instance_id = resp.instance.instance_id;
+    let instance_name = resp.instance.instance_name;
     postjoin(config, storage, raft_storage)?;
     crate::audit!(
-        message: "local database created on `{instance_id}`",
+        message: "local database created on `{instance_name}`",
         title: "create_local_db",
         severity: Low,
-        instance_id: %instance_id,
+        instance_name: %instance_name,
         raft_id: %raft_id,
         initiator: "admin",
     );
     crate::audit!(
-        message: "local database connected on `{instance_id}`",
+        message: "local database connected on `{instance_name}`",
         title: "connect_local_db",
         severity: Low,
-        instance_id: %instance_id,
+        instance_name: %instance_name,
         raft_id: %raft_id,
         initiator: "admin",
     );
@@ -1039,7 +1039,7 @@ fn postjoin(
             let timeout = Duration::from_millis(250);
             tlog!(
                 Debug,
-                "leader address is still unkown, retrying in {timeout:?}"
+                "leader address is still unknown, retrying in {timeout:?}"
             );
             fiber::sleep(timeout);
             continue;
@@ -1048,9 +1048,9 @@ fn postjoin(
         tlog!(
             Info,
             "initiating self-activation of {}",
-            instance.instance_id
+            instance.instance_name
         );
-        let req = rpc::update_instance::Request::new(instance.instance_id, cluster_id)
+        let req = rpc::update_instance::Request::new(instance.instance_name, cluster_id)
             .with_target_state(Online)
             .with_failure_domain(config.instance.failure_domain());
         let fut = rpc::network_call(

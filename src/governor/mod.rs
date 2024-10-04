@@ -235,7 +235,7 @@ impl Loop {
 
             Plan::TransferLeadership(TransferLeadership { to }) => {
                 set_status!("transfer raft leader");
-                tlog!(Info, "transferring leadership to {}", to.instance_id);
+                tlog!(Info, "transferring leadership to {}", to.instance_name);
                 node.transfer_leadership_and_yield(to.raft_id);
                 _ = waker.changed().timeout(Loop::RETRY_TIMEOUT).await;
             }
@@ -252,9 +252,9 @@ impl Loop {
             }
 
             Plan::UpdateCurrentReplicasetMaster(UpdateCurrentReplicasetMaster {
-                old_master_id,
+                old_master_name,
                 demote,
-                new_master_id,
+                new_master_name,
                 replicaset_id,
                 mut update_ops,
                 bump_ranges,
@@ -263,25 +263,25 @@ impl Loop {
                 set_status!("transfer replication leader");
                 tlog!(
                     Info,
-                    "transferring replicaset mastership from {old_master_id} to {new_master_id}"
+                    "transferring replicaset mastership from {old_master_name} to {new_master_name}"
                 );
 
                 let mut promotion_vclock = None;
                 if let Some(rpc) = demote {
                     governor_step! {
                         "demoting old master" [
-                            "old_master_id" => %old_master_id,
+                            "old_master_name" => %old_master_name,
                             "replicaset_id" => %replicaset_id,
                         ]
                         async {
-                            let resp = pool.call(old_master_id, proc_name!(proc_replication_demote), &rpc, rpc_timeout)?.await?;
+                            let resp = pool.call(old_master_name, proc_name!(proc_replication_demote), &rpc, rpc_timeout)?.await?;
                             promotion_vclock = Some(resp.vclock);
                         }
                     }
                 } else {
                     governor_step! {
                         "getting promotion vclock from new master" [
-                            "new_master_id" => %new_master_id,
+                            "new_master_name" => %new_master_name,
                             "replicaset_id" => %replicaset_id,
                         ]
                         async {
@@ -296,7 +296,7 @@ impl Loop {
                 let promotion_vclock = promotion_vclock.ignore_zero();
                 governor_step! {
                     "proposing replicaset current master change" [
-                        "current_master_id" => %new_master_id,
+                        "current_master_name" => %new_master_name,
                         "replicaset_id" => %replicaset_id,
                     ]
                     async {
@@ -323,16 +323,16 @@ impl Loop {
             }
 
             Plan::Downgrade(Downgrade {
-                instance_id,
+                instance_name,
                 new_current_state,
                 cas,
             }) => {
                 set_status!("update instance state to offline");
-                tlog!(Info, "downgrading instance {instance_id}");
+                tlog!(Info, "downgrading instance {instance_name}");
 
                 governor_step! {
                     "handling instance state change" [
-                        "instance_id" => %instance_id,
+                        "instance_name" => %instance_name,
                         "current_state" => %new_current_state,
                     ]
                     async {
@@ -345,7 +345,7 @@ impl Loop {
             Plan::ConfigureReplication(ConfigureReplication {
                 replicaset_id,
                 targets,
-                master_id,
+                master_name,
                 replicaset_peers,
                 promotion_vclock,
                 replication_config_version_actualize,
@@ -362,35 +362,35 @@ impl Loop {
                         };
 
                         let mut sync_and_promote = None;
-                        if master_id.is_some() {
+                        if master_name.is_some() {
                             sync_and_promote = Some(SyncAndPromoteRequest {
                                 vclock: promotion_vclock.clone(),
                                 timeout: rpc_timeout,
                             });
                         }
 
-                        for instance_id in targets {
-                            tlog!(Info, "calling rpc::replication"; "instance_id" => %instance_id);
+                        for instance_name in targets {
+                            tlog!(Info, "calling rpc::replication"; "instance_name" => %instance_name);
                             rpc.sync_and_promote = None;
-                            if master_id == Some(instance_id) {
+                            if master_name == Some(instance_name) {
                                 let Some(sync) = sync_and_promote.take() else {
                                     unreachable!("sync_and_promote request should only be sent to at most one replica");
                                 };
                                 rpc.sync_and_promote = Some(sync);
                             }
 
-                            let resp = pool.call(instance_id, proc_name!(proc_replication), &rpc, rpc_timeout)?;
+                            let resp = pool.call(instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
                                         tlog!(Info, "configured replication with instance";
-                                            "instance_id" => %instance_id,
+                                            "instance_name" => %instance_name,
                                         );
                                         Ok(())
                                     }
                                     Err(e) => {
                                         tlog!(Warning, "failed calling rpc::replication: {e}";
-                                            "instance_id" => %instance_id
+                                            "instance_name" => %instance_name
                                         );
                                         Err(e)
                                     }
@@ -421,7 +421,7 @@ impl Loop {
                 set_status(governor_status, "bootstrap bucket distribution");
                 governor_step! {
                     "bootstrapping bucket distribution" [
-                        "instance_id" => %target,
+                        "instance_name" => %target,
                         "tier" => %tier_name,
                     ]
                     async {
@@ -452,7 +452,7 @@ impl Loop {
                 set_status!("update instance state to online");
                 governor_step! {
                     "enable plugins on instance" [
-                        "instance_id" => %target,
+                        "instance_name" => %target,
                     ]
                     async {
                         pool.call(target, proc_name!(proc_enable_all_plugins), &plugin_rpc, plugin_rpc_timeout)?.await?
@@ -461,7 +461,7 @@ impl Loop {
 
                 governor_step! {
                     "handling instance state change" [
-                        "instance_id" => %target,
+                        "instance_name" => %target,
                         "current_state" => %new_current_state,
                     ]
                     async {
@@ -478,26 +478,26 @@ impl Loop {
                     "applying pending schema change"
                     async {
                         let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling proc_apply_schema_change"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
+                        for instance_name in targets {
+                            tlog!(Info, "calling proc_apply_schema_change"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_apply_schema_change), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::ddl_apply::Response::Ok) => {
                                         tlog!(Info, "applied schema change on instance";
-                                            "instance_id" => %instance_id,
+                                            "instance_name" => %instance_name,
                                         );
                                         Ok(())
                                     }
                                     Ok(rpc::ddl_apply::Response::Abort { cause }) => {
                                         tlog!(Error, "failed to apply schema change on instance: {cause}";
-                                            "instance_id" => %instance_id,
+                                            "instance_name" => %instance_name,
                                         );
                                         Err(OnError::Abort(cause))
                                     }
                                     Err(e) => {
                                         tlog!(Warning, "failed calling proc_apply_schema_change: {e}";
-                                            "instance_id" => %instance_id
+                                            "instance_name" => %instance_name
                                         );
                                         Err(OnError::Retry(e))
                                     }
@@ -545,22 +545,22 @@ impl Loop {
                     "checking if plugin is ready for installation on instances"
                     async {
                         let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout)?;
+                        for instance_name in targets {
+                            tlog!(Info, "calling proc_load_plugin_dry_run"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_load_plugin_dry_run), &rpc, plugin_rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
                                         tlog!(Info, "instance is ready to install plugin";
-                                            "instance_id" => %instance_id,
+                                            "instance_name" => %instance_name,
                                         );
                                         Ok(())
                                     }
                                     Err(e) => {
                                         tlog!(Error, "failed to call proc_load_plugin_dry_run: {e}";
-                                            "instance_id" => %instance_id
+                                            "instance_name" => %instance_name
                                         );
-                                        Err(ErrorInfo::new(instance_id.clone(), e))
+                                        Err(ErrorInfo::new(instance_name.clone(), e))
                                     }
                                 }
                             });
@@ -603,30 +603,30 @@ impl Loop {
                     "enabling plugin"
                     async {
                         let mut fs = vec![];
-                        for &instance_id in &targets {
-                            tlog!(Info, "calling enable_plugin"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
+                        for &instance_name in &targets {
+                            tlog!(Info, "calling enable_plugin"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_enable_plugin), &rpc, on_start_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(rpc::enable_plugin::Response::Ok) => {
-                                        tlog!(Info, "enabled plugin on instance"; "instance_id" => %instance_id);
+                                        tlog!(Info, "enabled plugin on instance"; "instance_name" => %instance_name);
                                         Ok(())
                                     }
                                     Ok(rpc::enable_plugin::Response::Abort { cause }) => {
                                         tlog!(Error, "failed to enable plugin at instance: {cause}";
-                                            "instance_id" => %instance_id,
+                                            "instance_name" => %instance_name,
                                         );
                                         Err(OnError::Abort(cause))
                                     }
                                     Err(Error::Timeout) => {
                                         tlog!(Error, "failed to enable plugin at instance: timeout";
-                                            "instance_id" => %instance_id,
+                                            "instance_name" => %instance_name,
                                         );
-                                        Err(OnError::Abort(ErrorInfo::timeout(instance_id.clone(), "no response")))
+                                        Err(OnError::Abort(ErrorInfo::timeout(instance_name.clone(), "no response")))
                                     }
                                     Err(e) => {
                                         tlog!(Warning, "failed calling proc_load_plugin: {e}";
-                                            "instance_id" => %instance_id
+                                            "instance_name" => %instance_name
                                         );
                                         Err(OnError::Retry(e))
                                     }
@@ -687,20 +687,20 @@ impl Loop {
                     "enabling/disabling service at new tiers"
                     async {
                         let mut fs = vec![];
-                        for &instance_id in &enable_targets {
-                            tlog!(Info, "calling proc_enable_service"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout)?;
+                        for &instance_name in &enable_targets {
+                            tlog!(Info, "calling proc_enable_service"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_enable_service), &enable_rpc, plugin_rpc_timeout)?;
                             fs.push(async move {
                                 match resp.await {
                                     Ok(_) => {
-                                        tlog!(Info, "instance enable service"; "instance_id" => %instance_id);
+                                        tlog!(Info, "instance enable service"; "instance_name" => %instance_name);
                                         Ok(())
                                     }
                                     Err(e) => {
                                         tlog!(Error, "failed to call proc_enable_service: {e}";
-                                            "instance_id" => %instance_id
+                                            "instance_name" => %instance_name
                                         );
-                                        Err(ErrorInfo::new(instance_id.clone(), e))
+                                        Err(ErrorInfo::new(instance_name.clone(), e))
                                     }
                                 }
                             });
@@ -713,8 +713,8 @@ impl Loop {
                             // try to disable plugins at all instances
                             // where it was enabled previously
                             let mut fs = vec![];
-                            for instance_id in enable_targets {
-                                let resp = pool.call(instance_id, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                            for instance_name in enable_targets {
+                                let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                                 fs.push(resp);
                             }
                             // FIXME: over here we completely ignore the result of the RPC above.
@@ -726,9 +726,9 @@ impl Loop {
                         }
 
                         let mut fs = vec![];
-                        for instance_id in disable_targets {
-                            tlog!(Info, "calling proc_disable_service"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
+                        for instance_name in disable_targets {
+                            tlog!(Info, "calling proc_disable_service"; "instance_id" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_disable_service), &disable_rpc, plugin_rpc_timeout)?;
                             fs.push(resp);
                         }
                         try_join_all(fs).await?;
@@ -762,13 +762,13 @@ impl Loop {
                     ]
                     async {
                         let mut fs = vec![];
-                        for instance_id in targets {
-                            tlog!(Info, "calling proc_sharding"; "instance_id" => %instance_id);
-                            let resp = pool.call(instance_id, proc_name!(proc_sharding), &rpc, rpc_timeout)?;
+                        for instance_name in targets {
+                            tlog!(Info, "calling proc_sharding"; "instance_name" => %instance_name);
+                            let resp = pool.call(instance_name, proc_name!(proc_sharding), &rpc, rpc_timeout)?;
                             fs.push(async move {
                                 resp.await.map_err(|e| {
                                     tlog!(Warning, "failed calling proc_sharding: {e}";
-                                        "instance_id" => %instance_id
+                                        "instance_name" => %instance_name
                                     );
                                     e
                                 })
