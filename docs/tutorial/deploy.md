@@ -10,9 +10,9 @@
 
 ## Простой кластер {: #simple_cluster }
 
-### Запуск
+### Запуск {: #simple_cluster_run }
 
-#### Файл конфигурации {: #config }
+#### Файл конфигурации {: #simple_cluster_config }
 
 Для развертывания простого кластера используйте следующий файл конфигурации:
 
@@ -54,7 +54,7 @@
 [picodata config default]: ../reference/cli.md#config_default
 [Описание файла конфигурации]: ../reference/config.md
 
-#### Скрипты инстансов {: #instance_scripts }
+#### Скрипты инстансов {: #simple_cluster_scripts }
 
 Создайте скрипты запуска для инстансов, указав в них путь к общему файлу
 конфигурации (в примере он находится в той же директории, что и сами
@@ -133,7 +133,7 @@ TBD:
 
 ## Кластер из нескольких тиров {: #tiered_cluster }
 
-Тиры - функциональность, позволяющая управлять
+[Тиры][tiers] - функциональность, позволяющая управлять
 физическим расположением шардированных таблиц.
 В части хранения шардированных данных тир
 представляет собой отдельную группу хранения.
@@ -152,7 +152,7 @@ TBD:
 
 
 Также полезной может оказаться возможность переопределять некоторые из
-глобальных параметров кластера на уровне тира. Например [replication_factor]. 
+глобальных параметров кластера на уровне тира. Например [replication_factor].
 
 В этом разделе мы запустим кластер, состоящий из двух тиров
 с именами "blue" и "red". Файл конфигурации и скрипты инстансов
@@ -163,9 +163,9 @@ TBD:
 Можно отдельным примером добавить пример с не дефолтным can_vote
 -->
 
-### Запуск
+### Запуск {: #tiered_cluster_run }
 
-#### Файл конфигурации {: #tiered_config }
+#### Файл конфигурации {: #tiered_cluster_config }
 
 Тиры создаются только один раз на этапе [бутстрапа кластера][cluster_bootstrap] по информации
 из [конфигурационного файла][config_file_description] и после этого не изменяются.
@@ -204,8 +204,7 @@ TBD:
         cache: 134217728
     ```
 
-
-#### Скрипты инстансов {: #instance_scripts }
+#### Скрипты инстансов {: #tiered_cluster_scripts }
 
 Создайте скрипты запуска для инстансов, указав в них путь к общему файлу
 конфигурации (в примере он находится в той же директории, что и сами
@@ -264,15 +263,13 @@ TBD:
     picodata run
     ```
 
-Про работу с шардированными таблицами подбробнее в разделе [SQL].
+Про работу с шардированными таблицами подбробнее в разделе SQL.
 
-[tier_glossary]: ../overview/glossary.md#tier
+[replication_factor]: ../overview/glossary.md#replication_factor
+[tiers]: ../overview/glossary.md#tier
 [cluster_bootstrap]: ../overview/glossary.md#bootstrap
-[config_file_description]: /reference/config/#config_file_description
-[config_file_section_tier]: /reference/config/#cluster_tier_tier_can_vote
-[local_config]: ../tutorial/deploy.md#config
-[instance_scripts]: ../tutorial/deploy.md#instance_scripts
-
+[config_file_description]: ../reference/config.md#config_file_description
+[config_file_section_tier]: ../reference/config.md#cluster_tier_tier_can_vote
 
 ## Зоны доступности (failure domains) {: #failure_domains }
 
@@ -322,6 +319,9 @@ picodata run --init-replication-factor 2 --failure-domain region=us,zone=us-west
 `--failure-domain region=us` и `--failure-domain REGION=US` будут
 относиться к одному региону и, следовательно, не попадут в один
 репликасет.
+
+[--failure-domain]: ../reference/cli.md#run_failure_domain
+[--advertise]: ../reference/cli.md#run_advertise
 
 ## Удаление инстанса (expel) {: #expel }
 
