@@ -119,6 +119,7 @@ nav:
     - architecture/fibers.md
     - architecture/plugins.md
   - Плагины:
+    - plugins/radix.md
     - plugins/synapse.md
     - plugins/gostech_audit_log.md
   - Обеспечение безопасности:

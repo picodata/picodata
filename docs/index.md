@@ -74,6 +74,7 @@ Picodata — это распределенная система промышле
 
 ### Плагины {: #plugins }
 
+* [Radix](plugins/radix.md)
 * [Synapse](plugins/synapse.md)
 * [Внешний модуль аудита](plugins/gostech_audit_log.md)
 
