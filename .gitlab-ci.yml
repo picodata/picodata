@@ -611,3 +611,26 @@ downstream-front-deploy:
     VER: $CI_COMMIT_SHORT_SHA
   needs:
     - job: upload-picodata-to-binary-front-deploy
+
+publish-picodata-plugin:
+  stage: pack
+  when: manual
+  rules:
+    - <<: *if-build-base-changes-on-master-branch
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+    - <<: *if-build-base-changes-on-dev-branch
+      variables:
+        BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
+    - <<: *else
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+  image:
+    name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
+    pull_policy: if-not-present
+  script:
+    - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
+    - make publish-picodata-plugin

@@ -124,3 +124,10 @@ centos7-cmake3:
 		sudo ln -s /usr/bin/cmake3 /usr/bin/cmake; \
 	fi
 	sudo find {/opt,/usr} -name libgomp.spec -delete
+
+publish-picodata-plugin:
+	cargo publish --dry-run -p picodata-plugin-proc-macro
+	cargo publish -p picodata-plugin-proc-macro
+
+	cargo publish --dry-run -p picodata-plugin
+	cargo publish -p picodata-plugin

@@ -2677,7 +2677,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin"
-version = "24.6.0"
+version = "24.6.1-rc1"
 dependencies = [
  "abi_stable",
  "gensym",
@@ -2698,7 +2698,7 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin-proc-macro"
-version = "0.1.0"
+version = "24.6.1-rc1"
 dependencies = [
  "proc-macro2 1.0.88",
  "quote 1.0.37",
