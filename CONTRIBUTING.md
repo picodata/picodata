@@ -275,10 +275,8 @@ There is a simple benchmark based on `pytest` scenario. Quick run it with
 make benchmark
 ```
 
-The benchmark consists of two parts: Tarantool space operations (replaces) and Picodata `raft` writes to leader (NOPs).
-You will see both results.
-
-The benchmark designed for quick evaluation of the current application performance.
+The benchmark consists of single part: SQL query handling via `IPROTO_EXECUTE` vs `.proc_sql_dispatch`.
+You will see resulting table with time delta.
 
 ### Flamegraphs
 

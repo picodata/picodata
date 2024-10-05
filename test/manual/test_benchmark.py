@@ -1,253 +1,184 @@
 import os
-import subprocess
-from dataclasses import field
-from multiprocessing.pool import ThreadPool
-from typing import Callable
-import funcy  # type: ignore
 import pytest
-from conftest import Cluster, Instance, pgrep_tree, pid_alive
-from prettytable import PrettyTable  # type: ignore
-from pytest_harvest import saved_fixture
+import subprocess
+
+from conftest import Connection, Instance, MalformedAPI, pgrep_tree, pid_alive
+from dataclasses import field
+from datetime import datetime
+from functools import wraps
+from multiprocessing.pool import ThreadPool
+from prettytable import PrettyTable
 
 
-@pytest.mark.parametrize("fibers", [1, 2, 3, 5, 10, 50, 100])
-@saved_fixture
-def test_benchmark_replace(cluster: Cluster, tmpdir, with_flamegraph, fibers):
-    DURATION = 2
-    FLAMEGRAPH_TMP_DIR = tmpdir
-    FLAMEGRAPH_OUT_DIR = "tmp/flamegraph/replace"
-    cluster.deploy(instance_count=1)
-    [i1] = cluster.instances
+USER_NAME = "kelthuzad"
+USER_PASS = "g$$dP4ss"
+TABLE_NAME = "warehouse"
 
-    luacode_init = """
-    box.schema.space.create('bench', {
-    if_not_exists = true,
-    is_local = true,
-    format = {
-        {name = 'id', type = 'unsigned', is_nullable = false},
-        {name = 'value', type = 'unsigned', is_nullable = false}
-    }
-    })
-    box.space.bench:create_index('pk', {
-        if_not_exists = true,
-        parts = {{'id'}}
-    })
-    fiber=require('fiber')
-    function f(deadline)
-        local result = 0
-        while deadline > fiber.clock() do
-            for i=1, 1000 do
-                box.space.bench:replace({1, i})
-            end
-            result = result + 1000
-        end
-        return result
-    end
-    function benchmark_replace(t, c)
-        local fibers = {}
-        local t1 = fiber.clock()
-        local deadline = t1 + t
-        for i=1, c do
-            fibers[i] = fiber.new(f, deadline)
-            fibers[i]:set_joinable(true)
-        end
-        local total = 0
-        for i=1, c do
-            local _, ret = fibers[i]:join()
-            total = total + ret
-        end
-        local t2 = fiber.clock()
-        return {c = c, total = total, time = t2-t1, rps = total/(t2-t1)}
-    end
+
+def flame(f, duration, instance, tmpdir):
+    @wraps(f)
+    def wrapper():
+        flamegraph = Flamegraph(
+            name=f"{f.__name__}",
+            watchpid=child_pid(instance),
+            duration=duration,
+            tmp_dir=tmpdir,
+            out_dir="tmp/flamegraph",
+        )
+
+        flamegraph.start()
+        f()
+        flamegraph.wait()
+        flamegraph.gather()
+
+    return wrapper
+
+
+def bench(f, duration, instance, capsys):
+    @wraps(f)
+    def wrapper():
+        before = datetime.now()
+        f()
+        after = datetime.now()
+        delta = after - before
+        return delta
+
+    return wrapper
+
+
+def test_benchmark_iproto_execute(instance: Instance, tmpdir, capsys, with_flamegraph):
+    # "f" means only on flamegraph creation, "b" only on benchmarking
+    # 1) create table
+    # 2) fill the table with the data
+    # 3) create user
+    # 4) grant rights for the table to the user
+    # 5) connect as a created user to an instance
+    # b) instantiate an output
+    # 6) run select only tests:
+    #      f) create flamegraph for each
+    #      b) calculate execution times for each
+    #      b) append calculated times to output
+    # b) print output to the user
+
+    dcl = instance.sql(
+        f"""
+        CREATE USER {USER_NAME} WITH PASSWORD '{USER_PASS}' USING chap-sha1
     """
+    )
+    assert dcl["row_count"] == 1
+    conn = Connection(
+        instance.host,
+        instance.port,
+        user=USER_NAME,
+        password=USER_PASS,
+        connect_now=True,
+        reconnect_max_attempts=0,
+    )
+    assert conn
 
-    i1.assert_raft_status("Leader")
+    row_count = 5000
 
-    i1.eval(luacode_init)
-
-    def benchmark():
-        i = i1
-        pid = child_pid(i)
-        acc = []
-        c = fibers
-
-        def f(i, t, c):
-            return i.eval("return benchmark_replace(...)", t, c, timeout=60)
-
-        if with_flamegraph:
-            f = flamegraph_decorator(
-                f,
-                f"f{str(c).zfill(3)}",
-                pid,
-                FLAMEGRAPH_TMP_DIR,
-                FLAMEGRAPH_OUT_DIR,
-                DURATION,
-                acc,
-            )
-        stat = f(i, DURATION, c)
-
-        return ((c, stat), acc[0] if len(acc) > 0 else None)
-
-    return benchmark()
-
-
-# fmt: off
-@pytest.mark.parametrize("cluster_size,fibers", [
-    (1, 1), (1, 10), (1, 20),
-    (2, 1), (2, 10), (2, 20),
-    (3, 1), (3, 10), (3, 20),
-    (10, 1), (10, 10), (10, 20),
-    (20, 1), (20, 10), (20, 20)
-])
-# fmt: on
-@saved_fixture
-def test_benchmark_nop(cluster, tmpdir, cluster_size, fibers, with_flamegraph):
-    """
-    For adequate flamegraphs don't forget to set kernel options:
-    $ sudo echo 0 > /proc/sys/kernel/perf_event_paranoid
-    $ sudo echo 0 > /proc/sys/kernel/kptr_restrict
-    """
-    DURATION = 2
-    FLAMEGRAPH_OUT_DIR = "tmp/flamegraph/nop"
-    FLAMEGRAPH_TMP_DIR = tmpdir
-
-    def expand_cluster(cluster: Cluster, size: int):
-        c = 0
-        while len(cluster.instances) < size:
-            cluster.add_instance(wait_online=False).start()
-            c += 1
-            if c % 5 == 0:
-                wait_longer(cluster)
-        wait_longer(cluster)
-
-    def init(i: Instance):
-        init_code = """
-        fiber=require('fiber')
-        function f(deadline)
-            local result = 0
-            while deadline > fiber.clock() do
-                for i=1, 5 do
-                    pico.raft_propose_nop()
-                end
-                result = result + 5
-            end
-            return result
-        end
-        function benchmark_nop(t, c)
-            local fibers = {}
-            local t1 = fiber.clock()
-            local deadline = t1 + t
-            for i=1, c do
-                fibers[i] = fiber.new(f, deadline)
-                fibers[i]:set_joinable(true)
-            end
-            local total = 0
-            for i=1, c do
-                local _, ret = fibers[i]:join()
-                total = total + ret
-            end
-            local t2 = fiber.clock();
-            return {c = c, total = total, time = t2-t1, rps = total/(t2-t1)}
-        end
+    # https://docs.picodata.io/picodata/stable/reference/legend/#create_test_tables
+    ddl = instance.sql(
         """
-        i.eval(init_code)
+        CREATE TABLE warehouse (
+            id INTEGER NOT NULL,
+            item TEXT NOT NULL,
+            type TEXT NOT NULL,
+            PRIMARY KEY (id))
+        USING memtx DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+    """
+    )
+    assert ddl["row_count"] == 1
+    acl = instance.sql(f"GRANT READ ON TABLE warehouse TO {USER_NAME}")
+    assert acl["row_count"] == 1
+    acl = instance.sql(f"GRANT WRITE ON TABLE warehouse TO {USER_NAME}")
+    assert acl["row_count"] == 1
+    for i in range(row_count):
+        instance.sql(f"INSERT INTO warehouse VALUES ({i}, 'Sargeras', 'Deathwing')")
 
-    def find_leader(cluster: Cluster):
-        for i in cluster.instances:
-            if is_leader(i):
-                return i
-        raise Exception("Leader not found")
+    # https://docs.picodata.io/picodata/stable/reference/legend/#create_test_tables
+    ddl = instance.sql(
+        """
+        CREATE TABLE items (
+            id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            PRIMARY KEY (id))
+        USING memtx DISTRIBUTED BY (id)
+        OPTION (TIMEOUT = 3.0)
+    """
+    )
+    assert ddl["row_count"] == 1
+    acl = instance.sql(f"GRANT READ ON TABLE items TO {USER_NAME}")
+    assert acl["row_count"] == 1
+    acl = instance.sql(f"GRANT WRITE ON TABLE items TO {USER_NAME}")
+    assert acl["row_count"] == 1
+    for i in range(row_count):
+        instance.sql(f"INSERT INTO items VALUES ({i}, 'Kiljaeden')")
 
-    def is_leader(i: Instance):
-        return state(i)["raft_state"] == "Leader"
+    if not with_flamegraph:
+        table = PrettyTable()
+        table.field_names = ["case", ".proc_sql_dispatch", "IPROTO_EXECUTE", "diff"]
+        table.align = "c"
 
-    def state(i: Instance):
-        return i.eval("return pico.raft_status()")
+    select_amount = 500  # we have got a lot of rows already
+    select_query = "SELECT * FROM warehouse"
+    select_duration = 20 * 2  # two tests by 20 seconds
 
-    def benchmark():
-        print(f"===== Cluster size = {cluster_size}, fibers = {fibers} =====")
-        acc = []
-        expand_cluster(cluster, cluster_size)
-        i = find_leader(cluster)
-        init(i)
-        pid = child_pid(i)
+    def sql_select():
+        for i in range(select_amount):
+            conn.call(".proc_sql_dispatch", select_query, [], None, None)
 
-        def f(instance, duration, fiber_count):
-            return instance.eval("return benchmark_nop(...)", duration, fiber_count, timeout=300)
-
-        if with_flamegraph:
-            f = flamegraph_decorator(
-                f,
-                f"s{str(cluster_size).zfill(3)}f{str(fibers).zfill(3)}",
-                pid,
-                FLAMEGRAPH_TMP_DIR,
-                FLAMEGRAPH_OUT_DIR,
-                DURATION,
-                acc,
-            )
-        stat = f(i, DURATION, fibers)
-
-        return ((cluster_size, fibers, stat), acc[0] if len(acc) > 0 else None)
-
-    return benchmark()
-
-
-@funcy.retry(tries=30, timeout=10)  # type: ignore
-def wait_longer(cluster):
-    for instance in cluster.instances:
-        instance.wait_online()
-
-
-def test_summarize_replace_and_nop(fixture_store, with_flamegraph, capsys):
-    def report_replace(stats):
-        t = PrettyTable()
-        t.title = "tarantool replace/sec"
-        t.field_names = ["fibers", "rps"]
-        for (c, stat) in stats:
-            t.add_row([c, int(stat["rps"])])
-        t.align = "r"
-        return t
-
-    def report_nop(stats):
-        sizes = list(set(d[0] for d in stats))
-        fibers = list(set(d[1] for d in stats))
-
-        data = [[""] * len(fibers) for _ in sizes]
-        for (s, c, stat) in stats:
-            size_index = sizes.index(s)
-            fiber_index = fibers.index(c)
-            val = int(stat["rps"])
-            data[size_index][fiber_index] = val  # type: ignore
-
-        t = PrettyTable()
-        t.title = "Nop/s"
-        t.field_names = ["Cluster size \\ fibers", *fibers]
-        t.align = "r"
-
-        index = 0
-        for d in data:
-            row = [sizes[index], *d]
-            t.add_row(row)
-            index += 1
-
-        return t
-
-    with capsys.disabled():
-        print()
-        if "test_benchmark_replace" in fixture_store:
-            stats1 = [d[1][0] for d in fixture_store["test_benchmark_replace"].items()]
-            print(report_replace(stats1))
-        if "test_benchmark_nop" in fixture_store:
-            stats2 = [d[1][0] for d in fixture_store["test_benchmark_nop"].items()]
-            print(report_nop(stats2))
+    def execute_select():
+        for i in range(select_amount):
+            with pytest.raises(MalformedAPI) as _:
+                conn.execute(select_query)
 
     if with_flamegraph:
-        acc = []
-        for d in fixture_store["test_benchmark_replace"].items():
-            acc.append(d[1][1])
-        for d in fixture_store["test_benchmark_nop"].items():
-            acc.append(d[1][1])
-        gather_flamegraphs(acc)
+        flame(sql_select, select_duration, instance, tmpdir)()
+        flame(execute_select, select_duration, instance, tmpdir)()
+    else:
+        sql_select_time = bench(sql_select, select_duration, instance, capsys)()
+        execute_select_time = bench(execute_select, select_duration, instance, capsys)()
+
+        diff_select_time = execute_select_time - sql_select_time
+        table.add_row(
+            ["select", sql_select_time, execute_select_time, diff_select_time]
+        )
+
+    update_amount = 500  # we have got a lot of rows already
+    update_query = """
+        UPDATE warehouse SET item = name
+        FROM (SELECT id AS i, name FROM items)
+        WHERE id = i
+    """
+    update_duration = 20 * 2  # two tests by 20 seconds
+
+    def sql_update():
+        for i in range(update_amount):
+            conn.call(".proc_sql_dispatch", update_query, [], None, None)
+
+    def execute_update():
+        for i in range(update_amount):
+            # with pytest.raises(MalformedAPI) as _:
+            conn.execute(update_query)
+
+    if with_flamegraph:
+        flame(sql_update, update_duration, instance, tmpdir)()
+        flame(execute_update, update_duration, instance, tmpdir)()
+    else:
+        sql_update_time = bench(sql_update, update_duration, instance, capsys)()
+        execute_update_time = bench(execute_update, update_duration, instance, capsys)()
+
+        diff_update_time = execute_update_time - sql_update_time
+        table.add_row(
+            ["update", sql_update_time, execute_update_time, diff_update_time]
+        )
+
+    if not with_flamegraph:
+        with capsys.disabled():
+            print(f"\n{table}")
 
 
 class Flamegraph:
@@ -322,7 +253,7 @@ class Flamegraph:
     def wait(self):
         self.process.wait()
 
-    def gather_data(self):
+    def gather(self):
         subprocess.run(
             ["perf", "script", "-i", self.perf_data], stdout=open(self.perf_out, "wb")
         )
@@ -334,36 +265,9 @@ class Flamegraph:
             [self.flamegraph_pl, self.perf_folded], stdout=open(self.perf_svg, "wb")
         )
 
-
-def flamegraph_decorator(
-    f: Callable,
-    name: str,
-    pid: int,
-    tmp_dir: str,
-    out_dir: str,
-    duration: int,
-    acc: list[Flamegraph],
-):
-    def inner(*args, **kwargs):
-        flamegraph = Flamegraph(
-            tmp_dir,
-            out_dir,
-            name,
-            pid,
-            duration,
-        )
-        flamegraph.start()
-        result = f(*args, **kwargs)
-        flamegraph.wait()
-        acc.insert(0, flamegraph)
-        return result
-
-    return inner
-
-
-def gather_flamegraphs(acc: list[Flamegraph]):
-    with ThreadPool() as pool:
-        pool.map(lambda flamegraph: flamegraph.gather_data(), acc)
+    def gather_multiple(flamegraphs):
+        with ThreadPool() as pool:
+            pool.map(lambda flamegraph: flamegraph.gather(), flamegraphs)
 
 
 def child_pid(i: Instance):
