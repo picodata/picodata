@@ -1195,11 +1195,11 @@ pub fn change_config_atom(
             let kv: Vec<(String, rmpv::Value)> = kv
                 .iter()
                 .map(|(k, v)| {
-                    let value = serde_json::from_str::<rmpv::Value>(v)
-                        .map_err(|e| traft::error::Error::Plugin(PluginError::ConfigDecode(e)))?;
-                    Ok((k.to_string(), value))
+                    let json = serde_json::from_str(v);
+                    let value = json.unwrap_or(rmpv::Value::from(*v));
+                    (k.to_string(), value)
                 })
-                .collect::<Result<Vec<(String, rmpv::Value)>, traft::error::Error>>()?;
+                .collect();
 
             let current_cfg = node.storage.plugin_config.get_by_entity(ident, service)?;
             let mut current_cfg = match current_cfg {

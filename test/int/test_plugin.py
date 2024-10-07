@@ -2775,3 +2775,70 @@ def test_picoplugin_version_compatibility_check(cluster: Cluster):
     instance.restart()
     instance.wait_online()
     instance.sql("CREATE PLUGIN plug_wrong_version 0.1.0")
+
+
+def test_set_string_values_in_config(cluster: Cluster):
+    [i1] = cluster.deploy(instance_count=1)
+
+    plugin_ref = PluginReflection(_PLUGIN_W_SDK, "0.1.0", _PLUGIN_W_SDK_SERVICES, [i1])
+    install_and_enable_plugin(i1, _PLUGIN_W_SDK, _PLUGIN_W_SDK_SERVICES, migrate=True)
+    plugin_ref = plugin_ref.install(True).enable(True)
+    plugin_ref.assert_synced()
+
+    def retriable_assert_in_table_config(cfg):
+        Retriable(timeout=3, rps=5).call(
+            lambda: plugin_ref.assert_in_table_config("testservice_3", cfg, i1)
+        )
+
+    def set_service_3_test_type(s: str):
+        i1.sql(
+            f"ALTER PLUGIN \"{_PLUGIN_W_SDK}\" 0.1.0 SET testservice_3.test_type = '{s}'"
+        )
+
+    # valid json string wrapped in quotes
+    set_service_3_test_type('"kek"')
+    retriable_assert_in_table_config({"test_type": "kek"})
+
+    # invalid json string without quotes
+    set_service_3_test_type("kek")
+    retriable_assert_in_table_config({"test_type": "kek"})
+
+    # strings with whitespaces
+    set_service_3_test_type('" string with whitespaces "')
+    retriable_assert_in_table_config({"test_type": " string with whitespaces "})
+    set_service_3_test_type(" string with whitespaces ")
+    retriable_assert_in_table_config({"test_type": " string with whitespaces "})
+
+    # string with " in the middle (invalid json)
+    set_service_3_test_type('" string with " in the middle "')
+    retriable_assert_in_table_config({"test_type": '" string with " in the middle "'})
+    set_service_3_test_type(' string with " in the middle ')
+    retriable_assert_in_table_config({"test_type": ' string with " in the middle '})
+
+    # string with ' in the middle (invalid json)
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type('" string with \' in the middle "')
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type(" string with ' in the middle ")
+
+    # string with '' in the middle (invalid json)
+    set_service_3_test_type("\" string with '' in the middle \"")
+    retriable_assert_in_table_config({"test_type": " string with '' in the middle "})
+    set_service_3_test_type(" string with '' in the middle ")
+    retriable_assert_in_table_config({"test_type": " string with '' in the middle "})
+
+    # awfully invalid json
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type(""" "]'['"32+1][[,." """)
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type(""" ]'['"32+1][[,. """)
+
+    # a string wrapped with ' (invalid json)
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type("' a string wrapped with single quotes '")
+
+    # array of string wrapped with ' (invalid json)
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type("\"['1', '2']\"")
+    with pytest.raises(TarantoolError, match="rule parsing error"):
+        set_service_3_test_type("['1', '2']")
