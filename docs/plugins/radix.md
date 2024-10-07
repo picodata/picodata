@@ -1,8 +1,6 @@
 # Radix
 
-В данном разделе приведены сведения о
-[Radix](https://git.picodata.io/picodata/plugin/radix/), плагине для
-СУБД Picodata.
+В данном разделе приведены сведения о Radix, плагине для СУБД Picodata.
 
 !!! tip "Picodata Enterprise"
     Функциональность плагина доступна только в коммерческой версии Picodata.

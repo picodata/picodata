@@ -1,8 +1,7 @@
 # Synapse
 
-В данном разделе приведены сведения о
-[Synapse](https://git.picodata.io/picodata/synapse), плагине для
-СУБД Picodata.
+В данном разделе приведены сведения о Synapse, плагине для СУБД
+Picodata.
 
 !!! tip "Picodata Enterprise"
     Функциональность плагина доступна только в коммерческой версии Picodata.
