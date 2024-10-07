@@ -640,6 +640,17 @@ impl Service for ServiceWithRpcTests {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct StringyConfig {
+    stringy_string: String,
+}
+
+struct ServiceWithStringConfigValue;
+
+impl Service for ServiceWithStringConfigValue {
+    type Config = StringyConfig;
+}
+
 // Ensures that macros usage at least compiles.
 #[tarantool::proc]
 fn example_stored_proc() {}
@@ -669,4 +680,11 @@ pub fn service_registrar(reg: &mut ServiceRegistry) {
 
     // 0.2.0 broken version cause inconsistent migration
     reg.add("testservice_2", "0.2.0_broken", Service2::new);
+
+    reg.add("testservice_w_string_conf", "0.1.0", || {
+        ServiceWithStringConfigValue
+    });
+    reg.add("testservice_w_string_conf2", "0.1.0", || {
+        ServiceWithStringConfigValue
+    });
 }

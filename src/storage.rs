@@ -3898,9 +3898,40 @@ impl PluginConfig {
         Ok(())
     }
 
-    /// Return configuration for service or extension.
-    #[inline]
+    pub fn get(
+        &self,
+        ident: &PluginIdentifier,
+        entity: &str,
+        key: &str,
+    ) -> tarantool::Result<Option<PluginConfigRecord>> {
+        self.space
+            .get(&(&ident.name, &ident.version, entity, key))?
+            .map(|t| t.decode())
+            .transpose()
+    }
+
     pub fn get_by_entity(
+        &self,
+        ident: &PluginIdentifier,
+        entity: &str,
+    ) -> tarantool::Result<HashMap<String, rmpv::Value>> {
+        let cfg_records = self
+            .space
+            .select(IteratorType::Eq, &(&ident.name, &ident.version, entity))?;
+
+        let mut result = HashMap::new();
+        for tuple in cfg_records {
+            let cfg_record: PluginConfigRecord = tuple.decode()?;
+            result.insert(cfg_record.key, cfg_record.value);
+        }
+
+        Ok(result)
+    }
+
+    /// Return configuration for service or extension.
+    /// Result is represented as message pack Map, in case there is nothing mp Nil is used.
+    #[inline]
+    pub fn get_by_entity_as_mp(
         &self,
         ident: &PluginIdentifier,
         entity: &str,

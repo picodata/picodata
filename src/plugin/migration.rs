@@ -4,12 +4,14 @@ use crate::plugin::PreconditionCheckResult;
 use crate::plugin::{lock, reenterable_plugin_cas_request};
 use crate::plugin::{PluginIdentifier, PLUGIN_DIR};
 use crate::schema::ADMIN_ID;
-use crate::storage::ClusterwideTable;
+use crate::storage::{Clusterwide, ClusterwideTable};
 use crate::traft::node;
 use crate::traft::op::{Dml, Op};
 use crate::util::Lexer;
 use crate::util::QuoteEscapingStyle;
 use crate::{sql, tlog, traft};
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{ErrorKind, Read};
 use std::time::Duration;
@@ -47,6 +49,9 @@ pub enum Error {
 
     #[error("inconsistent with previous version migration list, reason: {0}")]
     InconsistentMigrationList(String),
+
+    #[error("placeholder: {0}")]
+    Placeholder(#[from] PlaceholderSubstitutionError),
 }
 
 const MAX_COMMAND_LENGTH_TO_SHOW: usize = 256;
@@ -97,8 +102,8 @@ pub enum BlockingError {
     Bug,
 }
 
-/// Function executes provided closure on a separate thread without blocking current fiber.
-/// In case provided closure panics the panic is forwarded to caller.
+/// Function executes provided closure on a separate thread
+/// blocking the current fiber until the result is ready.
 pub fn blocking<F, R>(f: F) -> Result<R, BlockingError>
 where
     F: FnOnce() -> R + Send + 'static,
@@ -228,21 +233,28 @@ impl MigrationInfo {
 /// the current fiber until the result is ready.
 fn read_migration_queries_from_file_async(
     mut migration: MigrationInfo,
+    plugin_ident: &PluginIdentifier,
+    storage: &Clusterwide,
 ) -> Result<MigrationInfo, Error> {
     tlog!(Info, "parsing migrations file '{}'", migration.shortname());
     let t0 = Instant::now_accurate();
 
-    let mut migration = blocking(|| {
+    let substitutions = storage
+        .plugin_config
+        .get_by_entity(plugin_ident, CONTEXT_ENTITY)
+        .map_err(PlaceholderSubstitutionError::Tarantool)?;
+
+    let migration = blocking(move || {
         let fullpath = &migration.full_filepath;
         tlog!(Debug, "parsing a migrations file '{fullpath}'");
-        let res = read_migration_queries_from_file(&mut migration);
+        let res = read_migration_queries_from_file(&mut migration, &substitutions);
         if let Err(e) = &res {
             let fullpath = &migration.full_filepath;
             tlog!(Debug, "failed parsing migrations file '{fullpath}': {e}");
         }
 
-        migration
-    })?;
+        res.map(|_| migration)
+    })??;
 
     let elapsed = t0.elapsed();
     tlog!(
@@ -256,15 +268,22 @@ fn read_migration_queries_from_file_async(
 
 /// Reads and parses migrations file desribed by `migration`.
 #[inline]
-fn read_migration_queries_from_file(migration: &mut MigrationInfo) -> Result<(), Error> {
+fn read_migration_queries_from_file(
+    migration: &mut MigrationInfo,
+    substitutions: &HashMap<String, rmpv::Value>,
+) -> Result<(), Error> {
     let fullpath = &migration.full_filepath;
     let source = std::fs::read_to_string(fullpath).map_err(|e| Error::File(fullpath.into(), e))?;
-    parse_migration_queries(&source, migration)
+    parse_migration_queries(&source, migration, substitutions)
 }
 
 /// Parses the migration queries from `source`, returns updates `migration` with
 /// "UP" and "DOWN" queries from the file.
-fn parse_migration_queries(source: &str, migration: &mut MigrationInfo) -> Result<(), Error> {
+fn parse_migration_queries(
+    source: &str,
+    migration: &mut MigrationInfo,
+    substitutions: &HashMap<String, rmpv::Value>,
+) -> Result<(), Error> {
     let mut up_lines = vec![];
     let mut down_lines = vec![];
 
@@ -331,8 +350,12 @@ fn parse_migration_queries(source: &str, migration: &mut MigrationInfo) -> Resul
                     "{filename}: no pico.UP annotation found at start of file"
                 )));
             }
-            State::ParsingUp => up_lines.push(line),
-            State::ParsingDown => down_lines.push(line),
+            State::ParsingUp => {
+                up_lines.push(substitute_config_placeholders(line, lineno, substitutions)?);
+            }
+            State::ParsingDown => {
+                down_lines.push(substitute_config_placeholders(line, lineno, substitutions)?)
+            }
         }
     }
 
@@ -348,12 +371,12 @@ fn parse_migration_queries(source: &str, migration: &mut MigrationInfo) -> Resul
     Ok(())
 }
 
-fn split_sql_queries(lines: &[&str]) -> Vec<String> {
+fn split_sql_queries(lines: &[Cow<'_, str>]) -> Vec<String> {
     let mut queries = Vec::new();
 
     let mut current_query_start = 0;
     let mut current_query_length = 0;
-    for (line, i) in lines.iter().copied().zip(0..) {
+    for (i, line) in lines.iter().enumerate() {
         // `+ 1` for an extra '\n'
         current_query_length += line.len() + 1;
 
@@ -387,6 +410,90 @@ fn split_sql_queries(lines: &[&str]) -> Vec<String> {
     }
 
     queries
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PlaceholderSubstitutionError {
+    #[error("no key named {key} found in migration context at line {line_no}")]
+    NotFound { key: String, line_no: usize },
+
+    #[error(
+        "only strings are supported as placeholder targets, {key} is not a string but {value} at line {line_no}"
+    )]
+    BadType {
+        key: String,
+        value: rmpv::Value,
+        line_no: usize,
+    },
+
+    #[error(transparent)]
+    Tarantool(#[from] tarantool::error::Error),
+}
+
+pub const CONTEXT_ENTITY: &str = "migration_context";
+
+const MARKER: &str = "@_plugin_config.";
+
+/// Finds all placeholders in provided query string and replaces with value taken from provided map.
+/// Function returns query string with all substitutions applied if any
+fn substitute_config_placeholders<'a>(
+    query_string: &'a str,
+    line_no: usize,
+    substitutions: &HashMap<String, rmpv::Value>,
+) -> Result<Cow<'a, str>, PlaceholderSubstitutionError> {
+    use PlaceholderSubstitutionError::*;
+
+    let mut query_string = Cow::from(query_string);
+
+    // Note that it is wrong to search for all placeholders first and then replace them, because
+    // after each replace position of the following placeholder in a string might change.
+    while let Some(placeholder) = find_placeholder(query_string.as_ref()) {
+        let Some(value) = substitutions.get(&placeholder.variable) else {
+            return Err(NotFound {
+                key: placeholder.variable,
+                line_no,
+            });
+        };
+
+        let Some(value) = value.as_str() else {
+            return Err(BadType {
+                key: placeholder.variable,
+                value: value.clone(),
+                line_no,
+            });
+        };
+
+        query_string
+            .to_mut()
+            .replace_range(placeholder.start..placeholder.end, value);
+    }
+
+    Ok(query_string)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Placeholder {
+    variable: String,
+    start: usize,
+    end: usize,
+}
+
+fn find_placeholder(query_string: &str) -> Option<Placeholder> {
+    let start = query_string.find(MARKER)?;
+
+    // we either find next symbol that is not part of the name
+    // or assume placeholder lasts till the end of the string
+    let end = query_string[start + MARKER.len()..]
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(query_string.len() - start - MARKER.len());
+
+    let variable = &query_string[start + MARKER.len()..start + MARKER.len() + end];
+
+    Some(Placeholder {
+        variable: variable.to_owned(),
+        start,
+        end: start + MARKER.len() + end,
+    })
 }
 
 /// Apply sql from migration file onto cluster.
@@ -531,8 +638,9 @@ pub fn apply_up_migrations(
         #[rustfmt::skip]
         tlog!(Info, "applying `UP` migrations, progress: {num}/{migrations_count}");
 
-        let migration = read_migration_queries_from_file_async(migration)
-            .inspect(|_| handle_err(&seen_queries))?;
+        let migration =
+            read_migration_queries_from_file_async(migration, plugin_ident, &node.storage)
+                .inspect_err(|_| handle_err(&seen_queries))?;
         seen_queries.push(migration);
         let migration = seen_queries.last().expect("just inserted");
 
@@ -594,29 +702,27 @@ pub fn apply_up_migrations(
 /// * `plugin_identity`: plugin for which migrations belong to
 /// * `migrations`: list of migration file names
 pub fn apply_down_migrations(
-    plugin_identity: &PluginIdentifier,
+    plugin_ident: &PluginIdentifier,
     migrations: &[String],
     deadline: Instant,
+    storage: &Clusterwide,
 ) {
     let iter = migrations.iter().rev().zip(0..);
     for (filename, num) in iter {
         #[rustfmt::skip]
         tlog!(Info, "applying `DOWN` migrations, progress: {num}/{}", migrations.len());
 
-        let migration = MigrationInfo::new_unparsed(plugin_identity, filename.clone());
-        match read_migration_queries_from_file_async(migration) {
-            Ok(migration) => {
-                down_single_file_with_commit(
-                    &plugin_identity.name,
-                    &migration,
-                    &SBroadApplier,
-                    deadline,
-                );
-            }
-            Err(e) => {
-                tlog!(Error, "Rollback DOWN migration error: {e}");
-            }
-        }
+        let migration = MigrationInfo::new_unparsed(plugin_ident, filename.clone());
+        let migration =
+            match read_migration_queries_from_file_async(migration, plugin_ident, storage) {
+                Ok(migration) => migration,
+                Err(e) => {
+                    tlog!(Error, "Rollback DOWN migration error: {e}");
+                    continue;
+                }
+            };
+
+        down_single_file_with_commit(&plugin_ident.name, &migration, &SBroadApplier, deadline);
     }
     #[rustfmt::skip]
     tlog!(Info, "applying `DOWN` migrations, progress: {0}/{0}", migrations.len());
@@ -626,6 +732,7 @@ pub fn apply_down_migrations(
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+    use rmpv::Utf8String;
     use std::cell::RefCell;
 
     #[track_caller]
@@ -635,7 +742,7 @@ mod tests {
             filename_from_manifest: "test.db".into(),
             ..Default::default()
         };
-        parse_migration_queries(sql, &mut migration)?;
+        parse_migration_queries(sql, &mut migration, &HashMap::new())?;
         Ok(migration)
     }
 
@@ -858,6 +965,114 @@ sql_command_3;
             applier.buf.borrow().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             &["sql_command_1;", "sql_command_3;"],
         );
+    }
+
+    #[test]
+    fn test_find_placeholder() {
+        let query_string = "SELECT @_plugin_config.kek FROM bubba".to_owned();
+        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+        assert_eq!(
+            placeholder,
+            Placeholder {
+                variable: "kek".to_owned(),
+                start: 7,
+                end: 26,
+            }
+        );
+
+        // check with underscore and such
+        let query_string = "SELECT @_plugin_config.kek_91 FROM bubba".to_owned();
+        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+
+        assert_eq!(
+            placeholder,
+            Placeholder {
+                variable: "kek_91".to_owned(),
+                start: 7,
+                end: 29,
+            }
+        );
+
+        let query_string = "SELECT @_plugin_config.kek.with.dot FROM bubba".to_owned();
+        let placeholder_with_service =
+            find_placeholder(&query_string).expect("placeholder must be found");
+        assert_eq!(
+            placeholder_with_service,
+            Placeholder {
+                variable: "kek".to_owned(),
+                start: 7,
+                end: 26,
+            }
+        );
+
+        // check case at the end of the query
+        let query_string = "foo bar @_plugin_config.kek".to_owned();
+        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+
+        assert_eq!(
+            placeholder,
+            Placeholder {
+                variable: "kek".to_owned(),
+                start: 8,
+                end: 27,
+            }
+        );
+
+        // at the end with special symbols
+        let query_string = "foo bar @_plugin_config.kek_".to_owned();
+        let placeholder = find_placeholder(&query_string).expect("placeholder must be found");
+
+        assert_eq!(
+            placeholder,
+            Placeholder {
+                variable: "kek_".to_owned(),
+                start: 8,
+                end: 28,
+            }
+        );
+
+        let query_string = "SELECT 1";
+        assert!(find_placeholder(&query_string).is_none());
+    }
+
+    fn migration_context() -> HashMap<String, rmpv::Value> {
+        let mut substitutions = HashMap::new();
+        substitutions.insert(
+            String::from("var_a"),
+            rmpv::Value::String(Utf8String::from("value_123")),
+        );
+
+        substitutions.insert(
+            String::from("var_b_longer_name"),
+            rmpv::Value::String(Utf8String::from("value_123_also_long")),
+        );
+
+        substitutions
+    }
+
+    #[test]
+    fn test_substitute_config_placeholder_one() {
+        let mut query_string = "SELECT @_plugin_config.var_a".to_owned();
+
+        let substitutions = migration_context();
+
+        assert_eq!(
+            substitute_config_placeholders(&mut query_string, 1, &substitutions).unwrap(),
+            "SELECT value_123"
+        )
+    }
+
+    #[test]
+    fn test_substitute_config_placeholders_many() {
+        let mut query_string =
+            "SELECT @_plugin_config.var_a @@_plugin_config.var_b_longer_name".to_owned();
+
+        let substitutions = migration_context();
+
+        assert_eq!(
+            substitute_config_placeholders(&mut query_string, 1, &substitutions).unwrap(),
+            "SELECT value_123 @value_123_also_long"
+        )
     }
 }
 

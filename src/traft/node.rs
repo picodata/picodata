@@ -12,6 +12,7 @@ use crate::has_states;
 use crate::instance::Instance;
 use crate::kvcell::KVCell;
 use crate::loop_start;
+use crate::plugin::migration;
 use crate::proc_name;
 use crate::reachability::instance_reachability_manager;
 use crate::reachability::InstanceReachabilityManagerRef;
@@ -1249,7 +1250,7 @@ impl NodeImpl {
                     let old_config = self
                         .storage
                         .plugin_config
-                        .get_by_entity(&ident, &service_name)
+                        .get_by_entity_as_mp(&ident, &service_name)
                         .expect("storage should not fail");
 
                     self.storage
@@ -1396,6 +1397,15 @@ impl NodeImpl {
 
             Op::Plugin(PluginRaftOp::PluginConfigPartialUpdate { ident, updates }) => {
                 for (service, config_part) in updates {
+                    if service == migration::CONTEXT_ENTITY {
+                        self.storage
+                            .plugin_config
+                            .replace_many(&ident, &service, config_part)
+                            .expect("storage should not fail");
+
+                        continue;
+                    }
+
                     let maybe_service = self
                         .storage
                         .services
@@ -1406,7 +1416,7 @@ impl NodeImpl {
                         let old_cfg = self
                             .storage
                             .plugin_config
-                            .get_by_entity(&ident, &svc.name)
+                            .get_by_entity_as_mp(&ident, &svc.name)
                             .expect("storage should not fail");
                         self.storage
                             .plugin_config
@@ -1415,7 +1425,7 @@ impl NodeImpl {
                         let new_cfg = self
                             .storage
                             .plugin_config
-                            .get_by_entity(&ident, &svc.name)
+                            .get_by_entity_as_mp(&ident, &svc.name)
                             .expect("storage should not fail");
 
                         let new_raw_cfg =

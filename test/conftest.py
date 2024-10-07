@@ -2031,6 +2031,12 @@ def build_profile() -> str:
     return os.environ.get("BUILD_PROFILE", "dev")
 
 
+def get_test_dir():
+    test_dir = Path(__file__).parent
+    assert test_dir.name == "test"
+    return test_dir
+
+
 @pytest.fixture(scope="session")
 def binary_path(cargo_build: None) -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
@@ -2048,10 +2054,6 @@ def binary_path(cargo_build: None) -> str:
 
     binary_path = os.path.realpath(os.path.join(target, f"{profile}/picodata"))
 
-    # Copy the test plugin library into the appropriate location
-    test_dir = os.path.dirname(__file__)
-    assert test_dir.endswith("test")
-
     ext = None
     match sys.platform:
         case "linux":
@@ -2059,6 +2061,8 @@ def binary_path(cargo_build: None) -> str:
         case "darwin":
             ext = "dylib"
 
+    test_dir = get_test_dir()
+    # Copy the test plugin library into the appropriate location
     source = f"{os.path.dirname(binary_path)}/libtestplug.{ext}"
     destinations = [
         f"{test_dir}/testplug/testplug/0.1.0/libtestplug.{ext}",
@@ -2072,6 +2076,7 @@ def binary_path(cargo_build: None) -> str:
         f"{test_dir}/testplug/testplug_w_migration_2/0.1.0/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_w_migration/0.2.0/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_w_migration/0.2.0_broken/libtestplug.{ext}",
+        f"{test_dir}/testplug/testplug_w_migration_in_tier/0.1.0/libtestplug.{ext}",
         f"{test_dir}/testplug/testplug_sdk/0.1.0/libtestplug.{ext}",
     ]
     for destination in destinations:

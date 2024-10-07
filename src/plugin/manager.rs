@@ -604,7 +604,7 @@ impl PluginManager {
         let cfg = node
             .storage
             .plugin_config
-            .get_by_entity(plugin_ident, &service_defs[0].name)?;
+            .get_by_entity_as_mp(plugin_ident, &service_defs[0].name)?;
         let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
         context_set_service_info(&mut ctx, &new_service);
 
@@ -692,7 +692,7 @@ impl PluginManager {
             let cfg = node
                 .storage
                 .plugin_config
-                .get_by_entity(plugin_ident, &def.name)?;
+                .get_by_entity_as_mp(plugin_ident, &def.name)?;
             let cfg_raw = rmp_serde::encode::to_vec_named(&cfg).expect("out of memory");
 
             #[rustfmt::skip]

@@ -772,7 +772,7 @@ pub fn migration_down(ident: PluginIdentifier, timeout: Duration) -> traft::Resu
     }
 
     lock::try_acquire(deadline)?;
-    migration::apply_down_migrations(&ident, &migration_list, deadline);
+    migration::apply_down_migrations(&ident, &migration_list, deadline, &node.storage);
     lock::release(deadline)?;
 
     Ok(())
@@ -1059,7 +1059,7 @@ pub fn remove_plugin(
             return Err(Error::other("attempt to remove plugin with applied `UP` migrations"));
         }
         lock::try_acquire(deadline)?;
-        migration::apply_down_migrations(ident, &migration_list, deadline);
+        migration::apply_down_migrations(ident, &migration_list, deadline, &node.storage);
         lock::release(deadline)?;
     } else if /* migration_list.is_empty() && */ drop_data {
         tlog!(Info, "`DOWN` migrations are up to date");
@@ -1202,7 +1202,17 @@ pub fn change_config_atom(
                 })
                 .collect();
 
-            let current_cfg = node.storage.plugin_config.get_by_entity(ident, service)?;
+            // when migration context is changed we do not perform validation
+            // since we dont have anything to validate against
+            if service == &migration::CONTEXT_ENTITY {
+                service_config_part.push((service.to_string(), kv));
+                continue;
+            }
+
+            let current_cfg = node
+                .storage
+                .plugin_config
+                .get_by_entity_as_mp(ident, service)?;
             let mut current_cfg = match current_cfg {
                 Value::Nil => return Err(PluginError::UpdateEmptyConfig.into()),
                 Value::Map(cfg) => cfg,

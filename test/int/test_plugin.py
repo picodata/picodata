@@ -7,6 +7,8 @@ import msgpack  # type: ignore
 import os
 import hashlib
 from pathlib import Path
+
+import yaml
 from conftest import (
     Cluster,
     ErrorCode,
@@ -14,11 +16,12 @@ from conftest import (
     Retriable,
     Instance,
     TarantoolError,
+    get_test_dir,
     log_crawler,
     assert_starts_with,
 )
 from decimal import Decimal
-import requests  # type: ignore
+import requests
 import signal
 
 _3_SEC = 3
@@ -2858,3 +2861,98 @@ def test_set_string_values_in_config(cluster: Cluster):
         set_service_3_test_type("\"['1', '2']\"")
     with pytest.raises(TarantoolError, match="rule parsing error"):
         set_service_3_test_type("['1', '2']")
+
+
+MANIFEST_WITH_MIGRATION = {
+    "description": "plugin for test purposes",
+    "name": "testplug_w_migration_in_tier",
+    "version": "0.1.0",
+    "services": [],
+    "migration": ["migration.sql"],
+}
+
+
+MIGRATION_OK_IN_TIER = """
+-- pico.UP
+
+CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY ("id") IN TIER @_plugin_config.stringy_string;
+
+-- pico.DOWN
+DROP TABLE author;
+"""
+
+MIGRATION_REF_MISSING_VAR = """
+-- pico.UP
+
+CREATE TABLE author (id INTEGER NOT NULL, name TEXT NOT NULL, PRIMARY KEY (id))
+USING memtx
+DISTRIBUTED BY ("id") IN TIER @_plugin_config.bubba;
+
+-- pico.DOWN
+DROP TABLE author;
+"""
+
+
+def dump_manifest_and_migration(migration: str, to: Path):
+    manifest_path = to / "manifest.yaml"
+    migration_path = to / "migration.sql"
+
+    migration_path.write_text(migration)
+    manifest_path.write_text(yaml.safe_dump(MANIFEST_WITH_MIGRATION))
+
+
+def test_plugin_migration_placeholder_substitution(cluster: Cluster):
+    test_dir = get_test_dir()
+    cluster.set_config_file(
+        yaml="""
+        cluster:
+            name: test
+            tier:
+                default:
+                nondefault:
+    """
+    )
+
+    i1 = cluster.add_instance(tier="nondefault")
+
+    plugin = "testplug_w_migration_in_tier"
+
+    plug_path = test_dir / "testplug" / plugin / "0.1.0"
+    dump_manifest_and_migration(MIGRATION_OK_IN_TIER, plug_path)
+
+    # happy path, valid migration, everything is ok
+    i1.sql(f'CREATE PLUGIN "{plugin}" 0.1.0')
+
+    i1.sql(
+        f"""
+        ALTER PLUGIN "{plugin}" 0.1.0 SET
+            migration_context.stringy_string = \'"nondefault"\'
+        """
+    )
+
+    i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')
+
+    assert i1.sql("SELECT * FROM author") == []
+    distribution = i1.sql("SELECT distribution FROM _pico_table WHERE name = 'author'")[
+        0
+    ][0]
+    tier = distribution["ShardedImplicitly"][2]
+    assert tier == "nondefault"
+
+    i1.sql(f'DROP PLUGIN "{plugin}" 0.1.0 WITH DATA')
+
+    with pytest.raises(TarantoolError, match='table with name "author" not found'):
+        assert i1.sql("SELECT * FROM author") == []
+
+    # reference missing variable
+    dump_manifest_and_migration(MIGRATION_REF_MISSING_VAR, plug_path)
+    i1.sql(f'CREATE PLUGIN "{plugin}" 0.1.0')
+
+    with pytest.raises(
+        TarantoolError, match="no key named bubba found in migration context at line 6"
+    ):
+        i1.sql(f'ALTER PLUGIN "{plugin}" MIGRATE TO 0.1.0')
+
+    i1.sql(f'DROP PLUGIN "{plugin}" 0.1.0 WITH DATA')
