@@ -42,7 +42,7 @@ where
 
     /// A callback for the "__gc" event. It checks if the value was moved out
     /// and if not it drops the value.
-    unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
+    unsafe extern "C-unwind" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
         let ud_ptr = ffi::lua_touserdata(lua, 1);
         let ud = ud_ptr
             .cast::<UDBox<T>>()
@@ -56,7 +56,7 @@ where
 
 // Called when an object inside Lua is being dropped.
 #[inline]
-extern "C" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
+extern "C-unwind" fn destructor_wrapper<T>(lua: *mut ffi::lua_State) -> libc::c_int {
     unsafe {
         let obj = ffi::lua_touserdata(lua, -1);
         ptr::drop_in_place(obj as *mut TypeId);

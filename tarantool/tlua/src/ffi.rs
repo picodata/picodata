@@ -109,7 +109,7 @@ pub type lua_Integer = libc::ptrdiff_t;
 ///     return 2;                   /* number of results */
 /// }
 /// ```
-pub type lua_CFunction = unsafe extern "C" fn(l: *mut lua_State) -> c_int;
+pub type lua_CFunction = unsafe extern "C-unwind" fn(l: *mut lua_State) -> c_int;
 
 pub type lua_Alloc = extern "C" fn(
     ud: *mut libc::c_void,

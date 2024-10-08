@@ -895,7 +895,7 @@ where
         }
     }
 
-    unsafe extern "C" fn trampoline_for_lua(l: *mut lua::lua_State) -> i32 {
+    unsafe extern "C-unwind" fn trampoline_for_lua(l: *mut lua::lua_State) -> i32 {
         let ud_ptr = lua::lua_touserdata(l, lua::lua_upvalueindex(1));
 
         let f = (ud_ptr as *mut Option<F>)
@@ -1014,7 +1014,7 @@ mod impl_details {
 
         /// A callback for the "__gc" event. It checks if the value was moved out
         /// and if not it drops the value.
-        unsafe extern "C" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
+        unsafe extern "C-unwind" fn wrap_gc<T>(lua: *mut ffi::lua_State) -> i32 {
             let ud_ptr = ffi::lua_touserdata(lua, 1);
             let ud = ud_ptr
                 .cast::<UDBox<T>>()

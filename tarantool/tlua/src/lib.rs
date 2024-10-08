@@ -989,7 +989,7 @@ impl TempLua {
         }
 
         // called whenever lua encounters an unexpected error.
-        extern "C" fn panic(lua: *mut ffi::lua_State) -> libc::c_int {
+        extern "C-unwind" fn panic(lua: *mut ffi::lua_State) -> libc::c_int {
             let err = unsafe { ffi::lua_tostring(lua, -1) };
             let err = unsafe { CStr::from_ptr(err) };
             let err = String::from_utf8(err.to_bytes().to_vec()).unwrap();

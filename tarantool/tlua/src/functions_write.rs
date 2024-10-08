@@ -245,7 +245,7 @@ macro_rules! impl_function_ext {
                     ffi::lua_pushcclosure(lua.as_lua(), wrapper::<Self, _, R>, 1);
                     return Ok(PushGuard::new(lua, 1));
 
-                    extern "C" fn wrap_gc<T>(lua: LuaState) -> i32 {
+                    extern "C-unwind" fn wrap_gc<T>(lua: LuaState) -> i32 {
                         unsafe {
                             let obj = ffi::lua_touserdata(lua, -1);
                             ptr::drop_in_place(obj.cast::<T>());
@@ -313,7 +313,7 @@ impl_function_ext! {A B C D E F G H I J K M N}
 /// use tlua::{Lua, CFunction, LuaState, ffi};
 ///
 /// let lua = Lua::new();
-/// unsafe extern "C" fn return_42(lua: LuaState) -> libc::c_int {
+/// unsafe extern "C-unwind" fn return_42(lua: LuaState) -> libc::c_int {
 ///     ffi::lua_pushinteger(lua, 42);
 ///     1
 /// }
@@ -452,7 +452,7 @@ where
 }
 
 // this function is called when Lua wants to call one of our functions
-extern "C" fn wrapper<T, A, R>(lua: LuaState) -> libc::c_int
+extern "C-unwind" fn wrapper<T, A, R>(lua: LuaState) -> libc::c_int
 where
     T: FnMutExt<A, Output = R>,
     // TODO(gmoshkin): these bounds are too strict, how do we loosen them?
@@ -525,7 +525,7 @@ where
         out: Option<R>,
     }
 
-    unsafe extern "C" fn trampoline<F, R>(l: LuaState) -> i32
+    unsafe extern "C-unwind" fn trampoline<F, R>(l: LuaState) -> i32
     where
         F: FnOnce(StaticLua) -> R,
     {
@@ -550,7 +550,7 @@ mod tests {
     fn c_function() {
         let lua = crate::Lua::new();
 
-        unsafe extern "C" fn return_42(lua: crate::LuaState) -> libc::c_int {
+        unsafe extern "C-unwind" fn return_42(lua: crate::LuaState) -> libc::c_int {
             ffi::lua_pushinteger(lua, 42);
             1
         }
