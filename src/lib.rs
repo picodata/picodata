@@ -174,7 +174,7 @@ fn init_sbroad() {
 }
 
 #[link(name = "httpd")]
-extern "C" {
+extern "C-unwind" {
     fn luaopen_http_lib(lua_state: tlua::LuaState) -> libc::c_int;
 }
 
