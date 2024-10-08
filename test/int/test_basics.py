@@ -385,21 +385,21 @@ Insert(_pico_replicaset, ["r1","{r1_uuid}","i1","i1","default",0.0,"auto","not-r
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
-Insert(_pico_property, ["password_min_length",8]),
-Insert(_pico_property, ["password_enforce_uppercase",true]),
-Insert(_pico_property, ["password_enforce_lowercase",true]),
-Insert(_pico_property, ["password_enforce_digits",true]),
-Insert(_pico_property, ["password_enforce_specialchars",false]),
-Insert(_pico_property, ["max_login_attempts",4]),
-Insert(_pico_property, ["auto_offline_timeout",5.0]),
-Insert(_pico_property, ["max_heartbeat_period",5.0]),
-Insert(_pico_property, ["max_pg_statements",1024]),
-Insert(_pico_property, ["max_pg_portals",1024]),
-Insert(_pico_property, ["snapshot_chunk_max_size",16777216]),
-Insert(_pico_property, ["snapshot_read_view_close_timeout",86400]),
-Insert(_pico_property, ["governor_raft_op_timeout",3.0]),
-Insert(_pico_property, ["governor_common_rpc_timeout",3.0]),
-Insert(_pico_property, ["governor_plugin_rpc_timeout",10.0]))|
+Insert(_pico_db_config, ["password_min_length",8]),
+Insert(_pico_db_config, ["password_enforce_uppercase",true]),
+Insert(_pico_db_config, ["password_enforce_lowercase",true]),
+Insert(_pico_db_config, ["password_enforce_digits",true]),
+Insert(_pico_db_config, ["password_enforce_specialchars",false]),
+Insert(_pico_db_config, ["max_login_attempts",4]),
+Insert(_pico_db_config, ["auto_offline_timeout",5.0]),
+Insert(_pico_db_config, ["max_heartbeat_period",5.0]),
+Insert(_pico_db_config, ["max_pg_statements",1024]),
+Insert(_pico_db_config, ["max_pg_portals",1024]),
+Insert(_pico_db_config, ["snapshot_chunk_max_size",16777216]),
+Insert(_pico_db_config, ["snapshot_read_view_close_timeout",86400]),
+Insert(_pico_db_config, ["governor_raft_op_timeout",3.0]),
+Insert(_pico_db_config, ["governor_common_rpc_timeout",3.0]),
+Insert(_pico_db_config, ["governor_plugin_rpc_timeout",10.0]))|
 |  0  | 1  |BatchDml(
 Insert(_pico_user, [0,"guest",0,["md5","md5084e0343a0486ff05530df6c705c8bb4"],1,"user"]),
 Insert(_pico_privilege, [1,0,"login","universe",0,0]),
@@ -466,7 +466,9 @@ Insert(_pico_index, [{_pico_service_route},0,"_pico_service_routing_key","tree",
 Insert(_pico_table, [{_pico_plugin_migration},"_pico_plugin_migration",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin_name"}},{{"field_type":"string","is_nullable":false,"name":"migration_file"}},{{"field_type":"string","is_nullable":false,"name":"hash"}}],0,true,"memtx",1,""]),
 Insert(_pico_index, [{_pico_plugin_migration},0,"_pico_plugin_migration_primary_key","tree",[{{"unique":true}}],[["plugin_name","string",null,false,null],["migration_file","string",null,false,null]],true,0]),
 Insert(_pico_table, [{_pico_plugin_config},"_pico_plugin_config",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"plugin"}},{{"field_type":"string","is_nullable":false,"name":"version"}},{{"field_type":"string","is_nullable":false,"name":"entity"}},{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":true,"name":"value"}}],0,true,"memtx",1,""]),
-Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{"unique":true}}],[["plugin","string",null,false,null],["version","string",null,false,null],["entity","string",null,false,null],["key","string",null,false,null]],true,0])
+Insert(_pico_index, [{_pico_plugin_config},0,"_pico_plugin_config_pk","tree",[{{"unique":true}}],[["plugin","string",null,false,null],["version","string",null,false,null],["entity","string",null,false,null],["key","string",null,false,null]],true,0]),
+Insert(_pico_table, [{_pico_db_config},"_pico_db_config",{{"Global":null}},[{{"field_type":"string","is_nullable":false,"name":"key"}},{{"field_type":"any","is_nullable":false,"name":"value"}}],0,true,"memtx",1,""]),
+Insert(_pico_index, [{_pico_db_config},0,"_pico_db_config_key","tree",[{{"unique":true}}],[["key","string",null,false,null]],true,0])
 )|
 |  0  | 1  |AddNode(1)|
 |  0  | 2  |-|
@@ -501,6 +503,7 @@ Update(_pico_tier, ["default"], [["=","target_vshard_config_version",1]])
         _pico_service_route=space_id("_pico_service_route"),
         _pico_plugin_migration=space_id("_pico_plugin_migration"),
         _pico_plugin_config=space_id("_pico_plugin_config"),
+        _pico_db_config=space_id("_pico_db_config"),
     )
     try:
         assert preprocess(raft_log) == preprocess(expected)

@@ -402,7 +402,7 @@ fn set_login_check(storage: Clusterwide) {
             return Verdict::UnknownUser;
         };
         let max_login_attempts = storage
-            .properties
+            .db_config
             .max_login_attempts()
             .expect("accessing storage should not fail");
         if storage

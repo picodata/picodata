@@ -45,7 +45,7 @@ struct StorageContext {
 impl StorageContext {
     fn portals() -> StorageContext {
         fn get_capacity() -> PgResult<usize> {
-            Ok(node::global()?.storage.properties.max_pg_portals()?)
+            Ok(node::global()?.storage.db_config.max_pg_portals()?)
         }
 
         Self {
@@ -58,7 +58,7 @@ impl StorageContext {
 
     fn statements() -> StorageContext {
         fn get_capacity() -> PgResult<usize> {
-            Ok(node::global()?.storage.properties.max_pg_statements()?)
+            Ok(node::global()?.storage.db_config.max_pg_statements()?)
         }
 
         Self {

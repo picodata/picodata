@@ -111,11 +111,14 @@ pub(super) fn prepare(
         .expect("serialization cannot fail"),
     );
 
+    //
+    // Populate "_pico_db_config" with initial values for cluster-wide properties
+    //
     for (name, default) in config::get_defaults_for_all_alter_system_parameters() {
         #[rustfmt::skip]
         ops.push(
             op::Dml::insert(
-                ClusterwideTable::Property,
+                ClusterwideTable::DbConfig,
                 &(name, default),
                 ADMIN_ID,
             )

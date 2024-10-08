@@ -477,6 +477,17 @@ define_clusterwide_tables! {
                 primary: Index => "_pico_plugin_config_pk",
             }
         }
+        DbConfig = 531, "_pico_db_config" => {
+            Clusterwide::db_config;
+
+            /// A struct for accessing storage of the cluster-wide and tier-wide configs that
+            /// can be modified via alter system.
+            pub struct DbConfig {
+                space: Space,
+                #[primary]
+                index: Index => "_pico_db_config_key",
+            }
+        }
     }
 }
 
@@ -567,7 +578,7 @@ impl Clusterwide {
         let mut space_dumps = Vec::with_capacity(global_spaces.len());
         let mut total_size = 0;
         let mut hit_threashold = false;
-        let snapshot_chunk_max_size = self.properties.snapshot_chunk_max_size()?;
+        let snapshot_chunk_max_size = self.db_config.snapshot_chunk_max_size()?;
         let t0 = std::time::Instant::now();
         for &(space_id, index_id) in global_spaces {
             debug_assert_eq!(index_id, 0, "only primary keys should be added");
@@ -733,7 +744,7 @@ impl Clusterwide {
             rv.ref_count = 1;
         }
 
-        let timeout = self.properties.snapshot_read_view_close_timeout()?;
+        let timeout = self.db_config.snapshot_read_view_close_timeout()?;
         let now = fiber::clock();
         // Clear old snapshots.
         // This is where we clear any stale snapshots with no references
@@ -1395,38 +1406,31 @@ impl Properties {
             }
             (old, Some(new)) => {
                 // Insert or Update
-
                 let key = new
                     .field::<&str>(0)
                     .expect("key has type string")
                     .expect("key is not nullable");
 
-                if config::get_type_of_alter_system_parameter(key).is_some() {
-                    // This is an alter system parameter.
-                    // TODO: move these to a separate table
-                    config::validate_alter_system_parameter_tuple(key, &new)?;
-                } else {
-                    let Ok(key) = key.parse::<PropertyName>() else {
-                        // Not a builtin property.
-                        // Cannot be a wrong type error, because tarantool checks
-                        // the format for us.
-                        if old.is_none() {
-                            // Insert
-                            // FIXME: this is currently printed twice
-                            tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
-                        }
-                        return Ok(());
-                    };
-
-                    let field_count = new.len();
-                    if field_count != 2 {
-                        return Err(Error::other(format!(
-                            "too many fields: got {field_count}, expected 2"
-                        )));
+                let Ok(key) = key.parse::<PropertyName>() else {
+                    // Not a builtin property.
+                    // Cannot be a wrong type error, because tarantool checks
+                    // the format for us.
+                    if old.is_none() {
+                        // Insert
+                        // FIXME: this is currently printed twice
+                        tlog!(Warning, "non builtin property inserted into _pico_property, this may be an error in a future version of picodata");
                     }
+                    return Ok(());
+                };
 
-                    key.verify_new_tuple(&new)?;
+                let field_count = new.len();
+                if field_count != 2 {
+                    return Err(Error::other(format!(
+                        "too many fields: got {field_count}, expected 2"
+                    )));
                 }
+
+                key.verify_new_tuple(&new)?;
             }
             (None, None) => unreachable!(),
         }
@@ -1446,24 +1450,6 @@ impl Properties {
     }
 
     #[inline]
-    pub fn get_or_alter_system_default<T>(&self, key: &'static str) -> tarantool::Result<T>
-    where
-        T: DecodeOwned,
-        T: serde::de::DeserializeOwned,
-    {
-        if let Some(t) = self.space.get(&[key])? {
-            if let Some(res) = t.field(1)? {
-                return Ok(res);
-            }
-        }
-
-        let value = config::get_default_value_of_alter_system_parameter(key)
-            .expect("parameter name is validated using system_parameter_name! macro");
-        let res = rmpv::ext::from_value(value).expect("default value type is correct");
-        Ok(res)
-    }
-
-    #[inline]
     pub fn put(&self, key: PropertyName, value: &impl serde::Serialize) -> tarantool::Result<()> {
         self.space.put(&(key, value))?;
         Ok(())
@@ -1474,36 +1460,6 @@ impl Properties {
     #[inline]
     pub fn delete(&self, key: PropertyName) -> tarantool::Result<Option<Tuple>> {
         self.space.delete(&[key])
-    }
-
-    #[inline]
-    pub fn password_min_length(&self) -> tarantool::Result<usize> {
-        self.get_or_alter_system_default(system_parameter_name!(password_min_length))
-    }
-
-    #[inline]
-    pub fn password_enforce_uppercase(&self) -> tarantool::Result<bool> {
-        self.get_or_alter_system_default(system_parameter_name!(password_enforce_uppercase))
-    }
-
-    #[inline]
-    pub fn password_enforce_lowercase(&self) -> tarantool::Result<bool> {
-        self.get_or_alter_system_default(system_parameter_name!(password_enforce_lowercase))
-    }
-
-    #[inline]
-    pub fn password_enforce_digits(&self) -> tarantool::Result<bool> {
-        self.get_or_alter_system_default(system_parameter_name!(password_enforce_digits))
-    }
-
-    #[inline]
-    pub fn password_enforce_specialchars(&self) -> tarantool::Result<bool> {
-        self.get_or_alter_system_default(system_parameter_name!(password_enforce_specialchars))
-    }
-
-    #[inline]
-    pub fn max_login_attempts(&self) -> tarantool::Result<usize> {
-        self.get_or_alter_system_default(system_parameter_name!(max_login_attempts))
     }
 
     #[inline]
@@ -1527,60 +1483,6 @@ impl Properties {
     #[inline]
     pub fn pending_plugin_op(&self) -> tarantool::Result<Option<PluginOp>> {
         self.get(PropertyName::PendingPluginOperation.as_str())
-    }
-
-    #[inline]
-    pub fn max_pg_statements(&self) -> tarantool::Result<usize> {
-        let cached = config::MAX_PG_STATEMENTS.load(Ordering::Relaxed);
-        if cached != 0 {
-            return Ok(cached);
-        }
-
-        let res = self.get_or_alter_system_default(system_parameter_name!(max_pg_statements))?;
-
-        // Cache the value.
-        config::MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
-        Ok(res)
-    }
-
-    #[inline]
-    pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
-        let cached = config::MAX_PG_PORTALS.load(Ordering::Relaxed);
-        if cached != 0 {
-            return Ok(cached);
-        }
-
-        let res = self.get_or_alter_system_default(system_parameter_name!(max_pg_portals))?;
-
-        // Cache the value.
-        config::MAX_PG_PORTALS.store(res, Ordering::Relaxed);
-        Ok(res)
-    }
-
-    #[inline]
-    pub fn snapshot_chunk_max_size(&self) -> tarantool::Result<usize> {
-        self.get_or_alter_system_default(system_parameter_name!(snapshot_chunk_max_size))
-    }
-
-    #[inline]
-    pub fn snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
-        #[rustfmt::skip]
-        let res: f64 = self.get_or_alter_system_default(system_parameter_name!(snapshot_read_view_close_timeout))?;
-        Ok(Duration::from_secs_f64(res))
-    }
-
-    #[inline]
-    pub fn auto_offline_timeout(&self) -> tarantool::Result<Duration> {
-        #[rustfmt::skip]
-        let res: f64 = self.get_or_alter_system_default(system_parameter_name!(auto_offline_timeout))?;
-        Ok(Duration::from_secs_f64(res))
-    }
-
-    #[inline]
-    pub fn max_heartbeat_period(&self) -> tarantool::Result<Duration> {
-        #[rustfmt::skip]
-        let res: f64 = self.get_or_alter_system_default(system_parameter_name!(max_heartbeat_period))?;
-        Ok(Duration::from_secs_f64(res))
     }
 
     #[inline]
@@ -4086,6 +3988,184 @@ impl PluginConfig {
             .into_iter()
             .map(|(k, v)| (k, rmpv::Value::Map(v)))
             .collect())
+    }
+}
+
+impl DbConfig {
+    pub fn new() -> tarantool::Result<Self> {
+        let space = Space::builder(Self::TABLE_NAME)
+            .id(Self::TABLE_ID)
+            .space_type(SpaceType::DataLocal)
+            .format(Self::format())
+            .if_not_exists(true)
+            .create()?;
+
+        let index = space
+            .index_builder("_pico_db_config_key")
+            .unique(true)
+            .part("key")
+            .if_not_exists(true)
+            .create()?;
+
+        on_replace(space.id(), Self::on_replace)?;
+
+        Ok(Self { space, index })
+    }
+
+    #[inline(always)]
+    pub fn format() -> Vec<tarantool::space::Field> {
+        use tarantool::space::Field;
+        vec![
+            Field::from(("key", FieldType::String)),
+            Field::from(("value", FieldType::Any)),
+        ]
+    }
+
+    #[inline]
+    pub fn index_definitions() -> Vec<IndexDef> {
+        vec![IndexDef {
+            table_id: Self::TABLE_ID,
+            // Primary index
+            id: 0,
+            name: "_pico_db_config_key".into(),
+            ty: IndexType::Tree,
+            opts: vec![IndexOption::Unique(true)],
+            parts: vec![Part::from(("key", IndexFieldType::String)).is_nullable(false)],
+            operable: true,
+            // This means the local schema is already up to date and main loop doesn't need to do anything
+            schema_version: INITIAL_SCHEMA_VERSION,
+        }]
+    }
+
+    #[inline]
+    pub fn get_or_default<T>(&self, key: &'static str) -> tarantool::Result<T>
+    where
+        T: DecodeOwned,
+        T: serde::de::DeserializeOwned,
+    {
+        if let Some(t) = self.space.get(&[key])? {
+            if let Some(res) = t.field(1)? {
+                return Ok(res);
+            }
+        }
+
+        let value = config::get_default_value_of_alter_system_parameter(key)
+            .expect("parameter name is validated using system_parameter_name! macro");
+        let res = rmpv::ext::from_value(value).expect("default value type is correct");
+        Ok(res)
+    }
+
+    /// Callback which is called when data in _pico_db_config is updated.
+    pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
+        // Both `reset` and `set` (in context of alter system) command
+        // is insert operation, so `new` always is not none.
+        let new = new.expect("can't ");
+        let key = new
+            .field::<&str>(0)
+            .expect("key has type string")
+            .expect("key is not nullable");
+
+        // We can skip type checking (`get_type_of_alter_system_parameter`),
+        // because it was verified in sql.rs and via alter system
+        // we can't insert non whitelisted parameters in _pico_db_config.
+        config::validate_alter_system_parameter_tuple(key, &new)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn get<T>(&self, key: &'static str) -> tarantool::Result<Option<T>>
+    where
+        T: DecodeOwned,
+    {
+        match self.space.get(&[key])? {
+            Some(t) => t.field(1),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    pub fn password_min_length(&self) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(password_min_length))
+    }
+
+    #[inline]
+    pub fn password_enforce_uppercase(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(password_enforce_uppercase))
+    }
+
+    #[inline]
+    pub fn password_enforce_lowercase(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(password_enforce_lowercase))
+    }
+
+    #[inline]
+    pub fn password_enforce_digits(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(password_enforce_digits))
+    }
+
+    #[inline]
+    pub fn password_enforce_specialchars(&self) -> tarantool::Result<bool> {
+        self.get_or_default(system_parameter_name!(password_enforce_specialchars))
+    }
+
+    #[inline]
+    pub fn max_login_attempts(&self) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(max_login_attempts))
+    }
+
+    #[inline]
+    pub fn max_pg_statements(&self) -> tarantool::Result<usize> {
+        let cached = config::MAX_PG_STATEMENTS.load(Ordering::Relaxed);
+        if cached != 0 {
+            return Ok(cached);
+        }
+
+        let res = self.get_or_default(system_parameter_name!(max_pg_statements))?;
+
+        // Cache the value.
+        config::MAX_PG_STATEMENTS.store(res, Ordering::Relaxed);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn max_pg_portals(&self) -> tarantool::Result<usize> {
+        let cached = config::MAX_PG_PORTALS.load(Ordering::Relaxed);
+        if cached != 0 {
+            return Ok(cached);
+        }
+
+        let res = self.get_or_default(system_parameter_name!(max_pg_portals))?;
+
+        // Cache the value.
+        config::MAX_PG_PORTALS.store(res, Ordering::Relaxed);
+        Ok(res)
+    }
+
+    #[inline]
+    pub fn snapshot_chunk_max_size(&self) -> tarantool::Result<usize> {
+        self.get_or_default(system_parameter_name!(snapshot_chunk_max_size))
+    }
+
+    #[inline]
+    pub fn snapshot_read_view_close_timeout(&self) -> tarantool::Result<Duration> {
+        #[rustfmt::skip]
+        let res: f64 = self.get_or_default(system_parameter_name!(snapshot_read_view_close_timeout))?;
+        Ok(Duration::from_secs_f64(res))
+    }
+
+    #[inline]
+    pub fn auto_offline_timeout(&self) -> tarantool::Result<Duration> {
+        #[rustfmt::skip]
+        let res: f64 = self.get_or_default(system_parameter_name!(auto_offline_timeout))?;
+        Ok(Duration::from_secs_f64(res))
+    }
+
+    #[inline]
+    pub fn max_heartbeat_period(&self) -> tarantool::Result<Duration> {
+        #[rustfmt::skip]
+        let res: f64 = self.get_or_default(system_parameter_name!(max_heartbeat_period))?;
+        Ok(Duration::from_secs_f64(res))
     }
 }
 

@@ -182,8 +182,8 @@ def get_instance_states(peer: Instance, instance_name) -> tuple[str, str]:
 
 def test_instance_automatic_offline_detection(cluster: Cluster):
     i1, i2, i3 = cluster.deploy(instance_count=3)
-    index = cluster.cas("replace", "_pico_property", ["auto_offline_timeout", 0.5])
-    cluster.raft_wait_index(index, 3)
+    dml = i1.sql("ALTER SYSTEM SET auto_offline_timeout=0.5")
+    assert dml["row_count"] == 1
 
     assert get_instance_states(i1, i3.name) == ("Online", "Online")
 

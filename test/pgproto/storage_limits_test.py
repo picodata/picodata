@@ -42,10 +42,9 @@ def test_statement_storage_config_limit(postgres: Postgres):
     conn = setup_pg8000_env(postgres)
 
     max_pg_statements = 32
+    # not sure about not using `?``
     postgres.instance.sql(
-        'UPDATE "_pico_property" SET "value" = ? \
-            WHERE "key" = \'max_pg_statements\'',
-        max_pg_statements,
+        f"ALTER SYSTEM SET max_pg_statements = {max_pg_statements}",
         sudo=True,
     )
 
@@ -69,9 +68,7 @@ ALTER SYSTEM SET "max_pg_statements" TO <new-limit>',
 
     # increase storage capacity
     postgres.instance.sql(
-        'UPDATE "_pico_property" SET "value" = ? \
-            WHERE "key" = \'max_pg_statements\'',
-        max_pg_statements + 1,
+        f"ALTER SYSTEM SET max_pg_statements={max_pg_statements + 1}",
         sudo=True,
     )
 

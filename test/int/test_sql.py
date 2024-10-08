@@ -385,7 +385,7 @@ def test_read_from_system_tables(cluster: Cluster):
     # Check we can read everything from the table
     data = i1.sql(
         """
-        SELECT * FROM "_pico_property" ORDER BY "key"
+        SELECT * FROM "_pico_db_config" ORDER BY "key"
         """,
         strip_metadata=False,
     )
@@ -397,7 +397,6 @@ def test_read_from_system_tables(cluster: Cluster):
     keys = [row[0] for row in data["rows"]]
     assert keys == [
         "auto_offline_timeout",
-        "global_schema_version",
         "governor_common_rpc_timeout",
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
@@ -405,7 +404,6 @@ def test_read_from_system_tables(cluster: Cluster):
         "max_login_attempts",
         "max_pg_portals",
         "max_pg_statements",
-        "next_schema_version",
         "password_enforce_digits",
         "password_enforce_lowercase",
         "password_enforce_specialchars",
@@ -413,6 +411,23 @@ def test_read_from_system_tables(cluster: Cluster):
         "password_min_length",
         "snapshot_chunk_max_size",
         "snapshot_read_view_close_timeout",
+    ]
+
+    data = i1.sql(
+        """
+        SELECT * FROM "_pico_property" ORDER BY "key"
+        """,
+        strip_metadata=False,
+    )
+    assert data["metadata"] == [
+        {"name": "key", "type": "string"},
+        {"name": "value", "type": "any"},
+    ]
+    # Ignore values for the sake of stability
+    keys = [row[0] for row in data["rows"]]
+    assert keys == [
+        "global_schema_version",
+        "next_schema_version",
     ]
 
     data = i1.sql(
@@ -3322,25 +3337,19 @@ def test_sql_user_password_checks(cluster: Cluster):
     assert acl["row_count"] == 1
 
     # let's turn off uppercase check and turn on special characters check
-    read_index = i1.raft_read_index()
-
-    ret = cluster.cas(
-        "replace",
-        "_pico_property",
-        ["password_enforce_uppercase", False],
-        index=read_index,
+    dml = i1.sql(
+        """
+        ALTER SYSTEM SET password_enforce_uppercase=false
+        """
     )
-    assert ret == read_index + 1
+    assert dml["row_count"] == 1
 
-    ret = cluster.cas(
-        "replace",
-        "_pico_property",
-        ["password_enforce_specialchars", True],
-        index=read_index,
+    dml = i1.sql(
+        """
+        ALTER SYSTEM SET password_enforce_specialchars=true
+        """
     )
-    assert ret == read_index + 2
-
-    cluster.raft_wait_index(ret)
+    assert dml["row_count"] == 1
 
     with pytest.raises(
         TarantoolError,
@@ -5069,8 +5078,14 @@ def test_alter_system_property(cluster: Cluster):
     non_default_prop = [
         ("password_min_length", 10),
         ("password_enforce_digits", True),
+        ("password_enforce_uppercase", True),
+        ("password_enforce_lowercase", True),
+        ("password_enforce_specialchars", False),
         ("auto_offline_timeout", 12),
         ("max_heartbeat_period", 6.6),
+        ("max_login_attempts", 4),
+        ("max_pg_statements", 1024),
+        ("max_pg_portals", 1024),
         ("snapshot_chunk_max_size", 1500),
         ("snapshot_read_view_close_timeout", 12312.4),
         ("password_enforce_uppercase", False),
@@ -5086,44 +5101,44 @@ def test_alter_system_property(cluster: Cluster):
 
     default_prop = []
     for index, (prop, value) in enumerate(non_default_prop):
-        data = i1.sql(f""" select * from "_pico_property" where "key" = '{prop}' """)
+        data = i1.sql(f""" select * from "_pico_db_config" where "key" = '{prop}' """)
         default_prop.append(data[0][1])
 
         # check simple setting
         data = i1.sql(f""" alter system set "{prop}" to {value} """)
         assert data["row_count"] == 1
-        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][1] == value
 
         # change back to non default value for check of reset
         data = i1.sql(f""" alter system set "{prop}" to default """)
         assert data["row_count"] == 1
-        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][1] == default_prop[index]
 
         # change back to
         data = i1.sql(f""" alter system set "{prop}" to {value} """)
         assert data["row_count"] == 1
-        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][1] == value
 
         # check reset to default
         data = i1.sql(f""" alter system reset "{prop}" """)
         assert data["row_count"] == 1
-        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][1] == default_prop[-1]
 
         # change back to non default value for later check of reset all
         data = i1.sql(f""" alter system set "{prop}" to {value} """)
         assert data["row_count"] == 1
-        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][1] == value
 
     # check reset all
     data = i1.sql(""" alter system reset all """)
     assert data["row_count"] == 1
     for (prop, _), default in zip(non_default_prop, default_prop):
-        data = i1.sql(""" select * from "_pico_property" where "key" = ? """, prop)
+        data = i1.sql(""" select * from "_pico_db_config" where "key" = ? """, prop)
         assert data[0][1] == default
 
 
@@ -5133,7 +5148,7 @@ def test_alter_system_property_errors(cluster: Cluster):
 
     # check valid insertion (int)
     data = i1.sql(
-        """ select * from "_pico_property" where "key" = 'auto_offline_timeout' """
+        """ select * from "_pico_db_config" where "key" = 'auto_offline_timeout' """
     )
     assert data == [["auto_offline_timeout", 5]]
     dml = i1.sql(
@@ -5143,13 +5158,13 @@ def test_alter_system_property_errors(cluster: Cluster):
     )
     assert dml["row_count"] == 1
     data = i1.sql(
-        """ select * from "_pico_property" where "key" = 'auto_offline_timeout' """
+        """ select * from "_pico_db_config" where "key" = 'auto_offline_timeout' """
     )
     assert data == [["auto_offline_timeout", 3]]
 
     # check valid insertion (bool)
     data = i1.sql(
-        """ select * from "_pico_property" where "key" = 'password_enforce_digits' """
+        """ select * from "_pico_db_config" where "key" = 'password_enforce_digits' """
     )
     assert data == [["password_enforce_digits", True]]
     dml = i1.sql(
@@ -5159,7 +5174,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     )
     assert dml["row_count"] == 1
     data = i1.sql(
-        """ select * from "_pico_property" where "key" = 'password_enforce_digits' """
+        """ select * from "_pico_db_config" where "key" = 'password_enforce_digits' """
     )
     assert data == [["password_enforce_digits", False]]
 

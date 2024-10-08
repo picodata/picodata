@@ -131,7 +131,7 @@ def test_cas_errors(instance: Instance):
         instance.cas(
             "replace",
             "_pico_property",
-            ["password_min_length", 13, 37],
+            ["global_schema_version", 13, 37],
         )
     assert error.value.args[:2] == (
         "ER_PROC_LUA",

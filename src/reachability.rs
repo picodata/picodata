@@ -174,7 +174,7 @@ impl InstanceReachabilityManager {
             .as_ref()
             .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
         storage
-            .properties
+            .db_config
             .auto_offline_timeout()
             .expect("storage aint gonna fail")
     }
@@ -190,7 +190,7 @@ impl InstanceReachabilityManager {
             .as_ref()
             .unwrap_or_else(|| Clusterwide::try_get(false).expect("should be initialized by now"));
         storage
-            .properties
+            .db_config
             .max_heartbeat_period()
             .expect("storage aint gonna fail")
     }

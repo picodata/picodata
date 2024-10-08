@@ -1121,7 +1121,7 @@ fn alter_system_ir_node_to_op_or_result(
         )));
     }
 
-    let table = crate::storage::ClusterwideTable::Property;
+    let table = crate::storage::ClusterwideTable::DbConfig;
     let initiator = current_user;
     match ty {
         AlterSystemType::AlterSystemSet {
