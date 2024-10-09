@@ -74,7 +74,7 @@
     ```
 
 ??? example "i2"
-    ```
+    ```shell
     #!/bin/bash
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
@@ -87,7 +87,7 @@
     ```
 
 ??? example "i3"
-    ```
+    ```shell
     #!/bin/bash
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
@@ -100,7 +100,7 @@
     ```
 
 ??? example "i4"
-    ```
+    ```shell
     #!/bin/bash
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
@@ -223,7 +223,7 @@ compute и storage. Создайте отдельные файлы конфиг�
     ```
 
 ??? example "storage_1"
-    ```
+    ```shell
     #!/bin/bash
 
     export PICODATA_CONFIG_FILE="storage.yml"
@@ -236,7 +236,7 @@ compute и storage. Создайте отдельные файлы конфиг�
     ```
 
 ??? example "storage_2"
-    ```
+    ```shell
     #!/bin/bash
 
     export PICODATA_CONFIG_FILE="storage.yml"
