@@ -1,3 +1,4 @@
+use git_version::git_describe;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -53,7 +54,12 @@ fn main() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
 
-    set_git_describe_env_var();
+    // GIT_DESCRIBE defines picodata version.
+    if std::env::var("GIT_DESCRIBE").is_ok() {
+        // It's docker build, there is no .git folder, but the version was passed via env.
+    } else {
+        println!("cargo:rustc-env=GIT_DESCRIBE={}", git_describe!());
+    }
 
     // This variable controls the type of the build for whole project.
     // By default static linking is used (see tarantool-sys/static-build)
@@ -159,30 +165,6 @@ fn do_compile_time_checks() {
             std::process::exit(1);
         }
     }
-}
-
-fn set_git_describe_env_var() {
-    if std::env::var("GIT_DESCRIBE").is_ok() {
-        return;
-    }
-
-    let output = Command::new("git").arg("describe").output().unwrap();
-    assert!(
-        output.status.success(),
-        "`git describe` failed: {}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
-    let git_describe = std::str::from_utf8(&output.stdout).unwrap();
-    println!("cargo:rustc-env=GIT_DESCRIBE={git_describe}");
-
-    // We use output from `git describe` to generate picodata version info, so
-    // we must rerun this build script every time that output changes. We can't
-    // express this requirement explicitly using cargo's commands, but we can
-    // ask cargo to rerun every time one of the important .git/* files changes,
-    // which seems to do the trick for the most part.
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/refs");
 }
 
 fn generate_export_stubs(out_dir: &str) {

@@ -81,10 +81,11 @@ features = ["picodata", "test"]
 pretty_assertions = "0.6.1"
 
 [build-dependencies]
-nix = { version = "0.26.4", features = ["fs"] }
+git-version = "0.3.9"
 jobserver = "0.1.26"
-syn = { version = "^1.0", features = ["full", "extra-traits", "printing"] }
+nix = { version = "0.26.4", features = ["fs"] }
 quote = "^1.0"
+syn = { version = "^1.0", features = ["full", "extra-traits", "printing"] }
 
 [patch.crates-io]
 nix = { git = "https://git.picodata.io/picodata/picodata/nix.git", branch = "fix-memfd-create-for-older-libc-backport-26-4" }
@@ -112,4 +113,5 @@ members = [
     "pico_proc_macro",
     "gostech/gostech-audit-log",
     "test/testplug",
+    "test/plug_wrong_version",
 ]

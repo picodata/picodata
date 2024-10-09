@@ -2758,3 +2758,20 @@ def test_plugin_sql_permission_denied(cluster: Cluster):
         "ER_ACCESS_DENIED",
         "Plugin system access is denied for user 'alex'",
     )
+
+
+def test_picoplugin_version_compatibility_check(cluster: Cluster):
+    cluster.plugin_dir = os.path.abspath("test/plug_wrong_version")
+    instance = cluster.add_instance()
+
+    with pytest.raises(
+        TarantoolError,
+        match="Picoplugin version .* used to build a plugin is incompatible with picodata version",
+    ):
+        instance.sql("CREATE PLUGIN plug_wrong_version 0.1.0")
+
+    # disable compatibility check
+    instance.env["PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK"] = "1"
+    instance.restart()
+    instance.wait_online()
+    instance.sql("CREATE PLUGIN plug_wrong_version 0.1.0")

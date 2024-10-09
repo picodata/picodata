@@ -224,6 +224,7 @@ test-linux:
     - cargo build --timings --locked --profile=$BUILD_PROFILE
     - cargo build -p gostech-audit-log --profile=$BUILD_PROFILE
     - cargo build -p testplug --profile=$BUILD_PROFILE
+    - cargo build -p plug_wrong_version --profile=$BUILD_PROFILE
     - cargo test --locked --profile=$BUILD_PROFILE
 
     - cargo build --features webui,error_injection --locked --profile=$BUILD_PROFILE

@@ -2077,6 +2077,13 @@ def binary_path(cargo_build: None) -> str:
         eprint(f"Copying '{source}' to '{destination}'")
         shutil.copyfile(source, destination)
 
+    plug_wrong_version_dir = f"{test_dir}/plug_wrong_version/plug_wrong_version"
+    destination = f"{plug_wrong_version_dir}/0.1.0/libplug_wrong_version.{ext}"
+    source = f"{os.path.dirname(binary_path)}/libplug_wrong_version.{ext}"
+    if not (os.path.exists(destination) and filecmp.cmp(source, destination)):
+        eprint(f"Copying '{source}' to '{destination}'")
+        shutil.copyfile(source, destination)
+
     return binary_path
 
 

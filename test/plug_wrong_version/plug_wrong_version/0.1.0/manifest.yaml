@@ -1,0 +1,8 @@
+description: plugin that expects an incompatible version of picodata with the current one
+name: plug_wrong_version
+version: 0.1.0
+services:
+  - name: testservice
+    description: descr
+    default_configuration:
+      the_answer: 42

@@ -1,6 +1,6 @@
 [package]
 name = "picoplugin"
-version = "0.1.0"
+version = "24.6.0"
 edition = "2021"
 license-file = "./../LICENSE"
 
@@ -32,3 +32,4 @@ features = ["picodata", "test", "tokio_components"]
 
 [features]
 internal_test = []
+test_wrong_version = []

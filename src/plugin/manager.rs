@@ -1,4 +1,5 @@
 use crate::info::InstanceInfo;
+use crate::info::PICODATA_VERSION;
 use crate::plugin::rpc;
 use crate::plugin::LibraryWrapper;
 use crate::plugin::PluginError::{PluginNotFound, ServiceCollision};
@@ -14,6 +15,7 @@ use crate::traft::node;
 use crate::traft::node::Node;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
+use abi_stable::std_types::RStr;
 use picoplugin::background::{Error, InternalGlobalWorkerManager, ServiceId};
 use picoplugin::error_code::ErrorCode::PluginError as PluginErrorCode;
 use picoplugin::metrics::InternalGlobalMetricsCollection;
@@ -38,6 +40,23 @@ fn context_set_service_info(context: &mut PicoContext, service: &Service) {
     context.plugin_name = service.plugin_name.as_str().into();
     context.service_name = service.name.as_str().into();
     context.plugin_version = service.version.as_str().into();
+}
+
+fn plugin_compatibility_check_enabled() -> bool {
+    // For the sake of simplicity, we decided to provide this option only through env.
+    // However, since it is part of the public API, it must be synced with the documentation.
+    std::env::var("PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK").is_err()
+}
+
+/// Check if picodata version matches picoplugin version.
+fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
+    if PICODATA_VERSION.starts_with(picoplugin_version) {
+        return Ok(());
+    }
+
+    Err(PluginError::IncompatiblePicopluginVersion(
+        picoplugin_version.to_string(),
+    ))
 }
 
 type PluginServices = Vec<Rc<fiber::Mutex<Service>>>;
@@ -137,6 +156,18 @@ impl PluginManager {
             let Some(lib) = Self::load_so(&path) else {
                 continue;
             };
+
+            // check compatibility
+            let picoplugin_version = unsafe { lib.get::<&RStr<'static>>("PICOPLUGIN_VERSION")? };
+            if plugin_compatibility_check_enabled() {
+                ensure_picodata_version_compatible(picoplugin_version.as_str())?;
+            } else {
+                tlog!(
+                    Warning,
+                    "Loading a possibly incompatible plugin built using picoplugin {}",
+                    picoplugin_version.as_str(),
+                )
+            }
 
             // fill registry with factories
             let mut registry = ServiceRegistry::default();

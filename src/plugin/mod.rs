@@ -25,6 +25,7 @@ use tarantool::time::Instant;
 
 use crate::cas::Range;
 use crate::info::InstanceInfo;
+use crate::info::PICODATA_VERSION;
 use crate::plugin::lock::PicoPropertyLock;
 use crate::plugin::migration::MigrationInfo;
 use crate::plugin::PluginError::{PluginNotFound, RemoveOfEnabledPlugin};
@@ -115,6 +116,11 @@ pub enum PluginError {
     InvalidConfiguration,
     #[error("Invalid configuration value (should be a json string): {0}")]
     ConfigDecode(serde_json::Error),
+    #[error(
+        "Picoplugin version {0} used to build a plugin is incompatible with picodata version {}",
+        PICODATA_VERSION
+    )]
+    IncompatiblePicopluginVersion(String),
 }
 
 struct DisplaySomeOrDefault<'a>(&'a Option<ErrorInfo>, &'a str);

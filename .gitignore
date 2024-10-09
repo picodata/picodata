@@ -9,6 +9,8 @@ tags
 test/manual/sql/*.json
 **/libtestplug.so
 **/libtestplug.dylib
+**/libplug_wrong_version.so
+**/libplug_wrong_version.dylib
 venv
 .direnv
 .envrc
