@@ -10,11 +10,9 @@
 
 ## Простой кластер {: #simple_cluster }
 
-### Запуск {: #simple_cluster_run }
+### Файл конфигурации {: #simple_cluster_config }
 
-#### Файл конфигурации {: #simple_cluster_config }
-
-Для развертывания простого кластера используйте следующий файл конфигурации:
+Для развертывания кластера используйте следующий файл конфигурации:
 
 ???+ example "my_cluster.yml"
     ```yaml
@@ -32,12 +30,12 @@
         format: plain
         destination: null
       memtx:
-        memory: 67108864
+        memory: 64M
         checkpoint_count: 2
         checkpoint_interval: 3600.0
       vinyl:
-        memory: 134217728
-        cache: 134217728
+        memory: 128M
+        cache: 128M
     ```
 
 Вы можете скопировать в файл этот образец или сгенерировать свой файл
@@ -54,7 +52,7 @@
 [picodata config default]: ../reference/cli.md#config_default
 [Описание файла конфигурации]: ../reference/config.md
 
-#### Скрипты инстансов {: #simple_cluster_scripts }
+### Скрипты инстансов {: #simple_cluster_scripts }
 
 Создайте скрипты запуска для инстансов, указав в них путь к общему файлу
 конфигурации (в примере он находится в той же директории, что и сами
@@ -131,96 +129,92 @@ TBD:
 ## Кластер на нескольких серверах
 -->
 
-## Кластер из нескольких тиров {: #tiered_cluster }
+## Кластер из нескольких тиров {: #multi_tier_cluster }
 
-Для управления физическим расположением шардированных таблиц в Picodata
-используются [тиры][tiers], которые позволяют создавать отдельные группы
-с шардированными данными. Другими словами — для каждой шардированной
-таблицы определена принадлежность конкретному тиру. В свою очередь,
-глобальные таблицы создаются на каждом инстансе и не привязаны к тирам.
+Тир — это группа инстансов, объединенных по функциональному назначению.
 
-См. также:
+В рамках отдельных тиров данные
+[шардируются](../overview/description.md#sharding) независимо друг от
+друга. Для каждой шардированной таблицы определена принадлежность
+конкретному тиру.
 
-- [Шардирование](../overview/description.md#sharding)
+На каждом тире запускаются свои
+[сервисы](../tutorial/plugins.md#services) плагинов.
+
+Конфигурация инстансов (выделяемая память и т.д.) и фактор репликации
+также настраивается на уровне тиров.
 
 <!--
 Круто было бы здесь иллюстрацию иметь.
 -->
 
-Набор тиров, равно как и принадлежность
-инстанса тиру, определяется на момент развертывания кластера и в дальнейшем
-не изменяется. Каждый инстанс принадлежит только одному тиру.
+Набор тиров, равно как и принадлежность инстансов тирам, определяется на
+момент [развертывания кластера][cluster_bootstrap] и в дальнейшем не
+изменяется. Каждый инстанс принадлежит ровно одному тиру.
 
-При этом, в запущенном кластере сохраняется возможность переопределять
-некоторые из глобальных параметров кластера на уровне тира. Например,
-[replication_factor].
+[cluster_bootstrap]: ../overview/glossary.md#bootstrap
 
-В этом примере показан запуск кластера, состоящего из двух тиров
-с именами "blue" и "red". Файл конфигурации и скрипты инстансов
-отличаются от используемых на предыдущем шаге только в местах,
-относящимся к тирам.
 
-<!--
-Можно отдельным примером добавить пример с не дефолтным can_vote
--->
+#### Файлы конфигурации {: #multi_tier_cluster_config }
 
-### Запуск {: #tiered_cluster_run }
+Следующий пример показывает запуск кластера, состоящий из двух тиров —
+compute и storage. Создайте отдельные файлы конфигурации для каждого из
+тиров:
 
-#### Файл конфигурации {: #tiered_cluster_config }
-
-Тиры создаются только один раз на этапе [бутстрапа
-кластера][cluster_bootstrap] с учетом параметров `cluster.tier.*`,
-заданных в [файле конфигурации][config_file_description] и после этого
-не изменяются.
-
-Для развертывания кластера используйте следующий файл конфигурации, в
-котором заданы имена тиров и определены их параметры:
-
-???+ example "tiered_cluster.md"
+???+ example "compute.yml"
     ```yaml
     cluster:
-      cluster_id: tiered_cluster
+      cluster_id: multi_tier_cluster
       tier:
-        red:
-          replication_factor: 2
-        blue:
+        compute:
           replication_factor: 1
+          can_vote: true
+        storage:
+          replication_factor: 2
+          can_vote: false
 
     instance:
+      tier: compute
       peer:
       - 127.0.0.1:3301
-      audit: false
-      shredding: false
-      log:
-        level: info
-        format: plain
-        destination: null
       memtx:
-        memory: 67108864
-        checkpoint_count: 2
-        checkpoint_interval: 3600.0
-      vinyl:
-        memory: 134217728
-        cache: 134217728
+        memory: 64M
     ```
 
-#### Скрипты инстансов {: #tiered_cluster_scripts }
+??? example "storage.yml"
+    ```yaml
+    cluster:
+      cluster_id: multi_tier_cluster
+      tier:
+        compute:
+          replication_factor: 1
+          can_vote: true
+        storage:
+          replication_factor: 2
+          can_vote: false
 
-Создайте скрипты запуска для инстансов, указав в них путь к общему файлу
-конфигурации (в примере он находится в той же директории, что и сами
-скрипты), а также индивидуальные настройки. С помощью `PICODATA_TIER`
-нужно указать, к какому тиру будет принадлежать инстанс:
+    instance:
+      tier: storage
+      peer:
+      - 127.0.0.1:3301
+      memtx:
+        memory: 1024M
+    ```
 
-???+ example "i1"
+#### Скрипты инстансов {: #multi_tier_cluster_scripts }
+
+Создайте скрипты запуска для каждого из инстансов. В данном примере
+создается один compute инстанс и 2 storage. Инстансы storage образуют
+один репликасет.
+
+???+ example "compute_1"
     ```shell
     #!/bin/bash
 
-    export PICODATA_CONFIG_FILE="my_cluster.yml"
+    export PICODATA_CONFIG_FILE="compute.yml"
 
-    export PICODATA_INSTANCE_ID="red_i1"
-    export PICODATA_TIER="red"
-
-    export PICODATA_DATA_DIR="./data/my_cluster/i1"
+    export PICODATA_INSTANCE_ID="compute_1"
+    export PICODATA_DATA_DIR="./data/multi_tier_cluster/compute_1"
     export PICODATA_LISTEN="127.0.0.1:3301"
     export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
     export PICODATA_PG_LISTEN="127.0.0.1:5432"
@@ -228,40 +222,31 @@ TBD:
     picodata run
     ```
 
-??? example "i2"
+??? example "storage_1"
     ```
     #!/bin/bash
 
-    export PICODATA_CONFIG_FILE="my_cluster.yml"
+    export PICODATA_CONFIG_FILE="storage.yml"
 
-    export PICODATA_INSTANCE_ID="red_i2"
-    export PICODATA_TIER="red"
-
-    export PICODATA_DATA_DIR="./data/my_cluster/i2"
+    export PICODATA_INSTANCE_ID="storage_1"
+    export PICODATA_DATA_DIR="./data/multi_tier_cluster/storage_1"
     export PICODATA_LISTEN="127.0.0.1:3302"
 
     picodata run
     ```
 
-??? example "i3"
+??? example "storage_2"
     ```
     #!/bin/bash
 
-    export PICODATA_CONFIG_FILE="my_cluster.yml"
+    export PICODATA_CONFIG_FILE="storage.yml"
 
-    export PICODATA_INSTANCE_ID="blue_i1"
-    export PICODATA_TIER="blue"
-
-    export PICODATA_DATA_DIR="./data/my_cluster/i3"
+    export PICODATA_INSTANCE_ID="storage_2"
+    export PICODATA_DATA_DIR="./data/multi_tier_cluster/storage_2"
     export PICODATA_LISTEN="127.0.0.1:3303"
 
     picodata run
     ```
-
-[replication_factor]: ../overview/glossary.md#replication_factor
-[tiers]: ../overview/glossary.md#tier
-[cluster_bootstrap]: ../overview/glossary.md#bootstrap
-[config_file_description]: ../reference/config.md#config_file_description
 
 ## Зоны доступности (failure domains) {: #failure_domains }
 
