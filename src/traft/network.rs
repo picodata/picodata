@@ -39,6 +39,11 @@ use std::time::Duration;
 pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(3);
 pub const DEFAULT_CUNCURRENT_FUTURES: usize = 10;
 
+/// This value is used to check that our connection pool handles timeouts
+/// correctly. In case of actual timeout if the timeout error is not generated
+/// in this amount of time, we panic (but only in debug build).
+const DEBUG_TIMEOUT_DELTA: Duration = Duration::from_secs(1);
+
 #[derive(Clone, Debug)]
 pub struct WorkerOptions {
     pub raft_msg_handler: &'static str,
@@ -562,9 +567,14 @@ impl ConnectionPool {
         Response: tarantool::tuple::DecodeOwned + 'static,
         Args: ToTupleBuffer + ?Sized,
     {
+        let timeout = timeout.into();
+        let timeout = timeout.unwrap_or(self.worker_options.call_timeout);
+        let deadline = fiber::clock().saturating_add(timeout);
+        let debug_deadline = deadline.saturating_add(DEBUG_TIMEOUT_DELTA);
+
         let (tx, mut rx) = oneshot::channel();
         id.get_or_create_in(self)?
-            .rpc_raw(proc, args, timeout.into(), move |res| {
+            .rpc_raw(proc, args, Some(timeout), move |res| {
                 if tx.send(res).is_err() {
                     tlog!(
                         Debug,
@@ -577,6 +587,9 @@ impl ConnectionPool {
         // async fn, because we need to tell rust explicitly that the `id` &
         // `req` arguments are not borrowed by the returned future.
         let f = poll_fn(move |cx| {
+            #[rustfmt::skip]
+            debug_assert!(fiber::clock() < debug_deadline, "pool worker should report timeouts correctly");
+
             let rx = Pin::new(&mut rx);
             Future::poll(rx, cx).map(|r| r.unwrap_or_else(|_| Err(Error::other("disconnected"))))
         });
