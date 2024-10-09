@@ -2606,6 +2606,7 @@ dependencies = [
  "slog",
  "smallvec",
  "smol_str",
+ "socket2 0.5.7",
  "sqlparser",
  "syn 1.0.109",
  "tarantool 5.1.0",

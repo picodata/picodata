@@ -1,6 +1,9 @@
 use self::{client::PgClient, error::PgResult, tls::TlsAcceptor};
 use crate::{address::IprotoAddress, introspection::Introspection, tlog, traft::error::Error};
-use std::path::{Path, PathBuf};
+use std::{
+    os::fd::{AsRawFd, BorrowedFd},
+    path::{Path, PathBuf},
+};
 use stream::PgStream;
 use tarantool::coio::{CoIOListener, CoIOStream};
 
@@ -40,11 +43,24 @@ impl Config {
     }
 }
 
+fn enable_tcp_nodelay(raw: &CoIOStream) -> std::io::Result<()> {
+    let fd = raw.as_raw_fd();
+    // SAFETY: stream contains a valid descriptor
+    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
+    let socket = socket2::SockRef::from(&fd);
+    // FIXME: this blocks the event loop, as well as `CoioStream::new`
+    socket.set_nodelay(true)?;
+    Ok(())
+}
+
 fn server_start(context: Context) {
     // Help DBA diagnose storages by initializing them asap.
     backend::storage::force_init_portals_and_statements();
 
     while let Ok(raw) = context.server.accept() {
+        if let Err(e) = enable_tcp_nodelay(&raw) {
+            tlog!(Error, "failed to enable TCP_NODELAY on socket: {e:?}");
+        }
         let stream = PgStream::new(raw);
         if let Err(e) = handle_client(stream, context.tls_acceptor.clone()) {
             tlog!(Error, "failed to handle client {e}");
