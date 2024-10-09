@@ -56,6 +56,38 @@ pub(super) fn action_plan<'i>(
     let _guard = crate::util::NoYieldsGuard::new();
 
     ////////////////////////////////////////////////////////////////////////////
+    // transfer raft leadership
+    let Some(this_instance) = instances
+        .iter()
+        .find(|instance| instance.raft_id == my_raft_id)
+    else {
+        return Err(crate::traft::error::Error::NoSuchInstance(Ok(my_raft_id)));
+    };
+    if has_states!(this_instance, * -> Offline) || has_states!(this_instance, * -> Expelled) {
+        let mut new_leader = None;
+        for instance in instances {
+            if has_states!(instance, * -> Offline) || has_states!(instance, * -> Expelled) {
+                continue;
+            }
+
+            if !voters.contains(&instance.raft_id) {
+                continue;
+            }
+
+            new_leader = Some(instance);
+            break;
+        }
+        if let Some(new_leader) = new_leader {
+            return Ok(TransferLeadership { to: new_leader }.into());
+        } else {
+            tlog!(Warning, "leader is going offline and no substitution is found";
+                "leader_raft_id" => my_raft_id,
+                "voters" => ?voters,
+            );
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
     // conf change
     if let Some(conf_change) = raft_conf_change(instances, voters, learners, tiers) {
         return Ok(ConfChange { conf_change }.into());
@@ -63,6 +95,7 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // instance going offline non-gracefully
+    // TODO: it should be possible to move this step to where Expell is handled
     let to_downgrade = instances
         .iter()
         .find(|instance| has_states!(instance, not Offline -> Offline));
@@ -78,20 +111,6 @@ pub(super) fn action_plan<'i>(
             .get(&*instance.tier)
             .expect("tier info is always present");
 
-        ////////////////////////////////////////////////////////////////////////
-        // transfer leadership, if we're the one who goes offline
-        if instance.raft_id == my_raft_id {
-            let new_leader = maybe_responding(instances).find(|i| voters.contains(&i.raft_id));
-            if let Some(new_leader) = new_leader {
-                return Ok(TransferLeadership { to: new_leader }.into());
-            } else {
-                tlog!(Warning, "leader is going offline and no substitution is found";
-                    "leader_raft_id" => my_raft_id,
-                    "voters" => ?voters,
-                );
-            }
-        }
-
         // TODO: if this is replication leader, we should demote it and wait
         // until someone is promoted in it's place (which implies synchronizing
         // vclocks). Except that we can't do this reliably, as tarantool will
@@ -104,8 +123,6 @@ pub(super) fn action_plan<'i>(
         // replication leader is safe. Instead it should always first transfer
         // the replication leadership to another instance.
 
-        ////////////////////////////////////////////////////////////////////////
-        // update instance's current state
         let req = rpc::update_instance::Request::new(instance_name.clone(), cluster_name)
             .with_current_state(instance.target_state);
         let cas_parameters =
