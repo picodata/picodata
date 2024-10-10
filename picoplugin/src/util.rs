@@ -102,6 +102,14 @@ impl FfiSafeStr {
         Self { pointer, len }
     }
 
+    /// # Safety
+    /// `bytes` must represent a valid utf8 string.
+    pub unsafe fn from_utf8_unchecked(bytes: &[u8]) -> Self {
+        let pointer = as_non_null_ptr(bytes);
+        let len = bytes.len();
+        Self { pointer, len }
+    }
+
     #[inline(always)]
     pub fn into_raw_parts(self) -> (*mut u8, usize) {
         (self.pointer.as_ptr(), self.len)

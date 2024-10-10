@@ -2535,19 +2535,36 @@ def test_sdk_log(cluster: Cluster):
 
 @pytest.mark.webui
 def test_sdk_metrics(instance: Instance):
+    plugin = _PLUGIN_W_SDK
+    [service] = _PLUGIN_W_SDK_SERVICES
+
     http_listen = instance.env["PICODATA_HTTP_LISTEN"]
+
     install_and_enable_plugin(
         instance,
-        _PLUGIN_W_SDK,
-        _PLUGIN_W_SDK_SERVICES,
+        plugin,
+        [service],
         migrate=True,
         default_config={"test_type": "metrics"},
     )
 
+    # Metrics work
     response = requests.get(f"http://{http_listen}/metrics")
     assert response.ok
     assert "test_metric_1 1" in response.text
     assert "test_metric_2 2" in response.text
+
+    instance.sql(f""" ALTER PLUGIN {plugin} 0.1.0 DISABLE """)
+
+    PluginReflection.assert_persisted_data_exists(
+        "drop was called for metrics closure", instance
+    )
+
+    # Metrics no longer work
+    response = requests.get(f"http://{http_listen}/metrics")
+    assert response.ok
+    assert "test_metric_1 1" not in response.text
+    assert "test_metric_2 2" not in response.text
 
 
 def test_sdk_background(cluster: Cluster):

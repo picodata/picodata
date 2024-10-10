@@ -10,6 +10,7 @@ use abi_stable::std_types::{RDuration, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
 use picoplugin::internal::types;
 use picoplugin::internal::types::{DmlInner, OpInner};
+use picoplugin::metrics::FfiMetricsHandler;
 use picoplugin::sql::types::{SqlValue, SqlValueInner};
 use picoplugin::transport::rpc::client::FfiSafeRpcRequestArguments;
 use picoplugin::transport::rpc::server::FfiRpcHandler;
@@ -381,4 +382,16 @@ extern "C" fn pico_ffi_rpc_request(
             return -1;
         }
     }
+}
+
+/// Register a custom metrics generator which will be invoked when handling an
+/// http GET /metrics.
+#[no_mangle]
+pub extern "C" fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) -> i32 {
+    if let Err(e) = crate::plugin::metrics::register_metrics_handler(handler) {
+        e.set_last();
+        return -1;
+    }
+
+    0
 }

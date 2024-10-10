@@ -16,10 +16,10 @@ use crate::traft::node::Node;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use abi_stable::std_types::RStr;
-use picoplugin::background::{Error, InternalGlobalWorkerManager, ServiceId};
+use picoplugin::background::{Error, InternalGlobalWorkerManager};
 use picoplugin::error_code::ErrorCode::PluginError as PluginErrorCode;
-use picoplugin::metrics::InternalGlobalMetricsCollection;
 use picoplugin::plugin::interface::FnServiceRegistrar;
+use picoplugin::plugin::interface::ServiceId;
 use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
 use picoplugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
@@ -996,7 +996,7 @@ fn remove_metrics<'a>(plugins: impl Iterator<Item = &'a PluginServices>) {
             let svc_id = ServiceId::new(&lock.plugin_name, &lock.name, &lock.version);
             drop(lock);
 
-            InternalGlobalMetricsCollection::instance().remove(&svc_id)
+            crate::plugin::metrics::unregister_metrics_handler(&svc_id)
         }
     }
 }

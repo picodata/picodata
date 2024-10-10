@@ -2,6 +2,7 @@ use super::Request;
 use super::Response;
 use crate::internal::ffi;
 use crate::plugin::interface::PicoContext;
+use crate::plugin::interface::ServiceId;
 use crate::transport::context::Context;
 use crate::transport::context::FfiSafeContext;
 use crate::util::FfiSafeBytes;
@@ -278,7 +279,12 @@ pub struct PackedServiceIdentifier {
 }
 
 impl PackedServiceIdentifier {
-    fn pack(path: &str, plugin: &str, service: &str, version: &str) -> Result<Self, BoxError> {
+    pub(crate) fn pack(
+        path: &str,
+        plugin: &str,
+        service: &str,
+        version: &str,
+    ) -> Result<Self, BoxError> {
         let Ok(plugin_len) = plugin.len().try_into() else {
             #[rustfmt::skip]
             return Err(BoxError::new(TarantoolErrorCode::IllegalParams, format!("plugin name length must not exceed 65535, got {}", plugin.len())));
@@ -371,6 +377,11 @@ impl PackedServiceIdentifier {
     }
 
     #[inline(always)]
+    pub fn service_id(&self) -> ServiceId {
+        ServiceId::new(self.plugin(), self.service(), self.version())
+    }
+
+    #[inline(always)]
     pub fn path(&self) -> &str {
         self.storage_slice(self.plugin_len + 1 + self.service_len, self.path_len)
     }
@@ -380,6 +391,7 @@ impl PackedServiceIdentifier {
         self.storage_slice(0, self.plugin_len + 1 + self.service_len + self.path_len)
     }
 
+    /// Returns plugin version.
     #[inline(always)]
     pub fn version(&self) -> &str {
         self.storage_slice(

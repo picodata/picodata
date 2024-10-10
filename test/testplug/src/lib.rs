@@ -105,6 +105,7 @@ fn save_persisted_data(data: &str) {
     });
 
     let space = tarantool::space::Space::find("persisted_data").unwrap();
+    tarantool::say_info!("INSERT INTO persisted_data VALUES ('{data}')");
     space.replace(&(data,)).unwrap();
 }
 
@@ -424,13 +425,30 @@ impl Service for Service3 {
             }
             "no_test" => {}
             "metrics" => {
-                let collection = ctx.metrics_collection();
-                collection.append(|| {
-                    String::from(
-                        r#"test_metric_1 1
-test_metric_2 2"#,
-                    )
-                });
+                let drop_check = DropCheck;
+                let metrics_closure = move || {
+                    let _ = &drop_check;
+                    "test_metric_1 1\ntest_metric_2 2".into()
+                };
+
+                ctx.register_metrics_callback(metrics_closure.clone())
+                    .unwrap();
+                // This call is idempotent
+                ctx.register_metrics_callback(metrics_closure).unwrap();
+
+                // Unless you try registerring a different callback
+                let e = ctx
+                    .register_metrics_callback(|| "other_metrics 69".into())
+                    .unwrap_err();
+                assert_eq!(e.to_string(), "FunctionExists: metrics handler for `testplug_sdk.testservice_3:v0.1.0` is already registered with a different handler");
+
+                #[derive(Clone)]
+                struct DropCheck;
+                impl Drop for DropCheck {
+                    fn drop(&mut self) {
+                        save_persisted_data("drop was called for metrics closure");
+                    }
+                }
             }
             _ => {
                 panic!("invalid test type")

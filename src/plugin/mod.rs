@@ -1,13 +1,14 @@
 mod ffi;
 pub mod lock;
 pub mod manager;
+pub mod metrics;
 pub mod migration;
 pub mod rpc;
 pub mod topology;
 
 use once_cell::unsync;
-use picoplugin::background::ServiceId;
 use picoplugin::error_code::ErrorCode;
+use picoplugin::plugin::interface::ServiceId;
 use picoplugin::plugin::interface::{ServiceBox, ValidatorBox};
 use rmpv::Value;
 use serde::{Deserialize, Serialize};

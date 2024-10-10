@@ -236,11 +236,7 @@ fn start_http_server(HttpAddress { host, port, .. }: &HttpAddress) {
         resp.body = resp.body .. user_metrics()
         return resp
         end)"#,
-        tlua::Function::new(|| -> _ {
-            let collection = picoplugin::metrics::InternalGlobalMetricsCollection::instance();
-            let metrics = collection.all_metrics();
-            metrics
-        }),
+        tlua::Function::new(crate::plugin::metrics::get_plugin_metrics),
     )
     .expect("failed to add route metrics to http server");
 }
@@ -292,6 +288,7 @@ fn start_webui() {
 /// (discovery, rpc, public proc api).
 fn init_handlers() {
     plugin::rpc::server::init_handlers();
+    plugin::metrics::init_handlers();
 
     rpc::init_static_proc_set();
 

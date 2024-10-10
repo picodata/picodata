@@ -1,4 +1,5 @@
 use crate::internal::types;
+use crate::metrics::FfiMetricsHandler;
 use crate::sql::types::SqlValue;
 use crate::transport::rpc::client::FfiSafeRpcRequestArguments;
 use crate::transport::rpc::server::FfiRpcHandler;
@@ -8,6 +9,12 @@ use abi_stable::std_types::{RDuration, RVec};
 use abi_stable::RTuple;
 use tarantool::ffi::tarantool::BoxTuple;
 
+// TODO: It just occured to me that we could probably simplify this by defining
+// all `pico_ffi_*` functions in picoplugin. This will work, because picodata
+// includes picoplugin anyway. The only problem (unless I'm missing something)
+// would be that there'll be duplicate symbol definitions, which we could work
+// around by introducing a cfg(feature = "picodata_executable") which will be
+// off when compiling plugin code.
 extern "C" {
     #[allow(improper_ctypes)]
     pub fn pico_ffi_cas(
@@ -43,4 +50,6 @@ extern "C" {
         timeout: f64,
         output: *mut FfiSafeBytes,
     ) -> i32;
+
+    pub fn pico_ffi_register_metrics_handler(handler: FfiMetricsHandler) -> i32;
 }

@@ -1,9 +1,9 @@
 //! Background container for long live jobs.
 //! Background container guarantees job liveness across plugin life cycle.
 
+use crate::plugin::interface::ServiceId;
 use crate::system::tarantool::fiber;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
 use std::mem;
 use std::rc::Rc;
 use std::string::ToString;
@@ -83,33 +83,6 @@ impl CancellationTokenHandle {
 }
 
 type Tag = String;
-
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct ServiceId {
-    plugin_name: String,
-    service_name: String,
-    version: String,
-}
-
-impl Display for ServiceId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{}.{}:{}",
-            self.plugin_name, self.service_name, self.version
-        ))
-    }
-}
-
-impl ServiceId {
-    pub fn new<S: Into<String>>(plugin_name: S, service_name: S, version: S) -> Self {
-        Self {
-            plugin_name: plugin_name.into(),
-            service_name: service_name.into(),
-            version: version.into(),
-        }
-    }
-}
-
 type TaggedJobs = HashMap<Tag, Vec<CancellationTokenHandle>>;
 type UnTaggedJobs = Vec<CancellationTokenHandle>;
 

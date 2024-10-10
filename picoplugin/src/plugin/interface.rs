@@ -1,6 +1,5 @@
-use crate::background::{InternalGlobalWorkerManager, ServiceId, ServiceWorkerManager};
+use crate::background::{InternalGlobalWorkerManager, ServiceWorkerManager};
 use crate::error_code::ErrorCode::PluginError;
-use crate::metrics::{InternalGlobalMetricsCollection, MetricsCollection};
 use crate::util::FfiSafeStr;
 pub use abi_stable;
 use abi_stable::pmr::{RErr, RResult, RSlice};
@@ -17,7 +16,6 @@ use tarantool::error::{BoxError, IntoBoxError};
 pub struct PicoContext {
     is_master: bool,
     global_wm: *const (),
-    global_mc: *const (),
     pub plugin_name: FfiSafeStr,
     pub service_name: FfiSafeStr,
     pub plugin_version: FfiSafeStr,
@@ -28,13 +26,10 @@ impl PicoContext {
     pub fn new(is_master: bool) -> PicoContext {
         let gwm = InternalGlobalWorkerManager::instance() as *const InternalGlobalWorkerManager
             as *const ();
-        let mgc = InternalGlobalMetricsCollection::instance()
-            as *const InternalGlobalMetricsCollection as *const ();
 
         Self {
             is_master,
             global_wm: gwm,
-            global_mc: mgc,
             plugin_name: "<unset>".into(),
             service_name: "<unset>".into(),
             plugin_version: "<unset>".into(),
@@ -48,7 +43,6 @@ impl PicoContext {
         Self {
             is_master: self.is_master,
             global_wm: self.global_wm,
-            global_mc: self.global_mc,
             plugin_name: self.plugin_name.clone(),
             service_name: self.service_name.clone(),
             plugin_version: self.plugin_version.clone(),
@@ -76,18 +70,9 @@ impl PicoContext {
         global_manager.get_or_init_manager(service_id)
     }
 
-    /// Return [`MetricsCollection`] for current service.
-    pub fn metrics_collection(&self) -> MetricsCollection {
-        let global_collection: &'static InternalGlobalMetricsCollection =
-            // SAFETY: `picodata` guaranty that this reference live enough
-            unsafe { &*(self.global_mc as *const InternalGlobalMetricsCollection) };
-
-        MetricsCollection::new(
-            self.plugin_name(),
-            self.plugin_version(),
-            self.service_name(),
-            global_collection,
-        )
+    #[inline(always)]
+    pub fn register_metrics_callback(&self, callback: impl Fn() -> String) -> Result<(), BoxError> {
+        crate::metrics::register_metrics_handler(self, callback)
     }
 
     #[inline]
@@ -106,6 +91,36 @@ impl PicoContext {
     pub fn plugin_version(&self) -> &str {
         // SAFETY: safe because lifetime is managed by borrow checker
         unsafe { self.plugin_version.as_str() }
+    }
+}
+
+/// Unique service identifier.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct ServiceId {
+    pub plugin: String,
+    pub service: String,
+    pub version: String,
+}
+
+impl std::fmt::Display for ServiceId {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}:v{}", self.plugin, self.service, self.version,)
+    }
+}
+
+impl ServiceId {
+    #[inline(always)]
+    pub fn new(
+        plugin: impl Into<String>,
+        service: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Self {
+        Self {
+            plugin: plugin.into(),
+            service: service.into(),
+            version: version.into(),
+        }
     }
 }
 
