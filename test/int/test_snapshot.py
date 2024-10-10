@@ -1,6 +1,7 @@
-from conftest import Cluster
-from conftest import Retriable
 import time
+
+from conftest import Cluster, Retriable
+
 
 _3_SEC = 3
 
