@@ -2216,7 +2216,8 @@ impl NodeImpl {
                     self.raft_storage.handle_snapshot_metadata(meta)?;
 
                     if applied_index == meta.index {
-                        // Skip snapshot with the same index, though we still compact the log.
+                        // Skip snapshot with the same index, as an optimization,
+                        // because the contents of global tables are already up to date.
                         tlog!(
                             Warning,
                             "skipping snapshot with the same index: {applied_index}"
