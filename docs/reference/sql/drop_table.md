@@ -12,9 +12,20 @@
 * **TABLE** — название таблицы. Соответствует правилам имен для всех
   [объектов](object.md) в кластере.
 
+* **WAIT APPLIED** — при использовании этого параметра контроль
+  пользователю будет возвращен только после того как данная операция
+  будет применена либо во всем кластере (`GLOBALLY`), либо в рамках
+  текущего инстанса (`LOCALLY`)
+
 ## Примеры {: #examples }
 
 ```sql
-DROP TABLE warehouse OPTION (TIMEOUT = 3.0);
+DROP TABLE warehouse
+OPTION (TIMEOUT = 3.0);
 ```
 
+```sql
+DROP TABLE warehouse
+WAIT APPLIED GLOBALLY
+OPTION (TIMEOUT = 3.0);
+```
