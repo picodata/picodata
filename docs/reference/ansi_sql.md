@@ -1140,6 +1140,12 @@ td.td3 ul {
                                    ORDER BY</td>
             <td></td>
         </tr>
+                <tr>
+            <td class="center"><span class="full">—</span></td>
+            <td>ALTER SYSTEM</td>
+            <td class="td3 center">[ALTER SYSTEM](sql/alter_system.md)</td>
+            <td></td>
+        </tr>
         <tr>
             <td class="center"><span class="full">—</span></td>
             <td>ALTER USER</td>
