@@ -171,6 +171,10 @@ test-linux:
       variables:
         BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
         CACHE_POLICY: pull-push
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        BASE_IMAGE_TAG: ${BASE_IMAGE_LATEST}
+        CACHE_POLICY: pull-push
     - <<: *if-build-base-changes-on-dev-branch
       variables:
         BASE_IMAGE_TAG: ${CI_COMMIT_SHA}
@@ -311,8 +315,11 @@ test-patch-picodata:
     pull_policy: always
   cache:
     - <<: *py_cache
+      policy: pull
     - <<: *base_cache
+      policy: pull
     - <<: *base_node
+      policy: pull
   script:
     - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
