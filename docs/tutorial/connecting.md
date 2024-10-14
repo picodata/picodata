@@ -239,6 +239,14 @@ psql postgres://alice:T0psecret@127.0.0.1:5432?sslmode=disable
     1. Добавьте в [рабочую директорию инстанса](../reference/cli.md#run_data_dir)
        `<DATA_DIR>` SSL-сертификат и ключ `server.crt`, `server.key`
 
+    1. (опционально) Для включения [mTLS] добавьте в
+       [рабочую директорию инстанса](../reference/cli.md#run_data_dir) `<DATA_DIR>`
+       SSL-сертификат `ca.crt`. В результате PostgreSQL-сервер в Picodata будет
+       принимать подключения только в том случае, если клиент предоставит сертификат,
+       подписанный с помощью `ca.crt`.
+
+[mTLS]: https://en.wikipedia.org/wiki/Mutual_authentication
+
 ### Примеры запросов {: #examples }
 
 Примеры запросов в интерактивной сессии `psql`:
