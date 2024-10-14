@@ -24,6 +24,6 @@
 ```sql
 CALL proc(11, 'Pez Cat', 2013) OPTION (
     VTABLE_MAX_ROWS = 100,
-    SQL_VDBE_MAX_STEPS = 15000
+    VDBE_MAX_STEPS = 15000
 );
 ```

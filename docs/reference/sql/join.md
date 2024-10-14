@@ -222,7 +222,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
             projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
 execution options:
-sql_vdbe_max_steps = 45000
+vdbe_max_steps = 45000
 vtable_max_rows = 5000
 ```
 
@@ -249,7 +249,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
             projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                 scan "ORDERS"
 execution options:
-sql_vdbe_max_steps = 45000
+vdbe_max_steps = 45000
 vtable_max_rows = 5000
 ```
 
@@ -279,7 +279,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
-sql_vdbe_max_steps = 45000
+vdbe_max_steps = 45000
 vtable_max_rows = 5000
 ```
 
@@ -300,7 +300,7 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
-sql_vdbe_max_steps = 45000
+vdbe_max_steps = 45000
 vtable_max_rows = 5000
 ```
 
@@ -319,6 +319,6 @@ projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK
                 projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM", "ORDERS"."AMOUNT"::integer -> "AMOUNT", "ORDERS"."SINCE"::datetime -> "SINCE")
                     scan "ORDERS"
 execution options:
-sql_vdbe_max_steps = 45000
+vdbe_max_steps = 45000
 vtable_max_rows = 5000
 ```
