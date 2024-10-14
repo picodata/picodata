@@ -1437,7 +1437,16 @@ class Instance:
             timeout=timeout + 1,  # this timeout is for network call
         )
 
-    def wait_governor_status(self, expected_status: str, timeout: int | float = 10):
+    def governor_step_counter(self) -> int:
+        info = self.call(".proc_runtime_info")["internal"]
+        return info["governor_step_counter"]
+
+    def wait_governor_status(
+        self,
+        expected_status: str,
+        old_step_counter: int | None = None,
+        timeout: int | float = 10,
+    ):
         assert expected_status != "not a leader", "use another function"
 
         def impl():
@@ -1445,6 +1454,9 @@ class Instance:
             actual_status = info["governor_loop_status"]
             if actual_status == "not a leader":
                 raise NotALeader("not a leader")
+
+            if old_step_counter:
+                assert old_step_counter != info["governor_step_counter"]
 
             assert actual_status == expected_status
 

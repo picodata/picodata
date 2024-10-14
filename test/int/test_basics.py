@@ -741,6 +741,9 @@ def test_proc_runtime_info(instance: Instance):
         internal=dict(
             main_loop_status="idle",
             governor_loop_status="idle",
+            # This is a counter which increases each time governor successfully performs a step.
+            # This value may change in the future if we add or remove some of those steps.
+            governor_step_counter=6,
         ),
         http=dict(
             host=host,
