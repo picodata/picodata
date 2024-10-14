@@ -448,7 +448,7 @@ picodata>
 Метод аутентификации, см. [Аутентификация с помощью LDAP](../tutorial/ldap.md).
 
 Возможные значения: `chap-sha1`, `ldap`, `md5`<br>
-Значение по умолчанию: `chap-sha1`<br>
+Значение по умолчанию: `md5`<br>
 
 ### --password-file {: #connect_password_file }
 
