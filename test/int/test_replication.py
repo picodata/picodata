@@ -234,7 +234,7 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     # This will block until i5 synchronizes with old master, which it won't
     # until the injected error is disabled.
     time.sleep(1)  # Just in case, nothing really relies on this sleep
-    i1.wait_governor_status("configure replication")
+    i1.wait_governor_status("transfer replication leader")
 
     # neither old master no new master is writable until the switchover is not finalized
     assert i4.eval("return box.info.ro") is True
@@ -285,7 +285,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_online_replica(
     # This will block until i5 synchronizes with old master, which it won't
     # until the injected error is disabled.
     time.sleep(1)  # Just in case, nothing really relies on this sleep
-    i1.wait_governor_status("configure replication")
+    i1.wait_governor_status("transfer replication leader")
 
     # i4 does not become expelled until the switchover if finalized
     info = i4.call(".proc_instance_info")
@@ -347,7 +347,7 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     # and tries to reconfigure replication between them which will require i5 to synchronize first.
     # This will block until i5 synchronizes with old master, which it won't
     # because it's currently offline.
-    i1.wait_governor_status("configure replication")
+    i1.wait_governor_status("transfer replication leader")
 
     # i4 does not become expelled until the switchover if finalized
     info = i4.call(".proc_instance_info")

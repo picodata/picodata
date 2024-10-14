@@ -1345,6 +1345,7 @@ def test_on_leader_change(cluster: Cluster):
         ops=[("=", "target_master_name", i2.name)],
     )
     cluster.raft_wait_index(index)
+    i1.wait_governor_status("idle")
     assert i1.replicaset_master_name() == i2.name
 
     # on_leader_change called at i1 and i2

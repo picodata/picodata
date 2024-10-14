@@ -6,10 +6,13 @@ use std::time::Duration;
 use ::tarantool::fiber;
 use ::tarantool::fiber::r#async::timeout::IntoTimeout as _;
 use ::tarantool::fiber::r#async::watch;
+use ::tarantool::space::UpdateOps;
 
 use crate::cas;
+use crate::column_name;
 use crate::op::Op;
 use crate::proc_name;
+use crate::replicaset::Replicaset;
 use crate::rpc;
 use crate::rpc::ddl_apply::proc_apply_schema_change;
 use crate::rpc::disable_service::proc_disable_service;
@@ -19,7 +22,7 @@ use crate::rpc::enable_service::proc_enable_service;
 use crate::rpc::load_plugin_dry_run::proc_load_plugin_dry_run;
 use crate::rpc::replication::proc_replication;
 use crate::rpc::replication::proc_replication_demote;
-use crate::rpc::replication::SyncAndPromoteRequest;
+use crate::rpc::replication::proc_replication_sync;
 use crate::rpc::sharding::bootstrap::proc_sharding_bootstrap;
 use crate::rpc::sharding::proc_sharding;
 use crate::schema::ADMIN_ID;
@@ -27,7 +30,6 @@ use crate::storage::Clusterwide;
 use crate::storage::ClusterwideTable;
 use crate::storage::ToEntryIter as _;
 use crate::sync::proc_get_vclock;
-use crate::sync::GetVclockRpc;
 use crate::tlog;
 use crate::traft::error::Error;
 use crate::traft::error::ErrorInfo;
@@ -39,10 +41,10 @@ use crate::traft::op::PluginRaftOp;
 use crate::traft::raft_storage::RaftSpaceAccess;
 use crate::traft::Result;
 use crate::unwrap_ok_or;
+use futures::future::try_join;
+use futures::future::try_join_all;
 use plan::action_plan;
 use plan::stage::*;
-
-use futures::future::try_join_all;
 
 pub(crate) mod conf_change;
 pub(crate) mod plan;
@@ -248,48 +250,34 @@ impl Loop {
                 }
             }
 
-            Plan::UpdateCurrentReplicasetMaster(UpdateCurrentReplicasetMaster {
+            Plan::ReplicasetMasterFailover(ReplicasetMasterFailover {
                 old_master_name,
-                demote,
                 new_master_name,
+                get_vclock_rpc,
                 replicaset_name,
-                mut update_ops,
-                bump_ranges,
-                bump_ops,
+                mut replicaset_dml,
+                bump_dml,
+                ranges,
             }) => {
                 set_status!("transfer replication leader");
                 tlog!(
                     Info,
-                    "transferring replicaset mastership from {old_master_name} to {new_master_name}"
+                    "transferring replicaset mastership from {old_master_name} to {new_master_name} (offline)"
                 );
 
                 let mut promotion_vclock = None;
-                if let Some(rpc) = demote {
-                    governor_step! {
-                        "demoting old master" [
-                            "old_master_name" => %old_master_name,
-                            "replicaset_name" => %replicaset_name,
-                        ]
-                        async {
-                            let resp = pool.call(old_master_name, proc_name!(proc_replication_demote), &rpc, rpc_timeout)?.await?;
-                            promotion_vclock = Some(resp.vclock);
-                        }
-                    }
-                } else {
-                    governor_step! {
-                        "getting promotion vclock from new master" [
-                            "new_master_name" => %new_master_name,
-                            "replicaset_name" => %replicaset_name,
-                        ]
-                        async {
-                            let rpc = GetVclockRpc {};
-                            let vclock = pool.call(new_master_name, proc_name!(proc_get_vclock), &rpc, rpc_timeout)?.await?;
-                            promotion_vclock = Some(vclock);
-                        }
+                governor_step! {
+                    "getting promotion vclock from new master" [
+                        "new_master_name" => %new_master_name,
+                        "replicaset_name" => %replicaset_name,
+                    ]
+                    async {
+                        let vclock = pool.call(new_master_name, proc_name!(proc_get_vclock), &get_vclock_rpc, rpc_timeout)?.await?;
+                        promotion_vclock = Some(vclock);
                     }
                 }
 
-                let promotion_vclock = promotion_vclock.expect("is always set on a previous step");
+                let promotion_vclock = promotion_vclock.expect("was just assigned");
                 let promotion_vclock = promotion_vclock.ignore_zero();
                 governor_step! {
                     "proposing replicaset current master change" [
@@ -297,17 +285,16 @@ impl Loop {
                         "replicaset_name" => %replicaset_name,
                     ]
                     async {
-                        let mut ops = bump_ops;
-                        let mut ranges = bump_ranges;
-
-                        update_ops.assign("promotion_vclock", &promotion_vclock).expect("shan't fail");
+                        let mut ops = bump_dml;
+                        replicaset_dml.assign(
+                            column_name!(Replicaset, promotion_vclock), &promotion_vclock
+                        ).expect("shan't fail");
                         let op = Dml::update(
                             ClusterwideTable::Replicaset,
                             &[replicaset_name],
-                            update_ops,
+                            replicaset_dml,
                             ADMIN_ID,
                         )?;
-                        ranges.push(cas::Range::for_dml(&op)?);
                         ops.push(op);
 
                         let op = Op::single_dml_or_batch(ops);
@@ -315,6 +302,96 @@ impl Loop {
                         let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);
                         cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                    }
+                }
+            }
+
+            Plan::ReplicasetMasterConsistentSwitchover(ReplicasetMasterConsistentSwitchover {
+                replicaset_name,
+                old_master_name,
+                demote_rpc,
+                new_master_name,
+                sync_rpc,
+                promotion_vclock,
+                master_actualize_dml,
+                bump_dml,
+                ranges,
+            }) => {
+                set_status!("transfer replication leader");
+                tlog!(
+                    Info,
+                    "transferring replicaset mastership from {old_master_name} to {new_master_name}"
+                );
+
+                let mut demotion_vclock = None;
+                governor_step! {
+                    "demoting old master and synchronizing new master" [
+                        "old_master_name" => %old_master_name,
+                        "new_master_name" => %new_master_name,
+                        "replicaset_name" => %replicaset_name,
+                    ]
+                    async {
+                        tlog!(Info, "calling proc_replication_demote on current master: {old_master_name}");
+                        let f_demote = pool.call(old_master_name, proc_name!(proc_replication_demote), &demote_rpc, rpc_timeout)?;
+
+                        tlog!(Info, "calling proc_replication_sync on target master: {new_master_name}");
+                        let f_sync = pool.call(new_master_name, proc_name!(proc_replication_sync), &sync_rpc, rpc_timeout)?;
+
+                        let (demote_response, _) = try_join(f_demote, f_sync).await?;
+                        demotion_vclock = Some(demote_response.vclock);
+                    }
+                }
+
+                let demotion_vclock = demotion_vclock.expect("is always set on a previous step");
+                if &demotion_vclock > promotion_vclock {
+                    let new_promotion_vclock = demotion_vclock;
+                    governor_step! {
+                        "updating replicaset promotion vclock" [
+                            "replicaset_name" => %replicaset_name,
+                            "promotion_vclock" => ?new_promotion_vclock,
+                        ]
+                        async {
+                            let mut ops = bump_dml;
+
+                            // Note: we drop the master_actualize_dml because switchover is not finished yet.
+                            // We just update the promotion_vclock value and retry synchronizing on next governor step.
+                            let mut replicaset_dml = UpdateOps::new();
+                            replicaset_dml.assign(
+                                column_name!(Replicaset, promotion_vclock), &new_promotion_vclock
+                            ).expect("shan't fail");
+                            let op = Dml::update(
+                                ClusterwideTable::Replicaset,
+                                &[replicaset_name],
+                                replicaset_dml,
+                                ADMIN_ID,
+                            )?;
+                            ops.push(op);
+
+                            let op = Op::single_dml_or_batch(ops);
+                            let predicate = cas::Predicate::new(applied, ranges);
+                            let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                            let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                            cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                        }
+                    }
+                } else {
+                    // Vclock on the new master is up to date with old master,
+                    // so switchover is compelete.
+                    governor_step! {
+                        "updating replicaset current master id" [
+                            "replicaset_name" => %replicaset_name,
+                            "current_master_name" => ?new_master_name,
+                        ]
+                        async {
+                            let mut ops = bump_dml;
+                            ops.push(master_actualize_dml);
+
+                            let op = Op::single_dml_or_batch(ops);
+                            let predicate = cas::Predicate::new(applied, ranges);
+                            let cas = cas::Request::new(op, predicate, ADMIN_ID)?;
+                            let deadline = fiber::clock().saturating_add(raft_op_timeout);
+                            cas::compare_and_swap_local(&cas, deadline)?.no_retries()?;
+                        }
                     }
                 }
             }
@@ -344,7 +421,6 @@ impl Loop {
                 targets,
                 master_name,
                 replicaset_peers,
-                promotion_vclock,
                 replication_config_version_actualize,
             }) => {
                 set_status!("configure replication");
@@ -354,27 +430,13 @@ impl Loop {
                         let mut fs = vec![];
                         let mut rpc = rpc::replication::ConfigureReplicationRequest {
                             // Is only specified for the master replica
-                            sync_and_promote: None,
+                            is_master: false,
                             replicaset_peers,
                         };
 
-                        let mut sync_and_promote = None;
-                        if master_name.is_some() {
-                            sync_and_promote = Some(SyncAndPromoteRequest {
-                                vclock: promotion_vclock.clone(),
-                                timeout: rpc_timeout,
-                            });
-                        }
-
                         for instance_name in targets {
-                            tlog!(Info, "calling rpc::replication"; "instance_name" => %instance_name);
-                            rpc.sync_and_promote = None;
-                            if master_name == Some(instance_name) {
-                                let Some(sync) = sync_and_promote.take() else {
-                                    unreachable!("sync_and_promote request should only be sent to at most one replica");
-                                };
-                                rpc.sync_and_promote = Some(sync);
-                            }
+                            rpc.is_master = Some(instance_name) == master_name;
+                            tlog!(Info, "calling proc_replication"; "instance_name" => %instance_name, "is_master" => rpc.is_master);
 
                             let resp = pool.call(instance_name, proc_name!(proc_replication), &rpc, rpc_timeout)?;
                             fs.push(async move {

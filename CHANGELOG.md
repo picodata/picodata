@@ -55,6 +55,9 @@ with the `YY.MINOR.MICRO` scheme.
   UPDATE, DELETE, CALL_16, UPSERT, NOP, PREPARE, BEGIN, COMMIT, ROLLBACK.
   In future verisons, SELECT will also be forbidden.
 
+- New rpc endpoint: `.proc_replication_sync` which waits until replication on
+  the instance progresses until the provided vclock value.
+
 ### Compatibility
 
 - The current version is NOT compatible with prior releases. It cannot
