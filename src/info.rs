@@ -195,15 +195,18 @@ pub fn proc_raft_info() -> Result<RaftInfo, Error> {
 pub struct InternalInfo<'a> {
     pub main_loop_status: Cow<'a, str>,
     pub governor_loop_status: Cow<'a, str>,
+    pub governor_step_counter: u64,
 }
 
 impl tarantool::tuple::Encode for InternalInfo<'_> {}
 
 impl InternalInfo<'static> {
     pub fn get(node: &node::Node) -> Self {
+        let governor = node.governor_loop.status.get();
         InternalInfo {
             main_loop_status: node.status().main_loop_status.into(),
-            governor_loop_status: node.governor_loop.status.get().governor_loop_status.into(),
+            governor_loop_status: governor.governor_loop_status.into(),
+            governor_step_counter: governor.step_counter,
         }
     }
 }

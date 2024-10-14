@@ -221,26 +221,23 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
         assert replicaset_masters[r1_uuid] == i1.name
         assert replicaset_masters[r2_uuid] == i3.name
 
+    old_step_counter = i1.governor_step_counter()
+
     rows = i1.sql(
         """ SELECT current_vshard_config_version FROM _pico_tier WHERE name = 'default' """
     )
     old_vshard_config_version = rows[0][0]
 
-    cluster.cas(
-        "update",
-        "_pico_replicaset",
-        key=["r1"],
-        ops=[("=", "target_master_name", i2.name)],
-    )
-    index = cluster.cas(
-        "update",
-        "_pico_replicaset",
-        key=["r2"],
-        ops=[("=", "target_master_name", i4.name)],
-    )
-    cluster.raft_wait_index(index)
+    update_target_master = """
+        UPDATE _pico_replicaset SET target_master_name = ? WHERE replicaset_id = ?
+    """
+    i1.sql(update_target_master, i2.name, "r1")
+    i1.sql(update_target_master, i4.name, "r2")
 
-    # Wait for governor to change current master and update the vshard config.
+    # Wait until governor performs all the necessary actions
+    i1.wait_governor_status("idle", old_step_counter=old_step_counter)
+
+    # Make sure vshard config version changed.
     wait_current_vshard_config_changed(i1, old_vshard_config_version)
 
     for i in cluster.instances:

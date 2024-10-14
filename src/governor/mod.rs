@@ -854,6 +854,9 @@ impl Loop {
             }
         }
 
+        governor_status
+            .send_modify(|s| s.step_counter += 1)
+            .expect("status shouldn't ever be borrowed across yields");
         ControlFlow::Continue(())
     }
 
@@ -866,6 +869,7 @@ impl Loop {
         let (waker_tx, waker_rx) = watch::channel(());
         let (governor_status_tx, governor_status_rx) = watch::channel(GovernorStatus {
             governor_loop_status: "initializing",
+            step_counter: 0,
         });
 
         let state = State {
@@ -894,7 +898,8 @@ fn set_status(status: &mut watch::Sender<GovernorStatus>, msg: &'static str) {
     if status.get().governor_loop_status == msg {
         return;
     }
-    tlog!(Debug, "governor_loop_status = '{msg}'");
+    let counter = status.get().step_counter;
+    tlog!(Debug, "governor_loop_status = #{counter} '{msg}'");
     status
         .send_modify(|s| s.governor_loop_status = msg)
         .expect("status shouldn't ever be borrowed across yields");
@@ -926,4 +931,10 @@ pub struct GovernorStatus {
     ///
     /// Is set by governor to explain the reason why it has yielded.
     pub governor_loop_status: &'static str,
+
+    /// Number of times the current instance has successfully executed a
+    /// governor step. Is reset on restart.
+    ///
+    /// This value is only used for testing purposes.
+    pub step_counter: u64,
 }
