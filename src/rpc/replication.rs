@@ -34,10 +34,8 @@ crate::define_rpc_request! {
         // and ignores it if nothing changed
         set_cfg_field("replication", &replication_cfg)?;
 
-        if let Some(sync) = req.sync_and_promote {
-            crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::Timeout));
-
-            synchronize_and_promote_to_master(sync)?;
+        if req.is_master {
+            promote_to_master()?;
         } else {
             // Everybody else should be read-only
             set_cfg_field("read_only", true)?;
@@ -48,10 +46,10 @@ crate::define_rpc_request! {
 
     /// Request to configure tarantool replication.
     pub struct ConfigureReplicationRequest {
-        /// If this is not `None` the target replica will synchronize and become the new `master`.
+        /// If this is `true` the target replica will become the new `master`.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
         /// for more.
-        pub sync_and_promote: Option<SyncAndPromoteRequest>,
+        pub is_master: bool,
         /// URIs of all replicas in the replicaset.
         /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#confval-replication)
         /// for more.
@@ -62,18 +60,51 @@ crate::define_rpc_request! {
     pub struct Response {}
 }
 
+crate::define_rpc_request! {
+    /// Waits until instance synchronizes tarantool replication.
+    fn proc_replication_sync(req: ReplicationSyncRequest) -> Result<ReplicationSyncResponse> {
+        // TODO: find a way to guard against stale governor requests.
+
+        debug_assert!(is_read_only()?);
+
+        crate::error_injection!("TIMEOUT_WHEN_SYNCHING_BEFORE_PROMOTION_TO_MASTER" => return Err(Error::Timeout));
+
+        // Wait until replication progresses.
+        crate::sync::wait_vclock(req.vclock, req.timeout)?;
+
+        Ok(ReplicationSyncResponse {})
+    }
+
+    /// Request to wait until instance synchronizes tarantool replication.
+    pub struct ReplicationSyncRequest {
+        /// Wait until instance progresses replication past this vclock value.
+        pub vclock: Vclock,
+
+        /// Wait for this long.
+        pub timeout: Duration,
+    }
+
+    pub struct ReplicationSyncResponse {}
+}
+
+fn is_read_only() -> Result<bool> {
+    let lua = tarantool::lua_state();
+    let ro = lua.eval("return box.info.ro")?;
+    Ok(ro)
+}
+
 /// Promotes the target instance from read-only replica to master.
 /// See [tarantool documentation](https://www.tarantool.io/en/doc/latest/reference/configuration/#cfg-basic-read-only)
 /// for more.
 ///
 /// Returns errors in the following cases: See implementation.
-fn synchronize_and_promote_to_master(req: SyncAndPromoteRequest) -> Result<()> {
-    crate::sync::wait_vclock(req.vclock, req.timeout)?;
-
+fn promote_to_master() -> Result<()> {
     // XXX: Currently we just change the box.cfg.read_only option of the
     // instance but at some point we will implement support for
     // tarantool synchronous transactions then this operation will probably
     // become more involved.
+    let was_read_only = is_read_only()?;
+
     let lua = tarantool::lua_state();
     let ro_reason: Option<tlua::StringInLua<_>> = lua.eval(
         "box.cfg { read_only = false }
@@ -86,21 +117,15 @@ fn synchronize_and_promote_to_master(req: SyncAndPromoteRequest) -> Result<()> {
         return Err(Error::other(format!("instance is still in read only mode: {ro_reason}")));
     };
 
-    // errors ignored because it must be already handled by plugin manager itself
-    _ = node::global()?
-        .plugin_manager
-        .handle_event_sync(PluginEvent::InstancePromote);
+    if was_read_only {
+        // errors ignored because it must be already handled by plugin manager itself
+        _ = node::global()?
+            .plugin_manager
+            .handle_event_sync(PluginEvent::InstancePromote);
+    }
 
     Ok(())
 }
-
-/// Request to promote instance to tarantool replication leader.
-#[derive(Clone, Debug, ::serde::Serialize, ::serde::Deserialize)]
-pub struct SyncAndPromoteRequest {
-    pub vclock: Vclock,
-    pub timeout: Duration,
-}
-impl ::tarantool::tuple::Encode for SyncAndPromoteRequest {}
 
 crate::define_rpc_request! {
     /// Demotes the target instance from master to read-only replica.
@@ -110,12 +135,17 @@ crate::define_rpc_request! {
     fn proc_replication_demote(req: DemoteRequest) -> Result<DemoteResponse> {
         let _ = req;
         // TODO: find a way to guard against stale governor requests.
+        let was_read_only = is_read_only()?;
+
         crate::tarantool::exec("box.cfg { read_only = true }")?;
 
-        // errors ignored because it must be already handled by plugin manager itself
-        _ = node::global()?.plugin_manager.handle_event_sync(PluginEvent::InstanceDemote);
+        if !was_read_only {
+            // errors ignored because it must be already handled by plugin manager itself
+            _ = node::global()?.plugin_manager.handle_event_sync(PluginEvent::InstanceDemote);
+        }
 
         let vclock = Vclock::current();
+        let vclock = vclock.ignore_zero();
         Ok(DemoteResponse { vclock })
     }
 

@@ -16,6 +16,7 @@ use crate::schema::{
     PluginConfigRecord, PluginDef, ServiceDef, ServiceRouteItem, ServiceRouteKey, ADMIN_ID,
 };
 use crate::storage::{ClusterwideTable, PropertyName};
+use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft::op::Dml;
@@ -171,7 +172,6 @@ pub(super) fn action_plan<'i>(
         let replicaset_name = &replicaset.name;
         let mut targets = Vec::new();
         let mut replicaset_peers = Vec::new();
-        let mut master_is_added = false;
         for instance in instances {
             if instance.replicaset_name != replicaset_name {
                 continue;
@@ -183,25 +183,12 @@ pub(super) fn action_plan<'i>(
             }
             if instance.may_respond() {
                 targets.push(&instance.name);
-                master_is_added |= instance.name == replicaset.current_master_name;
             }
         }
 
         let mut master_name = None;
         if replicaset.current_master_name == replicaset.target_master_name {
             master_name = Some(&replicaset.current_master_name);
-
-            // If master is already chosen (current == target) but is not Online
-            // we send it an RPC request to the master anyway, otherwise an old
-            // master being expelled while other replicas are offline would lead
-            // to loss of data.
-            // NOTE that this is a hack stemming from the fact that we switch
-            // current replicaset master before it is synchronized with the old
-            // master, as result at the moment it synchronizes there's no
-            // information about who it synchronizes with in the global state.
-            if !master_is_added {
-                targets.push(&replicaset.current_master_name);
-            }
         }
 
         let mut ops = UpdateOps::new();
@@ -215,18 +202,16 @@ pub(super) fn action_plan<'i>(
             ops,
             ADMIN_ID,
         )?;
-        let ranges = vec![cas::Range::for_dml(&dml)?];
-        let predicate = cas::Predicate::new(applied, ranges);
+        // Implicit ranges are sufficient
+        let predicate = cas::Predicate::new(applied, []);
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
         let replication_config_version_actualize = cas;
 
-        let promotion_vclock = &replicaset.promotion_vclock;
         return Ok(ConfigureReplication {
             replicaset_name,
             targets,
             master_name,
             replicaset_peers,
-            promotion_vclock,
             replication_config_version_actualize,
         }
         .into());
@@ -244,28 +229,20 @@ pub(super) fn action_plan<'i>(
         let replicaset_name = &r.name;
         let old_master_name = &r.current_master_name;
         let new_master_name = &r.target_master_name;
+        let promotion_vclock = &r.promotion_vclock;
 
-        let mut update_ops = UpdateOps::new();
-        update_ops.assign(
+        let mut replicaset_dml = UpdateOps::new();
+        replicaset_dml.assign(
             column_name!(Replicaset, current_master_name),
             new_master_name,
         )?;
 
-        let mut demote = None;
-        let old_master_may_respond = instances
-            .iter()
-            .find(|i| i.name == old_master_name)
-            .map(|i| i.may_respond());
-        if let Some(true) = old_master_may_respond {
-            demote = Some(rpc::replication::DemoteRequest {});
-        }
-
-        let mut ops = vec![];
+        let mut bump_dml = vec![];
 
         if let Some(bump) =
             get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_name)
         {
-            ops.push(bump);
+            bump_dml.push(bump);
         }
 
         let tier_name = &r.tier;
@@ -275,20 +252,59 @@ pub(super) fn action_plan<'i>(
 
         let vshard_config_version_bump = Tier::get_vshard_config_version_bump_op_if_needed(tier)?;
         if let Some(bump) = vshard_config_version_bump {
-            ops.push(bump);
+            bump_dml.push(bump);
         }
 
-        return Ok(UpdateCurrentReplicasetMaster {
-            old_master_name,
-            demote,
-            new_master_name,
-            replicaset_name,
-            update_ops,
-            // Implicit ranges are sufficient
-            bump_ranges: vec![],
-            bump_ops: ops,
+        let ranges = vec![
+            // We make a decision based on this instance's state so the operation
+            // should fail in case there's a change to it in the uncommitted log
+            cas::Range::new(ClusterwideTable::Instance).eq([old_master_name]),
+        ];
+
+        let old_master_may_respond = instances
+            .iter()
+            .find(|i| i.name == old_master_name)
+            .map(|i| i.may_respond());
+        if let Some(true) = old_master_may_respond {
+            let demote_rpc = rpc::replication::DemoteRequest {};
+            let sync_rpc = rpc::replication::ReplicationSyncRequest {
+                vclock: promotion_vclock.clone(),
+                timeout: sync_timeout,
+            };
+
+            let master_actualize_dml = Dml::update(
+                ClusterwideTable::Replicaset,
+                &[replicaset_name],
+                replicaset_dml,
+                ADMIN_ID,
+            )?;
+
+            return Ok(ReplicasetMasterConsistentSwitchover {
+                replicaset_name,
+                old_master_name,
+                demote_rpc,
+                new_master_name,
+                sync_rpc,
+                promotion_vclock,
+                master_actualize_dml,
+                bump_dml,
+                ranges,
+            }
+            .into());
+        } else {
+            let get_vclock_rpc = GetVclockRpc {};
+
+            return Ok(ReplicasetMasterFailover {
+                old_master_name,
+                new_master_name,
+                get_vclock_rpc,
+                replicaset_name,
+                replicaset_dml,
+                bump_dml,
+                ranges,
+            }
+            .into());
         }
-        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -830,27 +846,73 @@ pub mod stage {
             pub cas: cas::Request,
         }
 
-        pub struct UpdateCurrentReplicasetMaster<'i> {
+        pub struct ReplicasetMasterFailover<'i> {
             /// This replicaset is changing it's master.
             pub replicaset_name: &'i ReplicasetName,
-            /// This instance will be demoted.
+
+            /// This instance was master, but is now non responsive. Name only used for logging.
             pub old_master_name: &'i InstanceName,
-            /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
-            /// It is optional because we don't try demoting the old master if it's already offline.
-            pub demote: Option<rpc::replication::DemoteRequest>,
+
+            /// Request to call [`proc_get_vclock`] on the new master. This
+            /// vclock is going to be peristed as `promotion_vclock` (if it's
+            /// not already equal) of the given replicaset.
+            ///
+            /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
+            pub get_vclock_rpc: GetVclockRpc,
+
             /// This is the new master. It will be sent a RPC [`proc_get_vclock`] to set the
             /// promotion vclock in case the old master is not available.
             ///
             /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
             pub new_master_name: &'i InstanceName,
+
             /// Part of the global DML operation which updates a `_pico_replicaset` record
             /// with the new values for `current_master_name` & `promotion_vclock`.
             /// Note: it is only the part of the operation, because we don't know the promotion_vclock yet.
-            pub update_ops: UpdateOps,
-            /// Cas ranges for the `bump_ops` operations.
-            pub bump_ranges: Vec<cas::Range>,
+            pub replicaset_dml: UpdateOps,
+
             /// Optional operations to bump versions of replication and sharding configs.
-            pub bump_ops: Vec<Dml>,
+            pub bump_dml: Vec<Dml>,
+
+            /// Cas ranges for the operation.
+            pub ranges: Vec<cas::Range>,
+        }
+
+        pub struct ReplicasetMasterConsistentSwitchover<'i> {
+            /// This replicaset is changing it's master.
+            pub replicaset_name: &'i ReplicasetName,
+
+            /// This instance will be demoted.
+            pub old_master_name: &'i InstanceName,
+
+            /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
+            pub demote_rpc: rpc::replication::DemoteRequest,
+
+            /// This is the new master. It will be sent a RPC [`proc_get_vclock`] to set the
+            /// promotion vclock in case the old master is not available.
+            ///
+            /// [`proc_get_vclock`]: crate::sync::proc_get_vclock
+            pub new_master_name: &'i InstanceName,
+
+            /// Request to call [`rpc::replication::proc_replication_sync`] on new master.
+            pub sync_rpc: rpc::replication::ReplicationSyncRequest,
+
+            /// Current `promotion_vclock` value of given replicaset.
+            pub promotion_vclock: &'i Vclock,
+
+            /// Global DML operation which updates a `_pico_replicaset` record
+            /// with the new values for `current_master_name`.
+            /// Note: this dml will only be applied if after RPC requests it
+            /// turns out that the old master's vclock is not behind the current
+            /// promotion vclock. Otherwise the vclock from old master is going
+            /// to be persisted as the new `promotion_vclock`.
+            pub master_actualize_dml: Dml,
+
+            /// Optional operations to bump versions of replication and sharding configs.
+            pub bump_dml: Vec<Dml>,
+
+            /// Cas ranges for the operation.
+            pub ranges: Vec<cas::Range>,
         }
 
         // TODO: rename, after we renamed `grade` -> `state` this step's name makes no sense at all
@@ -874,9 +936,6 @@ pub mod stage {
             pub master_name: Option<&'i InstanceName>,
             /// This is an explicit list of peer addresses.
             pub replicaset_peers: Vec<String>,
-            /// The value of `promotion_vclock` column of the given replicaset.
-            /// It's used to synchronize new master before making it writable.
-            pub promotion_vclock: &'i Vclock,
             /// Global DML operation which updates `current_config_version` in table `_pico_replicaset` for the given replicaset.
             pub replication_config_version_actualize: cas::Request,
         }
@@ -1026,7 +1085,7 @@ fn get_new_replicaset_master_if_needed<'i>(
         }
 
         #[rustfmt::skip]
-        tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.replicaset_id);
+        tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.name);
     }
 
     None

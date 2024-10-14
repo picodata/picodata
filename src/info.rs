@@ -14,7 +14,7 @@ use tarantool::proc;
 use tarantool::tuple::RawByteBuf;
 
 pub const PICODATA_VERSION: &'static str = std::env!("GIT_DESCRIBE");
-pub const RPC_API_VERSION: &'static str = "0.1.0";
+pub const RPC_API_VERSION: &'static str = "1.0.0";
 
 ////////////////////////////////////////////////////////////////////////////////
 // VersionInfo

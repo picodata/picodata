@@ -521,7 +521,6 @@ def test_join_with_duplicate_instance_name(cluster: Cluster):
             assert lc.matched
     assert sole_survivor
 
-    sole_survivor.terminate()
     cluster.expel(sole_survivor, leader)
 
     #
