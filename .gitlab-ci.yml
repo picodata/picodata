@@ -384,12 +384,14 @@ test-mac-m1:
         paths:
           - helm/picodata.Dockerfile
           - helm/docker-compose.yml
+      variables:
+        PUSH_DOCKER: "--no-push"
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       when: on_success
+      variables:
+        PUSH_DOCKER: ""      
     - when: manual
       allow_failure: true
-  variables:
-    PUSH_DOCKER: ""
 
 test-helm-image:
   extends: .test-helm
