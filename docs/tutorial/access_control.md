@@ -461,10 +461,10 @@ REVOKE <priv> ON PROCEDURE <procedure name> FROM <grantee>
 ```sql
 CREATE USER <user name>
     [ WITH ] PASSWORD 'password'
-    [ USING chap-sha1 | md5 | ldap ]
+    [ USING chap-sha1 | ldap | md5 ]
 ALTER USER <user name>
     [ WITH ] PASSWORD 'password'
-    [ USING chap-sha1 | md5 | ldap ]
+    [ USING chap-sha1 | ldap | md5 ]
 DROP USER <user name>
 
 CREATE ROLE <role name>
