@@ -848,7 +848,7 @@ class Instance:
         password: str | None = None,
         timeout: int | float = 10,
     ):
-        sql = f"CREATE USER\"{with_name}\" WITH PASSWORD '{with_password}'" + (
+        sql = f"CREATE USER \"{with_name}\" WITH PASSWORD '{with_password}' " + (
             ("USING " + with_auth) if with_auth else ""
         )
         self.sql(
@@ -1180,7 +1180,7 @@ class Instance:
             f'CREATE TABLE "{name}" ('
             f"{data} "
             f"PRIMARY KEY ({primary_key})) "
-            f"{engine}"
+            f"{engine} "
             f"DISTRIBUTED {distribution} "
             f"OPTION (TIMEOUT = {timeout});",
             timeout=timeout + 0.5,
