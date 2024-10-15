@@ -167,7 +167,7 @@ where
         PICO_SERVICE_USER_NAME.into(),
         pico_service_password().into(),
     ));
-    let client = Client::connect_with_config(address, port, config, None).await?;
+    let client = Client::connect_with_config(address, port, config).await?;
 
     let tuple = client.call(proc, args).await?;
     decode_iproto_return_value(tuple)

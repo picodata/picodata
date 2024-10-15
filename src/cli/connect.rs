@@ -171,6 +171,7 @@ pub fn determine_credentials_and_connect(
     let mut config = Config::default();
     config.creds = Some((user.into(), password));
     config.auth_method = auth_method;
+    config.connect_timeout = Some(Duration::from_secs(timeout));
 
     let port = match address.port.parse::<u16>() {
         Ok(port) => port,
@@ -182,13 +183,8 @@ pub fn determine_credentials_and_connect(
         }
     };
 
-    let timeout = Some(Duration::from_secs(timeout));
-    let client = ::tarantool::fiber::block_on(Client::connect_with_config(
-        &address.host,
-        port,
-        config,
-        timeout,
-    ))?;
+    let client =
+        ::tarantool::fiber::block_on(Client::connect_with_config(&address.host, port, config))?;
 
     Ok((client, user.into()))
 }
