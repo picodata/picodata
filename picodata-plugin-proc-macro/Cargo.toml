@@ -1,5 +1,5 @@
 [package]
-name = "picoplugin_gen"
+name = "picodata-plugin-proc-macro"
 version = "0.1.0"
 edition = "2021"
 license-file = "./../LICENSE"
@@ -16,4 +16,3 @@ proc-macro2 = "^1.0"
 path = "./../tarantool/tarantool"
 version = "5.0"
 features = ["picodata", "test"]
-

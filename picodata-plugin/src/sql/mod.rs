@@ -22,8 +22,8 @@ pub mod types;
 /// # Examples
 ///
 /// ```no_run
-/// # use picoplugin::sql::query_raw;
-/// # use picoplugin::sql::types::SqlValue;
+/// # use picodata_plugin::sql::query_raw;
+/// # use picodata_plugin::sql::types::SqlValue;
 ///  query_raw(
 ///     "INSERT INTO book (id, name) VALUES (?, ?)",
 ///     vec![
@@ -61,7 +61,7 @@ impl<'a> Query<'a> {
     /// # Examples
     ///
     /// ```no_run
-    /// # use picoplugin::sql::query;
+    /// # use picodata_plugin::sql::query;
     ///  let inserted: u64 = query("INSERT INTO book (id, name) VALUES (?, ?)")
     ///     .bind(1)
     ///     .bind("Ruslan and Ludmila")
@@ -95,7 +95,7 @@ impl<'a> Query<'a> {
     /// # Examples
     ///
     /// ```no_run
-    /// # use picoplugin::sql::query;
+    /// # use picodata_plugin::sql::query;
     /// # use serde::Deserialize;
     /// #[derive(Deserialize, Debug, PartialEq)]
     /// struct Book {

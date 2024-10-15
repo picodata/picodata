@@ -75,7 +75,8 @@ class ErrorCode:
     LeaderUnknown = 10018
     PluginError = 10019
 
-    # Make sure this matches this list in picoplugin::error_code::ErrorCode::is_retriable_for_cas
+    # Make sure this matches this list in
+    # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas
     retriable_for_cas = set(
         [
             LeaderUnknown,

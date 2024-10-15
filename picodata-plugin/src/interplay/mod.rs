@@ -25,8 +25,8 @@
 //! Here is how to do async http request with `tros`:
 //!
 //! ```no_run
-//! use picoplugin::interplay::tros;
-//! use picoplugin::system::tarantool::fiber;
+//! use picodata_plugin::interplay::tros;
+//! use picodata_plugin::system::tarantool::fiber;
 //!
 //! let text = tros::TokioExecutor::new(tros::transport::PicodataTransport::default())
 //!             .exec(async { reqwest::get("http://example.com").await?.text().await })
@@ -96,7 +96,7 @@
 //! ```no_run
 //! use std::fs::read_to_string;
 //! use std::path::Path;
-//! use picoplugin::interplay::cbus;
+//! use picodata_plugin::interplay::cbus;
 //! use serde_json;
 //!
 //! fn parse(file: &Path, tx: cbus::unbounded::Sender<serde_json::Value>) {
@@ -110,7 +110,7 @@
 //!
 //! ```no_run
 //! use std::path::PathBuf;
-//! use picoplugin::interplay::channel::unbounded;
+//! use picodata_plugin::interplay::channel::unbounded;
 //! use threadpool::ThreadPool;
 //!
 //! static THREAD_POOL: ThreadPool = ThreadPool::new(16);

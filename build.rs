@@ -79,7 +79,7 @@ fn main() {
 fn do_compile_time_checks() {
     let definitions_filename = "src/plugin/ffi.rs";
     println!("cargo:rerun-if-changed={definitions_filename}");
-    let declarations_filename = "picoplugin/src/internal/ffi.rs";
+    let declarations_filename = "picodata-plugin/src/internal/ffi.rs";
     println!("cargo:rerun-if-changed={declarations_filename}");
 
     if std::env::var("SKIP_FFI_CHECK").is_ok() {

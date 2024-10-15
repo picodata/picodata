@@ -7,9 +7,9 @@ pub mod rpc;
 pub mod topology;
 
 use once_cell::unsync;
-use picoplugin::error_code::ErrorCode;
-use picoplugin::plugin::interface::ServiceId;
-use picoplugin::plugin::interface::{ServiceBox, ValidatorBox};
+use picodata_plugin::error_code::ErrorCode;
+use picodata_plugin::plugin::interface::ServiceId;
+use picodata_plugin::plugin::interface::{ServiceBox, ValidatorBox};
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

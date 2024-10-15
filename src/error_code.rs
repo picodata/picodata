@@ -1,1 +1,1 @@
-pub use picoplugin::error_code::ErrorCode;
+pub use picodata_plugin::error_code::ErrorCode;

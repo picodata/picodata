@@ -16,12 +16,12 @@ use crate::traft::node::Node;
 use crate::{tlog, traft, warn_or_panic};
 use abi_stable::derive_macro_reexports::{RErr, RResult, RSlice};
 use abi_stable::std_types::RStr;
-use picoplugin::background::{Error, InternalGlobalWorkerManager};
-use picoplugin::error_code::ErrorCode::PluginError as PluginErrorCode;
-use picoplugin::plugin::interface::FnServiceRegistrar;
-use picoplugin::plugin::interface::ServiceId;
-use picoplugin::plugin::interface::{PicoContext, ServiceRegistry};
-use picoplugin::util::DisplayErrorLocation;
+use picodata_plugin::background::{Error, InternalGlobalWorkerManager};
+use picodata_plugin::error_code::ErrorCode::PluginError as PluginErrorCode;
+use picodata_plugin::plugin::interface::FnServiceRegistrar;
+use picodata_plugin::plugin::interface::ServiceId;
+use picodata_plugin::plugin::interface::{PicoContext, ServiceRegistry};
+use picodata_plugin::util::DisplayErrorLocation;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::ReadDir;
@@ -48,14 +48,14 @@ fn plugin_compatibility_check_enabled() -> bool {
     std::env::var("PICODATA_UNSAFE_DISABLE_PLUGIN_COMPATIBILITY_CHECK").is_err()
 }
 
-/// Check if picodata version matches picoplugin version.
-fn ensure_picodata_version_compatible(picoplugin_version: &str) -> Result<()> {
-    if PICODATA_VERSION.starts_with(picoplugin_version) {
+/// Check if picodata version matches picodata_plugin version.
+fn ensure_picodata_version_compatible(picodata_plugin_version: &str) -> Result<()> {
+    if PICODATA_VERSION.starts_with(picodata_plugin_version) {
         return Ok(());
     }
 
     Err(PluginError::IncompatiblePicopluginVersion(
-        picoplugin_version.to_string(),
+        picodata_plugin_version.to_string(),
     ))
 }
 
@@ -158,14 +158,15 @@ impl PluginManager {
             };
 
             // check compatibility
-            let picoplugin_version = unsafe { lib.get::<&RStr<'static>>("PICOPLUGIN_VERSION")? };
+            let picodata_plugin_version =
+                unsafe { lib.get::<&RStr<'static>>("PICOPLUGIN_VERSION")? };
             if plugin_compatibility_check_enabled() {
-                ensure_picodata_version_compatible(picoplugin_version.as_str())?;
+                ensure_picodata_version_compatible(picodata_plugin_version.as_str())?;
             } else {
                 tlog!(
                     Warning,
-                    "Loading a possibly incompatible plugin built using picoplugin {}",
-                    picoplugin_version.as_str(),
+                    "Loading a possibly incompatible plugin built using picodata_plugin {}",
+                    picodata_plugin_version.as_str(),
                 )
             }
 

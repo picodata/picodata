@@ -152,22 +152,22 @@ mod test {
             &[
                 (
                     Level::Debug,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "simple log record 1".to_string()
                 ),
                 (
                     Level::Info,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "simple log record 2".to_string()
                 ),
                 (
                     Level::Warn,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "simple log record 3".to_string()
                 ),
                 (
                     Level::Error,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "simple log record 4".to_string()
                 ),
             ],
@@ -208,22 +208,22 @@ mod test {
             &[
                 (
                     Level::Debug,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "[12345]: log record".to_string()
                 ),
                 (
                     Level::Info,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "[12345]: log record".to_string()
                 ),
                 (
                     Level::Warn,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "[12345]: log record".to_string()
                 ),
                 (
                     Level::Error,
-                    "picoplugin::log::test".to_string(),
+                    "picodata_plugin::log::test".to_string(),
                     "[12345]: log record".to_string()
                 ),
             ],

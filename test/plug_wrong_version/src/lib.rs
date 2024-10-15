@@ -1,5 +1,5 @@
-use picoplugin::plugin::interface::{Service, ServiceRegistry};
-use picoplugin::plugin::prelude::service_registrar;
+use picodata_plugin::plugin::interface::{Service, ServiceRegistry};
+use picodata_plugin::plugin::prelude::service_registrar;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]

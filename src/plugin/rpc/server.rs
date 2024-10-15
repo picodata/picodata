@@ -1,8 +1,8 @@
 use crate::error_code::ErrorCode;
 use crate::tlog;
-use picoplugin::transport::context::FfiSafeContext;
-use picoplugin::transport::rpc::server::FfiRpcHandler;
-use picoplugin::util::RegionBuffer;
+use picodata_plugin::transport::context::FfiSafeContext;
+use picodata_plugin::transport::rpc::server::FfiRpcHandler;
+use picodata_plugin::util::RegionBuffer;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -235,7 +235,7 @@ fn msgpack_read_array(data: &[u8]) -> Result<Vec<&[u8]>, TntError> {
 // #[cfg(feature = "internal_test")]
 mod test {
     use super::*;
-    use picoplugin::transport::rpc;
+    use picodata_plugin::transport::rpc;
     use std::cell::Cell;
     use tarantool::fiber;
 

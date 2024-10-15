@@ -1,5 +1,5 @@
 use crate::tlog;
-use picoplugin::interplay::channel::DEFAULT_CBUS_ENDPOINT;
+use picodata_plugin::interplay::channel::DEFAULT_CBUS_ENDPOINT;
 use tarantool::fiber;
 
 pub const ENDPOINT_NAME: &'static str = DEFAULT_CBUS_ENDPOINT;

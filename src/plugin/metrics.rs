@@ -1,7 +1,7 @@
 use crate::tlog;
-use picoplugin::metrics::FfiMetricsHandler;
-use picoplugin::plugin::interface::ServiceId;
-use picoplugin::util::RegionGuard;
+use picodata_plugin::metrics::FfiMetricsHandler;
+use picodata_plugin::plugin::interface::ServiceId;
+use picodata_plugin::util::RegionGuard;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::rc::Rc;

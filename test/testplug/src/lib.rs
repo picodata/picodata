@@ -1,23 +1,23 @@
-use picoplugin::background::CancellationToken;
-use picoplugin::internal::types::{Dml, Op, Predicate};
-use picoplugin::log::rs_log;
-use picoplugin::plugin::interface::CallbackResult;
-use picoplugin::plugin::prelude::*;
-use picoplugin::system::tarantool;
-use picoplugin::system::tarantool::datetime::Datetime;
-use picoplugin::system::tarantool::decimal::Decimal;
-use picoplugin::system::tarantool::error::BoxError;
-use picoplugin::system::tarantool::index::{IndexOptions, IndexType, Part};
-use picoplugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
-use picoplugin::system::tarantool::tlua::{
+use picodata_plugin::background::CancellationToken;
+use picodata_plugin::internal::types::{Dml, Op, Predicate};
+use picodata_plugin::log::rs_log;
+use picodata_plugin::plugin::interface::CallbackResult;
+use picodata_plugin::plugin::prelude::*;
+use picodata_plugin::system::tarantool;
+use picodata_plugin::system::tarantool::datetime::Datetime;
+use picodata_plugin::system::tarantool::decimal::Decimal;
+use picodata_plugin::system::tarantool::error::BoxError;
+use picodata_plugin::system::tarantool::index::{IndexOptions, IndexType, Part};
+use picodata_plugin::system::tarantool::space::{Field, SpaceCreateOptions, SpaceType, UpdateOps};
+use picodata_plugin::system::tarantool::tlua::{
     LuaFunction, LuaRead, LuaState, LuaThread, PushGuard, PushInto,
 };
-use picoplugin::system::tarantool::tuple::Tuple;
-use picoplugin::system::tarantool::util::DisplayAsHexBytes;
-use picoplugin::system::tarantool::{fiber, index, tlua};
-use picoplugin::transport::context::Context;
-use picoplugin::transport::rpc;
-use picoplugin::{internal, log, system};
+use picodata_plugin::system::tarantool::tuple::Tuple;
+use picodata_plugin::system::tarantool::util::DisplayAsHexBytes;
+use picodata_plugin::system::tarantool::{fiber, index, tlua};
+use picodata_plugin::transport::context::Context;
+use picodata_plugin::transport::rpc;
+use picodata_plugin::{internal, log, system};
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 use std::fmt::Display;
@@ -372,7 +372,7 @@ impl Service for Service3 {
             }
             "sql" => {
                 // DO SQL
-                let insert_count = picoplugin::sql::query(
+                let insert_count = picodata_plugin::sql::query(
                     "INSERT INTO book (id, name, cost, last_buy) VALUES (?, ?, ?, ?)",
                 )
                 .bind(1)
@@ -390,7 +390,7 @@ impl Service for Service3 {
                     cost: Decimal,
                     last_buy: Datetime,
                 }
-                let books = picoplugin::sql::query("SELECT * from book")
+                let books = picodata_plugin::sql::query("SELECT * from book")
                     .fetch::<Book>()
                     .unwrap();
 

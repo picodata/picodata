@@ -8,13 +8,13 @@ use crate::{cas, sql, traft};
 use abi_stable::pmr::{RErr, RNone, ROk, ROption, RResult, RSome};
 use abi_stable::std_types::{RDuration, RVec, Tuple2};
 use abi_stable::{sabi_extern_fn, RTuple};
-use picoplugin::internal::types;
-use picoplugin::internal::types::{DmlInner, OpInner};
-use picoplugin::metrics::FfiMetricsHandler;
-use picoplugin::sql::types::{SqlValue, SqlValueInner};
-use picoplugin::transport::rpc::client::FfiSafeRpcRequestArguments;
-use picoplugin::transport::rpc::server::FfiRpcHandler;
-use picoplugin::util::FfiSafeBytes;
+use picodata_plugin::internal::types;
+use picodata_plugin::internal::types::{DmlInner, OpInner};
+use picodata_plugin::metrics::FfiMetricsHandler;
+use picodata_plugin::sql::types::{SqlValue, SqlValueInner};
+use picodata_plugin::transport::rpc::client::FfiSafeRpcRequestArguments;
+use picodata_plugin::transport::rpc::server::FfiRpcHandler;
+use picodata_plugin::util::FfiSafeBytes;
 use sbroad::ir::value::double::Double;
 use sbroad::ir::value::{LuaValue, Tuple, Value};
 use std::{mem, slice};
@@ -319,7 +319,7 @@ extern "C" fn pico_ffi_sql_query(
     query_len: usize,
     params: RVec<SqlValue>,
 ) -> RResult<*mut BoxTuple, ()> {
-    // SAFETY: caller (picoplugin) should provide a pointer to valid utf8 string
+    // SAFETY: caller (picodata_plugin) should provide a pointer to valid utf8 string
     let query = unsafe { std::str::from_utf8_unchecked(slice::from_raw_parts(query, query_len)) };
     let params = params
         .into_iter()

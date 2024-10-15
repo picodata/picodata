@@ -14,7 +14,7 @@ use crate::traft::op::{Ddl, Op};
 use crate::traft::{self, node, RaftIndex};
 use crate::util::effective_user_id;
 use ahash::AHashSet;
-use picoplugin::error_code::ErrorCode;
+use picodata_plugin::error_code::ErrorCode;
 use sbroad::ir::ddl::{Language, ParamDef};
 use sbroad::ir::value::Value as IrValue;
 use serde::{Deserialize, Serialize};
