@@ -102,6 +102,7 @@ nav:
         - reference/sql/aggregate.md
         - reference/sql/case.md
         - reference/sql/cast.md
+        - reference/sql/like.md
         - reference/sql/substr.md
         - reference/sql/trim.md
         - Дата и время:
