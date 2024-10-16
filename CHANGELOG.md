@@ -8,27 +8,31 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## Unreleased
+## 24.6.1 - Unreleased
 
-<!--
+### Configuration
+
 - New feature `tier` - a group of instances with own replication factor.
   Tiers can span multiple failure domains and a single cluster can have
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
 
-- Order of columns in `_pico_service_route` table has changed.
-
-- Default authentication method changed from `CHAP-SHA1` to `MD5` both for user creation and in connect CLI. This change affects new user creation and all system users (except the `pico_service` user), as a command-line interface of `picodata connect` and `picodata expel`. Also, default schema version at cluster boot is now `1`, not `0` as it was previously.
-Connection via `Pgproto` no longer requires additional manual step to change the authentication method. However if you use `iproto` the admin will have to manually change the authentication type.
-
-- New `picodata connect` and `picodata expel` argument `--timeout` for specifying
-the timeout for address resolving operation.
+- Default authentication method changed from `CHAP-SHA1` to `MD5` both for user creation and in connect CLI. 
+  This change affects new user creation and all system users (except the `pico_service` user), as a command-line interface of `picodata connect` and `picodata expel`. Also, default schema version at cluster boot is now `1`, not `0` as it was previously.
+  Connection via `Pgproto` no longer requires additional manual step to change the authentication method. However if you use `iproto` the admin will have to manually change the authentication type.
 
 - Support human numbers to configure memtx.memory, vinyl.memory and vinyl.cache parameters.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
-- Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value and everywhere across documentation and examples to reduce ambiguity.
+### CLI
+
+  - New `picodata connect` and `picodata expel` argument `--timeout` for specifying
+  the timeout for address resolving operation.
+
+  - Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value and everywhere across documentation and examples to reduce ambiguity.
+
+### RPC API
 
 - New rpc entrypoint: `.proc_get_vshard_config` which returns the vshard configuration of tier.
 
@@ -36,7 +40,13 @@ the timeout for address resolving operation.
   Here is the list (all start with "IPROTO_" prefix): INSERT, REPLACE,
   UPDATE, DELETE, CALL_16, UPSERT, NOP, PREPARE, BEGIN, COMMIT, ROLLBACK.
   In future verisons, SELECT will also be forbidden.
--->
+
+### Compatibility
+
+- The current version is NOT compatible with prior releases. It cannot
+  be started with the old snapshots
+  
+- Order of columns in `_pico_service_route` table has changed.
 
 ### Lua API
 
