@@ -25,6 +25,11 @@ with the `YY.MINOR.MICRO` scheme.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
+### Fixes
+- Fixed bucket rebalancing for sharded tables
+
+- Fixed panic when applying snapshot with the same index
+
 ### CLI
 
   - New `picodata connect` and `picodata expel` argument `--timeout` for specifying
