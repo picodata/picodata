@@ -199,6 +199,7 @@ impl PoolWorker {
             PICO_SERVICE_USER_NAME.into(),
             pico_service_password().into(),
         ));
+        config.connect_timeout = Some(call_timeout);
         let client = ReconnClient::with_config(address.clone(), port, config);
 
         let mut client_ver: usize = 0;
