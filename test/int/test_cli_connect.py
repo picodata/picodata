@@ -5,7 +5,7 @@ import subprocess
 import hashlib
 import socket
 import time
-from conftest import Cluster, Instance, eprint
+from conftest import CLI_TIMEOUT, Cluster, Instance, eprint
 from dataclasses import dataclass
 
 
@@ -22,7 +22,7 @@ def test_connect_testuser(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -46,7 +46,7 @@ def test_connect_user_host_port(i1: Instance):
             "overridden",
         ],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -65,7 +65,7 @@ def test_connect_guest(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -86,7 +86,7 @@ def test_connect_user_with_role(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -105,7 +105,7 @@ def test_no_pass(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "user"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -122,7 +122,7 @@ def test_wrong_pass(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -139,7 +139,7 @@ def test_connection_refused(binary_path: str):
         command=binary_path,
         args=["connect", "127.0.0.1:0", "-u", "testuser"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -156,7 +156,7 @@ def test_connect_auth_type_ok(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -175,7 +175,7 @@ def test_connect_auth_type_wrong(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "ldap"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -192,7 +192,7 @@ def test_connect_auth_type_md5(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser", "-a", "md5"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -298,7 +298,7 @@ def test_connect_auth_type_ldap(cluster: Cluster):
             command=i1.binary_path,
             args=["connect", f"{i1.host}:{i1.port}", "-u", username, "-a", "ldap"],
             encoding="utf-8",
-            timeout=1,
+            timeout=CLI_TIMEOUT,
         )
         cli.logfile = sys.stdout
 
@@ -317,7 +317,7 @@ def test_connect_auth_type_unknown(binary_path: str):
         args=["connect", ":0", "-u", "testuser", "-a", "deadbeef"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -331,7 +331,7 @@ def test_admin_enoent(binary_path: str):
         args=["admin", "wrong/path/t.sock"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -348,7 +348,7 @@ def test_admin_econnrefused(binary_path: str):
         args=["admin", "/dev/null"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -365,7 +365,7 @@ def test_admin_invalid_path(binary_path: str):
         args=["admin", "./[][]"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -380,7 +380,7 @@ def test_admin_empty_path(binary_path: str):
         args=["admin", ""],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -409,7 +409,7 @@ def test_admin_with_password(cluster: Cluster):
         ],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
     cli.expect_exact("Enter password for admin: ")
@@ -441,7 +441,7 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
         command=i1.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -473,7 +473,7 @@ def test_connect_with_empty_password_path(binary_path: str):
         args=["connect", ":3301", "--password-file", "", "-u", "trash"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -497,7 +497,7 @@ def test_connect_with_wrong_password_path(binary_path: str):
         ],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -525,7 +525,7 @@ def test_connect_with_password_from_file(i1: Instance, binary_path: str):
         ],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -541,7 +541,7 @@ def test_connect_connection_info_and_help(i1: Instance):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "testuser"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -579,7 +579,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
         command=i1.binary_path,
         args=["admin", socket_path],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -602,7 +602,7 @@ def test_connect_with_incorrect_url(cluster: Cluster):
             command=i1.binary_path,
             args=["connect", address],
             encoding="utf-8",
-            timeout=1,
+            timeout=CLI_TIMEOUT,
         )
         cli.logfile = sys.stdout
         return cli
@@ -646,7 +646,7 @@ def test_connect_timeout(cluster: Cluster):
                 *([f"--timeout={timeout}"] if timeout is not None else []),
             ],
             encoding="utf-8",
-            timeout=10,
+            timeout=CLI_TIMEOUT,
         )
         cli.logfile = sys.stdout
         return cli
@@ -663,7 +663,7 @@ def test_connect_timeout(cluster: Cluster):
     cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
     cli.expect_exact(pexpect.EOF)
 
-    cli = connect_to("1000010002", timeout=1)
+    cli = connect_to("1000010002", timeout=CLI_TIMEOUT)
     cli.expect_exact("Connection Error. Try to reconnect: connect timeout")
     cli.expect_exact(pexpect.EOF)
 

@@ -53,6 +53,8 @@ METRICS_PORT = 7500
 MAX_LOGIN_ATTEMPTS = 4
 PICO_SERVICE_ID = 32
 
+CLI_TIMEOUT = 10  # seconds
+
 
 # Note: our tarantool.error.tnt_strerror only knows about first 113 error codes..
 class ErrorCode:

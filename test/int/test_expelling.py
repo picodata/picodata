@@ -1,7 +1,7 @@
 import pytest
 import sys
 import pexpect  # type: ignore
-from conftest import Cluster, Instance, Retriable, log_crawler
+from conftest import CLI_TIMEOUT, Cluster, Instance, Retriable, log_crawler
 
 
 @pytest.fixture
@@ -115,7 +115,6 @@ def test_raft_id_after_expel(cluster: Cluster):
 def test_expel_timeout(cluster: Cluster):
     cluster.deploy(instance_count=1)
     [i1] = cluster.instances
-    timeout = 1
 
     # If the peer is not resolving, by default we hang on
     # for 5 seconds. We can change it by specifying `timeout`.
@@ -125,11 +124,11 @@ def test_expel_timeout(cluster: Cluster):
         args=[
             "expel",
             "random_instance_id",
-            f"--timeout={timeout}",
+            f"--timeout={CLI_TIMEOUT}",
             "--peer=10001",
         ],
         encoding="utf-8",
-        timeout=10,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 

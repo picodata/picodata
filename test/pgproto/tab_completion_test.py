@@ -6,7 +6,7 @@ import subprocess
 import re
 import os
 import psycopg
-from conftest import Postgres
+from conftest import CLI_TIMEOUT, Postgres
 from packaging.version import Version  # type: ignore
 
 
@@ -47,7 +47,7 @@ def test_tab_completion(postgres: Postgres):
         ],
         env={"LC_ALL": "C"},
         encoding="utf-8",
-        timeout=5,
+        timeout=CLI_TIMEOUT,
     )
     psql.logfile = sys.stdout
     psql.expect_exact("=>")

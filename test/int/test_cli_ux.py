@@ -3,7 +3,7 @@ import os
 import pytest
 import sys
 import subprocess
-from conftest import Cluster, log_crawler
+from conftest import CLI_TIMEOUT, Cluster, log_crawler
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
@@ -20,7 +20,7 @@ def test_connect_ux(cluster: Cluster):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -101,7 +101,7 @@ def test_admin_ux(cluster: Cluster):
         command=i1.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
 
     cli.logfile = sys.stdout
@@ -159,7 +159,7 @@ def test_lua_completion(cluster: Cluster):
         command=i1.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -209,7 +209,7 @@ def test_sql_explain_ok(cluster: Cluster):
         command=i1.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -329,7 +329,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
     cli.expect_exact(
@@ -349,7 +349,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
         command=i2.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
     cli.expect_exact("picodata> ")
@@ -370,7 +370,7 @@ def test_input_with_custom_delimiter(cluster: Cluster):
         command=i1.binary_path,
         args=["connect", f"{i1.host}:{i1.port}", "-u", "andy"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
     cli.logfile = sys.stdout
 
@@ -510,7 +510,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
         command=i1.binary_path,
         args=["admin", "./admin.sock"],
         encoding="utf-8",
-        timeout=1,
+        timeout=CLI_TIMEOUT,
     )
 
     cli.logfile = sys.stdout
