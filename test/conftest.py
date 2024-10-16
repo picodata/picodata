@@ -611,7 +611,7 @@ class Instance:
     def get_tier(self):
         return "default" if self.tier is None else self.tier
 
-    def instance_uuid(self):
+    def uuid(self):
         return self.eval("return box.info.uuid")
 
     def replicaset_uuid(self):

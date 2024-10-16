@@ -243,7 +243,7 @@ impl Cfg {
         let mut res = Self {
             // At this point uuids must be valid, it will be impossible to
             // change them until the instance is expelled.
-            instance_uuid: Some(leader.instance_uuid.clone()),
+            instance_uuid: Some(leader.uuid.clone()),
             replicaset_uuid: Some(leader.replicaset_uuid.clone()),
 
             // Listen port will be set after the global raft node is initialized.
@@ -282,7 +282,7 @@ impl Cfg {
         let mut res = Self {
             // At this point uuids must be valid, it will be impossible to
             // change them until the instance is expelled.
-            instance_uuid: Some(resp.instance.instance_uuid.clone()),
+            instance_uuid: Some(resp.instance.uuid.clone()),
             replicaset_uuid: Some(resp.instance.replicaset_uuid.clone()),
 
             // Needs to be set, because an applier will attempt to connect to

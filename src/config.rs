@@ -464,13 +464,13 @@ Using configuration file '{args_path}'.");
             for (param, i) in unknown_parameters.iter().zip(1..) {
                 _ = write!(&mut buffer, "`{}{}`", param.prefix, param.name);
 
-                if param.name.to_string() == "instance_id".to_string() {
+                if *param.name.to_string() == *"instance_id".to_string() {
                     _ = write!(&mut buffer, " (did you mean `name`?)");
                     continue;
-                } else if param.name.to_string() == "cluster_id".to_string() {
+                } else if *param.name.to_string() == *"cluster_id".to_string() {
                     _ = write!(&mut buffer, " (did you mean `cluster_name`?)");
                     continue;
-                } else if param.name.to_string() == "instance_uuid".to_string() {
+                } else if *param.name.to_string() == *"instance_uuid".to_string() {
                     _ = write!(&mut buffer, " (did you mean `uuid`?)");
                     continue;
                 }

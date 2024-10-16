@@ -234,7 +234,7 @@ pub struct InstanceInfo {
     raft_id: u64,
     advertise_address: RString,
     name: RString,
-    instance_uuid: RString,
+    uuid: RString,
     replicaset_id: RString,
     replicaset_uuid: RString,
     cluster_name: RString,
@@ -261,7 +261,7 @@ impl InstanceInfo {
             raft_id,
             advertise_address: RString::from(advertise_address),
             name: RString::from(name),
-            instance_uuid: RString::from(instance_uuid),
+            uuid: RString::from(instance_uuid),
             replicaset_id: RString::from(replicaset_id),
             replicaset_uuid: RString::from(replicaset_uuid),
             cluster_name: RString::from(cluster_name),
@@ -287,8 +287,8 @@ impl InstanceInfo {
     }
 
     /// Return current instance UUID.
-    pub fn instance_uuid(&self) -> &str {
-        self.instance_uuid.as_str()
+    pub fn uuid(&self) -> &str {
+        self.uuid.as_str()
     }
 
     /// ID of a replicaset the instance belongs to.

@@ -137,7 +137,7 @@ impl VshardConfig {
                 });
 
             replicaset.replicas.insert(
-                InstanceName(peer.instance_uuid.clone()),
+                InstanceName(peer.uuid.clone()),
                 ReplicaSpec {
                     uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
                     master: r.current_master_name == peer.name,

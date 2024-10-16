@@ -25,7 +25,7 @@ crate::define_string_newtype! {
 pub struct Instance {
     /// Instances are identified by name.
     pub name: InstanceName,
-    pub instance_uuid: String, // TODO turn it into uuid
+    pub uuid: String,
 
     /// Used for identifying raft nodes.
     /// Must be unique in the raft group.
@@ -74,7 +74,7 @@ impl Instance {
         use tarantool::space::{Field, FieldType};
         vec![
             Field::from(("name", FieldType::String)),
-            Field::from(("instance_uuid", FieldType::String)),
+            Field::from(("uuid", FieldType::String)),
             Field::from(("raft_id", FieldType::Unsigned)),
             Field::from(("replicaset_id", FieldType::String)),
             Field::from(("replicaset_uuid", FieldType::String)),
@@ -155,7 +155,7 @@ mod tests {
         let instance = Instance {
             raft_id,
             name: instance_name.into(),
-            instance_uuid: format!("{instance_name}-uuid"),
+            uuid: format!("{instance_name}-uuid"),
             replicaset_id: replicaset_id.into(),
             replicaset_uuid: format!("{replicaset_id}-uuid"),
             current_state: *state,
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(i1a.name, "i1");
         assert_eq!(i1b.name, "i1");
         // Attention: not equal
-        assert_ne!(i1a.instance_uuid, i1b.instance_uuid);
+        assert_ne!(i1a.uuid, i1b.uuid);
     }
 
     #[::tarantool::test]

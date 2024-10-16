@@ -330,7 +330,7 @@ impl Service for Service3 {
                 // get some instance info
                 let i_info = internal::instance_info().unwrap();
                 save_in_lua("testservice_3", "name", i_info.name());
-                save_in_lua("testservice_3", "instance_uuid", i_info.instance_uuid());
+                save_in_lua("testservice_3", "uuid", i_info.uuid());
                 save_in_lua("testservice_3", "replicaset_id", i_info.replicaset_id());
                 save_in_lua("testservice_3", "replicaset_uuid", i_info.replicaset_uuid());
                 save_in_lua("testservice_3", "cluster_name", i_info.cluster_name());

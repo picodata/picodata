@@ -210,14 +210,14 @@ pub(crate) fn setup() {
         &l,
         "instance_info",
         indoc! {"
-        pico.instance_info([instance_name])
+        pico.instance_info([instance name])
         =================================
 
         Provides general information for the given instance.
 
         Params:
 
-            1. instance_name (optional string), default: id of the current instance
+            1. instance name (optional string), default: id of the current instance
 
         Returns:
 
@@ -229,8 +229,8 @@ pub(crate) fn setup() {
 
             - raft_id (number)
             - advertise_address (string)
-            - instance_name (string)
-            - instance_uuid (string)
+            - name (string)
+            - uuid (string)
             - replicaset_id (string)
             - replicaset_uuid (string)
             - current_state (table),
@@ -247,8 +247,8 @@ pub(crate) fn setup() {
             ---
             - raft_id: 1
               advertise_address: 127.0.0.1:3301
-              instance_name: i1
-              instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
+              name: i1
+              uuid: 68d4a766-4144-3248-aeb4-e212356716e4
               tier: storage
               replicaset_id: r1
               replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
@@ -267,8 +267,8 @@ pub(crate) fn setup() {
             Ok(tlua::AsTable((
                 ("raft_id", info.raft_id),
                 ("advertise_address", info.advertise_address),
-                ("instance_name", info.name.0),
-                ("instance_uuid", info.instance_uuid),
+                ("name", info.name.0),
+                ("uuid", info.uuid),
                 ("replicaset_id", info.replicaset_id),
                 ("replicaset_uuid", info.replicaset_uuid),
                 ("current_state", info.current_state),

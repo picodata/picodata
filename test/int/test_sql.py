@@ -423,7 +423,7 @@ def test_read_from_system_tables(cluster: Cluster):
     )
     assert data["metadata"] == [
         {"name": "name", "type": "string"},
-        {"name": "instance_uuid", "type": "string"},
+        {"name": "uuid", "type": "string"},
         {"name": "raft_id", "type": "unsigned"},
         {"name": "replicaset_id", "type": "string"},
         {"name": "replicaset_uuid", "type": "string"},

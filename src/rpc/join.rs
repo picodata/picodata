@@ -215,7 +215,7 @@ pub fn build_instance(
     Ok(Instance {
         raft_id,
         name: instance_name,
-        instance_uuid,
+        uuid: instance_uuid,
         replicaset_id,
         replicaset_uuid,
         current_state: State::new(Offline, 0),

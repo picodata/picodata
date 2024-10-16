@@ -766,7 +766,7 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     let instance = Instance {
         raft_id,
         name: instance_name.clone(),
-        instance_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
+        uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
         replicaset_id,
         replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
         current_state: instance::State::new(Offline, 0),

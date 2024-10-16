@@ -143,7 +143,7 @@ def test_replication(cluster: Cluster):
 
         expected = {
             "name": instance.name,
-            "instance_uuid": instance.eval("return box.info.uuid"),
+            "uuid": instance.eval("return box.info.uuid"),
             "raft_id": instance.raft_id,
             "replicaset_id": "r1",
             "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
@@ -155,8 +155,8 @@ def test_replication(cluster: Cluster):
         assert {k: v for k, v in raft_instance.items() if k in expected} == expected
 
         assert space_cluster == [
-            [1, i1.instance_uuid()],
-            [2, i2.instance_uuid()],
+            [1, i1.uuid()],
+            [2, i2.uuid()],
         ]
 
         Retriable(timeout=10, rps=2).call(check_replicated, instance)
@@ -274,7 +274,7 @@ def test_separate_clusters(cluster: Cluster):
 
     assert i1a_info["name"] == "i1"
     assert i1b_info["name"] == "i1"
-    assert i1a_info["instance_uuid"] != i1b_info["instance_uuid"]
+    assert i1a_info["uuid"] != i1b_info["uuid"]
 
     assert i1a_info["replicaset_id"] == "r1"
     assert i1b_info["replicaset_id"] == "r1"
@@ -285,8 +285,8 @@ def test_join_without_explicit_instance_name(cluster: Cluster):
     # Scenario: bootstrap single instance without explicitly given instance name
     #   Given no instances started
     #   When two instances starts without instance_name given
-    #   Then the one of the instances became Leader with instance_name=1
-    #   And the second one of the became Follower with instance_name 2
+    #   Then the one of the instances became Leader with instance name=1
+    #   And the second one of the became Follower with instance name 2
 
     # don't generate instance_names so that the Leader
     # chooses ones for them when they join
