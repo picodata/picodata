@@ -102,21 +102,15 @@ impl PluginManager {
 
     fn load_so(path: &Path) -> Option<Rc<LibraryWrapper>> {
         // filter files by its extension
-        let Some(ext) = path.extension() else {
-            return None;
-        };
+        let ext = path.extension()?;
         if !Self::AVAILABLE_EXT.contains(&ext.to_string_lossy().as_ref()) {
             return None;
         }
 
         // trying to load a dynamic library
-        let lib = match unsafe { LibraryWrapper::new(path.to_path_buf()) } {
-            Ok(lib) => lib,
-            Err(e) => {
-                tlog!(Warning, "error while open plugin candidate: {e}");
-                return None;
-            }
-        };
+        let lib = unsafe { LibraryWrapper::new(path.to_path_buf()) }
+            .inspect_err(|e| tlog!(Warning, "error while open plugin candidate: {e}"))
+            .ok()?;
 
         Some(Rc::new(lib))
     }

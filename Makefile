@@ -53,8 +53,8 @@ lint:
 
 	cargo clippy --version
 	cargo clippy \
-		$(LOCKED) $(MAKE_JOBSERVER_ARGS) \
-		--features=load_test,error_injection,webui \
+		$(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) \
+		--features=load_test,error_injection \
 		-- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
