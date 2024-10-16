@@ -50,7 +50,7 @@ mod msgpack {
         pub tarantool: Option<String>,
         /// Allows optional fields of unnamed structs to be decoded if values are not presented.
         pub allow_array_optionals: bool,
-        /// https://serde.rs/enum-representations.html#untagged
+        /// <https://serde.rs/enum-representations.html#untagged>
         pub untagged: bool,
     }
 
