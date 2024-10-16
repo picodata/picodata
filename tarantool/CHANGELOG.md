@@ -35,6 +35,9 @@ restricting time connection establishment.
 ### Breaking changes
 - Replace `network::protocol::codec::{encode_header, decode_header}` functions
   with `network::protocol::codec::Header::{encode, decode}` methods.
+- Use `extern "C-unwind"` instead of `extern "C"` for all trampolines which take `*mut ffi::lua_State`
+  (checked with `rg 'extern "C".*lua_State'`). `tlua::error!` throws an exception to unwind the stack,
+  hence we need to use a proper ABI to fix UB in picodata.
 
 ### Added (picodata)
 
