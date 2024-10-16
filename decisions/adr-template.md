@@ -14,7 +14,7 @@ informed: list everyone who is kept up-to-date on progress; and with whom there 
 ## Context and Problem Statement
 
 <!-- Describe the context and problem statement, e.g., in free form using two to three sentences or in the form of an illustrative story.
-You may want to articulate the problem in form of a question and add links to collaboration boards or issue management systems. -->
+You may want to articulate the problem in form of a question and add links to gitlab issues. -->
 
 ## Decision Drivers
 
