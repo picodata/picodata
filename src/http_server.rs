@@ -263,7 +263,7 @@ fn get_replicasets_info(
         let mut tier = instance.tier.clone();
         if let Some(replicaset) = replicasets.get(&replicaset_id) {
             is_leader = replicaset.current_master_name == instance.name;
-            replicaset_uuid.clone_from(&replicaset.replicaset_uuid);
+            replicaset_uuid.clone_from(&replicaset.uuid);
             debug_assert_eq!(replicaset.tier, instance.tier);
             tier.clone_from(&replicaset.tier);
         }

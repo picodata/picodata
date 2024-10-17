@@ -250,7 +250,7 @@ def test_whoami_in_different_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         storage:
             replication_factor: 2
@@ -545,7 +545,7 @@ def test_proc_instance_info(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         storage:
             replication_factor: 2
@@ -611,7 +611,7 @@ def test_proc_get_vshard_config(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         storage:
             replication_factor: 1

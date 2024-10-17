@@ -198,7 +198,7 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
     if req.cluster_name != cluster_name {
         return Err(TraftError::ClusterIdMismatch {
             instance_cluster_name: req.cluster_name.clone(),
-            cluster_cluster_name: cluster_name,
+            cluster_name,
         });
     }
 

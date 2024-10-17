@@ -51,7 +51,7 @@ def test_admin_auth(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
     cluster:
-        cluster_name: test
+        name: test
         tier:
             default:
     instance:
@@ -87,7 +87,7 @@ def test_user_blocking_after_a_series_of_unsuccessful_auth_attempts(cluster: Clu
     cluster.set_config_file(
         yaml=f"""
     cluster:
-        cluster_id: test
+        name: test
         tier:
             default:
     instance:

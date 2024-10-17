@@ -77,10 +77,10 @@ pub enum Error {
         actual: &'static str,
     },
     /// cluster_name of the joining instance mismatches the cluster_name of the cluster
-    #[error("cluster_name mismatch: cluster_name of the instance = {instance_cluster_name:?}, cluster_name of the cluster = {cluster_cluster_name:?}")]
+    #[error("cluster_name mismatch: cluster_name of the instance = {instance_cluster_name:?}, cluster_name of the cluster = {cluster_name:?}")]
     ClusterIdMismatch {
         instance_cluster_name: String,
-        cluster_cluster_name: String,
+        cluster_name: String,
     },
     /// Instance was requested to configure replication with different replicaset.
     #[error("cannot replicate with different replicaset: expected {instance_rsid:?}, requested {requested_rsid:?}")]

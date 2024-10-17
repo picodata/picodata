@@ -553,7 +553,7 @@ def test_tier_mismatch_while_joining_by_the_same_replicaset_id(cluster: Cluster)
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
         router:

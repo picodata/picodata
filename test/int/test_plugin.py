@@ -1528,7 +1528,7 @@ def test_set_topology(cluster: Cluster):
 
 cluster_cfg = """
     cluster:
-        cluster_name: test
+        name: test
         tier:
             red:
                 replication_factor: 1
@@ -2156,7 +2156,7 @@ def test_plugin_rpc_sdk_send_request(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: plugin_test
+    name: plugin_test
     tier:
         default:
         router:

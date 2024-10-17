@@ -133,7 +133,7 @@ def test_default_path_to_config_file(cluster: Cluster):
         f.write(
             """
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
 instance:
@@ -153,7 +153,7 @@ instance:
         f.write(
             """
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
 instance:
@@ -237,7 +237,7 @@ def test_config_file_with_garbage(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
     replication_topology: mobius
@@ -284,7 +284,7 @@ def test_config_file_box_cfg_parameters(cluster: Cluster):
         yaml="""
 # just the required part
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
 """
@@ -325,7 +325,7 @@ cluster:
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
 
@@ -430,7 +430,7 @@ def test_default_tier_is_not_created_with_configuration_file(cluster: Cluster):
         yaml="""
 cluster:
     default_replication_factor: 3
-    cluster_name: test
+    name: test
     tier:
         not_default:
 """
@@ -460,7 +460,7 @@ def test_output_config_parameters(cluster: Cluster):
     """
     )
 
-    output_params = """'cluster.cluster_name':
+    output_params = """'cluster.name':
         'cluster.tier':
         'cluster.default_replication_factor':
         'instance.data_dir':

@@ -110,7 +110,7 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
     if req.cluster_name != cluster_name {
         return Err(Error::ClusterIdMismatch {
             instance_cluster_name: req.cluster_name,
-            cluster_cluster_name: cluster_name,
+            cluster_name,
         });
     }
 

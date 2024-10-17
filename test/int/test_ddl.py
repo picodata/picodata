@@ -1296,7 +1296,7 @@ def test_ddl_when_box_cfg_read_only(cluster: Cluster):
         yaml="""
 cluster:
     default_replication_factor: 2
-    cluster_name: test
+    name: test
     tier:
         default:
 """

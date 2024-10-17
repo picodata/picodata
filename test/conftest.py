@@ -2343,7 +2343,7 @@ class Postgres:
         self.cluster.set_config_file(
             yaml=f"""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
 instance:

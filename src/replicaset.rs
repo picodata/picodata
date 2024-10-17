@@ -23,7 +23,7 @@ pub struct Replicaset {
     pub replicaset_id: ReplicasetId,
 
     /// UUID used to identify replicasets by tarantool's subsystems.
-    pub replicaset_uuid: String,
+    pub uuid: String,
 
     /// Instance name of the current replication leader.
     pub current_master_name: InstanceName,
@@ -82,7 +82,7 @@ impl Replicaset {
     pub fn with_one_instance(master: &Instance) -> Replicaset {
         Replicaset {
             replicaset_id: master.replicaset_id.clone(),
-            replicaset_uuid: master.replicaset_uuid.clone(),
+            uuid: master.replicaset_uuid.clone(),
             current_master_name: master.name.clone(),
             target_master_name: master.name.clone(),
             tier: master.tier.clone(),
@@ -119,7 +119,7 @@ impl Replicaset {
     pub fn for_tests() -> Self {
         Self {
             replicaset_id: "r1".into(),
-            replicaset_uuid: "r1-uuid".into(),
+            uuid: "r1-uuid".into(),
             current_master_name: "i".into(),
             target_master_name: "j".into(),
             tier: "storage".into(),

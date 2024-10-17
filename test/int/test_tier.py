@@ -7,7 +7,7 @@ def test_single_tier_query(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
         router:
@@ -195,7 +195,7 @@ def test_executing_query_on_instances_from_different_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         storage:
             replication_factor: 1
@@ -296,7 +296,7 @@ def test_vshard_configuration_on_different_tiers(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         storage:
             replication_factor: 2
@@ -393,7 +393,7 @@ def test_multiple_tier_and_global_tables(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         storage:
             replication_factor: 1
@@ -470,7 +470,7 @@ def test_tier_with_several_replicasets(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
-    cluster_name: test
+    name: test
     tier:
         router:
             replication_factor: 1

@@ -195,9 +195,9 @@ Using configuration file '{args_path}'.");
             },
         )]));
 
-        // Same story as with `cluster.tier`, the cluster_name must be provided
+        // Same story as with `cluster.tier`, the cluster name must be provided
         // in the config file.
-        config.cluster.cluster_name = Some("demo".into());
+        config.cluster.name = Some("demo".into());
 
         config
     }
@@ -258,7 +258,7 @@ Using configuration file '{args_path}'.");
         }
 
         if let Some(cluster_name) = args.cluster_name {
-            config_from_args.cluster.cluster_name = Some(cluster_name.clone());
+            config_from_args.cluster.name = Some(cluster_name.clone());
             config_from_args.instance.cluster_name = Some(cluster_name);
         }
 
@@ -405,15 +405,15 @@ Using configuration file '{args_path}'.");
             }
         }
 
-        match (&self.cluster.cluster_name, &self.instance.cluster_name) {
+        match (&self.cluster.name, &self.instance.cluster_name) {
             (Some(from_cluster), Some(from_instance)) if from_cluster != from_instance => {
                 return Err(Error::InvalidConfiguration(format!(
-                    "`cluster.cluster_name` ({from_cluster}) conflicts with `instance.cluster_name` ({from_instance})",
+                    "`cluster.name` ({from_cluster}) conflicts with `instance.cluster_name` ({from_instance})",
                 )));
             }
             (None, None) => {
                 return Err(Error::invalid_configuration(
-                    "either `cluster.cluster_name` or `instance.cluster_name` must be specified",
+                    "either `cluster.name` or `instance.cluster_name` must be specified",
                 ));
             }
             _ => {}
@@ -464,20 +464,14 @@ Using configuration file '{args_path}'.");
             for (param, i) in unknown_parameters.iter().zip(1..) {
                 _ = write!(&mut buffer, "`{}{}`", param.prefix, param.name);
 
-                if *param.name.to_string() == *"instance_id".to_string() {
+                // TODO: this is a temporary help message implied only for 24.6 version
+                if param.name == "instance_id" || param.name == "cluster_id" {
                     _ = write!(&mut buffer, " (did you mean `name`?)");
                     continue;
-                } else if *param.name.to_string() == *"cluster_id".to_string() {
-                    _ = write!(&mut buffer, " (did you mean `cluster_name`?)");
-                    continue;
-                } else if *param.name.to_string() == *"instance_uuid".to_string() {
-                    _ = write!(&mut buffer, " (did you mean `uuid`?)");
-                    continue;
-                }
-
-                if let Some(best_match) = param.best_match {
+                } else if let Some(best_match) = param.best_match {
                     _ = write!(&mut buffer, " (did you mean `{best_match}`?)");
                 }
+
                 if i != unknown_parameters.len() {
                     _ = write!(&mut buffer, ", ");
                 }
@@ -595,13 +589,13 @@ Using configuration file '{args_path}'.");
 
     #[inline]
     pub fn cluster_name(&self) -> &str {
-        match (&self.instance.cluster_name, &self.cluster.cluster_name) {
-            (Some(instance_cluster_name), Some(cluster_cluster_name)) => {
-                assert_eq!(instance_cluster_name, cluster_cluster_name);
+        match (&self.instance.cluster_name, &self.cluster.name) {
+            (Some(instance_cluster_name), Some(cluster_name)) => {
+                assert_eq!(instance_cluster_name, cluster_name);
                 instance_cluster_name
             }
             (Some(instance_cluster_name), None) => instance_cluster_name,
-            (None, Some(cluster_cluster_name)) => cluster_cluster_name,
+            (None, Some(cluster_name)) => cluster_name,
             (None, None) => "demo",
         }
     }
@@ -904,7 +898,7 @@ fn report_unknown_fields<'a>(
 
 #[derive(PartialEq, Default, Debug, Clone, serde::Deserialize, serde::Serialize, Introspection)]
 pub struct ClusterConfig {
-    pub cluster_name: Option<String>,
+    pub name: Option<String>,
 
     // Option is needed to distinguish between the following cases:
     // when the config was specified and tier section was not
@@ -1773,7 +1767,7 @@ mod tests {
 
         let yaml = r###"
 cluster:
-    cluster_name: foobar
+    name: foobar
 
     tier:
         voter:
@@ -1826,11 +1820,11 @@ instance:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         let err = config.validate_from_file().unwrap_err();
-        assert_eq!(err.to_string(), "invalid configuration: either `cluster.cluster_name` or `instance.cluster_name` must be specified");
+        assert_eq!(err.to_string(), "invalid configuration: either `cluster.name` or `instance.cluster_name` must be specified");
 
         let yaml = r###"
 cluster:
-    cluster_name: foo
+    name: foo
     tier:
         default:
 instance:
@@ -1838,14 +1832,14 @@ instance:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         let err = config.validate_from_file().unwrap_err();
-        assert_eq!(err.to_string(), "invalid configuration: `cluster.cluster_name` (foo) conflicts with `instance.cluster_name` (bar)");
+        assert_eq!(err.to_string(), "invalid configuration: `cluster.name` (foo) conflicts with `instance.cluster_name` (bar)");
     }
 
     #[test]
     fn missing_tiers_is_not_error() {
         let yaml = r###"
 cluster:
-    cluster_name: test
+    name: test
 "###;
         let cfg = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
 
@@ -1854,7 +1848,7 @@ cluster:
 
         let yaml = r###"
 cluster:
-    cluster_name: test
+    name: test
     tier:
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
@@ -1866,7 +1860,7 @@ cluster:
 
         let yaml = r###"
 cluster:
-    cluster_name: test
+    name: test
     tier:
         default:
 "###;
@@ -1876,7 +1870,7 @@ cluster:
         let yaml = r###"
 cluster:
     default_replication_factor: 3
-    cluster_name: test
+    name: test
 "###;
         let config = PicodataConfig::read_yaml_contents(&yaml.trim()).unwrap();
         config.validate_from_file().expect("");
@@ -2251,7 +2245,7 @@ instance:
 "###;
             std::env::set_var(
                 "PICODATA_CONFIG_PARAMETERS",
-                "  instance.tier = ABC;cluster.cluster_name=DEF  ;
+                "  instance.tier = ABC;cluster.name=DEF  ;
                 instance.audit=audit.txt ;;
                 ; instance.data_dir=. ;"
             );
@@ -2260,7 +2254,7 @@ instance:
                 "--config-parameter", "instance. memtx . memory=  999",
             ]).unwrap();
             assert_eq!(config.instance.tier.unwrap(), "ABC");
-            assert_eq!(config.cluster.cluster_name.unwrap(), "DEF");
+            assert_eq!(config.cluster.name.unwrap(), "DEF");
             assert_eq!(config.instance.log.level.unwrap(), args::LogLevel::Debug);
             assert_eq!(config.instance.memtx.memory.unwrap().to_string(), String::from("999B"));
             assert_eq!(config.instance.audit.unwrap(), "audit.txt");
@@ -2280,7 +2274,7 @@ instance:
 "###;
             std::env::set_var(
                 "PICODATA_CONFIG_PARAMETERS",
-                "  cluster.cluster_name=DEF  ;
+                "  cluster.name=DEF  ;
                   cluster.asdfasdfbasdfbasd = "
             );
             let e = setup_for_tests(Some(yaml), &["run"]).unwrap_err();
