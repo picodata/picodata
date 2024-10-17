@@ -50,6 +50,7 @@
 * [CASE](reference/sql/case.md)
 * [CAST](reference/sql/cast.md)
 * [LIKE](reference/sql/like.md)
+* [ILIKE](reference/sql/like.md)
 * [SUBSTR](reference/sql/substr.md)
 * [TRIM](reference/sql/trim.md)
 
