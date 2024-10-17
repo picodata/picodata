@@ -441,7 +441,8 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 - **Georgy Moshkin**
 - **Egor Ivkov**
 
-© 2020-2022 Picodata.io https://git.picodata.io/picodata
+© 2020-2024 Picodata.io https://git.picodata.io/picodata
+
 ## License
 
 This project is licensed under the BSD License - see the [LICENSE](LICENSE) file for details
