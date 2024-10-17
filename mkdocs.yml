@@ -102,10 +102,12 @@ nav:
         - reference/sql/aggregate.md
         - reference/sql/case.md
         - reference/sql/cast.md
-        - reference/sql/like.md
         - reference/sql/ilike.md
+        - reference/sql/like.md
+        - reference/sql/lower.md
         - reference/sql/substr.md
         - reference/sql/trim.md
+        - reference/sql/upper.md
         - Дата и время:
           - reference/sql/current_date.md
           - reference/sql/to_char.md

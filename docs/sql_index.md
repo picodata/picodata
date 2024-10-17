@@ -49,10 +49,12 @@
 * [Агрегатные функции](reference/sql/aggregate.md)
 * [CASE](reference/sql/case.md)
 * [CAST](reference/sql/cast.md)
+* [ILIKE](reference/sql/ilike.md)
 * [LIKE](reference/sql/like.md)
-* [ILIKE](reference/sql/like.md)
+* [LOWER](reference/sql/lower.md)
 * [SUBSTR](reference/sql/substr.md)
 * [TRIM](reference/sql/trim.md)
+* [UPPER](reference/sql/upper.md)
 
 ### Дата и время {: #date_and_time }
 
