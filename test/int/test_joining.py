@@ -498,12 +498,22 @@ def test_pico_service_invalid_requirements_password(cluster: Cluster):
 
 
 def test_join_with_duplicate_instance_name(cluster: Cluster):
-    [leader, quorum_helper] = cluster.deploy(instance_count=2)
+    same_replicaset = "r1"
+    cluster.set_service_password("secret")
+
+    leader = cluster.add_instance(replicaset_name=same_replicaset, wait_online=False)
+    # Quorum helper
+    cluster.add_instance(replicaset_name=same_replicaset, wait_online=False)
+    cluster.wait_online()
 
     namesakes = []
     log_crawlers = []
     for _ in range(5):
-        i = cluster.add_instance(wait_online=False, instance_name="original-name")
+        i = cluster.add_instance(
+            wait_online=False,
+            instance_name="original-name",
+            replicaset_name=same_replicaset,
+        )
         lc = log_crawler(i, "`original-name` is already joined")
         log_crawlers.append(lc)
         namesakes.append(i)
@@ -529,7 +539,11 @@ def test_join_with_duplicate_instance_name(cluster: Cluster):
     namesakes = []
     log_crawlers = []
     for _ in range(5):
-        i = cluster.add_instance(wait_online=False, instance_name="original-name")
+        i = cluster.add_instance(
+            wait_online=False,
+            instance_name="original-name",
+            replicaset_name=same_replicaset,
+        )
         lc = log_crawler(i, "`original-name` is already joined")
         log_crawlers.append(lc)
         namesakes.append(i)
