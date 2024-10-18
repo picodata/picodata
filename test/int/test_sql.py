@@ -435,6 +435,16 @@ def test_read_from_system_tables(cluster: Cluster):
     assert len(data["rows"]) == instance_count
 
 
+# FIXME: Flaky test.
+#        As one of the possible reasons flakiness is caused by
+#        inconsistent bucket reads (read just after update returns
+#        extra row).
+#        Should be fixed after we move on new vshard methods as a part
+#        of the following issue:
+#        https://git.picodata.io/picodata/picodata/sbroad/-/issues/531.
+#        Picodata issue to resolve:
+#        https://git.picodata.io/picodata/picodata/picodata/-/issues/1013#note_106684
+@pytest.mark.xfail
 def test_dml_on_global_tbls(cluster: Cluster):
     cluster.deploy(instance_count=2)
     i1, i2 = cluster.instances
