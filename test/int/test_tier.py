@@ -366,7 +366,7 @@ cluster:
 
     # if we kill master of replicaset data will be unavailiable temporarily, until
     # governor make it right: master switchower + deliver changed vshard configuration to routers
-    storage_instance_1.kill()
+    storage_instance_1.terminate()
 
     def wait_until_governor_deliver_vshard_configuration():
 
