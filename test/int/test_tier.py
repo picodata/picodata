@@ -375,7 +375,7 @@ cluster:
         )
         assert replicaset_masters[r2_uuid] == storage_instance_2.name
 
-    Retriable(timeout=10, rps=5).call(wait_until_governor_deliver_vshard_configuration)
+    Retriable(timeout=10).call(wait_until_governor_deliver_vshard_configuration)
 
     # ensure that after `storage_istance_1` killed, `storage` tier tables still operable
 
