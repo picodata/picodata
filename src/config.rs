@@ -1458,7 +1458,7 @@ pub struct AlterSystemParameters {
     /// Number of seconds to wait before automatically changing an
     /// unresponsive instance's state to Offline.
     #[introspection(sbroad_type = SbroadType::Double)]
-    #[introspection(config_default = 5.0)]
+    #[introspection(config_default = 30.0)]
     pub auto_offline_timeout: f64,
 
     /// Maximum number of seconds to wait before sending another heartbeat

@@ -5150,7 +5150,7 @@ def test_alter_system_property_errors(cluster: Cluster):
     data = i1.sql(
         """ select * from "_pico_db_config" where "key" = 'auto_offline_timeout' """
     )
-    assert data == [["auto_offline_timeout", 5]]
+    assert data == [["auto_offline_timeout", 30]]
     dml = i1.sql(
         """
         alter system set "auto_offline_timeout" to 3
