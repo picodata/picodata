@@ -2113,13 +2113,11 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
     eprint(f"Running {cmd}")
     assert subprocess.call(cmd) == 0, "cargo build failed"
 
-    cmd = ["cargo", "build", "-p", "gostech-audit-log", "--profile", build_profile()]
-    eprint(f"Running {cmd}")
-    assert subprocess.call(cmd) == 0, "cargo build gostech audit log failed"
-
-    cmd = ["cargo", "build", "-p", "testplug", "--profile", build_profile()]
-    eprint(f"Running {cmd}")
-    assert subprocess.call(cmd) == 0, "cargo build gostech metrics failed"
+    crates = ["gostech-audit-log", "testplug", "plug_wrong_version"]
+    for crate in crates:
+        cmd = ["cargo", "build", "-p", crate, "--profile", build_profile()]
+        eprint(f"Running {cmd}")
+        assert subprocess.call(cmd) == 0, f"cargo build {crate} failed"
 
 
 @pytest.fixture(scope="session")
