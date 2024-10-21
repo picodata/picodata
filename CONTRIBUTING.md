@@ -132,7 +132,7 @@ The following refers to Ubuntu 20.04 LTS. The mileage with other distributions m
 3. Install pipenv:
 
     ```
-    python3.10 -m pip install pipenv==2022.4.8
+    python3.10 -m pip install pipenv
     ```
 
 4. Install dependencies
