@@ -8,6 +8,12 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## 24.7.0 - Unreleased
+
+### CLI
+
+- `picodata expel` takes instance uuid instead of instance name.
+
 ## [24.6.1] - 2024-10-28
 
 ### Configuration

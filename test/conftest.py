@@ -1747,7 +1747,8 @@ class Cluster:
     ):
         peer = peer if peer else target
         assert self.service_password_file, "cannot expel without pico_service password"
-        assert target.name, "cannot expel without target instance name"
+        target_info = peer.call(".proc_instance_info", target.name)
+        target_uuid = target_info["uuid"]
 
         # fmt: off
         command: list[str] = [
@@ -1756,7 +1757,7 @@ class Cluster:
             "--cluster-name", target.cluster_name or "",
             "--password-file", self.service_password_file,
             "--auth-type", "chap-sha1",
-            target.name,
+            target_uuid,
         ]
         # fmt: on
 

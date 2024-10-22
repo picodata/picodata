@@ -18,7 +18,7 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
 
     let req = ExpelRequest {
         cluster_name: args.cluster_name,
-        instance_name: args.instance_name.clone(),
+        instance_uuid: args.instance_uuid.clone(),
     };
     fiber::block_on(client.call(crate::proc_name!(proc_expel_redirect), &req))
         .map_err(|e| Error::other(format!("Failed to expel instance: {e}")))?;
@@ -26,7 +26,7 @@ pub async fn tt_expel(args: args::Expel) -> Result<(), Error> {
     tlog!(
         Info,
         "Instance {} successfully expelled",
-        args.instance_name
+        args.instance_uuid
     );
 
     Ok(())

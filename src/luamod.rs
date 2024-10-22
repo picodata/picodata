@@ -712,12 +712,14 @@ pub(crate) fn setup() {
             (nil, string) in case of an error
         "},
         tlua::function1(|instance_name: InstanceName| -> traft::Result<bool> {
-            let raft_storage = &traft::node::global()?.raft_storage;
+            let node = traft::node::global()?;
+            let raft_storage = &node.raft_storage;
+            let instance = node.storage.instances.get(&instance_name)?;
             let cluster_name = raft_storage.cluster_name()?;
             fiber::block_on(rpc::network_call_to_leader(
                 crate::proc_name!(rpc::expel::proc_expel),
                 &rpc::expel::Request {
-                    instance_name,
+                    instance_uuid: instance.uuid,
                     cluster_name,
                 },
             ))?;

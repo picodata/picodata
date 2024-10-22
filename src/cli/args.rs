@@ -1,7 +1,6 @@
 use crate::address::{HttpAddress, IprotoAddress};
 use crate::config::{ByteSize, DEFAULT_USERNAME};
 use crate::info::PICODATA_VERSION;
-use crate::instance::InstanceName;
 use crate::util::Uppercase;
 use clap::Parser;
 use std::borrow::Cow;
@@ -360,9 +359,9 @@ pub struct Expel {
     /// Name of the cluster from instance should be expelled.
     pub cluster_name: String,
 
-    #[clap(value_name = "INSTANCE_NAME")]
-    /// Name of the instance to expel.
-    pub instance_name: InstanceName,
+    #[clap(value_name = "INSTANCE_UUID")]
+    /// UUID of the instance to expel.
+    pub instance_uuid: String,
 
     #[clap(
         long = "peer",

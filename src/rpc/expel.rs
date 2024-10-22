@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use crate::instance::InstanceName;
-use crate::instance::StateVariant::*;
+use crate::instance::{Instance, StateVariant::*};
 use crate::rpc;
 use crate::rpc::update_instance::handle_update_instance_request_and_wait;
+use crate::traft::error::IdOfInstance;
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
 
@@ -34,7 +34,12 @@ crate::define_rpc_request! {
             });
         }
 
-        let req = rpc::update_instance::Request::new(req.instance_name, req.cluster_name)
+        let instance = node.storage.instances.by_uuid(&req.instance_uuid)?;
+        let Some(Instance { name, .. }) = instance else {
+            return Err(Error::NoSuchInstance(IdOfInstance::Uuid(req.instance_uuid)));
+        };
+
+        let req = rpc::update_instance::Request::new(name, req.cluster_name)
             .with_target_state(Expelled);
         handle_update_instance_request_and_wait(req, TIMEOUT)?;
 
@@ -46,7 +51,7 @@ crate::define_rpc_request! {
     /// Use [`redirect::Request`] for automatic redirection from any instance to leader.
     pub struct Request {
         pub cluster_name: String,
-        pub instance_name: InstanceName,
+        pub instance_uuid: String,
     }
 
     pub struct Response {}

@@ -99,8 +99,8 @@ pub enum Error {
     Lua(#[from] LuaError),
     #[error("{0}")]
     Tarantool(#[from] ::tarantool::error::Error),
-    #[error("instance with {} not found", DisplayIdOfInstance(.0))]
-    NoSuchInstance(Result<RaftId, InstanceName>),
+    #[error("instance with {} not found", *.0)]
+    NoSuchInstance(IdOfInstance),
     #[error("replicaset with {} \"{name}\" not found", if *.id_is_uuid { "uuid" } else { "name" })]
     NoSuchReplicaset { name: String, id_is_uuid: bool },
     #[error("tier with name \"{0}\" not found")]
@@ -149,13 +149,20 @@ pub enum Error {
     Other(Box<dyn std::error::Error>),
 }
 
-struct DisplayIdOfInstance<'a>(pub &'a Result<RaftId, InstanceName>);
-impl std::fmt::Display for DisplayIdOfInstance<'_> {
+#[derive(Debug)]
+pub enum IdOfInstance {
+    RaftId(RaftId),
+    Name(InstanceName),
+    Uuid(String),
+}
+
+impl std::fmt::Display for IdOfInstance {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self.0 {
-            Ok(raft_id) => write!(f, "raft_id {raft_id}"),
-            Err(instance_name) => write!(f, "name \"{instance_name}\""),
+        match self {
+            IdOfInstance::RaftId(raft_id) => write!(f, "raft_id {raft_id}"),
+            IdOfInstance::Name(name) => write!(f, "name \"{name}\""),
+            IdOfInstance::Uuid(uuid) => write!(f, "uuid \"{uuid}\""),
         }
     }
 }

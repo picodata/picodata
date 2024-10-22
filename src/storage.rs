@@ -42,7 +42,7 @@ use crate::tarantool::box_schema_version;
 use crate::tier::Tier;
 use crate::tlog;
 use crate::traft;
-use crate::traft::error::Error;
+use crate::traft::error::{Error, IdOfInstance};
 use crate::traft::op::Ddl;
 use crate::traft::op::Dml;
 use crate::traft::RaftEntryId;
@@ -1844,6 +1844,16 @@ impl Instances {
         Ok(res)
     }
 
+    #[inline(always)]
+    pub fn by_uuid(&self, uuid: &str) -> Result<Option<Instance>> {
+        // FIXME: temporary, should be replace by get by uuid (uuid should become primary key)
+        let result = self
+            .all_instances()?
+            .into_iter()
+            .find(|instance| instance.uuid == uuid);
+        Ok(result)
+    }
+
     /// Checks if an instance with `name` (see trait [`InstanceName`]) is present.
     #[inline]
     pub fn contains(&self, name: &impl InstanceName) -> Result<bool> {
@@ -1927,7 +1937,7 @@ impl InstanceName for RaftId {
         instances
             .index_raft_id
             .get(&[self])?
-            .ok_or(Error::NoSuchInstance(Ok(*self)))
+            .ok_or(Error::NoSuchInstance(IdOfInstance::RaftId(*self)))
     }
 }
 
@@ -1937,7 +1947,7 @@ impl InstanceName for instance::InstanceName {
         instances
             .index_instance_name
             .get(&[self])?
-            .ok_or_else(|| Error::NoSuchInstance(Err(self.clone())))
+            .ok_or_else(|| Error::NoSuchInstance(IdOfInstance::Name(self.clone())))
     }
 }
 

@@ -19,6 +19,8 @@ use crate::storage::{ClusterwideTable, PropertyName};
 use crate::sync::GetVclockRpc;
 use crate::tier::Tier;
 use crate::tlog;
+use crate::traft::error::Error;
+use crate::traft::error::IdOfInstance;
 use crate::traft::op::Dml;
 use crate::traft::op::Op;
 #[allow(unused_imports)]
@@ -62,7 +64,7 @@ pub(super) fn action_plan<'i>(
         .iter()
         .find(|instance| instance.raft_id == my_raft_id)
     else {
-        return Err(crate::traft::error::Error::NoSuchInstance(Ok(my_raft_id)));
+        return Err(Error::NoSuchInstance(IdOfInstance::RaftId(my_raft_id)));
     };
     if has_states!(this_instance, * -> Offline) || has_states!(this_instance, * -> Expelled) {
         let mut new_leader = None;
