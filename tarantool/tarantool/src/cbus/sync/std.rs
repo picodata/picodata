@@ -2,26 +2,60 @@ use crate::cbus::{LCPipe, RecvError, SendError};
 use crate::fiber::Cond;
 use std::cell::RefCell;
 use std::num::NonZeroUsize;
-use std::sync;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Condvar as StdCondvar;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{self, Arc, Mutex, Weak};
+use std::thread;
 
 type CordWaker = crate::cbus::unbounded::Waker;
+
+/// Current thread process handler.
+#[derive(Clone)]
+struct Thread {
+    inner: thread::Thread,
+    flag: Arc<AtomicBool>,
+}
+
+impl Thread {
+    fn current() -> Self {
+        Self {
+            inner: thread::current(),
+            flag: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    fn park(&self) {
+        if self
+            .flag
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            thread::park();
+        };
+    }
+
+    fn unpark(&self) {
+        if self
+            .flag
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            self.inner.unpark();
+        };
+    }
+}
 
 /// A synchronization component between producers (an OS thread) and a consumer (a cord).
 /// The responsibility of this component is to wake up a producer when it's blocked because
 /// channel internal buffer is full.
 struct ThreadWaker {
-    lock: Mutex<bool>,
-    cond: StdCondvar,
+    /// A queue of threads that are waiting to send data.
+    list: crossbeam_queue::SegQueue<Thread>,
 }
 
 impl ThreadWaker {
     fn new() -> Self {
         Self {
-            lock: Mutex::new(false),
-            cond: StdCondvar::new(),
+            list: crossbeam_queue::SegQueue::new(),
         }
     }
 
@@ -29,41 +63,26 @@ impl ThreadWaker {
     /// In context of sync-channels, return from this function mean that there's some free
     /// space in message buffer, or receiver is disconnected.
     fn wait(&self, disconnected: &AtomicBool) {
-        let mut started = self
-            .lock
-            .lock()
-            .expect("unexpected panic in consumer thread");
-
         if disconnected.load(Ordering::Acquire) {
             return;
         }
-
-        while !*started {
-            started = self
-                .cond
-                .wait(started)
-                .expect("unexpected panic in consumer thread");
-        }
+        let t = Thread::current();
+        self.list.push(t.clone());
+        t.park();
     }
 
     /// Send wakeup signal to a single [`ThreadWaker::wait`] caller.
     fn wakeup_one(&self) {
-        let mut started = self
-            .lock
-            .lock()
-            .expect("unexpected panic in producer thread");
-        *started = true;
-        self.cond.notify_one();
+        if let Some(thread) = self.list.pop() {
+            thread.unpark();
+        }
     }
 
     /// Send wakeup signal to all [`ThreadWaker::wait`] callers.
     fn wakeup_all(&self) {
-        let mut started = self
-            .lock
-            .lock()
-            .expect("unexpected panic in producer thread");
-        *started = true;
-        self.cond.notify_all();
+        while let Some(thread) = self.list.pop() {
+            thread.unpark();
+        }
     }
 }
 
@@ -215,29 +234,21 @@ impl<T> Sender<T> {
     /// * `message`: message to send
     pub fn send(&self, msg: T) -> Result<(), SendError<T>> {
         let mut msg = msg;
-        // We assume that this lock has a minimal impact on performance, in most of situations
-        // lock of mutex will take the fast path.
-        let _crit_section = self.arc_guard.lock().unwrap();
-
-        // wake up a sleeping receiver
-        if let Some(waker) = self.cord_waker.upgrade() {
-            loop {
-                let push_result = self.inner.chan.list.push(msg);
-                if let Err(not_accepted_msg) = push_result {
-                    self.thread_waker.wait(&self.inner.chan.disconnected);
-                    if self.inner.chan.disconnected.load(Ordering::Acquire) {
-                        return Err(SendError(not_accepted_msg));
-                    }
-                    msg = not_accepted_msg;
-                } else {
-                    break;
-                }
+        loop {
+            if self.inner.chan.disconnected.load(Ordering::Acquire) {
+                return Err(SendError(msg));
             }
-
-            waker.wakeup(&mut self.lcpipe.borrow_mut());
-            Ok(())
-        } else {
-            Err(SendError(msg))
+            let crit_section = self.arc_guard.lock().unwrap();
+            let Some(waker) = self.cord_waker.upgrade() else {
+                return Err(SendError(msg));
+            };
+            let Err(not_accepted_msg) = self.inner.chan.list.push(msg) else {
+                waker.wakeup(&mut self.lcpipe.borrow_mut());
+                return Ok(());
+            };
+            msg = not_accepted_msg;
+            drop(crit_section);
+            self.thread_waker.wait(&self.inner.chan.disconnected);
         }
     }
 }
@@ -277,6 +288,9 @@ impl<T> EndpointReceiver<T> {
                 return Err(RecvError::Disconnected);
             }
 
+            // Need to wake thread so it can push message
+            // FIXME: why cord waker waits it's cond for 1ms ?
+            self.thread_waker.wakeup_one();
             self.cord_waker
                 .as_ref()
                 .expect("unreachable: waker must exists")

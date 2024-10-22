@@ -20,6 +20,7 @@ restricting time connection establishment.
 
 ### Changed
 - `network::protocol::codec::IProtoType` uses C language representation
+- `cbus::sync::std::ThreadWaker` now uses internal thread FIFO queue when blocking threads on send.
 
 ### Fixed
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
