@@ -254,12 +254,12 @@ fn admin_repl(args: args::Admin) -> Result<(), ReplError> {
 
     const HELP_MESSAGE: &'static str = "
     Available backslash commands:
-        \\e                              Open the editor specified by the EDITOR environment variable
-        \\help                           Show this screen
-        \\sql                            Switch console language to SQL (default)
-        \\lua                            Switch console language to Lua (deprecated)
-        \\set delimiter shiny-delimiter  Set console delimiter to 'shiny-delimiter'
-        \\set delimiter default          Reset console delimiter to default (enter)
+        \\e;                              Open the editor specified by the EDITOR environment variable
+        \\help;                           Show this screen
+        \\sql;                            Switch console language to SQL (default)
+        \\lua;                            Switch console language to Lua (deprecated)
+        \\set delimiter shiny-delimiter;  Set console delimiter to 'shiny-delimiter'
+        \\set delimiter default;          Reset console delimiter to default (;)
 
     Available hotkeys:
         Enter                           Submit the request

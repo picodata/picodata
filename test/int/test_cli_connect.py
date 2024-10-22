@@ -448,14 +448,14 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     # Change language to SQL works
-    cli.sendline("\\sql")
-    cli.sendline("CREATE ROLE CHANGE_TO_SQL_WORKS")
+    cli.sendline("\\sql;")
+    cli.sendline("CREATE ROLE CHANGE_TO_SQL_WORKS;")
     cli.expect_exact("1")
 
-    cli.sendline("\\lua")
+    cli.sendline("\\lua;")
     cli.expect_exact("Language switched to Lua")
 
-    cli.sendline("box.session.user()")
+    cli.sendline("box.session.user();")
     cli.expect_exact("---\r\n")
     cli.expect_exact("- admin\r\n")
     cli.expect_exact("...\r\n")

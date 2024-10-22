@@ -34,6 +34,7 @@ pub enum ReplError {
 }
 
 pub type Result<T> = std::result::Result<T, ReplError>;
+const DELIMITER: &str = ";";
 
 pub enum SpecialCommand {
     SwitchLanguageToLua,
@@ -138,7 +139,7 @@ impl<T: Helper> Console<T> {
             if splitted[1] == "delimiter" || splitted[1] == "d" || splitted[1] == "delim" {
                 let delimiter = splitted[2];
                 if delimiter == "default" {
-                    return ConsoleCommand::SetDelimiter(None);
+                    return ConsoleCommand::SetDelimiter(Some(DELIMITER.to_string()));
                 }
 
                 return ConsoleCommand::SetDelimiter(Some(delimiter.into()));
@@ -164,7 +165,7 @@ impl<T: Helper> Console<T> {
                     }
                     None => {
                         self.write("Delimiter changed to default");
-                        self.delimiter = None;
+                        self.delimiter = Some(DELIMITER.to_string());
                     }
                 }
                 Ok(ControlFlow::Continue(()))
@@ -282,7 +283,7 @@ impl Console<LuaHelper> {
         Ok(Console {
             editor,
             history_file_path,
-            delimiter: None,
+            delimiter: Some(DELIMITER.to_string()),
             separated_statements: VecDeque::new(),
             uncompleted_statement: String::new(),
         })
@@ -296,7 +297,7 @@ impl Console<()> {
         Ok(Console {
             editor,
             history_file_path,
-            delimiter: None,
+            delimiter: Some(DELIMITER.to_string()),
             separated_statements: VecDeque::new(),
             uncompleted_statement: String::new(),
         })

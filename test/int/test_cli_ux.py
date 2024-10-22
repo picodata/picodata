@@ -34,18 +34,18 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     # sql console doesn't know about language switching
-    cli.sendline("\\lua")
+    cli.sendline("\\lua;")
     cli.expect_exact("Unknown special sequence")
 
-    cli.sendline("\\sql")
+    cli.sendline("\\sql;")
     cli.expect_exact("Unknown special sequence")
 
     # for not registried command nothing can happen
-    cli.sendline("\\lya")
+    cli.sendline("\\lya;")
     cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\scl")
+    cli.sendline("\\scl;")
     cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\set language lua")
+    cli.sendline("\\set language lua;")
     cli.expect_exact("Unknown special sequence")
 
     # nothing happens for completion
@@ -54,22 +54,22 @@ def test_connect_ux(cluster: Cluster):
 
     # ensure that server responds on correct query
     cli.sendline(
-        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id)"
+        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
     )
     cli.expect_exact("1")
     cli.expect_exact("picodata> ")
 
     # ensure that server responds on invalid query
-    cli.sendline("invalid query")
+    cli.sendline("invalid query;")
     cli.expect_exact("rule parsing error")
     cli.expect_exact("picodata> ")
 
     # ensure that server responds after processing invalid query
-    cli.sendline("INSERT INTO ids VALUES(1)")
+    cli.sendline("INSERT INTO ids VALUES(1);")
     cli.expect_exact("1")
     cli.expect_exact("picodata> ")
 
-    cli.sendline("SELECT * FROM ids")
+    cli.sendline("SELECT * FROM ids;")
     cli.expect_exact("+----+")
     cli.expect_exact("| id |")
     cli.expect_exact("+====+")
@@ -78,7 +78,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("(1 rows)")
     cli.expect_exact("picodata> ")
 
-    cli.sendline("EXPLAIN SELECT * FROM ids")
+    cli.sendline("EXPLAIN SELECT * FROM ids;")
     cli.expect_exact('projection ("ids"."id"::integer -> "id")')
     cli.expect_exact('scan "ids"')
     cli.expect_exact("execution options:")
@@ -111,39 +111,39 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     # in admin console language switching is availiable
-    cli.sendline("\\lua")
+    cli.sendline("\\lua;")
     cli.expect_exact("Language switched to Lua")
 
-    cli.sendline("\\sql")
+    cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
 
     # for not registried command nothing happend
-    cli.sendline("\\lya")
+    cli.sendline("\\lya;")
     cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\scl")
+    cli.sendline("\\scl;")
     cli.expect_exact("Unknown special sequence")
 
     # variations of `\s l sql/lua` is registred, but not in help
     cli.expect_exact("picodata> ")
-    cli.sendline("\\set language lua")
+    cli.sendline("\\set language lua;")
     cli.expect_exact("Language switched to Lua")
 
     cli.expect_exact("picodata> ")
-    cli.sendline("\\s lang sql")
+    cli.sendline("\\s lang sql;")
     cli.expect_exact("Language switched to SQL")
 
     # nothing happens on completion in SQL mode
-    cli.sendline("\\sql")
+    cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
     cli.sendline("\t\t")
     cli.expect_exact("picodata> ")
 
-    cli.sendline("box.c\t\t")
+    cli.sendline("box.c\t\t;")
     cli.expect_exact("rule parsing error:")
     cli.expect_exact("picodata> ")
 
     # something happens on completion in Lua mode
-    cli.sendline("\\lua")
+    cli.sendline("\\lua;")
     cli.expect_exact("Language switched to Lua")
     cli.sendline("hel\t")
     cli.expect_exact("picodata> help")
@@ -164,7 +164,7 @@ def test_lua_completion(cluster: Cluster):
     cli.logfile = sys.stdout
 
     cli.expect_exact("picodata> ")
-    cli.sendline("\\lua")
+    cli.sendline("\\lua;")
 
     # With several possible variants they are shown as list
     cli.send("to")
@@ -224,7 +224,7 @@ def test_sql_explain_ok(cluster: Cluster):
               PRIMARY KEY("id")
             )
         DISTRIBUTED BY("id")
-        OPTION (TIMEOUT = 3.0)""",
+        OPTION (TIMEOUT = 3.0);""",
         sudo=True,
     )
 
@@ -237,11 +237,11 @@ def test_sql_explain_ok(cluster: Cluster):
             PRIMARY KEY ("id")
             )
         USING MEMTX DISTRIBUTED BY ("id")
-        OPTION (TIMEOUT = 3.0)""",
+        OPTION (TIMEOUT = 3.0);""",
         sudo=True,
     )
 
-    cli.sendline("""EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561)""")
+    cli.sendline("""EXPLAIN INSERT INTO "assets" VALUES (1, 'Woody', 2561);""")
 
     cli.expect_exact('insert "assets" on conflict: fail')
     cli.expect_exact('motion [policy: segment([ref("COLUMN_1")])]')
@@ -254,7 +254,7 @@ def test_sql_explain_ok(cluster: Cluster):
     cli.expect_exact("vtable_max_rows = 5000")
     cli.expect_exact("buckets = unknown")
 
-    cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010""")
+    cli.sendline("""EXPLAIN UPDATE "characters" SET "year" = 2010;""")
 
     cli.expect_exact('update "characters')
     cli.expect_exact('"year" = "col_0"')
@@ -339,7 +339,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     i1.terminate()
-    cli.sendline("ping")
+    cli.sendline("ping;")
     cli.expect("Connection Error. Try to reconnect: io error: unexpected end of file")
     cli.terminate()
 
@@ -355,11 +355,11 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     i2.terminate()
-    cli.sendline("ping")
+    cli.sendline("ping;")
     cli.expect_exact("Server probably is closed, try to reconnect")
 
 
-def test_input_with_custom_delimiter(cluster: Cluster):
+def test_input_with_delimiter(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=False)
     i1.start()
     i1.wait_online()
@@ -383,24 +383,28 @@ def test_input_with_custom_delimiter(cluster: Cluster):
     cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
-    cli.sendline("\\set delimiter ;")
-    cli.expect_exact("Delimiter changed to ';'")
-
     # several commands in one line
     cli.sendline(
-        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
-        "INSERT INTO ids VALUES(1);"
-        "SELECT * FROM ids;"
+        "\t\tCREATE TABLE ids"
+        " (id INTEGER NOT NULL, PRIMARY KEY(id))"
+        " USING MEMTX DISTRIBUTED BY (id);"
+        " INSERT INTO ids VALUES(1);"
     )
 
     cli.expect_exact("1")
     cli.expect_exact("1")
+
+    cli.sendline("SELECT * FROM" " ids;")
+
     cli.expect_exact("+----+")
     cli.expect_exact("| id |")
     cli.expect_exact("+====+")
     cli.expect_exact("| 1  |")
     cli.expect_exact("+----+")
     cli.expect_exact("(1 rows)")
+
+    cli.sendline("DROP    TAB LE\tids;")
+    cli.expect_exact("SqlUnrecognizedSyntax: rule parsing error:  --> 1:1")
 
     # client doesn't send query until delimiter
     cli.sendline("invalid query")
@@ -416,19 +420,6 @@ def test_input_with_custom_delimiter(cluster: Cluster):
     cli.expect_exact("0")
     cli.expect_exact("0")
 
-    # reset delimiter works --
-    cli.sendline("\\set delimiter default;")
-    cli.expect_exact("Delimiter changed to default")
-
-    # ensure that delimiter resets to default - parsed only first statement `create table`
-    # which is created
-    cli.sendline(
-        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
-        "INSERT INTO ids VALUES(1);"
-        "SELECT * FROM ids;"
-    )
-
-    cli.expect_exact("0")
     cli.expect_exact("picodata>")
 
 
@@ -437,8 +428,6 @@ def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
     data = subprocess.check_output(
         [cluster.binary_path, "admin", f"{instance.data_dir}/admin.sock"],
         input=b"""\
-\\set delimiter ;
-
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
         DISTRIBUTED BY (id);
@@ -456,7 +445,6 @@ SELECT * FROM ids;
         == f"""\
 Connected to admin console by socket path "{instance.data_dir}/admin.sock"
 type '\\help' for interactive help
-Delimiter changed to ';'
 1
 1
 +----+
@@ -468,6 +456,75 @@ Delimiter changed to ';'
 Bye
 """.encode()
     )
+
+
+def test_cat_file_to_picodata_connect_stdin(cluster: Cluster):
+    i1 = cluster.add_instance()
+
+    data = subprocess.check_output(
+        [cluster.binary_path, "admin", f"{i1.data_dir}/admin.sock"],
+        input=b"""\
+CREATE USER "alice" WITH PASSWORD 'T0psecret';
+GRANT CREATE TABLE TO "alice";
+""",
+    )
+
+    assert (
+        data
+        == f"""\
+Connected to admin console by socket path "{i1.data_dir}/admin.sock"
+type '\\help' for interactive help
+1
+1
+Bye
+""".encode()
+    )
+
+    cli = pexpect.spawn(
+        command=i1.binary_path,
+        args=["connect", f"{i1.host}:{i1.port}", "-u", "alice"],
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+    cli.logfile = sys.stdout
+
+    cli.expect_exact("Enter password for alice: ")
+    cli.sendline("T0psecret")
+    cli.expect_exact(
+        f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user'
+    )
+    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("picodata> ")
+
+    cli.sendline(
+        "CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id)) USING MEMTX DISTRIBUTED BY (id);"
+        "INSERT INTO ids VALUES(1);"
+        "INSERT INTO ids VALUES(11);"
+        "INSERT INTO ids VALUES(111);"
+        "INSERT INTO ids VALUES(1111);"
+        "DELETE FROM ids where id = 1;"
+        "DELETE FROM ids where id = 11;"
+        "DELETE FROM ids where id = 111;"
+        "DELETE FROM ids where id = 1111;"
+        "SELECT * FROM ids;"
+        "DROP TABLE ids OPTION (TIMEOUT = 3.0);"
+    )
+
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("1")
+    cli.expect_exact("+----+")
+    cli.expect_exact("| id |")
+    cli.expect_exact("+====+")
+    cli.expect_exact("+----+")
+    cli.expect_exact("(0 rows)")
+    cli.expect_exact("1")
 
 
 def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
