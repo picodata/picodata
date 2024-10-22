@@ -1,4 +1,4 @@
-use git_version::git_describe;
+use git_version::git_version;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::Write;
@@ -54,12 +54,13 @@ fn main() {
         println!("[{}:{}] {var}={value}", file!(), line!());
     }
 
-    // GIT_DESCRIBE defines picodata version.
-    if std::env::var("GIT_DESCRIBE").is_ok() {
-        // It's docker build, there is no .git folder, but the version was passed via env.
-    } else {
-        println!("cargo:rustc-env=GIT_DESCRIBE={}", git_describe!());
-    }
+    println!(
+        "cargo:rustc-env=GIT_DESCRIBE={}",
+        git_version!(
+            fallback = std::env::var("GIT_DESCRIBE")
+                .expect("Failed to get version from git and GIT_DESCRIBE env")
+        )
+    );
 
     // This variable controls the type of the build for whole project.
     // By default static linking is used (see tarantool-sys/static-build)
