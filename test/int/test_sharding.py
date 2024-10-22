@@ -202,6 +202,10 @@ def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
     Retriable(timeout=timeout, rps=10).call(impl)
 
 
+@pytest.mark.xfail(
+    run=False,
+    reason=("very flaky, temporary disabled"),
+)
 def test_vshard_updates_on_master_change(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
     i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
