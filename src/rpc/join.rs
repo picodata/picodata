@@ -1,6 +1,3 @@
-use std::collections::BTreeMap;
-use std::time::Duration;
-
 use crate::cas;
 use crate::failure_domain::FailureDomain;
 use crate::has_states;
@@ -16,7 +13,8 @@ use crate::tier::Tier;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
-
+use std::collections::HashSet;
+use std::time::Duration;
 use tarantool::fiber;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -154,14 +152,30 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 }
 
 pub fn build_instance(
-    instance_name: Option<&InstanceName>,
-    replicaset_name: Option<&ReplicasetName>,
+    requested_instance_name: Option<&InstanceName>,
+    requested_replicaset_name: Option<&ReplicasetName>,
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
     tier: &str,
 ) -> Result<Instance> {
-    if let Some(id) = instance_name {
-        if let Ok(existing_instance) = storage.instances.get(id) {
+    // NOTE: currently we don't ever remove entries from `_pico_instance` even
+    // when expelling instances. This makes it so we can get a unique raft_id by
+    // selecting max raft_id from _pico_instance and adding one. However in the
+    // future we may want to start deleting old instance records and at that
+    // point we may face a problem of this id not being unique (i.e. belonging
+    // to an instance). There doesn't seem to be any problems with this per se,
+    // as raft will not allow there to be a simultaneous raft_id conflict, but
+    // it's just a thing to look out for.
+    let raft_id = storage
+        .instances
+        .max_raft_id()
+        .expect("storage should not fail")
+        + 1;
+
+    // Resolve instance_name
+    let instance_name;
+    if let Some(name) = requested_instance_name {
+        if let Ok(existing_instance) = storage.instances.get(name) {
             let is_expelled = has_states!(existing_instance, Expelled -> *);
             if is_expelled {
                 // The instance was expelled explicitly, it's ok to replace it
@@ -173,10 +187,15 @@ pub fn build_instance(
                 // joined it has both states Offline, which means it may be
                 // replaced by another one of the name before it sends a request
                 // for self activation.
-                return Err(Error::other(format!("`{id}` is already joined")));
+                return Err(Error::other(format!("`{name}` is already joined")));
             }
         }
+        instance_name = name.clone();
+    } else {
+        instance_name = choose_instance_name(raft_id, storage);
     }
+
+    // Check tier exists
     let Some(tier) = storage
         .tiers
         .by_name(tier)
@@ -185,40 +204,54 @@ pub fn build_instance(
         return Err(Error::other(format!(r#"tier "{tier}" doesn't exist"#)));
     };
 
+    // Check failure domain constraints
     let existing_fds = storage
         .instances
         .failure_domain_names()
         .expect("storage should not fail");
     failure_domain.check(&existing_fds)?;
 
-    // Anyway, `join` always produces a new raft_id.
-    let raft_id = storage
-        .instances
-        .max_raft_id()
-        .expect("storage should not fail")
-        + 1;
-    let instance_name = instance_name
-        .cloned()
-        .unwrap_or_else(|| choose_instance_name(raft_id, storage));
-    let replicaset_name = match replicaset_name {
-        Some(replicaset_name) =>
-        // FIXME: must make sure the replicaset is not Expelled or ToBeExpelled
-        {
-            replicaset_name.clone()
-        }
-        None => choose_replicaset_name(failure_domain, storage, &tier)?,
-    };
-
-    let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+    //
+    // Resolve replicaset
+    //
+    let replicaset_name;
     let replicaset_uuid;
-    if let Some(replicaset) = storage.replicasets.get(&replicaset_name)? {
-        if replicaset.tier != tier.name {
-            return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {replicaset_name} is from tier: '{}'", tier.name, replicaset.tier)));
+    if let Some(requested_replicaset_name) = requested_replicaset_name {
+        let replicaset = storage.replicasets.get(requested_replicaset_name)?;
+        if let Some(replicaset) = replicaset {
+            if replicaset.tier != tier.name {
+                return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {requested_replicaset_name} is from tier: '{}'", tier.name, replicaset.tier)));
+            }
+
+            // FIXME: must make sure the replicaset is not Expelled or ToBeExpelled
+            // FIXME: must make sure the replicaset's tier is correct
+
+            // Join instance to existing replicaset
+            replicaset_name = requested_replicaset_name.clone();
+            replicaset_uuid = replicaset.uuid;
+        } else {
+            // Create a new replicaset
+            replicaset_name = requested_replicaset_name.clone();
+            replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
         }
-        replicaset_uuid = replicaset.uuid;
     } else {
-        replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+        let res = choose_replicaset(failure_domain, storage, &tier)?;
+        match res {
+            Ok(replicaset) => {
+                // Join instance to existing replicaset
+                replicaset_name = replicaset.name;
+                replicaset_uuid = replicaset.uuid;
+            }
+            Err(new_replicaset_name) => {
+                // Create a new replicaset
+                replicaset_name = new_replicaset_name;
+                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+            }
+        }
     }
+
+    // Generate a unique instance_uuid
+    let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
 
     Ok(Instance {
         raft_id,
@@ -256,57 +289,90 @@ fn choose_instance_name(raft_id: RaftId, storage: &Clusterwide) -> InstanceName 
     }
 }
 
-/// Choose a [`ReplicasetName`] for a new instance given its `failure_domain` and `tier`.
+/// Choose a replicaset for the new instance based on `failure_domain`, `tier`
+/// and the list of avaliable replicasets and instances in them.
 /// FIXME: a couple of problems:
 /// - expelled instances are errouneosly counted towards replication factor
 /// - must ignore replicasets with state ToBeExpelled & Expelled
-fn choose_replicaset_name(
+fn choose_replicaset(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
-    Tier {
-        replication_factor,
-        name: tier_name,
-        ..
-    }: &Tier,
-) -> Result<ReplicasetName> {
-    // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.
+    tier: &Tier,
+) -> Result<Result<Replicaset, ReplicasetName>> {
+    let replication_factor = tier.replication_factor as _;
+
+    // The list of candidate replicasets for the new instance
+    let mut replicasets = vec![];
+    // The list of ids of all replicasets in the cluster
+    let mut all_replicasets = HashSet::new();
+
+    for replicaset in storage.replicasets.iter()? {
+        all_replicasets.insert(replicaset.name.clone());
+
+        // TODO: skip expelled replicasets
+        if replicaset.tier != tier.name {
+            continue;
+        }
+
+        replicasets.push(SomeInfoAboutReplicaset {
+            replicaset,
+            instances: vec![],
+        });
+    }
+    // We sort the array so that we get a determenistic order of instance addition to replicasets.
     // E.g. if both "r1" and "r2" are suitable, "r1" will always be prefered.
-    let mut replicasets: BTreeMap<_, Vec<_>> = BTreeMap::new();
-    let replication_factor = (*replication_factor).into();
+    // NOTE: can't use `sort_unstable_by_key` because of borrow checker, yay rust!
+    replicasets.sort_unstable_by(|lhs, rhs| lhs.replicaset.name.cmp(&rhs.replicaset.name));
+
     for instance in storage
         .instances
         .all_instances()
         .expect("storage should not fail")
         .into_iter()
     {
-        replicasets
-            .entry(instance.replicaset_name.clone())
-            .or_default()
-            .push(instance);
-    }
-    'next_replicaset: for (replicaset_name, instances) in replicasets.iter() {
-        if instances.len() < replication_factor
-            && instances
-                .first()
-                .expect("should not fail, each replicaset consists of at least one instance")
-                .tier
-                == *tier_name
-        {
-            for instance in instances {
-                if instance.failure_domain.intersects(failure_domain) {
-                    continue 'next_replicaset;
-                }
-            }
-            return Ok(replicaset_name.clone());
+        if instance.tier != tier.name {
+            continue;
         }
+
+        // TODO: skip expelled instances
+        let index =
+            replicasets.binary_search_by_key(&&instance.replicaset_name, |i| &i.replicaset.name);
+        let index = index.expect("replicaset entries should be present for each instance");
+        replicasets[index].instances.push(instance);
+    }
+
+    'next_replicaset: for info in &replicasets {
+        // TODO: skip replicasets with state ToBeExpelled & Expelled
+
+        if info.instances.len() >= replication_factor {
+            continue 'next_replicaset;
+        }
+
+        for instance in &info.instances {
+            if instance.failure_domain.intersects(failure_domain) {
+                continue 'next_replicaset;
+            }
+        }
+
+        return Ok(Ok(info.replicaset.clone()));
     }
 
     let mut i = 0u64;
     loop {
         i += 1;
         let replicaset_name = ReplicasetName(format!("r{i}"));
-        if !replicasets.contains_key(&replicaset_name) {
-            return Ok(replicaset_name);
+        if !all_replicasets.contains(&replicaset_name) {
+            // Not found, hence id is ok
+            return Ok(Err(replicaset_name));
         }
+    }
+
+    struct SomeInfoAboutReplicaset {
+        replicaset: Replicaset,
+        instances: Vec<Instance>,
+    }
+
+    fn key_replicaset_name(info: &SomeInfoAboutReplicaset) -> &ReplicasetName {
+        &info.replicaset.name
     }
 }
