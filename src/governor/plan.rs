@@ -173,14 +173,20 @@ pub(super) fn action_plan<'i>(
         let mut targets = Vec::new();
         let mut replicaset_peers = Vec::new();
         for instance in instances {
+            if has_states!(instance, Expelled -> *) {
+                continue;
+            }
+
             if instance.replicaset_name != replicaset_name {
                 continue;
             }
+
             if let Some(address) = peer_addresses.get(&instance.raft_id) {
                 replicaset_peers.push(address.clone());
             } else {
                 warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`", instance.name);
             }
+
             if instance.may_respond() {
                 targets.push(&instance.name);
             }
@@ -1234,6 +1240,10 @@ fn get_replicaset_state_change<'i>(
     let mut replicaset_sizes = HashMap::new();
     for instance in maybe_responding(instances) {
         let instance_name = &instance.name;
+        if has_states!(instance, Expelled -> *) {
+            continue;
+        }
+
         let replicaset_name = &instance.replicaset_name;
         let tier = &instance.tier;
 

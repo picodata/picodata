@@ -1309,6 +1309,13 @@ class Instance:
             assert isinstance(myself["name"], str)
             self.name = myself["name"]
 
+            replicaset_id = myself["replicaset_id"]
+            assert isinstance(replicaset_id, str)
+            if self.replicaset_id is not None:
+                assert self.replicaset_id == replicaset_id
+            else:
+                self.replicaset_id = replicaset_id
+
             assert isinstance(myself["current_state"], dict)
             return (
                 myself["current_state"]["variant"],

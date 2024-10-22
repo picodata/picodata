@@ -94,7 +94,10 @@ impl Instance {
         // If instance is going offline ugracefully it will likely not respond
         has_states!(self, * -> not Offline) &&
         // If instance has already been expelled it will definitely not respond
-        has_states!(self, not Expelled -> *)
+        has_states!(self, not Expelled -> *) &&
+        // If instance is currently offline and is being expelled, the above
+        // rules don't work, but the instance is definitely not going to respond
+        !has_states!(self, Offline -> Expelled)
     }
 
     #[inline]

@@ -137,3 +137,33 @@ def test_expel_timeout(cluster: Cluster):
 
     cli.expect_exact("CRITICAL: connect timeout")
     cli.expect_exact(pexpect.EOF)
+
+
+def test_join_replicaset_after_expel(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        storage:
+            replication_factor: 2
+"""
+    )
+    cluster.set_service_password("secret")
+
+    # Deploy a cluster with at least one full replicaset
+    i1 = cluster.add_instance(wait_online=True, tier="storage")
+    assert i1.replicaset_id == "r1"
+    i2 = cluster.add_instance(wait_online=True, tier="storage")
+    assert i2.replicaset_id == "r1"
+    i3 = cluster.add_instance(wait_online=True, tier="storage")
+    assert i3.replicaset_id == "r2"
+
+    # Expel one of the replicas in the full replicaset, wait until the change is finalized
+    counter = i1.governor_step_counter()
+    cluster.expel(i2, peer=i1)
+    i1.wait_governor_status("idle", old_step_counter=counter)
+
+    # Add another instance, it should be assigned to the no longer filled replicaset
+    i4 = cluster.add_instance(wait_online=True, tier="storage")
+    assert i4.replicaset_id == "r1"

@@ -133,13 +133,14 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         // A joined instance needs to communicate with other nodes.
         // TODO: limit the number of entries sent to reduce response size.
         let peer_addresses = node.storage.peer_addresses.iter()?.collect();
-        let mut replication_addresses = storage.peer_addresses.addresses_by_ids(
-            storage
-                .instances
-                .replicaset_instances(&instance.replicaset_name)
-                .expect("storage should not fail")
-                .map(|i| i.raft_id),
-        )?;
+        let replicas = storage
+            .instances
+            .replicaset_instances(&instance.replicaset_name)
+            .expect("storage should not fail")
+            // Ignore expelled instances
+            .filter(|i| !has_states!(i, Expelled -> *))
+            .map(|i| i.raft_id);
+        let mut replication_addresses = storage.peer_addresses.addresses_by_ids(replicas)?;
         replication_addresses.insert(req.advertise_address.clone());
 
         drop(guard);
@@ -334,7 +335,11 @@ fn choose_replicaset(
             continue;
         }
 
-        // TODO: skip expelled instances
+        if has_states!(instance, Expelled -> *) {
+            // Expelled instances are ignored
+            continue;
+        }
+
         let index =
             replicasets.binary_search_by_key(&&instance.replicaset_name, |i| &i.replicaset.name);
         let index = index.expect("replicaset entries should be present for each instance");
