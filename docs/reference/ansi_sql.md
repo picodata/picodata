@@ -197,7 +197,7 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">E021-08</span></td>
+            <td class="center"><span class="full">E021-08</span></td>
             <td>Функции UPPER и LOWER</td>
             <td class="td3 center"></td>
             <td></td>
@@ -331,13 +331,13 @@ td.td3 ul {
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">E061-04</span></td>
+            <td class="center"><span class="full">E061-04</span></td>
             <td>Предикат LIKE</td>
             <td class="td3 center"></td>
             <td></td>
         </tr>
         <tr>
-            <td class="center"><span class="absent">E061-05</span></td>
+            <td class="center"><span class="full">E061-05</span></td>
             <td>Предикат LIKE: предложение ESCAPE</td>
             <td class="td3 center"></td>
             <td></td>
@@ -1198,6 +1198,12 @@ td.td3 ul {
             <td class="center"><span class="full">—</span></td>
             <td>CURRENT_DATE</td>
             <td class="td3 center">CURRENT_DATE</td>
+            <td></td>
+        </tr>
+        <tr>
+            <td class="center"><span class="full">—</span></td>
+            <td>ILIKE</td>
+            <td class="td3 center">[ILIKE](sql/ilike.md)</td>
             <td></td>
         </tr>
     </tbody>
