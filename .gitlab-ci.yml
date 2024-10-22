@@ -77,7 +77,6 @@ variables:
 
   - &else {}
 
-  
 .base_cache: &base_cache
   paths:
     - .cargo/
@@ -146,7 +145,6 @@ build-base-image:
       ./tools/get_tags.py . tarantool-sys tarantool-sys/third_party/luajit
       ci-log-section end "fetch-submodule-tags"
 
-
 .parallel:
   parallel:
     matrix:
@@ -155,12 +153,11 @@ build-base-image:
       - BUILD_PROFILE: dev
         TARGET: debug
 
-.pipenv-install:
-    &pipenv-install |
-      # Pipenv install
-      ci-log-section start "pipenv-install" Installing pip dependencies ...
-      PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-      ci-log-section end "pipenv-install"
+.pipenv-install: &pipenv-install |
+  # Pipenv install
+  ci-log-section start "pipenv-install" Installing pip dependencies ...
+  PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+  ci-log-section end "pipenv-install"
 
 test-linux:
   extends:
@@ -327,6 +324,7 @@ test-patch-picodata:
 
     - cargo build --locked --release --features dynamic_build
     - cargo build -p testplug --release
+    - cargo build -p plug_wrong_version --release
     - cargo build -p gostech-audit-log --release
     - cargo test --locked --release --features dynamic_build
     - cargo build --features webui,error_injection --locked --release --features dynamic_build
@@ -390,7 +388,7 @@ test-mac-m1:
     - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
       when: on_success
       variables:
-        PUSH_DOCKER: ""      
+        PUSH_DOCKER: ""
     - when: manual
       allow_failure: true
 
