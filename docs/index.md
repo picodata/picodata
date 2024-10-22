@@ -49,6 +49,7 @@ Picodata — это распределенная система промышле
 
 #### Разработка приложений {: #app_development }
 
+* [Создание плагина](tutorial/create_plugin.md)
 * [Управление плагинами](tutorial/plugins.md)
 * [Использование внешних коннекторов к Picodata](connectors_index.md)
 

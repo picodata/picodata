@@ -51,6 +51,7 @@ nav:
       - tutorial/ldap.md
       - tutorial/audit_log.md
     - Разработка приложений:
+      - tutorial/create_plugin.md
       - tutorial/plugins.md
       - Внешние коннекторы:
         - Оглавление: connectors_index.md
