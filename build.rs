@@ -57,6 +57,7 @@ fn main() {
     println!(
         "cargo:rustc-env=GIT_DESCRIBE={}",
         git_version!(
+            args = [], // disable --always flag
             fallback = std::env::var("GIT_DESCRIBE")
                 .expect("Failed to get version from git and GIT_DESCRIBE env")
         )
