@@ -121,3 +121,20 @@ members = [
     "test/testplug",
     "test/plug_wrong_version",
 ]
+
+# For releases, we prioritize performance over compilation time.
+# As demonstrated in https://git.picodata.io/picodata/picodata/picodata/-/issues/1026#note_107222,
+# these options can result in a performance improvement of 16.89%.
+# However, it dramatically increases compilation time, so in CI on non-master
+# branches a faster profile is used - fast-release.
+[profile.release]
+debug = 1
+lto = "fat"
+codegen-units = 1
+
+# A faster release build that is used in CI on non-master branches.
+[profile.fast-release]
+inherits = "release"
+debug = "line-tables-only"
+lto = "off"
+codegen-units = 64

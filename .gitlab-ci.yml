@@ -147,11 +147,25 @@ build-base-image:
       ./tools/get_tags.py
       ci-log-section end "fetch-submodule-tags"
 
+  # By default "fast-release" profile is used, because of its faster
+  # compilation time compared to the "release" profile, which includes
+  # additional optimizations.
+  # The actual "release" profile is only used when running on master branch.
+  rules:
+  - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+    variables:
+      RELEASE_PROFILE: &release-profile "release"
+      RELEASE_TARGET: &release-target "release"
+  - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+    variables:
+      RELEASE_PROFILE: &release-profile "fast-release"
+      RELEASE_TARGET: &release-target "fast-release"
+
 .parallel:
   parallel:
     matrix:
-      - BUILD_PROFILE: release
-        TARGET: release
+      - BUILD_PROFILE: *release-profile
+        TARGET: *release-target
       - BUILD_PROFILE: dev
         TARGET: debug
 
