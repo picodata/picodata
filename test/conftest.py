@@ -1455,7 +1455,7 @@ class Instance:
         expected_status: str,
         old_step_counter: int | None = None,
         timeout: int | float = 10,
-    ):
+    ) -> int:
         assert expected_status != "not a leader", "use another function"
 
         def impl():
@@ -1464,12 +1464,15 @@ class Instance:
             if actual_status == "not a leader":
                 raise NotALeader("not a leader")
 
+            step_counter = info["governor_step_counter"]
             if old_step_counter:
-                assert old_step_counter != info["governor_step_counter"]
+                assert old_step_counter != step_counter
 
             assert actual_status == expected_status
 
-        Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
+            return step_counter
+
+        return Retriable(timeout=timeout, rps=1, fatal=NotALeader).call(impl)
 
     def promote_or_fail(self):
         attempt = 0
