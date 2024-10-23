@@ -9,6 +9,7 @@ use crate::replicaset::Replicaset;
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::tier::Tier;
+use crate::tlog;
 use crate::traft::op::{Dml, Op};
 use crate::traft::Result;
 use crate::traft::{error::Error, node};
@@ -35,8 +36,11 @@ crate::define_rpc_request! {
     /// with an error that cannot be retried.
     fn proc_update_instance(req: Request) -> Result<Response> {
         if req.current_state.is_some() {
-           return Err(Error::Other("Changing current state through Proc API is not allowed.".into()));
+            tlog!(Warning, "invalid request to update current state: {req:?}");
+            return Err(Error::Other("Changing current state through Proc API is not allowed.".into()));
         }
+
+        tlog!(Debug, "got update instance request: {req:?}");
         handle_update_instance_request_and_wait(req, TIMEOUT)?;
         Ok(Response {})
     }

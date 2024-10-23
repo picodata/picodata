@@ -10,6 +10,7 @@ use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::storage::{Clusterwide, ToEntryIter as _};
 use crate::tier::Tier;
+use crate::tlog;
 use crate::traft::op::{Dml, Op};
 use crate::traft::{self, RaftId};
 use crate::traft::{error::Error, node, Address, PeerAddress, Result};
@@ -33,7 +34,10 @@ crate::define_rpc_request! {
     /// 4. Compare and swap request to commit new instance and its address failed
     /// with an error that cannot be retried.
     fn proc_raft_join(req: Request) -> Result<Response> {
-        handle_join_request_and_wait(req, TIMEOUT)
+        let res = handle_join_request_and_wait(req, TIMEOUT)?;
+
+        tlog!(Info, "new instance joined the cluster: {:?}", res.instance);
+        Ok(res)
     }
 
     /// Request to join the cluster.
