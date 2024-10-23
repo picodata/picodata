@@ -145,25 +145,87 @@ def test_join_replicaset_after_expel(cluster: Cluster):
 cluster:
     name: test
     tier:
+        raft:
+            replication_factor: 1
         storage:
             replication_factor: 2
 """
     )
     cluster.set_service_password("secret")
 
+    [leader] = cluster.deploy(instance_count=1, tier="raft")
+
     # Deploy a cluster with at least one full replicaset
-    i1 = cluster.add_instance(wait_online=True, tier="storage")
-    assert i1.replicaset_id == "r1"
-    i2 = cluster.add_instance(wait_online=True, tier="storage")
-    assert i2.replicaset_id == "r1"
-    i3 = cluster.add_instance(wait_online=True, tier="storage")
-    assert i3.replicaset_id == "r2"
+    storage1 = cluster.add_instance(name="storage1", wait_online=True, tier="storage")
+    assert storage1.replicaset_name == "r2"
+    storage2 = cluster.add_instance(name="storage2", wait_online=True, tier="storage")
+    assert storage2.replicaset_name == "r2"
+    storage3 = cluster.add_instance(name="storage3", wait_online=True, tier="storage")
+    assert storage3.replicaset_name == "r3"
 
     # Expel one of the replicas in the full replicaset, wait until the change is finalized
-    counter = i1.governor_step_counter()
-    cluster.expel(i2, peer=i1)
-    i1.wait_governor_status("idle", old_step_counter=counter)
+    counter = leader.governor_step_counter()
+    cluster.expel(storage2, peer=leader)
+    leader.wait_governor_status("idle", old_step_counter=counter)
 
     # Add another instance, it should be assigned to the no longer filled replicaset
-    i4 = cluster.add_instance(wait_online=True, tier="storage")
-    assert i4.replicaset_id == "r1"
+    storage4 = cluster.add_instance(name="storage4", wait_online=True, tier="storage")
+    assert storage4.replicaset_name == "r2"
+
+    # Attempt to expel an offline replicaset
+    storage3.terminate()
+    cluster.expel(storage3, peer=leader)
+
+    # Offline replicasets aren't allowed to be expelled,
+    # so the cluster is blocked attempting to rebalance
+    counter = leader.wait_governor_status("transfer buckets from replicaset")
+
+    # The replicaset is in progress of being expelled
+    [[r3_state, r3_old_uuid]] = leader.sql(
+        """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'r3' """
+    )
+    assert r3_state == "to-be-expelled"
+
+    # Add another instance
+    storage5 = cluster.add_instance(name="storage5", tier="storage", wait_online=False)
+    storage5.start()
+
+    # NOTE: wait_online doesn't work because bucket rebalancing has higher priortiy
+    leader.wait_governor_status(
+        "transfer buckets from replicaset", old_step_counter=counter
+    )
+
+    # Update the fields on the object
+    storage5.instance_info()
+    # Instance is added to a new replicaset because 'r3' is not yet avaliable
+    assert storage5.replicaset_name == "r4"
+
+    # Try adding an instance to 'r3' directly, which is not allowed
+    storage6 = cluster.add_instance(
+        name="storage6", replicaset_name="r3", tier="storage", wait_online=False
+    )
+    lc = log_crawler(storage6, "cannot join replicaset which is being expelled")
+    storage6.fail_to_start()
+    lc.wait_matched()
+
+    # Wake up the instance expelled instance so that replicaset is finally expelled
+    storage3.start()
+
+    # The buckets are finally able to be rebalanced
+    leader.wait_governor_status("idle")
+
+    # The replicaset is finally expelled
+    [[r3_state]] = leader.sql(
+        """ SELECT state FROM _pico_replicaset WHERE name = 'r3' """
+    )
+    assert r3_state == "expelled"
+
+    # Now it's ok to reuse the 'r3' replicaset name, but it will be a different replicaset
+    cluster.add_instance(replicaset_name="r3", tier="storage", wait_online=True)
+
+    # The new replicaset is created
+    [[r3_state, r3_new_uuid]] = leader.sql(
+        """ SELECT state, "uuid" FROM _pico_replicaset WHERE name = 'r3' """
+    )
+    assert r3_state != "expelled"
+    assert r3_old_uuid != r3_new_uuid

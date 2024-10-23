@@ -6,6 +6,7 @@ use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceName};
 use crate::replicaset::Replicaset;
 use crate::replicaset::ReplicasetName;
+use crate::replicaset::ReplicasetState;
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::storage::{Clusterwide, ToEntryIter as _};
@@ -105,14 +106,18 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 .expect("encoding should not fail"),
         );
 
-        if storage
-            .replicasets
-            .get(&instance.replicaset_name)?
-            .is_none()
-        {
+        let res = storage.replicasets.by_uuid_raw(&instance.replicaset_uuid);
+        if let Err(Error::NoSuchReplicaset { .. }) = res {
             let replicaset = Replicaset::with_one_instance(&instance);
             ops.push(
-                Dml::insert(ClusterwideTable::Replicaset, &replicaset, ADMIN_ID)
+                // NOTE: we use replace instead of insert, because at the
+                // moment primary key in _pico_replicaset is the replicaset_name (name),
+                // but in here we may be creating a new replicaset with
+                // the name of a previously expelled replicaset.
+                // The new replicaset will have a new unique uuid, so once we
+                // make the uuid the primary key, we can switch back to using
+                // insert here.
+                Dml::replace(ClusterwideTable::Replicaset, &replicaset, ADMIN_ID)
                     .expect("encoding should not fail"),
             );
         }
@@ -223,21 +228,27 @@ pub fn build_instance(
     let replicaset_uuid;
     if let Some(requested_replicaset_name) = requested_replicaset_name {
         let replicaset = storage.replicasets.get(requested_replicaset_name)?;
-        if let Some(replicaset) = replicaset {
-            if replicaset.tier != tier.name {
-                return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {requested_replicaset_name} is from tier: '{}'", tier.name, replicaset.tier)));
+        match replicaset {
+            Some(replicaset) if replicaset.state != ReplicasetState::Expelled => {
+                if replicaset.tier != tier.name {
+                    return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {requested_replicaset_name} is from tier: '{}'", tier.name, replicaset.tier)));
+                }
+
+                if replicaset.state == ReplicasetState::ToBeExpelled {
+                    #[rustfmt::skip]
+                    return Err(Error::other("cannot join replicaset which is being expelled"));
+                }
+
+                // Join instance to existing replicaset
+                replicaset_name = requested_replicaset_name.clone();
+                replicaset_uuid = replicaset.uuid;
             }
-
-            // FIXME: must make sure the replicaset is not Expelled or ToBeExpelled
-            // FIXME: must make sure the replicaset's tier is correct
-
-            // Join instance to existing replicaset
-            replicaset_name = requested_replicaset_name.clone();
-            replicaset_uuid = replicaset.uuid;
-        } else {
-            // Create a new replicaset
-            replicaset_name = requested_replicaset_name.clone();
-            replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+            // Replicaset doesn't exist or was expelled
+            _ => {
+                // Create a new replicaset
+                replicaset_name = requested_replicaset_name.clone();
+                replicaset_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
+            }
         }
     } else {
         let res = choose_replicaset(failure_domain, storage, &tier)?;
@@ -296,9 +307,6 @@ fn choose_instance_name(raft_id: RaftId, storage: &Clusterwide) -> InstanceName 
 
 /// Choose a replicaset for the new instance based on `failure_domain`, `tier`
 /// and the list of avaliable replicasets and instances in them.
-/// FIXME: a couple of problems:
-/// - expelled instances are errouneosly counted towards replication factor
-/// - must ignore replicasets with state ToBeExpelled & Expelled
 fn choose_replicaset(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
@@ -314,8 +322,18 @@ fn choose_replicaset(
     for replicaset in storage.replicasets.iter()? {
         all_replicasets.insert(replicaset.name.clone());
 
-        // TODO: skip expelled replicasets
         if replicaset.tier != tier.name {
+            continue;
+        }
+
+        if replicaset.state == ReplicasetState::ToBeExpelled {
+            continue;
+        }
+
+        if replicaset.state == ReplicasetState::Expelled {
+            // NOTE: we could allow atomatically reusing old expelled
+            // replicasets, i.e. reusing the name but generating a new uuid, but
+            // it's not clear why would we do this..
             continue;
         }
 
@@ -346,7 +364,13 @@ fn choose_replicaset(
 
         let index =
             replicasets.binary_search_by_key(&&instance.replicaset_name, |i| &i.replicaset.name);
-        let index = index.expect("replicaset entries should be present for each instance");
+        let Ok(index) = index else {
+            debug_assert!(all_replicasets.contains(&instance.replicaset_name));
+            // Replicaset is skipped for some reason, so this instance's info is
+            // not going to be used
+            continue;
+        };
+
         replicasets[index].instances.push(instance);
     }
 
@@ -379,9 +403,5 @@ fn choose_replicaset(
     struct SomeInfoAboutReplicaset {
         replicaset: Replicaset,
         instances: Vec<Instance>,
-    }
-
-    fn key_replicaset_name(info: &SomeInfoAboutReplicaset) -> &ReplicasetName {
-        &info.replicaset.name
     }
 }

@@ -1278,6 +1278,25 @@ class Instance:
             # Make it so we can call Instance.start later
             self.process = None
 
+    def instance_info(self, timeout: int | float = 10) -> dict[str, Any]:
+        """Call .proc_instance_info on the instance
+        and update the related properties on this object.
+        """
+
+        info = self.call(".proc_instance_info", timeout=timeout)
+        assert isinstance(info, dict)
+
+        assert isinstance(info["raft_id"], int)
+        self.raft_id = info["raft_id"]
+
+        assert isinstance(info["name"], str)
+        self.name = info["name"]
+
+        assert isinstance(info["replicaset_name"], str)
+        self.replicaset_name = info["replicaset_name"]
+
+        return info
+
     def wait_online(
         self, timeout: int | float = 30, rps: int | float = 5, expected_incarnation=None
     ):
@@ -1298,23 +1317,7 @@ class Instance:
             raise ProcessDead("process was not started")
 
         def fetch_current_state() -> Tuple[str, int]:
-            self.check_process_alive()
-
-            myself = self.call(".proc_instance_info")
-            assert isinstance(myself, dict)
-
-            assert isinstance(myself["raft_id"], int)
-            self.raft_id = myself["raft_id"]
-
-            assert isinstance(myself["name"], str)
-            self.name = myself["name"]
-
-            replicaset_id = myself["replicaset_id"]
-            assert isinstance(replicaset_id, str)
-            if self.replicaset_id is not None:
-                assert self.replicaset_id == replicaset_id
-            else:
-                self.replicaset_id = replicaset_id
+            myself = self.instance_info()
 
             assert isinstance(myself["current_state"], dict)
             return (
