@@ -207,14 +207,20 @@ pub(super) fn action_plan<'i>(
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
         let replication_config_version_actualize = cas;
 
-        return Ok(ConfigureReplication {
-            replicaset_name,
-            targets,
-            master_name,
-            replicaset_peers,
-            replication_config_version_actualize,
+        if !targets.is_empty() {
+            return Ok(ConfigureReplication {
+                replicaset_name,
+                targets,
+                master_name,
+                replicaset_peers,
+                replication_config_version_actualize,
+            }
+            .into());
+        } else {
+            #[rustfmt::skip]
+            tlog!(Warning, "all replicas in {replicaset_name} are offline, skipping replication configuration");
+            // Fall through, look for other things to do
         }
-        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
