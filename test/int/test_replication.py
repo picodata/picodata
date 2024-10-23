@@ -1,6 +1,3 @@
-# TODO: get rid of funcy, use Retriable instead
-import funcy  # type: ignore
-import pytest
 import time
 
 from conftest import (
@@ -10,23 +7,19 @@ from conftest import (
 )
 
 
-@pytest.fixture
-def cluster3(cluster: Cluster):
-    cluster.deploy(instance_count=3, init_replication_factor=3)
-    return cluster
-
-
-@funcy.retry(tries=60, timeout=0.2)
 def wait_vclock(i: Instance, vclock_expected: dict[int, int]):
-    vclock_actual = i.eval("return box.info.vclock")
-    del vclock_actual[0]
-    for k, v_exp in vclock_expected.items():
-        assert (k, vclock_actual[k]) >= (k, v_exp)
+    def check_vclock():
+        vclock_actual = i.eval("return box.info.vclock")
+        del vclock_actual[0]
+        for k, v_exp in vclock_expected.items():
+            assert (k, vclock_actual[k]) >= (k, v_exp)
+
+    Retriable(timeout=30).call(check_vclock)
 
 
 # fmt: off
-def test_2_of_3_writable(cluster3: Cluster):
-    i1, i2, i3 = cluster3.instances
+def test_2_of_3_writable(cluster: Cluster):
+    i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=3)
 
     master_name = i1.replicaset_master_name()
     assert i2.replicaset_master_name() == master_name
@@ -110,12 +103,11 @@ def test_replication_works(cluster: Cluster):
     i2.wait_online()
     i3.wait_online()
 
-    @funcy.retry(tries=10, timeout=0.5)
-    def wait_replicas_joined(i: Instance, n: int):
+    def check_replicas_joined(i: Instance, n: int):
         assert len(i.call("box.info")["replication"]) == n
 
-    wait_replicas_joined(i2, 2)
-    wait_replicas_joined(i3, 2)
+    Retriable().call(lambda: check_replicas_joined(i2, 2))
+    Retriable().call(lambda: check_replicas_joined(i3, 2))
 
 
 def test_master_auto_switchover(cluster: Cluster):
