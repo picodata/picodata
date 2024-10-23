@@ -362,3 +362,71 @@ def test_expel_blocked_by_replicaset_master_switchover_to_offline_replica(
     # i5 is also synchronized
     rows = i5.sql(""" SELECT * FROM mytable ORDER BY id """)
     assert rows == [[0, "foo"], [1, "bar"], [2, "baz"]]
+
+
+def test_offline_replicaset(cluster: Cluster):
+    cluster.set_config_file(
+        yaml="""
+cluster:
+    name: test
+    tier:
+        raft:
+            replication_factor: 1
+            can_vote: true
+        storage:
+            replication_factor: 2
+            can_vote: false
+"""
+    )
+    [raft1, raft2, raft3] = cluster.deploy(instance_count=3, tier="raft")
+    raft1.promote_or_fail()
+
+    storage1 = cluster.add_instance(wait_online=False, tier="storage")
+    storage2 = cluster.add_instance(wait_online=False, tier="storage")
+    cluster.wait_online()
+
+    counter = raft1.wait_governor_status("idle")
+
+    assert storage1.replicaset_name == storage2.replicaset_name
+
+    # Terminate the whole replicaset
+    # NOTE: order of instance termination is reversed just to win some time
+    # because master switchover is skipped, the other way round will also work fine
+    storage2.terminate()
+    storage1.terminate()
+
+    # Make sure governor is not blocked by an offline replicaset
+    raft1.wait_governor_status("idle", old_step_counter=counter)
+
+    # Try adding a new instance
+    storage3 = cluster.add_instance(wait_online=False, tier="storage")
+    storage3.start()
+
+    # Governor is blocked on the sharding configuration because there's only
+    # one replicaset with non-zero weight and it's currently fully offline.
+    # This means that all buckets are currently on the offline instances.
+    # XXX There's probably something better we could do here, but for now this
+    # is what's happening
+    raft1.wait_governor_status("update current sharding configuration")
+
+    # The solution at the moment is to wake up one of the instances in that replicaset
+    storage1.start()
+
+    # Now adding an instance works fine
+    storage4 = cluster.add_instance(wait_online=True, tier="storage")
+    storage3.wait_online()
+    raft1.wait_governor_status("idle")
+
+    assert storage4.replicaset_name != storage1.replicaset_name
+    assert storage4.replicaset_name == storage3.replicaset_name
+
+    # Terminate the another whole replicaset
+    storage4.terminate()
+    storage3.terminate()
+
+    # This time the instances are added and become online just fine
+    storage5 = cluster.add_instance(wait_online=True, tier="storage")
+    storage6 = cluster.add_instance(wait_online=True, tier="storage")
+
+    assert storage5.replicaset_name != storage1.replicaset_name
+    assert storage5.replicaset_name == storage6.replicaset_name
