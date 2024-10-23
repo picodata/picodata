@@ -19,28 +19,19 @@ impl Thread {
     fn current() -> Self {
         Self {
             inner: thread::current(),
-            flag: Arc::new(AtomicBool::new(true)),
+            flag: Arc::new(AtomicBool::new(false)),
         }
     }
 
     fn park(&self) {
-        if self
-            .flag
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
-        {
+        if !self.flag.load(Ordering::Acquire) {
             thread::park();
-        };
+        }
     }
 
     fn unpark(&self) {
-        if self
-            .flag
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
-        {
-            self.inner.unpark();
-        };
+        self.flag.store(true, Ordering::Release);
+        self.inner.unpark();
     }
 }
 
