@@ -128,7 +128,7 @@ def test_benchmark_iproto_execute(instance: Instance, tmpdir, capsys, with_flame
 
     def sql_select():
         for i in range(select_amount):
-            conn.call(".proc_sql_dispatch", select_query, [], None, None)
+            conn.call(".proc_sql_dispatch", select_query, [])
 
     def execute_select():
         for i in range(select_amount):
@@ -157,7 +157,7 @@ def test_benchmark_iproto_execute(instance: Instance, tmpdir, capsys, with_flame
 
     def sql_update():
         for i in range(update_amount):
-            conn.call(".proc_sql_dispatch", update_query, [], None, None)
+            conn.call(".proc_sql_dispatch", update_query, [])
 
     def execute_update():
         for i in range(update_amount):

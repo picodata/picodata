@@ -326,7 +326,7 @@ extern "C" fn pico_ffi_sql_query(
         .map(|v| SBroadLuaValue::from(v).0)
         .collect();
 
-    let dispatch_result = sql::sql_dispatch(query, params, None, None);
+    let dispatch_result = sql::sql_dispatch(query, params);
     match dispatch_result {
         Ok(t) => {
             let ptr = t.as_ptr();

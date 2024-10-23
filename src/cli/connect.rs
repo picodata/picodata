@@ -247,15 +247,9 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
                 }
             }
             Command::Expression(line) => {
-                let response = ::tarantool::fiber::block_on(client.call(
-                    ".proc_sql_dispatch",
-                    &(
-                        line,
-                        Vec::<()>::new(),
-                        Option::<()>::None,
-                        Option::<()>::None,
-                    ),
-                ));
+                let response = ::tarantool::fiber::block_on(
+                    client.call(".proc_sql_dispatch", &(line, Vec::<()>::new())),
+                );
 
                 let res = match response {
                     Ok(tuple) => {

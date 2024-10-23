@@ -73,7 +73,6 @@ features = ["bytes", "with-bytes"]
 [dependencies.sbroad-core]
 version = "0.1"
 path = "sbroad/sbroad-core"
-features = ["tracing"]
 
 [dependencies.slog]
 version = "2.7.0"

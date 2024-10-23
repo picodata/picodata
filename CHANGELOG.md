@@ -58,6 +58,8 @@ with the `YY.MINOR.MICRO` scheme.
 - New rpc endpoint: `.proc_replication_sync` which waits until replication on
   the instance progresses until the provided vclock value.
 
+- Parameters `traceable` and `id` have been removed from `.proc_sql_dipstach`.
+
 ### Compatibility
 
 - The current version is NOT compatible with prior releases. It cannot
@@ -86,6 +88,8 @@ with the `YY.MINOR.MICRO` scheme.
     - `PICODATA_REPLICASET_ID` renamed to `PICODATA_REPLICASET_NAME`
 
 - Default delimiter in `picodata connect` and `picodata admin` cli sessions is now `;`
+
+- Paramters of `.proc_sql_dipstach` RPC have been changed.
 
 ### Lua API
 

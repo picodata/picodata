@@ -557,8 +557,6 @@ class Connection(tarantool.Connection):  # type: ignore
                 ".proc_sql_dispatch",
                 sql,
                 params,
-                options.get("query_id"),
-                options.get("traceable"),
             )[0]
         finally:
             if sudo:
@@ -1967,7 +1965,7 @@ class PgStorage:
         return self.instance.call("pico.pg_portals", id)
 
     def bind(self, id, *params):
-        return self.instance.call("pico.pg_bind", id, *params, False)
+        return self.instance.call("pico.pg_bind", id, *params)
 
     def close_stmt(self, id: int, name: str):
         return self.instance.call("pico.pg_close_stmt", id, name)
@@ -1982,7 +1980,7 @@ class PgStorage:
         return self.instance.call("pico.pg_describe_portal", id, name)
 
     def execute(self, id: int, name: str, max_rows: int) -> dict:
-        return self.instance.call("pico.pg_execute", id, name, max_rows, False)
+        return self.instance.call("pico.pg_execute", id, name, max_rows)
 
     def flush(self):
         for id in self.client_ids:
@@ -1995,7 +1993,7 @@ class PgStorage:
         self, id: int, name: str, sql: str, param_oids: list[int] | None = None
     ) -> int:
         param_oids = param_oids if param_oids is not None else []
-        return self.instance.call("pico.pg_parse", id, name, sql, param_oids, False)
+        return self.instance.call("pico.pg_parse", id, name, sql, param_oids)
 
     def new_client(self, id: int):
         self.client_ids.append(id)
@@ -2121,7 +2119,7 @@ def cargo_build(pytestconfig: pytest.Config) -> None:
         eprint("Skipping cargo build")
         return
 
-    features = ["error_injection"]
+    features = ["error_injection", "sbroad-core/tracing"]
     if bool(pytestconfig.getoption("--with-webui")):
         features.append("webui")
 

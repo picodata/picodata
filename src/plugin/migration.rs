@@ -515,7 +515,7 @@ impl SqlApplier for SBroadApplier {
             }
         }
 
-        sql::sql_dispatch(sql, vec![], None, None).map(|_| ())
+        sql::sql_dispatch(sql, vec![]).map(|_| ())
     }
 }
 

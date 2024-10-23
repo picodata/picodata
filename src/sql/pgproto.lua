@@ -17,10 +17,10 @@ end
 
 local function pg_bind(...)
     local n_args = select("#", ...)
-    if n_args == 0 or n_args > 6 then
-	return nil, "Usage: pg_bind(id, stmt_name, portal_name, params, out_formats[, traceable])"
+    if n_args == 0 or n_args > 5 then
+	return nil, "Usage: pg_bind(id, stmt_name, portal_name, params, out_formats)"
     end
-    local id, stmt_name, portal_name, params, out_formats, traceable = ...
+    local id, stmt_name, portal_name, params, out_formats = ...
     if type(id) ~= "number" or (type(id) == "number" and id < 0) then
     return nil, "id must be a non-negative number"
     end
@@ -36,17 +36,11 @@ local function pg_bind(...)
     if not verify_out_formats(out_formats) then
     return nil, "out_formats must be an array of 0 and 1"
     end
-    if traceable ~= nil and type(traceable) ~= "boolean" then
-	return nil, "trace flag must be a boolean"
-    end
-    if traceable == nil then
-	traceable = false
-    end
 
     local ok, err = pcall(
 	function()
 	    return box.func[".proc_pg_bind"]:call({
-            id, stmt_name, portal_name, params, out_formats, traceable
+            id, stmt_name, portal_name, params, out_formats
         })
 	end
     )
@@ -154,10 +148,10 @@ end
 
 local function pg_execute(...)
     local n_args = select("#", ...)
-    if n_args == 0 or n_args > 4 then
-	return nil, "Usage: pg_execute(id, name, max_rows[, traceable])"
+    if n_args == 0 or n_args > 3 then
+	return nil, "Usage: pg_execute(id, name, max_rows)"
     end
-    local id, name, max_rows, traceable = ...
+    local id, name, max_rows = ...
     if type(id) ~= "number" or (type(id) == "number" and id < 0) then
     return nil, "id must be a non-negative number"
     end
@@ -167,16 +161,10 @@ local function pg_execute(...)
     if type(max_rows) ~= "number" then
         return nil, "max_rows must be a number"
     end
-    if traceable ~= nil and type(traceable) ~= "boolean" then
-	return nil, "trace flag must be a boolean"
-    end
-    if traceable == nil then
-	traceable = false
-    end
 
     local ok, res = pcall(
 	function()
-	    return box.func[".proc_pg_execute"]:call({ id, name, max_rows, traceable })
+	    return box.func[".proc_pg_execute"]:call({ id, name, max_rows })
 	end
     )
 
@@ -203,10 +191,10 @@ end
 
 local function pg_parse(...)
     local n_args = select("#", ...)
-    if n_args == 0 or n_args > 5 then
-	return nil, "Usage: pg_parse(id, name, query, param_oids, [, traceable])"
+    if n_args == 0 or n_args > 4 then
+	return nil, "Usage: pg_parse(id, name, query, param_oids)"
     end
-    local id, name, query, param_oids, traceable = ...
+    local id, name, query, param_oids = ...
     if type(id) ~= "number" or (type(id) == "number" and id < 0) then
     return nil, "id must be a non-negative number"
     end
@@ -219,17 +207,11 @@ local function pg_parse(...)
     if not verify_param_oids(param_oids) then
     return nil, "param_oids must be a list of non-negative integers"
     end
-    if traceable ~= nil and type(traceable) ~= "boolean" then
-	return nil, "trace flag must be a boolean"
-    end
-    if traceable == nil then
-	traceable = false
-    end
 
     local ok, err = pcall(
 	function()
 	    return box.func[".proc_pg_parse"]:call({
-            id, name, query, param_oids, traceable
+            id, name, query, param_oids,
         })
 	end
     )

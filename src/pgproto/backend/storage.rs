@@ -220,9 +220,6 @@ where
 
 #[derive(Debug, Default)]
 pub struct StatementInner {
-    id: String,
-    // Query pattern used for opentelemetry.
-    query_pattern: String,
     plan: Plan,
     describe: StatementDescribe,
     // true when the statement is deleted from the storage
@@ -230,21 +227,10 @@ pub struct StatementInner {
 }
 
 impl StatementInner {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn new(
-        id: String,
-        query_pattern: String,
-        mut plan: Plan,
-        specified_param_oids: Vec<u32>,
-    ) -> PgResult<Self> {
+    fn new(mut plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
         let param_oids = derive_param_oids(&mut plan, specified_param_oids)?;
         let describe = StatementDescribe::new(Describe::new(&plan)?, param_oids);
         Ok(Self {
-            id,
-            query_pattern,
             plan,
             describe,
             is_closed: Cell::new(false),
@@ -253,10 +239,6 @@ impl StatementInner {
 
     fn plan(&self) -> &Plan {
         &self.plan
-    }
-
-    fn query_pattern(&self) -> &str {
-        &self.query_pattern
     }
 
     fn describe(&self) -> &StatementDescribe {
@@ -272,19 +254,8 @@ impl StatementInner {
 pub struct Statement(Rc<StatementInner>);
 
 impl Statement {
-    pub fn id(&self) -> &str {
-        self.0.id()
-    }
-
-    pub fn new(
-        id: String,
-        sql: String,
-        plan: Plan,
-        specified_param_oids: Vec<u32>,
-    ) -> PgResult<Self> {
+    pub fn new(plan: Plan, specified_param_oids: Vec<u32>) -> PgResult<Self> {
         Ok(Self(Rc::new(StatementInner::new(
-            id,
-            sql,
             plan,
             specified_param_oids,
         )?)))
@@ -292,10 +263,6 @@ impl Statement {
 
     pub fn plan(&self) -> &Plan {
         self.0.plan()
-    }
-
-    pub fn query_pattern(&self) -> &str {
-        self.0.query_pattern()
     }
 
     pub fn describe(&self) -> &StatementDescribe {

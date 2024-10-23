@@ -21,7 +21,6 @@ struct BindArgs {
     portal_name: String,
     params: Vec<Value>,
     encoding_format: Vec<FieldFormat>,
-    traceable: bool,
 }
 
 impl<'de> Deserialize<'de> for BindArgs {
@@ -30,16 +29,9 @@ impl<'de> Deserialize<'de> for BindArgs {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct EncodedBindArgs(
-            ClientId,
-            String,
-            String,
-            Option<Vec<LuaValue>>,
-            Vec<i16>,
-            Option<bool>,
-        );
+        struct EncodedBindArgs(ClientId, String, String, Option<Vec<LuaValue>>, Vec<i16>);
 
-        let EncodedBindArgs(id, stmt_name, portal_name, params, encoding_format, traceable) =
+        let EncodedBindArgs(id, stmt_name, portal_name, params, encoding_format) =
             EncodedBindArgs::deserialize(deserializer)?;
 
         let params = params
@@ -56,7 +48,6 @@ impl<'de> Deserialize<'de> for BindArgs {
             portal_name,
             params,
             encoding_format: format,
-            traceable: traceable.unwrap_or(false),
         })
     }
 }
@@ -69,10 +60,9 @@ pub fn proc_pg_bind(args: BindArgs) -> PgResult<()> {
         portal_name,
         params,
         encoding_format: output_format,
-        traceable,
     } = args;
 
-    backend::bind(id, stmt_name, portal_name, params, output_format, traceable)
+    backend::bind(id, stmt_name, portal_name, params, output_format)
 }
 
 #[proc]
@@ -86,13 +76,8 @@ pub fn proc_pg_describe_portal(id: ClientId, name: String) -> PgResult<PortalDes
 }
 
 #[proc]
-pub fn proc_pg_execute(
-    id: ClientId,
-    name: String,
-    max_rows: i64,
-    traceable: bool,
-) -> PgResult<Tuple> {
-    let result = backend::execute(id, name, max_rows, traceable)?;
+pub fn proc_pg_execute(id: ClientId, name: String, max_rows: i64) -> PgResult<Tuple> {
+    let result = backend::execute(id, name, max_rows)?;
     let bytes = match &result {
         ExecuteResult::AclOrDdl { .. } | ExecuteResult::Dml { .. } | ExecuteResult::Empty => {
             let row_count = if let ExecuteResult::Dml { row_count, .. } = result {
@@ -141,9 +126,8 @@ pub fn proc_pg_parse(
     name: String,
     query: String,
     param_oids: Vec<Oid>,
-    traceable: bool,
 ) -> PgResult<()> {
-    backend::parse(id, name, &query, param_oids, traceable)
+    backend::parse(id, name, &query, param_oids)
 }
 
 #[proc]

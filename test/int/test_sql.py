@@ -19,7 +19,7 @@ def test_pico_sql(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
 
-    usage_msg = re.escape("Usage: sql(query[, params, options])")
+    usage_msg = re.escape("Usage: sql(query[, params])")
     with pytest.raises(ReturnError, match=usage_msg):
         i1.call(
             "pico.sql",
@@ -49,10 +49,6 @@ def test_pico_sql(cluster: Cluster):
             1,
         )
 
-    third_arg_msg = "SQL options must be a table"
-    with pytest.raises(ReturnError, match=third_arg_msg):
-        i1.call("pico.sql", "select * from t", {}, "tracer")
-
     invalid_meta_msg = re.escape("sbroad: table")
     with pytest.raises(ReturnError, match=invalid_meta_msg):
         i1.call(
@@ -65,135 +61,6 @@ def test_pico_sql(cluster: Cluster):
             "select * from absent_table where a = ?",
             (1,),
         )
-
-
-def test_cache_works_for_dml_query(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
-    def assert_cache_miss(query_id):
-        data = i1.eval(
-            f"""
-            return box.execute([[
-            select "span", "query_id" from "_sql_stat"
-            where "span" = '"tarantool.cache.miss.read.prepared"' and "query_id" = '{query_id}'
-            ]])
-        """
-        )
-        assert len(data["rows"]) == 1
-
-    def assert_cache_hit(query_id):
-        data = i1.eval(
-            f"""
-            return box.execute([[
-            select "span", "query_id" from "_sql_stat"
-            where "span" = '"tarantool.cache.hit.read.prepared"' and "query_id" = '{query_id}'
-            ]])
-        """
-        )
-        assert len(data["rows"]) == 1
-
-    ddl = i1.sql(
-        """
-        create table t (a int, primary key (a))
-        using memtx
-        distributed by (a)
-        option (timeout = 3)
-    """
-    )
-    assert ddl["row_count"] == 1
-
-    ddl = i1.sql(
-        """
-        create table not_t (b int, primary key (b))
-        using memtx
-        distributed by (b)
-        option (timeout = 3)
-    """
-    )
-    assert ddl["row_count"] == 1
-
-    data = i1.sql(
-        """
-        insert into not_t values (1), (2)
-    """
-    )
-    assert data["row_count"] == 2
-
-    query = """
-    INSERT INTO t
-    SELECT b + 10
-    FROM not_t
-    ON CONFLICT DO REPLACE
-    """
-    query_id = "id"
-
-    data = i1.sql(query, options={"traceable": True, "query_id": query_id})
-    assert data["row_count"] == 2
-    assert_cache_miss(query_id)
-
-    data = i1.sql(query, options={"traceable": True, "query_id": query_id})
-    assert data["row_count"] == 2
-    assert_cache_hit(query_id)
-
-    # for dml sbroad uses tarantool api,
-    # so only dql part of the insert is cached.
-    # Check we can reuse it for other query
-    id2 = "id2"
-    data = i1.sql(
-        """
-    SELECT b + 10
-    FROM not_t
-    """,
-        options={"traceable": True, "query_id": id2},
-    )
-    assert data == [[11], [12]]
-    assert_cache_hit(id2)
-
-
-def test_tracing(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
-    query_id = "1"
-    exec_cnt = 2
-    for i in range(exec_cnt):
-        data = i1.sql(
-            'select * from "_pico_table"',
-            options={"traceable": True, "query_id": query_id},
-        )
-        assert len(data) > 0
-
-    # check we can get the most expensive query using local sql
-    data = i1.eval(
-        """
-        return box.execute([[with recursive st as (
-        select * from "_sql_stat" where "query_id" in (select qt."query_id" from qt)
-                 and "parent_span" = ''
-            union all
-            select s.* from "_sql_stat" as s, st on s."parent_span" = st."span"
-                 and s."query_id" in (select qt."query_id" from qt)
-            ), qt as (
-            select s."query_id" from "_sql_stat" as s
-            join "_sql_query" as q
-                on s."query_id" = q."query_id"
-            order by s."count" desc
-            limit 1
-            )
-            select * from st
-            where "parent_span" = '';
-        ]])
-        """
-    )
-    assert len(data["rows"]) == 1
-    query_id_pos = [
-        i for i, item in enumerate(data["metadata"]) if item["name"] == "query_id"
-    ][0]
-    assert data["rows"][0][query_id_pos] == query_id
-    exec_cnt_pos = [
-        i for i, item in enumerate(data["metadata"]) if item["name"] == "count"
-    ][0]
-    assert data["rows"][0][exec_cnt_pos] == exec_cnt
 
 
 def test_select(cluster: Cluster):
@@ -5659,39 +5526,6 @@ def test_select_without_scan(cluster: Cluster):
     # check usage with limit
     data = i1.sql("select 1 limit 1")
     assert data == [[1]]
-
-
-def test_sql_stat_tables(cluster: Cluster):
-    cluster.deploy(instance_count=1)
-    i1 = cluster.instances[0]
-
-    def sql_options(query_id, traceable):
-        return {"query_id": query_id, "traceable": traceable}
-
-    def check_sql_stat_tables(query_id):
-        data = i1.call("box.execute", """ select "query_id" from "_sql_query" """)
-        assert data["rows"] == [[query_id]]
-        data = i1.call(
-            "box.execute", """ select distinct "query_id" from "_sql_stat" """
-        )
-        assert data["rows"] == [[query_id]]
-
-    # Set SQL statistics LRU capacity to 1
-    i1.call("pico._inject_error", "SQL_STATISTICS_CAPACITY_ONE", True)
-
-    # The first query is stored in the statistics tables.
-    data = i1.sql("values (1)", options=sql_options("query_1", True))
-    assert data == [[1]]
-    check_sql_stat_tables("query_1")
-
-    # Previous query was evicted from the statistics tables
-    # as LRU capacity is 1.
-    data = i1.sql("values (2)", options=sql_options("query_2", True))
-    assert data == [[2]]
-    check_sql_stat_tables("query_2")
-
-    # Disable injection
-    i1.call("pico._inject_error", "SQL_STATISTICS_CAPACITY_ONE", False)
 
 
 def test_explain(cluster: Cluster):

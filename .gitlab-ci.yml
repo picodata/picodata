@@ -330,7 +330,7 @@ test-patch-picodata:
     - cargo build -p plug_wrong_version --release
     - cargo build -p gostech-audit-log --release
     - cargo test --locked --release --features dynamic_build
-    - cargo build --features webui,error_injection --locked --release --features dynamic_build
+    - cargo build --features dynamic_build,webui,error_injection --locked --release
 
     - >
       BUILD_PROFILE=release pipenv run pytest -vv

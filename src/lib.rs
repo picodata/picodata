@@ -22,7 +22,6 @@ use ::tarantool::time::Instant;
 use ::tarantool::tlua;
 use ::tarantool::transaction::transaction;
 use ::tarantool::{fiber, session};
-use sql::otm::SqlStatTables;
 use std::time::Duration;
 use storage::Clusterwide;
 use traft::RaftSpaceAccess;
@@ -682,9 +681,6 @@ fn init_common(
     init_handlers();
 
     let storage = Clusterwide::try_get(true).expect("storage initialization should never fail");
-    // init sbroad statistics tables: they must be created
-    // after global tables, so that they don't use their ids.
-    let _ = SqlStatTables::get_or_init();
     schema::init_user_pico_service();
 
     set_login_check(storage.clone());

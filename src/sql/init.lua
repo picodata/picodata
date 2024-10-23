@@ -5,32 +5,15 @@ local check_param_table = utils.check_param_table
 
 local function sql(...)
     local n_args = select("#", ...)
-    if n_args == 0 or n_args > 3 then
-	      return nil, "Usage: sql(query[, params, options])"
+    if n_args == 0 or n_args > 2 then
+	      return nil, "Usage: sql(query[, params])"
     end
-    local query, params, options = ...
+    local query, params = ...
     if type(query) ~= "string" then
 	      return nil, "SQL query must be a string"
     end
     if params ~= nil and type(params) ~= "table" then
 	      return nil, "SQL params must be a table"
-    end
-    if options ~= nil and type(options) ~= "table" then
-	      return nil, "SQL options must be a table"
-    end
-    check_param_table(options, {
-        query_id = 'string',
-        traceable = 'boolean',
-    })
-
-    local query_id = box.NULL
-    if options ~= nil then
-        query_id = options.query_id or box.NULL
-    end
-
-    local traceable = box.NULL
-    if options ~= nil then
-	      traceable = options.traceable or box.NULL
     end
 
     if params == nil then
@@ -40,7 +23,7 @@ local function sql(...)
     local ok, res = pcall(
         function()
             return box.func[".proc_sql_dispatch"]:call({
-                query, params, query_id, traceable
+                query, params
 	    })
         end
     )

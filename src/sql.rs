@@ -20,7 +20,6 @@ use crate::traft::{self, node};
 use crate::util::{duration_from_secs_f64_clamped, effective_user_id};
 use crate::{cas, plugin, tlog};
 
-use opentelemetry::{baggage::BaggageExt, Context, KeyValue};
 use sbroad::debug;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::engine::helpers::{
@@ -57,7 +56,6 @@ use sbroad::ir::relation::Type;
 use sbroad::ir::tree::traversal::{LevelNode, PostOrderWithFilter, REL_CAPACITY};
 use sbroad::ir::value::{LuaValue, Value};
 use sbroad::ir::Plan as IrPlan;
-use sbroad::otm::{query_id, query_span};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use tarantool::access_control::{box_access_check_ddl, SchemaObjectType as TntSchemaObjectType};
 use tarantool::schema::function::func_next_reserved_id;
@@ -79,11 +77,8 @@ use std::str::FromStr;
 use std::time::Duration;
 use tarantool::session;
 
-pub mod otm;
-
 pub mod router;
 pub mod storage;
-use otm::TracerKind;
 
 use self::router::DEFAULT_QUERY_TIMEOUT;
 use serde::Serialize;
@@ -473,11 +468,6 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
     }
 }
 
-#[inline]
-pub fn with_tracer(ctx: Context, tracer_kind: TracerKind) -> Context {
-    ctx.with_baggage(vec![KeyValue::new(TRACER_KEY, tracer_kind.to_string())])
-}
-
 fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
     match e {
         Error::Sbroad(SbroadError::ParsingError(_, message)) if message.contains('\n') => {
@@ -507,49 +497,21 @@ fn err_for_tnt_console(e: traft::error::Error) -> traft::error::Error {
 /// Dispatches an SQL query to the cluster.
 /// Part of public RPC API.
 #[proc]
-pub fn proc_sql_dispatch(
-    pattern: String,
-    params: Vec<LuaValue>,
-    id: Option<String>,
-    traceable: Option<bool>,
-) -> traft::Result<Tuple> {
-    sql_dispatch(&pattern, params, id, traceable).map_err(err_for_tnt_console)
+pub fn proc_sql_dispatch(pattern: String, params: Vec<LuaValue>) -> traft::Result<Tuple> {
+    sql_dispatch(&pattern, params).map_err(err_for_tnt_console)
 }
 
-pub fn sql_dispatch(
-    pattern: &str,
-    params: Vec<LuaValue>,
-    id: Option<String>,
-    traceable: Option<bool>,
-) -> traft::Result<Tuple> {
-    let id = id.unwrap_or_else(|| query_id(pattern).to_string());
-    let tracer_kind = traceable
-        .map(TracerKind::from_traceable)
-        .unwrap_or_default();
-    // TODO: `Context` is no longer used and should be removed from sbroad
-    let ctx = with_tracer(Context::default(), tracer_kind);
-
-    let dispatch = || {
-        let runtime = RouterRuntime::new()?;
-        // Admin privileges are need for reading tables metadata.
-        let query = with_su(ADMIN_ID, || {
-            Query::new(
-                &runtime,
-                pattern,
-                params.into_iter().map(Into::into).collect(),
-            )
-        })??;
-        dispatch(query)
-    };
-
-    query_span(
-        "\"api.router.dispatch\"",
-        &id,
-        tracer_kind.get_tracer(),
-        &ctx,
-        pattern,
-        dispatch,
-    )
+pub fn sql_dispatch(pattern: &str, params: Vec<LuaValue>) -> traft::Result<Tuple> {
+    let runtime = RouterRuntime::new()?;
+    // Admin privileges are need for reading tables metadata.
+    let query = with_su(ADMIN_ID, || {
+        Query::new(
+            &runtime,
+            pattern,
+            params.into_iter().map(Into::into).collect(),
+        )
+    })??;
+    dispatch(query)
 }
 
 impl TryFrom<&SqlPrivilege> for PrivilegeType {
@@ -1584,67 +1546,30 @@ pub(crate) fn reenterable_schema_change_request(
     }
 }
 
-const TRACER_KEY: &str = "Tracer";
-
 /// Executes a query sub-plan on the local node.
 #[proc(packed_args)]
 pub fn proc_sql_execute(raw: &RawBytes) -> traft::Result<Tuple> {
     let (raw_required, optional_bytes, cache_info) = decode_msgpack(raw)?;
-
     let mut required = RequiredData::try_from(EncodedRequiredData::from(raw_required))?;
-
-    let tracing_meta = std::mem::take(&mut required.tracing_meta);
-    let exec = || {
-        let runtime = StorageRuntime::new()?;
-        match runtime.execute_plan(&mut required, optional_bytes, cache_info) {
-            Ok(mut any_tuple) => {
-                if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
-                    debug!(
-                        Option::from("proc_sql_execute"),
-                        &format!("Execution result: {tuple:?}"),
-                    );
-                    let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
-                    Ok(tuple)
-                } else {
-                    Err(Error::from(SbroadError::FailedTo(
-                        Action::Decode,
-                        None,
-                        format_smolstr!("tuple {any_tuple:?}"),
-                    )))
-                }
+    let runtime = StorageRuntime::new()?;
+    match runtime.execute_plan(&mut required, optional_bytes, cache_info) {
+        Ok(mut any_tuple) => {
+            if let Some(tuple) = any_tuple.downcast_mut::<Tuple>() {
+                debug!(
+                    Option::from("proc_sql_execute"),
+                    &format!("Execution result: {tuple:?}"),
+                );
+                let tuple: Tuple = std::mem::replace(tuple, Tuple::new(&())?);
+                Ok(tuple)
+            } else {
+                Err(Error::from(SbroadError::FailedTo(
+                    Action::Decode,
+                    None,
+                    format_smolstr!("tuple {any_tuple:?}"),
+                )))
             }
-            Err(e) => Err(Error::from(e)),
         }
-    };
-
-    if let Some(mut meta) = tracing_meta {
-        let ctx: Context = (&mut meta.context).into();
-        let tracer_kind = ctx.baggage().get(TRACER_KEY);
-        let kind = if let Some(value) = tracer_kind {
-            TracerKind::from_str(&value.as_str()).map_err(|_| {
-                Error::from(SbroadError::Invalid(
-                    Entity::RequiredData,
-                    Some(format_smolstr!("unknown tracer: {}", value.as_str())),
-                ))
-            })?
-        } else {
-            return Err(Error::from(SbroadError::Invalid(
-                Entity::RequiredData,
-                Some("no tracer in context".into()),
-            )));
-        };
-
-        let tracer = kind.get_tracer();
-        query_span(
-            "\"api.storage.execute\"",
-            &meta.trace_id,
-            tracer,
-            &ctx,
-            "",
-            exec,
-        )
-    } else {
-        exec()
+        Err(e) => Err(Error::from(e)),
     }
 }
 
