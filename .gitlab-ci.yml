@@ -348,6 +348,7 @@ test-patch-tarantool:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
     pull_policy: always
   script:
+    - ./tools/prepare_source_tree_for_stat_analysis.py apply
     - pushd tarantool-sys/ && make -f .test.mk test-release; popd
 
 test-mac-m1:
