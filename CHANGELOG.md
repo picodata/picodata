@@ -53,6 +53,8 @@ with the `YY.MINOR.MICRO` scheme.
   
 - Order of columns in `_pico_service_route` table has changed.
 
+- Default delimiter in `picodata connect` and `picodata admin` cli sessions is now `;`
+
 ### Lua API
 
 - Update `pico.LUA_API_VERSION`: `4.0.0` -> `5.0.0`
