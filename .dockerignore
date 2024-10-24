@@ -6,4 +6,3 @@
 *.xlog
 __pycache__/
 tmp/
-.git/
