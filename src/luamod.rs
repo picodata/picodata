@@ -26,6 +26,7 @@ use ::tarantool::tlua::{LuaState, LuaThread, PushOneInto, Void};
 use ::tarantool::transaction::transaction;
 use ::tarantool::tuple::Decode;
 use ::tarantool::vclock::Vclock;
+use indoc::formatdoc;
 use indoc::indoc;
 use std::time::Duration;
 
@@ -55,7 +56,7 @@ pub(crate) fn setup() {
     luamod_set(
         &l,
         "PICODATA_VERSION",
-        indoc! {"
+        &formatdoc! {"
         pico.PICODATA_VERSION
         =====================
 
@@ -69,13 +70,12 @@ pub(crate) fn setup() {
 
             picodata> pico.PICODATA_VERSION
             ---
-            - 24.6.0
+            - {version}
             ...
-        "},
-        {
-            const _: () = assert!(str_eq(env!("CARGO_PKG_VERSION"), "24.6.0"));
-            crate::info::PICODATA_VERSION
+        ",
+        version = env!("CARGO_PKG_VERSION")
         },
+        crate::info::PICODATA_VERSION,
     );
 
     luamod_set(
