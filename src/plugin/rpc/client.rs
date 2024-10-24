@@ -304,6 +304,9 @@ fn resolve_rpc_target(
         .storage
         .service_route_table
         .get_available_instances(ident, service)?;
+
+    filter_instances_by_state(node, &mut all_instances_with_service)?;
+
     #[rustfmt::skip]
     if all_instances_with_service.is_empty() {
         if node.storage.services.get(ident, service)?.is_none() {
@@ -312,8 +315,6 @@ fn resolve_rpc_target(
             return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not started on any instance")).into());
         }
     };
-
-    remove_expelled_instances(node, &mut all_instances_with_service)?;
 
     let mut tier_and_replicaset_uuid = None;
 
@@ -433,7 +434,7 @@ fn resolve_rpc_target(
     }
 }
 
-fn remove_expelled_instances(
+fn filter_instances_by_state(
     node: &Node,
     instance_names: &mut Vec<InstanceName>,
 ) -> Result<(), Error> {
@@ -441,7 +442,7 @@ fn remove_expelled_instances(
     while index < instance_names.len() {
         let name = &instance_names[index];
         let instance = node.storage.instances.get(name)?;
-        if has_states!(instance, Expelled -> *) {
+        if has_states!(instance, Expelled -> *) || !instance.may_respond() {
             instance_names.swap_remove(index);
         } else {
             index += 1;
@@ -463,6 +464,10 @@ fn check_route_to_instance(
         return Err(BoxError::new(ErrorCode::InstanceExpelled, format!("instance named '{instance_name}' was expelled")).into());
     }
 
+    if !instance.may_respond() {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::InstanceUnavaliable, format!("instance with instance_name \"{instance_name}\" can't respond due it's state"),).into());
+    }
     let res = node.storage.service_route_table.get_raw(&ServiceRouteKey {
         instance_name,
         plugin_name: &ident.name,

@@ -2500,6 +2500,23 @@ cluster:
         f"replicaset with id {r2_uuid} was expelled",
     )
 
+    i2.terminate()
+    time.sleep(5)
+
+    with pytest.raises(TarantoolError) as e:
+        context = make_context()
+        input = dict(
+            path="/ping",
+            instance_name="i2",
+            input=msgpack.dumps([]),
+        )
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    assert e.value.args[:2] == (
+        ErrorCode.InstanceUnavaliable,
+        "instance with instance_name \"i2\" can't respond due it's state",
+    )
+
     # TODO: check calling to poisoned service
 
 

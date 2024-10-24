@@ -78,6 +78,7 @@ class ErrorCode:
     PluginError = 10019
     InstanceExpelled = 10020
     ReplicasetExpelled = 10021
+    InstanceUnavaliable = 10022
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas
