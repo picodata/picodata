@@ -132,6 +132,7 @@ build-base-image:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: fetch
+    GIT_DESCRIBE: "24.6.0"
     RUST_BACKTRACE: full
   before_script:
     # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
@@ -142,7 +143,7 @@ build-base-image:
     # the build scripts. Without them the job fails.
     - &fetch-tags |
       ci-log-section start "fetch-submodule-tags" Fetching tags for submodules
-      ./tools/get_tags.py . tarantool-sys tarantool-sys/third_party/luajit
+      ./tools/get_tags.py tarantool-sys tarantool-sys/third_party/luajit
       ci-log-section end "fetch-submodule-tags"
 
 .parallel:
@@ -260,6 +261,7 @@ lint:
     pull_policy: if-not-present
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    GIT_DESCRIBE: "24.6.0"
     TARGET: debug
   cache:
     - <<: *py_cache
