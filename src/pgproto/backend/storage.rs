@@ -487,12 +487,7 @@ impl Portal {
         let runtime = RouterRuntime::new()?;
         let query = Query::from_parts(
             self.plan.is_explain(),
-            // XXX: the router runtime cache contains only unbinded IR plans to
-            // speed up SQL parsing and metadata resolution. We need to clone the
-            // plan here as its IR would be mutated during query execution (bind,
-            // optimization, dispatch steps). Otherwise we'll polute the parsing
-            // cache entry.
-            ExecutionPlan::from(self.plan.clone()),
+            ExecutionPlan::from(std::mem::take(&mut self.plan)),
             &runtime,
             HashMap::new(),
         );
