@@ -99,7 +99,6 @@ GRANT CREATE TABLE TO "alice";
 
 ???+ example "setup.sql"
     ```sql
-    \set delimiter ;
     ALTER USER "admin" WITH PASSWORD 'T0psecret';
     CREATE USER "alice" WITH PASSWORD 'T0psecret';
     GRANT CREATE TABLE TO "alice";
@@ -118,7 +117,6 @@ picodata admin ./admin.sock < ../setup.sql
 ```
 Connected to admin console by socket path "admin.sock"
 type '\help' for interactive help
-Delimiter changed to ';'
 1
 1
 1
@@ -162,7 +160,6 @@ cat file.sql  | picodata admin ./admin.sock
 
 ??? example "Пример файла с командами"
     ```sql
-    \set delimiter ;
     INSERT INTO customers VALUES (1, 'customer1');
     SELECT name FROM customers limit 10;
     DELETE FROM customers WHERE id > 100;
@@ -181,11 +178,10 @@ SQL-консоли. Справка содержит информацию о до
 
 В консоли Picodata доступны следующие дополнительные команды:
 
-- `\e` — открыть текстовый редактор по умолчанию (в соответствии с
+- `\e;` — открыть текстовый редактор по умолчанию (в соответствии с
   переменной `EDITOR`)
-- `\set delimiter символ` — задать `символ` для разделения строк
-- `\set delimiter default` — сбросить `символ` для разделения строк
-  (перенос строки по нажатию ++enter++)
+- `\set delimiter символ;` — задать `символ` для разделения строк
+- `\set delimiter default;` — сбросить `символ` для разделения строк на значение по умолчанию (разделение с помощью `;`)
 
 ### Сочетания клавиш {: #hotkeys }
 
