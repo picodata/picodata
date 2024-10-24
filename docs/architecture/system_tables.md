@@ -4,7 +4,7 @@
 Picodata, используемые для служебных нужд. Перечисленные системные
 таблицы являются глобальными.
 
-Описание соответствует версии Picodata `24.6.0-106-g9d52b582`.
+Описание соответствует версии Picodata `24.6.0-235-gdaffd6db`.
 
 ## Описание схемы данных {: #schema }
 
@@ -58,6 +58,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `_pico_table_id` (unique), parts: `[id]`
 * `_pico_table_name` (unique), parts: `[name]`
+* `_pico_table_owner_id` (non-unique), parts: `[owner]`
 
 ### _pico_index
 
@@ -120,6 +121,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `_pico_routine_id` (unique), parts: `[id]`
 * `_pico_routine_name` (unique), parts: `[name]`
+* `_pico_routine_owner_id` (non-unique), parts: `[owner]`
 
 ## Описание свойств кластера {: #cluster_properties }
 
@@ -135,6 +137,22 @@ Picodata, используемые для служебных нужд. Пере�
 Индексы:
 
 * `_pico_property_key` (unique), parts: `[key]`
+
+### _pico_db_config
+
+Хранит параметры (и только их), которые можно менять с помощью [ALTER
+SYSTEM].
+
+Поля:
+
+* `key`: (_string_)
+* `value`: (_any_)
+
+Индексы:
+
+* `_pico_db_config_key` (unique), parts: `[key]`
+
+[ALTER SYSTEM]: ../reference/sql/alter_system.md
 
 ## Описание топологии кластера {: #cluster_topology }
 
@@ -157,8 +175,8 @@ Picodata, используемые для служебных нужд. Пере�
 
 Поля:
 
-* `instance_id`: (_string_)
-* `instance_uuid`: (_string_)
+* `name`: (_string_)
+* `uuid`: (_string_)
 * `raft_id`: (_unsigned_)
 * `replicaset_id`: (_string_)
 * `replicaset_uuid`: (_string_)
@@ -169,7 +187,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 Индексы:
 
-* `_pico_instance_id` (unique), parts: `[instance_id]`
+* `_pico_instance_name` (unique), parts: `[name]`
 * `_pico_instance_raft_id` (unique), parts: `[raft_id]`
 * `_pico_instance_replicaset_id` (non-unique), parts: `[replicaset_id]`
 
@@ -181,8 +199,8 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `replicaset_id`: (_string_)
 * `replicaset_uuid`: (_string_)
-* `current_master_id`: (_string_)
-* `target_master_id`: (_string_)
+* `current_master_name`: (_string_)
+* `target_master_name`: (_string_)
 * `tier`: (_string_)
 * `weight`: (_double_)
 * `weight_origin`: (_string_)
@@ -232,6 +250,7 @@ Picodata, используемые для служебных нужд. Пере�
 
 * `_pico_user_id` (unique), parts: `[id]`
 * `_pico_user_name` (unique), parts: `[name]`
+* `_pico_user_owner_id` (non-unique), parts: `[owner]`
 
 ### _pico_privilege
 
@@ -295,12 +314,12 @@ Picodata, используемые для служебных нужд. Пере�
 * `plugin_name`: (_string_)
 * `plugin_version`: (_string_)
 * `service_name`: (_string_)
-* `instance_id`: (_string_)
+* `instance_name`: (_string_)
 * `poison`: (_boolean_)
 
 Индексы:
 
-* `_pico_service_routing_key` (unique), parts: `[plugin_name, plugin_version, service_name, instance_id]`
+* `_pico_service_routing_key` (unique), parts: `[plugin_name, plugin_version, service_name, instance_name]`
 
 ### _pico_plugin_migration
 

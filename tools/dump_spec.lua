@@ -37,6 +37,7 @@ local tables = {
     '_pico_index',
     '_pico_routine',
     '_pico_property',
+    '_pico_db_config',
     '_pico_peer_address',
     '_pico_instance',
     '_pico_replicaset',
