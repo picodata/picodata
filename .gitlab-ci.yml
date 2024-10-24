@@ -38,6 +38,7 @@ variables:
   CACHE_COMPRESSION_LEVEL: "fastest"
   GIT_DEPTH: 1
   GET_SOURCES_ATTEMPTS: 3
+  PICODATA_DESCRIBE: "24.6.0"
   PARENT_BRANCH: $CI_COMMIT_BRANCH
   PARENT_CI_COMMIT_SHA: $CI_COMMIT_SHA
   PARENT_PROJECT_PATH: ${CI_PROJECT_PATH}.git
@@ -132,7 +133,7 @@ build-base-image:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: fetch
-    GIT_DESCRIBE: "24.6.0"
+    GIT_DESCRIBE: $PICODATA_DESCRIBE
     RUST_BACKTRACE: full
   before_script:
     # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
@@ -261,7 +262,7 @@ lint:
     pull_policy: if-not-present
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
-    GIT_DESCRIBE: "24.6.0"
+    GIT_DESCRIBE: $PICODATA_DESCRIBE
     TARGET: debug
   cache:
     - <<: *py_cache
@@ -552,6 +553,7 @@ docker-compose:
   variables:
     VER: $CI_COMMIT_SHORT_SHA
     GIT_SUBMODULE_STRATEGY: recursive
+    GIT_DESCRIBE: $PICODATA_DESCRIBE
   before_script:
     # To conduct stress tests, we require the most recent picodata tag. However,
     # creating a shallow copy with $GIT_DEPTH commits might not include this tag.
