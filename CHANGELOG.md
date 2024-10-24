@@ -53,6 +53,21 @@ with the `YY.MINOR.MICRO` scheme.
   
 - Order of columns in `_pico_service_route` table has changed.
 
+- Global rename
+  - Config File Changes:
+    - `cluster_id` renamed to `name`
+    - `instance_id` renamed to `name`
+
+  - Source Code Changes:
+    - `cluster_id` renamed to `cluster_name`
+    - `instance_id` renamed to `instance_name`
+    - `instance.instance_uuid` renamed to `instance.uuid`
+    - `replicaset.replicaset_uuid` renamed to `replicaset.uuid`
+
+  - Environment Variable Changes:
+    - `PICODATA_CLUSTER_ID` renamed to `PICODATA_CLUSTER_NAME`
+    - `PICODATA_INSTANCE_ID` renamed to `PICODATA_INSTANCE_NAME`
+
 - Default delimiter in `picodata connect` and `picodata admin` cli sessions is now `;`
 
 ### Lua API
