@@ -66,16 +66,19 @@ with the `YY.MINOR.MICRO` scheme.
   - Config File Changes:
     - `cluster_id` renamed to `name`
     - `instance_id` renamed to `name`
+    - `replicaset_id` renamed to `replicaset_name`
 
   - Source Code Changes:
     - `cluster_id` renamed to `cluster_name`
     - `instance_id` renamed to `instance_name`
     - `instance.instance_uuid` renamed to `instance.uuid`
     - `replicaset.replicaset_uuid` renamed to `replicaset.uuid`
+    - `replicaset_id` renamed to `replicaset_name`
 
   - Environment Variable Changes:
     - `PICODATA_CLUSTER_ID` renamed to `PICODATA_CLUSTER_NAME`
     - `PICODATA_INSTANCE_ID` renamed to `PICODATA_INSTANCE_NAME`
+    - `PICODATA_REPLICASET_ID` renamed to `PICODATA_REPLICASET_NAME`
 
 - Default delimiter in `picodata connect` and `picodata admin` cli sessions is now `;`
 
