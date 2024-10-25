@@ -1,9 +1,11 @@
 [submodule "tarantool"]
 	path = tarantool
 	url = ../tarantool-module.git
+	branch = picodata-24.6
 [submodule "tarantool-sys"]
 	path = tarantool-sys
 	url = ../../tarantool.git
+	branch = picodata-24.6
 	ignore = dirty
 [submodule "vshard"]
 	path = vshard
@@ -14,3 +16,4 @@
 [submodule "sbroad"]
 	path = sbroad
 	url = ../sbroad.git
+	branch = picodata-24.6
