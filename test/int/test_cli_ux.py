@@ -30,7 +30,7 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
-    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")
 
     # sql console doesn't know about language switching
@@ -107,7 +107,7 @@ def test_admin_ux(cluster: Cluster):
     cli.logfile = sys.stdout
 
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
-    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")
 
     # in admin console language switching is availiable
@@ -335,7 +335,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
     )
-    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")
 
     i1.terminate()
@@ -380,7 +380,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
-    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")
 
     # several commands in one line
@@ -444,7 +444,7 @@ SELECT * FROM ids;
         data
         == f"""\
 Connected to admin console by socket path "{instance.data_dir}/admin.sock"
-type '\\help' for interactive help
+type '\\help;' for interactive help
 1
 1
 +----+
@@ -473,7 +473,7 @@ GRANT CREATE TABLE TO "alice";
         data
         == f"""\
 Connected to admin console by socket path "{i1.data_dir}/admin.sock"
-type '\\help' for interactive help
+type '\\help;' for interactive help
 1
 1
 Bye
@@ -493,7 +493,7 @@ Bye
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user'
     )
-    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")
 
     cli.sendline(
@@ -572,5 +572,5 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
 
     cli.logfile = sys.stdout
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
-    cli.expect_exact("type '\\help' for interactive help")
+    cli.expect_exact("type '\\help;' for interactive help")
     cli.expect_exact("picodata> ")

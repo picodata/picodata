@@ -268,7 +268,7 @@ impl<T: Helper> Console<T> {
     /// Prints information about connection and help hint
     pub fn greet(&self, connection_info: &str) {
         self.write(connection_info);
-        self.write("type '\\help' for interactive help");
+        self.write("type '\\help;' for interactive help");
     }
 }
 

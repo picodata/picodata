@@ -217,10 +217,10 @@ fn sql_repl(args: args::Connect) -> Result<(), ReplError> {
 
     const HELP_MESSAGE: &'static str = "
     Available backslash commands:
-        \\e                              Open the editor specified by the EDITOR environment variable
-        \\help                           Show this screen
-        \\set delimiter shiny-delimiter  Set console delimiter to 'shiny-delimiter'
-        \\set delimiter default          Reset console delimiter to default (enter)
+        \\e;                              Open the editor specified by the EDITOR environment variable
+        \\help;                           Show this screen
+        \\set delimiter shiny-delimiter;  Set console delimiter to 'shiny-delimiter'
+        \\set delimiter default;          Reset console delimiter to default (;)
 
     Available hotkeys:
         Enter                           Submit the request
