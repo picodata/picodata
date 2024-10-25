@@ -13,7 +13,7 @@ cluster:
 instance:
     cluster_name: test
     name: from-config
-    replicaset_id: with-love
+    replicaset_name: with-love
 
     memtx:
         memory: 42069
@@ -25,7 +25,7 @@ instance:
 
     info = instance.call(".proc_instance_info")
     assert info["name"] == "from-config"
-    assert info["replicaset_id"] == "with-love"
+    assert info["replicaset_name"] == "with-love"
 
     assert instance.eval("return box.cfg.memtx_memory") == 42069
 
@@ -47,7 +47,7 @@ instance:
         - {listen}
     cluster_name: my-cluster
     name: my-instance
-    replicaset_id: my-replicaset
+    replicaset_name: my-replicaset
     tier: deluxe
     log:
         level: verbose
@@ -88,7 +88,7 @@ instance:
             shredding=dict(value=False, source="default"),
             cluster_name=dict(value="my-cluster", source="config_file"),
             name=dict(value="my-instance", source="config_file"),
-            replicaset_id=dict(value="my-replicaset", source="config_file"),
+            replicaset_name=dict(value="my-replicaset", source="config_file"),
             tier=dict(value="deluxe", source="config_file"),
             audit=dict(
                 value=f"{data_dir}/audit.log", source="commandline_or_environment"
@@ -454,7 +454,7 @@ def test_output_config_parameters(cluster: Cluster):
     instance:
         cluster_name: test
         name: from-config
-        replicaset_id: with-love
+        replicaset_name: with-love
         memtx:
             memory: 42069B
     """
@@ -467,7 +467,7 @@ def test_output_config_parameters(cluster: Cluster):
         'instance.config_file':
         'instance.cluster_name':
         'instance.name': "i1"
-        'instance.replicaset_id': "with-love"
+        'instance.replicaset_name': "with-love"
         'instance.tier': "default"
         'instance.failure_domain': {}
         'instance.peer':

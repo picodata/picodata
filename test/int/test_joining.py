@@ -31,7 +31,7 @@ def raft_join(
     timeout_seconds: float | int,
     failure_domain: dict[str, str] = dict(),
 ):
-    replicaset_id = None
+    replicaset_name = None
     # Workaround slow address resolving. Intentionally use
     # invalid address format to eliminate blocking DNS requests.
     # See https://git.picodata.io/picodata/picodata/tarantool-module/-/issues/81
@@ -40,7 +40,7 @@ def raft_join(
         ".proc_raft_join",
         cluster_name,
         instance_name,
-        replicaset_id,
+        replicaset_name,
         address,
         failure_domain,
         instance.tier if instance.tier is not None else "default",
@@ -48,9 +48,9 @@ def raft_join(
     )
 
 
-def replicaset_id(instance: Instance):
+def replicaset_name(instance: Instance):
     return instance.eval(
-        "return box.space._pico_instance:get(...).replicaset_id", instance.name
+        "return box.space._pico_instance:get(...).replicaset_name", instance.name
     )
 
 
@@ -145,7 +145,7 @@ def test_replication(cluster: Cluster):
             "name": instance.name,
             "uuid": instance.eval("return box.info.uuid"),
             "raft_id": instance.raft_id,
-            "replicaset_id": "r1",
+            "replicaset_name": "r1",
             "replicaset_uuid": instance.eval("return box.info.cluster.uuid"),
             "current_state": ["Online", 1],
             "target_state": ["Online", 1],
@@ -182,17 +182,17 @@ def test_tier_replication_factor(cluster: Cluster):
     cluster.add_instance()
     cluster.add_instance()
 
-    replicaset_ids = i1.eval(
+    replicaset_names = i1.eval(
         """
         return box.space._pico_instance:pairs()
             :map(function(instance)
-                return instance.replicaset_id
+                return instance.replicaset_name
             end)
             :totable()
     """
     )
 
-    assert set(replicaset_ids) == {"r1", "r2"}
+    assert set(replicaset_names) == {"r1", "r2"}
 
 
 def test_cluster_name_mismatch(instance: Instance):
@@ -246,10 +246,10 @@ def test_separate_clusters(cluster: Cluster):
     # own clusters and don't interact at all.
     #
     i1a = cluster.add_instance(
-        instance_name="i1", replicaset_id="r1", wait_online=False
+        instance_name="i1", replicaset_name="r1", wait_online=False
     )
     i1b = cluster.add_instance(
-        instance_name="i1", replicaset_id="r1", wait_online=False
+        instance_name="i1", replicaset_name="r1", wait_online=False
     )
 
     i1a.peers.clear()
@@ -270,14 +270,14 @@ def test_separate_clusters(cluster: Cluster):
     assert i1b_info["raft_id"] == 1
 
     # See https://git.picodata.io/picodata/picodata/picodata/-/issues/390
-    # Despite instance_name and replicaset_id are the same, their uuids differ
+    # Despite instance_name and replicaset_name are the same, their uuids differ
 
     assert i1a_info["name"] == "i1"
     assert i1b_info["name"] == "i1"
     assert i1a_info["uuid"] != i1b_info["uuid"]
 
-    assert i1a_info["replicaset_id"] == "r1"
-    assert i1b_info["replicaset_id"] == "r1"
+    assert i1a_info["replicaset_name"] == "r1"
+    assert i1b_info["replicaset_name"] == "r1"
     assert i1a_info["replicaset_uuid"] != i1b_info["replicaset_uuid"]
 
 
@@ -304,7 +304,7 @@ def test_failure_domains(cluster: Cluster):
         failure_domain=dict(planet="Earth"), init_replication_factor=2
     )
     i1.assert_raft_status("Leader")
-    assert replicaset_id(i1) == "r1"
+    assert replicaset_name(i1) == "r1"
 
     assert i1.cluster_name
     with pytest.raises(TarantoolError, match="missing failure domain names: PLANET"):
@@ -318,7 +318,7 @@ def test_failure_domains(cluster: Cluster):
 
     i2 = cluster.add_instance(failure_domain=dict(planet="Mars", os="Arch"))
     i2.assert_raft_status("Follower", leader_id=i1.raft_id)
-    assert replicaset_id(i2) == "r1"
+    assert replicaset_name(i2) == "r1"
 
     with pytest.raises(TarantoolError, match="missing failure domain names: OS"):
         raft_join(
@@ -331,7 +331,7 @@ def test_failure_domains(cluster: Cluster):
 
     i3 = cluster.add_instance(failure_domain=dict(planet="Venus", os="BSD"))
     i3.assert_raft_status("Follower", leader_id=i1.raft_id)
-    assert replicaset_id(i3) == "r2"
+    assert replicaset_name(i3) == "r2"
 
 
 def test_reconfigure_failure_domains(cluster: Cluster):
@@ -339,10 +339,10 @@ def test_reconfigure_failure_domains(cluster: Cluster):
         failure_domain=dict(planet="Earth"), init_replication_factor=2
     )
     i1.assert_raft_status("Leader")
-    assert replicaset_id(i1) == "r1"
+    assert replicaset_name(i1) == "r1"
 
     i2 = cluster.add_instance(failure_domain=dict(planet="Mars"))
-    assert replicaset_id(i2) == "r1"
+    assert replicaset_name(i2) == "r1"
 
     i2.terminate()
     # fail to start without needed domain subdivisions
@@ -354,7 +354,7 @@ def test_reconfigure_failure_domains(cluster: Cluster):
     i2.start()
     i2.wait_online()
     # replicaset doesn't change automatically
-    assert replicaset_id(i2) == "r1"
+    assert replicaset_name(i2) == "r1"
 
     i2.terminate()
     # fail to remove domain subdivision
@@ -549,7 +549,7 @@ def test_join_with_duplicate_instance_name(cluster: Cluster):
     assert sole_survivor
 
 
-def test_tier_mismatch_while_joining_by_the_same_replicaset_id(cluster: Cluster):
+def test_tier_mismatch_while_joining_by_the_same_replicaset_name(cluster: Cluster):
     cluster.set_config_file(
         yaml="""
 cluster:
@@ -559,11 +559,11 @@ cluster:
         router:
 """
     )
-    _ = cluster.add_instance(replicaset_id="r1")
-    _ = cluster.add_instance(replicaset_id="r2")
+    _ = cluster.add_instance(replicaset_name="r1")
+    _ = cluster.add_instance(replicaset_name="r2")
 
     instance = cluster.add_instance(
-        replicaset_id="r2", tier="router", wait_online=False
+        replicaset_name="r2", tier="router", wait_online=False
     )
     msg = "tier mismatch: instance i3 is from tier: 'router', \
 but replicaset r2 is from tier: 'default'"

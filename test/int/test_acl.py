@@ -379,11 +379,11 @@ def to_set_of_tuples(list_of_lists):
 
 
 def test_acl_from_snapshot(cluster: Cluster):
-    i1 = cluster.add_instance(wait_online=True, replicaset_id="R1")
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="R1")
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="R1")
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="R1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="R1")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="R1")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="R2")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="R2")
 
     #
     # Initial state.

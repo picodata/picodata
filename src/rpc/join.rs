@@ -8,7 +8,7 @@ use crate::instance::State;
 use crate::instance::StateVariant::*;
 use crate::instance::{Instance, InstanceName};
 use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetId;
+use crate::replicaset::ReplicasetName;
 use crate::schema::ADMIN_ID;
 use crate::storage::ClusterwideTable;
 use crate::storage::{Clusterwide, ToEntryIter as _};
@@ -42,7 +42,7 @@ crate::define_rpc_request! {
     pub struct Request {
         pub cluster_name: String,
         pub instance_name: Option<InstanceName>,
-        pub replicaset_id: Option<ReplicasetId>,
+        pub replicaset_name: Option<ReplicasetName>,
         pub advertise_address: String,
         pub failure_domain: FailureDomain,
         pub tier: String,
@@ -83,7 +83,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
     loop {
         let instance = build_instance(
             req.instance_name.as_ref(),
-            req.replicaset_id.as_ref(),
+            req.replicaset_name.as_ref(),
             &req.failure_domain,
             storage,
             &req.tier,
@@ -103,7 +103,11 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
                 .expect("encoding should not fail"),
         );
 
-        if storage.replicasets.get(&instance.replicaset_id)?.is_none() {
+        if storage
+            .replicasets
+            .get(&instance.replicaset_name)?
+            .is_none()
+        {
             let replicaset = Replicaset::with_one_instance(&instance);
             ops.push(
                 Dml::insert(ClusterwideTable::Replicaset, &replicaset, ADMIN_ID)
@@ -134,7 +138,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
         let mut replication_addresses = storage.peer_addresses.addresses_by_ids(
             storage
                 .instances
-                .replicaset_instances(&instance.replicaset_id)
+                .replicaset_instances(&instance.replicaset_name)
                 .expect("storage should not fail")
                 .map(|i| i.raft_id),
         )?;
@@ -151,7 +155,7 @@ pub fn handle_join_request_and_wait(req: Request, timeout: Duration) -> Result<R
 
 pub fn build_instance(
     instance_name: Option<&InstanceName>,
-    replicaset_id: Option<&ReplicasetId>,
+    replicaset_name: Option<&ReplicasetName>,
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
     tier: &str,
@@ -196,16 +200,16 @@ pub fn build_instance(
     let instance_name = instance_name
         .cloned()
         .unwrap_or_else(|| choose_instance_name(raft_id, storage));
-    let replicaset_id = match replicaset_id {
-        Some(replicaset_id) => replicaset_id.clone(),
-        None => choose_replicaset_id(failure_domain, storage, &tier)?,
+    let replicaset_name = match replicaset_name {
+        Some(replicaset_name) => replicaset_name.clone(),
+        None => choose_replicaset_name(failure_domain, storage, &tier)?,
     };
 
     let instance_uuid = uuid::Uuid::new_v4().to_hyphenated().to_string();
     let replicaset_uuid;
-    if let Some(replicaset) = storage.replicasets.get(&replicaset_id)? {
+    if let Some(replicaset) = storage.replicasets.get(&replicaset_name)? {
         if replicaset.tier != tier.name {
-            return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {replicaset_id} is from tier: '{}'", tier.name, replicaset.tier)));
+            return Err(Error::other(format!("tier mismatch: instance {instance_name} is from tier: '{}', but replicaset {replicaset_name} is from tier: '{}'", tier.name, replicaset.tier)));
         }
         replicaset_uuid = replicaset.uuid;
     } else {
@@ -216,7 +220,7 @@ pub fn build_instance(
         raft_id,
         name: instance_name,
         uuid: instance_uuid,
-        replicaset_id,
+        replicaset_name,
         replicaset_uuid,
         current_state: State::new(Offline, 0),
         target_state: State::new(Offline, 0),
@@ -248,8 +252,8 @@ fn choose_instance_name(raft_id: RaftId, storage: &Clusterwide) -> InstanceName 
     }
 }
 
-/// Choose a [`ReplicasetId`] for a new instance given its `failure_domain` and `tier`.
-fn choose_replicaset_id(
+/// Choose a [`ReplicasetName`] for a new instance given its `failure_domain` and `tier`.
+fn choose_replicaset_name(
     failure_domain: &FailureDomain,
     storage: &Clusterwide,
     Tier {
@@ -257,7 +261,7 @@ fn choose_replicaset_id(
         name: tier_name,
         ..
     }: &Tier,
-) -> Result<ReplicasetId> {
+) -> Result<ReplicasetName> {
     // `BTreeMap` is used so that we get a determenistic order of instance addition to replicasets.
     // E.g. if both "r1" and "r2" are suitable, "r1" will always be prefered.
     let mut replicasets: BTreeMap<_, Vec<_>> = BTreeMap::new();
@@ -269,11 +273,11 @@ fn choose_replicaset_id(
         .into_iter()
     {
         replicasets
-            .entry(instance.replicaset_id.clone())
+            .entry(instance.replicaset_name.clone())
             .or_default()
             .push(instance);
     }
-    'next_replicaset: for (replicaset_id, instances) in replicasets.iter() {
+    'next_replicaset: for (replicaset_name, instances) in replicasets.iter() {
         if instances.len() < replication_factor
             && instances
                 .first()
@@ -286,16 +290,16 @@ fn choose_replicaset_id(
                     continue 'next_replicaset;
                 }
             }
-            return Ok(replicaset_id.clone());
+            return Ok(replicaset_name.clone());
         }
     }
 
     let mut i = 0u64;
     loop {
         i += 1;
-        let replicaset_id = ReplicasetId(format!("r{i}"));
-        if !replicasets.contains_key(&replicaset_id) {
-            return Ok(replicaset_id);
+        let replicaset_name = ReplicasetName(format!("r{i}"));
+        if !replicasets.contains_key(&replicaset_name) {
+            return Ok(replicaset_name);
         }
     }
 }

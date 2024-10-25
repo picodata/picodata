@@ -231,7 +231,7 @@ pub(crate) fn setup() {
             - advertise_address (string)
             - name (string)
             - uuid (string)
-            - replicaset_id (string)
+            - replicaset_name (string)
             - replicaset_uuid (string)
             - current_state (table),
                 `{variant = string, incarnation = number}`, where variant is one of
@@ -250,7 +250,7 @@ pub(crate) fn setup() {
               name: i1
               uuid: 68d4a766-4144-3248-aeb4-e212356716e4
               tier: storage
-              replicaset_id: r1
+              replicaset_name: r1
               replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
               current_state:
                 variant: Online
@@ -269,7 +269,7 @@ pub(crate) fn setup() {
                 ("advertise_address", info.advertise_address),
                 ("name", info.name.0),
                 ("uuid", info.uuid),
-                ("replicaset_id", info.replicaset_id),
+                ("replicaset_name", info.replicaset_name),
                 ("replicaset_uuid", info.replicaset_uuid),
                 ("current_state", info.current_state),
                 ("target_state", info.target_state),

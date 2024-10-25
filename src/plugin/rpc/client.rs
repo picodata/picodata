@@ -231,12 +231,12 @@ fn resolve_rpc_target(
         }
 
         &FfiSafeRpcTargetSpecifier::Replicaset {
-            replicaset_id,
+            replicaset_name,
             to_master: true,
         } => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
-            let replicaset_id = unsafe { replicaset_id.as_str() };
-            let tuple = node.storage.replicasets.get_raw(replicaset_id)?;
+            let replicaset_name = unsafe { replicaset_name.as_str() };
+            let tuple = node.storage.replicasets.get_raw(replicaset_name)?;
             let Some(master_name) = tuple
                 .field(Replicaset::FIELD_TARGET_MASTER_NAME)
                 .map_err(IntoBoxError::into_box_error)?
@@ -319,12 +319,12 @@ fn resolve_rpc_target(
         | FfiSafeRpcTargetSpecifier::BucketId { to_master: true, .. } => unreachable!("handled above"),
 
         &FfiSafeRpcTargetSpecifier::Replicaset {
-            replicaset_id,
+            replicaset_name,
             to_master: false,
         } => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
-            let replicaset_id = unsafe { replicaset_id.as_str() };
-            let tuple = node.storage.replicasets.get_raw(replicaset_id)?;
+            let replicaset_name = unsafe { replicaset_name.as_str() };
+            let tuple = node.storage.replicasets.get_raw(replicaset_name)?;
             let Some(found_replicaset_uuid) = tuple
                 .field(Replicaset::FIELD_REPLICASET_UUID)
                 .map_err(IntoBoxError::into_box_error)?

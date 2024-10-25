@@ -354,7 +354,7 @@ define_clusterwide_tables! {
                 #[primary]
                 index_instance_name:   Index => "_pico_instance_name",
                 index_raft_id:       Index => "_pico_instance_raft_id",
-                index_replicaset_id: Index => "_pico_instance_replicaset_id",
+                index_replicaset_name: Index => "_pico_instance_replicaset_name",
             }
         }
         Property = 516, "_pico_property" => {
@@ -374,7 +374,7 @@ define_clusterwide_tables! {
             pub struct Replicasets {
                 space: Space,
                 #[primary]
-                index_replicaset_id:   Index => "_pico_replicaset_id",
+                index_replicaset_name:   Index => "_pico_replicaset_name",
                 index_replicaset_uuid: Index => "_pico_replicaset_uuid",
             }
         }
@@ -1510,10 +1510,10 @@ impl Replicasets {
             .if_not_exists(true)
             .create()?;
 
-        let index_replicaset_id = space
-            .index_builder("_pico_replicaset_id")
+        let index_replicaset_name = space
+            .index_builder("_pico_replicaset_name")
             .unique(true)
-            .part("replicaset_id")
+            .part("replicaset_name")
             .if_not_exists(true)
             .create()?;
 
@@ -1526,7 +1526,7 @@ impl Replicasets {
 
         Ok(Self {
             space,
-            index_replicaset_id,
+            index_replicaset_name,
             index_replicaset_uuid,
         })
     }
@@ -1543,11 +1543,11 @@ impl Replicasets {
                 table_id: Self::TABLE_ID,
                 // Primary index
                 id: 0,
-                name: "_pico_replicaset_id".into(),
+                name: "_pico_replicaset_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
                 parts: vec![
-                    Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)
+                    Part::from(("replicaset_name", IndexFieldType::String)).is_nullable(false)
                 ],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1577,16 +1577,16 @@ impl Replicasets {
 
     #[allow(unused)]
     #[inline]
-    pub fn get(&self, replicaset_id: &str) -> tarantool::Result<Option<Replicaset>> {
-        let tuple = self.space.get(&[replicaset_id])?;
+    pub fn get(&self, replicaset_name: &str) -> tarantool::Result<Option<Replicaset>> {
+        let tuple = self.space.get(&[replicaset_name])?;
         tuple.as_ref().map(Tuple::decode).transpose()
     }
 
     #[inline(always)]
-    pub fn get_raw(&self, replicaset_id: &str) -> Result<Tuple> {
-        let Some(tuple) = self.space.get(&[replicaset_id])? else {
+    pub fn get_raw(&self, replicaset_name: &str) -> Result<Tuple> {
+        let Some(tuple) = self.space.get(&[replicaset_name])? else {
             return Err(Error::NoSuchReplicaset {
-                id: replicaset_id.into(),
+                name: replicaset_name.into(),
                 id_is_uuid: false,
             });
         };
@@ -1598,7 +1598,7 @@ impl Replicasets {
     pub fn by_uuid_raw(&self, replicaset_uuid: &str) -> Result<Tuple> {
         let Some(tuple) = self.index_replicaset_uuid.get(&[replicaset_uuid])? else {
             return Err(Error::NoSuchReplicaset {
-                id: replicaset_uuid.into(),
+                name: replicaset_uuid.into(),
                 id_is_uuid: true,
             });
         };
@@ -1735,10 +1735,10 @@ impl Instances {
             .if_not_exists(true)
             .create()?;
 
-        let index_replicaset_id = space_instances
-            .index_builder("_pico_instance_replicaset_id")
+        let index_replicaset_name = space_instances
+            .index_builder("_pico_instance_replicaset_name")
             .unique(false)
-            .part("replicaset_id")
+            .part("replicaset_name")
             .if_not_exists(true)
             .create()?;
 
@@ -1746,7 +1746,7 @@ impl Instances {
             space: space_instances,
             index_instance_name,
             index_raft_id,
-            index_replicaset_id,
+            index_replicaset_name,
         })
     }
 
@@ -1784,11 +1784,11 @@ impl Instances {
             IndexDef {
                 table_id: Self::TABLE_ID,
                 id: 2,
-                name: "_pico_instance_replicaset_id".into(),
+                name: "_pico_instance_replicaset_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(false)],
                 parts: vec![
-                    Part::from(("replicaset_id", IndexFieldType::String)).is_nullable(false)
+                    Part::from(("replicaset_name", IndexFieldType::String)).is_nullable(false)
                 ],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
@@ -1861,11 +1861,11 @@ impl Instances {
 
     pub fn replicaset_instances(
         &self,
-        replicaset_id: &str,
+        replicaset_name: &str,
     ) -> tarantool::Result<EntryIter<Instance, MP_SERDE>> {
         let iter = self
-            .index_replicaset_id
-            .select(IteratorType::Eq, &[replicaset_id])?;
+            .index_replicaset_name
+            .select(IteratorType::Eq, &[replicaset_name])?;
         Ok(EntryIter::new(iter))
     }
 
@@ -5046,8 +5046,8 @@ mod tests {
             );
         }
 
-        let box_replication = |replicaset_id: &str| -> Vec<traft::Address> {
-            storage.instances.replicaset_instances(replicaset_id).unwrap()
+        let box_replication = |replicaset_name: &str| -> Vec<traft::Address> {
+            storage.instances.replicaset_instances(replicaset_name).unwrap()
                 .map(|instance| storage_peer_addresses.try_get(instance.raft_id).unwrap())
                 .collect::<Vec<_>>()
         };

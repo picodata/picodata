@@ -118,11 +118,11 @@ pub fn handle_update_instance_request_and_wait(req: Request, timeout: Duration) 
     loop {
         let instance = storage.instances.get(&req.instance_name)?;
 
-        let replicaset_id = &instance.replicaset_id;
+        let replicaset_name = &instance.replicaset_name;
         #[rustfmt::skip]
-        let Some(replicaset) = storage.replicasets.get(replicaset_id)? else {
-            crate::warn_or_panic!("replicaset info for replicaset_id: `{replicaset_id}` has disappeared, needed for instance {}", instance.name);
-            return Err(Error::NoSuchReplicaset { id: replicaset_id.to_string(), id_is_uuid: false });
+        let Some(replicaset) = storage.replicasets.get(replicaset_name)? else {
+            crate::warn_or_panic!("replicaset info for replicaset_name: `{replicaset_name}` has disappeared, needed for instance {}", instance.name);
+            return Err(Error::NoSuchReplicaset { name: replicaset_name.to_string(), id_is_uuid: false });
         };
 
         let tier = &instance.tier;
@@ -168,7 +168,7 @@ pub fn prepare_update_instance_cas_request(
     tier: &Tier,
     existing_fds: &HashSet<Uppercase>,
 ) -> Result<Option<(Op, Vec<cas::Range>)>> {
-    debug_assert_eq!(instance.replicaset_id, replicaset.replicaset_id);
+    debug_assert_eq!(instance.replicaset_name, replicaset.replicaset_name);
     debug_assert_eq!(instance.tier, replicaset.tier);
     debug_assert_eq!(instance.tier, tier.name);
 
@@ -194,7 +194,7 @@ pub fn prepare_update_instance_cas_request(
         #[rustfmt::skip]
         update_ops.assign(column_name!(Replicaset, target_config_version), replicaset.target_config_version + 1)?;
         #[rustfmt::skip]
-        let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[&replicaset.replicaset_id], update_ops, ADMIN_ID)?;
+        let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[&replicaset.replicaset_name], update_ops, ADMIN_ID)?;
         ops.push(replicaset_dml);
     }
 

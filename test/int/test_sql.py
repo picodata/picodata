@@ -440,7 +440,7 @@ def test_read_from_system_tables(cluster: Cluster):
         {"name": "name", "type": "string"},
         {"name": "uuid", "type": "string"},
         {"name": "raft_id", "type": "unsigned"},
-        {"name": "replicaset_id", "type": "string"},
+        {"name": "replicaset_name", "type": "string"},
         {"name": "replicaset_uuid", "type": "string"},
         {"name": "current_state", "type": "array"},
         {"name": "target_state", "type": "array"},

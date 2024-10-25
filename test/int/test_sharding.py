@@ -60,25 +60,25 @@ def test_bucket_discovery_respects_replication_factor(cluster: Cluster):
     assert i1.eval("return rawget(_G, 'vshard') == nil")
     assert not vshard_bootstrapped(i1)
 
-    i2 = cluster.add_instance(replicaset_id="r2")
+    i2 = cluster.add_instance(replicaset_name="r2")
     time.sleep(0.5)
     assert i2.eval("return rawget(_G, 'vshard') == nil")
     assert not vshard_bootstrapped(i2)
 
-    i3 = cluster.add_instance(replicaset_id="r1")
+    i3 = cluster.add_instance(replicaset_name="r1")
     time.sleep(0.5)
     assert vshard_bootstrapped(i3)
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 3000)
 
 
 def test_automatic_bucket_rebalancing(cluster: Cluster):
-    i1 = cluster.add_instance(replicaset_id="r1")
+    i1 = cluster.add_instance(replicaset_name="r1")
     cluster.wait_until_instance_has_this_many_active_buckets(i1, 3000)
 
-    i2 = cluster.add_instance(replicaset_id="r2")
+    i2 = cluster.add_instance(replicaset_name="r2")
     cluster.wait_until_instance_has_this_many_active_buckets(i2, 1500)
 
-    i3 = cluster.add_instance(replicaset_id="r3")
+    i3 = cluster.add_instance(replicaset_name="r3")
     cluster.wait_until_instance_has_this_many_active_buckets(i3, 1000)
 
     # Set one of the replicaset's weight to 0, to trigger rebalancing from it.
@@ -86,7 +86,7 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
         """
             UPDATE "_pico_replicaset"
             SET "weight" = 0, "weight_origin" = 'user'
-            WHERE "replicaset_id" = 'r1'
+            WHERE "replicaset_name" = 'r1'
         """
     )
 
@@ -111,7 +111,7 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
         """
             UPDATE "_pico_replicaset"
             SET "weight" = 0.5, "weight_origin" = 'user'
-            WHERE "replicaset_id" = 'r2'
+            WHERE "replicaset_name" = 'r2'
         """
     )
 
@@ -207,10 +207,10 @@ def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
     reason=("very flaky, temporary disabled"),
 )
 def test_vshard_updates_on_master_change(cluster: Cluster):
-    i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i3 = cluster.add_instance(replicaset_id="r2", wait_online=True)
-    i4 = cluster.add_instance(replicaset_id="r2", wait_online=True)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
+    i4 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
     r1_uuid = i1.eval("return box.space._pico_replicaset:get('r1').replicaset_uuid")
     r2_uuid = i1.eval("return box.space._pico_replicaset:get('r2').replicaset_uuid")

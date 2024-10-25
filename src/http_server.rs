@@ -7,7 +7,7 @@ use tarantool::fiber::r#async::timeout::IntoTimeout;
 
 use crate::info::{RuntimeInfo, VersionInfo};
 use crate::instance::{Instance, InstanceName, StateVariant};
-use crate::replicaset::{Replicaset, ReplicasetId};
+use crate::replicaset::{Replicaset, ReplicasetName};
 use crate::storage::Clusterwide;
 use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
@@ -90,7 +90,7 @@ struct ReplicasetInfo {
     instances: Vec<InstanceInfo>,
     capacity_usage: f64,
     memory: MemoryInfo,
-    id: ReplicasetId,
+    name: ReplicasetName,
     #[serde(skip)]
     tier: String,
 }
@@ -155,14 +155,14 @@ pub(crate) struct ClusterInfo {
 
 fn get_replicasets(
     storage: &Clusterwide,
-) -> Result<HashMap<ReplicasetId, Replicaset>, Box<dyn Error>> {
+) -> Result<HashMap<ReplicasetName, Replicaset>, Box<dyn Error>> {
     let i = storage.replicasets.iter()?;
-    Ok(i.map(|item| (item.replicaset_id.clone(), item)).collect())
+    Ok(i.map(|item| (item.replicaset_name.clone(), item)).collect())
 }
 
 fn get_peer_addresses(
     storage: &Clusterwide,
-    replicasets: &HashMap<ReplicasetId, Replicaset>,
+    replicasets: &HashMap<ReplicasetName, Replicaset>,
     instances: &[Instance],
     only_leaders: bool, // get data from leaders only or from all instances
 ) -> Result<HashMap<u64, String>, Box<dyn Error>> {
@@ -171,7 +171,7 @@ fn get_peer_addresses(
         .filter(|item| {
             !only_leaders
                 || replicasets
-                    .get(&item.replicaset_id)
+                    .get(&item.replicaset_name)
                     .is_some_and(|r| r.current_master_name == item.name)
         })
         .map(|item| (item.raft_id, true))
@@ -249,7 +249,8 @@ fn get_replicasets_info(
     let replicasets = get_replicasets(storage)?;
     let addresses = get_peer_addresses(storage, &replicasets, &instances, only_leaders)?;
 
-    let mut res: HashMap<ReplicasetId, ReplicasetInfo> = HashMap::with_capacity(replicasets.len());
+    let mut res: HashMap<ReplicasetName, ReplicasetInfo> =
+        HashMap::with_capacity(replicasets.len());
 
     for instance in instances {
         let address = addresses
@@ -257,11 +258,11 @@ fn get_replicasets_info(
             .cloned()
             .unwrap_or_default();
 
-        let replicaset_id = instance.replicaset_id;
+        let replicaset_name = instance.replicaset_name;
         let mut is_leader = false;
         let mut replicaset_uuid = String::new();
         let mut tier = instance.tier.clone();
-        if let Some(replicaset) = replicasets.get(&replicaset_id) {
+        if let Some(replicaset) = replicasets.get(&replicaset_name) {
             is_leader = replicaset.current_master_name == instance.name;
             replicaset_uuid.clone_from(&replicaset.uuid);
             debug_assert_eq!(replicaset.tier, instance.tier);
@@ -291,8 +292,8 @@ fn get_replicasets_info(
         };
 
         let replicaset_info = res
-            .entry(replicaset_id)
-            .or_insert_with_key(|replicaset_id| ReplicasetInfo {
+            .entry(replicaset_name)
+            .or_insert_with_key(|replicaset_name| ReplicasetInfo {
                 version: instance_info.version.clone(),
                 state: instance_info.current_state,
                 instance_count: 0,
@@ -300,7 +301,7 @@ fn get_replicasets_info(
                 capacity_usage: 0_f64,
                 instances: Vec::new(),
                 memory: MemoryInfo { usable: 0, used: 0 },
-                id: replicaset_id.clone(),
+                name: replicaset_name.clone(),
                 tier,
             });
 
@@ -403,7 +404,7 @@ pub(crate) fn http_api_tiers() -> Result<Vec<TierInfo>, Box<dyn Error>> {
             tlog!(
                 Warning,
                 "replicaset `{}` is assigned tier `{}`, which is not found in _pico_tier",
-                replicaset.id,
+                replicaset.name,
                 replicaset.tier,
             );
             continue;

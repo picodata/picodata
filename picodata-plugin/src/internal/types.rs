@@ -235,7 +235,7 @@ pub struct InstanceInfo {
     advertise_address: RString,
     name: RString,
     uuid: RString,
-    replicaset_id: RString,
+    replicaset_name: RString,
     replicaset_uuid: RString,
     cluster_name: RString,
     current_state: State,
@@ -250,7 +250,7 @@ impl InstanceInfo {
         advertise_address: String,
         name: String,
         instance_uuid: String,
-        replicaset_id: String,
+        replicaset_name: String,
         replicaset_uuid: String,
         cluster_name: String,
         current_state: State,
@@ -262,7 +262,7 @@ impl InstanceInfo {
             advertise_address: RString::from(advertise_address),
             name: RString::from(name),
             uuid: RString::from(instance_uuid),
-            replicaset_id: RString::from(replicaset_id),
+            replicaset_name: RString::from(replicaset_name),
             replicaset_uuid: RString::from(replicaset_uuid),
             cluster_name: RString::from(cluster_name),
             current_state,
@@ -292,8 +292,8 @@ impl InstanceInfo {
     }
 
     /// ID of a replicaset the instance belongs to.
-    pub fn replicaset_id(&self) -> &str {
-        self.replicaset_id.as_str()
+    pub fn replicaset_name(&self) -> &str {
+        self.replicaset_name.as_str()
     }
 
     /// UUID of a replicaset the instance belongs to.

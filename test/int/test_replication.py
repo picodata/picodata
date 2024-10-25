@@ -103,8 +103,8 @@ def test_2_of_3_writable(cluster3: Cluster):
 
 def test_replication_works(cluster: Cluster):
     cluster.deploy(instance_count=1, init_replication_factor=2)
-    i2 = cluster.add_instance(wait_online=False, replicaset_id="r2")
-    i3 = cluster.add_instance(wait_online=False, replicaset_id="r2")
+    i2 = cluster.add_instance(wait_online=False, replicaset_name="r2")
+    i3 = cluster.add_instance(wait_online=False, replicaset_name="r2")
     i2.start()
     i3.start()
     i2.wait_online()
@@ -122,8 +122,8 @@ def test_master_auto_switchover(cluster: Cluster):
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3)
     # These are being tested.
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # i4 is master as the first member of the replicaset.
     assert i4.replicaset_master_name() == i4.name
@@ -196,8 +196,8 @@ def test_replication_sync_before_master_switchover(cluster: Cluster):
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3)
     # These are being tested.
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Make sure i5 will not be able to synchronize before promoting
     i5.call(
@@ -258,8 +258,8 @@ def test_expel_blocked_by_replicaset_master_switchover(cluster: Cluster):
     # These guys are for quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3)
     # These are being tested.
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Make sure i5 will not be able to synchronize before promoting
     i5.call(

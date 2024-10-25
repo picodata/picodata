@@ -107,7 +107,7 @@ impl Loop {
             .collect();
         let replicasets: HashMap<_, _> = replicasets
             .iter()
-            .map(|rs| (&rs.replicaset_id, rs))
+            .map(|rs| (&rs.replicaset_name, rs))
             .collect();
 
         let tiers: Vec<_> = storage
@@ -255,7 +255,7 @@ impl Loop {
                 old_master_name,
                 demote,
                 new_master_name,
-                replicaset_id,
+                replicaset_name,
                 mut update_ops,
                 bump_ranges,
                 bump_ops,
@@ -271,7 +271,7 @@ impl Loop {
                     governor_step! {
                         "demoting old master" [
                             "old_master_name" => %old_master_name,
-                            "replicaset_id" => %replicaset_id,
+                            "replicaset_name" => %replicaset_name,
                         ]
                         async {
                             let resp = pool.call(old_master_name, proc_name!(proc_replication_demote), &rpc, rpc_timeout)?.await?;
@@ -282,7 +282,7 @@ impl Loop {
                     governor_step! {
                         "getting promotion vclock from new master" [
                             "new_master_name" => %new_master_name,
-                            "replicaset_id" => %replicaset_id,
+                            "replicaset_name" => %replicaset_name,
                         ]
                         async {
                             let rpc = GetVclockRpc {};
@@ -297,7 +297,7 @@ impl Loop {
                 governor_step! {
                     "proposing replicaset current master change" [
                         "current_master_name" => %new_master_name,
-                        "replicaset_id" => %replicaset_id,
+                        "replicaset_name" => %replicaset_name,
                     ]
                     async {
                         let mut ops = bump_ops;
@@ -306,7 +306,7 @@ impl Loop {
                         update_ops.assign("promotion_vclock", &promotion_vclock).expect("shan't fail");
                         let op = Dml::update(
                             ClusterwideTable::Replicaset,
-                            &[replicaset_id],
+                            &[replicaset_name],
                             update_ops,
                             ADMIN_ID,
                         )?;
@@ -343,7 +343,7 @@ impl Loop {
             }
 
             Plan::ConfigureReplication(ConfigureReplication {
-                replicaset_id,
+                replicaset_name,
                 targets,
                 master_name,
                 replicaset_peers,
@@ -403,7 +403,7 @@ impl Loop {
 
                 governor_step! {
                     "actualizing replicaset configuration version" [
-                        "replicaset_id" => %replicaset_id,
+                        "replicaset_name" => %replicaset_name,
                     ]
                     async {
                         let deadline = fiber::clock().saturating_add(raft_op_timeout);

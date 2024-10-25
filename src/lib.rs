@@ -760,14 +760,14 @@ fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
     let raft_id = 1;
     let instance_name = config.instance.name();
     let instance_name = instance_name.unwrap_or_else(|| instance::InstanceName::from("i1"));
-    let replicaset_id = config.instance.replicaset_id();
-    let replicaset_id = replicaset_id.unwrap_or_else(|| replicaset::ReplicasetId::from("r1"));
+    let replicaset_name = config.instance.replicaset_name();
+    let replicaset_name = replicaset_name.unwrap_or_else(|| replicaset::ReplicasetName::from("r1"));
 
     let instance = Instance {
         raft_id,
         name: instance_name.clone(),
         uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
-        replicaset_id,
+        replicaset_name,
         replicaset_uuid: uuid::Uuid::new_v4().to_hyphenated().to_string(),
         current_state: instance::State::new(Offline, 0),
         target_state: instance::State::new(Offline, 0),
@@ -835,7 +835,7 @@ fn start_join(config: &PicodataConfig, instance_address: String) -> Result<(), E
     let req = rpc::join::Request {
         cluster_name: config.cluster_name().into(),
         instance_name: config.instance.name().map(From::from),
-        replicaset_id: config.instance.replicaset_id().map(From::from),
+        replicaset_name: config.instance.replicaset_name().map(From::from),
         advertise_address: config.instance.advertise_address().to_host_port(),
         failure_domain: config.instance.failure_domain(),
         tier: config.instance.tier().into(),

@@ -8,7 +8,7 @@ use crate::introspection::leaf_field_paths;
 use crate::introspection::FieldInfo;
 use crate::introspection::Introspection;
 use crate::pgproto;
-use crate::replicaset::ReplicasetId;
+use crate::replicaset::ReplicasetName;
 use crate::storage;
 use crate::tier::Tier;
 use crate::tier::TierConfig;
@@ -266,8 +266,8 @@ Using configuration file '{args_path}'.");
             config_from_args.instance.name = Some(instance_name);
         }
 
-        if let Some(replicaset_id) = args.replicaset_id {
-            config_from_args.instance.replicaset_id = Some(replicaset_id);
+        if let Some(replicaset_name) = args.replicaset_name {
+            config_from_args.instance.replicaset_name = Some(replicaset_name);
         }
 
         if let Some(tier) = args.tier {
@@ -465,7 +465,10 @@ Using configuration file '{args_path}'.");
                 _ = write!(&mut buffer, "`{}{}`", param.prefix, param.name);
 
                 // TODO: this is a temporary help message implied only for 24.6 version
-                if param.name == "instance_id" || param.name == "cluster_id" {
+                if param.name == "instance_id"
+                    || param.name == "cluster_id"
+                    || param.name == "replicased_id"
+                {
                     _ = write!(&mut buffer, " (did you mean `name`?)");
                     continue;
                 } else if let Some(best_match) = param.best_match {
@@ -546,10 +549,13 @@ Using configuration file '{args_path}'.");
         // Replicaset id
         if let Some(instance_name) = &instance_name {
             if let Ok(instance_info) = storage.instances.get(instance_name) {
-                match (&instance_info.replicaset_id, &self.instance.replicaset_id) {
+                match (
+                    &instance_info.replicaset_name,
+                    &self.instance.replicaset_name,
+                ) {
                     (from_storage, Some(from_config)) if from_storage != from_config => {
                         return Err(Error::InvalidConfiguration(format!(
-                            "instance restarted with a different `replicaset_id`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
+                            "instance restarted with a different `replicaset_name`, which is not allowed, was: '{from_storage}' became: '{from_config}'"
                         )));
                     }
                     _ => {}
@@ -981,7 +987,7 @@ pub struct InstanceConfig {
     pub cluster_name: Option<String>,
 
     pub name: Option<String>,
-    pub replicaset_id: Option<String>,
+    pub replicaset_name: Option<String>,
 
     #[introspection(config_default = "default")]
     pub tier: Option<String>,
@@ -1067,8 +1073,8 @@ impl InstanceConfig {
     }
 
     #[inline]
-    pub fn replicaset_id(&self) -> Option<ReplicasetId> {
-        self.replicaset_id.as_deref().map(ReplicasetId::from)
+    pub fn replicaset_name(&self) -> Option<ReplicasetName> {
+        self.replicaset_name.as_deref().map(ReplicasetName::from)
     }
 
     #[inline]

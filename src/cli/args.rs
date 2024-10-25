@@ -140,14 +140,14 @@ pub struct Run {
     /// failure domains until the desired replication factor is reached.
     pub failure_domain: Vec<(Uppercase, Uppercase)>,
 
-    #[clap(long, value_name = "NAME", env = "PICODATA_REPLICASET_ID")]
+    #[clap(long, value_name = "NAME", env = "PICODATA_REPLICASET_NAME")]
     /// Name of the replicaset.
     /// Used during cluster initialization
     /// and joining an instance to an existing cluster.
     ///
     /// If not specified, a replicaset will be automatically chosen based on the
     /// failure domain settings.
-    pub replicaset_id: Option<String>,
+    pub replicaset_name: Option<String>,
 
     #[clap(long, arg_enum, env = "PICODATA_LOG_LEVEL")]
     /// Log level.

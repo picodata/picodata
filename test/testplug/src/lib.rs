@@ -331,7 +331,7 @@ impl Service for Service3 {
                 let i_info = internal::instance_info().unwrap();
                 save_in_lua("testservice_3", "name", i_info.name());
                 save_in_lua("testservice_3", "uuid", i_info.uuid());
-                save_in_lua("testservice_3", "replicaset_id", i_info.replicaset_id());
+                save_in_lua("testservice_3", "replicaset_name", i_info.replicaset_name());
                 save_in_lua("testservice_3", "replicaset_uuid", i_info.replicaset_uuid());
                 save_in_lua("testservice_3", "cluster_name", i_info.cluster_name());
                 save_in_lua("testservice_3", "tier", i_info.tier());
@@ -577,7 +577,7 @@ impl Service for ServiceWithRpcTests {
                     path: String,
                     service_info: Option<(String, String, String)>,
                     instance_name: Option<String>,
-                    replicaset_id: Option<String>,
+                    replicaset_name: Option<String>,
                     bucket_id: Option<u64>,
                     tier_and_bucket_id: Option<(String, u64)>,
                     to_master: Option<bool>,
@@ -590,9 +590,9 @@ impl Service for ServiceWithRpcTests {
                 let mut target = rpc::RequestTarget::Any;
                 if let Some(instance_name) = &request.instance_name {
                     target = rpc::RequestTarget::InstanceName(instance_name);
-                } else if let Some(replicaset_id) = &request.replicaset_id {
-                    target = rpc::RequestTarget::ReplicasetId(
-                        replicaset_id,
+                } else if let Some(replicaset_name) = &request.replicaset_name {
+                    target = rpc::RequestTarget::ReplicasetName(
+                        replicaset_name,
                         request.to_master.unwrap_or(false),
                     );
                 } else if let Some(bucket_id) = &request.bucket_id {

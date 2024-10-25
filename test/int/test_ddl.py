@@ -169,7 +169,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     ############################################################################
     # A new replicaset boots up after the fact successfully
 
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="r3")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r3")
 
     assert i5.call("box.space._pico_property:get", "global_schema_version")[1] == 3
     assert i5.next_schema_version() == 4
@@ -178,7 +178,7 @@ def test_ddl_create_table_bulky(cluster: Cluster):
     assert i5.call("box.space._space:get", space_id) == tt_space_def
     assert i5.call("box.space._index:get", [space_id, 0]) == tt_pk_def
 
-    i6 = cluster.add_instance(wait_online=True, replicaset_id="r3")
+    i6 = cluster.add_instance(wait_online=True, replicaset_name="r3")
 
     # It's schema was updated automatically as well
     assert i6.call("box.space._pico_property:get", "global_schema_version")[1] == 3
@@ -501,9 +501,9 @@ def test_ddl_create_table_partial_failure(cluster: Cluster):
 ################################################################################
 def test_successful_wakeup_after_ddl(cluster: Cluster):
     # Manual replicaset distribution.
-    i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i2 = cluster.add_instance(replicaset_id="r2", wait_online=True)
-    i3 = cluster.add_instance(replicaset_id="r2", wait_online=True)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="r2", wait_online=True)
+    i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
     # This is a replica which will be catching up
     i3.terminate()
@@ -596,14 +596,14 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
     i2.raft_compact_log()
 
     # A replicaset master boots up from snapshot
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="R2")
     assert i3.call("box.space._space:get", space_id) == tt_space_def
     assert i3.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i3.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
     assert i3.call("box.space._schema:get", "local_schema_version")[1] == 2
 
     # A replicaset follower boots up from snapshot
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="R2")
     assert i4.call("box.space._space:get", space_id) == tt_space_def
     assert i4.call("box.space._index:get", [space_id, 0]) == tt_pk_def
     assert i4.call("box.space._index:get", [space_id, 1]) == tt_bucket_id_def
@@ -613,9 +613,9 @@ def test_ddl_create_table_from_snapshot_at_boot(cluster: Cluster):
 ################################################################################
 def test_ddl_create_table_from_snapshot_at_catchup(cluster: Cluster):
     # Second instance is only for quorum
-    i1 = cluster.add_instance(wait_online=True, replicaset_id="r1")
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="R2")
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="r1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="R2")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="R2")
 
     i1.assert_raft_status("Leader")
 
@@ -679,9 +679,9 @@ def test_ddl_create_table_at_catchup_with_master_switchover(cluster: Cluster):
     # For quorum.
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
     # This is a master, who will be present at ddl.
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     # This is a replica, who will become master and will catch up.
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     i4.terminate()
 
@@ -763,8 +763,8 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
     # First 3 are fore quorum.
     i1, i2, i3 = cluster.deploy(instance_count=3, init_replication_factor=1)
     # Test subjects.
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="R99")
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="R99")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="R99")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="R99")
 
     # Set up.
     table_name = "trinkets"
@@ -852,9 +852,9 @@ def test_ddl_drop_table_partial_failure(cluster: Cluster):
 def test_ddl_drop_table_by_raft_log_at_catchup(cluster: Cluster):
     # i1 is for quorum
     i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     # This one will be catching up.
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Set up.
     cluster.create_table(
@@ -979,8 +979,8 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
     #
     # Add a new replicaset.
     #
-    i3 = cluster.add_instance(wait_online=False, replicaset_id="r99")
-    i4 = cluster.add_instance(wait_online=False, replicaset_id="r99")
+    i3 = cluster.add_instance(wait_online=False, replicaset_name="r99")
+    i4 = cluster.add_instance(wait_online=False, replicaset_name="r99")
     i3.start()
     i4.start()
     i3.wait_online()
@@ -1002,9 +1002,9 @@ def test_ddl_drop_table_by_raft_log_at_boot(cluster: Cluster):
 def test_ddl_drop_table_by_snapshot_on_replica(cluster: Cluster):
     # i1 is for quorum
     i1, *_ = cluster.deploy(instance_count=1, init_replication_factor=1)
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     # This one will be catching up.
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Set up.
     cluster.create_table(
@@ -1076,9 +1076,9 @@ def test_ddl_drop_table_by_snapshot_on_master(cluster: Cluster):
     # These ones are for quorum.
     i1, i2 = cluster.deploy(instance_count=2, init_replication_factor=1)
     # This is a replicaset master, who will be following along with the ddl.
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="r99")
     # This is a replica, who will become master and be catching up.
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r99")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r99")
 
     # Set up.
     cluster.create_table(
@@ -1214,11 +1214,11 @@ def test_pico_create_table_doesnt_conflict_with_local_spaces(cluster: Cluster):
 ################################################################################
 def test_ddl_alter_space_by_snapshot(cluster: Cluster):
     # These ones are for quorum.
-    i1 = cluster.add_instance(wait_online=True, replicaset_id="R1")
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="R1")
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="R1")
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="R2")
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="R2")
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="R1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="R1")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="R1")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="R2")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="R2")
 
     #
     # Set up.

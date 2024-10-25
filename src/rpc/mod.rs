@@ -10,7 +10,7 @@ use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetId;
+use crate::replicaset::ReplicasetName;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::tlog;
 use crate::traft::error::Error;
@@ -40,7 +40,7 @@ pub mod update_instance;
 static mut STATIC_PROCS: Option<HashSet<String>> = None;
 
 pub fn replicasets_masters<'a>(
-    replicasets: &HashMap<&ReplicasetId, &'a Replicaset>,
+    replicasets: &HashMap<&ReplicasetName, &'a Replicaset>,
     instances: &'a [Instance],
 ) -> Vec<&'a InstanceName> {
     let mut masters = Vec::with_capacity(replicasets.len());
@@ -53,7 +53,7 @@ pub fn replicasets_masters<'a>(
                 Warning,
                 "couldn't find instance with name {}, which is chosen as master of replicaset {}",
                 r.current_master_name,
-                r.replicaset_id,
+                r.replicaset_name,
             );
             // Send them a request anyway just to be safe
             masters.push(&r.current_master_name);

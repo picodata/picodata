@@ -1056,8 +1056,8 @@ DROP DATABASE everything;
 
 def test_migration_lock(cluster: Cluster):
     i1 = cluster.add_instance(wait_online=True)
-    i2 = cluster.add_instance(wait_online=False, replicaset_id="storage")
-    i3 = cluster.add_instance(wait_online=False, replicaset_id="storage")
+    i2 = cluster.add_instance(wait_online=False, replicaset_name="storage")
+    i3 = cluster.add_instance(wait_online=False, replicaset_name="storage")
     cluster.wait_online()
 
     # Decrease auto_offline_timeout so that sentinel notices that the instance
@@ -1322,9 +1322,9 @@ def test_instance_service_poison_and_healthy_then(cluster: Cluster):
 
 
 def test_on_leader_change(cluster: Cluster):
-    i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i3 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i3 = cluster.add_instance(replicaset_name="r1", wait_online=True)
 
     plugin_ref = PluginReflection.default(i1, i2, i3)
 
@@ -1358,8 +1358,8 @@ def test_on_leader_change(cluster: Cluster):
 
 
 def test_error_on_leader_change(cluster: Cluster):
-    i1 = cluster.add_instance(replicaset_id="r1", wait_online=True)
-    i2 = cluster.add_instance(replicaset_id="r1", wait_online=True)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
+    i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
 
     plugin_ref = PluginReflection.default(i1, i2)
 
@@ -2165,19 +2165,19 @@ cluster:
         router:
 """
     )
-    i1 = cluster.add_instance(replicaset_id="r1", wait_online=False)
-    i2 = cluster.add_instance(replicaset_id="r1", wait_online=False)
-    i3 = cluster.add_instance(replicaset_id="r2", wait_online=False)
-    i4 = cluster.add_instance(replicaset_id="r2", wait_online=False)
+    i1 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+    i2 = cluster.add_instance(replicaset_name="r1", wait_online=False)
+    i3 = cluster.add_instance(replicaset_name="r2", wait_online=False)
+    i4 = cluster.add_instance(replicaset_name="r2", wait_online=False)
     router_instance = cluster.add_instance(
-        wait_online=False, replicaset_id="r3", tier="router"
+        wait_online=False, replicaset_name="r3", tier="router"
     )
     cluster.wait_online()
 
-    def replicaset_master_name(replicaset_id: str) -> str:
+    def replicaset_master_name(replicaset_name: str) -> str:
         return i1.eval(
             "return box.space._pico_replicaset:get(...).target_master_name",
-            replicaset_id,
+            replicaset_name,
         )
 
     def any_bucket_id(instance: Instance) -> str:
@@ -2277,7 +2277,7 @@ cluster:
     context = make_context()
     input = dict(
         path="/ping",
-        replicaset_id="r2",
+        replicaset_name="r2",
         input="replicaset:any",
     )
     output = i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
@@ -2290,7 +2290,7 @@ cluster:
     context = make_context()
     input = dict(
         path="/ping",
-        replicaset_id="r2",
+        replicaset_name="r2",
         to_master=True,
         input="replicaset:master",
     )
@@ -2407,13 +2407,13 @@ cluster:
         context = make_context()
         input = dict(
             path="/ping",
-            replicaset_id="NO_SUCH_REPLICASET",
+            replicaset_name="NO_SUCH_REPLICASET",
             input=msgpack.dumps([]),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
         ErrorCode.NoSuchReplicaset,
-        'replicaset with replicaset_id "NO_SUCH_REPLICASET" not found',
+        'replicaset with replicaset_name "NO_SUCH_REPLICASET" not found',
     )
 
     # Check requesting RPC to unknown bucket id
@@ -2468,8 +2468,8 @@ def test_plugin_rpc_sdk_single_instance(cluster: Cluster):
     input = dict(
         service_info=(plugin_name, service_name, _PLUGIN_VERSION_1),
         path="/ping",
-        input="by-replicaset-id",
-        replicaset_id=i1.call(".proc_instance_info")["replicaset_id"],
+        input="by-replicaset-name",
+        replicaset_name=i1.call(".proc_instance_info")["replicaset_name"],
         to_master=False,
     )
     i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
@@ -2486,7 +2486,7 @@ def test_sdk_internal(cluster: Cluster):
 
     PluginReflection.assert_data_eq(i1, "name", i1.name)
     PluginReflection.assert_data_eq(i1, "uuid", i1.uuid())
-    PluginReflection.assert_data_eq(i1, "replicaset_id", "r1")
+    PluginReflection.assert_data_eq(i1, "replicaset_name", "r1")
     PluginReflection.assert_data_eq(i1, "replicaset_uuid", i1.replicaset_uuid())
     PluginReflection.assert_data_eq(i1, "cluster_name", i1.cluster_name)
     PluginReflection.assert_data_eq(i1, "tier", _DEFAULT_TIER)

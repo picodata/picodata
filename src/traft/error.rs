@@ -84,7 +84,7 @@ pub enum Error {
     },
     /// Instance was requested to configure replication with different replicaset.
     #[error("cannot replicate with different replicaset: expected {instance_rsid:?}, requested {requested_rsid:?}")]
-    ReplicasetIdMismatch {
+    ReplicasetNameMismatch {
         instance_rsid: String,
         requested_rsid: String,
     },
@@ -101,8 +101,8 @@ pub enum Error {
     Tarantool(#[from] ::tarantool::error::Error),
     #[error("instance with {} not found", DisplayIdOfInstance(.0))]
     NoSuchInstance(Result<RaftId, InstanceName>),
-    #[error("replicaset with {} \"{id}\" not found", if *.id_is_uuid { "replicaset_uuid" } else { "replicaset_id" })]
-    NoSuchReplicaset { id: String, id_is_uuid: bool },
+    #[error("replicaset with {} \"{name}\" not found", if *.id_is_uuid { "replicaset_uuid" } else { "replicaset_name" })]
+    NoSuchReplicaset { name: String, id_is_uuid: bool },
     #[error("tier with name \"{0}\" not found")]
     NoSuchTier(String),
     #[error("address of peer with id {0} not found")]

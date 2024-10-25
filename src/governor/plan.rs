@@ -9,7 +9,7 @@ use crate::plugin::PluginOp;
 use crate::plugin::TopologyUpdateOpKind;
 use crate::replicaset::ReplicasetState;
 use crate::replicaset::WeightOrigin;
-use crate::replicaset::{Replicaset, ReplicasetId};
+use crate::replicaset::{Replicaset, ReplicasetName};
 use crate::rpc;
 use crate::rpc::update_instance::prepare_update_instance_cas_request;
 use crate::schema::{
@@ -41,7 +41,7 @@ pub(super) fn action_plan<'i>(
     peer_addresses: &'i HashMap<RaftId, String>,
     voters: &[RaftId],
     learners: &[RaftId],
-    replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
+    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
     tiers: &HashMap<&str, &Tier>,
     my_raft_id: RaftId,
     has_pending_schema_change: bool,
@@ -72,7 +72,7 @@ pub(super) fn action_plan<'i>(
         let new_current_state = instance.target_state.variant.as_str();
 
         let replicaset = *replicasets
-            .get(&instance.replicaset_id)
+            .get(&instance.replicaset_name)
             .expect("replicaset info is always present");
         let tier = *tiers
             .get(&*instance.tier)
@@ -126,12 +126,12 @@ pub(super) fn action_plan<'i>(
     // update target replicaset master
     let new_target_master = get_new_replicaset_master_if_needed(instances, replicasets);
     if let Some((to, replicaset)) = new_target_master {
-        debug_assert_eq!(to.replicaset_id, replicaset.replicaset_id);
+        debug_assert_eq!(to.replicaset_name, replicaset.replicaset_name);
         let mut ops = UpdateOps::new();
         ops.assign(column_name!(Replicaset, target_master_name), &to.name)?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
-            &[&to.replicaset_id],
+            &[&to.replicaset_name],
             ops,
             ADMIN_ID,
         )?;
@@ -151,17 +151,17 @@ pub(super) fn action_plan<'i>(
         .values()
         .find(|replicaset| replicaset.current_config_version != replicaset.target_config_version);
     if let Some(replicaset) = replicaset_to_configure {
-        let replicaset_id = &replicaset.replicaset_id;
+        let replicaset_name = &replicaset.replicaset_name;
         let mut targets = Vec::new();
         let mut replicaset_peers = Vec::new();
         for instance in instances {
-            if instance.replicaset_id != replicaset_id {
+            if instance.replicaset_name != replicaset_name {
                 continue;
             }
             if let Some(address) = peer_addresses.get(&instance.raft_id) {
                 replicaset_peers.push(address.clone());
             } else {
-                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_id}`", instance.name);
+                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`", instance.name);
             }
             if instance.may_respond() {
                 targets.push(&instance.name);
@@ -180,7 +180,7 @@ pub(super) fn action_plan<'i>(
         )?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
-            &[replicaset_id],
+            &[replicaset_name],
             ops,
             ADMIN_ID,
         )?;
@@ -191,7 +191,7 @@ pub(super) fn action_plan<'i>(
 
         let promotion_vclock = &replicaset.promotion_vclock;
         return Ok(ConfigureReplication {
-            replicaset_id,
+            replicaset_name,
             targets,
             master_name,
             replicaset_peers,
@@ -210,7 +210,7 @@ pub(super) fn action_plan<'i>(
         .values()
         .find(|r| r.current_master_name != r.target_master_name);
     if let Some(r) = new_current_master {
-        let replicaset_id = &r.replicaset_id;
+        let replicaset_name = &r.replicaset_name;
         let old_master_name = &r.current_master_name;
         let new_master_name = &r.target_master_name;
 
@@ -233,7 +233,7 @@ pub(super) fn action_plan<'i>(
         let mut ops = vec![];
 
         if let Some(bump) =
-            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_id)
+            get_replicaset_config_version_bump_op_if_needed(replicasets, replicaset_name)
         {
             ranges.push(cas::Range::for_dml(&bump)?);
             ops.push(bump);
@@ -254,7 +254,7 @@ pub(super) fn action_plan<'i>(
             old_master_name,
             demote,
             new_master_name,
-            replicaset_id,
+            replicaset_name,
             update_ops,
             bump_ranges: ranges,
             bump_ops: ops,
@@ -265,7 +265,7 @@ pub(super) fn action_plan<'i>(
     ////////////////////////////////////////////////////////////////////////////
     // proposing automatic replicaset state & weight change
     let to_change_weights = get_replicaset_state_change(instances, replicasets, tiers);
-    if let Some((replicaset_id, tier, need_to_update_weight)) = to_change_weights {
+    if let Some((replicaset_name, tier, need_to_update_weight)) = to_change_weights {
         let mut uops = UpdateOps::new();
         if need_to_update_weight {
             uops.assign(column_name!(Replicaset, weight), 1.)?;
@@ -273,7 +273,7 @@ pub(super) fn action_plan<'i>(
         uops.assign(column_name!(Replicaset, state), ReplicasetState::Ready)?;
         let dml = Dml::update(
             ClusterwideTable::Replicaset,
-            &[replicaset_id],
+            &[replicaset_name],
             uops,
             ADMIN_ID,
         )?;
@@ -403,7 +403,7 @@ pub(super) fn action_plan<'i>(
         let new_current_state = instance.target_state.variant.as_str();
 
         let replicaset = *replicasets
-            .get(&instance.replicaset_id)
+            .get(&instance.replicaset_name)
             .expect("replicaset info is always present");
         let tier = *tiers
             .get(&*instance.tier)
@@ -438,7 +438,7 @@ pub(super) fn action_plan<'i>(
         let new_current_state = target_state.variant.as_str();
 
         let replicaset = *replicasets
-            .get(&instance.replicaset_id)
+            .get(&instance.replicaset_name)
             .expect("replicaset info is always present");
         let tier = *tiers
             .get(&*instance.tier)
@@ -803,7 +803,7 @@ pub mod stage {
 
         pub struct UpdateCurrentReplicasetMaster<'i> {
             /// This replicaset is changing it's master.
-            pub replicaset_id: &'i ReplicasetId,
+            pub replicaset_name: &'i ReplicasetName,
             /// This instance will be demoted.
             pub old_master_name: &'i InstanceName,
             /// Request to call [`rpc::replication::proc_replication_demote`] on old master.
@@ -836,7 +836,7 @@ pub mod stage {
 
         pub struct ConfigureReplication<'i> {
             /// This replicaset is being (re)configured. The id is only used for logging.
-            pub replicaset_id: &'i ReplicasetId,
+            pub replicaset_name: &'i ReplicasetName,
             /// These instances belong to one replicaset and will be sent a
             /// request to call [`rpc::replication::proc_replication`].
             pub targets: Vec<&'i InstanceName>,
@@ -948,35 +948,35 @@ pub mod stage {
 #[inline(always)]
 fn get_new_replicaset_master_if_needed<'i>(
     instances: &'i [Instance],
-    replicasets: &HashMap<&ReplicasetId, &'i Replicaset>,
+    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
 ) -> Option<(&'i Instance, &'i Replicaset)> {
-    // TODO: construct a map from replicaset id to instance to improve performance
+    // TODO: construct a map from replicaset name to instance to improve performance
     for &r in replicasets.values() {
         #[rustfmt::skip]
         let Some(master) = instances.iter().find(|i| i.name == r.target_master_name) else {
             #[rustfmt::skip]
             warn_or_panic!("couldn't find instance with name {}, which is chosen as next master of replicaset {}",
-                           r.target_master_name, r.replicaset_id);
+                           r.target_master_name, r.replicaset_name);
             continue;
         };
 
-        if master.replicaset_id != r.replicaset_id {
+        if master.replicaset_name != r.replicaset_name {
             #[rustfmt::skip]
             tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
-                  master.name, master.replicaset_id, r.replicaset_id);
+                  master.name, master.replicaset_name, r.replicaset_name);
         } else if !master.may_respond() {
             #[rustfmt::skip]
             tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
-                  master.name, master.replicaset_id);
+                  master.name, master.replicaset_name);
         } else {
             continue;
         }
 
         let Some(new_master) =
-            maybe_responding(instances).find(|i| i.replicaset_id == r.replicaset_id)
+            maybe_responding(instances).find(|i| i.replicaset_name == r.replicaset_name)
         else {
             #[rustfmt::skip]
-            tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.replicaset_id);
+            tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.replicaset_name);
             continue;
         };
 
@@ -989,19 +989,19 @@ fn get_new_replicaset_master_if_needed<'i>(
 #[inline(always)]
 fn get_replicaset_state_change<'i>(
     instances: &'i [Instance],
-    replicasets: &HashMap<&ReplicasetId, &Replicaset>,
+    replicasets: &HashMap<&ReplicasetName, &Replicaset>,
     tiers: &HashMap<&str, &'i Tier>,
-) -> Option<(&'i ReplicasetId, &'i Tier, bool)> {
+) -> Option<(&'i ReplicasetName, &'i Tier, bool)> {
     let mut replicaset_sizes = HashMap::new();
     for Instance {
-        replicaset_id,
+        replicaset_name,
         tier,
         ..
     } in maybe_responding(instances)
     {
-        let replicaset_size = replicaset_sizes.entry(replicaset_id).or_insert(0);
+        let replicaset_size = replicaset_sizes.entry(replicaset_name).or_insert(0);
         *replicaset_size += 1;
-        let Some(r) = replicasets.get(replicaset_id) else {
+        let Some(r) = replicasets.get(replicaset_name) else {
             continue;
         };
         if r.state != ReplicasetState::NotReady {
@@ -1018,7 +1018,7 @@ fn get_replicaset_state_change<'i>(
             continue;
         }
         let need_to_update_weight = r.weight_origin != WeightOrigin::User;
-        return Some((replicaset_id, tier_info, need_to_update_weight));
+        return Some((replicaset_name, tier_info, need_to_update_weight));
     }
     None
 }
@@ -1026,13 +1026,14 @@ fn get_replicaset_state_change<'i>(
 #[inline(always)]
 pub fn get_first_ready_replicaset_in_tier<'r>(
     instances: &[Instance],
-    replicasets: &HashMap<&ReplicasetId, &'r Replicaset>,
+    replicasets: &HashMap<&ReplicasetName, &'r Replicaset>,
     tier_name: &str,
 ) -> Option<&'r Replicaset> {
-    for Instance { replicaset_id, .. } in
-        maybe_responding(instances).filter(|instance| instance.tier == tier_name)
+    for Instance {
+        replicaset_name, ..
+    } in maybe_responding(instances).filter(|instance| instance.tier == tier_name)
     {
-        let Some(replicaset) = replicasets.get(replicaset_id) else {
+        let Some(replicaset) = replicasets.get(replicaset_name) else {
             continue;
         };
 
@@ -1046,11 +1047,11 @@ pub fn get_first_ready_replicaset_in_tier<'r>(
 /// Constructs a global Dml operation to bump the target_config_version field
 /// in the given replicaset, if it's not already bumped.
 fn get_replicaset_config_version_bump_op_if_needed(
-    replicasets: &HashMap<&ReplicasetId, &Replicaset>,
-    replicaset_id: &ReplicasetId,
+    replicasets: &HashMap<&ReplicasetName, &Replicaset>,
+    replicaset_name: &ReplicasetName,
 ) -> Option<Dml> {
-    let Some(replicaset) = replicasets.get(replicaset_id) else {
-        warn_or_panic!("replicaset info for `{replicaset_id}` is missing");
+    let Some(replicaset) = replicasets.get(replicaset_name) else {
+        warn_or_panic!("replicaset info for `{replicaset_name}` is missing");
         return None;
     };
 
@@ -1067,7 +1068,7 @@ fn get_replicaset_config_version_bump_op_if_needed(
     .expect("won't fail");
     let dml = Dml::update(
         ClusterwideTable::Replicaset,
-        &[replicaset_id],
+        &[replicaset_name],
         ops,
         ADMIN_ID,
     )

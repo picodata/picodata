@@ -60,7 +60,7 @@ extern "C" fn pico_ffi_instance_info() -> RResult<types::InstanceInfo, ()> {
         info.advertise_address,
         info.name.0,
         info.uuid,
-        info.replicaset_id.0,
+        info.replicaset_name.0,
         info.replicaset_uuid,
         info.cluster_name,
         types::State::new(

@@ -585,7 +585,7 @@ class Instance:
     init_replication_factor: int | None = None
     config_path: str | None = None
     name: str | None = None
-    replicaset_id: str | None = None
+    replicaset_name: str | None = None
     failure_domain: dict[str, str] = field(default_factory=dict)
     service_password_file: str | None = None
     env: dict[str, str] = field(default_factory=dict)
@@ -642,7 +642,7 @@ class Instance:
             self.binary_path, "run",
             *([f"--cluster-name={self.cluster_name}"] if self.cluster_name else []),
             *([f"--instance-name={self.name}"] if self.name else []),
-            *([f"--replicaset-id={self.replicaset_id}"] if self.replicaset_id else []),
+            *([f"--replicaset-name={self.replicaset_name}"] if self.replicaset_name else []),
             *([f"--data-dir={self._data_dir}"] if self._data_dir else []),
             *([f"--plugin-dir={self.plugin_dir}"] if self.plugin_dir else []),
             *([f"--listen={self.listen}"] if self.listen else []),
@@ -760,8 +760,8 @@ class Instance:
         def make_attempt():
             current_master_name = self.eval(
                 """
-                local replicaset_id = pico.instance_info(...).replicaset_id
-                local info = box.space._pico_replicaset:get(replicaset_id)
+                local replicaset_name = pico.instance_info(...).replicaset_name
+                local info = box.space._pico_replicaset:get(replicaset_name)
                 if info.target_master_name ~= info.current_master_name then
                     error(string.format('master is transitioning from %s to %s', info.current_master_name, info.target_master_name))
                 end
@@ -1600,7 +1600,7 @@ class Cluster:
         wait_online=True,
         peers: list[str] | None = None,
         instance_name: str | bool = True,
-        replicaset_id: str | None = None,
+        replicaset_name: str | None = None,
         failure_domain=dict(),
         init_replication_factor: int | None = None,
         tier: str | None = None,
@@ -1649,7 +1649,7 @@ class Cluster:
             cwd=self.data_dir,
             cluster_name=self.id,
             name=generated_instance_name,
-            replicaset_id=replicaset_id,
+            replicaset_name=replicaset_name,
             _data_dir=f"{self.data_dir}/i{i}",
             plugin_dir=self.plugin_dir,
             host=self.base_host,

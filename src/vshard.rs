@@ -2,7 +2,7 @@ use crate::instance::Instance;
 use crate::instance::InstanceName;
 use crate::pico_service::pico_service_password;
 use crate::replicaset::Replicaset;
-use crate::replicaset::ReplicasetId;
+use crate::replicaset::ReplicasetName;
 use crate::replicaset::Weight;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::storage::Clusterwide;
@@ -43,7 +43,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
-    sharding: HashMap<ReplicasetId, ReplicasetSpec>,
+    sharding: HashMap<ReplicasetName, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
 
     /// This field is not stored in the global storage, instead
@@ -98,7 +98,7 @@ impl VshardConfig {
         let replicasets: Vec<_> = storage.replicasets.iter()?.collect();
         let replicasets: HashMap<_, _> = replicasets
             .iter()
-            .map(|rs| (&rs.replicaset_id, rs))
+            .map(|rs| (&rs.replicaset_name, rs))
             .collect();
 
         let result = Self::new(&instances, &peer_addresses, &replicasets, tier_name);
@@ -108,10 +108,10 @@ impl VshardConfig {
     pub fn new(
         instances: &[Instance],
         peer_addresses: &HashMap<RaftId, String>,
-        replicasets: &HashMap<&ReplicasetId, &Replicaset>,
+        replicasets: &HashMap<&ReplicasetName, &Replicaset>,
         tier_name: &str,
     ) -> Self {
-        let mut sharding: HashMap<ReplicasetId, ReplicasetSpec> = HashMap::new();
+        let mut sharding: HashMap<ReplicasetName, ReplicasetSpec> = HashMap::new();
         for peer in instances {
             if !peer.may_respond() || peer.tier != tier_name {
                 continue;
@@ -122,7 +122,7 @@ impl VshardConfig {
                 );
                 continue;
             };
-            let Some(r) = replicasets.get(&peer.replicaset_id) else {
+            let Some(r) = replicasets.get(&peer.replicaset_name) else {
                 crate::tlog!(Debug, "skipping instance: replicaset not initialized yet";
                     "instance_name" => %peer.name,
                 );
@@ -130,7 +130,7 @@ impl VshardConfig {
             };
 
             let replicaset = sharding
-                .entry(ReplicasetId(peer.replicaset_uuid.clone()))
+                .entry(ReplicasetName(peer.replicaset_uuid.clone()))
                 .or_insert_with(|| ReplicasetSpec {
                     weight: Some(r.weight),
                     ..Default::default()

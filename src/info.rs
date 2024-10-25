@@ -1,7 +1,7 @@
 use crate::config::PicodataConfig;
 use crate::instance::InstanceName;
 use crate::instance::State;
-use crate::replicaset::ReplicasetId;
+use crate::replicaset::ReplicasetName;
 use crate::tlua;
 use crate::traft::error::Error;
 use crate::traft::node;
@@ -67,7 +67,7 @@ pub struct InstanceInfo {
     pub advertise_address: String,
     pub name: InstanceName,
     pub uuid: String,
-    pub replicaset_id: ReplicasetId,
+    pub replicaset_name: ReplicasetName,
     pub replicaset_uuid: String,
     pub cluster_name: String,
     pub current_state: State,
@@ -105,7 +105,7 @@ impl InstanceInfo {
             advertise_address: peer_address,
             name: instance.name,
             uuid: instance.uuid,
-            replicaset_id: instance.replicaset_id,
+            replicaset_name: instance.replicaset_name,
             replicaset_uuid: instance.replicaset_uuid,
             cluster_name,
             current_state: instance.current_state,

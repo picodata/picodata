@@ -3,15 +3,15 @@ from conftest import Cluster
 
 def test_global_space_dml_catchup_by_log(cluster: Cluster):
     # Leader
-    i1 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     # For quorum
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     # For quorum
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     # Catcher-upper replicaset master
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r2")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r2")
     # Catcher-upper replicaset follower
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="r2")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r2")
 
     cluster.create_table(
         dict(
@@ -82,25 +82,25 @@ def test_global_space_dml_catchup_by_log(cluster: Cluster):
     assert i5.call("box.space.candy:select") == expected_tuples
 
     # Master boot by log
-    i6 = cluster.add_instance(wait_online=True, replicaset_id="r3")
+    i6 = cluster.add_instance(wait_online=True, replicaset_name="r3")
     assert i6.call("box.space.candy:select") == expected_tuples
 
     # Follower boot by log
-    i7 = cluster.add_instance(wait_online=True, replicaset_id="r3")
+    i7 = cluster.add_instance(wait_online=True, replicaset_name="r3")
     assert i7.call("box.space.candy:select") == expected_tuples
 
 
 def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     # Leader
-    i1 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i1 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     # For quorum
-    i2 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i2 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     # For quorum
-    i3 = cluster.add_instance(wait_online=True, replicaset_id="r1")
+    i3 = cluster.add_instance(wait_online=True, replicaset_name="r1")
     # Catcher-upper replicaset master
-    i4 = cluster.add_instance(wait_online=True, replicaset_id="r2")
+    i4 = cluster.add_instance(wait_online=True, replicaset_name="r2")
     # Catcher-upper replicaset follower
-    i5 = cluster.add_instance(wait_online=True, replicaset_id="r2")
+    i5 = cluster.add_instance(wait_online=True, replicaset_name="r2")
 
     cluster.create_table(
         dict(
@@ -176,9 +176,9 @@ def test_global_space_dml_catchup_by_snapshot(cluster: Cluster):
     assert i5.call("box.space.candy:select") == expected_tuples
 
     # Master boot by snapshot
-    i6 = cluster.add_instance(wait_online=True, replicaset_id="r3")
+    i6 = cluster.add_instance(wait_online=True, replicaset_name="r3")
     assert i6.call("box.space.candy:select") == expected_tuples
 
     # Follower boot by snapshot
-    i7 = cluster.add_instance(wait_online=True, replicaset_id="r3")
+    i7 = cluster.add_instance(wait_online=True, replicaset_name="r3")
     assert i7.call("box.space.candy:select") == expected_tuples

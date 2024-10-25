@@ -46,9 +46,9 @@ impl<'a> RequestBuilder<'a> {
                     to_master,
                 }
             }
-            RequestTarget::ReplicasetId(replicaset_id, to_master) => {
+            RequestTarget::ReplicasetName(replicaset_name, to_master) => {
                 FfiSafeRpcTargetSpecifier::Replicaset {
-                    replicaset_id: replicaset_id.into(),
+                    replicaset_name: replicaset_name.into(),
                     to_master,
                 }
             }
@@ -208,11 +208,11 @@ pub enum RequestTarget<'a> {
     /// otherwise any replica.
     TierAndBucketId(&'a str, u64, bool),
 
-    /// An instance in the replicaset determined by the explicit replicaset id.
+    /// An instance in the replicaset determined by the explicit replicaset name.
     ///
     /// If the boolean parameter is `true`, then send the request to the replicaset master,
     /// otherwise any replica.
-    ReplicasetId(&'a str, bool),
+    ReplicasetName(&'a str, bool),
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,7 +268,7 @@ pub enum FfiSafeRpcTargetSpecifier {
     Any,
     InstanceName(FfiSafeStr),
     Replicaset {
-        replicaset_id: FfiSafeStr,
+        replicaset_name: FfiSafeStr,
         to_master: bool,
     },
     BucketId {

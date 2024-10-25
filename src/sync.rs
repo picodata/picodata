@@ -228,7 +228,7 @@ pub fn wait_for_index_globally(
         .collect();
     let replicasets: HashMap<_, _> = replicasets
         .iter()
-        .map(|rs| (&rs.replicaset_id, rs))
+        .map(|rs| (&rs.replicaset_name, rs))
         .collect();
     let instances = storage
         .instances
