@@ -17,7 +17,7 @@ with the `YY.MINOR.MICRO` scheme.
   multiple tiers. Going forward it will be possible to specify which
   tier a table belongs to.
 
-- Default authentication method changed from `CHAP-SHA1` to `MD5` both for user creation and in connect CLI. 
+- Default authentication method changed from `CHAP-SHA1` to `MD5` both for user creation and in connect CLI.
   This change affects new user creation and all system users (except the `pico_service` user), as a command-line interface of `picodata connect` and `picodata expel`. Also, default schema version at cluster boot is now `1`, not `0` as it was previously.
   Connection via `Pgproto` no longer requires additional manual step to change the authentication method. However if you use `iproto` the admin will have to manually change the authentication type.
 
@@ -25,17 +25,26 @@ with the `YY.MINOR.MICRO` scheme.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
-### Fixes
-- Fixed bucket rebalancing for sharded tables
+### Plugins
 
-- Fixed panic when applying snapshot with the same index
+- New ability to write custom plugins for picodata. Plugins are supposed to be written in Rust
+  using our official SDK crate: `picodata-plugin`. Plugins are compiled to shared objects which
+  are loaded directly into picodata process. Plugins have in-process access to various picodata API's.
+  Plugins do not use special sandboxing mechanisms for maximum performance. Thus require special care
+  during coding. Make sure you do not install plugins from untrusted sources.
+- Plugins are able to use dedicated RPC subsystem for communication inside the cluster.
+- Plugins are able to provide migrations written in SQL to define objects they need for operation.
+- Plugins are cluster aware, they're deployed on entire cluster. It is possible to specify particular
+  `tier` for plugins to run on.
+- Plugins are managed with SQL API, i e `CREATE PLUGIN` and such. For details consult with SQL reference.
 
 ### CLI
 
-  - New `picodata connect` and `picodata expel` argument `--timeout` for specifying
+- New `picodata connect` and `picodata expel` argument `--timeout` for specifying
   the timeout for address resolving operation.
 
-  - Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default value and everywhere across documentation and examples to reduce ambiguity.
+- Replace the use of `localhost` with `127.0.0.1` in `picodata run --listen` default
+  value and everywhere across documentation and examples to reduce ambiguity.
 
 ### RPC API
 
@@ -50,7 +59,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 - The current version is NOT compatible with prior releases. It cannot
   be started with the old snapshots
-  
+
 - Order of columns in `_pico_service_route` table has changed.
 
 - Global rename
@@ -99,6 +108,12 @@ with the `YY.MINOR.MICRO` scheme.
   support WAIT APPLIED (GLOBALLY | LOCALLY) options, allowing users to wait for operations to be
   committed across all replicasets or only on the current one
 - EXPLAIN estimates query buckets
+
+### Fixes
+
+- Fixed bucket rebalancing for sharded tables
+- Fixed panic when applying snapshot with the same index
+
 
 ## [24.5.1] - 2024-09-04
 
