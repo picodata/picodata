@@ -431,9 +431,8 @@ impl PluginManager {
         };
 
         let Some(service) = maybe_service else {
-            return Err(
-                PluginError::ServiceNotFound(service.to_string(), plugin_identity.clone()).into(),
-            );
+            // service is not enabled yet, so we don't need to start a callback
+            return Ok(());
         };
         let mut service = service.lock();
         context_set_service_info(&mut ctx, &service);
