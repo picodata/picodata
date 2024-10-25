@@ -101,7 +101,7 @@ pub enum Error {
     Tarantool(#[from] ::tarantool::error::Error),
     #[error("instance with {} not found", DisplayIdOfInstance(.0))]
     NoSuchInstance(Result<RaftId, InstanceName>),
-    #[error("replicaset with {} \"{name}\" not found", if *.id_is_uuid { "replicaset_uuid" } else { "replicaset_name" })]
+    #[error("replicaset with {} \"{name}\" not found", if *.id_is_uuid { "uuid" } else { "name" })]
     NoSuchReplicaset { name: String, id_is_uuid: bool },
     #[error("tier with name \"{0}\" not found")]
     NoSuchTier(String),

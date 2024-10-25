@@ -96,10 +96,7 @@ impl VshardConfig {
             .map(|pa| (pa.raft_id, pa.address))
             .collect();
         let replicasets: Vec<_> = storage.replicasets.iter()?.collect();
-        let replicasets: HashMap<_, _> = replicasets
-            .iter()
-            .map(|rs| (&rs.replicaset_name, rs))
-            .collect();
+        let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
 
         let result = Self::new(&instances, &peer_addresses, &replicasets, tier_name);
         Ok(result)

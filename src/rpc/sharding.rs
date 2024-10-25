@@ -42,7 +42,7 @@ crate::define_rpc_request! {
             .collect();
         let replicasets: HashMap<_, _> = replicasets
             .iter()
-            .map(|rs| (&rs.replicaset_name, rs))
+            .map(|rs| (&rs.name, rs))
             .collect();
 
         for tier in node.storage.tiers.iter().expect("tiers shouldn't fail, at least one tier always exists") {

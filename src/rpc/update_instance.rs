@@ -168,7 +168,7 @@ pub fn prepare_update_instance_cas_request(
     tier: &Tier,
     existing_fds: &HashSet<Uppercase>,
 ) -> Result<Option<(Op, Vec<cas::Range>)>> {
-    debug_assert_eq!(instance.replicaset_name, replicaset.replicaset_name);
+    debug_assert_eq!(instance.replicaset_name, replicaset.name);
     debug_assert_eq!(instance.tier, replicaset.tier);
     debug_assert_eq!(instance.tier, tier.name);
 
@@ -194,7 +194,7 @@ pub fn prepare_update_instance_cas_request(
         #[rustfmt::skip]
         update_ops.assign(column_name!(Replicaset, target_config_version), replicaset.target_config_version + 1)?;
         #[rustfmt::skip]
-        let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[&replicaset.replicaset_name], update_ops, ADMIN_ID)?;
+        let replicaset_dml = Dml::update(ClusterwideTable::Replicaset, &[&replicaset.name], update_ops, ADMIN_ID)?;
         ops.push(replicaset_dml);
     }
 

@@ -362,9 +362,7 @@ cluster:
     assert table_size(storage_instance_2, "table_in_storage") == 3
     assert table_size(router_instance, "table_in_storage") == 0
 
-    r2_uuid = router_instance.eval(
-        "return box.space._pico_replicaset:get('r2').replicaset_uuid"
-    )
+    r2_uuid = router_instance.eval("return box.space._pico_replicaset:get('r2').uuid")
 
     # if we kill master of replicaset data will be unavailiable temporarily, until
     # governor make it right: master switchower + deliver changed vshard configuration to routers
@@ -531,12 +529,8 @@ cluster:
     data = router_instance.sql("""SELECT * from "sharded_table" """)
     assert sorted(data) == sorted([[1], [5]])
 
-    r2_uuid = router_instance.eval(
-        "return box.space._pico_replicaset:get('r2').replicaset_uuid"
-    )
-    r3_uuid = router_instance.eval(
-        "return box.space._pico_replicaset:get('r3').replicaset_uuid"
-    )
+    r2_uuid = router_instance.eval("return box.space._pico_replicaset:get('r2').uuid")
+    r3_uuid = router_instance.eval("return box.space._pico_replicaset:get('r3').uuid")
 
     # after fail of one replica from replicaset, `sharded_table` still operable
     replicaset_1_i1.kill()

@@ -226,10 +226,7 @@ pub fn wait_for_index_globally(
         .iter()
         .expect("storage should never fail")
         .collect();
-    let replicasets: HashMap<_, _> = replicasets
-        .iter()
-        .map(|rs| (&rs.replicaset_name, rs))
-        .collect();
+    let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
     let instances = storage
         .instances
         .all_instances()

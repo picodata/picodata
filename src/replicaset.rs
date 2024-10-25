@@ -20,7 +20,7 @@ pub type Weight = f64;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Replicaset {
     /// Primary identifier.
-    pub replicaset_name: ReplicasetName,
+    pub name: ReplicasetName,
 
     /// UUID used to identify replicasets by tarantool's subsystems.
     pub uuid: String,
@@ -81,7 +81,7 @@ impl Replicaset {
     #[inline]
     pub fn with_one_instance(master: &Instance) -> Replicaset {
         Replicaset {
-            replicaset_name: master.replicaset_name.clone(),
+            name: master.replicaset_name.clone(),
             uuid: master.replicaset_uuid.clone(),
             current_master_name: master.name.clone(),
             target_master_name: master.name.clone(),
@@ -100,8 +100,8 @@ impl Replicaset {
     pub fn format() -> Vec<::tarantool::space::Field> {
         use ::tarantool::space::{Field, FieldType};
         vec![
-            Field::from(("replicaset_name", FieldType::String)),
-            Field::from(("replicaset_uuid", FieldType::String)),
+            Field::from(("name", FieldType::String)),
+            Field::from(("uuid", FieldType::String)),
             Field::from(("current_master_name", FieldType::String)),
             Field::from(("target_master_name", FieldType::String)),
             Field::from(("tier", FieldType::String)),
@@ -118,7 +118,7 @@ impl Replicaset {
     #[inline(always)]
     pub fn for_tests() -> Self {
         Self {
-            replicaset_name: "r1".into(),
+            name: "r1".into(),
             uuid: "r1-uuid".into(),
             current_master_name: "i".into(),
             target_master_name: "j".into(),
@@ -138,7 +138,7 @@ impl std::fmt::Display for Replicaset {
         write!(
             f,
             "({}, master: {}, tier: {}, weight: {}, weight_origin: {}, state: {})",
-            self.replicaset_name,
+            self.name,
             crate::util::Transition {
                 from: &self.current_master_name,
                 to: &self.target_master_name,
@@ -191,7 +191,7 @@ mod tests {
 
         assert_eq!(
             format[Replicaset::FIELD_REPLICASET_UUID as usize].name,
-            "replicaset_uuid"
+            "uuid"
         );
         assert_eq!(
             format[Replicaset::FIELD_TARGET_MASTER_NAME as usize].name,

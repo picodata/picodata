@@ -2413,7 +2413,7 @@ cluster:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
         ErrorCode.NoSuchReplicaset,
-        'replicaset with replicaset_name "NO_SUCH_REPLICASET" not found',
+        'replicaset with name "NO_SUCH_REPLICASET" not found',
     )
 
     # Check requesting RPC to unknown bucket id

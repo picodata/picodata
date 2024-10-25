@@ -1513,14 +1513,14 @@ impl Replicasets {
         let index_replicaset_name = space
             .index_builder("_pico_replicaset_name")
             .unique(true)
-            .part("replicaset_name")
+            .part("name")
             .if_not_exists(true)
             .create()?;
 
         let index_replicaset_uuid = space
             .index_builder("_pico_replicaset_uuid")
             .unique(true)
-            .part("replicaset_uuid")
+            .part("uuid")
             .if_not_exists(true)
             .create()?;
 
@@ -1546,9 +1546,7 @@ impl Replicasets {
                 name: "_pico_replicaset_name".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![
-                    Part::from(("replicaset_name", IndexFieldType::String)).is_nullable(false)
-                ],
+                parts: vec![Part::from(("name", IndexFieldType::String)).is_nullable(false)],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,
@@ -1559,9 +1557,7 @@ impl Replicasets {
                 name: "_pico_replicaset_uuid".into(),
                 ty: IndexType::Tree,
                 opts: vec![IndexOption::Unique(true)],
-                parts: vec![
-                    Part::from(("replicaset_uuid", IndexFieldType::String)).is_nullable(false)
-                ],
+                parts: vec![Part::from(("uuid", IndexFieldType::String)).is_nullable(false)],
                 operable: true,
                 // This means the local schema is already up to date and main loop doesn't need to do anything
                 schema_version: INITIAL_SCHEMA_VERSION,

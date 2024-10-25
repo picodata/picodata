@@ -53,7 +53,7 @@ pub fn replicasets_masters<'a>(
                 Warning,
                 "couldn't find instance with name {}, which is chosen as master of replicaset {}",
                 r.current_master_name,
-                r.replicaset_name,
+                r.name,
             );
             // Send them a request anyway just to be safe
             masters.push(&r.current_master_name);

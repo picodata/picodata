@@ -157,7 +157,7 @@ fn get_replicasets(
     storage: &Clusterwide,
 ) -> Result<HashMap<ReplicasetName, Replicaset>, Box<dyn Error>> {
     let i = storage.replicasets.iter()?;
-    Ok(i.map(|item| (item.replicaset_name.clone(), item)).collect())
+    Ok(i.map(|item| (item.name.clone(), item)).collect())
 }
 
 fn get_peer_addresses(

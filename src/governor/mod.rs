@@ -105,10 +105,7 @@ impl Loop {
             .iter()
             .expect("storage should never fail")
             .collect();
-        let replicasets: HashMap<_, _> = replicasets
-            .iter()
-            .map(|rs| (&rs.replicaset_name, rs))
-            .collect();
+        let replicasets: HashMap<_, _> = replicasets.iter().map(|rs| (&rs.name, rs)).collect();
 
         let tiers: Vec<_> = storage
             .tiers

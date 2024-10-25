@@ -73,7 +73,9 @@ with the `YY.MINOR.MICRO` scheme.
     - `instance_id` renamed to `instance_name`
     - `instance.instance_uuid` renamed to `instance.uuid`
     - `replicaset.replicaset_uuid` renamed to `replicaset.uuid`
+    - `replicaset.replicaset_name` renamed to `replicaset.name`
     - `replicaset_id` renamed to `replicaset_name`
+    - corresponding tables' columns and indexes changed accordingly
 
   - Environment Variable Changes:
     - `PICODATA_CLUSTER_ID` renamed to `PICODATA_CLUSTER_NAME`

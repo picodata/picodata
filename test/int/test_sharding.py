@@ -86,7 +86,7 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
         """
             UPDATE "_pico_replicaset"
             SET "weight" = 0, "weight_origin" = 'user'
-            WHERE "replicaset_name" = 'r1'
+            WHERE "name" = 'r1'
         """
     )
 
@@ -111,7 +111,7 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
         """
             UPDATE "_pico_replicaset"
             SET "weight" = 0.5, "weight_origin" = 'user'
-            WHERE "replicaset_name" = 'r2'
+            WHERE "name" = 'r2'
         """
     )
 
@@ -212,8 +212,8 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
     i3 = cluster.add_instance(replicaset_name="r2", wait_online=True)
     i4 = cluster.add_instance(replicaset_name="r2", wait_online=True)
 
-    r1_uuid = i1.eval("return box.space._pico_replicaset:get('r1').replicaset_uuid")
-    r2_uuid = i1.eval("return box.space._pico_replicaset:get('r2').replicaset_uuid")
+    r1_uuid = i1.eval("return box.space._pico_replicaset:get('r1').uuid")
+    r2_uuid = i1.eval("return box.space._pico_replicaset:get('r2').uuid")
 
     for i in cluster.instances:
         replicaset_masters = get_vshards_opinion_about_replicaset_masters(i)

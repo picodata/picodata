@@ -126,7 +126,7 @@ pub(super) fn action_plan<'i>(
     // update target replicaset master
     let new_target_master = get_new_replicaset_master_if_needed(instances, replicasets);
     if let Some((to, replicaset)) = new_target_master {
-        debug_assert_eq!(to.replicaset_name, replicaset.replicaset_name);
+        debug_assert_eq!(to.replicaset_name, replicaset.name);
         let mut ops = UpdateOps::new();
         ops.assign(column_name!(Replicaset, target_master_name), &to.name)?;
         let dml = Dml::update(
@@ -151,7 +151,7 @@ pub(super) fn action_plan<'i>(
         .values()
         .find(|replicaset| replicaset.current_config_version != replicaset.target_config_version);
     if let Some(replicaset) = replicaset_to_configure {
-        let replicaset_name = &replicaset.replicaset_name;
+        let replicaset_name = &replicaset.name;
         let mut targets = Vec::new();
         let mut replicaset_peers = Vec::new();
         for instance in instances {
@@ -210,7 +210,7 @@ pub(super) fn action_plan<'i>(
         .values()
         .find(|r| r.current_master_name != r.target_master_name);
     if let Some(r) = new_current_master {
-        let replicaset_name = &r.replicaset_name;
+        let replicaset_name = &r.name;
         let old_master_name = &r.current_master_name;
         let new_master_name = &r.target_master_name;
 
@@ -956,14 +956,14 @@ fn get_new_replicaset_master_if_needed<'i>(
         let Some(master) = instances.iter().find(|i| i.name == r.target_master_name) else {
             #[rustfmt::skip]
             warn_or_panic!("couldn't find instance with name {}, which is chosen as next master of replicaset {}",
-                           r.target_master_name, r.replicaset_name);
+                           r.target_master_name, r.name);
             continue;
         };
 
-        if master.replicaset_name != r.replicaset_name {
+        if master.replicaset_name != r.name {
             #[rustfmt::skip]
             tlog!(Warning, "target master {} of replicaset {} is from different a replicaset {}: trying to choose a new one",
-                  master.name, master.replicaset_name, r.replicaset_name);
+                  master.name, master.replicaset_name, r.name);
         } else if !master.may_respond() {
             #[rustfmt::skip]
             tlog!(Info, "target master {} of replicaset {} is not online: trying to choose a new one",
@@ -972,11 +972,10 @@ fn get_new_replicaset_master_if_needed<'i>(
             continue;
         }
 
-        let Some(new_master) =
-            maybe_responding(instances).find(|i| i.replicaset_name == r.replicaset_name)
+        let Some(new_master) = maybe_responding(instances).find(|i| i.replicaset_name == r.name)
         else {
             #[rustfmt::skip]
-            tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.replicaset_name);
+            tlog!(Warning, "there are no instances suitable as master of replicaset {}", r.name);
             continue;
         };
 
