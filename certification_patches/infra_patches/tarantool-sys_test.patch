@@ -1,0 +1,12 @@
+diff --git a/.test.mk b/.test.mk
+index 2ae51fc06..d6ee03b89 100644
+--- a/.test.mk
++++ b/.test.mk
+@@ -68,6 +68,7 @@ run-perf-test:
+ 
+ .PHONY: test-release
+ test-release: CMAKE_PARAMS = -DCMAKE_BUILD_TYPE=RelWithDebInfo \
++                             -DENABLE_BUNDLED_LIBCURL=OFF \
+                              -DENABLE_GLAUTH_DOWNLOAD=ON \
+                              -DENABLE_WERROR=ON \
+                              -DTEST_BUILD=ON

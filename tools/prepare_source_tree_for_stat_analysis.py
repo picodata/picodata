@@ -13,6 +13,7 @@ REPO_DIR = Path(__file__).parent.parent
 PATCHES_DIR = REPO_DIR / "certification_patches"
 SVACE_PATCHES = PATCHES_DIR / "svace_patches"
 GAMAYUN_PATCHES = PATCHES_DIR / "gamayun_patches"
+INFRA_PATCHES = PATCHES_DIR / "infra_patches"
 TARANTOOL_SYS = REPO_DIR / "tarantool-sys"
 THIRD_PARTY = TARANTOOL_SYS / "third_party"
 
@@ -99,6 +100,9 @@ def apply_patches():
             (REPO_DIR / fname).unlink()
 
     apply_from_dir(GAMAYUN_PATCHES)
+
+    print("Misc:")
+    apply_from_dir(INFRA_PATCHES)
 
 
 def restore():
