@@ -4084,6 +4084,8 @@ impl DbConfig {
 
     /// Callback which is called when data in _pico_db_config is updated.
     pub fn on_replace(old: Option<Tuple>, new: Option<Tuple>) -> Result<()> {
+        _ = old;
+
         // Both `reset` and `set` (in context of alter system) command
         // is insert operation, so `new` always is not none.
         let new = new.expect("can't ");
