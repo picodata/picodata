@@ -20,6 +20,7 @@ pub enum Picodata {
     Test(Test),
     Connect(Connect),
     Admin(Admin),
+    Status(Status),
     #[clap(subcommand)]
     Config(Config),
     #[clap(subcommand)]
@@ -544,6 +545,51 @@ pub struct Admin {
 }
 
 impl Admin {
+    /// Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Status
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Parser)]
+#[clap(about = "Connect to the Admin console of a Picodata instance")]
+pub struct Status {
+    #[clap(
+        long = "peer",
+        value_name = "[HOST][:PORT]",
+        env = "PICODATA_PEER",
+        default_value = "127.0.0.1:3301"
+    )]
+    /// Address of any picodata instance of the given cluster.
+    pub peer_address: IprotoAddress,
+
+    #[clap(
+        long = "service-password-file",
+        value_name = "SERVICE_PASSWORD_FILE",
+        env = "PICODATA_SERVICE_PASSWORD_FILE"
+    )]
+    /// Path to a plain-text file with a password for the
+    /// system user "pico_service". This password is used
+    /// for the internal communication among instances of
+    /// picodata, so it is the same on all instances.
+    pub password_file: Option<PathBuf>,
+
+    #[clap(
+        short = 't',
+        long = "timeout",
+        value_name = "TIMEOUT",
+        default_value = "5",
+        env = "PICODATA_CONNECT_TIMEOUT"
+    )]
+    /// Connection timeout in seconds.
+    pub timeout: u64,
+}
+
+impl Status {
     /// Get the arguments that will be passed to `tarantool_main`
     pub fn tt_args(&self) -> Result<Vec<CString>, String> {
         Ok(vec![current_exe()?])

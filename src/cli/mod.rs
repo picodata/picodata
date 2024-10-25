@@ -6,5 +6,6 @@ pub mod default_config;
 pub mod expel;
 pub mod plugin;
 pub mod run;
+pub mod status;
 pub mod tarantool;
 pub mod test;

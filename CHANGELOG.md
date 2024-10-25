@@ -33,6 +33,8 @@ with the `YY.MINOR.MICRO` scheme.
 
 - `picodata --version` now provides verbose output, including the build type (static or dynamic) and the build configuration (release or debug)
 
+- New command `picodata status` which prints all current members of the cluster and their status.
+
 ### Pgproto
 
 - Support LDAP authentication method

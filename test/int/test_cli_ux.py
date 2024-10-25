@@ -960,3 +960,179 @@ def test_admin_cli_with_ignore_errors(cluster: Cluster):
     assert (
         process.returncode == 0
     ), f"Process failed with exit code {process.returncode}\n"
+
+
+def test_picodata_status(cluster: Cluster):
+    service_password = "T3stP4ssword"
+    cluster.set_service_password(service_password)
+
+    password_file = cluster.service_password_file
+    assert password_file
+
+    cluster.deploy(instance_count=3)
+    cluster.wait_online()
+
+    i1, i2, i3 = cluster.instances
+
+    i1_address = f"{i1.host}:{i1.port}"
+    i2_address = f"{i2.host}:{i2.port}"
+    i3_address = f"{i3.host}:{i3.port}"
+
+    i1_uuid = i1.uuid()
+    i2_uuid = i2.uuid()
+    i3_uuid = i3.uuid()
+
+    i1_replicaset_uuid = i1.replicaset_uuid()
+    i2_replicaset_uuid = i2.replicaset_uuid()
+    i3_replicaset_uuid = i3.replicaset_uuid()
+
+    data = subprocess.check_output(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            password_file,
+        ],
+    )
+
+    assert (
+        data.decode()
+        == f"""\
+
+
+CLUSTER NAME: {i1.cluster_name}
+
+
++---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------+
+| instance_name | current_state | target_state  | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
++========================================================================================================================================================+
+| {i1.name}            | ["Online", 1] | ["Online", 1] | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
+|---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------|
+| {i2.name}            | ["Online", 1] | ["Online", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
+|---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------|
+| {i3.name}            | ["Online", 1] | ["Online", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
++---------------+---------------+---------------+--------------------------------------+--------------------------------------+---------+----------------+
+(3 rows)
+"""  # noqa: E501
+    )
+
+    # let's kill i2, so after that it should be on last place in status table
+    i2.terminate()
+
+    data = subprocess.check_output(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            password_file,
+        ],
+    )
+
+    assert (
+        data.decode()
+        == f"""\
+
+
+CLUSTER NAME: {i1.cluster_name}
+
+
++---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
+| instance_name | current_state  | target_state   | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
++==========================================================================================================================================================+
+| {i1.name}            | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
+|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
+| {i3.name}            | ["Online", 1]  | ["Online", 1]  | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
+|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
+| {i2.name}            | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
++---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
+(3 rows)
+"""  # noqa: E501
+    )
+
+    # let's kill i3. Equal by state instances should be sorted by instance_name
+    i3.terminate()
+
+    data = subprocess.check_output(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            password_file,
+        ],
+    )
+
+    assert (
+        data.decode()
+        == f"""\
+
+
+CLUSTER NAME: {i1.cluster_name}
+
+
++---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
+| instance_name | current_state  | target_state   | instance_uuid                        | replicaset_uuid                      | tier    | uri            |
++==========================================================================================================================================================+
+| {i1.name}            | ["Online", 1]  | ["Online", 1]  | {i1_uuid} | {i1_replicaset_uuid} | default | {i1_address} |
+|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
+| {i2.name}            | ["Offline", 1] | ["Offline", 1] | {i2_uuid} | {i2_replicaset_uuid} | default | {i2_address} |
+|---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------|
+| {i3.name}            | ["Offline", 1] | ["Offline", 1] | {i3_uuid} | {i3_replicaset_uuid} | default | {i3_address} |
++---------------+----------------+----------------+--------------------------------------+--------------------------------------+---------+----------------+
+(3 rows)
+"""  # noqa: E501
+    )
+
+
+def test_picodata_status_exit_code(cluster: Cluster):
+    service_password = "T3stP4ssword"
+    cluster.set_service_password(service_password)
+
+    password_file = cluster.service_password_file
+    assert password_file
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1_address = f"{i1.host}:{i1.port}"
+
+    process = subprocess.run(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            password_file,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    # instance not started yet
+    assert process.returncode != 0
+
+    i1.start()
+    i1.wait_online()
+
+    process = subprocess.run(
+        [
+            cluster.binary_path,
+            "status",
+            "--peer",
+            f"{i1_address}",
+            "--service-password-file",
+            password_file,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        timeout=CLI_TIMEOUT,
+    )
+
+    assert process.returncode == 0

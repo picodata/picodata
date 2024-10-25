@@ -10,6 +10,7 @@ fn main() -> ! {
         Picodata::Test(args) => cli::test::main(args),
         Picodata::Tarantool(args) => cli::tarantool::main(args),
         Picodata::Expel(args) => cli::expel::main(args),
+        Picodata::Status(args) => cli::status::main(args),
         Picodata::Connect(args) => cli::connect::main(args),
         Picodata::Admin(args) => cli::admin::main(args),
         Picodata::Config(cli::args::Config::Default(args)) => cli::default_config::main(args),

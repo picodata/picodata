@@ -36,8 +36,8 @@ fn get_password_from_file(path: &str) -> Result<String, Error> {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ColumnDesc {
-    name: String,
+pub struct ColumnDesc {
+    pub name: String,
     #[serde(rename = "type")]
     ty: String,
 }
@@ -50,8 +50,8 @@ impl Display for ColumnDesc {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RowSet {
-    metadata: Vec<ColumnDesc>,
-    rows: Vec<Vec<rmpv::Value>>,
+    pub metadata: Vec<ColumnDesc>,
+    pub rows: Vec<Vec<rmpv::Value>>,
 }
 
 impl Display for RowSet {
