@@ -1062,9 +1062,7 @@ def test_migration_lock(cluster: Cluster):
 
     # Decrease auto_offline_timeout so that sentinel notices that the instance
     # disappeared quicker
-    i1.sql(
-        """ UPDATE "_pico_property" SET "value" = 1 WHERE "key" = 'auto_offline_timeout' """
-    )
+    i1.sql(""" ALTER SYSTEM SET auto_offline_timeout = 1 """)
 
     # successfully install v0.1.0
     i2.call(
