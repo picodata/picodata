@@ -319,3 +319,8 @@ DROP PLUGIN weather_cache 0.1.0 WITH DATA
 
 В таком случае будут запущена миграция `pico.DOWN`, а также удалены записи
 плагина и его сервисов из системных таблиц.
+
+
+См. также:
+
+- [Управление плагинами с помощью роли Ansible](deploy_ansible.md#plugin_management)

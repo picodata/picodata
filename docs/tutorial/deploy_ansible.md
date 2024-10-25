@@ -2,8 +2,9 @@
 
 В данном разделе приведена информация по развертыванию кластера Picodata
 из нескольких инстансов, запущенных на разных серверах посредством роли
-[picodata-ansible](https://git.picodata.io/picodata/picodata/picodata-ansible).
+[picodata-ansible].
 
+[picodata-ansible]: https://git.picodata.io/picodata/picodata/picodata-ansible
 
 ## Установка роли {: #install_role }
 
@@ -126,3 +127,61 @@ ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml
 
 - [Подключение и работа в консоли](connecting.md)
 - [Создание кластера в ручном режиме](deploy.md)
+
+## Управление плагинами {: #plugin_management }
+
+C помощью роли [picodata-ansible] можно также добавлять в кластер
+плагины и их конфигурации. Для этого модифицируйте инвентарный файл
+`hosts/cluster.yml`, добавив в него блок `plugins`. Пример инвентарного
+файла, поддерживающего установку в кластер c одним тиром тестового
+плагина _weather_:
+
+???+ example "cluster.yml"
+    ```yaml
+    all:
+      vars:
+        install_packages: true                           # для установки пакета picodata из репозитория
+        cluster_id: simple_cluster                       # имя кластера
+        first_bin_port: 13301                            # начальный бинарный порт для первого инстанса (он же main_peer)
+        first_http_port: 18001                           # начальный http-порт для первого инстанса для веб-интерфейса
+
+        tiers:                                           # описание тиров
+          default:                                       # имя тира default
+            instances_per_server: 2                      # сколько инстансов запустить на каждом сервере
+
+        plugins:                                         # описание плагинов
+          example:                                       # имя плагина в Ansible (может не совпадать с именем в Picodata)
+            path: '../plugins/weather_0.1.0.tar.gz'      # путь к архиву с плагином
+            config: '../plugins/weather-config.yml'      # путь к файлу конфигурации плагина
+            tiers:                                       # список тиров, на которых будет запущен плагин
+              - default                                  # имя тира default
+
+
+    DC1:                                                 # Имя датацентра (используется для failure_domain)
+      hosts:                                             # далее перечисляем серверы в датацентре
+        server-1:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.1                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+        server-2:                                        # имя сервера в инвентарном файле (используется для failure_domain)
+          ansible_host: 192.168.0.2                      # IP адрес или fqdn если не совпадает с предыдущей строкой
+    ```
+
+Для подключения плагина потребуется сформировать архив из его файлов, а
+также подготовить файл конфигурации плагина.
+
+См. также:
+
+- [Управление плагинами](plugins.md)
+
+Модифицировать файл плейбука не требуется.
+
+Выполните установку плагинов в кластер командой:
+
+```shell
+ansible-playbook -i hosts/cluster.yml playbooks/picodata.yml -t plugins
+```
+
+!!! note "Примечание"
+    С помощью роли Ansible можно только добавлять
+    плагины в кластер. Удаление производится
+    [вручную](plugins.md#drop_plugin).
+
