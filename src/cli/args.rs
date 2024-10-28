@@ -22,6 +22,8 @@ pub enum Picodata {
     Admin(Admin),
     #[clap(subcommand)]
     Config(Config),
+    #[clap(subcommand)]
+    Plugin(Plugin),
 }
 
 pub const CONFIG_PARAMETERS_ENV: &'static str = "PICODATA_CONFIG_PARAMETERS";
@@ -572,4 +574,79 @@ pub struct ConfigDefault {
     /// If this option is omitted or the value of "-" is specified,
     /// the file contents are written to the standard output.
     pub output_file: Option<String>,
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Plugin
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, clap::Subcommand)]
+#[clap(about = "Subcommand related to plugin management")]
+pub enum Plugin {
+    Configure(ServiceConfigUpdate),
+}
+
+impl Plugin {
+    /// Get the arguments that will be passed to `tarantool_main`
+    pub fn tt_args(&self) -> Result<Vec<CString>, String> {
+        Ok(vec![current_exe()?])
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PluginUpdate
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Parser)]
+#[clap(about = "Update plugin's service configuration")]
+pub struct ServiceConfigUpdate {
+    #[clap(value_name = "ADDRESS")]
+    /// Instance address to connect
+    /// as `pico_service` in `[host][:port]` format.
+    /// If `[user@]` is specified, it is ignored.
+    pub address: IprotoAddress,
+
+    #[clap(value_name = "PLUGIN_NAME")]
+    /// Name of a plugin that has a service
+    /// we want to change config of.
+    pub plugin_name: String,
+
+    #[clap(value_name = "PLUGIN_VERSION")]
+    /// Version of a plugin that has a service
+    /// we want to change config of.
+    pub plugin_version: String,
+
+    #[clap(value_name = "PLUGIN_CONFIG")]
+    /// Path to a config file in YAML format
+    /// that describes a new configuration of a service.
+    /// It is not necessary to add all existing
+    /// config options to change successfully, you
+    /// may want to include only needed.
+    pub config_file: PathBuf,
+
+    #[clap(
+        long = "service-password-file",
+        value_name = "SERVICE_PASSWORD_FILE",
+        env = "PICODATA_SERVICE_PASSWORD_FILE"
+    )]
+    /// Path to a plain-text file with a password for the
+    /// system user "pico_service". This password is used
+    /// for the internal communication among instances of
+    /// picodata, so it is the same on all instances.
+    pub password_file: Option<PathBuf>,
+
+    #[clap(
+        long = "service-names",
+        value_name = "SERVICE_NAMES",
+        use_value_delimiter = true
+    )]
+    /// A comma-separated list of services names that we
+    /// want to change configuration of. Single value
+    /// without comma is allowed.
+    ///
+    /// Example: `--service-names service_1,service_2`
+    ///
+    /// If no matching service were found, error message
+    /// is printed to a user.
+    pub service_names: Option<Vec<String>>,
 }

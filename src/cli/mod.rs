@@ -4,6 +4,7 @@ pub mod connect;
 pub mod console;
 pub mod default_config;
 pub mod expel;
+pub mod plugin;
 pub mod run;
 pub mod tarantool;
 pub mod test;

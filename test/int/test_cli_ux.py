@@ -12,6 +12,8 @@ from conftest import (
 from tarantool.error import (  # type: ignore
     NetworkError,
 )
+from test_plugin import _PLUGIN, _PLUGIN_VERSION_1, PluginReflection
+from time import sleep
 
 
 def test_connect_ux(cluster: Cluster):
@@ -152,6 +154,117 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("Language switched to lua")
     cli.sendline("hel\t")
     cli.expect_exact("(admin) lua> help")
+
+
+def test_plugin_ux(cluster: Cluster):
+    service_password = "T3stP4ssword"
+    cluster.set_service_password(service_password)
+    assert cluster.service_password_file
+
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    plugin_ref = PluginReflection.default(i1)
+    i1.call("pico.install_plugin", _PLUGIN, _PLUGIN_VERSION_1)
+    plugin_ref.install(True).enable(False)
+
+    new_config = f"{i1.data_dir}/new_conf.yaml"
+
+    # test list of services with multiple elements
+
+    with open(new_config, "w") as f:
+        # testservice_1.bar = 101 -> 42
+        # testservice_1.foo = true -> true, shouldn't be even altered initially
+        # testservice_1.baz = ["one", "two", "three"] -> ["cool", "nice"], multiple elements
+        # testservice_2.foo = 0 -> 13, check more than a one service
+        f.write(
+            """\
+testservice_1:
+    bar: 42
+    foo: true
+    baz: ["cool", "nice"]
+
+testservice_2:
+    foo: 13
+
+i_dont_care_about_this_service:
+    fuck_off: "bullshit"
+"""
+        )
+
+    subprocess.run(
+        [
+            i1.binary_path,
+            "plugin",
+            "configure",
+            i1.listen,
+            _PLUGIN,
+            _PLUGIN_VERSION_1,
+            new_config,
+            "--service-password-file",
+            cluster.service_password_file,
+            "--service-names",
+            "testservice_1,testservice_2",
+        ],
+        encoding="utf-8",
+    )
+    sleep(2)  # wait to finish updating configs, not the subprocess
+
+    assert i1.sql("SELECT * FROM _pico_plugin_config;") == [
+        ["testplug", "0.1.0", "testservice_1", "bar", 42],  # <- `101`
+        [
+            "testplug",
+            "0.1.0",
+            "testservice_1",
+            "baz",
+            ["cool", "nice"],
+        ],  # <- ["one", "two", "three"]
+        ["testplug", "0.1.0", "testservice_1", "foo", True],
+        ["testplug", "0.1.0", "testservice_2", "foo", 13],  # <- `0`
+    ]
+
+    # test list of services with a single element
+
+    with open(new_config, "w") as f:
+        # testservice_1.baz = ["one", "two", "three"] -> ["sindragosa"], single element
+        f.write(
+            """\
+testservice_1:
+    baz: ["sindragosa"]
+"""
+        )
+
+    subprocess.run(
+        [
+            i1.binary_path,
+            "plugin",
+            "configure",
+            i1.listen,
+            _PLUGIN,
+            _PLUGIN_VERSION_1,
+            new_config,
+            "--service-password-file",
+            cluster.service_password_file,
+            "--service-names",
+            "testservice_1",
+        ],
+        encoding="utf-8",
+    )
+    sleep(2)  # wait to finish updating configs, not the subprocess
+
+    assert i1.sql("SELECT * FROM _pico_plugin_config;") == [
+        ["testplug", "0.1.0", "testservice_1", "bar", 42],
+        [
+            "testplug",
+            "0.1.0",
+            "testservice_1",
+            "baz",
+            ["sindragosa"],
+        ],  # <- ["one", "two", "three"]
+        ["testplug", "0.1.0", "testservice_1", "foo", True],
+        ["testplug", "0.1.0", "testservice_2", "foo", 13],
+    ]
 
 
 def test_lua_completion(cluster: Cluster):
