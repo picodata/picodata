@@ -208,15 +208,15 @@ picodata run -l 127.0.0.1:3301 --advertise 127.0.0.1:3301 --peer 127.0.0.1:3301 
 
 Запуск плагина:
 
-```shell
+```sql
 $ picodata admin i1/admin.sock
 Connected to admin console by socket path "i1/admin.sock"
 type '\help' for interactive help
-picodata> CREATE PLUGIN weather_cache 0.1.0
+picodata> CREATE PLUGIN weather_cache 0.1.0;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default
+picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ENABLE
+picodata> ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 1
 ```
 
@@ -229,10 +229,10 @@ I started with config: ()
 
 Попробуем выключить и удалить плагин:
 
-```
-picodata> ALTER PLUGIN weather_cache 0.1.0 DISABLE
+```sql
+picodata> ALTER PLUGIN weather_cache 0.1.0 DISABLE;
 1
-picodata> DROP PLUGIN weather_cache 0.1.0
+picodata> DROP PLUGIN weather_cache 0.1.0;
 1
 ```
 
@@ -305,20 +305,20 @@ cp 0001_weather.sql build/weather_cache/0.1.0
 $ picodata admin i1/admin.sock
 Connected to admin console by socket path "i1/admin.sock"
 type '\help' for interactive help
-picodata> CREATE PLUGIN weather_cache 0.1.0
+picodata> CREATE PLUGIN weather_cache 0.1.0;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default
+picodata> ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 1
-picodata> ALTER PLUGIN weather_cache MIGRATE TO 0.1.0
+picodata> ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
 1
-picodata> ALTER PLUGIN weather_cache 0.1.0 ENABLE
+picodata> ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 1
 ```
 
 Убедимся, что была создана таблица `weather`:
 
 ```sql
-picodata> SELECT * FROM weather
+picodata> SELECT * FROM weather;
 
 +----+----------+-----------+-------------+
 | id | latitude | longitude | temperature |
@@ -331,9 +331,9 @@ picodata> SELECT * FROM weather
 миграциями таблицы:
 
 ```sql
-picodata> ALTER PLUGIN weather_cache 0.1.0 DISABLE
+picodata> ALTER PLUGIN weather_cache 0.1.0 DISABLE;
 1
-picodata> DROP PLUGIN weather_cache 0.1.0 WITH DATA
+picodata> DROP PLUGIN weather_cache 0.1.0 WITH DATA;
 1
 ```
 
@@ -343,7 +343,6 @@ picodata> DROP PLUGIN weather_cache 0.1.0 WITH DATA
 picodata> SELECT * FROM weather
 sbroad: table with name "weather" not found
 ```
-
 
 Теперь попробуем поднять HTTP-сервер.
 Чтобы не писать код для FFI между Lua и Rust, давайте возьмем
@@ -359,26 +358,26 @@ cargo add shors@0.12.1 --features picodata
 `Hello, World!` в callback `on_start`:
 
 ```rust
-    fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
-        println!("I started with config: {_cfg:?}");
+fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
+    println!("I started with config: {_cfg:?}");
 
-        let endpoint = Builder::new()
-            .with_method("GET")
-            .with_path("/hello")
-            .build(
-                |_ctx: &mut Context, _: Request| -> Result<_, Box<dyn Error>> {
-                    Ok("Hello, World!".to_string())
-                },
-            );
+    let endpoint = Builder::new()
+        .with_method("GET")
+        .with_path("/hello")
+        .build(
+            |_ctx: &mut Context, _: Request| -> Result<_, Box<dyn Error>> {
+                Ok("Hello, World!".to_string())
+            },
+        );
 
-        let s = server::Server::new();
-        s.register(Box::new(endpoint));
+    let s = server::Server::new();
+    s.register(Box::new(endpoint));
 
-        Ok(())
-    }
+    Ok(())
+}
 ```
 
-Теперь добавим endpoint, который будет осуществлять запрос к Openweather.
+Далее добавим endpoint, который будет осуществлять запрос к Openweather.
 Для этого мы воспользуемся еще одной библиотекой, которая предоставит
 нам HTTP клиент — `fibreq`. Мы не можем использовать популярные HTTP-клиенты,
 например, `reqwest`, из-за особенностей однопоточной среды выполнения Picodata —
@@ -421,7 +420,7 @@ static METEO_URL: once_cell::sync::Lazy<String> = once_cell::sync::Lazy::new(|| 
 });
 
 pub fn weather_request(latitude: f64, longitude: f64, request_timeout: u64) -> Result<WeatherInfo, Box<dyn Error>> {
-    let http_client  = fibreq::ClientBuilder::new().build();
+    let http_client = fibreq::ClientBuilder::new().build();
     let http_req = http_client
         .get(format!(
             "{url}/v1/forecast?\
@@ -442,46 +441,45 @@ pub fn weather_request(latitude: f64, longitude: f64, request_timeout: u64) -> R
 }
 ```
 
-И изменим код нашего сервиса следующим образом:
+и изменим код нашего сервиса следующим образом:
 
 ```rust
-    fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
-        println!("I started with config: {_cfg:?}");
+fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
+    println!("I started with config: {_cfg:?}");
 
-        let hello_endpoint = Builder::new()
-            .with_method("GET")
-            .with_path("/hello")
-            .build(
-                |_ctx: &mut Context, _: Request| -> Result<_, Box<dyn Error>> {
-                    Ok("Hello, World!".to_string())
-                },
-            );
+    let hello_endpoint = Builder::new()
+        .with_method("GET")
+        .with_path("/hello")
+        .build(
+            |_ctx: &mut Context, _: Request| -> Result<_, Box<dyn Error>> {
+                Ok("Hello, World!".to_string())
+            },
+        );
 
 
-        #[derive(Serialize, Deserialize)]
-        pub struct WeatherReq {
-            latitude: i8,
-            longitude: i8,
-        }
-
-        let weather_endpoint = Builder::new()
-            .with_method("POST")
-            .with_path("/weather")
-            .build(
-                |_ctx: &mut Context, request: Request| -> Result<_, Box<dyn Error>> {
-                    let req: WeatherReq = request.parse()?;
-                    let res = openweather::weather_request(req.latitude, req.longitude, 3)?;
-                    Ok(res)
-                },
-            );
-
-        let s = server::Server::new();
-        s.register(Box::new(hello_endpoint));
-        s.register(Box::new(weather_endpoint));
-
-        Ok(())
+    #[derive(Serialize, Deserialize)]
+    pub struct WeatherReq {
+        latitude: i8,
+        longitude: i8,
     }
 
+    let weather_endpoint = Builder::new()
+        .with_method("POST")
+        .with_path("/weather")
+        .build(
+            |_ctx: &mut Context, request: Request| -> Result<_, Box<dyn Error>> {
+                let req: WeatherReq = request.parse()?;
+                let res = openweather::weather_request(req.latitude, req.longitude, 3)?;
+                Ok(res)
+            },
+        );
+
+    let s = server::Server::new();
+    s.register(Box::new(hello_endpoint));
+    s.register(Box::new(weather_endpoint));
+
+    Ok(())
+}
 ```
 
 Запустим наш сервис и проверим его работоспособность следующим запросом:
@@ -499,48 +497,48 @@ curl --location '127.0.0.1:8081/weather' \
 Для начала добавим структуру, которая хранится в БД:
 
 ```rust
-    #[derive(Serialize, Deserialize, Debug, Clone)]
-    pub struct Weather {
-        latitude: f64,
-        longitude: f64,
-        temperature: f64,
-    }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Weather {
+    latitude: f64,
+    longitude: f64,
+    temperature: f64,
+}
 ```
 
-Теперь напишем запрос извлечения её из БД:
+Теперь напишем запрос извлечения ее из БД:
 
 ```rust
-    let SELECT_QUERY: &str = r#"
-    SELECT * FROM "weather"
-    WHERE
-        (latitude < (? + 0.5) AND latitude > (? - 0.5))
-        AND
-        (longitude < (? + 0.5) AND longitude > (? - 0.5));
-    "#;
-    let cached: Vec<Weather> = picodata_plugin::sql::query(&SELECT_QUERY)
-        .bind(latitude)
-        .bind(latitude)
-        .bind(longitude)
-        .bind(longitude)
-        .fetch::<Weather>()
-        .map_err(|err| format!("failed to retrieve data: {err}"))?;
+let SELECT_QUERY: &str = r#"
+SELECT * FROM "weather"
+WHERE
+    (latitude < (? + 0.5) AND latitude > (? - 0.5))
+    AND
+    (longitude < (? + 0.5) AND longitude > (? - 0.5));
+"#;
+let cached: Vec<Weather> = picodata_plugin::sql::query(&SELECT_QUERY)
+    .bind(latitude)
+    .bind(latitude)
+    .bind(longitude)
+    .bind(longitude)
+    .fetch::<Weather>()
+    .map_err(|err| format!("failed to retrieve data: {err}"))?;
 ```
 
 ```rust
-    let select_query: &str = r#"
-    SELECT * FROM "weather"
-    WHERE
-        (latitude < (? + 0.5) AND latitude > (? - 0.5))
-        AND
-        (longitude < (? + 0.5) AND longitude > (? - 0.5));
-    "#;
-    let res = picoplugin::sql::query(&select_query)
-        .bind(latitude)
-        .bind(latitude)
-        .bind(longitude)
-        .bind(longitude)
-        .fetch::<StoredWeatherInfo>()
-        .unwrap();
+let select_query: &str = r#"
+SELECT * FROM "weather"
+WHERE
+    (latitude < (? + 0.5) AND latitude > (? - 0.5))
+    AND
+    (longitude < (? + 0.5) AND longitude > (? - 0.5));
+"#;
+let res = picoplugin::sql::query(&select_query)
+    .bind(latitude)
+    .bind(latitude)
+    .bind(longitude)
+    .bind(longitude)
+    .fetch::<StoredWeatherInfo>()
+    .unwrap();
 ```
 
 !!! note "Примечание"
@@ -550,90 +548,90 @@ curl --location '127.0.0.1:8081/weather' \
 Аналогично напишем запрос на вставку в кэш после получения данных:
 
 ```rust
-    let INSERT_QUERY: &str = r#"
-    INSERT INTO "weather"
-    VALUES(?, ?, ?)
-    "#;
+let INSERT_QUERY: &str = r#"
+INSERT INTO "weather"
+VALUES(?, ?, ?)
+"#;
 
-    let _ = picodata_plugin::sql::query(&INSERT_QUERY)
-        .bind(resp.latitude)
-        .bind(resp.longitude)
-        .bind(resp.temperature)
-        .execute()
-        .map_err(|err| format!("failed to retrieve data: {err}"))?;
+let _ = picodata_plugin::sql::query(&INSERT_QUERY)
+    .bind(resp.latitude)
+    .bind(resp.longitude)
+    .bind(resp.temperature)
+    .execute()
+    .map_err(|err| format!("failed to retrieve data: {err}"))?;
 ```
 
 После этого необходимо добавить только проверку — нашли ли мы необходимые данные
 БД или необходимо запросить данные с OpenWeather. Наш `on_start` будет выглядеть так:
 
 ```rust
- fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
-        println!("I started with config: {_cfg:?}");
+fn on_start(&mut self, _ctx: &PicoContext, _cfg: Self::Config) -> CallbackResult<()> {
+    println!("I started with config: {_cfg:?}");
 
-        let hello_endpoint = Builder::new().with_method("GET").with_path("/hello").build(
-            |_ctx: &mut Context, _: Request| -> Result<_, Box<dyn Error>> {
-                Ok("Hello, World!".to_string())
+    let hello_endpoint = Builder::new().with_method("GET").with_path("/hello").build(
+        |_ctx: &mut Context, _: Request| -> Result<_, Box<dyn Error>> {
+            Ok("Hello, World!".to_string())
+        },
+    );
+
+    #[derive(Serialize, Deserialize)]
+    pub struct WeatherReq {
+        latitude: f64,
+        longitude: f64,
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct Weather {
+        latitude: f64,
+        longitude: f64,
+        temperature: f64,
+    }
+
+    let weather_endpoint = Builder::new()
+        .with_method("POST")
+        .with_path("/weather")
+        .build(
+            |_ctx: &mut Context, request: Request| -> Result<_, Box<dyn Error>> {
+                let req: WeatherReq = request.parse()?;
+                let latitude = req.latitude;
+                let longitude = req.longitude;
+
+                let cached: Vec<Weather> = picodata_plugin::sql::query(&SELECT_QUERY)
+                    .bind(latitude)
+                    .bind(latitude)
+                    .bind(longitude)
+                    .bind(longitude)
+                    .fetch::<Weather>()
+                    .map_err(|err| format!("failed to retrieve data: {err}"))?;
+                if !cached.is_empty() {
+                    let resp = cached[0].clone();
+                    return Ok(resp);
+                }
+                let openweather_resp =
+                    openweather::weather_request(req.latitude, req.longitude, 3)?;
+                let resp: Weather = Weather {
+                    latitude: openweather_resp.latitude,
+                    longitude: openweather_resp.longitude,
+                    temperature: openweather_resp.current.temperature_2m,
+                };
+
+                let _ = picodata_plugin::sql::query(&INSERT_QUERY)
+                    .bind(resp.latitude)
+                    .bind(resp.longitude)
+                    .bind(resp.temperature)
+                    .execute()
+                    .map_err(|err| format!("failed to retrieve data: {err}"))?;
+
+                Ok(resp)
             },
         );
 
-        #[derive(Serialize, Deserialize)]
-        pub struct WeatherReq {
-            latitude: f64,
-            longitude: f64,
-        }
+    let s = server::Server::new();
+    s.register(Box::new(hello_endpoint));
+    s.register(Box::new(weather_endpoint));
 
-        #[derive(Serialize, Deserialize, Debug, Clone)]
-        pub struct Weather {
-            latitude: f64,
-            longitude: f64,
-            temperature: f64,
-        }
-
-        let weather_endpoint = Builder::new()
-            .with_method("POST")
-            .with_path("/weather")
-            .build(
-                |_ctx: &mut Context, request: Request| -> Result<_, Box<dyn Error>> {
-                    let req: WeatherReq = request.parse()?;
-                    let latitude = req.latitude;
-                    let longitude = req.longitude;
-
-                    let cached: Vec<Weather> = picodata_plugin::sql::query(&SELECT_QUERY)
-                        .bind(latitude)
-                        .bind(latitude)
-                        .bind(longitude)
-                        .bind(longitude)
-                        .fetch::<Weather>()
-                        .map_err(|err| format!("failed to retrieve data: {err}"))?;
-                    if !cached.is_empty() {
-                        let resp = cached[0].clone();
-                        return Ok(resp);
-                    }
-                    let openweather_resp =
-                        openweather::weather_request(req.latitude, req.longitude, 3)?;
-                    let resp: Weather = Weather {
-                        latitude: openweather_resp.latitude,
-                        longitude: openweather_resp.longitude,
-                        temperature: openweather_resp.current.temperature_2m,
-                    };
-
-                    let _ = picodata_plugin::sql::query(&INSERT_QUERY)
-                        .bind(resp.latitude)
-                        .bind(resp.longitude)
-                        .bind(resp.temperature)
-                        .execute()
-                        .map_err(|err| format!("failed to retrieve data: {err}"))?;
-
-                    Ok(resp)
-                },
-            );
-
-        let s = server::Server::new();
-        s.register(Box::new(hello_endpoint));
-        s.register(Box::new(weather_endpoint));
-
-        Ok(())
-    }
+    Ok(())
+}
 ```
 
 Разработка тестового плагина завершена.
