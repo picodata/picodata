@@ -840,3 +840,27 @@ def test_admin_set_password(cluster: Cluster):
         print(f"Expected error occurred: {err}")
 
     assert not is_connected
+
+
+def test_revoke_role_public(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False)
+    i1.start()
+    i1.wait_online()
+
+    user = "billy"
+    password = "Password1#"
+
+    i1.sql('CREATE ROLE "reader";')
+    i1.sql(f"""CREATE USER "{user}" WITH PASSWORD '{password}' USING chap-sha1;""")
+    i1.sql(f"""GRANT "reader" TO "{user}";""")
+    with pytest.raises(
+        TarantoolError,
+        match="Revoking role 'public' is denied",
+    ):
+        i1.sql(f"""REVOKE "public" FROM "{user}";""")
+
+    i1.grant_privilege(user, "create", "table")
+    with i1.connect(timeout=5, user=user, password=password) as conn:
+        conn.sql(
+            "CREATE TABLE warehouse (id INTEGER PRIMARY KEY);",
+        )

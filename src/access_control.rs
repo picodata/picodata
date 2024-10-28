@@ -479,6 +479,15 @@ fn access_check_grant_revoke(
 
             assert_eq!(object_id, granted_role.id, "user metadata id mismatch");
 
+            // Forbid revoking role "public" since it takes away permission to execute SQL queries
+            if access == PrivType::Revoke && granted_role.name == "public" {
+                return Err(BoxError::new(
+                    AccessDenied,
+                    format!("Revoking role '{}' is denied", granted_role.name),
+                )
+                .into());
+            }
+
             // Only the creator of the role or admin can grant or revoke it.
             // Everyone can grant 'PUBLIC' role.
             // Note that having a role means having execute privilege on it.
