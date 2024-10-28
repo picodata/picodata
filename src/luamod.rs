@@ -16,7 +16,6 @@ use crate::tlog;
 use crate::traft::op::{self, Op};
 use crate::traft::{self, node, RaftIndex, RaftTerm};
 use crate::util::duration_from_secs_f64_clamped;
-use crate::util::str_eq;
 use crate::util::INFINITY;
 use ::tarantool::fiber;
 use ::tarantool::msgpack::ViaMsgpack;
