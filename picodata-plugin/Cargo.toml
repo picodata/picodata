@@ -33,4 +33,3 @@ features = ["picodata", "test", "tokio_components"]
 
 [features]
 internal_test = []
-test_wrong_version = []

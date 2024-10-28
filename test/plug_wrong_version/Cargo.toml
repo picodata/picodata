@@ -8,7 +8,6 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-picodata-plugin = { path = "../../picodata-plugin", features = [
-    "test_wrong_version",
-] }
+# Old version from crates.io
+picodata-plugin = "24.6"
 serde = { version = "1.0.197", features = ["derive"] }

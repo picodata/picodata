@@ -2642,7 +2642,7 @@ dependencies = [
  "opentelemetry",
  "pgwire",
  "pico_proc_macro",
- "picodata-plugin",
+ "picodata-plugin 24.7.0",
  "postgres-types",
  "pretty_assertions 0.6.1",
  "protobuf",
@@ -2677,12 +2677,32 @@ dependencies = [
 
 [[package]]
 name = "picodata-plugin"
+version = "24.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41068c1b84195e693eb772ba98b931fd7e17af584ba2a0b40657df7ef15c171d"
+dependencies = [
+ "abi_stable",
+ "gensym",
+ "log",
+ "picodata-plugin-proc-macro 24.6.1",
+ "rmp",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "tarantool 5.0.0",
+ "tarolog",
+ "thiserror",
+ "tros",
+]
+
+[[package]]
+name = "picodata-plugin"
 version = "24.7.0"
 dependencies = [
  "abi_stable",
  "gensym",
  "log",
- "picodata-plugin-proc-macro",
+ "picodata-plugin-proc-macro 24.7.0",
  "reqwest",
  "rmp",
  "rmp-serde",
@@ -2694,6 +2714,18 @@ dependencies = [
  "thiserror",
  "threadpool",
  "tros",
+]
+
+[[package]]
+name = "picodata-plugin-proc-macro"
+version = "24.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a0329d0b3bf588b68068c03533216f3e694f7dae44b56e59d8436d5852aacff"
+dependencies = [
+ "proc-macro2 1.0.88",
+ "quote 1.0.37",
+ "syn 1.0.109",
+ "tarantool 5.0.0",
 ]
 
 [[package]]
@@ -2759,7 +2791,7 @@ checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
 name = "plug_wrong_version"
 version = "0.1.0"
 dependencies = [
- "picodata-plugin",
+ "picodata-plugin 24.6.1",
  "serde",
 ]
 
@@ -4017,6 +4049,41 @@ dependencies = [
 
 [[package]]
 name = "tarantool"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df5f47062b7e5d7feb84c61034ab1b2c9e50becf1ea32375e85a725ee4e63c6"
+dependencies = [
+ "async-trait",
+ "base64 0.13.1",
+ "bitflags 1.3.2",
+ "crossbeam-queue",
+ "dlopen",
+ "futures",
+ "libc",
+ "linkme 0.3.28",
+ "log",
+ "md-5",
+ "once_cell",
+ "refpool",
+ "rmp",
+ "rmp-serde",
+ "rmpv",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "sha-1",
+ "tarantool-proc 3.1.0",
+ "tester",
+ "thiserror",
+ "time",
+ "tlua 3.1.0",
+ "tokio",
+ "uuid 0.8.2",
+ "va_list",
+]
+
+[[package]]
+name = "tarantool"
 version = "5.1.0"
 dependencies = [
  "anyhow",
@@ -4153,7 +4220,7 @@ name = "testplug"
 version = "0.0.0"
 dependencies = [
  "linkme 0.3.28",
- "picodata-plugin",
+ "picodata-plugin 24.7.0",
  "rand 0.9.0-alpha.2",
  "rmp-serde",
  "rmpv",
