@@ -540,7 +540,7 @@ def test_builtin_users_and_roles(cluster: Cluster):
     i1, *_ = cluster.deploy(instance_count=1)
 
     # validate that builtin users and roles can be referenced in the GRANT command
-    for user in ["admin", "guest", "public", "super"]:
+    for user in ["admin", "guest", "public", "super", "replication"]:
         i1.grant_privilege(user, "read", "table", "_pico_property")
 
     i1.sql(f"CREATE USER \"Dave\" WITH PASSWORD '{VALID_PASSWORD}'")
