@@ -428,6 +428,7 @@ def test_read_from_system_tables(cluster: Cluster):
     assert keys == [
         "global_schema_version",
         "next_schema_version",
+        "system_catalog_version",
     ]
 
     data = i1.sql(

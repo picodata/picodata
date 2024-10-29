@@ -110,6 +110,14 @@ pub(super) fn prepare(
         )
         .expect("serialization cannot fail"),
     );
+    ops.push(
+        op::Dml::insert(
+            ClusterwideTable::Property,
+            &(PropertyName::SystemCatalogVersion, 1),
+            ADMIN_ID,
+        )
+        .expect("serialization cannot fail"),
+    );
 
     //
     // Populate "_pico_db_config" with initial values for cluster-wide properties

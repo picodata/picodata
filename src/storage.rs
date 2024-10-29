@@ -1287,6 +1287,12 @@ impl From<ClusterwideTable> for SpaceId {
         ///
         /// See [`PluginOp`].
         PendingPluginOperation = "pending_plugin_operation",
+
+        /// Current system catalog version.
+        ///
+        /// Used for checking compatibility and upgrading system tables
+        /// between picodata versions.
+        SystemCatalogVersion = "system_catalog_version",
     }
 }
 
@@ -1322,7 +1328,8 @@ impl PropertyName {
             #[rustfmt::skip]
             Self::NextSchemaVersion
             | Self::PendingSchemaVersion
-            | Self::GlobalSchemaVersion => {
+            | Self::GlobalSchemaVersion
+            | Self::SystemCatalogVersion => {
                 // Check it's an unsigned integer.
                 _ = new.field::<u64>(1).map_err(map_err)?;
             }

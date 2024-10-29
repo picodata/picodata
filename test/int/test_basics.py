@@ -346,6 +346,7 @@ Insert(_pico_replicaset, ["r1","{r1_uuid}","i1","i1","default",0.0,"auto","not-r
 |  0  | 1  |BatchDml(
 Insert(_pico_property, ["global_schema_version",0]),
 Insert(_pico_property, ["next_schema_version",1]),
+Insert(_pico_property, ["system_catalog_version",1]),
 Insert(_pico_db_config, ["password_min_length",8]),
 Insert(_pico_db_config, ["password_enforce_uppercase",true]),
 Insert(_pico_db_config, ["password_enforce_lowercase",true]),
