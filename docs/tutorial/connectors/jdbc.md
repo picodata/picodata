@@ -303,7 +303,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         container_name: picodata-1
         hostname: picodata-1
         environment:
-        PICODATA_INSTANCE_ID: picodata-1
+        PICODATA_INSTANCE_NAME: picodata-1
         PICODATA_DATA_DIR: picodata-1
         PICODATA_LISTEN: picodata-1:3301
         PICODATA_ADVERTISE: picodata-1:3301
@@ -321,7 +321,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         depends_on:
         - picodata-1
         environment:
-        PICODATA_INSTANCE_ID: picodata-2
+        PICODATA_INSTANCE_NAME: picodata-2
         PICODATA_DATA_DIR: picodata-2
         PICODATA_LISTEN: picodata-2:3302
         PICODATA_ADVERTISE: picodata-2:3302
@@ -337,7 +337,7 @@ _JAVA_OPTIONS="--add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java
         depends_on:
         - picodata-1
         environment:
-        PICODATA_INSTANCE_ID: picodata-3
+        PICODATA_INSTANCE_NAME: picodata-3
         PICODATA_DATA_DIR: picodata-3
         PICODATA_LISTEN: picodata-3:3303
         PICODATA_ADVERTISE: picodata-3:3303

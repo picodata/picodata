@@ -207,17 +207,17 @@ function exit([code])
 ### pico.expel {: #pico_expel }
 
 Выводит инстанс из кластера, но не завершает его работу. Может быть
-запущена только один раз для инстанса с определенным `instance_id`.
+запущена только один раз для инстанса с определенным `instance_name`.
 Инстанс в состоянии `expelled` останется запущенным. Если его остановить
 и запустить снова, то он не присоединится к raft-группе.
 
 ```lua
-function expel("instance_id")
+function expel("instance_name")
 ```
 
 Параметры:
 
-- `instance_id`: (_string_)
+- `instance_name`: (_string_)
 
 Возвращаемые значения:
 
@@ -267,9 +267,9 @@ function instance_info(instance)
 - (_table_):
     - `raft_id `(_number_)
     - `advertise_address` (_string_)
-    - `instance_id` (_string_)
-    - `instance_uuid` (_string_)
-    - `replicaset_id `(_string_)
+    - `name` (_string_)
+    - `uuid` (_string_)
+    - `replicaset_name` (_string_)
     - `replicaset_uuid` (_string_)
     - `current_state` (_table_).
       `variant` (_string_), варианты: `'Offline'` | `'Online'` | `'Expelled'`;
@@ -283,18 +283,20 @@ function instance_info(instance)
 ```lua
  picodata> pico.instance_info()
  ---
- - raft_id: 1
-advertise_address: 127.0.0.1:3301
-instance_id: i1
-instance_uuid: 68d4a766-4144-3248-aeb4-e212356716e4
-replicaset_id: r1
-replicaset_uuid: e0df68c5-e7f9-395f-86b3-30ad9e1b7b07
-current_state:
-  variant: Online
-  incarnation: 26
-target_state:
-  variant: Online
-  incarnation: 26
+- target_state:
+    variant: Online
+    incarnation: 1
+  uuid: 97048f02-e1d5-4062-b079-a2e2c674cb01
+  advertise_address: 127.0.0.1:3301
+  tier: default
+  raft_id: 1
+  replicaset_uuid: 29d45b4e-8e1a-4973-b8cb-062881bacb11
+  current_state:
+    variant: Online
+    incarnation: 1
+  name: i1
+  replicaset_name: r1
+
 ...
 ```
 
@@ -616,16 +618,16 @@ function whoami()
 
 - (_table_):
     - `raft_id`: (_number_)
-    - `cluster_id`: (_string_)
-    - `instance_id`: (_string_)
+    - `cluster_name`: (_string_)
+    - `instance_name`: (_string_)
 
 Пример:
 
 ```console
 picodata> pico.whoami()
 - raft_id: 1
-  cluster_id: demo
-  instance_id: i1
+  cluster_name: demo
+  instance_name: i1
 ```
 
 ### table CasBound {: #casbound }

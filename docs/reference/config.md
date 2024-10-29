@@ -39,7 +39,7 @@ picodata run --config <PATH>
 
 ``` yaml title="config.yaml"
 cluster:
-  cluster_id: demo # (1)!
+  name: demo # (1)!
   tier:
     default:
       replication_factor: 1 # (4)!
@@ -48,8 +48,8 @@ cluster:
 instance:
   data_dir: . # (8)!
   service_password_file: null # (25)!
-  instance_id: null # (11)!
-  replicaset_id: null # (24)!
+  name: null # (11)!
+  replicaset_name: null # (24)!
   tier: default # (27)!
   failure_domain: {} # (9)!
   peer: # (20)!
@@ -79,8 +79,8 @@ instance:
     ssl: false # (22)!
 ```
 
-1. [cluster.cluster_id](#cluster_cluster_id)
-2. [cluster.default_replication_factor](#cluster_default_replication_factor)
+1. [cluster.default_replication_factor](#cluster_default_replication_factor)
+2. [cluster.name](#cluster_name)
 3. [cluster.tier.<tier_name\>.can_vote](#cluster_tier_tier_can_vote)
 4. [cluster.tier.<tier_name\>.replication_factor](#cluster_tier_tier_replication_factor)
 5. [instance.admin_socket](#instance_admin_socket)
@@ -89,20 +89,20 @@ instance:
 8. [instance.data_dir](#instance_data_dir)
 9. [instance.failure_domain](#instance_failure_domain)
 10. [instance.http_listen](#instance_http_listen)
-11. [instance.instance_id](#instance_instance_id)
-12. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
-13. [instance.listen](#instance_listen)
-14. [instance.log.destination](#instance_log_destination)
-15. [instance.log.format](#instance_log_format)
-16. [instance.log.level](#instance_log_level)
-17. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
-18. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
-19. [instance.memtx.memory](#instance_memtx_memory)
+11. [instance.iproto.max_concurrent_messages](#instance_iproto_max_concurrent_messages)
+12. [instance.listen](#instance_listen)
+13. [instance.log.destination](#instance_log_destination)
+14. [instance.log.format](#instance_log_format)
+15. [instance.log.level](#instance_log_level)
+16. [instance.memtx.checkpoint_count](#instance_memtx_checkpoint_count)
+17. [instance.memtx.checkpoint_interval](#instance_memtx_checkpoint_interval)
+18. [instance.memtx.memory](#instance_memtx_memory)
+19. [instance.name](#instance_name)
 20. [instance.peer](#instance_peer)
 21. [instance.pg.listen](#instance_pg_listen)
 22. [instance.pg.ssl](#instance_pg_ssl)
 23. [instance.plugin_dir](#instance_plugin_dir)
-24. [instance.replicaset_id](#instance_replicaset_id)
+24. [instance.replicaset_name](#instance_replicaset_name)
 25. [instance.service_password_file](#instance_service_password_file)
 26. [instance.shredding](#instance_shredding)
 27. [instance.tier](#instance_tier)
@@ -114,19 +114,6 @@ instance:
 * [picodata config default](cli.md#config_default)
 
 ## Параметры файла конфигурации {: #config_file_parameters }
-
-### cluster.cluster_id {: #cluster_cluster_id }
-
-Имя кластера. Инстанс не сможет присоединиться к кластеру с другим именем.
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `demo`
-
-Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`<br>
-Аналогичная команда:
-[picodata run --cluster-id](cli.md#run_cluster_id)
 
 ### cluster.default_replication_factor {: #cluster_default_replication_factor }
 
@@ -141,6 +128,19 @@ instance:
 Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
 Аналогичная команда:
 [picodata run --init-replication-factor](cli.md#run_init_replication_factor)
+
+### cluster.name {: #cluster_name }
+
+Имя кластера. Инстанс не сможет присоединиться к кластеру с другим именем.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `demo`
+
+Аналогичная переменная окружения: `PICODATA_CLUSTER_NAME`<br>
+Аналогичная команда:
+[picodata run --cluster-name](cli.md#run_cluster_name)
 
 ### cluster.tier.<tier_name\>.can_vote {: #cluster_tier_tier_can_vote }
 
@@ -273,20 +273,6 @@ picodata run -c cluster.tier='{"default": {"replication_factor": 3, "can_vote": 
 Аналогичная переменная окружения: `PICODATA_HTTP_LISTEN`<br>
 Аналогичная команда:
 [picodata run --http-listen](cli.md#run_http_listen)
-
-### instance.instance_id {: #instance_instance_id }
-
-Имя инстанса. При отсутствии параметра значение будет автоматически
-сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
-
-Данные:
-
-* Тип: *str*
-* Значение по умолчанию: `null`
-
-Аналогичная переменная окружения: `PICODATA_INSTANCE_ID`<br>
-Аналогичная команда:
-[picodata run --instance-id](cli.md#run_instance_id)
 
 ### instance.iproto.max_concurrent_messages {: #instance_iproto_max_concurrent_messages }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-networking-net-msg-max -->
@@ -459,6 +445,20 @@ picodata run -c instance.memtx.checkpoint_interval=7200.0
 Аналогичная команда:
 [picodata run --memtx-memory](cli.md#run_memtx_memory)
 
+### instance.name {: #instance_name }
+
+Имя инстанса. При отсутствии параметра значение будет автоматически
+сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
+
+Данные:
+
+* Тип: *str*
+* Значение по умолчанию: `null`
+
+Аналогичная переменная окружения: `PICODATA_INSTANCE_NAME`<br>
+Аналогичная команда:
+[picodata run --instance-name](cli.md#run_instance_name)
+
 ### instance.peer {: #instance_peer }
 
 Список сетевых адресов других инстансов. Используется при инициализации
@@ -524,7 +524,7 @@ picodata run -c instance.pg.ssl=true
 Аналогичная команда:
 [picodata run --plugin-dir](cli.md#run_plugin_dir)
 
-### instance.replicaset_id {: #instance_replicaset_id }
+### instance.replicaset_name {: #instance_replicaset_name }
 
 Имя репликасета. Используется при инициализации кластера и присоединении
 инстанса к уже существующему кластеру. При отсутствии параметра репликасет
@@ -535,9 +535,9 @@ picodata run -c instance.pg.ssl=true
 * Тип: *str*
 * Значение по умолчанию: `null`
 
-Аналогичная переменная окружения: `PICODATA_REPLICASET_ID`<br>
+Аналогичная переменная окружения: `PICODATA_REPLICASET_NAME`<br>
 Аналогичная команда:
-[picodata run --replicaset-id](cli.md#run_replicaset_id)
+[picodata run --replicaset-name](cli.md#run_replicaset_name)
 
 ### instance.service_password_file {: #instance_service_password_file }
 

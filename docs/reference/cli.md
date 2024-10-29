@@ -102,16 +102,16 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 Аналогичная переменная окружения: `PICODATA_AUDIT_LOG`<br>
 Аналогичный параметр файла конфигурации: `instance.audit`
 
-### --cluster-id {: #run_cluster_id }
+### --cluster-name {: #run_cluster_name }
 
-`--cluster-id <NAME>`
+`--cluster-name <NAME>`
 
 Имя кластера. Инстанс не сможет присоединиться к кластеру с другим именем.
 
 По умолчанию используется имя `demo`.
 
-Аналогичная переменная окружения: `PICODATA_CLUSTER_ID`<br>
-Аналогичный параметр файла конфигурации: `cluster.cluster_id`
+Аналогичная переменная окружения: `PICODATA_CLUSTER_NAME`<br>
+Аналогичный параметр файла конфигурации: `cluster.name`
 
 ### --config {: #run_config }
 
@@ -191,15 +191,15 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 Аналогичная переменная окружения: `PICODATA_INIT_REPLICATION_FACTOR`<br>
 Аналогичный параметр файла конфигурации: `cluster.default_replication_factor`
 
-### --instance-id {: #run_instance_id }
+### --instance-name {: #run_instance_name }
 
-`--instance-id <NAME>`
+`--instance-name <NAME>`
 
 Имя инстанса. При отсутствии параметра значение будет автоматически
 сгенерировано raft-лидером в момент присоединения инстанса к кластеру.
 
-Аналогичная переменная окружения: `PICODATA_INSTANCE_ID`<br>
-Аналогичный параметр файла конфигурации: `instance.instance_id`
+Аналогичная переменная окружения: `PICODATA_INSTANCE_NAME`<br>
+Аналогичный параметр файла конфигурации: `instance.name`
 
 ### --listen {: #run_listen }
 
@@ -301,16 +301,16 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 Аналогичная переменная окружения: `PICODATA_PLUGIN_DIR`<br>
 Аналогичный параметр файла конфигурации: `instance.plugin_dir`
 
-### --replicaset-id {: #run_replicaset_id }
+### --replicaset-name {: #run_replicaset_name }
 
-`--replicaset-id <NAME>`
+`--replicaset-name <NAME>`
 
 Имя репликасета. Используется при инициализации кластера и присоединении
 инстанса к уже существующему кластеру. При отсутствии параметра
 репликасет будет выбран автоматически на основе зон доступности.
 
-Аналогичная переменная окружения: `PICODATA_REPLICASET_ID`<br>
-Аналогичный параметр файла конфигурации: `instance.replicaset_id`
+Аналогичная переменная окружения: `PICODATA_REPLICASET_NAME`<br>
+Аналогичный параметр файла конфигурации: `instance.replicaset_name`
 
 ### --script {: #run_script }
 
@@ -509,14 +509,14 @@ picodata> pico.cas({
 СУБД `admin`.
 
 ```
-picodata expel [OPTIONS] <INSTANCE_ID>
+picodata expel [OPTIONS] <INSTANCE_NAME>
 ```
 
-- `INSTANCE_ID`: Имя инстанса
+- `INSTANCE_NAME`: Имя инстанса
 
-### --cluster-id {: #expel_cluster_id }
+### --cluster-name {: #expel_cluster_name }
 
-`--cluster-id <NAME>`
+`--cluster-name <NAME>`
 
 Имя кластера, из которого должен быть исключен инстанс.
 

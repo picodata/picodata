@@ -146,10 +146,10 @@ new field: user == initiator
 {
      "title": "change_current_state",
      "message": "current state
-          of instance `<instance_id>`
+          of instance `<instance_name>`
           changed to <new_state>",
      "severity": "medium",
-     "instance_id": ...,
+     "instance_name": ...,
      // TODO: "old_state": ...,
      "new_state": ...,
      "raft_id": ...,
@@ -183,10 +183,10 @@ new field: user == initiator
 {
      "title": "change_target_state",
      "message": "target state
-          of instance `<instance_id>`
+          of instance `<instance_name>`
           changed to <new_state>",
      "severity": "low",
-     "instance_id": ...,
+     "instance_name": ...,
      // TODO: "old_state": ...,
      "new_state": ...,
      "raft_id": ...,
@@ -209,10 +209,10 @@ start_boot/start_join -> create_local_db + connect_local_db
 ```json
 {
      "title": "connect_local_db",
-     "message": "local database connected on `<instance_id>`",
+     "message": "local database connected on `<instance_name>`",
      "severity": "low",
      "raft_id": ...,
-     "instance_id": ...,
+     "instance_name": ...,
      ...
 }
 ```
@@ -226,10 +226,10 @@ start_boot/start_join -> create_local_db + connect_local_db
 ```json
 {
      "title": "create_local_db",
-     "message": "local database created on `<instance_id>`",
+     "message": "local database created on `<instance_name>`",
      "severity": "low",
      "raft_id": ...,
-     "instance_id": ...,
+     "instance_name": ...,
      ...
 }
 ```
@@ -300,10 +300,10 @@ start_boot/start_join -> create_local_db + connect_local_db
 ```json
 {
      "title": "drop_local_db",
-     "message": "local database dropped on `<instance_id>`",
+     "message": "local database dropped on `<instance_name>`",
      "severity": "low",
      "raft_id": ...,
-     "instance_id": ...,
+     "instance_name": ...,
      ...
 }
 ```
@@ -371,9 +371,9 @@ start_boot/start_join -> create_local_db + connect_local_db
 ```json
 {
      "title": "expel_instance",
-     "message": "instance `<instance_id>` was expelled from the cluster",
+     "message": "instance `<instance_name>` was expelled from the cluster",
      "severity": "low",
-     "instance_id": ...,
+     "instance_name": ...,
      "raft_id": ...,
      ...
 }
@@ -452,9 +452,9 @@ start_boot/start_join -> create_local_db + connect_local_db
 ```json
 {
      "title": "join_instance",
-     "message": "a new instance `<instance_id>` joined the cluster",
+     "message": "a new instance `<instance_name>` joined the cluster",
      "severity": "low",
-     "instance_id": ...,
+     "instance_name": ...,
      "raft_id": ...,
      ...
 }
@@ -502,10 +502,10 @@ new field: reason
 ```json
 {
      "title": "recover_local_db",
-     "message": "local database recovered on `<instance_id>`",
+     "message": "local database recovered on `<instance_name>`",
      "severity": "low",
      "raft_id": ...,
-     "instance_id": ...,
+     "instance_name": ...,
      ...
 }
 ```

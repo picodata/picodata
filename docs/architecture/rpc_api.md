@@ -166,7 +166,7 @@ fn proc_apply_schema_change(raft_term, raft_index, timeout) -> Result
 ### .proc_cas {: #proc_cas }
 
 ```rust
-fn proc_cas(cluster_id, predicate, op, as_user) -> (RaftIndex, RaftTerm)
+fn proc_cas(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
@@ -193,7 +193,7 @@ fn proc_cas(cluster_id, predicate, op, as_user) -> (RaftIndex, RaftTerm)
 
 Параметры:
 
-- `cluster_id`: (MP_STR)
+- `cluster_name`: (MP_STR)
 - `predicate`: (MP_MAP `CasPredicate`)
 - `op`: (MP_MAP `Op`)
 - `as_user`: (MP_INT)
@@ -237,27 +237,27 @@ fn proc_discover(request, receiver)
 ### .proc_expel {: #proc_expel }
 
 ```rust
-fn proc_expel(cluster_id, instance_id)
+fn proc_expel(cluster_name, instance_name)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
 противном случае немедленно возвращает ошибку.
 
 Удаляет указанный инстанс из кластера. На его место в будущем может прийти
-инстанс с тем же `instance_id`, однако `raft_id` уходящего инстанса больше
+инстанс с тем же `instance_name`, однако `raft_id` уходящего инстанса больше
 никогда не будет использоваться.
 
 Параметры:
 
-- `cluster_id`: (MP_STR),
-- `instance_id`: (MP_STR),
+- `cluster_name`: (MP_STR),
+- `instance_name`: (MP_STR),
 
 
 --------------------------------------------------------------------------------
 ### .proc_expel_redirect {: #proc_expel_redirect }
 
 ```rust
-fn proc_expel_redirect(cluster_id, instance_id)
+fn proc_expel_redirect(cluster_name, instance_name)
 ```
 
 Вызывает [proc_expel](#proc_expel) на текущем [raft-лидере](../overview/glossary.md#raft_leader).
@@ -266,8 +266,8 @@ fn proc_expel_redirect(cluster_id, instance_id)
 
 Параметры:
 
-- `cluster_id`: (MP_STR),
-- `instance_id`: (MP_STR),
+- `cluster_name`: (MP_STR),
+- `instance_name`: (MP_STR),
 
 
 --------------------------------------------------------------------------------
@@ -349,7 +349,7 @@ fn proc_get_vshard_config(tier_name: Option<String>) -> Result
 ### .proc_instance_info {: #proc_instance_info }
 
 ```rust
-fn proc_instance_info(instance_id) -> InstanceInfo
+fn proc_instance_info(instance_name) -> InstanceInfo
 ```
 
 Возвращает информацию о запрашиваемом инстансе из кластера.
@@ -358,18 +358,18 @@ fn proc_instance_info(instance_id) -> InstanceInfo
 
 Аргументы:
 
-- `instance_id`: (optional MP_STR)
+- `instance_name`: (optional MP_STR)
 
 Возвращаемое значение:
 
 - (MP_MAP `InstanceInfo`)
     - `raft_id`: (MP_UINT)
     - `advertise_address`: (MP_STR)
-    - `instance_id`: (MP_STR)
-    - `instance_uuid`: (MP_STR)
-    - `replicaset_id`: (MP_STR)
+    - `name`: (MP_STR)
+    - `uuid`: (MP_STR)
+    - `replicaset_name`: (MP_STR)
     - `replicaset_uuid`: (MP_STR)
-    - `cluster_id`: (MP_STR)
+    - `cluster_name`: (MP_STR)
     - `current_state`: (MP_MAP [`State`](../overview/glossary.md#state)), текущее состояние инстанса
       <br>формат: `MP_MAP { variant = MP_STR, incarnation = MP_UINT}`
       <br>возможные значения `variant`: `Offline`, `Online`, `Expelled`
@@ -416,7 +416,7 @@ fn proc_raft_interact(raft_messages)
 ### .proc_raft_join {: #proc_raft_join }
 
 ```rust
-fn proc_raft_join(cluster_id, instance_id, replicaset_id, advertise_address, failure_domain, tier)
+fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_address, failure_domain, tier)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader),
@@ -431,9 +431,9 @@ fn proc_raft_join(cluster_id, instance_id, replicaset_id, advertise_address, fai
 
 Параметры:
 
-- `cluster_id`: (MP_STR),
-- `instance_id`: (MP_STR | MP_NIL),
-- `replicaset_id`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset),
+- `cluster_name`: (MP_STR),
+- `instance_name`: (MP_STR | MP_NIL),
+- `replicaset_name`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset),
 - `advertise_address`: (MP_STR),
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain),
 - `tier`: (MP_STR) идентификатор [тира](../overview/glossary.md#tier),
@@ -743,7 +743,7 @@ fn proc_sql_execute(..) -> Result
 ### .proc_update_instance {: #proc_update_instance }
 
 ```rust
-fn proc_update_instance(instance_id, cluster_id, current_state, target_state, failure_domain, dont_retry)
+fn proc_update_instance(instance_name, cluster_name, current_state, target_state, failure_domain, dont_retry)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
@@ -765,11 +765,11 @@ fn proc_update_instance(instance_id, cluster_id, current_state, target_state, fa
 
 Параметры:
 
-- `instance_id`: (MP_STR),
-- `cluster_id`: (MP_STR),
+- `instance_name`: (MP_STR)
+- `cluster_name`: (MP_STR)
 - `current_state`: (MP_MAP `State`), текущее состояние инстанса
 - `target_state`: (MP_STR `StateVariant`), целевое состояние инстанса
-- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain),
+- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
 - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
 
 

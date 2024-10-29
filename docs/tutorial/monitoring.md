@@ -38,14 +38,14 @@ box.space._pico_instance:fselect()
 
 ```
 ---
-- - ​+-----------+--------------------------------------+-------+-------------+--------------------------------------+-------------+------------+--------------+
-  - ​|instance_id|            instance_uuid             |raft_id|replicaset_id|           replicaset_uuid            |current_state|target_state|failure_domain|
-  - ​+-----------+--------------------------------------+-------+-------------+--------------------------------------+-------------+------------+--------------+
-  - ​|   "i1"    |"68d4a766-4144-3248-aeb4-e212356716e4"|   1   |    "r1"     |"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07"|["Online",1] |["Online",1]|      {}      |
-  - ​|   "i2"    |"24c4ac5f-4981-3441-879c-aee1edb608a6"|   2   |    "r1"     |"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07"|["Online",1] |["Online",1]|      {}      |
-  - ​|   "i3"    |"5d7a7353-3e82-30fd-af0d-261436544389"|   3   |    "r2"     |"eff4449e-feb2-3d73-87bc-75807cb23191"|["Online",1] |["Online",1]|      {}      |
-  - ​|   "i4"    |"826cbe5e-6979-3191-9e22-e39deef142f0"|   4   |    "r2"     |"eff4449e-feb2-3d73-87bc-75807cb23191"|["Online",1] |["Online",1]|      {}      |
-  - ​+-----------+--------------------------------------+-------+-------------+--------------------------------------+-------------+------------+--------------+
+- - ​+-------------+--------------------------------------+-------+---------------+--------------------------------------+-------------+------------+--------------+
+  - ​|instance_name|            instance_uuid             |raft_id|replicaset_name|           replicaset_uuid            |current_state|target_state|failure_domain|
+  - ​+-------------+--------------------------------------+-------+---------------+--------------------------------------+-------------+--------------+--------------+
+  - ​|   "i1"    |"68d4a766-4144-3248-aeb4-e212356716e4"|   1   |     "r1"      |"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07"|["Online",1] |["Online",1]|      {}      |
+  - ​|   "i2"    |"24c4ac5f-4981-3441-879c-aee1edb608a6"|   2   |     "r1"      |"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07"|["Online",1] |["Online",1]|      {}      |
+  - ​|   "i3"    |"5d7a7353-3e82-30fd-af0d-261436544389"|   3   |     "r2"      |"eff4449e-feb2-3d73-87bc-75807cb23191"|["Online",1] |["Online",1]|      {}      |
+  - ​|   "i4"    |"826cbe5e-6979-3191-9e22-e39deef142f0"|   4   |     "r2"      |"eff4449e-feb2-3d73-87bc-75807cb23191"|["Online",1] |["Online",1]|      {}      |
+  - ​+-------------+--------------------------------------+-------+---------------+--------------------------------------+-------------+------------+--------------+
 ...
 ```
 
@@ -59,12 +59,12 @@ box.space._pico_replicaset:fselect()
 
 ```
 ---
-- — ​+-------------+--------------------------------------+---------+------+
-  - ​|replicaset_id|           replicaset_uuid            |master_id|weight|
-  - ​+-------------+--------------------------------------+---------+------+
-  - ​|    "r1"     |"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07"|  "i1"   |  1   |
-  - ​|    "r2"     |"eff4449e-feb2-3d73-87bc-75807cb23191"|  "i3"   |  1   |
-  - ​+-------------+--------------------------------------+---------+------+
+- — ​+---------------+--------------------------------------+-----------+------+
+  - ​|replicaset_name|           replicaset_uuid            |master_name|weight|
+  - ​+---------------+--------------------------------------+-----------+------+
+  - ​|     "r1"      |"e0df68c5-e7f9-395f-86b3-30ad9e1b7b07"|   "i1"    |  1   |
+  - ​|     "r2"      |"eff4449e-feb2-3d73-87bc-75807cb23191"|   "i3"    |  1   |
+  - ​+---------------+--------------------------------------+-----------+------+
 ...
 ```
 
@@ -118,7 +118,7 @@ box.space._pico_property:get("current_schema_version")
 При использовании службы `syslog` для просмотра журнала конкретного
 инстанса вам понадобится знать имя его сервиса. При развертывании через
 Ansible оно по умолчанию формируется как
-`<cluster_id>@<instance_id>.service`. Например, для кластера с именем
+`<cluster_name>@<instance_name>.service`. Например, для кластера с именем
 `test` и инстанса `default-1000` команда для просмотра отладочного
 журнала будет такой:
 
@@ -131,11 +131,11 @@ journalctl -u test@default-1000.service
 ```
 systemd[1]: Starting Picodata cluster test@default-1000...
 systemd[1]: Started Picodata cluster test@default-1000.
-picodata[4731]: 'cluster.cluster_id': "test"
+picodata[4731]: 'cluster.name': "test"
 picodata[4731]: 'cluster.tier': {"default": {"replication_factor": 3, "can_vote": true}}
 picodata[4731]: 'cluster.default_replication_factor': 1
 picodata[4731]: 'instance.data_dir': "/var/lib/picodata/test/default-1000"
-picodata[4731]: 'instance.instance_id': "default-1000"
+picodata[4731]: 'instance.name': "default-1000"
 picodata[4731]: 'instance.listen': "0.0.0.0:13301"
 picodata[4731]: 'instance.http_listen': "0.0.0.0:18001"
 picodata[4731]: 'instance.admin_socket': "/var/run/picodata/test/default-1000.sock"
@@ -185,7 +185,7 @@ C помощью полученного `leader_id` выясните адрес 
 
 ```
 \sql
-SELECT "instance_id", "_pico_instance"."raft_id", "_pico_peer_address"."address"
+SELECT "instance_name", "_pico_instance"."raft_id", "_pico_peer_address"."address"
 FROM "_pico_instance" JOIN "_pico_peer_address"
 ON "_pico_peer_address"."raft_id"="_pico_instance"."raft_id"
 WHERE "_pico_instance"."raft_id" = 2 ;
@@ -194,11 +194,11 @@ WHERE "_pico_instance"."raft_id" = 2 ;
 Пример вывода:
 
 ```
-+-----------------------+---------+--------------------+
-| instance_id           | raft_id | address            |
-+======================================================+
-| "default-2000"        | 2       | "192.168.0.2:3301" |
-+-----------------------+---------+--------------------+
++-------------------------+---------+--------------------+
+| instance_name           | raft_id | address            |
++========================================================+
+| "default-2000"          | 2       | "192.168.0.2:3301" |
++-------------------------+---------+--------------------+
 (1 rows)
 ```
 

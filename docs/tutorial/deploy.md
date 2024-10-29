@@ -17,7 +17,7 @@
 ???+ example "my_cluster.yml"
     ```yaml
     cluster:
-      cluster_id: my_cluster
+      name: my_cluster
       default_replication_factor: 2
 
     instance:
@@ -45,7 +45,7 @@
 
 Для примера мы запустим кластер из 4 инстансов на локальном сетевом
 интерфейсе `127.0.0.1`. Приведенный набор параметров явно задает имя
-кластера "cluster_id" и фактор репликации 2. В
+кластера "cluster_name" и фактор репликации 2. В
 данном примере файл конфигурации используется для запуска всех
 инстансов.
 
@@ -64,7 +64,7 @@
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
-    export PICODATA_INSTANCE_ID="i1"
+    export PICODATA_INSTANCE_NAME="i1"
     export PICODATA_DATA_DIR="./data/my_cluster/i1"
     export PICODATA_LISTEN="127.0.0.1:3301"
     export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
@@ -79,7 +79,7 @@
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
-    export PICODATA_INSTANCE_ID="i2"
+    export PICODATA_INSTANCE_NAME="i2"
     export PICODATA_DATA_DIR="./data/my_cluster/i2"
     export PICODATA_LISTEN="127.0.0.1:3302"
 
@@ -92,7 +92,7 @@
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
-    export PICODATA_INSTANCE_ID="i3"
+    export PICODATA_INSTANCE_NAME="i3"
     export PICODATA_DATA_DIR="./data/my_cluster/i3"
     export PICODATA_LISTEN="127.0.0.1:3303"
 
@@ -105,7 +105,7 @@
 
     export PICODATA_CONFIG_FILE="my_cluster.yml"
 
-    export PICODATA_INSTANCE_ID="i4"
+    export PICODATA_INSTANCE_NAME="i4"
     export PICODATA_DATA_DIR="./data/my_cluster/i4"
     export PICODATA_LISTEN="127.0.0.1:3304"
 
@@ -164,7 +164,7 @@ compute и storage. Создайте отдельные файлы конфиг�
 ???+ example "compute.yml"
     ```yaml
     cluster:
-      cluster_id: multi_tier_cluster
+      name: multi_tier_cluster
       tier:
         compute:
           replication_factor: 1
@@ -184,7 +184,7 @@ compute и storage. Создайте отдельные файлы конфиг�
 ??? example "storage.yml"
     ```yaml
     cluster:
-      cluster_id: multi_tier_cluster
+      name: multi_tier_cluster
       tier:
         compute:
           replication_factor: 1
@@ -213,7 +213,7 @@ compute и storage. Создайте отдельные файлы конфиг�
 
     export PICODATA_CONFIG_FILE="compute.yml"
 
-    export PICODATA_INSTANCE_ID="compute_1"
+    export PICODATA_INSTANCE_NAME="compute_1"
     export PICODATA_DATA_DIR="./data/multi_tier_cluster/compute_1"
     export PICODATA_LISTEN="127.0.0.1:3301"
     export PICODATA_HTTP_LISTEN="127.0.0.1:8080"
@@ -228,7 +228,7 @@ compute и storage. Создайте отдельные файлы конфиг�
 
     export PICODATA_CONFIG_FILE="storage.yml"
 
-    export PICODATA_INSTANCE_ID="storage_1"
+    export PICODATA_INSTANCE_NAME="storage_1"
     export PICODATA_DATA_DIR="./data/multi_tier_cluster/storage_1"
     export PICODATA_LISTEN="127.0.0.1:3302"
 
@@ -241,7 +241,7 @@ compute и storage. Создайте отдельные файлы конфиг�
 
     export PICODATA_CONFIG_FILE="storage.yml"
 
-    export PICODATA_INSTANCE_ID="storage_2"
+    export PICODATA_INSTANCE_NAME="storage_2"
     export PICODATA_DATA_DIR="./data/multi_tier_cluster/storage_2"
     export PICODATA_LISTEN="127.0.0.1:3303"
 

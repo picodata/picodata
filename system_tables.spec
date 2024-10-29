@@ -1,4 +1,4 @@
-Описание соответствует версии Picodata `24.6.0-235-gdaffd6db`.
+Описание соответствует версии Picodata `24.7.0-21-g7918791e`.
 
 ### _pico_table
 
@@ -100,7 +100,7 @@
 * `name`: (_string_)
 * `uuid`: (_string_)
 * `raft_id`: (_unsigned_)
-* `replicaset_id`: (_string_)
+* `replicaset_name`: (_string_)
 * `replicaset_uuid`: (_string_)
 * `current_state`: (_array_)
 * `target_state`: (_array_)
@@ -111,14 +111,14 @@
 
 * `_pico_instance_name` (unique), parts: `[name]`
 * `_pico_instance_raft_id` (unique), parts: `[raft_id]`
-* `_pico_instance_replicaset_id` (non-unique), parts: `[replicaset_id]`
+* `_pico_instance_replicaset_name` (non-unique), parts: `[replicaset_name]`
 
 ### _pico_replicaset
 
 Поля:
 
-* `replicaset_id`: (_string_)
-* `replicaset_uuid`: (_string_)
+* `name`: (_string_)
+* `uuid`: (_string_)
 * `current_master_name`: (_string_)
 * `target_master_name`: (_string_)
 * `tier`: (_string_)
@@ -131,8 +131,8 @@
 
 Индексы:
 
-* `_pico_replicaset_id` (unique), parts: `[replicaset_id]`
-* `_pico_replicaset_uuid` (unique), parts: `[replicaset_uuid]`
+* `_pico_replicaset_name` (unique), parts: `[name]`
+* `_pico_replicaset_uuid` (unique), parts: `[uuid]`
 
 ### _pico_tier
 
