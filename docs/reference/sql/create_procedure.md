@@ -50,7 +50,7 @@
 ```sql
 CREATE PROCEDURE proc (int, text, text)
 AS $$INSERT INTO warehouse VALUES($1, $2, $3)$$
-OPTION (TIMEOUT = 5.0)
+OPTION (TIMEOUT = 5.0);
 ```
 
 где:

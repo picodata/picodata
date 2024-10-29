@@ -41,7 +41,7 @@ picodata admin ./admin.sock
 ```
 $ picodata admin ./admin.sock
 Connected to admin console by socket path "./admin.sock"
-type '\help' for interactive help
+type '\help;' for interactive help
 picodata>
 ```
 
@@ -55,7 +55,7 @@ picodata>
 подключиться к инстансу по сети, задайте пароль администратора:
 
 ```sql
-ALTER USER "admin" WITH PASSWORD 'T0psecret'
+ALTER USER "admin" WITH PASSWORD 'T0psecret';
 ```
 
 После этого Администратор СУБД сможет подключиться, используя следующую
@@ -116,7 +116,7 @@ picodata admin ./admin.sock < ../setup.sql
 
 ```
 Connected to admin console by socket path "admin.sock"
-type '\help' for interactive help
+type '\help;' for interactive help
 1
 1
 1
@@ -172,7 +172,7 @@ cat file.sql  | picodata admin ./admin.sock
 Встроенная справка Picodata доступна в административной и в
 SQL-консоли. Справка содержит информацию о дополнительных командах в
 консоли и поддерживаемых сочетаниях клавиш. Для вызова справки
-введите `\help`.
+введите `\help;`.
 
 ### Дополнительные команды {: #backslash_commands }
 
@@ -256,16 +256,19 @@ postgres=> CREATE TABLE WAREHOUSE (
     PRIMARY KEY (W_ID)
 )
 USING MEMTX DISTRIBUTED BY (W_ID);
+--
 CREATE TABLE
 ```
 
 ```sql title="Вставка строк"
 postgres=> INSERT INTO WAREHOUSE (W_ID, W_NAME) VALUES (1, 'aaaa'), (2, 'aaab'), (3, 'aaac'), (4, 'aaad');
+--
 INSERT 0 4
 ```
 
 ```sql title="Получение колонок"
 postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
+--
  "W_ID" | "W_NAME"
 --------+----------
       1 | aaaa
@@ -277,6 +280,7 @@ postgres=> SELECT W_ID, W_NAME FROM WAREHOUSE;
 
 ```sql title="Получение колонок с условием"
 postgres=> SELECT W_NAME FROM WAREHOUSE WHERE W_ID=1;
+--
  "W_NAME"
 ----------
  aaaa

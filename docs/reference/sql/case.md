@@ -34,8 +34,7 @@ SELECT
     THEN 'many'
     ELSE 'few'
   END
-FROM items
-
+FROM items;
 ```
 
 ??? note "Результат"
@@ -70,7 +69,7 @@ SELECT
     WHEN 'heavy'
     THEN '1'
   END
-FROM warehouse
+FROM warehouse;
 ```
 
 ??? note "Результат"
@@ -103,7 +102,7 @@ SELECT *,
     THEN 'many'
     ELSE 'few'
   END
-FROM items
+FROM items;
 ```
 
 ??? note "Результат"
@@ -133,7 +132,7 @@ SELECT id,name,stock,
     THEN 'many'
     ELSE 'few'
   END AS stock_eval
-FROM items
+FROM items;
 ```
 
 ??? note "Результат"

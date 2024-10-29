@@ -30,14 +30,14 @@
 значения в верхнем и нижнем регистре:
 
 ```sql
-CREATE TABLE str(n string primary key)
-INSERT INTO str VALUES ('PRODUCT'), ('Product'), ('prod_1')
+CREATE TABLE str(n string primary key);
+INSERT INTO str VALUES ('PRODUCT'), ('Product'), ('prod_1');
 ```
 
 Следующая команда выведет все строки таблицы:
 
 ```sql
-SELECT n FROM str WHERE n ilike 'prod%'
+SELECT n FROM str WHERE n ilike 'prod%';
 ```
 
 ??? note "Результат"

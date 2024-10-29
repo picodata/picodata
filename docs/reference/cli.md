@@ -381,7 +381,7 @@ picodata admin <PATH>
 ```console
 $ picodata admin ./admin.sock
 Connected to admin console by socket path "admin.sock"
-type '\help' for interactive help
+type '\help;' for interactive help
 picodata>
 ```
 
@@ -434,10 +434,10 @@ picodata connect [OPTIONS] <ADDRESS>
 **Пример**
 
 ```bash
-$ picodata connect alice@127.0.0.1:3301
+$ picodata connect alice@127.0.0.1:3301;
 Enter password for alice:
 Connected to interactive console by address "127.0.0.1:3301" under "alice" user
-type '\help' for interactive help
+type '\help;' for interactive help
 picodata>
 ```
 
@@ -482,7 +482,7 @@ picodata> pico.cas({
     kind = 'replace',
     table = '_pico_property',
     tuple = {'max_login_attempts', 6},
-})
+});
 
 Данная настройка не персистентна и локальна для текущего инстанса:
 перезапуск инстанса сбрасывает счетчик попыток и позволяет

@@ -44,7 +44,7 @@
 DELETE FROM warehouse OPTION (
     VTABLE_MAX_ROWS = 100,
     VDBE_MAX_STEPS = 15000
-)
+);
 ```
 
 Запрос с условием позволяет удалить только нужный кортеж:

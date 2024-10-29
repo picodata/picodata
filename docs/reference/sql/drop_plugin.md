@@ -22,5 +22,5 @@
 ## Примеры {: #examples }
 
 ```sql
-DROP PLUGIN weather_cache 0.1.0 WITH_DATA
+DROP PLUGIN weather_cache 0.1.0 WITH_DATA;
 ```

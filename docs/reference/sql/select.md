@@ -129,7 +129,7 @@ SELECT
     a.stock
 FROM warehouse AS c
 JOIN items AS a
-ON c.id = a.id
+ON c.id = a.id;
 ```
 
 ### Внешнее левое соединение {: #left_outer_join }
@@ -141,7 +141,7 @@ SELECT
     a.stock
 FROM warehouse AS c
 LEFT JOIN items AS a
-ON TRUE
+ON TRUE;
 ```
 
 ### Множественные соединения {: #multiple_joins }
@@ -155,7 +155,7 @@ FROM warehouse
 INNER JOIN items
 ON warehouse.item = items.name
 LEFT OUTER JOIN orders
-ON items.name = orders.item
+ON items.name = orders.item;
 ```
 
 ### Агрегация {: #aggregation }
@@ -188,14 +188,14 @@ sbroad: column with name "C" not found
 
 ```sql
 SELECT * FROM items
-ORDER BY 3 DESC
+ORDER BY 3 DESC;
 ```
 
 ### Разнонаправленное упорядочивание результата по двум явно именованным колонкам {: #order_asc_and_desc }
 
 ```sql
 SELECT * FROM items
-ORDER BY name ASC, stock DESC
+ORDER BY name ASC, stock DESC;
 ```
 
 ### Объединение только уникальных строк из результатов двух запросов {: #union_distinct }
@@ -203,7 +203,7 @@ ORDER BY name ASC, stock DESC
 ```sql
 SELECT item FROM warehouse
 UNION
-SELECT item FROM orders
+SELECT item FROM orders;
 ```
 
 ### Объединение только уникальных строк из результатов многих запросов {: #union_distinct_chain }
@@ -213,7 +213,7 @@ SELECT item FROM warehouse
 UNION
 SELECT item FROM orders
 UNION
-SELECT name FROM items
+SELECT name FROM items;
 ```
 
 ### Полное объединение результатов с использованием подзапроса {: #union_all_subquery }
@@ -225,7 +225,7 @@ SELECT * FROM (
     SELECT name FROM items
     UNION ALL
     SELECT item FROM orders WHERE amount > 400
-)
+);
 ```
 
 ### Последовательное исключение результатов одного запроса из другого {: #except }
@@ -233,7 +233,7 @@ SELECT * FROM (
 ```sql
 SELECT item FROM orders
 EXCEPT
-SELECT item FROM warehouse
+SELECT item FROM warehouse;
 ```
 
 ### Последовательное исключение результатов с использованием подзапроса {: #except_with_subquery }
@@ -248,13 +248,13 @@ SELECT * FROM (
     SELECT NAME
     FROM items
     WHERE stock > 200
-)
+);
 ```
 
 ### Ограничение количества возвращаемых строк {: #limit }
 
 ```sql
-SELECT * FROM warehouse LIMIT 3
+SELECT * FROM warehouse LIMIT 3;
 ```
 
 ### Запросы без таблиц {: #no_scan }
@@ -264,12 +264,12 @@ SELECT * FROM warehouse LIMIT 3
 запрос вернет один кортеж с двум колонками:
 
 ```sql
-SELECT 42, 24
+SELECT 42, 24;
 ```
 
 В примере с манипуляцией данными в результате запроса будет виртуальная
 таблица из двух строк и одной колонки:
 
 ```sql
-SELECT 'cats' UNION SELECT 'dogs'
+SELECT 'cats' UNION SELECT 'dogs';
 ```

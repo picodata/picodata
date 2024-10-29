@@ -64,7 +64,7 @@ picodata> SELECT CAST("score" AS INT) FROM "scoring";
 двойное двоеточие:
 
 ```sql
-picodata> SELECT "score"::INT FROM "scoring"
+picodata> SELECT "score"::INT FROM "scoring";
 +-------+
 | COL_1 |
 +=======+

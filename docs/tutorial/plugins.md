@@ -122,7 +122,7 @@ OpenWeather).
 PLUGIN](../reference/sql/create_plugin.md):
 
 ```sql
-CREATE PLUGIN weather_cache 0.1.0
+CREATE PLUGIN weather_cache 0.1.0;
 ```
 
 После успешного добавления в системных таблицах появятся записи о новом плагине.
@@ -130,7 +130,7 @@ CREATE PLUGIN weather_cache 0.1.0
 В таблице [_pico_plugin] со списком добавленных плагинов:
 
 ```sql
-picodata> SELECT * FROM _pico_plugin
+picodata> SELECT * FROM _pico_plugin;
 +-------------+---------+-------------+---------+-------------+------------+
 | name        | enabled | services    | version | description | migration_ |
 |             |         |             |         |             | list       |
@@ -148,7 +148,7 @@ picodata> SELECT * FROM _pico_plugin
 В таблице [_pico_plugin_config] с конфигурацией сервисов плагина:
 
 ```sql
-picodata> SELECT * FROM _pico_plugin_config
+picodata> SELECT * FROM _pico_plugin_config;
 +-----------------+---------+-------------------+------------------+-------+
 | plugin          | version | entity            | key              | value |
 +==========================================================================+
@@ -162,7 +162,7 @@ picodata> SELECT * FROM _pico_plugin_config
 привязки к [тиру][tiers]):
 
 ```sql
-picodata> SELECT * FROM _pico_service
+picodata> SELECT * FROM _pico_service;
 +-----------------+-------------------+---------+-------+------------------+
 | plugin_name     | name              | version | tiers | description      |
 +==========================================================================+
@@ -184,13 +184,13 @@ picodata> SELECT * FROM _pico_service
 PLUGIN](../reference/sql/alter_plugin.md):
 
 ```sql
-ALTER PLUGIN weather_cache MIGRATE TO 0.1.0
+ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
 ```
 
 Успешная миграция означает, что в БД появилась новая таблица `weather`:
 
 ```sql
-picodata> SELECT * FROM weather
+picodata> SELECT * FROM weather;
 +----+----------+-----------+-------------+
 | id | latitude | longitude | temperature |
 +=========================================+
@@ -211,14 +211,14 @@ picodata> SELECT * FROM weather
 команде [ALTER PLUGIN](../reference/sql/alter_plugin.md):
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default
+ALTER PLUGIN weather_cache 0.1.0 ADD SERVICE weather_service TO TIER default;
 ```
 
 После успешного включения плагина в системной таблице [_pico_service]
 появится привязка сервиса к указанному тиру:
 
 ```sql
-picodata> SELECT * FROM _pico_service
+picodata> SELECT * FROM _pico_service;
 +----------------+----------------+---------+-------------+----------------+
 | plugin_name    | name           | version | tiers       | description    |
 +==========================================================================+
@@ -241,14 +241,14 @@ picodata> SELECT * FROM _pico_service
 Включите плагин следующей командой:
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 ENABLE
+ALTER PLUGIN weather_cache 0.1.0 ENABLE;
 ```
 
 После успешного включения в колонке `enabled` в системной таблице
 [_pico_plugin] установится значение `true`:
 
 ```sql
-picodata> SELECT * FROM _pico_plugin
+picodata> SELECT * FROM _pico_plugin;
 +-------------+---------+-------------+---------+-------------+------------+
 | name        | enabled | services    | version | description | migration_ |
 |             |         |             |         |             | list       |
@@ -269,7 +269,7 @@ picodata> SELECT * FROM _pico_plugin
 Для отключения плагина используйте следующую команду:
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 DISABLE
+ALTER PLUGIN weather_cache 0.1.0 DISABLE;
 ```
 
 ## Конфигурация плагина {: #configure_plugin}
@@ -280,7 +280,7 @@ ALTER PLUGIN weather_cache 0.1.0 DISABLE
 PLUGIN](../reference/sql/alter_plugin.md):
 
 ```sql
-ALTER PLUGIN weather_cache 0.1.0 SET weather_service.openweather_timeout='7'
+ALTER PLUGIN weather_cache 0.1.0 SET weather_service.openweather_timeout='7';
 ```
 
 См. также:
@@ -304,7 +304,7 @@ curl "localhost:8081/api/v1/weather?longitude=55&latitude=66"
 удаления плагина:
 
 ```sql
-DROP PLUGIN weather_cache 0.1.0
+DROP PLUGIN weather_cache 0.1.0;
 ```
 
 При удалении плагина с помощью указанной выше команды его схема данных
@@ -314,7 +314,7 @@ DROP PLUGIN weather_cache 0.1.0
 например:
 
 ```sql
-DROP PLUGIN weather_cache 0.1.0 WITH DATA
+DROP PLUGIN weather_cache 0.1.0 WITH DATA;
 ```
 
 В таком случае будут запущена миграция `pico.DOWN`, а также удалены записи

@@ -12,7 +12,7 @@
 Узнать лидера raft-группы, а также ID и статус текущего инстанса:
 
 ```
-pico.raft_status()
+pico.raft_status();
 ```
 
 Пример вывода:
@@ -31,7 +31,7 @@ pico.raft_status()
 Просмотр состава raft-группы и данных инстансов:
 
 ```
-box.space._pico_instance:fselect()
+box.space._pico_instance:fselect();
 ```
 
 Пример вывода:
@@ -52,7 +52,7 @@ box.space._pico_instance:fselect()
 Можно отдельно посмотреть список репликасетов, их UUID и вес:
 
 ```
-box.space._pico_replicaset:fselect()
+box.space._pico_replicaset:fselect();
 ```
 
 Пример вывода:
@@ -81,7 +81,7 @@ box.space._pico_replicaset:fselect()
 Узнать текущую версию схему данных можно с помощью команды:
 
 ```
-box.space._pico_property:get("current_schema_version")
+box.space._pico_property:get("current_schema_version");
 ---
 - ['current_schema_version', 1]
 ...
@@ -164,8 +164,8 @@ picodata admin ./admin.sock
 raft-лидера:
 
 ```
-\lua
-pico.raft_status()
+\lua;
+pico.raft_status();
 ```
 
 Пример вывода:
@@ -183,12 +183,12 @@ pico.raft_status()
 C помощью полученного `leader_id` выясните адрес сервера, на котором
 запущен этот инстанс:
 
-```
-\sql
-SELECT "instance_name", "_pico_instance"."raft_id", "_pico_peer_address"."address"
+```sql
+\sql;
+SELECT "instance_id", "_pico_instance"."raft_id", "_pico_peer_address"."address"
 FROM "_pico_instance" JOIN "_pico_peer_address"
 ON "_pico_peer_address"."raft_id"="_pico_instance"."raft_id"
-WHERE "_pico_instance"."raft_id" = 2 ;
+WHERE "_pico_instance"."raft_id" = 2;
 ```
 
 Пример вывода:

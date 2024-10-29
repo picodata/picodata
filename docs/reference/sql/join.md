@@ -96,7 +96,7 @@ Picodata поддерживает два типа соединения: `INNER J
 SELECT items.name, items.stock, orders.amount
 FROM items
 LEFT JOIN orders
-ON items.name = orders.item
+ON items.name = orders.item;
 ```
 
 Результат:
@@ -124,7 +124,7 @@ ON items.name = orders.item
 SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
-ON items.name = orders.item
+ON items.name = orders.item;
 ```
 
 Результат:
@@ -160,7 +160,7 @@ FROM warehouse
 INNER JOIN items
 ON warehouse.id = items.id
 LEFT JOIN orders
-ON items.name = orders.item
+ON items.name = orders.item;
 ```
 
 Результат:
@@ -212,7 +212,7 @@ ON items.name = orders.item
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
-ON items.id = orders.id
+ON items.id = orders.id;
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
     join on ROW("ITEMS"."ID"::integer) = ROW("ORDERS"."ID"::integer)
         scan "ITEMS"
@@ -239,7 +239,7 @@ vtable_max_rows = 5000
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
-ON items.id = orders.id
+ON items.id = orders.id;
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
     join on ROW("ITEMS"."ID"::integer) = ROW("ORDERS"."ID"::integer)
         scan "ITEMS"
@@ -268,7 +268,7 @@ vtable_max_rows = 5000
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
-ON items.name = orders.item
+ON items.name = orders.item;
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
     join on ROW("ITEMS"."NAME"::string) = ROW("ORDERS"."ITEM"::string)
         scan "ITEMS"
@@ -289,7 +289,7 @@ vtable_max_rows = 5000
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
-ON items.id > 2
+ON items.id > 2;
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
     join on ROW("ITEMS"."ID"::integer) > ROW(2::unsigned)
         scan "ITEMS"
@@ -308,7 +308,7 @@ vtable_max_rows = 5000
 picodata> EXPLAIN SELECT items.name, items.stock, orders.amount
 FROM items
 INNER JOIN orders
-ON TRUE
+ON TRUE;
 projection ("ITEMS"."NAME"::string -> "NAME", "ITEMS"."STOCK"::integer -> "STOCK", "ORDERS"."AMOUNT"::integer -> "AMOUNT")
     join on true::boolean
         scan "ITEMS"

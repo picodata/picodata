@@ -311,7 +311,7 @@ export PICODATA_FAILURE_DOMAIN="region=us,zone=us-west-1"
 
 ```shell
 picodata admin ./admin.sock
-ALTER USER "admin" WITH PASSWORD 'T0psecret'
+ALTER USER "admin" WITH PASSWORD 'T0psecret';
 ```
 
 Для удаления инстанса из кластера используйте команду [picodata

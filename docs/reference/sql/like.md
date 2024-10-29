@@ -27,7 +27,7 @@
 Пример точного совпадения последовательности символов:
 
 ```sql
-SELECT type LIKE 'light' FROM warehouse
+SELECT type LIKE 'light' FROM warehouse;
 ```
 
 ??? note "Результат"
@@ -55,7 +55,7 @@ SELECT type LIKE 'light' FROM warehouse
 
 
 ```sql
-SELECT COUNT(*) FROM warehouse WHERE type LIKE 'light'
+SELECT COUNT(*) FROM warehouse WHERE type LIKE 'light';
 ```
 
 ??? note "Результат"
@@ -80,7 +80,7 @@ SELECT COUNT(*) FROM warehouse WHERE type LIKE 'light'
 Пример:
 
 ```sql
-SELECT item LIKE '%l%s' OR type LIKE 'ligh_' FROM warehouse
+SELECT item LIKE '%l%s' OR type LIKE 'ligh_' FROM warehouse;
 ```
 
 ??? note "Результат"
@@ -109,9 +109,9 @@ SELECT item LIKE '%l%s' OR type LIKE 'ligh_' FROM warehouse
 умолчанию в качестве спецсимвола выбрана обратная косая черта (`\`):
 
 ```sql
-CREATE TABLE str(n string primary key)
-INSERT INTO str VALUES ('product'), ('product%'), ('*product')
-SELECT n FROM str WHERE n LIKE 'product\%'
+CREATE TABLE str(n string primary key);
+INSERT INTO str VALUES ('product'), ('product%'), ('*product');
+SELECT n FROM str WHERE n LIKE 'product\%';
 ```
 
 ??? note "Результат"
@@ -128,7 +128,7 @@ C помощью предложения `ESCAPE` можно выбрать и д
 пунктуации, но не цифру):
 
 ```sql
-SELECT n FROM str WHERE n like 'product*%' ESCAPE '*'
+SELECT n FROM str WHERE n like 'product*%' ESCAPE '*';
 ```
 
 ??? note "Результат"
@@ -144,7 +144,7 @@ SELECT n FROM str WHERE n like 'product*%' ESCAPE '*'
 Чтобы включить спецсимвол в шаблон поиска, его следует продублировать:
 
 ```sql
-SELECT n FROM str WHERE n like '**product' ESCAPE '*'
+SELECT n FROM str WHERE n like '**product' ESCAPE '*';
 ```
 
 ??? note "Результат"

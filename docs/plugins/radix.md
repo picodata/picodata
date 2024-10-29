@@ -58,7 +58,7 @@ ALTER PLUGIN radix 0.2.0 ENABLE;
 Чтобы убедиться в том, что плагин успешно добавлен и запущен, выполните запрос:
 
 ```sql
-SELECT * FROM _pico_plugin
+SELECT * FROM _pico_plugin;
 ```
 
 В строке, соответствующей плагину Radix, в колонке `enabled` должно быть значение `true`.

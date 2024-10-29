@@ -23,5 +23,5 @@
 ## Примеры {: #examples }
 
 ```sql
-ALTER PROCEDURE old RENAME TO new OPTION ( timeout = 4 )
+ALTER PROCEDURE old RENAME TO new OPTION ( timeout = 4 );
 ```

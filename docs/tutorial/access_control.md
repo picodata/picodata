@@ -144,12 +144,12 @@ Picodata предоставляет несколько встроенных уч
 набором SQL-команд:
 
 ```sql
-CREATE ROLE "db_admin";
-GRANT READ TABLE TO "db_admin";
-GRANT CREATE TABLE TO "db_admin";
-GRANT CREATE USER TO "db_admin";
-GRANT CREATE ROLE TO "db_admin";
-GRANT CREATE PROCEDURE TO "db_admin";
+CREATE ROLE "db_admin"
+GRANT READ TABLE TO "db_admin"
+GRANT CREATE TABLE TO "db_admin"
+GRANT CREATE USER TO "db_admin"
+GRANT CREATE ROLE TO "db_admin"
+GRANT CREATE PROCEDURE TO "db_admin"
 GRANT "db_admin" to <grantee>
 ```
 
@@ -183,9 +183,9 @@ Picodata позволяет наделить пользователя БД сл�
 Для этого используйте следующие SQL-команды:
 
 ```sql
-GRANT WRITE ON TABLE <table name> TO <grantee>;
-GRANT READ ON TABLE <table name> TO <grantee>;
-GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>;
+GRANT WRITE ON TABLE <table name> TO <grantee>
+GRANT READ ON TABLE <table name> TO <grantee>
+GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
 ```
 
 ### Роли {: #roles }
@@ -219,8 +219,8 @@ USER](../reference/sql/create_user.md).
 Пример:
 
 ```sql
-CREATE USER "alice" WITH PASSWORD 'P@ssw0rd' USING chap-sha1
-CREATE USER "bob" USING ldap
+CREATE USER "alice" WITH PASSWORD 'P@ssw0rd' USING chap-sha1;
+CREATE USER "bob" USING ldap;
 ```
 
 Для имени пользователя (и в целом для объектов в Picodata) действуют
@@ -257,7 +257,7 @@ GRANT ALTER USER TO <grantee>
 Для блокировки пользователя используйте следующую SQL-команду:
 
 ```sql
-ALTER USER "alice" WITH NOLOGIN
+ALTER USER "alice" WITH NOLOGIN;
 ```
 После 4 неуспешных попыток аутентификации в [picodata connect] пользователь
 блокируется автоматически.
@@ -267,7 +267,7 @@ ALTER USER "alice" WITH NOLOGIN
 Для разблокировки пользователя используйте следующую SQL-команду:
 
 ```sql
-ALTER USER "alice" WITH LOGIN
+ALTER USER "alice" WITH LOGIN;
 ```
 
 Для выполнения команд требуется привилегия `ALTER USER` — на все учетные
@@ -284,7 +284,7 @@ ALTER USER "alice" WITH LOGIN
 Пример:
 
 ```sql
-DROP USER "alice"
+DROP USER "alice";
 ```
 
 Для выполнения команды требуется привилегия `DROP USER` на
@@ -305,7 +305,7 @@ GRANT DROP USER TO <grantee>
 команда:
 
 ```sql
-SELECT * FROM "_pico_user"
+SELECT * FROM "_pico_user";
 ```
 
 Доступ к списку пользователей есть у Администратора СУБД, а также у тех
@@ -484,11 +484,11 @@ GRANT CREATE PROCEDURE TO <grantee>
 GRANT ALTER TABLE TO <grantee> -- alter any table
 GRANT ALTER USER TO <grantee> -- alter any user
 GRANT ALTER ON TABLE <table name> TO <grantee>
-GRANT ALTER ON USER <user name> to <grantee>
+GRANT ALTER ON USER <user name> to <grantee>;
 GRANT DROP TABLE TO <grantee> -- drop any table
 GRANT DROP USER TO <grantee> -- drop any user
 GRANT DROP ROLE TO <grantee> -- drop any role
-GRANT DROP PROCEDURE TO <grantee> -- drop any procedure
+GRANT DROP PROCEDURE TO <grantee>; -- drop any procedure
 GRANT DROP ON TABLE <table name> TO <grantee>
 GRANT DROP ON USER <user name> TO <grantee>
 GRANT DROP ON ROLE <role name> TO <grantee>

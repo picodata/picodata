@@ -18,5 +18,5 @@
 ## Примеры {: #examples }
 
 ```sql
-CREATE PLUGIN weather_cache 0.1.0
+CREATE PLUGIN weather_cache 0.1.0;
 ```

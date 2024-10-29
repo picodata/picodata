@@ -22,7 +22,7 @@ Picodata](../tutorial/connecting.md) при использовании ввод�
 Пример:
 
 ```
-picodata> pico.help("help")
+picodata> pico.help("help");
 -- Печатает данную справку
 -- и список доступных разделов (topics)
 ```
@@ -64,7 +64,7 @@ Versioning][semver]).
 Пример:
 
 ```console
-picodata> pico.LUA_API_VERSION
+picodata> pico.LUA_API_VERSION;
 ---
 - 1.0.0
 ...
@@ -81,7 +81,7 @@ Versioning][calver]) с форматом `YY.0M.MICRO`.
 Пример:
 
 ```console
-picodata> pico.PICODATA_VERSION
+picodata> pico.PICODATA_VERSION;
 ---
 - 23.06.0
 ...
@@ -153,7 +153,7 @@ pico.cas({
     kind = 'insert',
     table = 'warehouse',
     tuple = {6, 99, 'chunks', 'light'},
-})
+});
 ```
 
 Здесь, `6` — значение первой колонки (`id`), `99` — значение `bucket_id`.
@@ -172,7 +172,7 @@ pico.cas({
         key_min = { kind = 'excluded', key = {1,} },
         key_max = { kind = 'unbounded' },
     }},
-})
+});
 ```
 
 Если пользователь явно указывает `ranges`, они добавляются к тем,
@@ -227,7 +227,7 @@ function expel("instance_name")
 Пример:
 
 ```lua
-pico.expel("i2")
+pico.expel("i2");
 ```
 
 ### pico.help {: #pico_help }
@@ -245,7 +245,7 @@ function help(topic)
 Пример:
 
 ```
-picodata> pico.help("help")
+picodata> pico.help("help");
 -- Печатает данную справку
 -- и список доступных разделов (topics)
 ```
@@ -281,7 +281,7 @@ function instance_info(instance)
 Пример:
 
 ```lua
- picodata> pico.instance_info()
+ picodata> pico.instance_info();
  ---
 - target_state:
     variant: Online
@@ -398,7 +398,7 @@ function raft_read_index(timeout)
 Пример:
 
 ```console
-picodata> pico.raft_read_index(1)
+picodata> pico.raft_read_index(1);
 ---
 - 42
 ...
@@ -427,7 +427,7 @@ picodata> pico.raft_read_index(1)
 Пример:
 
 ```console
-picodata> pico.raft_status()
+picodata> pico.raft_status();
 ---
 - term: 2
   leader_id: 1
@@ -513,7 +513,7 @@ pico.sql([[
         primary key ("property")
     ) using memtx distributed by ("property")
     option (timeout = 3.0)
-]])
+]]);
 ---
 - row_count: 1
 ...
@@ -525,7 +525,7 @@ pico.sql([[
 pico.sql([[
     drop table "wonderland"
     option (timeout = 3.0)
-]])
+]]);
 ---
 - row_count: 1
 ...
@@ -537,7 +537,7 @@ pico.sql([[
 pico.sql([[
   insert into "wonderland" ("property", "value") values (?, ?)]],
   {"dragon", 13}
-)
+);
 ---
 - row_count: 1
 ...
@@ -548,7 +548,7 @@ pico.sql([[
 ```sql
 pico.sql([[
   select * from "wonderland" where "property" = 'dragon'
-  ]])
+  ]]);
 ---
 - metadata:
     - {'name': 'property', 'type': 'string'}
@@ -565,7 +565,7 @@ pico.sql([[
   create user "alice"
   with password 't0tallysecret'
   using chap-sha1
-  ]])
+  ]]);
 ```
 
 См. также:
@@ -624,7 +624,7 @@ function whoami()
 Пример:
 
 ```console
-picodata> pico.whoami()
+picodata> pico.whoami();
 - raft_id: 1
   cluster_name: demo
   instance_name: i1
@@ -654,22 +654,22 @@ Lua-таблица, задающая диапазон значений. Испо
 Пример:
 
 ```lua
-local unbounded = { kind = 'unbounded' }
-local including_1 = { kind = 'included', key = {1,} }
-local excluding_3 = { kind = 'excluded', key = {3,} }
+local unbounded = { kind = 'unbounded' };
+local including_1 = { kind = 'included', key = {1,} };
+local excluding_3 = { kind = 'excluded', key = {3,} };
 
 local range_a = {
     table = 'warehouse',
     key_min = unbounded,
     key_max = unbounded,
-}
+};
 
 -- [1, 3)
 local range_a = {
     table = 'warehouse',
     key_min = including_1,
     key_max = excluding_3,
-}
+};
 ```
 
 ### table DqlResult {: #dql_table }
@@ -678,8 +678,8 @@ Lua-таблица, содержащая данные чтения из шард
 
 Поля:
 
-- `metadata` (_table_), массив столбцов таблицы (таблицы) в формате `{{name = string, type = string}, ...}`.
-- `rows` (_table_), результат выполнения читающего запроса в формате `{row, ...}`.
+- `metadata` (_table_), массив столбцов таблицы (таблицы) в формате `{{name = string, type = string}, ...}`
+- `rows` (_table_), результат выполнения читающего запроса в формате `{row, ...}`
 
 ### table DmlResult {: #dml_table }
 
@@ -702,8 +702,8 @@ Lua-таблица, описывающая поле в составе табли
 Пример:
 
 ```lua
-{name = 'id', type = 'unsigned', is_nullable = false}
-{name = 'value', type = 'unsigned', is_nullable = false}
+{name = 'id', type = 'unsigned', is_nullable = false};
+{name = 'value', type = 'unsigned', is_nullable = false};
 ```
 
 См. также:
@@ -719,8 +719,8 @@ Lua-таблица, отражающая соответствие `id` инст�
 Пример:
 
 ```lua
-{[0] = 2, [1] = 101}
-{[0] = 148, [1] = 9086, [3] = 2}
+{[0] = 2, [1] = 101};
+{[0] = 148, [1] = 9086, [3] = 2};
 ```
 
 См. подробнее описание [Vclock](../overview/glossary.md#vclock). Нулевое значение Vclock зарезервировано

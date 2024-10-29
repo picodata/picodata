@@ -44,8 +44,9 @@ OPTION (TIMEOUT = 3.0);
 ```
 
 Изменение метода аутентификации на `LDAP`:
+
 ```sql
-ALTER USER andy WITH PASSWORD '' USING LDAP
+ALTER USER andy WITH PASSWORD '' USING LDAP;
 ```
 
 Блокировка пользователя:

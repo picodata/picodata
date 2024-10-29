@@ -13,15 +13,15 @@
 значения как в верхнем, так и в нижнем регистре:
 
 ```sql
-CREATE TABLE str(n string primary key)
-INSERT INTO str VALUES ('PRODUCT'), ('Product'), ('prod_1')
+CREATE TABLE str(n string primary key);
+INSERT INTO str VALUES ('PRODUCT'), ('Product'), ('prod_1');
 ```
 
 Следующая команда выведет все строки, конвертируя значения в нижний
 регистр:
 
 ```sql
-SELECT lower(n) FROM str
+SELECT lower(n) FROM str;
 ```
 
 ??? note "Результат"

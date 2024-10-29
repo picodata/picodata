@@ -22,9 +22,9 @@
 ## Примеры {: #examples }
 
 ```sql title="Запуск миграции"
-ALTER PLUGIN weather_cache MIGRATE TO 0.1.0
+ALTER PLUGIN weather_cache MIGRATE TO 0.1.0;
 ```
 
 ```sql title="Изменение параметра"
-ALTER PLUGIN weather_cache 0.1.0 SET weather_service.openweather_timeout='7'
+ALTER PLUGIN weather_cache 0.1.0 SET weather_service.openweather_timeout='7';
 ```

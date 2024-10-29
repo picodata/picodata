@@ -35,7 +35,7 @@ from warehouse where id = ?`), и если подобных запросов н�
 два варианта):
 
 ```sql
-SELECT item, type FROM warehouse WHERE id > 3 AND type = 'light'
+SELECT item, type FROM warehouse WHERE id > 3 AND type = 'light';
 ```
 
 ```lua
