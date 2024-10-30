@@ -6,3 +6,4 @@
 *.xlog
 __pycache__/
 tmp/
+.gitleaks.toml
