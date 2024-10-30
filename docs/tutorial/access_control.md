@@ -195,7 +195,7 @@ GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
 привилегию у роли, используйте команды [GRANT](../reference/sql/grant.md)
 и [REVOKE](../reference/sql/revoke.md).
 
-Названия ролей `public` и `super` являются зарезервированными.
+Названия ролей `public`, `super` и `replication` являются зарезервированными.
 
 Роль `public` автоматически назначается всем создаваемым
 пользователям. Наделение роли `public` привилегией на какой-либо объект
@@ -203,6 +203,9 @@ GRANT EXECUTE ON PROCEDURE <procedure name> TO <grantee>
 
 Роль `super` является системной и используется исключительно для
 внутренних целей.
+
+Роль `replication` зарезервирована как системная для корректной работы
+механизма репликации.
 
 ## Начало работы {: #getting_started }
 
