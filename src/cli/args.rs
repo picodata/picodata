@@ -267,6 +267,13 @@ pub struct Run {
     /// This password will be used for internal communication among instances of
     /// picodata, so it must be the same on all instances.
     pub service_password_file: Option<PathBuf>,
+
+    #[clap(hide = true, long = "entrypoint-fd")]
+    /// A pipe file descriptor from which picodata reads the entrypoint info
+    /// when doing a rebootstrap during the cluster initialization.
+    ///
+    /// This option is for internal use only hence it's marked hidden.
+    pub entrypoint_fd: Option<u32>,
 }
 
 // Copy enum because clap:ArgEnum can't be derived for the foreign SayLevel.
@@ -432,6 +439,24 @@ fn current_exe() -> Result<CString, String> {
             .to_string(),
     )
     .map_err(|e| format!("Current executable path contains nul bytes: {e}"))
+}
+
+pub fn copy_argv() -> Vec<CString> {
+    let mut res = vec![];
+    res.push(current_exe().expect("shouldn't fail"));
+
+    let mut iter = std::env::args_os();
+
+    // Ignore the first one, use `current_exe` instead
+    iter.next();
+
+    for arg in iter {
+        let bytes = arg.as_encoded_bytes();
+        let cstr = CString::new(bytes).expect("OSString doesn't contain nul bytes");
+        res.push(cstr);
+    }
+
+    res
 }
 
 /// Parses a '=' sepparated string of key and value and converts both to

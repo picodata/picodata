@@ -212,6 +212,13 @@ impl Error {
     }
 }
 
+impl From<std::io::Error> for Error {
+    #[inline(always)]
+    fn from(e: std::io::Error) -> Error {
+        Error::Tarantool(e.into())
+    }
+}
+
 impl<E> From<timeout::Error<E>> for Error
 where
     Error: From<E>,

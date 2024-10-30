@@ -9,6 +9,19 @@ where
     E: std::fmt::Display,
     F: FnOnce() -> Result<(), E>,
 {
+    let rc = main_cb_no_exit(args, f);
+    std::process::exit(rc);
+}
+
+/// Run tarantool's main entry point with cmdline args,
+/// executing callback `f` as a part of the lua run script.
+///
+/// Doesn't exit at the end.
+pub fn main_cb_no_exit<E, F>(args: &[impl AsRef<CStr>], f: F) -> i32
+where
+    E: std::fmt::Display,
+    F: FnOnce() -> Result<(), E>,
+{
     extern "C" fn trampoline<E, F>(data: *mut libc::c_void)
     where
         E: std::fmt::Display,
@@ -33,16 +46,14 @@ where
     // gonna do that for you
     let argv: Vec<_> = args.iter().map(|a| a.as_ref().as_ptr()).collect();
 
-    let rc = unsafe {
+    unsafe {
         crate::tarantool::main(
             argv.len() as _,
             argv.as_ptr() as _,
             Some(trampoline),
             trampoline_arg,
         )
-    };
-
-    std::process::exit(rc);
+    }
 }
 
 /// Run tarantool's main entry point with cmdline args.

@@ -12,6 +12,7 @@ from conftest import (
     ErrorCode,
     MalformedAPI,
     log_crawler,
+    pgrep_tree,
 )
 
 
@@ -77,32 +78,13 @@ def test_eval_normalization(instance: Instance):
 
 
 def test_process_management(instance: Instance):
-    """
-    The test ensures pytest can kill all subprocesses
-    even if they don't terminate and hang
-    """
-
     assert instance.eval("return 'ok'") == "ok"
     assert instance.process is not None
     pid = instance.process.pid
     pgrp = pid
 
-    class StillAlive(Exception):
-        pass
-
-    def check_pg(pgrp):
-        try:
-            os.killpg(pgrp, 0)
-        except ProcessLookupError:
-            pass
-        except PermissionError:
-            # According to `man 2 kill`, MacOS raises it if at least one process
-            # in the process group has insufficient permissions. In fact, it also
-            # returns EPERM if the targed process is a zombie.
-            # See https://git.picodata.io/picodata/picodata/picodata/-/snippets/7
-            raise StillAlive
-        else:
-            raise StillAlive
+    pids = pgrep_tree(pid)
+    assert len(pids) == 1
 
     # Sigstop entire pg so that the picodata child can't
     # handle the supervisor termination
@@ -119,28 +101,6 @@ def test_process_management(instance: Instance):
     # Make sure the child is still hanging
     with pytest.raises(ProcessDead):
         instance.eval("return 'ok'", timeout=0.1)
-    with pytest.raises(StillAlive):
-        Retriable(timeout=1, rps=10).call(check_pg, pgrp)
-    print(f"{instance} is still alive")
-
-    # Kill the remaining child in the process group using conftest API
-    instance.kill()
-
-    # When the supervisor is killed, the orphaned child is reparented
-    # to a subreaper. Pytest isn't the one, and therefore it can't do
-    # `waitpid` directly. Instead, the test retries `killpg` until
-    # it succeeds.
-    #
-    # Also, note, that after the child is killed, it remains
-    # a zombie for a while. The child is removed from the process
-    # table when a subreaper calls `waitpid`.
-    #
-    Retriable(timeout=1, rps=100).call(check_pg, pgrp)
-    print(f"{instance} is finally dead")
-
-    # Ensure the child is dead
-    with pytest.raises(ProcessLookupError):
-        os.killpg(pgrp, 0)
 
     # Check idempotency
     instance.start()

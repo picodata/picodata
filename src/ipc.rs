@@ -1,64 +1,53 @@
-use crate::tlog;
-use nix::unistd;
-use serde::de::DeserializeOwned;
-use serde::ser::Serialize;
-use std::marker::PhantomData;
-
 #[derive(Debug)]
 pub struct Fd(libc::c_int);
 
-#[derive(Debug)]
-pub struct Sender<T> {
-    fd: Fd,
-    phantom: PhantomData<T>,
-}
-
-#[derive(Debug)]
-pub struct Receiver<T> {
-    fd: Fd,
-    phantom: PhantomData<T>,
-}
-
-impl<T> Sender<T>
-where
-    T: Serialize,
-{
-    pub fn send(mut self, msg: &T) {
-        if let Err(e) = rmp_serde::encode::write(&mut self.fd, msg) {
-            tlog!(Error, "ipc error: {e}")
-        }
-    }
-}
-
-impl<T> Receiver<T>
-where
-    T: DeserializeOwned,
-{
-    pub fn recv(self) -> Result<T, rmp_serde::decode::Error> {
-        rmp_serde::from_read(self.fd)
+impl Fd {
+    /// # Safety
+    /// `Fd` takes ownership of `fd` and will be responsible for calling `close`
+    /// on it, so the caller must make sure to not do so for the original `fd`.
+    #[inline(always)]
+    pub unsafe fn from_raw(fd: u32) -> Self {
+        Self(fd as _)
     }
 }
 
 impl std::ops::Deref for Fd {
     type Target = libc::c_int;
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
 impl std::io::Read for Fd {
+    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let ret = nix::unistd::read(self.0, buf)?;
-        Ok(ret)
+        // SAFETY: safe because pointer points into a valid array
+        let rc = unsafe { libc::read(self.0, buf.as_mut_ptr() as _, buf.len()) };
+
+        if rc < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(rc as _)
     }
 }
 
 impl std::io::Write for Fd {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Ok(unistd::write(self.0, buf)?)
+        // SAFETY: safe because pointer points into a valid array
+        let rc = unsafe { libc::write(self.0, buf.as_ptr() as _, buf.len()) };
+
+        if rc < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        Ok(rc as _)
     }
 
+    #[inline(always)]
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
@@ -66,28 +55,30 @@ impl std::io::Write for Fd {
 
 impl Drop for Fd {
     fn drop(&mut self) {
-        unistd::close(self.0).ok();
+        // SAFETY: safe, because fd is owned by self, hence close is only called once
+        let rc = unsafe { libc::close(self.0) };
+
+        if let Err(e) = check_return_code(rc) {
+            crate::tlog!(Error, "close failed: {e}");
+        }
     }
 }
 
-pub fn channel<T>() -> Result<(Receiver<T>, Sender<T>), nix::Error>
-where
-    T: Serialize + DeserializeOwned,
-{
-    let (rx, tx) = unistd::pipe()?;
-    Ok((
-        Receiver {
-            fd: Fd(rx),
-            phantom: PhantomData,
-        },
-        Sender {
-            fd: Fd(tx),
-            phantom: PhantomData,
-        },
-    ))
+pub fn pipe() -> std::io::Result<(Fd, Fd)> {
+    let mut fds = [0_i32; 2];
+
+    // SAFETY: safe because the array is big enough
+    let rc = unsafe { libc::pipe(fds.as_mut_ptr()) };
+
+    check_return_code(rc)?;
+
+    Ok((Fd(fds[0]), Fd(fds[1])))
 }
 
-pub fn pipe() -> Result<(Fd, Fd), nix::Error> {
-    let (rx, tx) = unistd::pipe()?;
-    Ok((Fd(rx), Fd(tx)))
+pub fn check_return_code(rc: i32) -> std::io::Result<()> {
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    Ok(())
 }

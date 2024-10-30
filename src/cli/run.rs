@@ -1,14 +1,22 @@
-use nix::sys::signal;
-use nix::sys::termios::{tcgetattr, tcsetattr, SetArg::TCSADRAIN};
-use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{self, fork, ForkResult};
-use tarantool::fiber;
-
 use crate::cli::args;
+use crate::cli::tarantool::main_cb_no_exit;
 use crate::config::PicodataConfig;
-use crate::{ipc, tlog, Entrypoint, IpcMessage};
+use crate::ipc;
+use crate::ipc::check_return_code;
+use crate::start;
+use crate::tlog;
+use crate::traft::Result;
+use crate::Entrypoint;
+use std::ffi::CString;
+use std::io::Read;
+use std::io::Write;
+use tarantool::c_str;
+use tarantool::error::Error as TntError;
 
-pub fn main(args: args::Run) -> ! {
+pub fn main(mut args: args::Run) -> ! {
+    // Save the argv before enterring tarantool, because tarantool will fuss about with them
+    let copied_argv = crate::cli::args::copy_argv();
+
     let tt_args = args.tt_args().unwrap();
 
     // Tarantool implicitly parses some environment variables.
@@ -22,178 +30,186 @@ pub fn main(args: args::Run) -> ! {
         }
     }
 
-    // Tarantool running in a fork (or, to be more percise, the
-    // libreadline) modifies termios settings to intercept echoed text.
-    //
-    // After subprocess termination it's not always possible to
-    // restore the settings (e.g. in case of SIGSEGV). At least it
-    // tries to. To preserve tarantool console operable, we cache
-    // initial termios attributes and restore them manually.
-    //
-    let tcattr = tcgetattr(0).ok();
+    let input_entrypoint_pipe = args.entrypoint_fd.take();
+    let mut output_entrypoint_pipe = None;
 
-    // Intercept and forward signals to the child. As for the child
-    // itself, one shouldn't worry about setting up signal handlers -
-    // Tarantool does that implicitly.
-    static mut CHILD_PID: Option<libc::c_int> = None;
-    static mut SIGNALLED: Option<libc::c_int> = None;
-    extern "C" fn sigh(sig: libc::c_int) {
-        unsafe {
-            // Only a few functions are allowed in signal handlers.
-            // Read twice `man 7 signal-safety`.
-            if let Some(pid) = CHILD_PID {
-                libc::kill(pid, sig);
-            }
-            SIGNALLED = Some(sig);
+    let rc = main_cb_no_exit(&tt_args, || -> Result<()> {
+        // Note: this function may log something into the tarantool's logger, which means it must be done within
+        // the `tarantool::main_cb` otherwise everything will break. The thing is, tarantool's logger needs to know things
+        // about the current thread and the way it does that is by accessing the `cord_ptr` global variable. For the main
+        // thread this variable get's initialized in the tarantool's main function. But if we call the logger before this
+        // point another mechanism called cord_on_demand will activate and initialize the cord in a conflicting way.
+        // This causes a crash when the cord gets deinitialized during the normal shutdown process, because it leads to double free.
+        // (This wouldn't be a problem if we just skipped the deinitialization for the main cord, because we don't actually need it
+        // as the OS will cleanup all the resources anyway, but this is a different story altogether)
+        let config = PicodataConfig::init(args)?;
+
+        // Set panic hook as soon as possible (not possible to do
+        // earlier, because of logging, see comment above)
+        std::panic::set_hook(Box::new(|info| {
+            tlog!(Critical, "{info}");
+            let backtrace = std::backtrace::Backtrace::capture();
+            tlog!(Critical, "backtrace:\n{}", backtrace);
+            tlog!(Critical, "aborting due to panic");
+            std::process::abort();
+        }));
+
+        if let Some(filename) = &config.instance.service_password_file {
+            crate::pico_service::read_pico_service_password_from_file(filename)?;
         }
-    }
-    let sigaction = signal::SigAction::new(
-        signal::SigHandler::Handler(sigh),
-        // It's important to use SA_RESTART flag here.
-        // Otherwise, waitpid() could return EINTR,
-        // but we don't want dealing with it.
-        signal::SaFlags::SA_RESTART,
-        signal::SigSet::empty(),
-    );
-    unsafe {
-        signal::sigaction(signal::SIGHUP, &sigaction).unwrap();
-        signal::sigaction(signal::SIGINT, &sigaction).unwrap();
-        signal::sigaction(signal::SIGTERM, &sigaction).unwrap();
-        signal::sigaction(signal::SIGUSR1, &sigaction).unwrap();
-    }
 
-    let parent = unistd::getpid();
-    let mut entrypoint = Entrypoint::StartDiscover {};
-    loop {
-        eprintln!("[supervisor:{parent}] running {entrypoint:?}");
+        config.log_config_params();
 
-        let (from_child, to_parent) =
-            ipc::channel::<IpcMessage>().expect("ipc channel creation failed");
-        let (from_parent, to_child) = ipc::pipe().expect("ipc pipe creation failed");
+        let entrypoint = maybe_read_entrypoint_from_pipe(input_entrypoint_pipe)?;
 
-        let pid = unsafe { fork() };
-        match pid.expect("fork failed") {
-            ForkResult::Child => {
-                drop(from_child);
-                drop(to_child);
+        // Note that we don't really need to pass the `config` here,
+        // because it's stored in the global variable which we can
+        // access from anywhere. But we still pass it explicitly just
+        // to make sure it's initialized at this early point.
+        let next_entrypoint = start(config, entrypoint)?;
 
-                super::tarantool::main_cb(&tt_args, || {
-                    // Note: this function may log something into the tarantool's logger, which means it must be done within
-                    // the `tarantool::main_cb` otherwise everything will break. The thing is, tarantool's logger needs to know things
-                    // about the current thread and the way it does that is by accessing the `cord_ptr` global variable. For the main
-                    // thread this variable get's initialized in the tarantool's main function. But if we call the logger before this
-                    // point another mechanism called cord_on_demand will activate and initialize the cord in a conflicting way.
-                    // This causes a crash when the cord gets deinitialized during the normal shutdown process, because it leads to double free.
-                    // (This wouldn't be a problem if we just skipped the deinitialization for the main cord, because we don't actually need it
-                    // as the OS will cleanup all the resources anyway, but this is a different story altogether)
-                    let config = PicodataConfig::init(args)?;
+        if let Some(next_entrypoint) = &next_entrypoint {
+            debug_assert_ne!(next_entrypoint, &Entrypoint::StartDiscover);
+            // If picodata invocation starts with a --entrypoint-fd then it goes
+            // into start_boot or start_join, both of which end with a normal
+            // execution.
+            debug_assert!(input_entrypoint_pipe.is_none());
+            let pipe = write_entrypoint_to_pipe(next_entrypoint)?;
+            output_entrypoint_pipe = Some(pipe);
 
-                    if let Some(filename) = &config.instance.service_password_file {
-                        crate::pico_service::read_pico_service_password_from_file(filename)?;
-                    }
+            #[rustfmt::skip]
+            tlog!(Info, "restarting process to proceed with next entrypoint {next_entrypoint:?}");
 
-                    // We don't want a child to live without a supervisor.
-                    //
-                    // Usually, supervisor waits for child forever and retransmits
-                    // termination signals. But if the parent is killed with a SIGKILL
-                    // there's no way to pass anything.
-                    //
-                    // This fiber serves as a fuse - it tries to read from a pipe
-                    // (that supervisor never writes to), and if the writing end is
-                    // closed, it means the supervisor has terminated.
-                    fiber::Builder::new()
-                        .name("supervisor_fuse")
-                        .func(move || {
-                            use ::tarantool::coio::coio_wait;
-                            use ::tarantool::ffi::tarantool::CoIOFlags;
-                            coio_wait(*from_parent, CoIOFlags::READ, f64::INFINITY).ok();
-                            tlog!(Warning, "Supervisor terminated, exiting");
-                            std::process::exit(0);
-                        })
-                        .start_non_joinable()?;
-
-                    std::panic::set_hook(Box::new(|info| {
-                        tlog!(Critical, "{info}");
-                        let backtrace = std::backtrace::Backtrace::capture();
-                        tlog!(Critical, "backtrace:\n{}", backtrace);
-                        tlog!(Critical, "aborting due to panic");
-                        std::process::abort();
-                    }));
-
-                    config.log_config_params();
-
-                    // Note that we don't really need to pass the `config` here,
-                    // because it's stored in the global variable which we can
-                    // access from anywhere. But we still pass it explicitly just
-                    // to make sure it's initialized at this early point.
-                    entrypoint.exec(config, to_parent)
-                })
-            }
-            ForkResult::Parent { child } => {
-                unsafe { CHILD_PID = Some(child.into()) };
-                drop(from_parent);
-                drop(to_parent);
-
-                let msg = from_child.recv();
-
-                let status = waitpid(child, None);
-
-                // Restore termios configuration as planned
-                if let Some(tcattr) = tcattr.as_ref() {
-                    tcsetattr(0, TCSADRAIN, tcattr).unwrap();
-                }
-
-                if let Some(sig) = unsafe { SIGNALLED } {
-                    eprintln!("[supervisor:{parent}] got signal {sig}");
-                }
-
-                match &msg {
-                    Ok(msg) => {
-                        eprintln!("[supervisor:{parent}] ipc message from child: {msg:?}");
-                    }
-                    Err(rmp_serde::decode::Error::InvalidMarkerRead(e))
-                        if e.kind() == std::io::ErrorKind::UnexpectedEof =>
-                    {
-                        eprintln!("[supervisor:{parent}] no ipc message from child");
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "[supervisor:{parent}] failed reading ipc message from child: {e}"
-                        );
-                    }
-                }
-
-                let status = status.unwrap();
-                match status {
-                    nix::sys::wait::WaitStatus::Exited(pid, rc) => {
-                        eprintln!("[supervisor:{parent}] subprocess {pid} exited with code {rc}");
-                    }
-                    nix::sys::wait::WaitStatus::Signaled(pid, signal, core_dumped) => {
-                        eprintln!(
-                            "[supervisor:{parent}] subprocess {pid} was signaled with {signal}"
-                        );
-                        if core_dumped {
-                            eprintln!("[supervisor:{parent}] core dumped");
-                        }
-                    }
-                    status => {
-                        eprintln!(
-                            "[supervisor:{parent}] subprocess finished with status: {status:?}"
-                        );
-                    }
-                }
-
-                let Ok(msg) = msg else {
-                    let rc = match status {
-                        WaitStatus::Exited(_, rc) => rc,
-                        WaitStatus::Signaled(_, sig, _) => sig as _,
-                        s => unreachable!("unexpected exit status {:?}", s),
-                    };
-                    std::process::exit(rc);
-                };
-
-                entrypoint = msg.next_entrypoint;
-            }
+            // NOTE: we would like to just call restart_current_process here,
+            // but we can't, because tarantool doesn't use CLOEXEC flag for
+            // sockets, so we'll just fail with address in use error. So instead
+            // we tell tarantool to shutdown explicitly, wait and only then
+            // restart the process.
+            crate::tarantool::exit(0);
         };
+
+        // Return `Ok` from the callback to proceed to the tarantool event loop.
+        return Ok(());
+    });
+
+    if let Some(fd) = output_entrypoint_pipe {
+        // If logger is configured to stderr, tarantool closes the stderr fd
+        // when destroying the logger, so we must reattach it back...
+        reattach_stderr();
+
+        // Disable the alarm, because otherwise the process terminates on the
+        // SIGALRM signal when calling execvp bellow.
+        // SAFETY: always safe
+        unsafe {
+            libc::alarm(0);
+        }
+
+        // Tarantool locks the WAL directory to prevent multiple processes
+        // running in the same directory. But linux will not release the
+        // file system lock automatically when exec-ing (see `man 2 flock`),
+        // so we must unlock explicitly.
+        if let Err(e) = unlock_wal_directory() {
+            // At this point tarantool has been destroyed, so we can't use tlog! anymore
+            eprintln!("teardown before rebootstrap failed: {e}");
+            std::process::abort();
+        }
+
+        let mut argv = copied_argv;
+        argv.push(c_str!("--entrypoint-fd").into());
+        let cstr = CString::new(fd.to_string()).expect("no nuls");
+        argv.push(cstr);
+
+        // Disable the destructor, so that the read half of the pipe is not closed yet
+        std::mem::forget(fd);
+
+        restart_current_process(&argv);
     }
+
+    std::process::exit(rc);
+}
+
+/// Reads the entrypoint from the `fd` pipe.
+/// Returns `StartDiscover` if `fd` is `None`.
+fn maybe_read_entrypoint_from_pipe(fd: Option<u32>) -> Result<Entrypoint, TntError> {
+    let Some(fd) = fd else {
+        // No fd, means it's the initial invocation
+        return Ok(Entrypoint::StartDiscover);
+    };
+
+    // SAFETY: safe because we don't use the numeric `fd` anymore
+    let mut fd = unsafe { ipc::Fd::from_raw(fd) };
+    let mut data = vec![];
+    fd.read_to_end(&mut data)?;
+    let entrypoint = rmp_serde::from_slice(&data)?;
+    tlog!(Info, "read entrypoint {entrypoint:?} from pipe '{fd:?}'");
+
+    // The read half of the pipe is closed here
+    drop(fd);
+
+    Ok(entrypoint)
+}
+
+/// Opens a pipe and writes the `entrypoint` into it.
+/// Returns the output pipe fd.
+fn write_entrypoint_to_pipe(entrypoint: &Entrypoint) -> Result<ipc::Fd, TntError> {
+    let (rx, mut tx) = ipc::pipe()?;
+
+    #[rustfmt::skip]
+    tlog!(Info, "saving entrypoint {entrypoint:?} to pipe '{tx:?}'");
+
+    let data = rmp_serde::to_vec_named(entrypoint)?;
+    tx.write_all(&data)?;
+
+    // The write half of the pipe is closed here
+    drop(tx);
+
+    Ok(rx)
+}
+
+/// Calls execvp with the current process' argc & argv.
+fn restart_current_process(args: &[CString]) -> ! {
+    let mut argv = vec![];
+    for arg in args {
+        argv.push(arg.as_ptr());
+    }
+    argv.push(std::ptr::null());
+
+    // SAFETY: safe because pointers are valid
+    let rc = unsafe { libc::execvp(argv[0], argv.as_ptr()) };
+
+    // In case of success the execution diverges
+    assert_eq!(rc, -1);
+    let e = std::io::Error::last_os_error();
+    eprintln!("execvp failed: {e}");
+    std::process::abort();
+}
+
+fn unlock_wal_directory() -> std::io::Result<()> {
+    extern "C" {
+        static mut wal_dir_lock: i32;
+    }
+
+    if unsafe { wal_dir_lock == -1 } {
+        // Not locked
+        return Ok(());
+    }
+
+    // SAFETY: always safe
+    let rc = unsafe { libc::flock(wal_dir_lock, libc::LOCK_UN) };
+
+    check_return_code(rc)?;
+
+    Ok(())
+}
+
+fn reattach_stderr() {
+    // SAFETY: always safe
+    let rc = unsafe { libc::fcntl(libc::STDERR_FILENO, libc::F_GETFD) };
+    if rc != -1 {
+        // stderr is still attached
+        return;
+    }
+
+    // SAFETY: always safe
+    unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
 }

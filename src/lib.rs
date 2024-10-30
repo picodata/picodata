@@ -36,6 +36,7 @@ use crate::schema::ADMIN_ID;
 use crate::schema::PICO_SERVICE_USER_NAME;
 use crate::traft::error::Error;
 use crate::traft::op;
+use crate::traft::Result;
 use crate::util::effective_user_id;
 use config::PicodataConfig;
 
@@ -560,40 +561,44 @@ fn set_on_access_denied_audit_trigger() {
 }
 
 #[allow(clippy::enum_variant_names)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Entrypoint {
     StartDiscover,
     StartBoot,
     StartJoin { leader_address: String },
 }
 
-impl Entrypoint {
-    pub fn exec(
-        self,
-        config: &PicodataConfig,
-        to_supervisor: ipc::Sender<IpcMessage>,
-    ) -> Result<(), Error> {
-        match self {
-            Self::StartDiscover => start_discover(config, to_supervisor)?,
-            Self::StartBoot => {
-                // Cleanup the data directory with WALs from the previous StartDiscover run
-                tarantool::rm_tarantool_files(config.instance.data_dir())?;
-                start_boot(config)?;
-            }
-            Self::StartJoin { leader_address } => {
-                // Cleanup the data directory with WALs from the previous StartDiscover run
-                tarantool::rm_tarantool_files(config.instance.data_dir())?;
-                start_join(config, leader_address)?;
-            }
+/// Runs one of picodata's entry points.
+///
+/// Returns
+/// - `Ok(Some(Entrypoint::StartBoot))` if the cluster is not yet bootstrapped
+///    and this instance is chosen as the bootstrap leader.
+/// - `Ok(Some(Entrypoint::StartJoin { .. }))` if the cluster is not yet bootstrapped
+///    and this instance is a bootstrap follower.
+/// - `Ok(None)` if the cluster is already initialized.
+///
+/// May return an error. Will never return a `StartDiscover` as next entrypoint.
+pub fn start(config: &PicodataConfig, entrypoint: Entrypoint) -> Result<Option<Entrypoint>> {
+    use Entrypoint::*;
+
+    let mut next_entrypoint = None;
+    match entrypoint {
+        StartDiscover => {
+            next_entrypoint = start_discover(config)?;
         }
-
-        Ok(())
+        StartBoot => {
+            // Cleanup the data directory with WALs from the previous StartDiscover run
+            tarantool::rm_tarantool_files(config.instance.data_dir())?;
+            start_boot(config)?;
+        }
+        StartJoin { leader_address } => {
+            // Cleanup the data directory with WALs from the previous StartDiscover run
+            tarantool::rm_tarantool_files(config.instance.data_dir())?;
+            start_join(config, leader_address)?;
+        }
     }
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct IpcMessage {
-    pub next_entrypoint: Entrypoint,
+    Ok(next_entrypoint)
 }
 
 /// Performs tarantool initialization calling `box.cfg` for the first time.
@@ -689,10 +694,7 @@ fn init_common(
     Ok((storage.clone(), raft_storage))
 }
 
-fn start_discover(
-    config: &PicodataConfig,
-    to_supervisor: ipc::Sender<IpcMessage>,
-) -> Result<(), Error> {
+fn start_discover(config: &PicodataConfig) -> Result<Option<Entrypoint>, Error> {
     tlog!(Info, "entering discovery phase");
 
     luamod::setup();
@@ -725,7 +727,7 @@ fn start_discover(
             raft_id: %raft_id,
             initiator: "admin",
         );
-        return Ok(());
+        return Ok(None);
     }
 
     // Start listening only after we've checked if this is a restart.
@@ -740,10 +742,7 @@ fn start_discover(
         },
     };
 
-    let msg = IpcMessage { next_entrypoint };
-    to_supervisor.send(&msg);
-    // Must exit here, otherwise we'll enter the tarantool's event loop
-    std::process::exit(0);
+    Ok(Some(next_entrypoint))
 }
 
 fn start_boot(config: &PicodataConfig) -> Result<(), Error> {
