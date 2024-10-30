@@ -6,6 +6,7 @@ import pathlib
 import os
 from time import sleep
 
+SUBMODULES_TO_FETCH_TAGS = [".", "tarantool-sys", "tarantool-sys/third_party/luajit"]
 
 GET_SOURCES_ATTEMPTS = int(os.environ.get('GET_SOURCES_ATTEMPTS', 3))
 PROJECT_DIR = pathlib.Path(__file__).parent.parent
@@ -50,7 +51,7 @@ def run_shell(path, shell=True, executable='/bin/bash', text=True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="GetGitTags", description="Get project tags")
-    parser.add_argument("dirs", nargs="*", default=".", type=str)
+    parser.add_argument("dirs", nargs="*", default=SUBMODULES_TO_FETCH_TAGS, type=str)
     args = parser.parse_args()
 
     for path in args.dirs:

@@ -144,7 +144,7 @@ build-base-image:
     # the build scripts. Without them the job fails.
     - &fetch-tags |
       ci-log-section start "fetch-submodule-tags" Fetching tags for submodules
-      ./tools/get_tags.py tarantool-sys tarantool-sys/third_party/luajit
+      ./tools/get_tags.py
       ci-log-section end "fetch-submodule-tags"
 
 .parallel:
