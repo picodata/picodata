@@ -19,7 +19,7 @@ instance:
         memory: 42069
 """
     )
-    instance = cluster.add_instance(instance_name=False, wait_online=False)
+    instance = cluster.add_instance(name=False, wait_online=False)
     instance.start()
     instance.wait_online()
 
@@ -124,7 +124,7 @@ instance:
 
 
 def test_default_path_to_config_file(cluster: Cluster):
-    instance = cluster.add_instance(instance_name=False, wait_online=False)
+    instance = cluster.add_instance(name=False, wait_online=False)
 
     # By default ./config.yaml will be used in the instance's current working directory
     work_dir = cluster.data_dir + "/work-dir"

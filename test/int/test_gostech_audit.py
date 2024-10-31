@@ -255,9 +255,7 @@ def test_gostech_join_expel_instance(
 
     [i1] = cluster.deploy(instance_count=1, audit=audit_server.cmd(cluster.binary_path))
 
-    i2 = cluster.add_instance(
-        instance_name="i2", audit=audit_server.cmd(cluster.binary_path)
-    )
+    i2 = cluster.add_instance(name="i2", audit=audit_server.cmd(cluster.binary_path))
     counter = i1.governor_step_counter()
     cluster.expel(i2)
     i1.wait_governor_status("idle", old_step_counter=counter, timeout=30)

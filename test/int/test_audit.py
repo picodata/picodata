@@ -381,7 +381,7 @@ def test_join_expel_instance(cluster: Cluster):
     events = audit_i1.events()
 
     audit = os.path.join(cluster.data_dir, "i2", "audit.log")
-    i2 = cluster.add_instance(instance_name="i2", audit=audit)
+    i2 = cluster.add_instance(name="i2", audit=audit)
 
     join_instance = take_until_title(events, "join_instance")
     assert join_instance is not None
@@ -423,7 +423,7 @@ def test_join_connect_instance(cluster: Cluster):
     i1 = cluster.add_instance(audit=audit)
 
     audit = os.path.join(cluster.data_dir, "i2", "audit.log")
-    i2 = cluster.add_instance(instance_name="i2", audit=audit)
+    i2 = cluster.add_instance(name="i2", audit=audit)
     i2.terminate()
 
     events = AuditFile(i2.audit_flag_value).events()

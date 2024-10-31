@@ -245,12 +245,8 @@ def test_separate_clusters(cluster: Cluster):
     # `--peer` option specified. As a result two instances form their
     # own clusters and don't interact at all.
     #
-    i1a = cluster.add_instance(
-        instance_name="i1", replicaset_name="r1", wait_online=False
-    )
-    i1b = cluster.add_instance(
-        instance_name="i1", replicaset_name="r1", wait_online=False
-    )
+    i1a = cluster.add_instance(name="i1", replicaset_name="r1", wait_online=False)
+    i1b = cluster.add_instance(name="i1", replicaset_name="r1", wait_online=False)
 
     i1a.peers.clear()
     i1b.peers.clear()
@@ -290,8 +286,8 @@ def test_join_without_explicit_instance_name(cluster: Cluster):
 
     # don't generate instance_names so that the Leader
     # chooses ones for them when they join
-    i1 = cluster.add_instance(instance_name=False)
-    i2 = cluster.add_instance(instance_name=False)
+    i1 = cluster.add_instance(name=False)
+    i2 = cluster.add_instance(name=False)
 
     i1.assert_raft_status("Leader")
     assert i1.name == "i1"
@@ -377,9 +373,7 @@ def test_fail_to_join(cluster: Cluster):
     # so this instance cannot join
     # and therefore exits with failure
     assert i1.name is not None
-    cluster.fail_to_add_instance(
-        instance_name=i1.name, failure_domain=dict(owner="Jim")
-    )
+    cluster.fail_to_add_instance(name=i1.name, failure_domain=dict(owner="Jim"))
 
     # Tiers in cluster: storage
     # instance with unexisting tier cannot join and therefore exits with failure
@@ -511,7 +505,7 @@ def test_join_with_duplicate_instance_name(cluster: Cluster):
     for _ in range(5):
         i = cluster.add_instance(
             wait_online=False,
-            instance_name="original-name",
+            name="original-name",
             replicaset_name=same_replicaset,
         )
         lc = log_crawler(i, "`original-name` is already joined")
@@ -541,7 +535,7 @@ def test_join_with_duplicate_instance_name(cluster: Cluster):
     for _ in range(5):
         i = cluster.add_instance(
             wait_online=False,
-            instance_name="original-name",
+            name="original-name",
             replicaset_name=same_replicaset,
         )
         lc = log_crawler(i, "`original-name` is already joined")
