@@ -165,32 +165,13 @@ pub(super) fn action_plan<'i>(
 
     ////////////////////////////////////////////////////////////////////////////
     // configure replication
-    let replicaset_to_configure = replicasets
-        .values()
-        .find(|replicaset| replicaset.current_config_version != replicaset.target_config_version);
-    if let Some(replicaset) = replicaset_to_configure {
+    if let Some((replicaset, targets, replicaset_peers)) =
+        get_replicaset_to_configure(instances, peer_addresses, replicasets)
+    {
+        // Targets must not be empty, otherwise we would bump the version
+        // without actually calling the RPC.
+        debug_assert!(!targets.is_empty());
         let replicaset_name = &replicaset.name;
-        let mut targets = Vec::new();
-        let mut replicaset_peers = Vec::new();
-        for instance in instances {
-            if has_states!(instance, Expelled -> *) {
-                continue;
-            }
-
-            if instance.replicaset_name != replicaset_name {
-                continue;
-            }
-
-            if let Some(address) = peer_addresses.get(&instance.raft_id) {
-                replicaset_peers.push(address.clone());
-            } else {
-                warn_or_panic!("replica `{}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`", instance.name);
-            }
-
-            if instance.may_respond() {
-                targets.push(&instance.name);
-            }
-        }
 
         let mut master_name = None;
         if replicaset.current_master_name == replicaset.target_master_name {
@@ -213,20 +194,14 @@ pub(super) fn action_plan<'i>(
         let cas = cas::Request::new(dml, predicate, ADMIN_ID)?;
         let replication_config_version_actualize = cas;
 
-        if !targets.is_empty() {
-            return Ok(ConfigureReplication {
-                replicaset_name,
-                targets,
-                master_name,
-                replicaset_peers,
-                replication_config_version_actualize,
-            }
-            .into());
-        } else {
-            #[rustfmt::skip]
-            tlog!(Warning, "all replicas in {replicaset_name} are offline, skipping replication configuration");
-            // Fall through, look for other things to do
+        return Ok(ConfigureReplication {
+            replicaset_name,
+            targets,
+            master_name,
+            replicaset_peers,
+            replication_config_version_actualize,
         }
+        .into());
     }
 
     ////////////////////////////////////////////////////////////////////////////
@@ -1163,6 +1138,55 @@ pub mod stage {
             pub ranges: Vec<cas::Range>,
         }
     }
+}
+
+fn get_replicaset_to_configure<'i>(
+    instances: &'i [Instance],
+    peer_addresses: &'i HashMap<RaftId, String>,
+    replicasets: &HashMap<&ReplicasetName, &'i Replicaset>,
+) -> Option<(&'i Replicaset, Vec<&'i InstanceName>, Vec<String>)> {
+    for replicaset in replicasets.values() {
+        if replicaset.current_config_version == replicaset.target_config_version {
+            // Already configured
+            continue;
+        }
+
+        let replicaset_name = &replicaset.name;
+        let mut rpc_targets = Vec::new();
+        let mut replication_peers = Vec::new();
+        for instance in instances {
+            if has_states!(instance, Expelled -> *) {
+                // Expelled instances are ignored for everything,
+                // we only store them for history
+                continue;
+            }
+
+            if instance.replicaset_name != replicaset_name {
+                continue;
+            }
+
+            let instance_name = &instance.name;
+            if let Some(address) = peer_addresses.get(&instance.raft_id) {
+                replication_peers.push(address.clone());
+            } else {
+                warn_or_panic!("replica `{instance_name}` address unknown, will be excluded from box.cfg.replication of replicaset `{replicaset_name}`");
+            }
+
+            if instance.may_respond() {
+                rpc_targets.push(instance_name);
+            }
+        }
+
+        if !rpc_targets.is_empty() {
+            return Some((replicaset, rpc_targets, replication_peers));
+        }
+
+        #[rustfmt::skip]
+        tlog!(Warning, "all replicas in {replicaset_name} are offline, skipping replication configuration");
+    }
+
+    // No replication configuration needed
+    None
 }
 
 /// Checks if there's replicaset whose master is offline and tries to find a
