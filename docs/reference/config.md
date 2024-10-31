@@ -441,9 +441,18 @@ picodata run -c instance.memtx.checkpoint_interval=7200.0
 * Тип: *int*
 * Значение по умолчанию: `67108864` (64 МБ)
 
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Пример:
+
+```bash
+picodata run -c instance.memtx.memory=128M
+```
+
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
 Аналогичная команда:
-[picodata run --memtx-memory](cli.md#run_memtx_memory)
+[picodata run --memtx-memory](cli.md#run_memtx_memory).
 
 ### instance.name {: #instance_name }
 
@@ -594,12 +603,17 @@ picodata run -c instance.pg.ssl=true
 * Тип: *int*
 * Значение по умолчанию: `134217728` (128 МБ)
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Пример:
 
 ```bash
-picodata run -c instance.vinyl.cache=268435456
+picodata run -c instance.vinyl.cache=256M
 ```
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter).
 
 ### instance.vinyl.memory {: #instance_vinyl_memory }
 <!-- https://www.tarantool.io/en/doc/2.11/reference/configuration/#cfg-storage-vinyl-memory -->
@@ -612,9 +626,15 @@ picodata run -c instance.vinyl.cache=268435456
 * Тип: *int*
 * Значение по умолчанию: `134217728` (128 МБ)
 
-Аналогичная команда —
-[picodata run --config-parameter](cli.md#run_config_parameter). Пример:
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
+Пример:
 
 ```bash
-picodata run -c instance.vinyl.memory=268435456
+picodata run -c instance.vinyl.memory=256M
 ```
+
+Аналогичная команда —
+[picodata run --config-parameter](cli.md#run_config_parameter).
+

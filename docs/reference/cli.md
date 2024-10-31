@@ -259,6 +259,9 @@ picodata run --listen 0.0.0.0:3301 --advertise 192.168.0.1:3301
 
 По умолчанию используется 64 MБ.
 
+Поддерживаются значения в более удобном формате (`K` (Kilobytes), `M`
+(Megabytes), `G` (Gigabytes), `T` (Terabytes), `1K` = 1024).
+
 Аналогичная переменная окружения: `PICODATA_MEMTX_MEMORY`<br>
 Аналогичный параметр файла конфигурации: `instance.memtx.memory`
 
