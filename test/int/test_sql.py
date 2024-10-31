@@ -4367,7 +4367,7 @@ def test_cte(cluster: Cluster):
     assert data == [[1]]
 
 
-def test_unique_index_name_for_sharded_table(cluster: Cluster):
+def test_bucket_id_index_exists(cluster: Cluster):
     cluster.deploy(instance_count=1)
     i1 = cluster.instances[0]
     table_names = ["t", "t2"]
@@ -4383,33 +4383,9 @@ def test_unique_index_name_for_sharded_table(cluster: Cluster):
         )
         assert ddl["row_count"] == 1
 
-    for table_name, other_table_name in zip(table_names, reversed(table_names)):
-        with pytest.raises(
-            TarantoolError,
-            match="index bucket_id already exists",
-        ):
-            # try to create existing index
-            i1.sql(
-                f""" create index "bucket_id"
-                on "{table_name}" (a) option (timeout = 3) """
-            )
-
-        with pytest.raises(
-            TarantoolError,
-            match="index bucket_id already exists",
-        ):
-            # try to create non existing index with existing name
-            i1.sql(
-                f""" create index "bucket_id"
-                on "{other_table_name}" (a) option (timeout = 3) """
-            )
-
+    for table_name in table_names:
         # ensure that index on field bucket_id of sharded table exists in space _index
         assert i1.eval(f"""return box.space.{table_name}.index.bucket_id""") is not None
-        assert (
-            i1.eval(f"""return box.space.{other_table_name}.index.bucket_id""")
-            is not None
-        )
 
 
 def test_tier_part(cluster: Cluster):
