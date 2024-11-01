@@ -16,9 +16,7 @@
 План запроса выглядит как граф, исполнение которого происходит снизу
 вверх.
 
-### Обязательные элементы {: #essential_elements }
-
-Для DQL-запросов обязательными элементами являются:
+Для DQL-запросов основными элементами являются:
 
 - `scan` — сканирование (получение данных) таблицы
 - `projection` — уточненный набор колонок таблицы для выполнения запроса
@@ -26,6 +24,13 @@
 ??? example "Тестовые таблицы"
     Примеры использования команд включают в себя запросы к [тестовым
     таблицам](../legend.md).
+
+Дополнительно, запрос `EXPLAIN` показывает следующие элементы:
+
+- текущие значения `VDBE_MAX_STEPS` и `VDBE_MAX_ROWS`, служащие для
+  [ограничения запросов](non_block.md#query_limitations)
+- расчетный диапазон [бакетов](../../overview/glossary.md#bucket), на
+  которых будет выполнен запрос
 
 Пример получения столбца таблицы целиком:
 
@@ -36,8 +41,12 @@ EXPLAIN SELECT item FROM warehouse;
 Результат:
 
 ```sql
-projection ("WAREHOUSE"."ITEM"::string -> "ITEM")
-    scan "WAREHOUSE"
+projection ("warehouse"."item"::string -> "item")
+    scan "warehouse"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]
 ```
 
 В одном запросе может быть несколько узлов `scan` и `projection`, в
@@ -268,7 +277,6 @@ projection ("ORDERS"."ID"::integer -> "ID", "ORDERS"."ITEM"::string -> "ITEM")
 
 ```sql
 EXPLAIN UPDATE deliveries SET product = 'metals',quantity = 4000 WHERE nmbr = 1;
-
 ```
 
 Вывод в консоль:
@@ -328,4 +336,133 @@ projection (sum(("0e660ad12ab24037a48f169fcf315549_count_11"::integer))::decimal
         scan
             projection (count(("WAREHOUSE"."ID"::integer))::integer -> "0e660ad12ab24037a48f169fcf315549_count_11")
                 scan "WAREHOUSE"
+```
+
+## Варианты использования бакетов {: #bucket_ranges }
+
+Планировщик SQL-запросов в Picodata показывает, на каких бакетах будет
+исполнен запрос. В зависимости от характера запроса, это значение будет
+выглядеть как:
+
+- подмножество (`[1410,1934,1958]`)
+- номер бакета (`[215]`)
+- любой бакет (`any`)
+- неизвестный набор бакетов (`unknown`)
+
+### Подмножество {: #range }
+
+Подмножество бакетов может быть точно вычислено для запросов без
+перемещения данных и вызванного им добавления в план узлов `motion`. При
+использовании фильтра с конкретными значениями это будет список
+соответствующих им бакетов:
+
+```sql
+EXPLAIN SELECT * FROM warehouse WHERE id IN (1,2,3);
+```
+
+Вывод в консоль:
+
+```sql
+projection ("warehouse"."id"::integer -> "id", "warehouse"."item"::string -> "item", "warehouse"."type"::string -> "type")
+    selection ROW("warehouse"."id"::integer) in ROW(1::unsigned, 2::unsigned, 3::unsigned)
+        scan "warehouse"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1410,1934,1958]
+```
+
+Частный случай подмножества — ситуация, когда запрос будет выполнен на
+всех бакетах:
+
+```sql
+EXPLAIN UPDATE warehouse SET type = 'N/A';
+```
+
+Вывод в консоль:
+
+```sql
+update "warehouse"
+"type" = "col_0"
+    motion [policy: local]
+        projection ('N/A'::string -> "col_0", "warehouse"."id"::integer -> "col_1")
+            scan "warehouse"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [1-3000]
+```
+
+### Номер бакета {: #boundary }
+
+В ряде случаев планировщик может определить конкретный номер бакета, на
+котором будет выполнен распределенный запрос. Такой вариант характерен
+для локальных DML-запросов. В примере ниже номер бакета выведен из
+условия (`id = 5`):
+
+```sql
+EXPLAIN INSERT INTO orders (id, item, amount) SELECT * FROM items WHERE id = 5;
+```
+
+Вывод в консоль:
+
+```sql
+insert "orders" on conflict: fail
+    motion [policy: local segment([ref("id")])]
+        projection ("items"."id"::integer -> "id", "items"."name"::string -> "name", "items"."stock"::integer -> "stock")
+            selection ROW("items"."id"::integer) = ROW(5::unsigned)
+                scan "items"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = [219]
+```
+
+### Любой бакеты {: #any }
+
+Значение `any` выводится для запросов к глобальным таблицам, которые
+присутствуют на всех шардах. Запрос будет выполнен на том же узле, к
+которому подключен клиент Picodata. Пример:
+
+```sql
+EXPLAIN SELECT id FROM _pico_table;
+```
+
+Вывод в консоль:
+
+```sql
+projection ("_pico_table"."id"::unsigned -> "id")
+    scan "_pico_table"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = any
+```
+
+### Неизвестный набор {: #unknown }
+
+Значение `unknown` означает, что ни точный диапазон, ни конкретный номер
+бакета не могут быть посчитаны. Такая ситуация возможна, к примеру, при
+нелокальных DML-запросах, когда запрос затрагивает некоторое неизвестное
+количество шардов:
+
+```sql
+EXPLAIN UPDATE deliveries SET product = 'metals',quantity = 4000 WHERE nmbr = 1;
+```
+
+Вывод в консоль:
+
+```sql
+update "deliveries"
+"nmbr" = "col_0"
+"product" = "col_1"
+"quantity" = "col_2"
+    motion [policy: segment([])]
+        projection ("deliveries"."nmbr"::integer -> "col_0", 'metals'::string -> "col_1", 4000::unsigned -> "col_2", "deliveries"."product"::string -> "col_3")
+            selection ROW("deliveries"."nmbr"::integer) = ROW(1::unsigned)
+                scan "deliveries"
+execution options:
+    vdbe_max_steps = 45000
+    vtable_max_rows = 5000
+buckets = unknown
 ```
