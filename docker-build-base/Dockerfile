@@ -42,10 +42,10 @@ ENV PATH=/root/.cargo/bin:${PATH}
 
 COPY docker-build-base/ci-log-section /usr/bin/ci-log-section
 
-# install Pipenv
-COPY docker-build-base/requirements-pipenv.txt /tmp/requirements-pipenv.txt
-RUN PIP_NO_CACHE_DIR=true python3.10 -m pip install -q --require-hashes -r /tmp/requirements-pipenv.txt \
-    && rm /tmp/requirements-pipenv.txt
+# install poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH=/root/.local/bin:${PATH}
+RUN poetry --version
 
 # install nodejs
 # https://github.com/nodesource/distributions#installation-scripts

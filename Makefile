@@ -43,7 +43,7 @@ build-release: build
 .PHONY: test
 test:
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(PROFILE)
-	pipenv run pytest $(PYTEST_NUMPROCESSES)
+	poetry run pytest $(PYTEST_NUMPROCESSES)
 
 .PHONY: lint
 lint:
@@ -63,12 +63,14 @@ lint:
 			--workspace --no-deps --document-private-items \
 			--exclude=tlua --exclude=sbroad-core --exclude=tarantool
 
-	pipenv run lint
+	poetry run flake8 ./test
+	poetry run black ./test --check --diff
+	poetry run mypy ./test
 
 .PHONY: fmt
 fmt:
 	cargo fmt
-	pipenv run fmt
+	poetry run black ./test
 
 .PHONY: clean
 clean:
@@ -78,15 +80,15 @@ clean:
 
 .PHONY: benchmark
 benchmark:
-	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/test_benchmark.py
+	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/test_benchmark.py
 
 .PHONY: flamegraph
 flamegraph:
-	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/test_benchmark.py --with-flamegraph
+	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/test_benchmark.py --with-flamegraph
 
 .PHONY: k6
 k6:
-	PICODATA_LOG_LEVEL=warn pipenv run pytest test/manual/sql/test_sql_perf.py
+	PICODATA_LOG_LEVEL=warn poetry run pytest test/manual/sql/test_sql_perf.py
 
 .PHONY: install
 install:

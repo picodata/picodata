@@ -169,11 +169,11 @@ build-base-image:
       - BUILD_PROFILE: dev
         TARGET: debug
 
-.pipenv-install: &pipenv-install |
+.poetry-install: &poetry-install |
   # Pipenv install
-  ci-log-section start "pipenv-install" Installing pip dependencies ...
-  PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-  ci-log-section end "pipenv-install"
+  ci-log-section start "poetry-install" Installing python dependencies ...
+  POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
+  ci-log-section end "poetry-install"
 
 test-linux:
   extends:
@@ -231,7 +231,7 @@ test-linux:
 
     - cargo -V
 
-    - *pipenv-install
+    - *poetry-install
 
     # There are no Rust tests for `webui` feature, it's checked in pytest
     - cargo build --timings --locked --profile=$BUILD_PROFILE
@@ -244,7 +244,7 @@ test-linux:
 
     # -vv shows extended diff for failures
     - >
-      BUILD_PROFILE=$BUILD_PROFILE pipenv run pytest -vv
+      BUILD_PROFILE=$BUILD_PROFILE poetry run pytest -vv
       --color=yes
       --numprocesses auto
       --junitxml=junit_pytest.xml
@@ -287,7 +287,7 @@ lint:
       policy: pull
   script:
     - *fetch-tags
-    - *pipenv-install
+    - *poetry-install
     - make lint
     - cd webui && yarn lint
 
@@ -336,7 +336,7 @@ test-patch-picodata:
     - <<: *base_node
       policy: pull
   script:
-    - PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
+    - *poetry-install
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
 
     - cargo build --locked --release --features dynamic_build
@@ -347,7 +347,7 @@ test-patch-picodata:
     - cargo build --features dynamic_build,webui,error_injection --locked --release
 
     - >
-      BUILD_PROFILE=release pipenv run pytest -vv
+      BUILD_PROFILE=release poetry run pytest -vv
       --color=yes
       --numprocesses auto
       --junitxml=junit_pytest.xml
@@ -382,13 +382,9 @@ test-mac-m1:
     - cargo fmt -- -v --check
     - cargo clippy --version
     - cargo clippy --features "load_test webui error_injection" -- --deny clippy::all --no-deps
-    # - |
-    #   # Pipenv install
-    #   ci-log-section start "pipenv-install" Installing pip dependencies ...
-    #   PIPENV_VENV_IN_PROJECT=1 PIP_NO_CACHE_DIR=true python3.10 -m pipenv install --deploy
-    #   ci-log-section end "pipenv-install"
-    # - pipenv run pytest --numprocesses auto -v
-    # - pipenv run lint
+    # - *poetry-install
+    # - poetry run pytest --numprocesses auto -v
+    # - make lint
     # - |
 
 .test-helm:

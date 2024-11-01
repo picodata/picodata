@@ -129,50 +129,45 @@ The following refers to Ubuntu 20.04 LTS. The mileage with other distributions m
    python3.10 get-pip.py
    ```
 
-3. Install pipenv:
-
-    ```
-    python3.10 -m pip install pipenv
-    ```
+3. Install poetry:
+   See [instructions](https://python-poetry.org/docs/#installation).
 
 4. Install dependencies
 
     ```
-    python3.10 -m pipenv install --deploy
+    poetry install
     ```
 
 
 #### Adding dependencies
 
 ```bash
-python3.10 -m pipenv install <dependency-package-name>
+poetry install <dependency-package-name>
 ```
 
 #### Running
 
 ```bash
-python3.10 -m pipenv run pytest
-python3.10 -m pipenv run lint
+python3.10 -m poetry run pytest
 ```
 
 or
 
 ```bash
-python3.10 -m pipenv shell
-# A new shell will be opened inside the pipenv environment
+python3.10 -m poetry shell
+# A new shell will be opened inside the poetry environment
 pytest
-pipenv run lint
 ```
 
 #### Running specific test
 ```bash
-python3.10 -m pipenv run pytest -k test_sql_acl
+poetry run pytest -k test_sql_acl
 ```
 
 #### Running tests in parallel with pytest-xdist
 
 ```bash
-python3.10 -m pipenv run pytest -n 20
+poetry run pytest -n 20
 ```
 
 #### Running manual/test_scaling.py::test_cas_conflicts
@@ -182,14 +177,16 @@ The test plots a chart and therefore also requires `matplotlib` dependency to be
 
 Install it with:
 ```bash
-python3.10 -m pipenv install matplotlib
+poetry install matplotlib
 ```
 
-But do not commit the changes to `Pipfile` and `Pipfile.lock` that this installation generates. As we
+But do not commit the changes to `pyproject.toml` and `poetry.lock` that this installation generates. As we
 do not want to have `matplotlib` installed by default.
 ---
 
 ### macOS
+
+Note: some details regarding python version tweaking might be outdated, feel free to submit a correction.
 
 #### Installation
 
@@ -213,7 +210,7 @@ which python3
 ```
 _Note_: Python versions <=3.9 such as the one provided by the older `Xcode Developer Tools` will not work.
 
-If the `python3` executable is provided by Homebrew, skip the following part and jump to `pipenv` installation.
+If the `python3` executable is provided by Homebrew, skip the following part and jump to `poetry` installation.
 Otherwise, that needs to be fixed. Let's find out the local Homebrew installation details:
 
 ```shell
@@ -243,26 +240,18 @@ If it doesn't, then similarly create a simlink for `pip3`:
 ```shell
 ln -s "$(brew config | sed -n "s/^HOMEBREW_PREFIX: //p" | tr -d "\n")/bin/pip@3.10" /usr/local/bin/pip3
 ```
-After that you can install pipenv:
-```shell
-pip3 install pipenv==2022.4.8
-```
-Set python path for pipenv:
-```shell
-pipenv --python /usr/local/bin/python3
- ```
+After that you can install poetry, see [instructions](https://python-poetry.org/docs/#installation):
 
 #### Adding dependencies
 
 ```shell
-pipenv install --deploy
+poetry install --deploy
 ```
 
 #### Running
 
 ```shell
-pipenv run pytest -n auto
-pipenv run lint
+poetry run pytest -n auto
 ```
 
 ## Benchmarks and flamegraphs
