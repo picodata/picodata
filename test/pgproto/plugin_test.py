@@ -4,6 +4,8 @@ import os
 from conftest import Postgres
 
 
+ADMIN = "admin"
+PASSWORD = "P@ssw0rd"
 PLUGIN = "testplug"
 PLUGIN_WITH_MIGRATION = "testplug_w_migration"
 VERSION_1 = "0.1.0"
@@ -23,134 +25,125 @@ def cursor(postgres: Postgres, user: str, password: str):
 
 
 def test_create_plugin(postgres: Postgres):
-    password = "P@ssw0rd"
-    admin = "admin"
-
     postgres.instance.sql(
         f"""
-        ALTER USER "{admin}" WITH PASSWORD '{password}'
+        ALTER USER "{ADMIN}" WITH PASSWORD '{PASSWORD}'
         """
     )
-    cur = cursor(postgres, admin, password)
+    cur = cursor(postgres, ADMIN, PASSWORD)
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
-    cur.execute(f""" CREATE PLUGIN IF NOT EXISTS { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
+    cur.execute(f"CREATE PLUGIN IF NOT EXISTS {PLUGIN} {VERSION_1}")
     cur.execute(
         f"""
-        CREATE PLUGIN IF NOT EXISTS { PLUGIN } { VERSION_1 }
+        CREATE PLUGIN IF NOT EXISTS {PLUGIN} {VERSION_1}
         OPTION (TIMEOUT = 1.1)
         """
     )
     with pytest.raises(pg.DatabaseError, match="already exists"):
-        cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
+        cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
 
-    cur.execute(f""" DROP PLUGIN { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"DROP PLUGIN {PLUGIN} {VERSION_1 }")
     cur.execute(
         f"""
-        CREATE PLUGIN { PLUGIN } { VERSION_1 } OPTION (TIMEOUT = 1.1)
+        CREATE PLUGIN {PLUGIN} {VERSION_1} OPTION (TIMEOUT = 1.1)
         """
     )
 
-    cur.execute(f""" DROP PLUGIN { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"DROP PLUGIN {PLUGIN} {VERSION_1}")
 
 
 def test_drop_plugin(postgres: Postgres):
-    password = "P@ssw0rd"
-    admin = "admin"
-
     postgres.instance.sql(
         f"""
-        ALTER USER "{admin}" WITH PASSWORD '{password}'
+        ALTER USER "{ADMIN}" WITH PASSWORD '{PASSWORD}'
         """
     )
-    cur = cursor(postgres, admin, password)
+    cur = cursor(postgres, ADMIN, PASSWORD)
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
-    cur.execute(f""" DROP PLUGIN { PLUGIN } { VERSION_1 } """)
-    cur.execute(f""" DROP PLUGIN IF EXISTS { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
+    cur.execute(f"DROP PLUGIN {PLUGIN} {VERSION_1}")
+    cur.execute(f"DROP PLUGIN IF EXISTS {PLUGIN} {VERSION_1}")
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
-    cur.execute(f""" DROP PLUGIN { PLUGIN } { VERSION_1 } WITH DATA """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
+    cur.execute(f"DROP PLUGIN {PLUGIN} {VERSION_1} WITH DATA")
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
     cur.execute(
         f"""
-        DROP PLUGIN { PLUGIN } { VERSION_1 } OPTION (TIMEOUT = 1.1)
+        DROP PLUGIN {PLUGIN} {VERSION_1} OPTION (TIMEOUT = 1.1)
         """
     )
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
     cur.execute(
         f"""
-        DROP PLUGIN { PLUGIN } { VERSION_1 } WITH DATA
+        DROP PLUGIN {PLUGIN} {VERSION_1} WITH DATA
         OPTION (TIMEOUT = 1.1)
         """
     )
 
 
 def test_alter_plugin(postgres: Postgres):
-    password = "P@ssw0rd"
-    admin = "admin"
-
     postgres.instance.sql(
         f"""
-        ALTER USER "{admin}" WITH PASSWORD '{password}'
+        ALTER USER "{ADMIN}" WITH PASSWORD '{PASSWORD}'
         """
     )
-    cur = cursor(postgres, admin, password)
+    cur = cursor(postgres, ADMIN, PASSWORD)
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN } { VERSION_1 } """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN} {VERSION_1}")
 
-    cur.execute(f""" ALTER PLUGIN { PLUGIN } { VERSION_1 } ENABLE """)
-    cur.execute(f""" ALTER PLUGIN { PLUGIN } { VERSION_1 } DISABLE """)
+    cur.execute(f"ALTER PLUGIN {PLUGIN} {VERSION_1} ENABLE")
+    cur.execute(f"ALTER PLUGIN {PLUGIN} {VERSION_1} DISABLE")
 
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN } { VERSION_1 } ENABLE
+        ALTER PLUGIN {PLUGIN} {VERSION_1} ENABLE
         OPTION (TIMEOUT = 1)
         """
     )
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN } { VERSION_1 } DISABLE
+        ALTER PLUGIN {PLUGIN} {VERSION_1} DISABLE
         OPTION (TIMEOUT = 1)
         """
     )
 
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN } { VERSION_1 }
-        ADD SERVICE { SERVICE_1 } TO TIER { DEFAULT_TIER }
+        ALTER PLUGIN {PLUGIN} {VERSION_1}
+        ADD SERVICE {SERVICE_1} TO TIER {DEFAULT_TIER}
         OPTION (TIMEOUT = 1)
         """
     )
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN } { VERSION_1 }
-        ADD SERVICE { SERVICE_1 } TO TIER { DEFAULT_TIER }
+        ALTER PLUGIN {PLUGIN} {VERSION_1}
+        ADD SERVICE {SERVICE_1} TO TIER {DEFAULT_TIER}
         """
     )
 
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN } { VERSION_1 }
-        REMOVE SERVICE { SERVICE_1 } FROM TIER { DEFAULT_TIER }
+        ALTER PLUGIN {PLUGIN} {VERSION_1}
+        REMOVE SERVICE {SERVICE_1} FROM TIER {DEFAULT_TIER}
         OPTION (TIMEOUT = 1)
         """
     )
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN } { VERSION_1 }
-        REMOVE SERVICE { SERVICE_1 } FROM TIER { DEFAULT_TIER }
+        ALTER PLUGIN {PLUGIN} {VERSION_1}
+        REMOVE SERVICE {SERVICE_1} FROM TIER {DEFAULT_TIER}
         """
     )
 
-    cur.execute(f""" CREATE PLUGIN { PLUGIN_WITH_MIGRATION } { VERSION_1 } """)
-    cur.execute(f""" CREATE PLUGIN { PLUGIN_WITH_MIGRATION } { VERSION_2 } """)
+    cur.execute(f"CREATE PLUGIN {PLUGIN_WITH_MIGRATION} {VERSION_1}")
+    cur.execute(f"CREATE PLUGIN {PLUGIN_WITH_MIGRATION} {VERSION_2}")
     cur.execute(
         f"""
-        ALTER PLUGIN { PLUGIN_WITH_MIGRATION }
-        MIGRATE TO { VERSION_2 }
+        ALTER PLUGIN {PLUGIN_WITH_MIGRATION}
+        MIGRATE TO {VERSION_2}
         OPTION (TIMEOUT = 10, ROLLBACK_TIMEOUT = 10)
         """
     )
