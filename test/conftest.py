@@ -1,3 +1,4 @@
+import git
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import socket
 import sys
 import time
 import threading
+from packaging.version import Version
 from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -1537,12 +1539,12 @@ class Cluster:
     binary_path: str
     id: str
     data_dir: str
-    plugin_dir: str
     base_host: str
     port_distributor: PortDistributor
     instances: list[Instance] = field(default_factory=list)
     config_path: str | None = None
     service_password_file: str | None = None
+    plugin_dir: str | None = None
 
     def __repr__(self):
         return f'Cluster("{self.base_host}", n={len(self.instances)})'
@@ -2050,7 +2052,11 @@ def get_test_dir():
 
 
 @pytest.fixture(scope="session")
-def binary_path(cargo_build: None) -> str:
+def binary_path_fixt(cargo_build_fixt: None) -> str:
+    return binary_path()
+
+
+def binary_path() -> str:
     """Path to the picodata binary, e.g. "./target/debug/picodata"."""
     metadata = subprocess.check_output(["cargo", "metadata", "--format-version=1"])
     target = json.loads(metadata)["target_directory"]
@@ -2108,7 +2114,11 @@ def binary_path(cargo_build: None) -> str:
 
 
 @pytest.fixture(scope="session")
-def cargo_build(pytestconfig: pytest.Config) -> None:
+def cargo_build_fixt(pytestconfig: pytest.Config) -> None:
+    cargo_build(bool(pytestconfig.getoption("--with-webui")))
+
+
+def cargo_build(with_webui: bool = False) -> None:
     """Run cargo build before tests. Skipped in CI"""
 
     # Start test logs with a newline. This makes them prettier with
@@ -2414,3 +2424,163 @@ def postgres_with_tls(cluster: Cluster, pg_port: int):
 @pytest.fixture
 def postgres_with_mtls(cluster: Cluster, pg_port: int):
     return Postgres(cluster, port=pg_port, ssl=True, ssl_verify=True).install()
+
+
+class Compatibility:
+    _tag: str
+    _path: Path
+
+    @property
+    def tag(self):
+        return self._tag
+
+    @property
+    def path(self):
+        return self._path
+
+    @staticmethod
+    def _is_semver(tag: str):
+        # see https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string  # noqa: E501
+        pattern = r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$"  # noqa: E501
+
+        return bool(re.fullmatch(pattern, tag))
+
+    @staticmethod
+    def _filter_correct_tags(repo: git.Repo):
+        tags = [tag.split("-")[0] for tag in map(str, repo.tags)]
+        return list(filter(Compatibility._is_semver, tags))
+
+    @staticmethod
+    def _filter_latest_minors(tags):
+        temp = dict()
+        for version in tags:
+            version = Version(version)
+            key, value = (version.major, version.minor), version.micro
+            if key not in temp or temp[key] < value:
+                temp[key] = value
+
+        result = list()
+        for k, v in temp.items():
+            result.append(f"{k[0]}.{k[1]}.{v}")
+        return result
+
+    def fetch_current_tag(self):
+        path = Path(os.getcwd())
+        try:
+            repo = git.Repo(path)
+        except git.InvalidGitRepositoryError as e:
+            print(
+                f"{e} is not a git directory. Generate snapshot using `make generate`."
+            )
+        tags = self._filter_correct_tags(repo)
+        self._tag = tags[-1].strip().split("-")[0]
+
+        self._path = f"{path}/test/compat/{self._tag}"
+        os.makedirs(self.path, exist_ok=True)
+
+    def fetch_previous_tag(self):
+        path = Path(os.getcwd())
+        try:
+            repo = git.Repo(path)
+        except git.InvalidGitRepositoryError as e:
+            print(
+                f"{e} is not a git directory. Generate snapshot using `make generate`."
+            )
+        tags = self._filter_correct_tags(repo)
+        tags = self._filter_latest_minors(tags)
+        self._tag = tags[-1]
+
+        self._path = f"{path}/test/compat/{self._tag}"
+        os.makedirs(self.path, exist_ok=True)
+
+    def get_snapshot_path(self):
+        for file in os.listdir(self.path):
+            if file.endswith(".snap"):
+                return os.path.join(self.path, file)
+        return None
+
+    def fill_snapshot_with_data(self, inst: Instance):
+        ddl = inst.sql(
+            """
+            CREATE TABLE deliveries (
+                nmbr INTEGER NOT NULL,
+                product TEXT NOT NULL,
+                quantity INTEGER,
+                PRIMARY KEY (nmbr))
+            USING vinyl DISTRIBUTED BY (product)
+            IN TIER "default"
+            OPTION (TIMEOUT = 3.0);
+        """
+        )
+        assert ddl["row_count"] == 1
+
+        dml = inst.sql(
+            """
+            INSERT INTO deliveries VALUES
+                (1, 'metalware', 2000),
+                (2, 'adhesives', 300),
+                (3, 'moldings', 100),
+                (4, 'bars', 5),
+                (5, 'blocks', 15000);
+        """
+        )
+        assert dml["row_count"] == 5
+
+        dcl = inst.sql("CREATE ROLE toy OPTION (TIMEOUT = 3.0);")
+        assert dcl["row_count"] == 1
+
+        dcl = inst.sql("GRANT ALTER ON TABLE deliveries TO toy;")
+        assert dcl["row_count"] == 1
+
+        dcl = inst.sql(
+            """
+            CREATE USER "andy"
+            WITH PASSWORD 'P@ssw0rd'
+            USING chap-sha1
+            OPTION (TIMEOUT = 3.0);
+        """
+        )
+        assert dcl["row_count"] == 1
+
+        ddl = inst.sql(
+            """
+            CREATE INDEX product_quantity
+            ON deliveries
+            USING TREE (product, quantity)
+            WITH (
+                HINT = true,
+                BLOOM_FPR = 0.05,
+                RUN_SIZE_RATIO = 3.5,
+                PAGE_SIZE = 8192,
+                RANGE_SIZE = 1073741824,
+                RUN_COUNT_PER_LEVEL = 2
+            )
+            OPTION (TIMEOUT = 3.0);
+        """
+        )
+        assert ddl["row_count"] == 1
+
+        ddl = inst.sql(
+            """
+            CREATE PROCEDURE proc (int, text, int)
+            AS $$INSERT INTO deliveries VALUES($1, $2, $3)$$
+            OPTION (TIMEOUT = 5.0);
+        """
+        )
+        assert ddl["row_count"] == 1
+
+        lua = inst.eval("return box.snapshot()")
+        assert lua == "ok"
+
+    def copy_latest_snapshot(self, inst: Instance):
+        def modification_time(f):
+            return os.path.getmtime(os.path.join(inst.data_dir, f))
+
+        all_snapshots = list()
+        for filename in os.listdir(inst.data_dir):
+            full_path = os.path.join(inst.data_dir, filename)
+            if os.path.isfile(full_path) and filename.endswith(".snap"):
+                all_snapshots.append(filename)
+
+        latest_snapshot = max(all_snapshots, key=modification_time)
+        shutil.copy2(f"{inst.data_dir}/{latest_snapshot}", self.path)

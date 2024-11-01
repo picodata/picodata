@@ -45,6 +45,10 @@ test:
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(PROFILE)
 	poetry run pytest $(PYTEST_NUMPROCESSES)
 
+.PHONY: generate
+generate:
+	pipenv run python test/generate_snapshot.py
+
 .PHONY: lint
 lint:
 	cargo fmt --check
