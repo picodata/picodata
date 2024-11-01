@@ -1,6 +1,6 @@
 /target
 .rocks
-*.snap
+./*.snap
 *.xlog
 __pycache__/
 tmp/
