@@ -38,6 +38,8 @@ nav:
     - Запуск и развертывание:
       - tutorial/run.md
       - tutorial/deploy.md
+      - tutorial/node_add.md
+      - tutorial/node_expel.md
       - tutorial/deploy_ansible.md
     - Начало работы:
       - tutorial/connecting.md
