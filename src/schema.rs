@@ -27,7 +27,7 @@ use tarantool::auth::AuthData;
 use tarantool::auth::AuthDef;
 use tarantool::auth::AuthMethod;
 use tarantool::decimal::Decimal;
-use tarantool::error::TarantoolError;
+use tarantool::error::BoxError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
 use tarantool::index::IndexId;
@@ -36,7 +36,6 @@ use tarantool::index::Metadata as IndexMetadata;
 use tarantool::index::{FieldType as IndexFieldType, IndexType, Part, RtreeIndexDistanceType};
 use tarantool::msgpack;
 use tarantool::session::{with_su, UserId};
-use tarantool::set_error;
 use tarantool::space::SpaceId;
 use tarantool::space::{FieldType, SpaceCreateOptions, SpaceEngineType};
 use tarantool::space::{Metadata as SpaceMetadata, Space, SpaceType, SystemSpace};
@@ -2343,8 +2342,8 @@ impl CreateTableParams {
             if id >= id_range_max {
                 id = find_next_unused_id(id_range_min)?;
                 if id >= id_range_max {
-                    set_error!(TarantoolErrorCode::CreateSpace, "space id limit is reached");
-                    return Err(TarantoolError::last().into());
+                    #[rustfmt::skip]
+                    return Err(BoxError::new(TarantoolErrorCode::CreateSpace, "space id limit is reached").into());
                 }
             }
             id
@@ -2424,6 +2423,10 @@ pub fn wait_for_ddl_commit(
             match op {
                 Op::DdlCommit => return Ok(index),
                 Op::DdlAbort { cause } => return Err(DdlError::Aborted(cause).into()),
+                Op::DdlPrepare { .. } => {
+                    #[rustfmt::skip]
+                    return Err(BoxError::new(ErrorCode::RaftLogCompacted, "DDL finalizer raft op was compacted").into());
+                }
                 _ => (),
             }
         }

@@ -687,12 +687,18 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     # inject error into second instance
     plugin_ref.inject_error("testservice_1", "on_start", True, i2)
 
+    i1.sql(f"CREATE PLUGIN {_PLUGIN} 0.1.0")
+    for service in _PLUGIN_SERVICES:
+        i1.sql(
+            f"ALTER PLUGIN {_PLUGIN} 0.1.0 ADD SERVICE {service} TO TIER {_DEFAULT_TIER}"
+        )
+
     # assert that plugin not loaded and on_stop called on both instances
-    with pytest.raises(ReturnError) as e:
-        install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES)
-    assert (
-        e.value.args[0]
-        == f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:i2] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`"  # noqa: E501
+    with pytest.raises(TarantoolError) as e:
+        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE")
+    assert e.value.args[:-1] == (
+        ErrorCode.Other,
+        f"Failed to enable plugin `{_PLUGIN}:0.1.0`: [instance name:i2] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
     )
 
     # plugin installed but disabled
@@ -703,12 +709,26 @@ def test_plugin_not_enable_if_error_on_start(cluster: Cluster):
     # inject error into both instances
     plugin_ref.inject_error("testservice_1", "on_start", True, i1)
 
+    # This is needed to check that raft log compaction respects plugin op finalizers
+    i1.sql(""" ALTER SYSTEM SET cluster_wal_max_count = 1 """)
+    assert i1.call("box.space._raft_log:len") == 0
+    index_before = i1.raft_get_index()
+
     # assert that plugin not loaded and on_stop called on both instances
     with pytest.raises(
-        ReturnError,
+        TarantoolError,
         match=f"] Other: Callback: on_start: box error #{ErrorCode.PluginError}: error at `on_start`",  # noqa: E501
     ):
-        install_and_enable_plugin(i1, _PLUGIN, _PLUGIN_SERVICES, if_not_exists=True)
+        i1.sql(f"ALTER PLUGIN {_PLUGIN} 0.1.0 ENABLE")
+
+    # Display raft log in case the assertions bellow fail
+    print(str.join("\n", i1.call("pico.raft_log", dict(max_width=120))))
+
+    # The ALTER PLUGIN operation added 2 entries
+    assert i1.raft_get_index() == index_before + 2
+    # And only one of the got compacted, because the other one is the finalizer
+    # which is needed to report that error message we just checked above
+    assert i1.call("box.space._raft_log:len") == 1
 
     # plugin installed but disabled
     Retriable(timeout=3, rps=5).call(lambda: plugin_ref.assert_synced())

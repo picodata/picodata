@@ -37,6 +37,11 @@ to 2 and 3.
   Supported suffixes: K, M, G, T, 1K = 1024
   (e.g picodata run --memtx-memory 10G)
 
+- Add `cluster_wal_max_size` and `cluster_wal_max_count` alter system parameters
+  which control the new auto-compaction feature.
+  Whenever the total size of tuples in raft log system space exceeds `cluster_wal_max_size`
+  or the number of tuples exceeds `cluster_wal_max_count` the log will be automatically compacted.
+
 ### Plugins
 
 - New ability to write custom plugins for picodata. Plugins are supposed to be written in Rust

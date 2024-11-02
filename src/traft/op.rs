@@ -411,6 +411,24 @@ impl Op {
         }
     }
 
+    /// Returns `true` if this op finalizes a multi-phase DDL operation.
+    ///
+    /// For plugin operations see [`Self::is_plugin_op_finalizer`].
+    #[inline(always)]
+    pub fn is_ddl_finalizer(&self) -> bool {
+        matches!(self, Self::DdlCommit | Self::DdlAbort { .. })
+    }
+
+    /// Returns `true` if this op finalizes a multi-phase plugin operation.
+    #[inline(always)]
+    pub fn is_plugin_op_finalizer(&self) -> bool {
+        matches!(
+            self,
+            Self::Plugin(PluginRaftOp::DisablePlugin { cause: Some(_), .. })
+                | Self::Plugin(PluginRaftOp::Abort { .. })
+        )
+    }
+
     #[inline]
     pub fn single_dml_or_batch(ops: Vec<Dml>) -> Self {
         if ops.len() == 1 {

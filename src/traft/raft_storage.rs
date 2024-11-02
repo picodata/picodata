@@ -458,6 +458,50 @@ impl RaftSpaceAccess {
         Ok(())
     }
 
+    /// Returns the total size in bytes the tuples of _raft_log system space are
+    /// occupying. This **DOES NOT** include memory used for the index.
+    #[inline]
+    pub fn raft_log_bsize(&self) -> tarantool::Result<u64> {
+        // SAFETY: tarantool api is only safe to be called from tx thread.
+        // Also the pointer to the space struct is not held across yields, so
+        // there's no possibility of use after free.
+        let space_size = unsafe {
+            let space = space_by_id(self.space_raft_log.id());
+            assert!(!space.is_null(), "space _raft_log must not be dropped");
+            space_bsize(space)
+        };
+
+        return Ok(space_size as _);
+
+        extern "C" {
+            /// Try to look up a space by space number in the space cache.
+            /// FFI-friendly no-exception-thrown space lookup function.
+            ///
+            /// Return NULL if space not found, otherwise space object.
+            ///
+            /// # Safety
+            /// The caller must make sure not to hold on to the pointer for too
+            /// long as the space object may deleted at some point after which
+            /// the derefencing the pointer will be **undefined behavior**.
+            fn space_by_id(id: u32) -> *mut box_space;
+
+            /// Returns number of bytes used in memory by tuples in the space.
+            fn space_bsize(space: *mut box_space) -> usize;
+        }
+
+        #[repr(C)]
+        struct box_space {
+            unused: [u8; 0],
+        }
+    }
+
+    /// Returns the number of tuples currently stored in _raft_log system space.
+    #[inline(always)]
+    pub fn raft_log_count(&self) -> tarantool::Result<u64> {
+        let count = self.space_raft_log.len()?;
+        Ok(count as _)
+    }
+
     /// Trims raft log up to the given index (excluding the index
     /// itself).
     ///

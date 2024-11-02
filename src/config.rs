@@ -1477,6 +1477,22 @@ pub struct AlterSystemParameters {
     #[introspection(config_default = 1024)]
     pub max_pg_portals: u64,
 
+    /// Maximum size in bytes `_raft_log` system space is allowed to grow to
+    /// before it gets automatically compacted.
+    ///
+    /// NOTE: The size is computed from the tuple storage only. Some memory will
+    /// also be allocated for the index, and there's no way to control this.
+    /// The option only controls the memory allocated for tuples.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 64 * 1024 * 1024)]
+    pub cluster_wal_max_size: u64,
+
+    /// Maximum number of tuples `_raft_log` system space is allowed to grow to
+    /// before it gets automatically compacted.
+    #[introspection(sbroad_type = SbroadType::Unsigned)]
+    #[introspection(config_default = 64)]
+    pub cluster_wal_max_count: u64,
+
     /// Raft snapshot will be sent out in chunks not bigger than this threshold.
     /// Note: actual snapshot size may exceed this threshold. In most cases
     /// it will just add a couple of dozen metadata bytes. But in extreme

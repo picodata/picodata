@@ -32,6 +32,7 @@ use crate::storage::SnapshotData;
 use crate::storage::{ddl_abort_on_master, ddl_meta_space_update_operable};
 use crate::storage::{local_schema_version, set_local_schema_version};
 use crate::storage::{Clusterwide, ClusterwideTable, PropertyName};
+use crate::system_parameter_name;
 use crate::tlog;
 use crate::traft;
 use crate::traft::error::Error;
@@ -50,6 +51,7 @@ use crate::unwrap_some_or;
 use crate::warn_or_panic;
 
 use ::raft::prelude as raft;
+use ::raft::storage::Storage as _;
 use ::raft::Error as RaftError;
 use ::raft::StateRole as RaftStateRole;
 use ::raft::StorageError;
@@ -2142,6 +2144,10 @@ impl NodeImpl {
 
         let mut expelled = false;
 
+        // Save the index of last entry before applying any changes.
+        // This is used later when doing raft log auto-compaction.
+        let old_last_index = self.raft_storage.last_index()?;
+
         let mut ready: raft::Ready = self.raw_node.ready();
 
         // Apply soft state changes before anything else, so that this info is
@@ -2328,6 +2334,8 @@ impl NodeImpl {
         // Advance the apply index.
         self.raw_node.advance_apply();
 
+        self.do_raft_log_auto_compaction(old_last_index)?;
+
         self.main_loop_status("idle");
 
         if expelled {
@@ -2366,6 +2374,99 @@ impl NodeImpl {
         };
         self.read_state_wakers.insert(lc, tx);
         (lc, rx)
+    }
+
+    fn do_raft_log_auto_compaction(&self, old_last_index: RaftIndex) -> traft::Result<()> {
+        let mut compaction_needed = false;
+
+        let max_size: u64 = self
+            .storage
+            .db_config
+            .get_or_default(system_parameter_name!(cluster_wal_max_size))?;
+        let current_size = self.raft_storage.raft_log_bsize()?;
+        if current_size > max_size {
+            #[rustfmt::skip]
+            tlog!(Info, "raft log size exceeds threshold ({current_size} > {max_size})");
+            compaction_needed = true;
+        }
+
+        let max_count: u64 = self
+            .storage
+            .db_config
+            .get_or_default(system_parameter_name!(cluster_wal_max_count))?;
+        let current_count = self.raft_storage.raft_log_count()?;
+        if current_count > max_count {
+            #[rustfmt::skip]
+            tlog!(Info, "raft log entry count exceeds threshold ({current_count} > {max_count})");
+            compaction_needed = true;
+        }
+
+        if !compaction_needed {
+            return Ok(());
+        }
+
+        let mut last_ddl_finalizer = None;
+        let mut last_plugin_op_finalizer = None;
+
+        let last_index = self.raft_storage.last_index()?;
+        let newly_added_entries =
+            self.raft_storage
+                .entries(old_last_index + 1, last_index + 1, None)?;
+
+        // Check if there's a finalizer (e.g. DdlCommit, Plugin::Abort, etc.)
+        // operation among the newly added entries. The finalizers a relied upon
+        // by some client code which waits for the operation to be completed and
+        // reports errors if they occured. In some (admitedly rare) cases a
+        // finalizer being added to the raft log may trigger log compaction,
+        // which would almost certainly guarantee that the user is not going to
+        // receive the report. Unless of course we attempt to not compact the
+        // finalizers, which is what we're doing right here.
+        // It must also be noted that we make an effort to minimize the
+        // probability of this happening, but nevertheless we give no guarantee
+        // as the compaction may still remove a confirmation awaited for by some
+        // laggy client.
+        for entry in newly_added_entries.into_iter().rev() {
+            let index = entry.index;
+            let Some(op) = entry.into_op() else {
+                continue;
+            };
+
+            if last_ddl_finalizer.is_none() && op.is_ddl_finalizer() {
+                last_ddl_finalizer = Some(index);
+            }
+            if last_plugin_op_finalizer.is_none() && op.is_plugin_op_finalizer() {
+                last_plugin_op_finalizer = Some(index);
+            }
+            if last_ddl_finalizer.is_some() && last_plugin_op_finalizer.is_some() {
+                // Everything else is always ok to compact
+                break;
+            }
+        }
+
+        // Add 1 because this entry is to be removed.
+        let mut compact_until = last_index + 1;
+        if let Some(index) = last_ddl_finalizer {
+            if compact_until > index {
+                tlog!(Debug, "preserving ddl finalizer raft op at index {index}");
+                compact_until = index;
+            }
+        }
+        if let Some(index) = last_plugin_op_finalizer {
+            if compact_until > index {
+                #[rustfmt::skip]
+                tlog!(Debug, "preserving plugin finalizer raft op at index {index}");
+                compact_until = index;
+            }
+        }
+
+        transaction(|| -> traft::Result<()> {
+            self.main_loop_status("log auto compaction");
+            self.raft_storage.compact_log(compact_until)?;
+
+            Ok(())
+        })?;
+
+        Ok(())
     }
 }
 

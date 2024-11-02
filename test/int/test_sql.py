@@ -264,6 +264,8 @@ def test_read_from_system_tables(cluster: Cluster):
     keys = [row[0] for row in data["rows"]]
     assert keys == [
         "auto_offline_timeout",
+        "cluster_wal_max_count",
+        "cluster_wal_max_size",
         "governor_common_rpc_timeout",
         "governor_plugin_rpc_timeout",
         "governor_raft_op_timeout",
