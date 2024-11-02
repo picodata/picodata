@@ -255,7 +255,8 @@ impl RaftSpaceAccess {
     ) -> tarantool::Result<Vec<traft::Entry>> {
         let iter = self.space_raft_log.select(IteratorType::GE, &(low,))?;
         let limit = limit.unwrap_or(usize::MAX);
-        let cap = limit.min((high - low) as _).min(4);
+        // Put a sane threshold on `cap` in case `high` is insanely big
+        let cap = limit.min((high - low) as _).min(1024);
         let mut ret = Vec::with_capacity(cap);
 
         for tuple in iter {
