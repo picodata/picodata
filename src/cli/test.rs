@@ -1,8 +1,7 @@
-use crate::cli::args;
-use crate::ipc;
+use crate::{cli::args, ipc};
 use ::tarantool::test::TestCase;
 use nix::unistd::{self, fork, ForkResult};
-use std::io::Write;
+use std::io::{self, ErrorKind, Write};
 
 macro_rules! color {
     (@priv red) => { "\x1b[0;31m" };
@@ -48,6 +47,13 @@ pub fn main(args: args::Test) -> ! {
         let pid = unsafe { fork() };
         match pid.expect("fork failed") {
             ForkResult::Child => {
+                // On linux, kill child if the test runner has died.
+                // Perhaps it's the easiest way to implement this.
+                #[cfg(target_os = "linux")]
+                unsafe {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                }
+
                 drop(rx);
                 unistd::close(0).ok(); // stdin
                 if !args.nocapture {
@@ -75,16 +81,26 @@ pub fn main(args: args::Test) -> ! {
                     buf
                 };
 
-                let mut rc: i32 = 0;
-                unsafe {
-                    libc::waitpid(
-                        child.into(),                // pid_t
-                        &mut rc as *mut libc::c_int, // int*
-                        0,                           // int options
-                    )
-                };
+                let mut rc: libc::c_int = 0;
+                loop {
+                    let ret = unsafe { libc::waitpid(child.into(), &mut rc, 0) };
 
-                if rc == 0 {
+                    // Only EINTR is allowed, other errors are uncalled for.
+                    if ret == -1 {
+                        match io::Error::last_os_error().kind() {
+                            ErrorKind::Interrupted => continue,
+                            other => panic!("waitpid() returned {other}"),
+                        }
+                    }
+
+                    // Break only if process exited or was terminated by a signal.
+                    if libc::WIFEXITED(rc) || libc::WIFSIGNALED(rc) {
+                        break;
+                    }
+                }
+
+                // If the test passed, its exit code should be zero.
+                if libc::WIFEXITED(rc) && libc::WEXITSTATUS(rc) == 0 {
                     println!("{PASSED}");
                     cnt_passed += 1;
                 } else {
