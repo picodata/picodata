@@ -133,10 +133,10 @@ def test_wrong_pass(i1: Instance):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connection_refused(binary_path: str):
+def test_connection_refused(binary_path_fixt: str):
     eprint("")
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["connect", "127.0.0.1:0", "-u", "testuser"],
         encoding="utf-8",
         timeout=CLI_TIMEOUT,
@@ -311,9 +311,9 @@ def test_connect_auth_type_ldap(cluster: Cluster):
         ldap_server.process.kill()
 
 
-def test_connect_auth_type_unknown(binary_path: str):
+def test_connect_auth_type_unknown(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["connect", ":0", "-u", "testuser", "-a", "deadbeef"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -325,9 +325,9 @@ def test_connect_auth_type_unknown(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_enoent(binary_path: str):
+def test_admin_enoent(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["admin", "wrong/path/t.sock"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -342,9 +342,9 @@ def test_admin_enoent(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_econnrefused(binary_path: str):
+def test_admin_econnrefused(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["admin", "/dev/null"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -359,9 +359,9 @@ def test_admin_econnrefused(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_invalid_path(binary_path: str):
+def test_admin_invalid_path(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["admin", "./[][]"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -374,9 +374,9 @@ def test_admin_invalid_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_admin_empty_path(binary_path: str):
+def test_admin_empty_path(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["admin", ""],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -467,9 +467,9 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_with_empty_password_path(binary_path: str):
+def test_connect_with_empty_password_path(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=["connect", ":3301", "--password-file", "", "-u", "trash"],
         env={"NO_COLOR": "1"},
         encoding="utf-8",
@@ -484,9 +484,9 @@ def test_connect_with_empty_password_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_with_wrong_password_path(binary_path: str):
+def test_connect_with_wrong_password_path(binary_path_fixt: str):
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=[
             "connect",
             ":3301",
@@ -508,13 +508,13 @@ def test_connect_with_wrong_password_path(binary_path: str):
     cli.expect_exact(pexpect.EOF)
 
 
-def test_connect_with_password_from_file(i1: Instance, binary_path: str):
+def test_connect_with_password_from_file(i1: Instance, binary_path_fixt: str):
     password_path = i1.data_dir + "/password"
     with open(password_path, "w") as f:
         f.write("Testpa55")
 
     cli = pexpect.spawn(
-        command=binary_path,
+        command=binary_path_fixt,
         args=[
             "connect",
             f"{i1.host}:{i1.port}",

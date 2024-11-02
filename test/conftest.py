@@ -2130,7 +2130,7 @@ def cargo_build(with_webui: bool = False) -> None:
         return
 
     features = ["error_injection", "sbroad-core/tracing"]
-    if bool(pytestconfig.getoption("--with-webui")):
+    if with_webui:
         features.append("webui")
 
     # fmt: off
@@ -2158,14 +2158,14 @@ def cluster_names(xdist_worker_number) -> Iterator[str]:
 
 @pytest.fixture
 def cluster(
-    binary_path, tmpdir, cluster_names, port_distributor
+    binary_path_fixt, tmpdir, cluster_names, port_distributor
 ) -> Generator[Cluster, None, None]:
     """Return a `Cluster` object capable of deploying test clusters."""
     # FIXME: instead of os.getcwd() construct a path relative to os.path.realpath(__file__)
     # see how it's done in def binary_path()
     plugin_dir = os.getcwd() + "/test/testplug"
     cluster = Cluster(
-        binary_path=binary_path,
+        binary_path=binary_path_fixt,
         id=next(cluster_names),
         data_dir=tmpdir,
         plugin_dir=plugin_dir,
