@@ -1090,9 +1090,14 @@ mod tests_internal {
         assert_eq!(res, 42)
     }
 
-    #[::tarantool::test]
+    #[tarantool::test]
     fn test_blocking_panics() {
         init_cbus_endpoint();
+
+        // Restore the default panic hook in case it's been replaced.
+        // We don't have to set it again afterwards because each test that's
+        // defined using `tarantool::test` is run in a separate process.
+        let _ = panic::take_hook();
 
         let res = panic::catch_unwind(|| blocking(|| panic!("uh oh")).unwrap());
         assert_eq!(

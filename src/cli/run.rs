@@ -44,16 +44,6 @@ pub fn main(mut args: args::Run) -> ! {
         // as the OS will cleanup all the resources anyway, but this is a different story altogether)
         let config = PicodataConfig::init(args)?;
 
-        // Set panic hook as soon as possible (not possible to do
-        // earlier, because of logging, see comment above)
-        std::panic::set_hook(Box::new(|info| {
-            tlog!(Critical, "{info}");
-            let backtrace = std::backtrace::Backtrace::capture();
-            tlog!(Critical, "backtrace:\n{}", backtrace);
-            tlog!(Critical, "aborting due to panic");
-            std::process::abort();
-        }));
-
         if let Some(filename) = &config.instance.service_password_file {
             crate::pico_service::read_pico_service_password_from_file(filename)?;
         }
