@@ -43,7 +43,7 @@ pub fn get_replicaset_uuid_by_bucket_id(tier: &str, bucket_id: u64) -> Result<St
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 pub struct VshardConfig {
-    sharding: HashMap<ReplicasetName, ReplicasetSpec>,
+    sharding: HashMap<String, ReplicasetSpec>,
     discovery_mode: DiscoveryMode,
 
     /// This field is not stored in the global storage, instead
@@ -58,7 +58,7 @@ pub struct VshardConfig {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[derive(Default, Clone, Debug, PartialEq, tlua::PushInto, tlua::Push, tlua::LuaRead)]
 struct ReplicasetSpec {
-    replicas: HashMap<InstanceName, ReplicaSpec>,
+    replicas: HashMap<String, ReplicaSpec>,
     weight: Option<Weight>,
 }
 
@@ -108,7 +108,7 @@ impl VshardConfig {
         replicasets: &HashMap<&ReplicasetName, &Replicaset>,
         tier_name: &str,
     ) -> Self {
-        let mut sharding: HashMap<ReplicasetName, ReplicasetSpec> = HashMap::new();
+        let mut sharding: HashMap<String, ReplicasetSpec> = HashMap::new();
         for peer in instances {
             if !peer.may_respond() || peer.tier != tier_name {
                 continue;
@@ -127,14 +127,14 @@ impl VshardConfig {
             };
 
             let replicaset = sharding
-                .entry(ReplicasetName(peer.replicaset_uuid.clone()))
+                .entry(peer.replicaset_uuid.clone())
                 .or_insert_with(|| ReplicasetSpec {
                     weight: Some(r.weight),
                     ..Default::default()
                 });
 
             replicaset.replicas.insert(
-                InstanceName(peer.uuid.clone()),
+                peer.uuid.clone(),
                 ReplicaSpec {
                     uri: format!("{PICO_SERVICE_USER_NAME}@{address}"),
                     master: r.current_master_name == peer.name,
