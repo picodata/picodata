@@ -2155,6 +2155,7 @@ def test_plugin_rpc_sdk_register_endpoint(cluster: Cluster):
 
 
 def test_plugin_rpc_sdk_send_request(cluster: Cluster):
+    cluster.set_service_password("secrte")
     cluster.set_config_file(
         yaml="""
 cluster:
@@ -2398,7 +2399,7 @@ cluster:
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
     assert e.value.args[:2] == (
         ErrorCode.NoSuchInstance,
-        'instance with instance_name "NO_SUCH_INSTANCE" not found',
+        'instance with name "NO_SUCH_INSTANCE" not found',
     )
 
     # Check requesting RPC to unknown replicaset
@@ -2440,6 +2441,64 @@ cluster:
             input=msgpack.dumps([]),
         )
         i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+
+    # Check RPC after expel
+    counter = i1.governor_step_counter()
+    # Start expel and wait until governor performs all necessary steps
+    cluster.expel(i3, peer=i1)
+    i1.wait_governor_status("idle", old_step_counter=counter)
+
+    # Check RPC directly to expelled instance
+    context = make_context()
+    input = dict(
+        path="/ping",
+        instance_name=i3.name,
+        input="directly to expelled",
+    )
+    with pytest.raises(TarantoolError) as e:
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert e.value.args[:2] == (
+        ErrorCode.InstanceExpelled,
+        "instance named 'i3' was expelled",
+    )
+
+    # Check RPC which could potentially go to expelled instance (same replicaset)
+    context = make_context()
+    input = dict(
+        path="/ping",
+        replicaset_name="r2",
+        to_master=False,
+        input="replicaset-of-expelled",
+    )
+    # Call from i4 to i4 (also check RPC to self when self is the sole candidate)
+    output = i4.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    pong, instance_name, echo = msgpack.loads(output)
+    assert pong == "pong"
+    # No other candidates
+    assert instance_name == i4.name
+    assert echo == b"replicaset-of-expelled"
+
+    counter = i1.governor_step_counter()
+    # Expell the whole replicaset
+    cluster.expel(i4, peer=i1)
+    i1.wait_governor_status("idle", old_step_counter=counter, timeout=60)
+
+    [[r2_uuid]] = i1.sql(""" SELECT "uuid" FROM _pico_replicaset WHERE name = 'r2' """)
+
+    # Check RPC to expelled replicaset
+    context = make_context()
+    input = dict(
+        path="/ping",
+        replicaset_name="r2",
+        to_master=False,
+        input="expelled-replicaset",
+    )
+    with pytest.raises(TarantoolError) as e:
+        i1.call(".proc_rpc_dispatch", "/proxy", msgpack.dumps(input), context)
+    assert e.value.args[:2] == (
+        ErrorCode.ReplicasetExpelled,
+        f"replicaset with id {r2_uuid} was expelled",
+    )
 
     # TODO: check calling to poisoned service
 
