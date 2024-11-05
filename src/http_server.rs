@@ -13,7 +13,7 @@ use crate::storage::ToEntryIter as _;
 use crate::tier::Tier;
 use crate::traft::network::ConnectionPool;
 use crate::util::Uppercase;
-use crate::{tlog, unwrap_ok_or};
+use crate::{has_states, tlog, unwrap_ok_or};
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
@@ -190,6 +190,10 @@ async fn get_instances_data(
 ) -> HashMap<u64, InstanceDataResponse> {
     let mut fs = vec![];
     for instance in instances {
+        if has_states!(instance, Expelled -> *) {
+            continue;
+        }
+
         let res = pool.call_raw(&instance.name, ".proc_runtime_info", &(), DEFAULT_TIMEOUT);
         let future = unwrap_ok_or!(res,
             Err(e) => {
