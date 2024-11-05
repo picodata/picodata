@@ -74,6 +74,7 @@ pub struct Console<H: Helper> {
 impl<T: Helper> Console<T> {
     const HISTORY_FILE_NAME: &'static str = ".picodata_history";
     const PROMPT: &'static str = "picodata> ";
+    const INNER_PROMPT: &'static str = "        > ";
     const SPECIAL_COMMAND_PREFIX: &'static str = "\\";
 
     fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
@@ -206,21 +207,28 @@ impl<T: Helper> Console<T> {
                 }
             }
 
-            let readline = self.editor.readline(Self::PROMPT);
+            let prompt = if self.uncompleted_statement.is_empty() {
+                Self::PROMPT
+            } else {
+                self.uncompleted_statement.push(' ');
+                Self::INNER_PROMPT
+            };
+            let readline = self.editor.readline(prompt);
 
             match readline {
                 Ok(line) => {
+                    if line.is_empty() {
+                        return Ok(Some(Command::Expression(line)));
+                    }
+
                     if line.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
                         let processed = self.handle_special_command(&line)?;
 
                         match processed {
                             ControlFlow::Continue(_) => continue,
-                            ControlFlow::Break(command) => {
-                                return self.update_history(command)
-                            }
+                            ControlFlow::Break(command) => return self.update_history(command),
                         }
-                    }
-                    else {
+                    } else {
                         self.uncompleted_statement += &line;
 
                         if let Some(ref delimiter) = self.delimiter {

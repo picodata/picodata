@@ -448,11 +448,11 @@ def test_connect_unix_ok_via_default_sock(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     # Change language to SQL works
-    cli.sendline("\\sql;")
+    cli.sendline("\\sql")
     cli.sendline("CREATE ROLE CHANGE_TO_SQL_WORKS;")
     cli.expect_exact("1")
 
-    cli.sendline("\\lua;")
+    cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
 
     cli.sendline("box.session.user();")
@@ -551,7 +551,7 @@ def test_connect_connection_info_and_help(i1: Instance):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "testuser" user'
     )
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     eprint("^D")
@@ -584,7 +584,7 @@ def test_admin_connection_info_and_help(cluster: Cluster):
     cli.logfile = sys.stdout
 
     cli.expect_exact(f'Connected to admin console by socket path "{socket_path}"')
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     eprint("^D")

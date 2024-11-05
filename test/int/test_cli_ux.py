@@ -30,22 +30,22 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     # sql console doesn't know about language switching
-    cli.sendline("\\lua;")
+    cli.sendline("\\lua")
     cli.expect_exact("Unknown special sequence")
 
-    cli.sendline("\\sql;")
+    cli.sendline("\\sql")
     cli.expect_exact("Unknown special sequence")
 
     # for not registried command nothing can happen
-    cli.sendline("\\lya;")
+    cli.sendline("\\lya")
     cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\scl;")
+    cli.sendline("\\scl")
     cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\set language lua;")
+    cli.sendline("\\set language lua")
     cli.expect_exact("Unknown special sequence")
 
     # nothing happens for completion
@@ -107,33 +107,33 @@ def test_admin_ux(cluster: Cluster):
     cli.logfile = sys.stdout
 
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     # in admin console language switching is availiable
-    cli.sendline("\\lua;")
+    cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
 
-    cli.sendline("\\sql;")
+    cli.sendline("\\sql")
     cli.expect_exact("Language switched to SQL")
 
     # for not registried command nothing happend
-    cli.sendline("\\lya;")
+    cli.sendline("\\lya")
     cli.expect_exact("Unknown special sequence")
-    cli.sendline("\\scl;")
+    cli.sendline("\\scl")
     cli.expect_exact("Unknown special sequence")
 
     # variations of `\s l sql/lua` is registred, but not in help
     cli.expect_exact("picodata> ")
-    cli.sendline("\\set language lua;")
+    cli.sendline("\\set language lua")
     cli.expect_exact("Language switched to Lua")
 
     cli.expect_exact("picodata> ")
-    cli.sendline("\\s lang sql;")
+    cli.sendline("\\s lang sql")
     cli.expect_exact("Language switched to SQL")
 
     # nothing happens on completion in SQL mode
-    cli.sendline("\\sql;")
+    cli.sendline("\\sql")
     cli.expect_exact("Language switched to SQL")
     cli.sendline("\t\t")
     cli.expect_exact("picodata> ")
@@ -143,7 +143,7 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     # something happens on completion in Lua mode
-    cli.sendline("\\lua;")
+    cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
     cli.sendline("hel\t")
     cli.expect_exact("picodata> help")
@@ -164,7 +164,7 @@ def test_lua_completion(cluster: Cluster):
     cli.logfile = sys.stdout
 
     cli.expect_exact("picodata> ")
-    cli.sendline("\\lua;")
+    cli.sendline("\\lua")
 
     # With several possible variants they are shown as list
     cli.send("to")
@@ -335,7 +335,7 @@ def test_connect_pretty_message_on_server_crash(cluster: Cluster):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "guest" user'
     )
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     i1.terminate()
@@ -380,7 +380,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "andy" user'
     )
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     # several commands in one line
@@ -410,7 +410,7 @@ def test_input_with_delimiter(cluster: Cluster):
     cli.sendline("invalid query")
     cli.expect_exact("picodata> ")
     cli.sendline("waiting until delimiter")
-    cli.expect_exact("picodata> ")
+    cli.expect_exact("        > ")
     cli.sendline(";")
     cli.expect_exact("rule parsing error:  --> 1:1")
 
@@ -431,12 +431,9 @@ def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
         DISTRIBUTED BY (id);
-
 INSERT INTO ids
         VALUES(1);
-
 SELECT * FROM ids;
-
 """,
     )
 
@@ -444,7 +441,7 @@ SELECT * FROM ids;
         data
         == f"""\
 Connected to admin console by socket path "{instance.data_dir}/admin.sock"
-type '\\help;' for interactive help
+type '\\help' for interactive help
 1
 1
 +----+
@@ -473,7 +470,7 @@ GRANT CREATE TABLE TO "alice";
         data
         == f"""\
 Connected to admin console by socket path "{i1.data_dir}/admin.sock"
-type '\\help;' for interactive help
+type '\\help' for interactive help
 1
 1
 Bye
@@ -493,7 +490,7 @@ Bye
     cli.expect_exact(
         f'Connected to interactive console by address "{i1.host}:{i1.port}" under "alice" user'
     )
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
     cli.sendline(
@@ -507,7 +504,6 @@ Bye
         "DELETE FROM ids where id = 111;"
         "DELETE FROM ids where id = 1111;"
         "SELECT * FROM ids;"
-        "DROP TABLE ids OPTION (TIMEOUT = 3.0);"
     )
 
     cli.expect_exact("1")
@@ -524,6 +520,19 @@ Bye
     cli.expect_exact("+====+")
     cli.expect_exact("+----+")
     cli.expect_exact("(0 rows)")
+
+    cli.sendline("DROP")
+    cli.expect_exact("        > ")
+
+    cli.sendline("TABLE")
+    cli.expect_exact("        > ")
+
+    cli.sendline("ids")
+    cli.expect_exact("        > ")
+
+    cli.sendline("OPTION (TIMEOUT = 3.0)")
+    cli.expect_exact("        > ")
+    cli.sendline(";")
     cli.expect_exact("1")
 
 
@@ -572,7 +581,7 @@ def test_do_not_ban_admin_via_unix_socket(cluster: Cluster):
 
     cli.logfile = sys.stdout
     cli.expect_exact('Connected to admin console by socket path "./admin.sock"')
-    cli.expect_exact("type '\\help;' for interactive help")
+    cli.expect_exact("type '\\help' for interactive help")
     cli.expect_exact("picodata> ")
 
 
