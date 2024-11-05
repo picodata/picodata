@@ -388,16 +388,24 @@ fn resolve_rpc_target(
             }
         };
 
+        let mut skipped_self = false;
+
         // XXX: this shouldn't be a problem if replicasets aren't too big,
         // but if they are we might want to construct a HashSet from candidates
         for instance_name in replicas {
-            if my_instance_name == instance_name && candidates.len() > 1 {
+            if my_instance_name == instance_name {
                 // Prefer someone else instead of self
+                skipped_self = true;
                 continue;
             }
             if all_instances_with_service.contains(&instance_name) {
                 return Ok(instance_name);
             }
+        }
+
+        // In case there's no other suitable candidates, fallback to calling self
+        if skipped_self && all_instances_with_service.contains(&my_instance_name) {
+            return Ok(my_instance_name);
         }
 
         #[rustfmt::skip]
