@@ -179,6 +179,7 @@ impl Error {
             // uncomment the following line:
             // Self::Sbroad(e) => e.error_code(),
             Self::LeaderUnknown => ErrorCode::LeaderUnknown as _,
+            Self::Expelled => ErrorCode::InstanceExpelled as _,
             Self::NotALeader => ErrorCode::NotALeader as _,
             Self::TermMismatch { .. } => ErrorCode::TermMismatch as _,
             Self::NoSuchInstance(_) => ErrorCode::NoSuchInstance as _,

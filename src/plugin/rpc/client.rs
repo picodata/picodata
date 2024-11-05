@@ -1,4 +1,5 @@
 use crate::error_code::ErrorCode;
+use crate::has_states;
 use crate::instance::InstanceName;
 use crate::plugin::{rpc, PluginIdentifier};
 use crate::replicaset::Replicaset;
@@ -295,18 +296,20 @@ fn resolve_rpc_target(
         .instance_name()?
         .expect("should be persisted at this point");
 
-    let mut candidates = node
+    let mut all_instances_with_service = node
         .storage
         .service_route_table
         .get_available_instances(ident, service)?;
     #[rustfmt::skip]
-    if candidates.is_empty() {
+    if all_instances_with_service.is_empty() {
         if node.storage.services.get(ident, service)?.is_none() {
             return Err(BoxError::new(ErrorCode::NoSuchService, "service '{plugin}.{service}' not found").into());
         } else {
             return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not started on any instance")).into());
         }
     };
+
+    remove_expelled_instances(node, &mut all_instances_with_service)?;
 
     let mut tier_and_replicaset_uuid = None;
 
@@ -392,7 +395,7 @@ fn resolve_rpc_target(
                 // Prefer someone else instead of self
                 continue;
             }
-            if candidates.contains(&instance_name) {
+            if all_instances_with_service.contains(&instance_name) {
                 return Ok(instance_name);
             }
         }
@@ -401,6 +404,7 @@ fn resolve_rpc_target(
         return Err(BoxError::new(ErrorCode::ServiceNotAvailable, format!("no {replicaset_uuid} replicas are available for service {ident}.{service}")).into());
     } else {
         // Need to pick any instance with the given plugin.service
+        let mut candidates = all_instances_with_service;
 
         // TODO: find a better strategy then just the random one
         let random_index = rand::random::<usize>() % candidates.len();
@@ -414,12 +418,36 @@ fn resolve_rpc_target(
     }
 }
 
+fn remove_expelled_instances(
+    node: &Node,
+    instance_names: &mut Vec<InstanceName>,
+) -> Result<(), Error> {
+    let mut index = 0;
+    while index < instance_names.len() {
+        let name = &instance_names[index];
+        let instance = node.storage.instances.get(name)?;
+        if has_states!(instance, Expelled -> *) {
+            instance_names.swap_remove(index);
+        } else {
+            index += 1;
+        }
+    }
+
+    Ok(())
+}
+
 fn check_route_to_instance(
     node: &Node,
     ident: &PluginIdentifier,
     service: &str,
     instance_name: &InstanceName,
 ) -> Result<(), Error> {
+    let instance = node.storage.instances.get(instance_name)?;
+    if has_states!(instance, Expelled -> *) {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::InstanceExpelled, format!("instance named '{instance_name}' was expelled")).into());
+    }
+
     let res = node.storage.service_route_table.get_raw(&ServiceRouteKey {
         instance_name,
         plugin_name: &ident.name,
@@ -428,11 +456,7 @@ fn check_route_to_instance(
     })?;
     #[rustfmt::skip]
     let Some(tuple) = res else {
-        if node.storage.instances.get_raw(instance_name).is_ok() {
-            return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_name}")).into());
-        } else {
-            return Err(BoxError::new(ErrorCode::NoSuchInstance, format!("instance with instance_name \"{instance_name}\" not found")).into());
-        }
+        return Err(BoxError::new(ErrorCode::ServiceNotStarted, format!("service '{ident}.{service}' is not running on {instance_name}")).into());
     };
     let res = tuple
         .field(ServiceRouteItem::FIELD_POISON)
