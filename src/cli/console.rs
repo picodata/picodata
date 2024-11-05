@@ -210,18 +210,30 @@ impl<T: Helper> Console<T> {
 
             match readline {
                 Ok(line) => {
-                    self.uncompleted_statement += &line;
+                    if line.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
+                        let processed = self.handle_special_command(&line)?;
 
-                    if let Some(ref delimiter) = self.delimiter {
-                        while let Some((separated_part, tail)) =
-                            self.uncompleted_statement.split_once(delimiter)
-                        {
-                            self.separated_statements.push_back(separated_part.into());
-                            self.uncompleted_statement = tail.into();
+                        match processed {
+                            ControlFlow::Continue(_) => continue,
+                            ControlFlow::Break(command) => {
+                                return self.update_history(command)
+                            }
                         }
-                    } else {
-                        self.separated_statements
-                            .push_back(std::mem::take(&mut self.uncompleted_statement));
+                    }
+                    else {
+                        self.uncompleted_statement += &line;
+
+                        if let Some(ref delimiter) = self.delimiter {
+                            while let Some((separated_part, tail)) =
+                                self.uncompleted_statement.split_once(delimiter)
+                            {
+                                self.separated_statements.push_back(separated_part.into());
+                                self.uncompleted_statement = tail.into();
+                            }
+                        } else {
+                            self.separated_statements
+                                .push_back(std::mem::take(&mut self.uncompleted_statement));
+                        }
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
@@ -266,7 +278,7 @@ impl<T: Helper> Console<T> {
     /// Prints information about connection and help hint
     pub fn greet(&self, connection_info: &str) {
         self.write(connection_info);
-        self.write("type '\\help;' for interactive help");
+        self.write("type '\\help' for interactive help");
     }
 }
 
