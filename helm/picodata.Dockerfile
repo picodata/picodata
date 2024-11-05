@@ -24,6 +24,7 @@ FROM rockylinux:8
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
 COPY helm/entrypoint.sh /entrypoint.sh
+COPY helm/run.sh /run.sh
 
 RUN chmod 755 /usr/bin/picodata \
     && mkdir -p /var/lib/picodata && mkdir -p /var/run/picodata \
@@ -37,3 +38,4 @@ USER 1000:1000
 WORKDIR /var/lib/picodata
 
 ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/run.sh"]
