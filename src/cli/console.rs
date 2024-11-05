@@ -49,6 +49,18 @@ pub enum Command {
     Expression(String),
 }
 
+enum ConsoleLanguage {
+    Lua,
+    Sql,
+}
+
+enum ConsoleCommand {
+    SetLanguage(ConsoleLanguage),
+    // None represent default delimiter (pressing enter in console and eof in case of pipe)
+    SetDelimiter(Option<String>),
+    Invalid,
+}
+
 /// Input/output handler
 pub struct Console<H: Helper> {
     editor: Editor<H, FileHistory>,
@@ -65,115 +77,101 @@ impl<T: Helper> Console<T> {
     const SPECIAL_COMMAND_PREFIX: &'static str = "\\";
 
     fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
-        if command == "\\e" {
-            let editor = match env::var_os("EDITOR") {
-                Some(e) => e,
-                None => {
-                    self.write("EDITOR environment variable is not set");
-                    return Ok(ControlFlow::Continue(()));
-                }
-            };
+        match command {
+            "\\e" => self.open_external_editor(),
+            "\\help" | "\\h" => Ok(ControlFlow::Break(Command::Control(
+                SpecialCommand::PrintHelp,
+            ))),
+            "\\lua" => Ok(ControlFlow::Break(Command::Control(
+                SpecialCommand::SwitchLanguageToLua,
+            ))),
+            "\\sql" => Ok(ControlFlow::Break(Command::Control(
+                SpecialCommand::SwitchLanguageToSql,
+            ))),
+            _ => self.handle_parsed_command(command),
+        }
+    }
 
-            let temp = tempfile::Builder::new().suffix(".sql").tempfile()?;
-            let status = process::Command::new(&editor).arg(temp.path()).status()?;
-
-            if !status.success() {
-                self.write(&format!(
-                    "{:?} returned non zero exit status: {}",
-                    editor, status
-                ));
+    fn open_external_editor(&mut self) -> Result<ControlFlow<Command>> {
+        let editor = match env::var_os("EDITOR") {
+            Some(e) => e,
+            None => {
+                self.write("EDITOR environment variable is not set");
                 return Ok(ControlFlow::Continue(()));
             }
+        };
 
-            // we don't check content intentionally
-            let line = read_to_string(temp.path()).map_err(ReplError::Io)?;
+        let temp = tempfile::Builder::new().suffix(".sql").tempfile()?;
+        let status = process::Command::new(&editor).arg(temp.path()).status()?;
 
-            return Ok(ControlFlow::Break(Command::Expression(line)));
-        } else if ["\\help", "\\h"].contains(&command) {
-            return Ok(ControlFlow::Break(Command::Control(
-                SpecialCommand::PrintHelp,
-            )));
-        } else if command == "\\lua" {
-            return Ok(ControlFlow::Break(Command::Control(
-                SpecialCommand::SwitchLanguageToLua,
-            )));
-        } else if command == "\\sql" {
-            return Ok(ControlFlow::Break(Command::Control(
-                SpecialCommand::SwitchLanguageToSql,
-            )));
+        if !status.success() {
+            self.write(&format!(
+                "{:?} returned non-zero exit status: {}",
+                editor, status
+            ));
+            return Ok(ControlFlow::Continue(()));
         }
 
-        enum ConsoleLanguage {
-            Lua,
-            Sql,
-        }
+        let line = read_to_string(temp.path()).map_err(ReplError::Io)?;
+        Ok(ControlFlow::Break(Command::Expression(line)))
+    }
 
-        enum ConsoleCommand {
-            SetLanguage(ConsoleLanguage),
-            // None represent default delimiter (pressing enter in console and eof in case of pipe)
-            SetDelimiter(Option<String>),
-            Invalid,
-        }
-
-        fn parse_special_command(command: &str) -> ConsoleCommand {
-            let splitted = command.split_whitespace().collect::<Vec<_>>();
-
-            if splitted.len() < 3 {
-                return ConsoleCommand::Invalid;
-            }
-
-            if splitted[0] != "\\s" && splitted[0] != "\\set" {
-                return ConsoleCommand::Invalid;
-            }
-
-            if splitted[1] == "language" || splitted[1] == "l" || splitted[1] == "lang" {
-                if splitted[2] == "lua" {
-                    return ConsoleCommand::SetLanguage(ConsoleLanguage::Lua);
-                }
-
-                if splitted[2] == "sql" {
-                    return ConsoleCommand::SetLanguage(ConsoleLanguage::Sql);
-                }
-            }
-
-            if splitted[1] == "delimiter" || splitted[1] == "d" || splitted[1] == "delim" {
-                let delimiter = splitted[2];
-                if delimiter == "default" {
-                    return ConsoleCommand::SetDelimiter(Some(DELIMITER.to_string()));
-                }
-
-                return ConsoleCommand::SetDelimiter(Some(delimiter.into()));
-            }
-
-            ConsoleCommand::Invalid
-        }
-
-        match parse_special_command(command) {
-            ConsoleCommand::SetLanguage(language) => match language {
-                ConsoleLanguage::Lua => Ok(ControlFlow::Break(Command::Control(
-                    SpecialCommand::SwitchLanguageToLua,
-                ))),
-                ConsoleLanguage::Sql => Ok(ControlFlow::Break(Command::Control(
-                    SpecialCommand::SwitchLanguageToSql,
-                ))),
-            },
+    fn handle_parsed_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
+        match self.parse_special_command(command) {
+            ConsoleCommand::SetLanguage(ConsoleLanguage::Lua) => Ok(ControlFlow::Break(
+                Command::Control(SpecialCommand::SwitchLanguageToLua),
+            )),
+            ConsoleCommand::SetLanguage(ConsoleLanguage::Sql) => Ok(ControlFlow::Break(
+                Command::Control(SpecialCommand::SwitchLanguageToSql),
+            )),
             ConsoleCommand::SetDelimiter(delimiter) => {
-                match delimiter {
-                    Some(custom) => {
-                        self.write(&format!("Delimiter changed to '{custom}'"));
-                        self.delimiter = Some(custom);
-                    }
-                    None => {
-                        self.write("Delimiter changed to default");
-                        self.delimiter = Some(DELIMITER.to_string());
-                    }
-                }
+                self.update_delimiter(delimiter);
                 Ok(ControlFlow::Continue(()))
             }
             ConsoleCommand::Invalid => {
                 self.write("Unknown special sequence");
                 Ok(ControlFlow::Continue(()))
             }
+        }
+    }
+
+    fn update_delimiter(&mut self, delimiter: Option<String>) {
+        match delimiter {
+            Some(custom) => {
+                self.write(&format!("Delimiter changed to '{custom}'"));
+                self.delimiter = Some(custom);
+            }
+            None => {
+                self.write("Delimiter changed to default");
+                self.delimiter = Some(DELIMITER.to_string());
+            }
+        }
+    }
+
+    fn parse_special_command(&self, command: &str) -> ConsoleCommand {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+
+        if parts.len() < 3 || !["\\s", "\\set"].contains(&parts[0]) {
+            return ConsoleCommand::Invalid;
+        }
+
+        match parts[1] {
+            "language" | "l" | "lang" => match parts.get(2) {
+                Some(&"lua") => ConsoleCommand::SetLanguage(ConsoleLanguage::Lua),
+                Some(&"sql") => ConsoleCommand::SetLanguage(ConsoleLanguage::Sql),
+                _ => ConsoleCommand::Invalid,
+            },
+            "delimiter" | "d" | "delim" => {
+                let delimiter = parts.get(2).map(|&d| {
+                    if d == "default" {
+                        DELIMITER.to_string()
+                    } else {
+                        d.to_string()
+                    }
+                });
+                ConsoleCommand::SetDelimiter(delimiter)
+            }
+            _ => ConsoleCommand::Invalid,
         }
     }
 
