@@ -83,7 +83,7 @@ fn proc_version_info() -> VersionInfo
 ### .proc_sql_dispatch {: #proc_sql_dispatch }
 
 ```rust
-fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
+fn proc_sql_dispatch(pattern, params) -> Result
 ```
 
 Выполняет распределенный SQL-запрос.
@@ -93,10 +93,6 @@ fn proc_sql_dispatch(pattern, params, id, traceable) -> Result
 - `pattern`: (MP_STR) запрос SQL
 - `params`: (MP_ARRAY) параметры для использования в `pattern` в случае
   [параметризованного запроса][parametrization]
-- `id`: (optional MP_STR) id SQL запроса,
-  используется для идентификации запроса в таблицах статистики
-- `traceable`: (optional MP_BOOL) включение отслеживания статистики запроса.
-  запрос попадет в таблицы статистики с вероятностью 1% при `false` и 100% при `true`
 
 Возвращаемое значение:
 
@@ -733,6 +729,7 @@ fn proc_sql_execute(..) -> Result
       `MP_ARRAY [ MP_ARRAY row, ...]`
 
 - (MP_MAP `DmlResult`) при модификации данных
+
   <br>Поля:
 
     - `row_count` (MP_INT), количество измененных строк
