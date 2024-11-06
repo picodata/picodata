@@ -8,6 +8,7 @@ use crate::vshard::VshardConfig;
 use std::collections::HashMap;
 use std::time::Duration;
 use tarantool::fiber;
+use tarantool::index::IteratorType;
 use tarantool::space::Space;
 use tarantool::tlua;
 
@@ -202,9 +203,29 @@ crate::define_rpc_request! {
             return Err(Error::other("vshard is not yet initialized"));
         };
 
+        let index_status = space_bucket.index("status").expect("space _bucket should have a 'status' index");
+
         loop {
-            let bucket_count = space_bucket.len()?;
-            if bucket_count == req.expected_bucket_count as usize {
+            let total_count = space_bucket.len()?;
+            // After sending a bucket to another instance vshard first marks the
+            // buckets as 'sent', and afterwards attempts to asynchronously
+            // clean up (remove) such buckets. It will fail to remove them in
+            // some cases, for example when a replica stopped responding.
+            // (probably because it can't make sure that the bucket is removed from that replica).
+            // To be honest it kinda looks like a bug in vshard, because when changing the
+            // replicaset weight we also remove the non-responsive instances from the vhsard config
+            // but vshard still thinks that it should sync up with that replica.
+            //
+            // Anyway, in our case we only call this procedure when expelling a
+            // replicaset, which means all replica instances are expelled as well.
+            // This means we can safely ignore buckets marked as 'sent' when
+            // counting up the total amount of buckets currently stored on this
+            // instance.
+            let garbage_count = index_status.count(IteratorType::Eq, &("sent",))?;
+            let effective_count = total_count - garbage_count;
+
+            let expected_count = req.expected_bucket_count;
+            if effective_count == expected_count as usize {
                 #[rustfmt::skip]
                 tlog!(Debug, "done waiting for bucket count 0");
                 break;
@@ -214,7 +235,7 @@ crate::define_rpc_request! {
                 fiber::sleep(crate::traft::node::MainLoop::TICK);
             } else {
                 #[rustfmt::skip]
-                tlog!(Debug, "failed waiting for bucket count 0, current is {bucket_count}");
+                tlog!(Debug, "failed waiting for bucket count {expected_count}, current is {effective_count}");
                 return Err(Error::Timeout);
             }
         }
