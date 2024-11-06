@@ -76,6 +76,8 @@ class ErrorCode:
     NoSuchReplicaset = 10017
     LeaderUnknown = 10018
     PluginError = 10019
+    InstanceExpelled = 10020
+    ReplicasetExpelled = 10021
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas

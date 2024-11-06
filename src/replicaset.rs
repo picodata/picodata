@@ -67,7 +67,7 @@ pub struct Replicaset {
 impl Encode for Replicaset {}
 
 impl Replicaset {
-    /// Index of field "replicaset_uuid" in the table _pico_replicaset format.
+    /// Index of field "uuid" in the table _pico_replicaset format.
     ///
     /// Index of first field is 0.
     pub const FIELD_REPLICASET_UUID: u32 = 1;
@@ -77,6 +77,9 @@ impl Replicaset {
 
     /// Index of field "tier" in the table _pico_replicaset format.
     pub const FIELD_TIER: u32 = 4;
+
+    /// Index of field "state" in the table _pico_replicaset format.
+    pub const FIELD_STATE: u32 = 7;
 
     #[inline]
     pub fn with_one_instance(master: &Instance) -> Replicaset {
@@ -215,5 +218,6 @@ mod tests {
             "target_master_name"
         );
         assert_eq!(format[Replicaset::FIELD_TIER as usize].name, "tier");
+        assert_eq!(format[Replicaset::FIELD_STATE as usize].name, "state");
     }
 }

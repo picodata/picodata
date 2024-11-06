@@ -3,6 +3,7 @@ use crate::has_states;
 use crate::instance::InstanceName;
 use crate::plugin::{rpc, PluginIdentifier};
 use crate::replicaset::Replicaset;
+use crate::replicaset::ReplicasetState;
 use crate::schema::ServiceRouteItem;
 use crate::schema::ServiceRouteKey;
 use crate::tlog;
@@ -19,6 +20,7 @@ use tarantool::error::Error as TntError;
 use tarantool::error::IntoBoxError;
 use tarantool::error::TarantoolErrorCode;
 use tarantool::fiber;
+use tarantool::tuple::Tuple;
 use tarantool::tuple::TupleBuffer;
 use tarantool::tuple::{RawByteBuf, RawBytes};
 use tarantool::uuid::Uuid;
@@ -227,6 +229,7 @@ fn resolve_rpc_target(
     use FfiSafeRpcTargetSpecifier as Target;
 
     let mut instance_name = None;
+    let mut replicaset_tuple = None;
     match target {
         Target::InstanceName(iid) => {
             // SAFETY: it's required that argument pointers are valid for the lifetime of this function's call
@@ -248,6 +251,7 @@ fn resolve_rpc_target(
                 return Err(BoxError::new(ErrorCode::StorageCorrupted, "couldn't find 'target_master_name' field in _pico_replicaset tuple").into());
             };
             instance_name = Some(master_name);
+            replicaset_tuple = Some(tuple);
         }
 
         &Target::BucketId {
@@ -344,6 +348,7 @@ fn resolve_rpc_target(
             };
 
             tier_and_replicaset_uuid = Some((found_tier, found_replicaset_uuid));
+            replicaset_tuple = Some(tuple);
         }
 
         &Target::BucketId {
@@ -407,6 +412,8 @@ fn resolve_rpc_target(
         if skipped_self && all_instances_with_service.contains(&my_instance_name) {
             return Ok(my_instance_name);
         }
+
+        check_replicaset_is_not_expelled(node, &replicaset_uuid, replicaset_tuple)?;
 
         #[rustfmt::skip]
         return Err(BoxError::new(ErrorCode::ServiceNotAvailable, format!("no {replicaset_uuid} replicas are available for service {ident}.{service}")).into());
@@ -477,5 +484,28 @@ fn check_route_to_instance(
         #[rustfmt::skip]
         return Err(BoxError::new(ErrorCode::ServicePoisoned, format!("service '{ident}.{service}' is poisoned on {instance_name}")).into());
     }
+    Ok(())
+}
+
+fn check_replicaset_is_not_expelled(
+    node: &Node,
+    uuid: &str,
+    maybe_tuple: Option<Tuple>,
+) -> Result<(), Error> {
+    let tuple;
+    if let Some(t) = maybe_tuple {
+        tuple = t;
+    } else {
+        tuple = node.storage.replicasets.by_uuid_raw(uuid)?;
+    }
+
+    let state = tuple.field(Replicaset::FIELD_STATE)?;
+    let state: ReplicasetState = state.expect("replicaset should always have a state column");
+
+    if state == ReplicasetState::Expelled {
+        #[rustfmt::skip]
+        return Err(BoxError::new(ErrorCode::ReplicasetExpelled, format!("replicaset with id {uuid} was expelled")).into());
+    }
+
     Ok(())
 }

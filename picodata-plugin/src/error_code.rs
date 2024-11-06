@@ -70,6 +70,9 @@ tarantool::define_enum_with_introspection! {
         // Instance in question was expelled from the cluster.
         InstanceExpelled = 10020,
 
+        // Replicaset in question was expelled from the cluster.
+        ReplicasetExpelled = 10021,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range
