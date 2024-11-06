@@ -47,7 +47,7 @@ test:
 
 .PHONY: generate
 generate:
-	pipenv run python test/generate_snapshot.py
+	poetry run python test/generate_snapshot.py
 
 .PHONY: lint
 lint:

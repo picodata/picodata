@@ -28,6 +28,7 @@ requests = "^2.32.3"
 tarantool = "^1.2.0"
 types-pyyaml = "^6.0.12.20240917"
 types-requests = "^2.32.0.20241016"
+gitpython = "^3.1.43"
 
 
 [build-system]
