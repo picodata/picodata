@@ -545,7 +545,7 @@ fn proc_read_index(timeout) -> RaftIndex
 ### .proc_replication {: #proc_replication }
 
 ```rust
-fn proc_replication(sync_and_promote, replicaset_peers) -> LSN
+fn proc_replication(sync_and_promote, replicaset_peers)
 ```
 
 Обновляет конфигурацию топологии репликации текущего инстанса с остальными
@@ -572,21 +572,12 @@ fn proc_replication(sync_and_promote, replicaset_peers) -> LSN
 - [Governor — централизованное управление кластером](./topology_management.md#governor)
 - [Репликация в Tarantool](https://www.tarantool.io/ru/doc/latest/concepts/replication/)
 
-В случае успешного завершения в ответ посылается [LSN](../overview/glossary.md#lsn)
-текущего инстанса. Эта информация на данный момент используется только для
-отладки.
-
 Параметры:
 
 - `sync_and_promote`: (optional MP_MAP):
     - `vclock`: (MP_MAP `Vclock`)
     - `timeout`: (MP_INT | MP_FLOAT) в секундах
 - `replicaset_peers`: (MP_ARRAY of MP_STR)
-
-Возвращаемое значение:
-
-- (MP_INT)
-
 
 --------------------------------------------------------------------------------
 ### .proc_replication_demote {: #proc_replication_demote }
