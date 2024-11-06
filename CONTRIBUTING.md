@@ -85,20 +85,19 @@ git submodule update --init --recursive
 ```
 Compile the project:
 ```bash
-cargo build
+make build-dev
 ```
 
-This will build the debug version. If you want the release version, try this instead:
+This will build the debug version. If you want the optimized build we ship to users:
 
 ```bash
-cargo build --release
+make build-release-pkg
 ```
 
-If you want to enable Web UI for administration, build with these flags:
+For other build options consult with our `Makefile`.
 
-```bash
-cargo build --features webui
-```
+By default picodata is compiled with webui feature.
+
 When running `picodata` `--http-listen` should be supplied to serve Web UI.
 
 The resulting binaries should appear under the `target` subdirectory.

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_names)]
+
 use picodata_plugin::background::CancellationToken;
 use picodata_plugin::internal::types::{Dml, Op, Predicate};
 use picodata_plugin::log::rs_log;

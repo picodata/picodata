@@ -10,7 +10,7 @@ override_dh_auto_clean:
 override_dh_auto_build:
 	sudo mkdir -m 777 ~
 	make install-cargo
-	make build
+	make build-release-pkg
 
 override_dh_auto_test: ;
 

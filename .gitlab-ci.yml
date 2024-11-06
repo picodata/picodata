@@ -170,7 +170,7 @@ build-base-image:
         TARGET: debug
 
 .poetry-install: &poetry-install |
-  # Pipenv install
+  # Poetry install
   ci-log-section start "poetry-install" Installing python dependencies ...
   POETRY_VIRTUALENVS_IN_PROJECT=1 PIP_NO_CACHE_DIR=true poetry install --no-interaction --ansi
   ci-log-section end "poetry-install"
@@ -233,22 +233,11 @@ test-linux:
 
     - *poetry-install
 
-    # There are no Rust tests for `webui` feature, it's checked in pytest
-    - cargo build --timings --locked --profile=$BUILD_PROFILE
-    - cargo build -p gostech-audit-log --profile=$BUILD_PROFILE
-    - cargo build -p testplug --profile=$BUILD_PROFILE
-    - cargo build -p plug_wrong_version --profile=$BUILD_PROFILE
-    - cargo test --locked --profile=$BUILD_PROFILE
-
-    - cargo build --features webui,error_injection --locked --profile=$BUILD_PROFILE
-
-    # -vv shows extended diff for failures
-    - >
-      BUILD_PROFILE=$BUILD_PROFILE poetry run pytest -vv
-      --color=yes
-      --numprocesses auto
-      --junitxml=junit_pytest.xml
-      --with-webui
+    - make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--timings"
+    - |
+      make test \
+        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui" \
+        CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE"
 
   artifacts:
     when: always
@@ -325,6 +314,7 @@ test-patch-picodata:
   <<: *test-patch-rules
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
+    BUILD_PROFILE: release
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
     pull_policy: always
@@ -338,20 +328,11 @@ test-patch-picodata:
   script:
     - *poetry-install
     - ./tools/prepare_source_tree_for_stat_analysis.py apply
-
-    - cargo build --locked --release --features dynamic_build
-    - cargo build -p testplug --release
-    - cargo build -p plug_wrong_version --release
-    - cargo build -p gostech-audit-log --release
-    - cargo test --locked --release --features dynamic_build
-    - cargo build --features dynamic_build,webui,error_injection --locked --release
-
-    - >
-      BUILD_PROFILE=release poetry run pytest -vv
-      --color=yes
-      --numprocesses auto
-      --junitxml=junit_pytest.xml
-      --with-webui
+    - make build-$BUILD_PROFILE CARGO_FLAGS_EXTRA="--features webui,dynamic_build"
+    - |
+      make test \
+        PYTEST_FLAGS="--junitxml=junit_pytest.xml --with-webui" \
+        CARGO_FLAGS_EXTRA="--profile=$BUILD_PROFILE --features dynamic_build"
 
 test-patch-tarantool:
   extends: .test

@@ -33,7 +33,7 @@ pub fn format_but_ignore_everything_after_semicolon(
 pub fn get_doc_literal(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::Meta);
     let syn::Meta::NameValue(meta) = input else {
-        return syn::Error::new_spanned(input, format!("expected a doc comment"))
+        return syn::Error::new_spanned(input, "expected a doc comment")
             .to_compile_error()
             .into();
     };

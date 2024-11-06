@@ -69,7 +69,7 @@ sudo find {/opt,/usr} -name libgomp.spec -delete
 make centos7-cmake3
 %endif
 
-make build
+make build-release-pkg
 
 %install
 

@@ -154,7 +154,7 @@ impl ServiceWorkerManager {
     ///
     /// ```no_run
     /// use std::time::Duration;
-    /// use picodata-plugin::background::{CancellationToken, InternalGlobalWorkerManager, ServiceId, ServiceWorkerManager};
+    /// use picodata_plugin::background::{CancellationToken, InternalGlobalWorkerManager, ServiceId, ServiceWorkerManager};
     ///
     /// # let worker_manager = InternalGlobalWorkerManager::instance().get_or_init_manager(ServiceId::new("any_plugin", "any_service", "0.1.0"));
     ///

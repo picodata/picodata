@@ -61,7 +61,7 @@
 //! Note that `cbus` is more low-level tool than `tros`, so use it may be more complex than
 //! you expect.
 //! We recommend to use `cbus` API for stream data processing or similar tasks.
-//! Otherwise, we recommend trying to use `tros` API due to its simplicity.  
+//! Otherwise, we recommend trying to use `tros` API due to its simplicity.
 //!
 //! Here we will give a description of the `cbus` channels:
 //! - [`cbus::oneshot::channel`] - provide the oneshot channels, using these channels you can send
@@ -120,7 +120,7 @@
 //!     for file in files {
 //!         THREAD_POOL.execute(parse(file, tx.clone()));
 //!     }
-//!     
+//!
 //!     let mut result = Vec::with_capacity(files.len());
 //!     while let Ok(object) = rx.receive() {
 //!         result.push(object)

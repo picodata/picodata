@@ -132,7 +132,7 @@ impl TryFrom<collections::HashMap<String, String>> for Log {
             .expect("getting severity should not fail")
             .clone();
 
-        if map.get("initiator").is_none() {
+        if !map.contains_key("initiator") {
             map.insert(String::from("initiator"), String::from("unset"));
         }
 

@@ -14,7 +14,12 @@ endif
 
 # It should be possible to keep the flags to the bare minimum.
 # Hence, we don't use `override` here but add it to all build prerequisites.
-CARGO_FLAGS := --features webui
+CARGO_FLAGS := --features webui --all
+
+PYTEST_FLAGS :=
+
+# For clarity and an ability to turn it off without overriding whole CARGO_FLAGS
+ERROR_INJECTION := --features error_injection
 
 # Devs may want to drop this flag using make LOCKED=
 LOCKED := --locked
@@ -32,18 +37,42 @@ build: tarantool-patch
 	if test -f ~/.cargo/env; then . ~/.cargo/env; fi && $(CARGO_ENV) \
 		cargo build $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA)
 
+# There are 4 build options. 3 for each build profile (dev, fast-release, release).
+# They are intended to be consumed by tests/local development.
+# Remaining `build-release-pkg` is intended for packages we ship as our release artifacts.
+# For now the only difference is absence of error_injection feature.
 .PHONY: build-dev
-build-dev: override CARGO_FLAGS += --profile=dev
+build-dev: override CARGO_FLAGS += --profile=dev $(ERROR_INJECTION)
 build-dev: build
 
+.PHONY: build-fast-release
+build-fast-release: override CARGO_FLAGS += --profile=fast-release $(ERROR_INJECTION)
+build-fast-release: build
+
 .PHONY: build-release
-build-release: override CARGO_FLAGS += --profile=release
+build-release: override CARGO_FLAGS += --profile=release $(ERROR_INJECTION)
 build-release: build
 
+.PHONY: build-release-pkg
+build-release-pkg: override CARGO_FLAGS += --profile=release
+build-release-pkg: build
+
+# XXX: make sure we pass proper flags to cargo test so resulting picodata binary is reused
+# can be reused for python tests without recompilation
+# Note: mock feature is needed for sbroad to compile in test mode
+# Note: tarantool and tlua are skipped intentionally, no need to run their doc tests in picodata
+# Note: gostech-audit-log and picodata-plugin tests simply do not pass:
+#	https://git.picodata.io/picodata/picodata/picodata/-/issues/1084
+#	https://git.picodata.io/picodata/picodata/picodata/-/issues/1085
 .PHONY: test
 test:
-	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(PROFILE)
-	poetry run pytest $(PYTEST_NUMPROCESSES)
+	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
+	  --exclude gostech-audit-log \
+	  --exclude picodata-plugin \
+	  --exclude sbroad-core
+	  --exclude tarantool \
+	  --exclude tlua \
+	poetry run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_FLAGS) -vv --color=yes
 
 .PHONY: generate
 generate:
@@ -59,6 +88,10 @@ lint:
 	cargo clippy \
 		$(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) \
 		--features=load_test,error_injection \
+		--exclude tarantool \
+		--exclude tlua \
+		--exclude sbroad-core \
+		--exclude picodata-plugin \
 		-- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
