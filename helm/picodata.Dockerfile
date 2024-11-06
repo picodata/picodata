@@ -23,12 +23,9 @@ RUN cargo build --locked --release --features webui
 FROM rockylinux:8
 
 COPY --from=builder /build/picodata/target/release/picodata /usr/bin/picodata
-COPY helm/entrypoint.sh /entrypoint.sh
-COPY helm/run.sh /run.sh
 
 RUN chmod 755 /usr/bin/picodata \
     && mkdir -p /var/lib/picodata && mkdir -p /var/run/picodata \
-    && chmod 755 /entrypoint.sh \
     && groupadd -g 1000 picodata \
     && useradd -u 1000 -g 1000 picodata -s /usr/sbin/nologin \
     && chown 1000:1000 -R /var/lib/picodata
@@ -37,5 +34,5 @@ USER 1000:1000
 
 WORKDIR /var/lib/picodata
 
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["/run.sh"]
+ENTRYPOINT ["/usr/bin/picodata"]
+CMD ["run"]
