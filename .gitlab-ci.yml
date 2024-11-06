@@ -152,14 +152,14 @@ build-base-image:
   # additional optimizations.
   # The actual "release" profile is only used when running on master branch.
   rules:
-  - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
-    variables:
-      RELEASE_PROFILE: &release-profile "release"
-      RELEASE_TARGET: &release-target "release"
-  - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
-    variables:
-      RELEASE_PROFILE: &release-profile "fast-release"
-      RELEASE_TARGET: &release-target "fast-release"
+    - if: $CI_COMMIT_BRANCH == $MAIN_BRANCH
+      variables:
+        RELEASE_PROFILE: &release-profile "release"
+        RELEASE_TARGET: &release-target "release"
+    - if: $CI_COMMIT_BRANCH != $MAIN_BRANCH
+      variables:
+        RELEASE_PROFILE: &release-profile "fast-release"
+        RELEASE_TARGET: &release-target "fast-release"
 
 .parallel:
   parallel:
