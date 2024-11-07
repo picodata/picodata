@@ -599,11 +599,6 @@ fn proc_replication_demote() -> Vclock
 
 См. [.proc_replication](#proc_replication) о том, как в Picodata настраивается репликация.
 
-Параметры:
-
-- `vclock`: (MP_MAP ключ: MP_INT, значение: MP_INT)
-- `timeout`: (MP_INT | MP_FLOAT) в секундах
-
 Возвращаемое значение:
 
 - (MP_MAP `Vclock`)
