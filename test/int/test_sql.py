@@ -5691,9 +5691,6 @@ buckets = unknown"""  # noqa: E501
     # Delete
     lines = i1.sql("explain delete from t")
     expected_explain = """delete "t"
-    motion [policy: local]
-        projection ("t"."a"::integer -> "pk_col_0")
-            scan "t"
 execution options:
     vdbe_max_steps = 45000
     vtable_max_rows = 5000

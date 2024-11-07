@@ -6,9 +6,7 @@ use sbroad::backend::sql::ir::PatternWithParams;
 use sbroad::backend::sql::space::TableGuard;
 use sbroad::errors::{Action, Entity, SbroadError};
 use sbroad::executor::bucket::Buckets;
-use sbroad::executor::engine::helpers::storage::{
-    unprepare, DQLStorageReturnFormat, StorageMetadata,
-};
+use sbroad::executor::engine::helpers::storage::{unprepare, StorageMetadata, StorageReturnFormat};
 use sbroad::executor::engine::helpers::vshard::{get_random_bucket, CacheInfo};
 use sbroad::executor::engine::helpers::{
     self, execute_first_cacheable_request, execute_second_cacheable_request, read_or_prepare,
@@ -247,7 +245,7 @@ impl Vshard for StorageRuntime {
         let boxed_bytes: Box<dyn Any> = read_or_prepare::<Self, <Self as QueryCache>::Mutex>(
             &mut locked_cache,
             &mut info,
-            &DQLStorageReturnFormat::Raw,
+            &StorageReturnFormat::DqlRaw,
         )?;
         let bytes = boxed_bytes.downcast::<Vec<u8>>().map_err(|e| {
             SbroadError::Invalid(
