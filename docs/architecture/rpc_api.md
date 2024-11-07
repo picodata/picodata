@@ -157,7 +157,6 @@ fn proc_apply_schema_change(raft_term, raft_index, timeout) -> Result
 - (MP_STR `Ok`)
 - (MP_MAP, `{ "Abort": { "reason": MP_STR } }`) в случае ошибки
 
-
 --------------------------------------------------------------------------------
 ### .proc_cas {: #proc_cas }
 
@@ -199,7 +198,6 @@ fn proc_cas(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm)
 - (MP_INT raft индекс)
 - (MP_INT raft терм)
 
-
 --------------------------------------------------------------------------------
 ### .proc_discover {: #proc_discover }
 
@@ -228,7 +226,6 @@ fn proc_discover(request, receiver)
     - `Done`: (MP_MAP): в случае если результат уже известен
         - `leader_address`: (MP_STR): адрес лидера
 
-
 --------------------------------------------------------------------------------
 ### .proc_expel {: #proc_expel }
 
@@ -248,7 +245,6 @@ fn proc_expel(cluster_name, instance_uuid)
 - `cluster_name`: (MP_STR),
 - `instance_uuid`: (MP_STR),
 
-
 --------------------------------------------------------------------------------
 ### .proc_expel_redirect {: #proc_expel_redirect }
 
@@ -264,7 +260,6 @@ fn proc_expel_redirect(cluster_name, instance_uuid)
 
 - `cluster_name`: (MP_STR),
 - `instance_uuid`: (MP_STR),
-
 
 --------------------------------------------------------------------------------
 ### .proc_get_config {: #.proc_get_config }
@@ -313,7 +308,7 @@ fn proc_get_index() -> RaftIndex
 fn proc_get_vclock() -> Vclock
 ```
 
-Возвращает текущее значение [Vclock](../overview/glossary.md#vclock)
+Возвращает текущее значение [Vclock].
 
 Возвращаемое значение: MP_MAP `Vclock`
 
@@ -407,7 +402,6 @@ fn proc_raft_interact(raft_messages)
 
 - `raft_messages`: (MP_ARRAY of MP_ARRAY)
 
-
 --------------------------------------------------------------------------------
 ### .proc_raft_join {: #proc_raft_join }
 
@@ -446,7 +440,6 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 
 - `box_replication`: (MP_ARRAY of MP_STR): адреса всех реплик в репликасете
                                            присоединяющегося инстанса
-
 
 --------------------------------------------------------------------------------
 ### .proc_raft_promote {: #proc_raft_promote }
@@ -512,7 +505,6 @@ raft-журнала и обнаруживает, что его журнал бы
             - `tuples`: MP_ARRAY of MP_ARRAY "сырые" кортежи таблицы
 
     - `next_position`: MP_NIL | MP_MAP `SnapshotPosition` (см. выше)
-
 
 --------------------------------------------------------------------------------
 ### .proc_read_index {: #proc_read_index }
@@ -594,7 +586,7 @@ fn proc_replication_demote() -> Vclock
  - [Governor — централизованное управление кластером](./topology_management.md#governor)
 
 Получив такой запрос, инстанс сразу переходит в режим read-only и отправляет в
-ответ текущее значение своего [vclock](../overview/glossary.md#vclock), которое
+ответ текущее значение своего [Vclock], которое
 дальше используется для синхронизации новой мастер-реплики.
 
 См. [.proc_replication](#proc_replication) о том, как в Picodata настраивается репликация.
@@ -705,7 +697,6 @@ fn proc_sharding_bootstrap(raft_term, raft_index, timeout)
 - `raft_index`: (MP_INT)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
-
 --------------------------------------------------------------------------------
 ### .proc_sql_execute {: #proc_sql_execute }
 
@@ -770,7 +761,6 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
 - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
 
-
 --------------------------------------------------------------------------------
 ### .proc_wait_index {: #proc_wait_index }
 
@@ -796,9 +786,8 @@ fn proc_wait_index(target, timeout) -> RaftIndex
 fn proc_wait_vclock(target, timeout) -> Vclock
 ```
 
-Ожидает момента, когда текущее значение
-[Vclock](../overview/glossary.md#vclock) достигнет заданного. Возвращает
-текущее значение Vclock, которое может быть равно или превышать
+Ожидает момента, когда текущее значение [Vclock] достигнет заданного.
+Возвращает текущее значение Vclock, которое может быть равно или превышать
 указанное.
 
 Параметры:
