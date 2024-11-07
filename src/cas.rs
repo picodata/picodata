@@ -38,9 +38,22 @@ const PROHIBITED_TABLES: &[ClusterwideTable] = &[
     ClusterwideTable::Routine,
 ];
 
-pub fn check_dml_prohibited(dml: &Dml) -> traft::Result<()> {
-    let space = dml.space();
-    let Ok(table) = &ClusterwideTable::try_from(space) else {
+pub fn check_table_operable(storage: &Clusterwide, space_id: SpaceId) -> traft::Result<()> {
+    if let Some(table) = storage.tables.get(space_id)? {
+        if !table.operable {
+            tlog!(Warning, "Table is not operable; skipping DML operation");
+            return Err(Error::TableNotOperable {
+                table: table.name.clone(),
+            }
+            .into());
+        }
+    }
+
+    Ok(())
+}
+
+pub fn check_dml_prohibited(space_id: SpaceId) -> traft::Result<()> {
+    let Ok(table) = &ClusterwideTable::try_from(space_id) else {
         return Ok(());
     };
     if PROHIBITED_TABLES.contains(table) {
@@ -270,11 +283,13 @@ fn proc_cas_local(req: &Request) -> Result<Response> {
 
     match &req.op {
         Op::Dml(dml) => {
-            check_dml_prohibited(dml)?;
+            check_table_operable(storage, dml.space())?;
+            check_dml_prohibited(dml.space())?;
         }
         Op::BatchDml { ops: dmls } => {
             for dml in dmls {
-                check_dml_prohibited(dml)?;
+                check_table_operable(storage, dml.space())?;
+                check_dml_prohibited(dml.space())?;
             }
         }
         _ => {}
@@ -476,6 +491,11 @@ pub enum Error {
     #[error("TableNotAllowed: table {table} cannot be modified by DML Raft Operation directly")]
     TableNotAllowed { table: String },
 
+    #[error(
+        "TableNotOperable: table {table} cannot be modified now as DDL operation is in progress"
+    )]
+    TableNotOperable { table: String },
+
     /// An error related to `key_def` operation arised from tarantool
     /// depths while checking the predicate.
     #[error("KeyTypeMismatch: failed comparing predicate ranges: {0}")]
@@ -494,6 +514,7 @@ impl Error {
             Self::ConflictFound { .. } => ErrorCode::CasConflictFound as _,
             Self::EntryTermMismatch { .. } => ErrorCode::CasEntryTermMismatch as _,
             Self::TableNotAllowed { .. } => ErrorCode::CasTableNotAllowed as _,
+            Self::TableNotOperable { .. } => ErrorCode::CasTableNotOperable as _,
             Self::KeyTypeMismatch { .. } => ErrorCode::StorageCorrupted as _,
             Self::EmptyBatch => TarantoolErrorCode::IllegalParams as _,
         }

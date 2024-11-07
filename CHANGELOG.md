@@ -8,6 +8,13 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
+## [24.6.2]
+
+### Fixes
+
+- It's no longer possible to execute DML queries for tables that are not operable
+
+
 ## [24.6.1] - 2024-10-25
 
 ### Configuration

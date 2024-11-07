@@ -67,6 +67,9 @@ tarantool::define_enum_with_introspection! {
         // Error in plugin system.
         PluginError = 10019,
 
+        /// TableNotOperable: table {table} is prohibited for use in a predicate
+        CasTableNotOperable = 10023,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range

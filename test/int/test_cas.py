@@ -1,5 +1,13 @@
 import pytest
-from conftest import Cluster, Instance, TarantoolError, ReturnError, CasRange, ErrorCode
+from conftest import (
+    Cluster,
+    Instance,
+    TarantoolError,
+    ReturnError,
+    CasRange,
+    ErrorCode,
+    log_crawler,
+)
 
 _3_SEC = 3
 
@@ -429,4 +437,31 @@ def test_cas_lua_api(cluster: Cluster):
         ErrorCode.CasConflictFound,
         f"ConflictFound: found a conflicting entry at index {read_index+1}",
     )
-    pass
+
+
+def test_cas_operable_table(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False, init_replication_factor=1)
+
+    error_injection = "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    lc = log_crawler(i1, injection_log)
+
+    i1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    i1.start()
+    i1.wait_online()
+
+    with pytest.raises(TimeoutError):
+        i1.sql("CREATE TABLE warehouse (id INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY;")
+    lc.wait_matched()
+
+    with pytest.raises(TarantoolError) as e1:
+        i1.cas(
+            "insert",
+            "warehouse",
+            ["1"],
+        )
+    assert e1.value.args[:2] == (
+        ErrorCode.CasTableNotOperable,
+        "TableNotOperable: "
+        + "table warehouse cannot be modified now as DDL operation is in progress",
+    )

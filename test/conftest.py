@@ -74,6 +74,7 @@ class ErrorCode:
     NoSuchReplicaset = 10017
     LeaderUnknown = 10018
     PluginError = 10019
+    CasTableNotOperable = 10023
 
     # Make sure this matches this list in
     # picodata_plugin::error_code::ErrorCode::is_retriable_for_cas
