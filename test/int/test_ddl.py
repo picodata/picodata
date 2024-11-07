@@ -6,6 +6,8 @@ from conftest import (
     Retriable,
     Instance,
     TarantoolError,
+    log_crawler,
+    ErrorCode,
 )
 
 
@@ -1473,3 +1475,65 @@ def test_wait_applied_options(cluster: Cluster):
         """
     )
     assert ddl["row_count"] == 1
+
+
+def test_operability_of_global_and_sharded_table(cluster: Cluster):
+    i1 = cluster.add_instance(wait_online=False, init_replication_factor=1)
+
+    error_injection = "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT"
+    injection_log = f"ERROR INJECTION '{error_injection}'"
+    lc = log_crawler(i1, injection_log)
+
+    i1.env[f"PICODATA_ERROR_INJECTION_{error_injection}"] = "1"
+    i1.start()
+    i1.wait_online()
+
+    # GLOBAL TABLE
+    table_name = "global_warehouse"
+    with pytest.raises(TimeoutError):
+        i1.sql(
+            f"""
+            CREATE TABLE {table_name} (id INTEGER PRIMARY KEY);
+            """
+        )
+
+    with pytest.raises(TarantoolError) as err:
+        i1.sql(
+            f"""
+               INSERT INTO {table_name} VALUES (1);
+            """
+        )
+    assert err.value.args[:2] == (
+        ErrorCode.CasTableNotOperable,
+        "TableNotOperable: "
+        + f"table {table_name} cannot be modified now as DDL operation is in progress",
+    )
+    lc.wait_matched()
+
+    l2 = log_crawler(i1, "UNBLOCKING")
+    i1.call("pico._inject_error", error_injection, False)
+    l2.wait_matched()
+
+    i1.call("pico._inject_error", error_injection, True)
+
+    # SHARDED TABLE
+    table_name = "sharded_warehouse"
+    with pytest.raises(TimeoutError):
+        i1.sql(
+            f"""
+            CREATE TABLE {table_name} (id INTEGER PRIMARY KEY) DISTRIBUTED GLOBALLY;
+            """
+        )
+
+    with pytest.raises(TarantoolError) as err:
+        i1.sql(
+            f"""
+            INSERT INTO {table_name} VALUES (1);
+            """
+        )
+    assert err.value.args[:2] == (
+        ErrorCode.CasTableNotOperable,
+        "TableNotOperable: "
+        + f"table {table_name} cannot be modified now as DDL operation is in progress",
+    )
+    lc.wait_matched()

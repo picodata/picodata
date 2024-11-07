@@ -435,6 +435,26 @@ pub fn dispatch(mut query: Query<RouterRuntime>) -> traft::Result<Tuple> {
                 .expect("explain must always return a tuple"));
         }
 
+        // check if table is operable
+        with_su(ADMIN_ID, || {
+            let top_id = plan.get_top()?;
+            if plan.get_relation_node(top_id)?.is_dml() {
+                let storage = &node::global()?.storage;
+                let table = plan.dml_node_table(top_id)?;
+                let table_name = table.name.clone();
+
+                let table_id = storage
+                    .tables
+                    .by_name(&table_name)?
+                    .ok_or(traft::error::DoesNotExist::Table(table_name))?
+                    .id;
+
+                cas::check_table_operable(storage, table_id)?;
+            }
+
+            Ok::<(), Error>(())
+        })??;
+
         if plan.is_dml_on_global_table()? {
             let res = do_dml_on_global_tbl(query)?;
             return Ok(Tuple::new(&(res,))?);

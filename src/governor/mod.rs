@@ -616,6 +616,8 @@ impl Loop {
                         res?;
 
                         next_op = Op::DdlCommit;
+
+                        crate::error_injection!(block "BLOCK_GOVERNOR_BEFORE_DDL_COMMIT");
                     }
                 }
 

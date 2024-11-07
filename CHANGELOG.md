@@ -8,7 +8,7 @@ with the `YY.MINOR.MICRO` scheme.
 
 <img src="https://img.shields.io/badge/calver-YY.MINOR.MICRO-22bfda.svg">
 
-## 24.7.0 - Unreleased
+## [24.7.0] - Unreleased
 
 ### CLI
 
@@ -23,6 +23,10 @@ to 2 and 3.
 ### RPC API
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.
+
+### Fixes
+
+- It's no longer possible to execute DML queries for tables that are not operable
 
 ## [24.6.1] - 2024-10-28
 

@@ -76,6 +76,9 @@ tarantool::define_enum_with_introspection! {
         // Instance unavailiable due to it's target state is Offline
         InstanceUnavaliable = 10022,
 
+        /// TableNotOperable: table {table} is prohibited for use in a predicate
+        CasTableNotOperable = 10023,
+
         /// Not an actual error code, just designates the start of the range.
         UserDefinedErrorCodesStart = 20000,
         // Plugin writers should use error codes in this range
