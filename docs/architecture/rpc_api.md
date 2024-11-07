@@ -604,6 +604,23 @@ fn proc_replication_demote() -> Vclock
 - (MP_MAP `Vclock`)
 
 --------------------------------------------------------------------------------
+### .proc_replication_sync {: #proc_replication_sync }
+
+```rust
+fn proc_replication_sync(vclock, timeout)
+```
+
+Обеспечивает репликацию Tarantool для текущего инстанса, пока значение его
+[Vclock] не станет равным `vclock`.
+
+Параметры:
+
+- `vclock`: (MP_MAP ключ: MP_INT, значение: MP_INT)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+
+[Vclock]: ../overview/glossary.md#vclock
+
+--------------------------------------------------------------------------------
 ### .proc_runtime_info {: #proc_runtime_info }
 
 ```rust
