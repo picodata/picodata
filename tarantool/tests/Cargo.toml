@@ -31,10 +31,11 @@ time-macros = "=0.2.6"
 
 [dependencies.tarantool]
 path = "../tarantool"
-features = ["all", "internal_test"]
+features = ["all", "internal_test", "stored_procs_slice"]
 
 [dependencies.tarantool-proc]
 path = "../tarantool-proc"
+features = ["stored_procs_slice"]
 
 [lib]
 test = false

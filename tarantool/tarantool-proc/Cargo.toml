@@ -20,3 +20,6 @@ quote = "^1.0"
 proc-macro2 = "^1.0"
 darling = "0.14.2"
 proc-macro-error = "1"
+
+[features]
+stored_procs_slice = []

@@ -1186,9 +1186,20 @@ pub fn stored_proc(attr: TokenStream, item: TokenStream) -> TokenStream {
         public = override_public;
     }
 
+    // Only add tarantool::proc-annotated function to the distributed slice
+    // if the `stored_procs_slice` feature is active. We need this to combat
+    // the runtime panics introduced in linkme 0.3.1.
+    let attrs_distributed_slice = if cfg!(feature = "stored_procs_slice") {
+        quote! {
+            #[#linkme::distributed_slice(#section)]
+            #[linkme(crate = #linkme)]
+        }
+    } else {
+        quote! {}
+    };
+
     quote! {
-        #[#linkme::distributed_slice(#section)]
-        #[linkme(crate = #linkme)]
+        #attrs_distributed_slice
         #[cfg(not(test))]
         static #desc_ident: #tarantool::proc::Proc = #tarantool::proc::Proc::new(
             #desc_name,

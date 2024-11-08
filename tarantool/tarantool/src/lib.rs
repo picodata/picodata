@@ -115,6 +115,7 @@ pub mod vclock;
 /// automatically added to a global array and can be accessed via
 /// `proc::all_procs` function.
 /// ```no_run
+/// # #[cfg(feature = "stored_procs_slice")] {
 /// use tarantool::proc::all_procs;
 ///
 /// #[tarantool::proc]
@@ -122,6 +123,7 @@ pub mod vclock;
 ///
 /// let procs = all_procs();
 /// assert_eq!(procs[0].name(), "my_proc");
+/// # }
 /// ```
 ///
 /// This can be used to generate stored procedure defintions for tarantool's
@@ -154,6 +156,7 @@ pub mod vclock;
 /// you want to override it (e.g. your proc is pub, but you want the flag to be
 /// false) you can specify the `public` attribute.
 /// ```no_run
+/// # #[cfg(feature = "stored_procs_slice")] {
 /// use tarantool::proc::all_procs;
 ///
 /// #[tarantool::proc]
@@ -174,6 +177,7 @@ pub mod vclock;
 ///     if proc.name() == "also_public_proc"  { assert!( proc.is_public()) }
 ///     if proc.name() == "also_private_proc" { assert!(!proc.is_public()) }
 /// }
+/// # }
 /// ```
 ///
 /// # Accepting borrowed arguments

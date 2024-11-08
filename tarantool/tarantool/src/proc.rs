@@ -24,8 +24,6 @@ macro_rules! unwrap_or_report_err {
 /// Description of a tarantool stored procedure defined using the
 /// `#[`[`tarantool::proc`]`]` macro attribute.
 ///
-/// See also [`all_procs`].
-///
 /// [`tarantool::proc`]: macro@crate::proc
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Proc {
@@ -89,21 +87,33 @@ impl Proc {
     }
 }
 
-// Linkme distributed_slice exports a symbol with the given name, so we must
-// make sure the name is unique, so as not to conflict with distributed slices
-// from other crates or any other global symbols.
-#[doc(hidden)]
-#[::linkme::distributed_slice]
-pub static TARANTOOL_MODULE_STORED_PROCS: [Proc] = [..];
+// In picodata, we cannot guarantee that tarantool module will be linked
+// exactly once due to possible stale versions from various dependencies.
+// This whole feature is here to disable the distributed slice definition
+// in all but one instance of this crate; otherwise we'll trigger linkme's
+// "duplicate distributed slice" check introduced in 0.3.1.
+#[cfg(feature = "stored_procs_slice")]
+pub use stored_procs_slice::*;
+#[cfg(feature = "stored_procs_slice")]
+mod stored_procs_slice {
+    use super::*;
 
-/// Returns a slice of all stored procedures defined using the
-/// `#[`[`tarantool::proc`]`]` macro attribute.
-///
-/// The order of procs in the slice is undefined.
-///
-/// [`tarantool::proc`]: macro@crate::proc
-pub fn all_procs() -> &'static [Proc] {
-    &TARANTOOL_MODULE_STORED_PROCS
+    // Linkme distributed_slice exports a symbol with the given name, so we must
+    // make sure the name is unique, so as not to conflict with distributed slices
+    // from other crates or any other global symbols.
+    #[doc(hidden)]
+    #[::linkme::distributed_slice]
+    pub static TARANTOOL_MODULE_STORED_PROCS: [Proc] = [..];
+
+    /// Returns a slice of all stored procedures defined using the
+    /// `#[`[`tarantool::proc`]`]` macro attribute.
+    ///
+    /// The order of procs in the slice is undefined.
+    ///
+    /// [`tarantool::proc`]: macro@crate::proc
+    pub fn all_procs() -> &'static [Proc] {
+        &TARANTOOL_MODULE_STORED_PROCS
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
