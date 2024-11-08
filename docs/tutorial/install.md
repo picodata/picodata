@@ -29,6 +29,7 @@ https://git.picodata.io/picodata/picodata/picodata/-/blob/master/Cargo.toml#L6
 - cmake 3.16 или новее
 - gcc, g++
 - libstdc++-static
+- openssl
 - NodeJS и Yarn (для сборки с веб-интерфейсом)
 
 Установка Rust и Cargo универсальна для всех поддерживаемых ОС:
@@ -40,7 +41,7 @@ source "$HOME/.cargo/env"
 
 Далее приведены команды для установки остальных зависимостей под разные ОС.
 
-#### RHEL 8/9 и деривативы, Fedora 38-40 {: #rhel_fedora }
+#### RHEL 8/9 и деривативы, Fedora 39-41 {: #rhel_fedora }
 
 Только для ОС, основанных на RHEL 8/9:
 
@@ -51,7 +52,7 @@ sudo dnf config-manager --set-enabled powertools
 Установка общих зависимостей для сборки:
 
 ```bash
-sudo dnf in -y gcc gcc-c++ make perl automake libtool cmake git patch libstdc++-static
+sudo dnf in -y gcc gcc-c++ make perl automake libtool cmake git patch libstdc++-static openssl-devel
 ```
 
 Установка NodeJS и Yarn (для веб-интерфейса):
@@ -67,7 +68,7 @@ sudo dnf install yarn nodejs
 Установка общих зависимостей для сборки:
 
 ```bash
-sudo apt-get install build-essential git cmake autoconf libtool curl pkg-config -y
+sudo apt-get install build-essential git cmake autoconf libtool curl libssl-dev pkg-config -y
 ```
 
 Установка NodeJS и Yarn (для веб-интерфейса):
@@ -85,7 +86,7 @@ sudo curl --compressed -o- -L https://yarnpkg.com/install.sh | bash
 
 ```bash
 su -
-apt-get install -y gcc gcc-c++ cmake git patch libstdc++10-devel-static libgomp10-devel-static
+apt-get install -y gcc gcc-c++ cmake git patch libstdc++-devel-static libgomp-devel-static libssl-devel-static
 ```
 
 
