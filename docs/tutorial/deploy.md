@@ -23,7 +23,7 @@
     instance:
       peer:
       - 127.0.0.1:3301
-      audit: false
+      audit: null
       shredding: false
       log:
         level: info
