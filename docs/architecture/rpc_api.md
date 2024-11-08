@@ -593,7 +593,7 @@ fn proc_replication_demote() -> Vclock
 
 Возвращаемое значение:
 
-- (MP_MAP `Vclock`)
+- `vclock`: (MP_MAP `Vclock`)
 
 --------------------------------------------------------------------------------
 ### .proc_replication_sync {: #proc_replication_sync }
@@ -607,7 +607,7 @@ fn proc_replication_sync(vclock, timeout)
 
 Параметры:
 
-- `vclock`: (MP_MAP ключ: MP_INT, значение: MP_INT)
+- `vclock`: (MP_MAP `Vclock`)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
 [Vclock]: ../overview/glossary.md#vclock
@@ -760,6 +760,23 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 - `target_state`: (MP_STR `StateVariant`), целевое состояние инстанса
 - `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
 - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
+
+--------------------------------------------------------------------------------
+### .proc_wait_bucket_count {: #proc_wait_bucket_count }
+
+```rust
+fn proc_wait_bucket_count(term, applied, timeout, expected_bucket_count)
+```
+
+Обеспечивает перенос бакетов из исключаемого репликасета, пока число
+бакетов в репликасете не станет равным нулю.
+
+Параметры:
+
+- `term`: (MP_INT)
+- `applied`: (MP_INT)
+- `timeout`: (MP_INT | MP_FLOAT) в секундах
+- `expected_bucket_count`: (MP_INT)
 
 --------------------------------------------------------------------------------
 ### .proc_wait_index {: #proc_wait_index }
