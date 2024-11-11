@@ -34,14 +34,14 @@ def test_connect_ux(cluster: Cluster):
     cli.expect_exact("picodata> ")
 
     # sql console doesn't know about language switching
-    cli.sendline("\\lua")
+    cli.sendline("\\lua;")
     cli.expect_exact("Unknown special sequence")
 
     cli.sendline("\\sql")
     cli.expect_exact("Unknown special sequence")
 
     # for not registried command nothing can happen
-    cli.sendline("\\lya")
+    cli.sendline("\\lya;")
     cli.expect_exact("Unknown special sequence")
     cli.sendline("\\scl")
     cli.expect_exact("Unknown special sequence")
@@ -114,7 +114,7 @@ def test_admin_ux(cluster: Cluster):
     cli.sendline("\\lua")
     cli.expect_exact("Language switched to Lua")
 
-    cli.sendline("\\sql")
+    cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
 
     # for not registried command nothing happend
@@ -133,7 +133,7 @@ def test_admin_ux(cluster: Cluster):
     cli.expect_exact("Language switched to SQL")
 
     # nothing happens on completion in SQL mode
-    cli.sendline("\\sql")
+    cli.sendline("\\sql;")
     cli.expect_exact("Language switched to SQL")
     cli.sendline("\t\t")
     cli.expect_exact("picodata> ")
@@ -431,9 +431,11 @@ def test_cat_file_to_picodata_admin_stdin(cluster: Cluster):
 CREATE TABLE ids (id INTEGER NOT NULL, PRIMARY KEY(id))
         USING MEMTX
         DISTRIBUTED BY (id);
+
 INSERT INTO ids
         VALUES(1);
-SELECT * FROM ids;
+
+SELECT * FROM ids
 """,
     )
 
@@ -462,7 +464,7 @@ def test_cat_file_to_picodata_connect_stdin(cluster: Cluster):
         [cluster.binary_path, "admin", f"{i1.data_dir}/admin.sock"],
         input=b"""\
 CREATE USER "alice" WITH PASSWORD 'T0psecret';
-GRANT CREATE TABLE TO "alice";
+GRANT CREATE TABLE TO "alice"
 """,
     )
 

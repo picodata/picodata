@@ -1,3 +1,4 @@
+use nix::unistd::isatty;
 use std::collections::VecDeque;
 use std::env;
 use std::fs::read_to_string;
@@ -69,6 +70,7 @@ pub struct Console<H: Helper> {
     // Queue of separated by delimiter statements
     separated_statements: VecDeque<String>,
     uncompleted_statement: String,
+    eof_received: bool,
 }
 
 impl<T: Helper> Console<T> {
@@ -79,14 +81,14 @@ impl<T: Helper> Console<T> {
 
     fn handle_special_command(&mut self, command: &str) -> Result<ControlFlow<Command>> {
         match command {
-            "\\e" => self.open_external_editor(),
-            "\\help" | "\\h" => Ok(ControlFlow::Break(Command::Control(
+            "\\e" | "\\e;" => self.open_external_editor(),
+            "\\help" | "\\h" | "\\help;" | "\\h;" => Ok(ControlFlow::Break(Command::Control(
                 SpecialCommand::PrintHelp,
             ))),
-            "\\lua" => Ok(ControlFlow::Break(Command::Control(
+            "\\lua" | "\\lua;" => Ok(ControlFlow::Break(Command::Control(
                 SpecialCommand::SwitchLanguageToLua,
             ))),
-            "\\sql" => Ok(ControlFlow::Break(Command::Control(
+            "\\sql" | "\\sql;" => Ok(ControlFlow::Break(Command::Control(
                 SpecialCommand::SwitchLanguageToSql,
             ))),
             _ => self.handle_parsed_command(command),
@@ -190,8 +192,27 @@ impl<T: Helper> Console<T> {
         Ok(Some(command))
     }
 
+    fn process_command(&mut self) {
+        if let Some(ref delimiter) = self.delimiter {
+            while let Some((separated_part, tail)) =
+                self.uncompleted_statement.split_once(delimiter)
+            {
+                self.separated_statements.push_back(separated_part.into());
+                self.uncompleted_statement = tail.into();
+            }
+        } else {
+            self.separated_statements
+                .push_back(std::mem::take(&mut self.uncompleted_statement));
+        }
+    }
+
     pub fn read(&mut self) -> Result<Option<Command>> {
         loop {
+            if self.eof_received {
+                self.write("Bye");
+                return Ok(None);
+            }
+
             while let Some(separated_input) = self.separated_statements.pop_front() {
                 let processed = {
                     if separated_input.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
@@ -217,10 +238,7 @@ impl<T: Helper> Console<T> {
 
             match readline {
                 Ok(line) => {
-                    if line.is_empty() {
-                        return Ok(Some(Command::Expression(line)));
-                    }
-
+                    // process special command with no need for delimiter
                     if line.starts_with(Self::SPECIAL_COMMAND_PREFIX) {
                         let processed = self.handle_special_command(&line)?;
 
@@ -230,24 +248,22 @@ impl<T: Helper> Console<T> {
                         }
                     } else {
                         self.uncompleted_statement += &line;
-
-                        if let Some(ref delimiter) = self.delimiter {
-                            while let Some((separated_part, tail)) =
-                                self.uncompleted_statement.split_once(delimiter)
-                            {
-                                self.separated_statements.push_back(separated_part.into());
-                                self.uncompleted_statement = tail.into();
-                            }
-                        } else {
-                            self.separated_statements
-                                .push_back(std::mem::take(&mut self.uncompleted_statement));
-                        }
+                        self.process_command();
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
                     self.write("CTRL+C");
                 }
                 Err(ReadlineError::Eof) => {
+                    let is_terminal = isatty(0).unwrap_or(false);
+
+                    if !is_terminal && !self.uncompleted_statement.is_empty() {
+                        self.eof_received = true;
+                        return Ok(Some(Command::Expression(std::mem::take(
+                            &mut self.uncompleted_statement,
+                        ))));
+                    }
+
                     self.write("Bye");
                     return Ok(None);
                 }
@@ -304,6 +320,7 @@ impl Console<LuaHelper> {
             delimiter: Some(DELIMITER.to_string()),
             separated_statements: VecDeque::new(),
             uncompleted_statement: String::new(),
+            eof_received: false,
         })
     }
 }
@@ -318,6 +335,7 @@ impl Console<()> {
             delimiter: Some(DELIMITER.to_string()),
             separated_statements: VecDeque::new(),
             uncompleted_statement: String::new(),
+            eof_received: false,
         })
     }
 }
