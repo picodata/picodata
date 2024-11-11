@@ -488,14 +488,13 @@ function raft_wait_index(target, timeout)
   узла-маршрутизатора.
 
 ```lua
-function sql(query[, params], [traceable])
+function sql(query[, params])
 ```
 
 Параметры:
 
 - `query` (_string_)
 - `params`: (optional _table_), список параметров
-- `traceable` (optional _boolean_), признак явной трассировки запроса
 
 Возвращаемое значение:
 
