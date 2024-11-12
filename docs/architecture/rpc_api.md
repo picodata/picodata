@@ -233,7 +233,7 @@ fn proc_discover(request, receiver)
 ### .proc_expel {: #proc_expel }
 
 ```rust
-fn proc_expel(cluster_name, instance_name)
+fn proc_expel(cluster_name, instance_uuid)
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader), в
@@ -246,14 +246,14 @@ fn proc_expel(cluster_name, instance_name)
 Параметры:
 
 - `cluster_name`: (MP_STR),
-- `instance_name`: (MP_STR),
+- `instance_uuid`: (MP_STR),
 
 
 --------------------------------------------------------------------------------
 ### .proc_expel_redirect {: #proc_expel_redirect }
 
 ```rust
-fn proc_expel_redirect(cluster_name, instance_name)
+fn proc_expel_redirect(cluster_name, instance_uuid)
 ```
 
 Вызывает [proc_expel](#proc_expel) на текущем [raft-лидере](../overview/glossary.md#raft_leader).
@@ -263,7 +263,7 @@ fn proc_expel_redirect(cluster_name, instance_name)
 Параметры:
 
 - `cluster_name`: (MP_STR),
-- `instance_name`: (MP_STR),
+- `instance_uuid`: (MP_STR),
 
 
 --------------------------------------------------------------------------------

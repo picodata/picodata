@@ -318,7 +318,7 @@ ALTER USER "admin" WITH PASSWORD 'T0psecret';
 expel](../reference/cli.md#expel):
 
 ```shell
-picodata expel barsik --peer 192.168.0.1:3301
+picodata expel 6c73a2e6-d072-4bf7-91e3-f829e766a25a --peer 192.168.0.1:3301
 ```
 
 См. также:

@@ -512,10 +512,10 @@ picodata> pico.cas({
 СУБД `admin`.
 
 ```
-picodata expel [OPTIONS] <INSTANCE_NAME>
+picodata expel [OPTIONS] <INSTANCE_UUID>
 ```
 
-- `INSTANCE_NAME`: Имя инстанса
+- `INSTANCE_UUID`: Универсальный уникальный идентификатор инстанса
 
 ### --cluster-name {: #expel_cluster_name }
 
