@@ -69,9 +69,9 @@ test:
 	cargo test $(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) $(CARGO_FLAGS_EXTRA) $(ERROR_INJECTION) \
 	  --exclude gostech-audit-log \
 	  --exclude picodata-plugin \
-	  --exclude sbroad-core
+	  --exclude sbroad-core \
 	  --exclude tarantool \
-	  --exclude tlua \
+	  --exclude tlua
 	poetry run pytest $(PYTEST_NUMPROCESSES) $(PYTEST_FLAGS) -vv --color=yes
 
 .PHONY: generate
@@ -88,10 +88,10 @@ lint:
 	cargo clippy \
 		$(LOCKED) $(MAKE_JOBSERVER_ARGS) $(CARGO_FLAGS) \
 		--features=load_test,error_injection \
+		--exclude picodata-plugin \
+		--exclude sbroad-core \
 		--exclude tarantool \
 		--exclude tlua \
-		--exclude sbroad-core \
-		--exclude picodata-plugin \
 		-- --deny clippy::all --no-deps
 
 	RUSTDOCFLAGS="-Dwarnings -Arustdoc::private_intra_doc_links" \
