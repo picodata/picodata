@@ -94,13 +94,12 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
     # to trigger the actual reconfiguration. This should be done automatically
     # in the user-facing API which will be implemented as part of this issue:
     # https://git.picodata.io/picodata/picodata/picodata/-/issues/787
-    rows = i1.sql(
-        """ SELECT "current_vshard_config_version" FROM "_pico_tier" WHERE "name" = 'default' """
-    )  # noqa: E501
-    v = rows[0][0]
     i1.sql(
-        """ UPDATE "_pico_tier" SET "target_vshard_config_version" = ? WHERE "name" = 'default' """,  # noqa: E501
-        v + 1,
+        """
+            UPDATE _pico_tier
+            SET target_vshard_config_version = current_vshard_config_version + 1
+            WHERE name = 'default'
+        """
     )
 
     # This instnace now has no buckets
@@ -116,13 +115,12 @@ def test_automatic_bucket_rebalancing(cluster: Cluster):
     )
 
     # FIXME: https://git.picodata.io/picodata/picodata/picodata/-/issues/787
-    rows = i1.sql(
-        """ SELECT "current_vshard_config_version" FROM "_pico_tier" WHERE "name" = 'default' """
-    )  # noqa: E501
-    v = rows[0][0]
     i1.sql(
-        """ UPDATE "_pico_tier" SET "target_vshard_config_version" = ? WHERE "name" = 'default' """,  # noqa: E501
-        v + 1,
+        """
+            UPDATE _pico_tier
+            SET target_vshard_config_version = current_vshard_config_version + 1
+            WHERE name = 'default'
+        """
     )
 
     # Now i3 has twice as many buckets, because r3.weight == r2.weight * 2
