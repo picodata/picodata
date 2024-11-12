@@ -1,4 +1,10 @@
-
+<!--
+The template is not strict. You can use any ADR structure that feels best for a particular case.
+See these ADR examples for inspiration:
+- [Cassandra SEP - Ganeral Purpose Transactions](https://cwiki.apache.org/confluence/display/CASSANDRA/CEP-15%3A+General+Purpose+Transactions)
+- [Rust RFC - Lifetime Ellision](https://github.com/rust-lang/rfcs/blob/master/text/0141-lifetime-elision.md)
+- [TiKV - Use Joint Consensus](https://github.com/tikv/rfcs/blob/master/text/0054-joint-consensus.md)
+-->
 status: "rejected | accepted | deprecated | … | superseded by ADR-0123 (add link)" <!-- Proposed status left out as we consider an MR as proposition -->
 decision-makers: list everyone involved in the decision
 
@@ -15,14 +21,6 @@ informed: list everyone who is kept up-to-date on progress; and with whom there 
 
 <!-- Describe the context and problem statement, e.g., in free form using two to three sentences or in the form of an illustrative story.
 You may want to articulate the problem in form of a question and add links to gitlab issues. -->
-
-## Decision Drivers
-
-<!--
-* decision driver 1, e.g., a force, facing concern, …
-* decision driver 2, e.g., a force, facing concern, …
-* …
--->
 
 ## Considered Options
 
@@ -46,45 +44,8 @@ You may want to articulate the problem in form of a question and add links to gi
 * …
 -->
 
-### Confirmation
+### Deliverables
 
 <!--
-Describe how the implementation of/compliance with the ADR can/will be confirmed.
-Is the chosen design and its implementation in line with the decision?
-E.g., a design/code review or a test with a library such as ArchUnit can help validate this.
-Note that although we classify this element as optional, it is included in many ADRs.
--->
-
-## Pros and Cons of the Options
-
-### Title of option 1
-
-<!--
-example | description | pointer to more information | …
-
-* Good, because argument a
-* Good, because argument b
-* Neutral, because argument c
-* Bad, because argument d
-* …
--->
-
-### Title of other option
-
-<!--
-example | description | pointer to more information | …
-
-* Good, because argument a
-* Good, because argument b
-* Neutral, because argument c
-* Bad, because argument d
-* …
--->
-
-## More Information
-
-<!--
-You might want to provide additional evidence/confidence for the decision outcome here and/or document the team agreement on the decision
-and/or define when/how this decision the decision should be realized and if/when it should be re-visited.
-Links to other decisions and resources might appear here as well.
+Describe what the deliverables are and how the implementation of/compliance with the ADR can/will be confirmed.
 -->

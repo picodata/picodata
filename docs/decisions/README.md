@@ -26,10 +26,15 @@ Some signs that you might need an ADR:
 
 ## How to propose an Architectural Decision
 
-Make a copy of [adr-template](./adr-template.md) in this directory. Rename it to `{num}-{adr-title}.md` (e.g. `0001-plugins.md`).
-We use the `num` prefix as the sequence number of this adr, so it's possible to sort them correctly by file name. 
+Make a copy of [adr-template](./adr-template.md) in this directory. Rename it to `{creation-date}-{adr-title}.md` (e.g. `01-01-2024-plugins.md`).
+We use the date so it's possible to sort them correctly by file name. 
 
 Fill the sections that you find relevant for the discussion. Feel free to add additional sections if needed.
+The template is not strict. You can use any ADR structure that feels best for a particular case.
+See these ADR examples for inspiration:
+- [Cassandra SEP - Ganeral Purpose Transactions](https://cwiki.apache.org/confluence/display/CASSANDRA/CEP-15%3A+General+Purpose+Transactions)
+- [Rust RFC - Lifetime Ellision](https://github.com/rust-lang/rfcs/blob/master/text/0141-lifetime-elision.md)
+- [TiKV - Use Joint Consensus](https://github.com/tikv/rfcs/blob/master/text/0054-joint-consensus.md)
 
 Open a merge request to this repository and start the ADR discussion in the comments. The suggested prefix for the commit and MR name is `adr:`.
 
@@ -39,6 +44,7 @@ Alternatively if you prefer Google Docs, you can open an empty MR with a link to
 Though it will be still needed to fill the ADR here and merge the MR for ADR to be accepted.
 
 ## What happens next?
+![](./adr-creation.png)
 
 Then as the owner of an ADR and a merge request it's your task to drive it to completion.
 Get comments from the relevant stakeholders, set deadlines and schedule ADR review meetings as suggested by [AWS Guidlines][].
