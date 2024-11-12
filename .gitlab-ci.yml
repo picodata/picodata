@@ -15,7 +15,7 @@ stages:
   - pack
   - docker
   - stress-test
-  - front-deploy
+  - deploy
 
 workflow:
   # See https://docs.gitlab.com/ee/ci/jobs/job_control.html#avoid-duplicate-pipelines
@@ -42,9 +42,16 @@ variables:
   PARENT_BRANCH: $CI_COMMIT_REF_NAME
   PARENT_CI_COMMIT_SHA: $CI_COMMIT_SHA
   PARENT_PROJECT_PATH: ${CI_PROJECT_PATH}.git
+  BASE_IMAGE_NAME: docker-public.binary.picodata.io/sbroad-builder
+  BASE_IMAGE_TAG: 0.12.0
+  TARANTOOL_VERSION: 2.11.2.159
+  FF_NETWORK_PER_BUILD: 1
+  RAW_REGISTRY: $RAW_PRIVATE_REGISTRY
+  CI_DEBUG_SERVICES: "true"
   # k8s runner config
-  KUBERNETES_CPU_REQUEST: 6
-  KUBERNETES_MEMORY_REQUEST: "6Gi"
+  KUBERNETES_CPU_REQUEST: 2
+  KUBERNETES_MEMORY_REQUEST: "4Gi"
+
 
 # job:rules explained:
 #
@@ -134,7 +141,11 @@ build-base-image:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_STRATEGY: fetch
     GIT_DESCRIBE: $PICODATA_DESCRIBE
+    SUBMODULES_TO_FETCH_TAGS: "tarantool-sys,tarantool-sys/third_party/luajit"
     RUST_BACKTRACE: full
+    KUBERNETES_CPU_REQUEST: 6
+    KUBERNETES_MEMORY_REQUEST: "6Gi"
+  needs: [build-base-image]
   before_script:
     # Gitlab CI implicitly clones specific refs (e.g. `refs/pipelines/xxxxxxx`),
     # but it doesn't imply fetching tags. We clone them manually with the
@@ -263,9 +274,11 @@ lint:
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_TAG}
     pull_policy: if-not-present
+  needs: [build-base-image]
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     GIT_DESCRIBE: $PICODATA_DESCRIBE
+    SUBMODULES_TO_FETCH_TAGS: "tarantool-sys,tarantool-sys/third_party/luajit"
     TARGET: debug
   cache:
     - <<: *py_cache
@@ -315,6 +328,8 @@ test-patch-picodata:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
     BUILD_PROFILE: release
+    KUBERNETES_CPU_REQUEST: 8
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
   image:
     name: ${BASE_IMAGE}:${BASE_IMAGE_LATEST}
     pull_policy: always
@@ -400,7 +415,7 @@ test-helm-image:
       - DOCKERFILE: helm/picodata.Dockerfile
         DESTINATION: ${REGISTRY}/picodata:master
       - DOCKERFILE: helm/picodata.distroless
-        DESTINATION: ${REGISTRY}/picodata:master-distroless        
+        DESTINATION: ${REGISTRY}/picodata:master-distroless
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
@@ -515,6 +530,9 @@ deploy-docker:
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}
       - DOCKERFILE: helm/picodata.distroless
         DESTINATION: ${REGISTRY}/picodata:${CI_COMMIT_TAG}-distroless
+      - DOCKERFILE: docker-build-base/sbroad.Dockerfile
+        DESTINATION: ${BASE_IMAGE_NAME}:${CI_COMMIT_TAG}
+
   trigger:
     project: picodata/devops/picodata-in-docker
     branch: main
@@ -597,7 +615,7 @@ downstream-stress-test:
     - job: upload-picodata-to-binary-stress-test
 
 upload-picodata-to-binary-front-deploy:
-  stage: front-deploy
+  stage: deploy
   extends: .upload-picodata-to-binary
   needs: []
   when: manual
@@ -605,7 +623,7 @@ upload-picodata-to-binary-front-deploy:
 downstream-front-deploy:
   interruptible: true
   # See https://docs.gitlab.com/ee/ci/pipelines/downstream_pipelines.html
-  stage: front-deploy
+  stage: deploy
   allow_failure: true
   trigger:
     project: picodata/devops/pico-servers/front
@@ -638,3 +656,175 @@ publish-picodata-plugin:
   script:
     - if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "Variable CARGO_TOKEN must be available, check that branch is protected" 1>&2 && exit 1; fi
     - make publish-picodata-plugin
+
+
+.kaniko_image: &kaniko_image
+  image:
+    name: docker-public.binary.picodata.io/kaniko-project/executor:v1.23.1-debug
+    entrypoint: ['']
+    pull_policy: [if-not-present]
+  tags:
+    - docker-k8s
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "$DOCKER_AUTH_CONFIG" > /kaniko/.docker/config.json
+
+build-stress-image:
+  stage: build-base-image
+  <<: *kaniko_image
+  needs: []
+  variables:
+    GIT_USERNAME: $CI_REGISTRY_USER
+    GIT_PASSWORD: $CI_REGISTRY_PASSWORD
+    DOCKERFILE: docker-build-base/docker.stress
+  script:
+    - BASE_IMAGE_TAG=$(cd sbroad && git describe --tags --abbrev=0 2>/dev/null || echo "latest")
+    - >
+      /kaniko/executor --context $CI_PROJECT_DIR --dockerfile ${DOCKERFILE}
+      --build-arg COMMIT_HASH=${CI_COMMIT_SHA} --build-arg BASE_IMAGE_TAG=${BASE_IMAGE_TAG} ${PUSH_DOCKER}
+      --cache=false --cache-run-layers=true --single-snapshot --compressed-caching=false --use-new-run --snapshot-mode=redo --cleanup
+      --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+
+.test-sbroad:
+  stage: test
+  tags:
+    - docker-k8s
+  image:
+    name: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG
+    pull_policy: [always]
+  needs: []
+  before_script:
+    - pushd sbroad
+
+lint-sbroad:
+  extends: [.test-sbroad]
+  script:
+    - make lint
+
+unit-sbroad:
+  extends: [.test-sbroad]
+  script:
+    - make test
+
+integration-sbroad:
+  extends: [.test-sbroad]
+  variables:
+    KUBERNETES_CPU_REQUEST: 6
+    KUBERNETES_MEMORY_REQUEST: "6Gi"
+  script:
+    - make test_integration
+  artifacts:
+    paths:
+      - sbroad-cartridge/test_app/tmp/tarantool.log
+    expire_in: 1 week
+
+bench-sbroad:
+  extends: [.test-sbroad]
+  script:
+    - make bench_check
+
+stress_tests:
+  parallel:
+    matrix:
+      - STRESS_TEST:
+        - projection
+        - projection_wide
+        - groupby
+        - insert
+  tags:
+    - docker-k8s
+  variables:
+    TNT_HOST: tarantool
+    STRESS_TEST: insert
+    KUBERNETES_CPU_REQUEST: 6
+    KUBERNETES_MEMORY_REQUEST: "6Gi"
+  services:
+    - name: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+      alias: tarantool
+      pull_policy: always
+  image: docker-public.binary.picodata.io/k6_tnt:latest
+  stage: stress-test
+  allow_failure: true
+  script:
+    - echo "STRESS_TEST=${STRESS_TEST}"
+    # wait while tnt cluster is started
+    - ./tools/check_tnt.sh
+    - mkdir -p sbroad/sbroad-cartridge/stress-test/$CI_COMMIT_BRANCH/${STRESS_TEST}/
+    - k6 run -u 10 -d 1m -e HOST=${TNT_HOST} sbroad/sbroad-cartridge/stress-test/${STRESS_TEST}/k6.js --summary-export sbroad/sbroad-cartridge/stress-test/$CI_COMMIT_BRANCH/${STRESS_TEST}/k6_summary.json
+  needs: [build-stress-image]
+  artifacts:
+    paths:
+      - sbroad/sbroad-cartridge/stress-test/$CI_COMMIT_BRANCH/${STRESS_TEST}/k6_summary.json
+    expire_in: 1 hour
+    when: always
+
+store-stress-results-for-main:
+  rules:
+    - if: $CI_COMMIT_BRANCH ==  $CI_DEFAULT_BRANCH
+  stage: stress-test
+  script:
+    - |
+      tar -czvf sbroad-main-test-results.tgz -C sbroad/sbroad-cartridge/stress-test/ .
+      curl -f -H "Authorization: Basic $RAW_AUTH_RW" --upload-file sbroad-main-test-results.tgz $RAW_REGISTRY/sbroad-stress-tests/
+  needs:
+    - "stress_tests: [projection]"
+    - "stress_tests: [projection_wide]"
+    - "stress_tests: [groupby]"
+    - "stress_tests: [insert]"
+
+diff_stress-results:
+  image: $BASE_IMAGE_NAME:$BASE_IMAGE_TAG
+  stage: stress-test
+  when: manual
+  variables:
+    FARCH: "sbroad-main-test-results.tgz"
+  script:
+    - |
+      curl $RAW_REGISTRY/sbroad-stress-tests/$FARCH -o $FARCH
+      file $FARCH
+      set -x
+      if [ ! -f ${FARCH} -o $(file -i ${FARCH} | grep gzip | wc -l) -eq 0 ] ; then
+        echo "Error: archive ${FARCH} not found on binary"
+        exit 1
+      fi
+      tar -xvf $FARCH -C sbroad/sbroad-cartridge/stress-test/
+      cd sbroad/sbroad-cartridge/stress-test/
+      find -name k6_summary.json
+      for D in $(find . -name k6_summary.json -exec sh -c "dirname {} | sed 's/.*\///g'" \; ); do
+        echo "Branch = $D"
+        if [ "$D" != "main" -a -f main/$D/k6_summary.json -a -f $CI_COMMIT_BRANCH/$D/k6_summary.json ]; then
+        tarantool compare.lua main/$D/k6_summary.json $CI_COMMIT_BRANCH/$D/k6_summary.json
+        elif [ "$D" == main ]; then
+          echo "skipped"
+        else
+          echo "Error: stress-test results not found!"; exit 2;
+        fi
+      done
+  needs:
+    - "stress_tests: [projection]"
+    - "stress_tests: [projection_wide]"
+    - "stress_tests: [groupby]"
+    - "stress_tests: [insert]"
+  artifacts:
+    paths:
+      - sbroad-cartridge/stress-test/**/**/k6_summary.json
+    expire_in: 1 week
+    when: always
+
+deploy-luarocks:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$DEPLOY_PROD_SSH_KEY" | base64 -d | ssh-add -
+    - |
+      if [ "$DEPLOY_PROD_SSH_KEY" == "" ]; then
+        echo "Error: Access to push in docker registry only for protected tag or branch!"
+        exit 1
+      fi
+  script:
+    - make release_rock
+    - echo "Deploying luarocks..."
+    - scp -o stricthostkeychecking=no sbroad*rock luarocks@94.26.239.246:/data/nginx/www/packrepo/luarocks
+    - ssh -o stricthostkeychecking=no luarocks@94.26.239.246 "luarocks-admin make_manifest /data/nginx/www/packrepo/luarocks"

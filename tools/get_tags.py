@@ -4,10 +4,11 @@ import argparse
 import subprocess
 import pathlib
 import os
-from time import sleep
+import time
 
-SUBMODULES_TO_FETCH_TAGS = [".", "tarantool-sys", "tarantool-sys/third_party/luajit"]
 
+SUBMODULES_TO_FETCH_TAGS = os.environ.get('SUBMODULES_TO_FETCH_TAGS', ".,tarantool-sys,\
+                                          tarantool-sys/third_party/luajit").split(",")
 GET_SOURCES_ATTEMPTS = int(os.environ.get('GET_SOURCES_ATTEMPTS', 3))
 PROJECT_DIR = pathlib.Path(__file__).parent.parent
 
@@ -20,6 +21,7 @@ def run_shell(path, shell=True, executable='/bin/bash', text=True):
         try:
             while True:
                 result = ""
+                print(path)
                 proc = subprocess.run("git describe",
                                       shell=shell, executable=executable, text=text,
                                       cwd="{}/{}".format(PROJECT_DIR, path))
@@ -45,7 +47,7 @@ def run_shell(path, shell=True, executable='/bin/bash', text=True):
         except Exception as e:
             print("can't run: " + str(e))
             retry -= 1
-            sleep(timeout)
+            time.sleep(timeout)
     return result
 
 
@@ -55,4 +57,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     for path in args.dirs:
+        t0 = time.time()
         run_shell(path)
+        print(path, "elapsed", time.time() - t0)
