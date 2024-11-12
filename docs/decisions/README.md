@@ -36,6 +36,8 @@ See these ADR examples for inspiration:
 - [Rust RFC - Lifetime Ellision](https://github.com/rust-lang/rfcs/blob/master/text/0141-lifetime-elision.md)
 - [TiKV - Use Joint Consensus](https://github.com/tikv/rfcs/blob/master/text/0054-joint-consensus.md)
 
+Both Russian and English languages are allowed for ADRs.
+
 Open a merge request to this repository and start the ADR discussion in the comments. The suggested prefix for the commit and MR name is `adr:`.
 
 ### Google Docs
