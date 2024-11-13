@@ -38,11 +38,9 @@ pub enum Type {
     Datetime,
     Decimal,
     Double,
-    Integer,
     #[default]
-    Scalar,
+    Integer,
     String,
-    Number,
     Uuid,
     Unsigned,
 }
@@ -56,9 +54,7 @@ impl fmt::Display for Type {
             Type::Datetime => write!(f, "datetime"),
             Type::Double => write!(f, "double"),
             Type::Integer => write!(f, "integer"),
-            Type::Scalar => write!(f, "scalar"),
             Type::String => write!(f, "string"),
-            Type::Number => write!(f, "number"),
             Type::Uuid => write!(f, "uuid"),
             Type::Unsigned => write!(f, "unsigned"),
             Type::Any => write!(f, "any"),
@@ -75,8 +71,6 @@ impl From<&Type> for FieldType {
             Type::Datetime => FieldType::Datetime,
             Type::Double => FieldType::Double,
             Type::Integer => FieldType::Integer,
-            Type::Number => FieldType::Number,
-            Type::Scalar => FieldType::Scalar,
             Type::Uuid => FieldType::Uuid,
             Type::String => FieldType::String,
             Type::Unsigned => FieldType::Unsigned,
@@ -95,8 +89,6 @@ impl From<&Type> for SpaceFieldType {
             Type::Decimal => SpaceFieldType::Decimal,
             Type::Double => SpaceFieldType::Double,
             Type::Integer => SpaceFieldType::Integer,
-            Type::Number => SpaceFieldType::Number,
-            Type::Scalar => SpaceFieldType::Scalar,
             Type::String => SpaceFieldType::String,
             Type::Uuid => SpaceFieldType::Uuid,
             Type::Unsigned => SpaceFieldType::Unsigned,
@@ -117,8 +109,6 @@ impl TryFrom<SpaceFieldType> for Type {
             SpaceFieldType::Decimal => Ok(Type::Decimal),
             SpaceFieldType::Double => Ok(Type::Double),
             SpaceFieldType::Integer => Ok(Type::Integer),
-            SpaceFieldType::Number => Ok(Type::Number),
-            SpaceFieldType::Scalar => Ok(Type::Scalar),
             SpaceFieldType::String => Ok(Type::String),
             SpaceFieldType::Unsigned => Ok(Type::Unsigned),
             SpaceFieldType::Array => Ok(Type::Array),
@@ -129,6 +119,10 @@ impl TryFrom<SpaceFieldType> for Type {
             | SpaceFieldType::Interval => Err(SbroadError::NotImplemented(
                 Entity::Type,
                 field_type.to_smolstr(),
+            )),
+            SpaceFieldType::Number | SpaceFieldType::Scalar => Err(SbroadError::Unsupported(
+                Entity::Type,
+                Some(field_type.to_smolstr()),
             )),
         }
     }
@@ -148,8 +142,6 @@ impl Type {
             "decimal" => Ok(Type::Decimal),
             "double" => Ok(Type::Double),
             "integer" => Ok(Type::Integer),
-            "number" => Ok(Type::Number),
-            "scalar" => Ok(Type::Scalar),
             "string" | "text" => Ok(Type::String),
             "uuid" => Ok(Type::Uuid),
             "unsigned" => Ok(Type::Unsigned),
@@ -174,8 +166,6 @@ impl Type {
                 | Type::Decimal
                 | Type::Double
                 | Type::Integer
-                | Type::Number
-                | Type::Scalar
                 | Type::String
                 | Type::Uuid
                 | Type::Unsigned
@@ -190,10 +180,9 @@ impl Type {
             (Type::Array, Type::Array)
                 | (Type::Boolean, Type::Boolean)
                 | (
-                    Type::Double | Type::Integer | Type::Unsigned | Type::Decimal | Type::Number,
-                    Type::Double | Type::Integer | Type::Unsigned | Type::Decimal | Type::Number,
+                    Type::Double | Type::Integer | Type::Unsigned | Type::Decimal,
+                    Type::Double | Type::Integer | Type::Unsigned | Type::Decimal,
                 )
-                | (Type::Scalar, Type::Scalar)
                 | (Type::String | Type::Uuid, Type::String | Type::Uuid)
         )
     }
@@ -242,8 +231,6 @@ impl From<Column> for Field {
             Type::Decimal => Field::decimal(column.name),
             Type::Double => Field::double(column.name),
             Type::Integer => Field::integer(column.name),
-            Type::Number => Field::number(column.name),
-            Type::Scalar => Field::scalar(column.name),
             Type::String => Field::string(column.name),
             Type::Uuid => Field::uuid(column.name),
             Type::Unsigned => Field::unsigned(column.name),
@@ -282,8 +269,6 @@ impl SerSerialize for Column {
             Type::Decimal => map.serialize_entry("type", "decimal")?,
             Type::Double => map.serialize_entry("type", "double")?,
             Type::Integer => map.serialize_entry("type", "integer")?,
-            Type::Number => map.serialize_entry("type", "number")?,
-            Type::Scalar => map.serialize_entry("type", "scalar")?,
             Type::String => map.serialize_entry("type", "string")?,
             Type::Uuid => map.serialize_entry("type", "uuid")?,
             Type::Unsigned => map.serialize_entry("type", "unsigned")?,
@@ -344,8 +329,12 @@ impl<'de> Visitor<'de> for ColumnVisitor {
             "decimal" => Ok(Column::new(&column_name, Type::Decimal, role, is_nullable)),
             "double" => Ok(Column::new(&column_name, Type::Double, role, is_nullable)),
             "integer" => Ok(Column::new(&column_name, Type::Integer, role, is_nullable)),
-            "number" | "numeric" => Ok(Column::new(&column_name, Type::Number, role, is_nullable)),
-            "scalar" => Ok(Column::new(&column_name, Type::Scalar, role, is_nullable)),
+            "numeric" => Ok(Column::new(
+                &column_name,
+                Type::default(),
+                role,
+                is_nullable,
+            )),
             "string" | "text" | "varchar" => {
                 Ok(Column::new(&column_name, Type::String, role, is_nullable))
             }

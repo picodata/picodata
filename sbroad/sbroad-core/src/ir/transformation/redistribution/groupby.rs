@@ -11,7 +11,6 @@ use crate::ir::node::relational::{MutRelational, Relational};
 use crate::ir::node::{
     Alias, ArenaType, GroupBy, Having, NodeId, Projection, Reference, StableFunction,
 };
-use crate::ir::relation::Type;
 use crate::ir::transformation::redistribution::{
     MotionKey, MotionPolicy, Program, Strategy, Target,
 };
@@ -871,7 +870,7 @@ impl Plan {
         let fun = Function {
             name: kind.to_smolstr(),
             behavior: Behavior::Stable,
-            func_type: Type::from(kind),
+            func_type: kind.to_type(self, arguments)?,
             is_system: true,
         };
         // We can reuse aggregate expression between local aggregates, because

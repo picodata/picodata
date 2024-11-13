@@ -134,9 +134,9 @@ impl Plan {
         };
         let func_expr = StableFunction {
             name: function.to_lowercase().to_smolstr(),
+            func_type: kind.to_type(self, &children)?,
             children,
             feature,
-            func_type: Type::from(kind),
             is_system: true,
         };
         let id = self.nodes.push(func_expr.into());

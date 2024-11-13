@@ -1018,7 +1018,7 @@ pub fn materialize_values(
         vtable
     } else {
         // We need to execute VALUES as a local SQL.
-        let mut result = runtime
+        runtime
             .dispatch(
                 exec_plan,
                 values_id,
@@ -1026,8 +1026,8 @@ pub fn materialize_values(
                 DispatchReturnFormat::Inner,
             )?
             .downcast::<ProducerResult>()
-            .expect("must've failed earlier");
-        result.as_virtual_table()?
+            .expect("must've failed earlier")
+            .as_virtual_table()?
     };
 
     let unified_types = calculate_vtable_unified_types(&vtable)?;

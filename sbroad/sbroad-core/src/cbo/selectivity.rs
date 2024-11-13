@@ -330,12 +330,6 @@ pub fn calculate_filter_selectivity(
             }
             _ => types_mismatch_error,
         },
-        Type::Number => {
-            todo!("Don't know what to do here")
-        }
-        Type::Scalar => {
-            todo!("Don't know what to do here")
-        }
         Type::Array | Type::Any | Type::Map | Type::Datetime => Err(SbroadError::Invalid(
             Entity::Statistics,
             Some(SmolStr::from(

@@ -321,13 +321,12 @@ pub(super) fn sbroad_type_to_pg(ty: &SbroadType) -> PgResult<postgres_types::Typ
     match ty {
         SbroadType::Boolean => Ok(PgType::BOOL),
         SbroadType::Decimal => Ok(PgType::NUMERIC),
-        SbroadType::Double | SbroadType::Number => Ok(PgType::FLOAT8),
+        SbroadType::Double => Ok(PgType::FLOAT8),
         SbroadType::Integer | SbroadType::Unsigned => Ok(PgType::INT8),
         SbroadType::String => Ok(PgType::TEXT),
         SbroadType::Uuid => Ok(PgType::UUID),
         SbroadType::Map | SbroadType::Array | SbroadType::Any => Ok(PgType::JSON),
         SbroadType::Datetime => Ok(PgType::TIMESTAMPTZ),
-        unsupported_type => Err(PgError::FeatureNotSupported(unsupported_type.to_string())),
     }
 }
 

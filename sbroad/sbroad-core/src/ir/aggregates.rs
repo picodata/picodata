@@ -28,18 +28,6 @@ pub enum AggregateKind {
     GRCONCAT,
 }
 
-impl From<AggregateKind> for RelType {
-    fn from(aggregate_kind: AggregateKind) -> Self {
-        match aggregate_kind {
-            AggregateKind::COUNT => RelType::Integer,
-            AggregateKind::SUM | AggregateKind::AVG => RelType::Decimal,
-            AggregateKind::TOTAL => RelType::Double,
-            AggregateKind::MIN | AggregateKind::MAX => RelType::Scalar,
-            AggregateKind::GRCONCAT => RelType::String,
-        }
-    }
-}
-
 impl Display for AggregateKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let name = match self {
@@ -71,6 +59,25 @@ impl AggregateKind {
         }
     }
 
+    #[inline(always)]
+    pub fn to_type(self, plan: &Plan, args: &[NodeId]) -> Result<RelType, SbroadError> {
+        match self {
+            AggregateKind::COUNT => Ok(RelType::Unsigned),
+            AggregateKind::TOTAL => Ok(RelType::Double),
+            AggregateKind::GRCONCAT => Ok(RelType::String),
+            AggregateKind::SUM | AggregateKind::AVG => Ok(RelType::Decimal),
+            AggregateKind::MIN | AggregateKind::MAX => {
+                let child_node =
+                    args.first()
+                        .ok_or(SbroadError::UnexpectedNumberOfValues(format_smolstr!(
+                            "expected at least 1 argument, got 0"
+                        )))?;
+                let expr_node = plan.get_expression_node(*child_node)?;
+                expr_node.calculate_type(plan)
+            }
+        }
+    }
+
     #[must_use]
     pub fn get_local_aggregates_kinds(&self) -> Vec<AggregateKind> {
         match self {
@@ -84,6 +91,21 @@ impl AggregateKind {
         }
     }
 
+    /// Calculate argument type of aggregate function
+    ///
+    /// # Errors
+    /// - Invalid index
+    /// - Node doesn't exist in the plan
+    /// - Node is not an expression type
+    pub fn get_arg_type(idx: usize, plan: &Plan, args: &[NodeId]) -> Result<RelType, SbroadError> {
+        let arg_id = *args.get(idx).ok_or(SbroadError::NotFound(
+            Entity::Index,
+            format_smolstr!("no element at index {idx} in args {args:?}"),
+        ))?;
+        let expr = plan.get_expression_node(arg_id)?;
+        expr.calculate_type(plan)
+    }
+
     /// Check agruments types of aggregate function
     ///
     /// # Errors
@@ -93,13 +115,7 @@ impl AggregateKind {
     /// # Panics
     /// - Invalid argument count for aggregate
     pub fn check_args_types(&self, plan: &Plan, args: &[NodeId]) -> Result<(), SbroadError> {
-        use crate::ir::relation::Type;
-        let get_arg_type = |idx: usize| -> Result<Type, SbroadError> {
-            let arg_id = *args.get(idx).expect("wrong agregate");
-            let expr = plan.get_expression_node(arg_id)?;
-            expr.calculate_type(plan)
-        };
-        let err = |arg_type: &Type| -> Result<(), SbroadError> {
+        let err = |arg_type: &RelType| -> Result<(), SbroadError> {
             Err(SbroadError::Invalid(
                 Entity::Query,
                 Some(format_smolstr!(
@@ -110,24 +126,24 @@ impl AggregateKind {
         };
         match self {
             AggregateKind::SUM | AggregateKind::AVG | AggregateKind::TOTAL => {
-                let arg_type = get_arg_type(0)?;
+                let arg_type = Self::get_arg_type(0, plan, args)?;
                 if !matches!(
                     arg_type,
-                    Type::Decimal | Type::Double | Type::Unsigned | Type::Integer
+                    RelType::Decimal | RelType::Double | RelType::Unsigned | RelType::Integer
                 ) {
                     err(&arg_type)?;
                 }
             }
             AggregateKind::MIN | AggregateKind::MAX => {
-                let arg_type = get_arg_type(0)?;
+                let arg_type = Self::get_arg_type(0, plan, args)?;
                 if !arg_type.is_scalar() {
                     err(&arg_type)?;
                 }
             }
             AggregateKind::GRCONCAT => {
-                let first_type = get_arg_type(0)?;
+                let first_type = Self::get_arg_type(0, plan, args)?;
                 if args.len() == 2 {
-                    let second_type = get_arg_type(1)?;
+                    let second_type = Self::get_arg_type(1, plan, args)?;
                     if first_type != second_type {
                         return Err(SbroadError::Invalid(
                             Entity::Query,
@@ -138,7 +154,7 @@ impl AggregateKind {
                         ));
                     }
                 }
-                if !matches!(first_type, Type::String) {
+                if !matches!(first_type, RelType::String) {
                     err(&first_type)?;
                 }
             }
@@ -354,11 +370,12 @@ impl SimpleAggregate {
             } else {
                 None
             };
+            let func_type = self.kind.to_type(plan, &children)?;
             let final_aggr = StableFunction {
                 name: final_func.to_smolstr(),
                 children,
                 feature,
-                func_type: RelType::from(final_func),
+                func_type,
                 is_system: true,
             };
             let aggr_id = plan.nodes.push(final_aggr.into());

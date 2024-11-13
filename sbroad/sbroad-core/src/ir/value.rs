@@ -841,10 +841,6 @@ impl Value {
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
-            Type::Scalar => match self {
-                Value::Tuple(_) => Err(cast_error(&self, column_type)),
-                _ => Ok(self),
-            },
             Type::String => match self {
                 Value::String(_) => Ok(self),
                 Value::Null => Ok(Value::Null),
@@ -855,13 +851,6 @@ impl Value {
                 Value::String(ref v) => Ok(Value::Uuid(
                     Uuid::parse_str(v).map_err(|_| cast_error(&self, column_type))?,
                 )),
-                Value::Null => Ok(Value::Null),
-                _ => Err(cast_error(&self, column_type)),
-            },
-            Type::Number => match self {
-                Value::Integer(_) | Value::Decimal(_) | Value::Double(_) | Value::Unsigned(_) => {
-                    Ok(self)
-                }
                 Value::Null => Ok(Value::Null),
                 _ => Err(cast_error(&self, column_type)),
             },
@@ -894,7 +883,7 @@ impl Value {
     pub fn cast_and_encode(&self, column_type: &Type) -> Result<EncodedValue, SbroadError> {
         // First, try variants returning EncodedValue::Ref to avoid cloning.
         match (column_type, self) {
-            (Type::Any | Type::Scalar, value) => return Ok(value.into()),
+            (Type::Any, value) => return Ok(value.into()),
             (Type::Boolean, Value::Boolean(_)) => return Ok(self.into()),
             (Type::Datetime, Value::Datetime(_)) => return Ok(self.into()),
             (Type::Decimal, Value::Decimal(_)) => return Ok(self.into()),
@@ -903,10 +892,6 @@ impl Value {
             (Type::String, Value::String(_)) => return Ok(self.into()),
             (Type::Uuid, Value::Uuid(_)) => return Ok(self.into()),
             (Type::Unsigned, Value::Unsigned(_)) => return Ok(self.into()),
-            (
-                Type::Number,
-                Value::Integer(_) | Value::Decimal(_) | Value::Double(_) | Value::Unsigned(_),
-            ) => return Ok(self.into()),
             _ => (),
         }
 
@@ -926,7 +911,7 @@ impl Value {
             Value::String(_) => Type::String,
             Value::Tuple(_) => Type::Array,
             Value::Uuid(_) => Type::Uuid,
-            Value::Null => Type::Scalar,
+            Value::Null => Type::default(),
         }
     }
 }

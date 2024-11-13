@@ -96,6 +96,8 @@ to 2 and 3.
   - `vdbe_max_steps` to `sql_vdbe_opcode_max`
   - `vtable_max_rows` to `sql_motion_row_max`
 
+- `SCALAR` and `NUMBER` data types are not supported anymore.
+
 ### RPC API
 
 - `.proc_expel` and `.proc_expel_redirect` takes instance uuid instead of instance name.

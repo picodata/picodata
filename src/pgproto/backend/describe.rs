@@ -1,5 +1,5 @@
 use crate::pgproto::{
-    error::{PgError, PgResult},
+    error::PgResult,
     value::{FieldFormat, RawFormat},
 };
 use pgwire::{
@@ -307,15 +307,6 @@ fn pg_type_from_sbroad(sbroad: &SbroadType) -> PgResult<Type> {
         SbroadType::Decimal => Ok(Type::NUMERIC),
         SbroadType::Uuid => Ok(Type::UUID),
         SbroadType::Datetime => Ok(Type::TIMESTAMPTZ),
-        // According to tarantool [documentation](https://www.tarantool.io/en/doc/latest/reference/reference_sql/sql_user_guide/#sql-data-type-conversion):
-        // NUMBER values have the same range as DOUBLE values. But NUMBER values may also be integers.
-        //
-        // So it's reasonable to represent them as FLOAT8 values from PostgreSQL.
-        SbroadType::Number => Ok(Type::FLOAT8),
-        _ => Err(PgError::FeatureNotSupported(format!(
-            "unknown column type \'{}\'",
-            sbroad
-        ))),
     }
 }
 

@@ -307,9 +307,9 @@ Identifier = @{ DelimitedIdentifier | RegularIdentifier  }
                         | ^"else" | ^"end" | ^"except" | ^"exists"
                         | ^"false" | ^"from" | ^"group"
                         | ^"having" | ^"inner" | ^"int2" | ^"int4" | ^"int8" | ^"integer" | ^"into" | ^"int" | ^"in" | ^"is"
-                        | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"not" | ^"null" | ^"number" | ^"numeric"
+                        | ^"join" | ^"left" | ^"limit" | ^"localtimestamp" | ^"not" | ^"null" | ^"numeric"
                         | ^"on" | ^"option" | ^"order" | ^"or" | ^"outer" | ^"primary"
-                        | ^"scalar" | ^"select" | ^"set" | ^"smallint" |^"string"
+                        | ^"select" | ^"set" | ^"smallint" |^"string"
                         | ^"table" | ^"text" | ^"then" | ^"to" | ^"true"
                         | ^"union" | ^"unsigned" | ^"using" | ^"uuid"
                         | ^"values" | ^"varchar" | ^"when" | ^"where" | ^"with"
@@ -401,16 +401,14 @@ Expr = ${ ExprAtomValue ~ (ExprInfixOpo ~ ExprAtomValue)* }
                 CaseElseBlock = ${ ^"else" ~ W ~ Expr }
             CastOp = ${ ^"cast" ~ WO ~ "(" ~ WO ~ Expr ~ W ~ ^"as" ~ W ~ TypeCast ~ WO ~ ")" }
                 TypeCast = _{ TypeAny | ColumnDefType }
-                ColumnDefType = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt | TypeNumber
-                                   | TypeScalar | TypeString | TypeText | TypeUnsigned | TypeVarchar | TypeUuid }
+                ColumnDefType = { TypeBool | TypeDatetime | TypeDecimal | TypeDouble | TypeInt
+                                   | TypeString | TypeText | TypeUnsigned | TypeVarchar | TypeUuid }
                     TypeAny = { ^"any" }
                     TypeBool = { (^"boolean" | ^"bool") }
                     TypeDatetime = { ^"datetime" }
                     TypeDecimal = { (^"decimal" | ^"numeric" ~ ("(" ~ WO ~ Unsigned ~ WO ~ ("," ~ WO ~ Integer ~ WO)? ~ ")")?) }
                     TypeDouble = { ^"double" }
                     TypeInt = { (^"integer" | ^"bigint" | ^"smallint" | ^"int" ~ ("2" | "4" | "8")?) }
-                    TypeNumber = { ^"number" }
-                    TypeScalar = { ^"scalar" }
                     TypeString = { ^"string" }
                     TypeText = { ^"text" }
                     TypeUuid = { ^"uuid" }

@@ -25,7 +25,7 @@ use crate::{
     executor::{
         engine::{helpers::build_optional_binary, ConvertToDispatchResult, DispatchReturnFormat},
         protocol::{FullMessage, RequiredMessage},
-        result::ProducerResult,
+        result::{MetadataColumn, ProducerResult},
     },
     ir::node::{
         relational::{MutRelational, Relational},
@@ -48,7 +48,7 @@ use crate::{
     },
 };
 
-use super::{build_required_binary, filter_vtable};
+use super::{build_required_binary, filter_vtable, try_get_metadata_from_plan};
 
 /// Map between replicaset uuid and plan subtree (with additional info), sending to it.
 /// (see `Message`documentation for more info).
@@ -173,6 +173,7 @@ fn lua_dml_single_plan(
 fn build_final_dql_result(
     rs_to_res: RSResultMap<'_>,
     return_format: DispatchReturnFormat,
+    metadata: Vec<MetadataColumn>,
 ) -> Result<Box<dyn Any>, SbroadError> {
     // HACK: if non-empty table was returned only from
     // single Replicaset, then we can return result
@@ -213,8 +214,12 @@ fn build_final_dql_result(
         }
     }
 
-    let producer_result = concat_results(rs_to_res)?;
-    producer_result.convert(return_format)
+    let mut rows = Vec::with_capacity(rs_to_res.len());
+    for (_, encoded_res) in rs_to_res {
+        let decoded_res: ProducerResult = encoded_res.try_into()?;
+        rows.extend(decoded_res.rows);
+    }
+    ProducerResult { metadata, rows }.convert(return_format)
 }
 
 type RSName = String;
@@ -316,30 +321,6 @@ pub fn exec_cacheable_dql_with_custom_plans<'a>(
     }
 
     Ok(rs_to_res)
-}
-
-fn concat_results(rs_to_res: RSResultMap<'_>) -> Result<ProducerResult, SbroadError> {
-    let mut row_count = 0;
-    for res in rs_to_res.values() {
-        row_count += res.row_cnt;
-    }
-    let mut metadata = None;
-    let mut rows = Vec::new();
-    for (_, res) in rs_to_res {
-        let decoded: ProducerResult = res.try_into()?;
-        if metadata.is_none() {
-            metadata = Some(decoded.metadata);
-            rows = decoded.rows;
-            rows.reserve(usize::try_from(row_count - rows.len() as u64).expect("too much rows"));
-        } else {
-            rows.extend(decoded.rows.into_iter());
-        }
-    }
-
-    Ok(ProducerResult {
-        metadata: metadata.ok_or_else(|| SbroadError::Other("empty result map".into()))?,
-        rows,
-    })
 }
 
 /// Result from single replicaset.
@@ -616,6 +597,8 @@ fn exec_with_single_plan(
     match &query_type {
         QueryType::DQL => {
             let lua = tarantool::lua_state();
+            let metadata =
+                try_get_metadata_from_plan(&exec_plan)?.expect("plan should be valid as a dql");
             let rs_to_res = exec_cacheable_dql_with_single_plan(
                 &lua,
                 exec_plan,
@@ -624,7 +607,7 @@ fn exec_with_single_plan(
                 waiting_timeout,
                 tier_name,
             )?;
-            build_final_dql_result(rs_to_res, return_format)
+            build_final_dql_result(rs_to_res, return_format, metadata)
         }
         QueryType::DML => {
             let required_binary = build_required_binary(&mut exec_plan)?;
@@ -666,10 +649,12 @@ fn exec_with_custom_plan(
 
     let query_type = sub_plan.query_type()?;
     let sql_motion_row_max = sub_plan.get_sql_motion_row_max();
+    let metadata = try_get_metadata_from_plan(&sub_plan)?;
     let rs_ir = prepare_rs_to_ir_map(&rs_bucket_vec, sub_plan)?;
     match &query_type {
         QueryType::DQL => {
             let lua = tarantool::lua_state();
+            let metadata = metadata.expect("plan should be valid as a dql");
             let rs_to_res = exec_cacheable_dql_with_custom_plans(
                 &lua,
                 rs_ir,
@@ -677,7 +662,7 @@ fn exec_with_custom_plan(
                 waiting_timeout,
                 tier_name,
             )?;
-            build_final_dql_result(rs_to_res, return_format)
+            build_final_dql_result(rs_to_res, return_format, metadata)
         }
         QueryType::DML => {
             let mut rs_message = HashMap::with_capacity(rs_ir.len());

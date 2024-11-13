@@ -83,7 +83,7 @@ pub fn get_builtin_functions() -> &'static [Function] {
                 Function::new_stable("substr".into(), Type::String, true),
                 Function::new_stable("lower".into(), Type::String, true),
                 Function::new_stable("upper".into(), Type::String, true),
-                Function::new_stable("coalesce".into(), Type::Scalar, true),
+                Function::new_stable("coalesce".into(), Type::Any, true),
             ]
         })
     }

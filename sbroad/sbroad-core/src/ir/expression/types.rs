@@ -22,7 +22,7 @@ impl Plan {
             )),
             // Parameter nodes must recalculate their type during
             // binding (see `bind_params` function).
-            Node::Parameter(ty) => Ok(ty.param_type.unwrap_or(Type::Scalar)),
+            Node::Parameter(ty) => Ok(ty.param_type.unwrap_or(Type::default())),
             Node::Ddl(ddl) => Err(SbroadError::Invalid(
                 Entity::Node,
                 Some(format_smolstr!("DDL node {ddl:?} has no type")),
@@ -78,7 +78,7 @@ impl Expression<'_> {
                         {
                             Some(Type::Any)
                         } else {
-                            Some(Type::Scalar)
+                            Some(Type::default())
                         };
                     }
                     None

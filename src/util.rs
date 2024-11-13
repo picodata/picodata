@@ -838,12 +838,10 @@ pub fn check_tuple_matches_format(tuple: &[u8], format: &[Field], what_to_fix: &
             FieldType::Any => true,
             FieldType::Unsigned => field.is_u64(),
             FieldType::String => field.is_str(),
-            FieldType::Number => field.is_number(),
             FieldType::Double => field.is_f32() || field.is_f64(),
             FieldType::Integer => field.is_i64(),
             FieldType::Boolean => field.is_bool(),
             FieldType::Varbinary => todo!(),
-            FieldType::Scalar => todo!(),
             FieldType::Decimal | FieldType::Uuid | FieldType::Datetime | FieldType::Interval => {
                 field.is_ext()
             }
@@ -874,7 +872,7 @@ pub fn check_msgpack_matches_type(
         SbroadType::Integer => is_int(marker),
         SbroadType::Unsigned => is_uint(marker),
         SbroadType::Double => is_int(marker) || is_float(marker),
-        SbroadType::Decimal | SbroadType::Number => {
+        SbroadType::Decimal => {
             is_ext(msgpack, tarantool::ffi::decimal::MP_DECIMAL)
                 || is_int(marker)
                 || is_float(marker)
@@ -882,7 +880,6 @@ pub fn check_msgpack_matches_type(
         SbroadType::String => is_str(marker) || is_bin(marker),
         SbroadType::Uuid => is_ext(msgpack, tarantool::ffi::uuid::MP_UUID),
         SbroadType::Datetime => is_ext(msgpack, tarantool::ffi::datetime::MP_DATETIME),
-        SbroadType::Scalar => !is_array(marker) && !is_map(marker),
         SbroadType::Array => is_array(marker),
         SbroadType::Map => is_map(marker),
     };

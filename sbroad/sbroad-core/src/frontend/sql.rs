@@ -179,8 +179,6 @@ fn parse_proc_params(
             Rule::TypeDecimal => RelationType::Decimal,
             Rule::TypeDouble => RelationType::Double,
             Rule::TypeInt => RelationType::Integer,
-            Rule::TypeNumber => RelationType::Number,
-            Rule::TypeScalar => RelationType::Scalar,
             Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => RelationType::String,
             Rule::TypeUuid => RelationType::Uuid,
             Rule::TypeUnsigned => RelationType::Unsigned,
@@ -711,12 +709,6 @@ fn parse_create_table(
                                     }
                                     Rule::TypeInt => {
                                         column_def.data_type = RelationType::Integer;
-                                    }
-                                    Rule::TypeNumber => {
-                                        column_def.data_type = RelationType::Number;
-                                    }
-                                    Rule::TypeScalar => {
-                                        column_def.data_type = RelationType::Scalar;
                                     }
                                     Rule::TypeString | Rule::TypeText | Rule::TypeVarchar => {
                                         column_def.data_type = RelationType::String;

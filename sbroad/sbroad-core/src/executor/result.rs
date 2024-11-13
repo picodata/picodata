@@ -159,11 +159,29 @@ impl ProducerResult {
         // Decode data
         let mut data: Vec<VTableTuple> = Vec::with_capacity(self.rows.len());
         let columns = vtable.get_columns();
+
+        crate::warn!(Some("as_virtual_table"), "started matching types");
+
         for mut encoded_tuple in self.rows.drain(..) {
             let mut tuple = Vec::with_capacity(encoded_tuple.len());
             for (i, value) in encoded_tuple.drain(..).enumerate() {
                 let column = &columns[i];
                 let value = Value::from(value);
+
+                crate::warn!(
+                    Some("as_virtual_table"),
+                    &format!(
+                        "row type (value): {:?}, column type: {:?}, match: {}",
+                        value.get_type(),
+                        column.r#type,
+                        if value.get_type() == column.r#type {
+                            "yes"
+                        } else {
+                            "no "
+                        },
+                    )
+                );
+
                 if value.get_type() == column.r#type {
                     tuple.push(value);
                 } else {
@@ -173,6 +191,8 @@ impl ProducerResult {
             data.push(tuple);
         }
         std::mem::swap(vtable.get_mut_tuples(), &mut data);
+
+        crate::warn!(Some("as_virtual_table"), "ended matching types");
 
         Ok(vtable)
     }

@@ -762,25 +762,17 @@ pub fn calculate_vtable_unified_types(
     // Map of { type -> types_which_can_be_upcasted_to_given_one }.
     let get_types_less = |ty: &Type| -> &[Type] {
         match ty {
-            Type::Scalar
-            | Type::Any
+            Type::Any
             | Type::Map
             | Type::Array
             | Type::Boolean
             | Type::String
+            | Type::Unsigned
             | Type::Datetime => &[],
             Type::Uuid => &[Type::String],
-            Type::Unsigned => &[Type::Scalar],
-            Type::Integer => &[Type::Scalar, Type::Unsigned],
-            Type::Double => &[Type::Scalar, Type::Unsigned, Type::Integer],
-            Type::Decimal => &[Type::Scalar, Type::Unsigned, Type::Integer, Type::Double],
-            Type::Number => &[
-                Type::Scalar,
-                Type::Unsigned,
-                Type::Integer,
-                Type::Double,
-                Type::Decimal,
-            ],
+            Type::Integer => &[Type::Unsigned],
+            Type::Double => &[Type::Unsigned, Type::Integer],
+            Type::Decimal => &[Type::Unsigned, Type::Integer, Type::Double],
         }
     };
 

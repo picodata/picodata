@@ -1534,7 +1534,7 @@ impl Default for RoutineParamDef {
     fn default() -> Self {
         Self {
             mode: RoutineParamMode::default(),
-            r#type: FieldType::Scalar,
+            r#type: FieldType::Integer,
             default: None,
         }
     }
@@ -1656,21 +1656,17 @@ pub fn try_space_field_type_to_index_field_type(
     use tarantool::index::FieldType as IFT;
     use tarantool::space::FieldType as SFT;
     let res = match ft {
-        SFT::Any => None,
         SFT::Unsigned => Some(IFT::Unsigned),
         SFT::String => Some(IFT::String),
-        SFT::Number => Some(IFT::Number),
         SFT::Double => Some(IFT::Double),
         SFT::Integer => Some(IFT::Integer),
         SFT::Boolean => Some(IFT::Boolean),
         SFT::Varbinary => Some(IFT::Varbinary),
-        SFT::Scalar => Some(IFT::Scalar),
         SFT::Decimal => Some(IFT::Decimal),
         SFT::Uuid => Some(IFT::Uuid),
         SFT::Datetime => Some(IFT::Datetime),
-        SFT::Interval => None,
         SFT::Array => Some(IFT::Array),
-        SFT::Map => None,
+        _ => None,
     };
     res
 }
@@ -2510,7 +2506,7 @@ mod tests {
             format: vec![
                 Field {
                     name: "id".into(),
-                    r#type: FieldType::Number,
+                    r#type: FieldType::Integer,
                     is_nullable: false,
                 },
                 Field {
