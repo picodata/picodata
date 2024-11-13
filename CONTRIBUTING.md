@@ -44,7 +44,7 @@ Use the following commands to install the required build prerequisites.
 Note that you'll need recent Rust and Cargo versions installed using the
 recommended way from [rustup.rs](rustup.rs):
 ```shell
-brew install git cmake make curl gcc msgpack
+brew install git cmake make curl gcc msgpack protobuf
 
 # Optional - to build with Web UI
 brew install node yarn
