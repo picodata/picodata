@@ -63,6 +63,7 @@ Picodata — это распределенная система промышле
 * [Регистрируемые события безопасности](reference/audit_events.md)
 * [Параметры конфигурации СУБД](reference/db_config.md)
 * [Справочник метрик](reference/metrics.md)
+* [Ограничения](reference/limitations.md)
 
 ### Архитектура {: #architecture }
 
