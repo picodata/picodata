@@ -89,9 +89,9 @@ make build-release-pkg
 %doc README.md
 %{!?_licensedir:%global license %doc}
 %if "%{?_build_vendor}" == "alt"
-%doc docs/licenses/eula_en.txt docs/licenses/eula_ru.txt AUTHORS
+%doc doc/licenses/eula_en.txt doc/licenses/eula_ru.txt AUTHORS
 %else
-%license docs/licenses/eula_en.txt docs/licenses/eula_ru.txt AUTHORS
+%license doc/licenses/eula_en.txt doc/licenses/eula_ru.txt AUTHORS
 %endif
 
 %changelog
