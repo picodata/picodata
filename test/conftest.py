@@ -2131,7 +2131,7 @@ def cargo_build(with_webui: bool = False) -> None:
         eprint("Skipping cargo build")
         return
 
-    features = ["error_injection", "sbroad-core/tracing"]
+    features = ["error_injection"]
     if with_webui:
         features.append("webui")
 

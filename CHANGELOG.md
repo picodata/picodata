@@ -120,6 +120,7 @@ with the `YY.MINOR.MICRO` scheme.
   support WAIT APPLIED (GLOBALLY | LOCALLY) options, allowing users to wait for operations to be
   committed across all replicasets or only on the current one
 - EXPLAIN estimates query buckets
+- SQL supports `COALESCE` function
 
 ### Fixes
 

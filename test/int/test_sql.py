@@ -1380,6 +1380,23 @@ def test_substr(instance: Instance):
     assert data[0] == [""]
 
 
+def test_coalesce(instance: Instance):
+    instance.sql("create table foo (id int primary key, bar unsigned null);")
+    instance.sql("insert into foo values (1, null), (2, 1);")
+
+    # Coalesce returns first non null value from its arguments.
+    data = instance.sql("select coalesce(bar, 0) from foo;")
+    assert data == [[0], [1]]
+
+    # Type mismatch: all values must have the same type.
+    with pytest.raises(TarantoolError, match=" expected unsigned type, but got string"):
+        instance.sql("select coalesce(bar, 'none') from foo;")
+
+    # 0 / 0 is not evaluated.
+    data = instance.sql("select coalesce(bar, 0, 0 / 0) from foo;")
+    assert data == [[0], [1]]
+
+
 def test_lower_upper(instance: Instance):
     instance.sql(
         """

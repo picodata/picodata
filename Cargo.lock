@@ -3457,7 +3457,6 @@ dependencies = [
  "hash32",
  "itertools",
  "lazy_static",
- "opentelemetry",
  "pest",
  "pest_derive",
  "pretty_assertions 1.4.1",
@@ -3465,7 +3464,6 @@ dependencies = [
  "rmp",
  "rmp-serde",
  "rmpv",
- "sbroad-proc",
  "serde",
  "serde_bytes",
  "serde_yaml",
@@ -3473,14 +3471,6 @@ dependencies = [
  "tarantool 5.1.0",
  "time",
  "uuid 1.11.0",
-]
-
-[[package]]
-name = "sbroad-proc"
-version = "0.1.0"
-dependencies = [
- "quote 1.0.37",
- "syn 1.0.109",
 ]
 
 [[package]]
