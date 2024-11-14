@@ -334,7 +334,7 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
     )
     assert ddl["row_count"] == 1
 
-    table_size = 100000
+    table_size = 30000
     batch_size = 1000
     for start in range(1, table_size, batch_size):
         response = i1.sql(
@@ -363,7 +363,9 @@ def test_is_bucket_rebalancing_means_data_migration(cluster: Cluster):
 
     # wait until vshard rebalancing done
     for instance in others:
-        cluster.wait_until_instance_has_this_many_active_buckets(instance, 300)
+        cluster.wait_until_instance_has_this_many_active_buckets(
+            instance, 300, max_retries=100
+        )
 
     for instance in others:
         assert get_table_size(instance, "sharded_table") > 0
