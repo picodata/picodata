@@ -59,7 +59,6 @@ Picodata. На них невозможно выдать или отозвать 
 
 ## Public API {: #public_api }
 
---------------------------------------------------------------------------------
 ### .proc_version_info {: #proc_version_info }
 
 ```rust
@@ -70,16 +69,14 @@ fn proc_version_info() -> VersionInfo
 
 Возвращаемое значение:
 
-- (MP_MAP `VersionInfo`)
-
+- (MP_MAP `VersionInfo`):
     - `picodata_version`: (MP_STR) версия Picodata
       <!-- TODO ссылка на политику версионирования -->
     - `rpc_api_version`: (MP_STR) версия RPC API согласно семантическому
-      версионированию ([Semantic Versioning][semver])
+      версионированию [Semantic Versioning][semver]
 
 [semver]: https://semver.org/
 
---------------------------------------------------------------------------------
 ### .proc_sql_dispatch {: #proc_sql_dispatch }
 
 ```rust
@@ -98,15 +95,12 @@ fn proc_sql_dispatch(pattern, params) -> Result
 
 - (MP_MAP `DqlResult`) при чтении данных
   <br>Поля:
-
     - `metadata` (MP_ARRAY), массив описаний столбцов таблицы в формате
       `MP_ARRAY [ MP_MAP { name = MP_STR, type = MP_STR }, ...]`
     - `rows` (MP_ARRAY), результат выполнения читающего запроса в формате
       `MP_ARRAY [ MP_ARRAY row, ...]`
-
 - (MP_MAP `DmlResult`) при модификации данных
   <br>Поля:
-
     - `row_count` (MP_INT), количество измененных строк
 
 См. также:
@@ -117,11 +111,10 @@ fn proc_sql_dispatch(pattern, params) -> Result
 
 ## Service API {: #service_api }
 
---------------------------------------------------------------------------------
 ### .proc_apply_schema_change {: #proc_apply_schema_change }
 
 ```rust
-fn proc_apply_schema_change(raft_term, raft_index, timeout) -> Result
+fn proc_apply_schema_change(term, applied, timeout) -> Result
 ```
 
 Дожидается момента, когда raft применит запись с заданным индексом и
@@ -148,8 +141,8 @@ fn proc_apply_schema_change(raft_term, raft_index, timeout) -> Result
 
 Параметры:
 
-- `raft_term`: (MP_INT)
-- `raft_index`: (MP_INT)
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
 Возвращаемое значение:
@@ -157,7 +150,6 @@ fn proc_apply_schema_change(raft_term, raft_index, timeout) -> Result
 - (MP_STR `Ok`)
 - (MP_MAP, `{ "Abort": { "reason": MP_STR } }`) в случае ошибки
 
---------------------------------------------------------------------------------
 ### .proc_cas {: #proc_cas }
 
 ```rust
@@ -189,20 +181,19 @@ fn proc_cas(cluster_name, predicate, op, as_user) -> (RaftIndex, RaftTerm)
 Параметры:
 
 - `cluster_name`: (MP_STR)
-- `predicate`: (MP_MAP `CasPredicate`)
+- `predicate`: (MP_MAP `Predicate`)
 - `op`: (MP_MAP `Op`)
 - `as_user`: (MP_INT)
 
 Возвращаемое значение:
 
-- (MP_INT raft индекс)
-- (MP_INT raft терм)
+- `index`: (MP_INT) raft-индекс
+- `term`: (MP_INT) raft-терм
 
---------------------------------------------------------------------------------
 ### .proc_discover {: #proc_discover }
 
 ```rust
-fn proc_discover(request, receiver)
+fn proc_discover(request, request_to) -> Result
 ```
 
 Этy хранимую процедуру вызывают инстансы Picodata во время запуска с пустым
@@ -214,19 +205,16 @@ fn proc_discover(request, receiver)
 - `request`: (MP_MAP):
     - `tmp_id`: (MP_STR)
     - `peers`: (MP_ARRAY of MP_STR)
-- `receiver`: (MP_STR) адрес, по которому доступен текущий инстанс
+- `request_to`: (MP_STR) адрес, по которому доступен текущий инстанс
 
 Возвращаемое значение:
 
-- (MP_MAP)
-    - `LeaderElection`: (MP_MAP) в случае если алгоритм продолжается
-        - `tmp_id`: (MP_STR)
-        - `peers`: (MP_ARRAY of MP_STR)
+- *LeaderElection*: (MP_MAP `LeaderElection`) — если алгоритм продолжается:
+    - `tmp_id`: (MP_STR)
+    - `peers`: (MP_ARRAY of MP_STR)
+- *Done*: (MP_MAP `Role`) — если результат уже известен:
+    - `leader_address`: (MP_STR) адрес лидера
 
-    - `Done`: (MP_MAP): в случае если результат уже известен
-        - `leader_address`: (MP_STR): адрес лидера
-
---------------------------------------------------------------------------------
 ### .proc_expel {: #proc_expel }
 
 ```rust
@@ -242,10 +230,9 @@ fn proc_expel(cluster_name, instance_uuid)
 
 Параметры:
 
-- `cluster_name`: (MP_STR),
-- `instance_uuid`: (MP_STR),
+- `cluster_name`: (MP_STR)
+- `instance_uuid`: (MP_STR)
 
---------------------------------------------------------------------------------
 ### .proc_expel_redirect {: #proc_expel_redirect }
 
 ```rust
@@ -258,10 +245,9 @@ fn proc_expel_redirect(cluster_name, instance_uuid)
 
 Параметры:
 
-- `cluster_name`: (MP_STR),
-- `instance_uuid`: (MP_STR),
+- `cluster_name`: (MP_STR)
+- `instance_uuid`: (MP_STR)
 
---------------------------------------------------------------------------------
 ### .proc_get_config {: #.proc_get_config }
 
 ```rust
@@ -290,18 +276,18 @@ fn proc_get_config() -> Result
 [файл конфигурации]: ../reference/config.md#config_file_description
 [файла конфигурации]: ../reference/config.md#config_file_description
 
---------------------------------------------------------------------------------
 ### .proc_get_index {: #proc_get_index }
 
 ```rust
 fn proc_get_index() -> RaftIndex
 ```
 
-Возвращает текущий примененный (applied) индекс raft-журнала
+Возвращает текущий примененный (applied) индекс raft-журнала.
 
-Возвращаемое значение: MP_INT
+Возвращаемое значение:
 
---------------------------------------------------------------------------------
+* (MP_INT `RaftIndex`)
+
 ### .proc_get_vclock {: #proc_get_vclock }
 
 ```rust
@@ -310,20 +296,22 @@ fn proc_get_vclock() -> Vclock
 
 Возвращает текущее значение [Vclock].
 
-Возвращаемое значение: MP_MAP `Vclock`
+Возвращаемое значение:
 
---------------------------------------------------------------------------------
+* (MP_MAP `Vclock`)
+
 ### .proc_get_vshard_config {: #proc_get_vshard_config }
 
 ```rust
-fn proc_get_vshard_config(tier_name: Option<String>) -> Result
+fn proc_get_vshard_config(tier_name) -> Result
 ```
 
-Возвращает Vshard-конфигурацию тира, переданного в качестве аргумента.
-Если тир не указан, возвращается Vshard-конфигурация тира текущего
-инстанса.
+Возвращает Vshard-конфигурацию тира `tier_name`. Если тир не указан,
+возвращается Vshard-конфигурация тира текущего инстанса.
 
-Возвращаемое значение: MP_MAP `VshardConfig`
+Возвращаемое значение:
+
+* (MP_MAP `VshardConfig`)
 
 <!--
 - `VshardConfig`: (MP_MAP)
@@ -336,7 +324,6 @@ fn proc_get_vshard_config(tier_name: Option<String>) -> Result
         - `weight`: (MP_FLOAT)
 -->
 
---------------------------------------------------------------------------------
 ### .proc_instance_info {: #proc_instance_info }
 
 ```rust
@@ -353,7 +340,7 @@ fn proc_instance_info(instance_name) -> InstanceInfo
 
 Возвращаемое значение:
 
-- (MP_MAP `InstanceInfo`)
+- (MP_MAP `InstanceInfo`):
     - `raft_id`: (MP_UINT)
     - `advertise_address`: (MP_STR)
     - `name`: (MP_STR)
@@ -361,25 +348,23 @@ fn proc_instance_info(instance_name) -> InstanceInfo
     - `replicaset_name`: (MP_STR)
     - `replicaset_uuid`: (MP_STR)
     - `cluster_name`: (MP_STR)
-    - `current_state`: (MP_MAP [`State`](../overview/glossary.md#state)), текущее состояние инстанса
+    - `current_state`: (MP_MAP [`State`](../overview/glossary.md#state)) — текущее состояние инстанса
       <br>формат: `MP_MAP { variant = MP_STR, incarnation = MP_UINT}`
       <br>возможные значения `variant`: `Offline`, `Online`, `Expelled`
-    - `target_state`: (MP_MAP [`State`](../overview/glossary.md#state)), целевое состояние инстанса
+    - `target_state`: (MP_MAP [`State`](../overview/glossary.md#state)) — целевое состояние инстанса
     - `tier`: (MP_STR)
 
---------------------------------------------------------------------------------
 ### .proc_raft_info {: #proc_raft_info }
 
 ```rust
 fn proc_raft_info() -> RaftInfo
 ```
 
-Возвращает информацию о состоянии raft-узла на текущем инстансе
+Возвращает информацию о состоянии raft-узла на текущем инстансе.
 
 Возвращаемое значение:
 
-- (MP_MAP `RaftInfo`)
-
+- (MP_MAP `RaftInfo`):
     - `id`: (MP_INT) `raft_id` текущего узла
     - `term`: (MP_INT) текущий [терм](../overview/glossary.md#term)
     - `applied`: (MP_INT) текущий примененный индекс raft-журнала
@@ -388,7 +373,6 @@ fn proc_raft_info() -> RaftInfo
     - `state` (MP_STR)
       <br>возможные значения: `Follower`, `Candidate`, `Leader`, `PreCandidate`
 
---------------------------------------------------------------------------------
 ### .proc_raft_interact {: #proc_raft_interact }
 
 ```rust
@@ -402,11 +386,10 @@ fn proc_raft_interact(raft_messages)
 
 - `raft_messages`: (MP_ARRAY of MP_ARRAY)
 
---------------------------------------------------------------------------------
 ### .proc_raft_join {: #proc_raft_join }
 
 ```rust
-fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_address, failure_domain, tier)
+fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_address, failure_domain, tier) -> Result
 ```
 
 Выполняется только на [raft-лидере](../overview/glossary.md#raft_leader),
@@ -421,27 +404,25 @@ fn proc_raft_join(cluster_name, instance_name, replicaset_name, advertise_addres
 
 Параметры:
 
-- `cluster_name`: (MP_STR),
-- `instance_name`: (MP_STR | MP_NIL),
-- `replicaset_name`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset),
-- `advertise_address`: (MP_STR),
-- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain),
-- `tier`: (MP_STR) идентификатор [тира](../overview/glossary.md#tier),
+- `cluster_name`: (MP_STR)
+- `instance_name`: (MP_STR | MP_NIL)
+- `replicaset_name`: (MP_STR | MP_NIL) идентификатор [репликасета](../overview/glossary.md#replicaset)
+- `advertise_address`: (MP_STR)
+- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
+- `tier`: (MP_STR) идентификатор [тира](../overview/glossary.md#tier)
 
 Возвращаемое значение:
 
-- `instance`: (MP_MAP): кортеж из системной таблицы [_pico_instance](./system_tables.md#_pico_instance),
-                        соответствующий присоединяющемуся инстансу,
+- (MP_MAP `Response`):
+    - `instance`: (MP_MAP): кортеж из системной таблицы [_pico_instance](./system_tables.md#_pico_instance),
+                            соответствующий присоединяющемуся инстансу
+    - `peer_addresses`: (MP_ARRAY): набор адресов некоторых инстансов кластера
+        - (MP_MAP `PeerAddress`):
+            - `raft_id`: (MP_INT)
+            - `address`: (MP_STR)
+    - `box_replication`: (MP_ARRAY of MP_STR): адреса всех реплик в репликасете
+                                              присоединяющегося инстанса
 
-- `peer_addresses`: (MP_ARRAY): набор адресов некоторых инстансов кластера
-    - (MP_MAP):
-        - `raft_id`: (MP_INT),
-        - `address`: (MP_STR),
-
-- `box_replication`: (MP_ARRAY of MP_STR): адреса всех реплик в репликасете
-                                           присоединяющегося инстанса
-
---------------------------------------------------------------------------------
 ### .proc_raft_promote {: #proc_raft_promote }
 
 ```rust
@@ -453,11 +434,10 @@ fn proc_raft_promote()
 как кандидата в лидеры raft-группы. Если других кандидатов не обнаружится,
 текущий инстанс с большой вероятностью станет новым лидером.
 
---------------------------------------------------------------------------------
 ### .proc_raft_snapshot_next_chunk {: #proc_raft_snapshot_next_chunk }
 
 ```rust
-fn proc_raft_snapshot_next_chunk(raft_term, raft_index, snapshot_position)
+fn proc_raft_snapshot_next_chunk(entry_id, position) -> Result
 ```
 
 Возвращает следующий отрезок данных [raft-снапшота](../overview/glossary.md#snapshot).
@@ -488,25 +468,23 @@ raft-журнала и обнаруживает, что его журнал бы
 
 Параметры:
 
-- `raft_term`: (MP_INT)
-- `raft_index`: (MP_INT)
-- `snapshot_position`: (MP_MAP `SnapshotPosition`)
-    - `table_id`: MP_INT
-    - `tuple_offset`: MP_INT
+- `entry_id` (MP_MAP `RaftEntryId`):
+    - `index`: (MP_INT)
+    - `term`: (MP_INT)
+- `position`: (MP_MAP `SnapshotPosition`)
+    - `space_id`: (MP_INT)
+    - `tuple_offset`: (MP_INT)
 
 Возвращаемое значение:
 
-- (MP_MAP `SnapshotData`)
-    - `schema_version`: MP_INT
+- `snapshot_data` (MP_MAP `SnapshotData`):
+    - `schema_version`: (MP_INT)
+    - `space_dumps`: (MP_ARRAY):
+        - (MP_MAP `SpaceDump`):
+            - `space_id`: (MP_INT)
+            - `tuples`: (MP_ARRAY of MP_ARRAY) «сырые» кортежи таблицы
+    - `next_chunk_position`: (MP_MAP `SnapshotPosition` | MP_NIL)
 
-    - `space_dumps`: MP_ARRAY:
-        - MP_MAP:
-            - `table_id`: MP_INT
-            - `tuples`: MP_ARRAY of MP_ARRAY "сырые" кортежи таблицы
-
-    - `next_position`: MP_NIL | MP_MAP `SnapshotPosition` (см. выше)
-
---------------------------------------------------------------------------------
 ### .proc_read_index {: #proc_read_index }
 
 ```rust
@@ -531,9 +509,10 @@ fn proc_read_index(timeout) -> RaftIndex
 
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
-Возвращаемое значение: MP_INT
+Возвращаемое значение:
 
---------------------------------------------------------------------------------
+* (MP_INT `RaftIndex`)
+
 ### .proc_replication {: #proc_replication }
 
 ```rust
@@ -569,7 +548,6 @@ fn proc_replication(is_master, replicaset_peers)
 - `is_master`: (MP_BOOL)
 - `replicaset_peers`: (MP_ARRAY of MP_STR)
 
---------------------------------------------------------------------------------
 ### .proc_replication_demote {: #proc_replication_demote }
 
 ```rust
@@ -595,7 +573,6 @@ fn proc_replication_demote() -> Vclock
 
 - `vclock`: (MP_MAP `Vclock`)
 
---------------------------------------------------------------------------------
 ### .proc_replication_sync {: #proc_replication_sync }
 
 ```rust
@@ -612,7 +589,6 @@ fn proc_replication_sync(vclock, timeout)
 
 [Vclock]: ../overview/glossary.md#vclock
 
---------------------------------------------------------------------------------
 ### .proc_runtime_info {: #proc_runtime_info }
 
 ```rust
@@ -623,25 +599,24 @@ fn proc_runtime_info() -> RuntimeInfo
 
 Возвращаемое значение:
 
-- (MP_MAP `RuntimeInfo`)
-    - `raft`: (MP_MAP [RaftInfo](#proc_raft_info))
-    - `version_info`: (MP_MAP [VersionInfo](#proc_version_info))
-    - `internal`: (MP_MAP)
+- (MP_MAP `RuntimeInfo`):
+    - `raft`: (MP_MAP [`RaftInfo`](#proc_raft_info))
+    - `version_info`: (MP_MAP [`VersionInfo`](#proc_version_info))
+    - `internal`: (MP_MAP `InternalInfo`)
       <br>формат: `MP_MAP { main_loop_status = MP_STR,
-      governor_loop_status = MP_STR}`
-    - `http`: (optional MP_MAP `HttpInfo`)
-      <br>формат: `MP_MAP { host = MP_STR, port = MP_UINT}`
-      <br>поле отсутствует в ответе если инстанс запущен без параметра
+      governor_loop_status = MP_STR }`
+    - `http`: (optional MP_MAP `HttpServerInfo`)
+      <br>формат: `MP_MAP { host = MP_STR, port = MP_UINT }`
+      <br>поле отсутствует в ответе, если инстанс запущен без параметра
       [picodata run --http-listen](../reference/cli.md#run_http_listen)
 
---------------------------------------------------------------------------------
 ### .proc_sharding {: #proc_sharding }
 
 ```rust
-fn proc_sharding(raft_term, raft_index, timeout)
+fn proc_sharding(term, applied, timeout)
 ```
 
-Дожидается применения raft записи с заданным индексом и термом перед тем как
+Дожидается применения raft-записи с заданным индексом и термом перед тем как
 делать что-то еще, чтобы синхронизовать состояние [глобальных системных
 таблиц](./system_tables.md). Возвращает ошибку, если времени не хватило.
 
@@ -662,18 +637,17 @@ fn proc_sharding(raft_term, raft_index, timeout)
 
 Параметры:
 
-- `raft_term`: (MP_INT)
-- `raft_index`: (MP_INT)
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
---------------------------------------------------------------------------------
 ### .proc_sharding_bootstrap {: #proc_sharding_bootstrap }
 
 ```rust
-fn proc_sharding_bootstrap(raft_term, raft_index, timeout)
+fn proc_sharding_bootstrap(term, applied, timeout)
 ```
 
-Дожидается применения raft записи с заданным индексом и термом перед тем как
+Дожидается применения raft-записи с заданным индексом и термом перед тем как
 делать что-то еще, чтобы синхронизовать состояние [глобальных системных
 таблиц](./system_tables.md). Возвращает ошибку, если времени не хватило.
 
@@ -693,11 +667,10 @@ fn proc_sharding_bootstrap(raft_term, raft_index, timeout)
 
 Параметры:
 
-- `raft_term`: (MP_INT)
-- `raft_index`: (MP_INT)
+- `term`: (MP_INT `RaftTerm`)
+- `applied`: (MP_INT `RaftIndex`)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
---------------------------------------------------------------------------------
 ### .proc_sql_execute {: #proc_sql_execute }
 
 ```rust
@@ -708,27 +681,22 @@ fn proc_sql_execute(..) -> Result
 
 Аргументы:
 
-Сериализованный план запроса.
+* *Сериализованный план запроса*
 
 Возвращаемое значение:
 
 - (MP_MAP `DqlResult`) при чтении данных
   <br>Поля:
-
     - `metadata` (MP_ARRAY), массив описаний столбцов таблицы в формате
       `MP_ARRAY [ MP_MAP { name = MP_STR, type = MP_STR }, ...]`
     - `rows` (MP_ARRAY), результат выполнения читающего запроса в формате
       `MP_ARRAY [ MP_ARRAY row, ...]`
-
 - (MP_MAP `DmlResult`) при модификации данных
-
   <br>Поля:
-
     - `row_count` (MP_INT), количество измененных строк
 
 Для более высокоуровневого RPC смотрите [.proc_sql_dispatch](#proc_sql_dispatch)
 
---------------------------------------------------------------------------------
 ### .proc_update_instance {: #proc_update_instance }
 
 ```rust
@@ -756,12 +724,11 @@ fn proc_update_instance(instance_name, cluster_name, current_state, target_state
 
 - `instance_name`: (MP_STR)
 - `cluster_name`: (MP_STR)
-- `current_state`: (MP_MAP `State`), текущее состояние инстанса
-- `target_state`: (MP_STR `StateVariant`), целевое состояние инстанса
-- `failure_domain`: (MP_MAP) [домен отказа](../overview/glossary.md#failure_domain)
+- `current_state`: (MP_MAP `State` | MP_NIL), текущее состояние инстанса
+- `target_state`: (MP_STR `StateVariant` | MP_NIL), целевое состояние инстанса
+- `failure_domain`: (MP_MAP | MP_NIL) [домен отказа](../overview/glossary.md#failure_domain)
 - `dont_retry`: (MP_BOOL), не повторять CaS запрос в случае конфликта
 
---------------------------------------------------------------------------------
 ### .proc_wait_bucket_count {: #proc_wait_bucket_count }
 
 ```rust
@@ -778,7 +745,6 @@ fn proc_wait_bucket_count(term, applied, timeout, expected_bucket_count)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 - `expected_bucket_count`: (MP_INT)
 
---------------------------------------------------------------------------------
 ### .proc_wait_index {: #proc_wait_index }
 
 ```rust
@@ -794,12 +760,13 @@ fn proc_wait_index(target, timeout) -> RaftIndex
 - `target`: (MP_INT)
 - `timeout`: (MP_INT | MP_FLOAT) в секундах
 
-Возвращаемое значение: MP_INT
+Возвращаемое значение:
 
---------------------------------------------------------------------------------
+* (MP_INT `RaftIndex`)
+
 ### .proc_wait_vclock {: #proc_wait_vclock }
 
-```
+```rust
 fn proc_wait_vclock(target, timeout) -> Vclock
 ```
 
@@ -812,4 +779,6 @@ fn proc_wait_vclock(target, timeout) -> Vclock
 - `target`: (MP_MAP `Vclock`)
 - `timeout`: (MP_FLOAT) в секундах
 
-Возвращаемое значение: MP_MAP `Vclock`
+Возвращаемое значение:
+
+* (MP_MAP `Vclock`)
