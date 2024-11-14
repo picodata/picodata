@@ -1,7 +1,7 @@
 # Change Log
 
 
-# [?.?.?] Unreleased
+# [5.1.0] Nov 14 2024
 
 ### Added
 - `tlua::Push` trait implementations for `OsString`, `OsStr`, `Path`, `PathBuf`
@@ -28,7 +28,6 @@ restricting time connection establishment.
 
 ### Fixed
 - `tlua::{Push, PushInto, LuaRead}` now work for HashSet & HashMap with custom hashers.
-
 - Use after free in `fiber::Builder::start_non_joinable` when the fiber exits without yielding.
 - Incorrect, off-spec MP Ext type: caused runtime errors on some platforms.
 - Panic in coio test starting from 1.80 Rust.
@@ -41,12 +40,6 @@ restricting time connection establishment.
 - Use `extern "C-unwind"` instead of `extern "C"` for all trampolines which take `*mut ffi::lua_State`
   (checked with `rg 'extern "C".*lua_State'`). `tlua::error!` throws an exception to unwind the stack,
   hence we need to use a proper ABI to fix UB in picodata.
-
-### Added (picodata)
-
-### Changed (picodata)
-
-### Fixed (picodata)
 
 ### Breaking changes (picodata)
 - Add session ID to the argument list of the `sql_prepare_ext`.
