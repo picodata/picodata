@@ -202,10 +202,6 @@ def wait_current_vshard_config_changed(peer: Instance, old_version, timeout=5):
     Retriable(timeout=timeout, rps=10).call(impl)
 
 
-@pytest.mark.xfail(
-    run=False,
-    reason=("very flaky, temporary disabled"),
-)
 def test_vshard_updates_on_master_change(cluster: Cluster):
     i1 = cluster.add_instance(replicaset_name="r1", wait_online=True)
     i2 = cluster.add_instance(replicaset_name="r1", wait_online=True)
@@ -229,7 +225,7 @@ def test_vshard_updates_on_master_change(cluster: Cluster):
     old_vshard_config_version = rows[0][0]
 
     update_target_master = """
-        UPDATE _pico_replicaset SET target_master_name = ? WHERE replicaset_id = ?
+        UPDATE _pico_replicaset SET target_master_name = ? WHERE name = ?
     """
     i1.sql(update_target_master, i2.name, "r1")
     i1.sql(update_target_master, i4.name, "r2")
